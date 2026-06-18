@@ -25,11 +25,11 @@ void test('BookBuilder.from applies defaults for missing fields', () => {
   assert.deepStrictEqual(book.publication.languages, []);
   assert.deepStrictEqual(book.publication.subjects, []);
   assert.deepStrictEqual(book.publication.publishers, []);
-  assert.equal(book.publication.firstPublishYear, undefined);
-  assert.equal(book.publication.summary, undefined);
+  assert.equal(book.publication.firstPublishYear, null);
+  assert.equal(book.publication.summary, null);
   assert.equal(book.availability.price.amount, 0);
   assert.equal(book.availability.price.currency, 'USD');
-  assert.equal(book.availability.inStock, undefined);
+  assert.equal(book.availability.inStock, null);
 });
 void test('BookBuilder.from preserves all supplied fields', () => {
   const book = BookBuilder.from({

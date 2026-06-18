@@ -8,6 +8,8 @@
 
 ### Changed
 
+- `Book`, `Candidate`, `Money` and the `BookIdentity`/`BookPublication`/`BookAvailability` sub-entities derive from JSON Schema 2020-12 `*Schema` consts via `FromSchema`; the schema is the single source of truth. `MoneySchema`, `BookIdentitySchema`, `BookPublicationSchema`, `BookAvailabilitySchema`, `BookSchema`, and `CandidateSchema` ship from the package root.
+- `firstPublishYear`, `summary`, and `inStock` use null sentinels (`T | null`, required key) instead of `T | undefined`, keeping V8 hidden-class shape stable under `exactOptionalPropertyTypes`. `BookBuilder.from` fills `null` for absent values.
 - `CanonicalId` is now a sealed static class (`private constructor`); direct instantiation is a compile error.
 - `Candidate.source` type changed from the no-op `'web-search' | string` union to `string` (honest type).
 

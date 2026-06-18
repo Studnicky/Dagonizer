@@ -41,7 +41,7 @@ void describe('DAGDeriver.derive', () => {
     const contracts: OperationContract[] = [
       { 'name': 'a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
       { 'name': 'b', 'hardRequired': ['x'],     'produces': ['y'], 'outputs': ['success'] },
-      { 'name': 'c', 'hardRequired': ['y'],     'produces': ['z'], 'outputs': ['success'] },
+      { 'name': 'c', 'hardRequired': ['y'],     'produces': [], 'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'chain',
@@ -74,7 +74,7 @@ void describe('DAGDeriver.derive', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'],        'produces': ['tasks'],        'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'],        'produces': ['scoutResults'], 'outputs': ['success'] },
-      { 'name': 'merge', 'hardRequired': ['scoutResults'], 'produces': ['merged'],       'outputs': ['success'] },
+      { 'name': 'merge', 'hardRequired': ['scoutResults'], 'produces': [],       'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'scout-flow',
@@ -126,7 +126,7 @@ void describe('DAGDeriver.derive', () => {
   void it('renders scatter with partition strategy', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'],  'produces': ['tasks'],   'outputs': ['success'] },
-      { 'name': 'scout', 'hardRequired': ['tasks'],  'produces': ['results'], 'outputs': ['success'] },
+      { 'name': 'scout', 'hardRequired': ['tasks'],  'produces': [], 'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'partition-flow',
@@ -170,7 +170,7 @@ void describe('DAGDeriver.derive', () => {
   void it('renders scatter with append strategy', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],   'outputs': ['success'] },
-      { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['results'], 'outputs': ['success'] },
+      { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': [], 'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'append-flow',
@@ -213,7 +213,7 @@ void describe('DAGDeriver.derive', () => {
   void it('throws when partitions map references an outcome not in outcomes', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],   'outputs': ['success'] },
-      { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['results'], 'outputs': ['success'] },
+      { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': [], 'outputs': ['success'] },
     ];
     assert.throws(
       () => DAGDeriver.derive({
@@ -242,7 +242,7 @@ void describe('DAGDeriver.derive', () => {
   void it('terminal annotation routes an alternate outcome to an emitted terminal', () => {
     const contracts: OperationContract[] = [
       { 'name': 'classify', 'hardRequired': ['input'],          'produces': ['classification'], 'outputs': ['success', 'off-topic'] },
-      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],           'outputs': ['success'] },
+      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': [],           'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'gated',
@@ -271,7 +271,7 @@ void describe('DAGDeriver.derive', () => {
   void it('auto-wires every declared output port to the next derived stage', () => {
     const contracts: OperationContract[] = [
       { 'name': 'fetch',     'hardRequired': ['url'],     'produces': ['raw'],    'outputs': ['success', 'cached', 'skipped', 'error', 'unknown'] },
-      { 'name': 'normalize', 'hardRequired': ['raw'],     'produces': ['normal'], 'outputs': ['success'] },
+      { 'name': 'normalize', 'hardRequired': ['raw'],     'produces': [], 'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'multi-port',
@@ -299,7 +299,7 @@ void describe('DAGDeriver.derive', () => {
   void it('terminal overrides individual ports without disturbing others', () => {
     const contracts: OperationContract[] = [
       { 'name': 'fetch',     'hardRequired': ['url'], 'produces': ['raw'],    'outputs': ['success', 'cached', 'error'] },
-      { 'name': 'normalize', 'hardRequired': ['raw'], 'produces': ['normal'], 'outputs': ['success'] },
+      { 'name': 'normalize', 'hardRequired': ['raw'], 'produces': [], 'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'partial-override',
@@ -323,7 +323,7 @@ void describe('DAGDeriver.derive', () => {
 
   void it('throws when a terminal references a port not in the contract outputs', () => {
     const contracts: OperationContract[] = [
-      { 'name': 'fetch', 'hardRequired': ['url'], 'produces': ['raw'], 'outputs': ['success', 'error'] },
+      { 'name': 'fetch', 'hardRequired': ['url'], 'produces': [], 'outputs': ['success', 'error'] },
     ];
     assert.throws(
       () => DAGDeriver.derive({
@@ -344,7 +344,7 @@ void describe('DAGDeriver.derive', () => {
   void it('embeddedDAGs annotation renders an EmbeddedDAGNode placement', () => {
     const contracts: OperationContract[] = [
       { 'name': 'prepare', 'hardRequired': ['input'],   'produces': ['payload'], 'outputs': ['success'] },
-      { 'name': 'invoke',  'hardRequired': ['payload'], 'produces': ['result'],  'outputs': ['success', 'error'] },
+      { 'name': 'invoke',  'hardRequired': ['payload'], 'produces': [],  'outputs': ['success', 'error'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'embeddeddag-render',
@@ -386,7 +386,7 @@ void describe('DAGDeriver.derive', () => {
     }
 
     const contracts: OperationContract[] = [
-      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success'] },
+      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': [], 'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'embeddeddag-mapping',
@@ -422,7 +422,7 @@ void describe('DAGDeriver.derive', () => {
   void it('embeddedDAGs auto-wires every declared port and honors terminal overrides', () => {
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'],  'produces': ['result'], 'outputs': ['success', 'cached', 'error'] },
-      { 'name': 'finish', 'hardRequired': ['result'], 'produces': ['done'],   'outputs': ['success'] },
+      { 'name': 'finish', 'hardRequired': ['result'], 'produces': [],   'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'embeddeddag-routing',
@@ -454,7 +454,7 @@ void describe('DAGDeriver.derive', () => {
 
   void it('throws when a terminal references a port not in the embeddedDAG outputs', () => {
     const contracts: OperationContract[] = [
-      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success', 'error'] },
+      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': [], 'outputs': ['success', 'error'] },
     ];
     assert.throws(
       () => DAGDeriver.derive({
@@ -482,7 +482,7 @@ void describe('DAGDeriver.derive', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],       'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['scoutResult'], 'outputs': ['success'] },
-      { 'name': 'merge', 'hardRequired': ['scoutResult'], 'produces': ['merged'], 'outputs': ['success'] },
+      { 'name': 'merge', 'hardRequired': ['scoutResult'], 'produces': [], 'outputs': ['success'] },
     ];
     assert.throws(
       () => DAGDeriver.derive({
@@ -522,7 +522,7 @@ void describe('DAGDeriver.derive', () => {
     const contracts: OperationContract[] = [
       { 'name': 'prepare',      'hardRequired': ['input'],        'produces': ['intermediate'], 'outputs': ['success'] },
       { 'name': 'invoke-child', 'hardRequired': ['intermediate'], 'produces': ['childResult'],  'outputs': ['success'] },
-      { 'name': 'finalize',     'hardRequired': ['childResult'],  'produces': ['final'],        'outputs': ['success'] },
+      { 'name': 'finalize',     'hardRequired': ['childResult'],  'produces': [],        'outputs': ['success'] },
     ];
     const nodes = contracts.map(contractNode);
     const parentDAG = DAGDeriver.derive({
@@ -544,7 +544,7 @@ void describe('DAGDeriver.derive', () => {
     });
 
     const childContracts: OperationContract[] = [
-      { 'name': 'child-step', 'hardRequired': ['input'], 'produces': ['final'], 'outputs': ['success'] },
+      { 'name': 'child-step', 'hardRequired': ['input'], 'produces': [], 'outputs': ['success'] },
     ];
     const childNodes = childContracts.map(contractNode);
     const childDAG = DAGDeriver.derive({
@@ -574,7 +574,7 @@ void describe('DAGDeriver.derive', () => {
   void it('produces a DAG that registers cleanly on a Dagonizer', () => {
     const contracts: OperationContract[] = [
       { 'name': 'first',  'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
-      { 'name': 'second', 'hardRequired': ['x'],     'produces': ['y'], 'outputs': ['success'] },
+      { 'name': 'second', 'hardRequired': ['x'],     'produces': [], 'outputs': ['success'] },
     ];
     const nodes = contracts.map(contractNode);
     const dag = DAGDeriver.derive({
@@ -598,7 +598,7 @@ void describe('DAGDeriver.derive', () => {
 
   void it('throws DAGError when an output port has no successor and no terminal annotation', () => {
     const contracts: OperationContract[] = [
-      { 'name': 'fetch', 'hardRequired': ['url'], 'produces': ['raw'], 'outputs': ['success', 'error'] },
+      { 'name': 'fetch', 'hardRequired': ['url'], 'produces': [], 'outputs': ['success', 'error'] },
     ];
     assert.throws(
       () => DAGDeriver.derive({
@@ -626,7 +626,7 @@ void describe('DAGDeriver.derive', () => {
   void it('throws DAGError when a scatter outcome has no successor and no terminal annotation', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],   'outputs': ['success'] },
-      { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['results'], 'outputs': ['success'] },
+      { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': [], 'outputs': ['success'] },
     ];
     assert.throws(
       () => DAGDeriver.derive({
@@ -682,7 +682,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   void it('basic emit: synthesizes a TerminalNode placement and routes the output port to it', () => {
     const contracts: OperationContract[] = [
       { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail'] },
-      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],   'outputs': ['success'] },
+      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': [],   'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'emit-basic',
@@ -720,7 +720,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   void it('shared terminal: two operations with same emit name produce exactly one TerminalNode', () => {
     const contracts: OperationContract[] = [
       { 'name': 'step-a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success', 'fail'] },
-      { 'name': 'step-b', 'hardRequired': ['x'],     'produces': ['y'], 'outputs': ['success', 'fail'] },
+      { 'name': 'step-b', 'hardRequired': ['x'],     'produces': [], 'outputs': ['success', 'fail'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'emit-shared',
@@ -756,7 +756,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   void it('outcome conflict: two emit entries with same name but different outcomes throw DAGError', () => {
     const contracts: OperationContract[] = [
       { 'name': 'step-a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success', 'fail'] },
-      { 'name': 'step-b', 'hardRequired': ['x'],     'produces': ['y'], 'outputs': ['success', 'fail'] },
+      { 'name': 'step-b', 'hardRequired': ['x'],     'produces': [], 'outputs': ['success', 'fail'] },
     ];
     assert.throws(
       () => DAGDeriver.derive({
@@ -786,7 +786,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   void it('name collision with operation: emit name matching an existing operation throws DAGError', () => {
     const contracts: OperationContract[] = [
       { 'name': 'classify', 'hardRequired': ['input'],          'produces': ['classification'], 'outputs': ['success', 'fail'] },
-      { 'name': 'cleanup',  'hardRequired': ['classification'], 'produces': ['done'],           'outputs': ['success'] },
+      { 'name': 'cleanup',  'hardRequired': ['classification'], 'produces': [],           'outputs': ['success'] },
     ];
     assert.throws(
       () => DAGDeriver.derive({
@@ -812,7 +812,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   void it('execution: triggering the failing path marks state.lifecycle.kind as failed', async () => {
     const contracts: OperationContract[] = [
       { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail'] },
-      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],  'outputs': ['success'] },
+      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': [],  'outputs': ['success'] },
     ];
     const nodes = contracts.map(contractNode);
     const dag = DAGDeriver.derive({
@@ -843,7 +843,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   void it('multiple emit terminals (completed and failed) coexist on one operation', () => {
     const contracts: OperationContract[] = [
       { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail', 'retry'] },
-      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],  'outputs': ['success'] },
+      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': [],  'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
       'name': 'emit-mix',
@@ -889,7 +889,7 @@ void describe('DAGDeriverEmbeddedDAG<TChildState>: typed stateMapping', () => {
 
   void it('positive: typed embeddedDAG annotation compiles and produces correct EmbeddedDAGNode stateMapping', () => {
     const contracts: OperationContract[] = [
-      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success', 'error'] },
+      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': [], 'outputs': ['success', 'error'] },
     ];
 
     // Typed annotation: 'payload' and 'result' must be keys of MyChildState.
@@ -931,7 +931,7 @@ void describe('DAGDeriverEmbeddedDAG<TChildState>: typed stateMapping', () => {
   void it('untyped: omitting the generic defaults to NodeStateInterface (loose string paths)', () => {
     // DAGDeriverEmbeddedDAG without a generic; same as the pre-existing usage.
     const contracts: OperationContract[] = [
-      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success'] },
+      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': [], 'outputs': ['success'] },
     ];
 
     const annotation: DAGDeriverEmbeddedDAG = {

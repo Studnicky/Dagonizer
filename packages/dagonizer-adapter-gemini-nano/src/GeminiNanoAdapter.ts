@@ -26,41 +26,39 @@ import type {
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 
-export type GeminiNanoAvailability =
-  | 'available'
-  | 'downloadable'
-  | 'downloading'
-  | 'unavailable';
+import type {
+  GeminiNanoAvailabilityType,
+  LanguageModelStaticInterface,
+  PromptOptionsInterface,
+} from './LanguageModelHost.js';
+import {
+  languageModelSessionValidator,
+  languageModelStaticValidator,
+} from './LanguageModelHost.js';
 
 export interface GeminiNanoAdapterOptions {
   readonly maxAttempts?: number;
 }
 
-interface PromptOptions {
-  responseConstraint?: Record<string, unknown>;
-}
-
-interface LanguageModelSession {
-  prompt(input: string, options?: PromptOptions): Promise<string>;
-  destroy(): void;
-}
-
-interface LanguageModelStatic {
-  availability(): Promise<GeminiNanoAvailability>;
-  create(options?: {
-    initialPrompts?: ReadonlyArray<{ role: 'system' | 'user'; content: string }>;
-  }): Promise<LanguageModelSession>;
-}
-
 export class GeminiNanoAdapter extends BaseAdapter {
-  private static getLanguageModel(): LanguageModelStatic | undefined {
+  /**
+   * Read `globalThis.LanguageModel` as `unknown` and validate it against
+   * `LanguageModelStaticSchema` at the host boundary. Returns the narrowed
+   * host object, or `undefined` when the global is absent or fails the
+   * structural check. This is the single foreign-boundary narrowing for
+   * the Nano host object — every other method receives the already-narrowed
+   * `LanguageModelStaticInterface`.
+   */
+  private static languageModel(): LanguageModelStaticInterface | undefined {
     if (typeof globalThis === 'undefined') return undefined;
-    return (globalThis as { LanguageModel?: LanguageModelStatic }).LanguageModel;
+    const candidate: unknown = Reflect.get(globalThis, 'LanguageModel');
+    if (!languageModelStaticValidator.is(candidate)) return undefined;
+    return candidate;
   }
 
   /** Public probe. Used by the provider matrix to pick the best backend. */
-  static async detect(): Promise<GeminiNanoAvailability> {
-    const lm = GeminiNanoAdapter.getLanguageModel();
+  static async detect(): Promise<GeminiNanoAvailabilityType> {
+    const lm = GeminiNanoAdapter.languageModel();
     if (lm === undefined) return 'unavailable';
     try {
       return await lm.availability();
@@ -92,7 +90,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
-    const lm = GeminiNanoAdapter.getLanguageModel();
+    const lm = GeminiNanoAdapter.languageModel();
     if (lm === undefined) {
       throw new LlmError('window.LanguageModel is not present', Classifications['MODEL_NOT_FOUND']);
     }
@@ -104,9 +102,10 @@ export class GeminiNanoAdapter extends BaseAdapter {
       ? systemMessages.map((m) => ({ 'role': 'system' as const, 'content': m.content }))
       : undefined;
 
-    const session = await lm.create(initialPrompts === undefined ? undefined : { initialPrompts });
+    const rawSession: unknown = await lm.create(initialPrompts === undefined ? undefined : { initialPrompts });
+    const session = languageModelSessionValidator.validate(rawSession);
     try {
-      const options: PromptOptions = {};
+      const options: PromptOptionsInterface = {};
       if (request.tools.length > 0) {
         options.responseConstraint = this.#toolPlanSchema(request.tools);
       } else if (request.outputSchema.kind === 'schema') {

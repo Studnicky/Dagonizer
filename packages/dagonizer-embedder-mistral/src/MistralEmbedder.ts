@@ -24,28 +24,21 @@ import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/ad
 import type { BaseAdapterCoreOptions } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
 
-const DEFAULT_MODEL = 'mistral-embed';
-const DEFAULT_DIMENSIONS = 1024;
+import { MistralEmbedResponseValidator } from './MistralEmbedResponse.js';
+
 const ENDPOINT = 'https://api.mistral.ai/v1/embeddings';
+
+/** Module-level defaults; the producer fills them so the consumer never sees absence. */
+const MISTRAL_EMBEDDER_DEFAULTS = {
+  'model': 'mistral-embed',
+  'dimensions': 1024,
+} as const;
 
 export interface MistralEmbedderOptions extends BaseAdapterCoreOptions {
   /** Override the embedding model. Defaults to `mistral-embed`. */
   readonly model?: string;
   /** Override dimensions when targeting a non-`mistral-embed` model. */
   readonly dimensions?: number;
-}
-
-interface MistralEmbedResponse {
-  readonly data: ReadonlyArray<{ readonly embedding: readonly number[] }>;
-}
-
-function isMistralEmbedResponse(v: unknown): v is MistralEmbedResponse {
-  if (typeof v !== 'object' || v === null) return false;
-  const obj = v as Record<string, unknown>;
-  if (!Array.isArray(obj['data']) || obj['data'].length === 0) return false;
-  const first: unknown = obj['data'][0];
-  if (typeof first !== 'object' || first === null) return false;
-  return Array.isArray((first as Record<string, unknown>)['embedding']);
 }
 
 export class MistralEmbedder extends BaseEmbedder {
@@ -59,43 +52,26 @@ export class MistralEmbedder extends BaseEmbedder {
    * around it cleanly.
    */
   constructor(apiKey: string, options: MistralEmbedderOptions = {}) {
-    const model = options.model ?? DEFAULT_MODEL;
-    const dimensions = options.dimensions ?? DEFAULT_DIMENSIONS;
-    super('mistral', `Mistral (${model})`, dimensions, options);
+    const resolved = { ...MISTRAL_EMBEDDER_DEFAULTS, ...options };
+    super('mistral', `Mistral (${resolved.model})`, resolved.dimensions, options);
     this.#apiKey = apiKey;
-    this.#model = model;
+    this.#model = resolved.model;
   }
 
   protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
-    let res: Response;
-    try {
-      res = await fetch(ENDPOINT, {
+    const raw = await this.fetchJson(
+      ENDPOINT,
+      {
         'method': 'POST',
         'headers': {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.#apiKey}`,
         },
         'body': JSON.stringify({ 'model': this.#model, 'input': [text] }),
-        signal,
-      });
-    } catch (err) {
-      throw new LlmError(
-        `Mistral embed network error: ${err instanceof Error ? err.message : String(err)}`,
-        Classifications['NETWORK'],
-        { 'cause': err },
-      );
-    }
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new LlmError(
-        `Mistral embed failed: ${String(res.status)} ${body}`,
-        LlmError.classifyHttp(res.status, { 'body': body }),
-      );
-    }
-
-    const raw: unknown = await res.json();
-    if (!isMistralEmbedResponse(raw)) {
+      },
+      signal,
+    );
+    if (!MistralEmbedResponseValidator.is(raw)) {
       throw new LlmError(
         `Mistral embed: missing or empty 'data[0].embedding' field`,
         Classifications['SCHEMA_VIOLATION'],

@@ -1,5 +1,15 @@
 # @studnicky/dagonizer-adapter-gemini-api
 
+## [Unreleased]
+
+### Changed
+
+- The Gemini `generateContent` response body is now schema-backed. `GeminiResponseBodySchema` (JSON Schema 2020-12) is the source of truth and `GeminiResponseBodyType` derives from it via `FromSchema`. The `geminiResponseBodyValidator`, compiled once at module load through the engine's shared `Validator.compile` (`@studnicky/dagonizer/validation`), narrows the `unknown` HTTP body at the network boundary. The hand-written `GeminiResponseBody`/`GeminiPart` interfaces and the `isGeminiResponseBody` predicate are removed.
+
+### Added
+
+- Public schema surface: `GeminiResponseBodySchema`, `GeminiCandidateSchema`, `GeminiContentSchema`, `GeminiPartSchema`, `GeminiFunctionCallSchema`, `GeminiUsageMetadataSchema`, the `GeminiResponseBodyType` type, and the `geminiResponseBodyValidator`.
+
 ## 0.21.0
 
 ## 0.20.0

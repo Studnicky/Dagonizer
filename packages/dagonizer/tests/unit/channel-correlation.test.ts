@@ -383,7 +383,6 @@ void describe('worker observability: forwarded node events reach the parent obse
       onError() { /* unused in this test */ },
       onPhaseEnter() { /* unused in this test */ },
       onPhaseExit() { /* unused in this test */ },
-      onContractWarning() { /* unused in this test */ },
     };
 
     const ac = new AbortController();

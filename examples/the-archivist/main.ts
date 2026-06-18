@@ -35,7 +35,7 @@ import { GeminiApiAdapter }   from '@studnicky/dagonizer-adapter-gemini-api';
 import { GeminiNanoAdapter }  from '@studnicky/dagonizer-adapter-gemini-nano';
 import { OllamaApiAdapter }   from '@studnicky/dagonizer-adapter-ollama';
 import { WebLlmAdapter }      from '@studnicky/dagonizer-adapter-web-llm';
-import type { WebLlmInitReport } from '@studnicky/dagonizer-adapter-web-llm';
+import type { WebLlmInitReportInterface } from '@studnicky/dagonizer-adapter-web-llm';
 
 import { LlmAdapterCascade, LlmAdapterRegistry } from '@studnicky/dagonizer/adapter';
 import type { AdapterCapabilities } from '@studnicky/dagonizer/adapter';
@@ -121,7 +121,7 @@ registry.register(
 // Progress reporting is an extension seam: subclass and override
 // onInitProgress rather than passing a callback in.
 class LoggingWebLlmAdapter extends WebLlmAdapter {
-  protected override onInitProgress(report: WebLlmInitReport): void {
+  protected override onInitProgress(report: WebLlmInitReportInterface): void {
     logger.info(`web-llm: ${report.text} (${String(Math.round(report.progress * 100))}%)`);
   }
 }

@@ -12,11 +12,17 @@
  * Static class per project standards (`noun.verb()`). No constructor,
  * no instance state.
  *
- * Shape validation of the parsed JSON body is the caller's responsibility.
- * The generic `TResponse` conveys the expected type; callers narrow the
- * returned value in their own domain layer.
+ * The parsed JSON body crosses a foreign boundary as `unknown` and is
+ * narrowed by a caller-supplied schema-backed `EntityValidator` before it
+ * is returned. Because the framework uses forced tool-calling, every
+ * caller's expected shape is known at the call site, so the validator is
+ * required — there is no unchecked-cast path. A shape mismatch throws a
+ * non-retryable `ToolError(PARSE_ERROR)`.
  */
 
+import type { EntityValidator } from '../validation/Validator.js';
+
+import { OpenApiGuard } from './OpenApiGuard.js';
 import { ToolError, type ToolErrorReason } from './ToolError.js';
 
 /** Named return type for HTTP status classification. */
@@ -47,17 +53,28 @@ const HTTP_REQUEST_DEFAULTS = {
 export class HttpTransport {
   private constructor() { /* static class */ }
 
-  /** GET → parsed JSON. Throws `ToolError` on failure. */
-  static async getJson<TResponse>(url: string, options: Partial<HttpRequestOptions> = {}): Promise<TResponse> {
+  /**
+   * GET → JSON body narrowed by `validator`. Throws `ToolError` on
+   * transport failure or on a schema mismatch (`PARSE_ERROR`).
+   */
+  static async getJson<TResponse>(
+    url: string,
+    validator: EntityValidator<TResponse>,
+    options: Partial<HttpRequestOptions> = {},
+  ): Promise<TResponse> {
     const resolved = HttpTransport.resolveOptions(options);
     const response = await HttpTransport.request(url, { 'method': 'GET' }, resolved);
-    return HttpTransport.parseJson<TResponse>(response);
+    return HttpTransport.parseJson<TResponse>(response, validator);
   }
 
-  /** POST a JSON body → parsed JSON. Throws `ToolError` on failure. */
+  /**
+   * POST a JSON body → JSON body narrowed by `validator`. Throws
+   * `ToolError` on transport failure or on a schema mismatch (`PARSE_ERROR`).
+   */
   static async postJson<TResponse>(
     url: string,
     body: unknown,
+    validator: EntityValidator<TResponse>,
     options: Partial<HttpRequestOptions> = {},
   ): Promise<TResponse> {
     const resolved = HttpTransport.resolveOptions(options);
@@ -70,7 +87,7 @@ export class HttpTransport {
       },
       resolved,
     );
-    return HttpTransport.parseJson<TResponse>(response);
+    return HttpTransport.parseJson<TResponse>(response, validator);
   }
 
   /** Merge caller-supplied partial options with the module defaults. */
@@ -149,12 +166,17 @@ export class HttpTransport {
     throw lastError ?? new ToolError(`request failed after ${String(maxRetries)} retries: ${url}`, { 'reason': 'UNKNOWN', 'retryable': false, 'status': null });
   }
 
-  private static async parseJson<TResponse>(response: Response): Promise<TResponse> {
+  private static async parseJson<TResponse>(
+    response: Response,
+    validator: EntityValidator<TResponse>,
+  ): Promise<TResponse> {
+    let body: unknown;
     try {
-      return await response.json() as TResponse;
+      body = await response.json();
     } catch (err) {
       throw new ToolError('failed to parse JSON response', { 'reason': 'PARSE_ERROR', 'retryable': false, 'status': null, 'cause': err });
     }
+    return OpenApiGuard.assertShape(body, validator, `HTTP body from ${response.url}`);
   }
 
   private static classifyStatus(status: number): HttpStatusClassification {

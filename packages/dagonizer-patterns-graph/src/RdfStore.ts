@@ -26,38 +26,44 @@ import type { JsonValue } from '@studnicky/dagonizer/entities';
 import type { Binding, Quad, SlotPattern, Term, TripleStore } from '@studnicky/dagonizer/patterns';
 import { BaseStore, type BaseStoreOptions } from '@studnicky/dagonizer/store';
 
-/** Subject IRI prefix used when no override is supplied. */
-const DEFAULT_SUBJECT_PREFIX = 'urn:dagonizer:store:';
-
-/** Predicate IRI used for the reified Store value triple. */
-const DEFAULT_VALUE_PREDICATE = 'urn:dagonizer:store:value';
-
 /** Sentinel for the default RDF graph. */
 const DEFAULT_GRAPH: Term = { "termType": 'DefaultGraph', "value": '' };
 
 export interface RdfStoreOptions extends BaseStoreOptions {
   /**
    * Subject IRI prefix for reified Store keys.
-   * Default: `'urn:dagonizer:store:'`.
+   * Default: `'urn:dagonizer:store:'` (see `RDF_STORE_DEFAULTS`).
    */
   readonly subjectPrefix?: string;
   /**
    * Predicate IRI used for the reified Store value triple.
-   * Default: `'urn:dagonizer:store:value'`.
+   * Default: `'urn:dagonizer:store:value'` (see `RDF_STORE_DEFAULTS`).
    */
   readonly valuePredicate?: string;
 }
+
+/**
+ * Default options. Spread into custom options to fill unset fields, so the
+ * resolved internal value always carries a real `subjectPrefix` and
+ * `valuePredicate`; the public input may stay partial.
+ */
+export const RDF_STORE_DEFAULTS: Required<RdfStoreOptions> = {
+  'namespace':       '',
+  'subjectPrefix':   'urn:dagonizer:store:',
+  'valuePredicate':  'urn:dagonizer:store:value',
+};
 
 export class RdfStore extends BaseStore implements TripleStore {
   readonly #quads: Quad[];
   readonly #subjectPrefix:  string;
   readonly #valuePredicate: string;
 
-  constructor(options: RdfStoreOptions = { 'namespace': '' }) {
-    super({ "namespace": options.namespace ?? '' });
+  constructor(options: RdfStoreOptions = {}) {
+    const resolved = { ...RDF_STORE_DEFAULTS, ...options };
+    super({ "namespace": resolved.namespace });
     this.#quads          = [];
-    this.#subjectPrefix  = options.subjectPrefix  ?? DEFAULT_SUBJECT_PREFIX;
-    this.#valuePredicate = options.valuePredicate ?? DEFAULT_VALUE_PREDICATE;
+    this.#subjectPrefix  = resolved.subjectPrefix;
+    this.#valuePredicate = resolved.valuePredicate;
   }
 
   protected get snapshotType(): string    { return 'rdf-store'; }

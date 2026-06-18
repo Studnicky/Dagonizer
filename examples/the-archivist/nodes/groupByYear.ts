@@ -32,9 +32,10 @@ export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered', Archi
     indexed.sort((a, b) => {
       const ya = a.candidate.book.publication.firstPublishYear;
       const yb = b.candidate.book.publication.firstPublishYear;
-      if (ya === undefined && yb === undefined) return a.position - b.position;
-      if (ya === undefined) return 1;
-      if (yb === undefined) return -1;
+      // Unknown publication year (null) sorts last; ties keep original position.
+      if (ya === null && yb === null) return a.position - b.position;
+      if (ya === null) return 1;
+      if (yb === null) return -1;
       if (ya !== yb) return ya - yb;
       return a.position - b.position;
     });
@@ -44,8 +45,8 @@ export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered', Archi
     const first = ordered[0];
     const last  = ordered[ordered.length - 1];
     if (first !== undefined && last !== undefined) {
-      const firstYear = first.book.publication.firstPublishYear !== undefined ? String(first.book.publication.firstPublishYear) : '?';
-      const lastYear  = last.book.publication.firstPublishYear  !== undefined ? String(last.book.publication.firstPublishYear)  : '?';
+      const firstYear = first.book.publication.firstPublishYear !== null ? String(first.book.publication.firstPublishYear) : '?';
+      const lastYear  = last.book.publication.firstPublishYear  !== null ? String(last.book.publication.firstPublishYear)  : '?';
       context.services.logger.info(`group-by-year: ${String(ordered.length)} works (${firstYear} → ${lastYear})`);
     }
     return NodeOutputBuilder.of('ordered');

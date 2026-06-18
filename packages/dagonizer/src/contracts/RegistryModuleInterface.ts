@@ -21,11 +21,15 @@ import type { CheckpointRestoreAdapter } from './CheckpointRestoreAdapter.js';
  * registry, locally constructed services, the semantic version for the
  * version handshake, and the state restore factory.
  */
-export interface RegistryBundleInterface {
+export interface RegistryBundleInterface<TServices = unknown> {
   /** Nodes and DAGs to register in the host dispatcher. */
   bundle: DispatcherBundle<NodeStateInterface, unknown>;
-  /** Locally constructed services bag. Opaque to the protocol. */
-  services: unknown;
+  /**
+   * Locally constructed services bag. Opaque to the protocol; `TServices`
+   * defaults to `unknown` so existing call sites stay source-compatible,
+   * while a registry that knows its services shape narrows it without a cast.
+   */
+  services: TServices;
   /** Semantic version used for the init ↔ ready version handshake. */
   registryVersion: string;
   /**
@@ -55,11 +59,12 @@ export interface RegistryBundleInterface {
 /**
  * Default export shape of a registry module loaded by DagHost via dynamic import.
  */
-export interface RegistryModuleInterface {
+export interface RegistryModuleInterface<TServices = unknown> {
   /**
    * Construct the service bag and return the fully initialised bundle.
    * `servicesConfig` is the opaque JSON object from the `init` message —
-   * the registry module interprets it to wire its dependencies.
+   * the registry module interprets it to wire its dependencies. `TServices`
+   * defaults to `unknown`; a module that knows its services shape narrows it.
    */
-  createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface>;
+  createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface<TServices>>;
 }

@@ -104,7 +104,7 @@ Generate-collect pattern (one clone per source-array item):
 | `stateMapping` | `{ input?: Record<childKey, parentPath> }` | no | Seeds each clone: `input` copies parent fields into the clone before the body runs. Authored via the `inputs` builder option. |
 | `gather` | `GatherConfig` | **yes** | How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
 | `reducer` | `string` | no | Outcome reducer name. Defaults to `'aggregate'`. Built-in: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
-| `container` | `string` | no | Logical container role name for `{ dag }` bodies only. Bound at construction via `DagonizerOptionsInterface.containers`. An unbound role falls back to in-process and fires `onContractWarning`. Setting `container` on a `{ node }` body is a validation error. |
+| `container` | `string` | no | Logical container role name for `{ dag }` bodies only. Bound at construction via `DagonizerOptionsInterface.containers`. On a dispatcher with a non-empty `containers` registry, a role this placement declares but does not bind throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats the role as inert and runs the body in-process. Setting `container` on a `{ node }` body is a validation error. |
 
 `GatherConfig` is documented under [Gather configuration](#gather-configuration) below.
 

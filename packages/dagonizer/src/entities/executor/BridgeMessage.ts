@@ -203,7 +203,7 @@ export const BridgeMessageSchema = {
       'properties': {
         'kind':          { 'type': 'string', 'const': 'instrumentation' },
         'correlationId': { 'type': 'string' },
-        'hook':          { 'type': 'string', 'enum': ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error', 'contractWarning'] },
+        'hook':          { 'type': 'string', 'enum': ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error'] },
         // 'pre'/'post' for phaseEnter/phaseExit; '' for every other hook.
         'phase':         { 'type': 'string', 'enum': ['pre', 'post', ''] },
         'dagName':       { 'type': 'string' },
@@ -223,18 +223,6 @@ export const BridgeMessageSchema = {
         'code':          { 'type': 'string' },
         'message':       { 'type': 'string' },
         'recoverable':   { 'type': 'boolean' },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['kind', 'level', 'component', 'operation', 'message'],
-      'properties': {
-        'kind':      { 'type': 'string', 'const': 'log' },
-        'level':     { 'type': 'string', 'enum': ['debug', 'info', 'warn', 'error'] },
-        'component': { 'type': 'string' },
-        'operation': { 'type': 'string' },
-        'message':   { 'type': 'string' },
       },
       'additionalProperties': false,
     },

@@ -13,7 +13,6 @@
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
-import type { WarningEmitter } from '../contracts/WarningEmitter.js';
 import { ContractRegistryValidator } from '../derive/ContractRegistryValidator.js';
 import { DAGDeriver } from '../derive/DAGDeriver.js';
 import type { DAGDeriverAnnotations } from '../derive/DAGDeriverAnnotations.js';
@@ -26,19 +25,12 @@ import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { TerminalNode } from '../entities/dag/TerminalNode.js';
 import { ConfigurationError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
-import { NoopWarningEmitter } from '../runtime/NoopWarningEmitter.js';
 
 import type { Path } from './Path.js';
 import { ScatterOptions } from './ScatterOptions.js';
 
 /** Co-located defaults for `terminal()` options. */
 const TERMINAL_DEFAULTS = { 'outcome': 'completed' } as const satisfies { readonly outcome: 'completed' | 'failed' };
-
-/** Module-level singleton used as the default warning emitter for `build()`. */
-const DEFAULT_WARNING_EMITTER: WarningEmitter = new NoopWarningEmitter();
-
-/** Co-located defaults for `build()` options. */
-const BUILD_DEFAULTS = { 'warningEmitter': DEFAULT_WARNING_EMITTER } as const satisfies { readonly warningEmitter: WarningEmitter };
 
 /**
  * Progressive path typing: resolves to `Path<T>` when `T` is a concrete state
@@ -372,15 +364,9 @@ export class DAGBuilder {
    * When any placement registered via `.node()` or `.scatter()` carries a
    * `contract` on its underlying `NodeInterface`, `build()` runs the same
    * dangling-read / dead-write validation that `DAGDeriver` runs at derive
-   * time. Dangling reads throw `DAGError`; dead writes are routed to
-   * `options.warningEmitter` (no-op if omitted).
-   *
-   * @param options - Build options.
-   * @param options.warningEmitter - Receives dead-write warnings. Defaults to
-   *   a no-op emitter; dead writes are silently discarded. Dangling reads always throw.
+   * time. Both dangling reads and dead writes throw `DAGError`.
    */
-  build(options: { warningEmitter?: WarningEmitter } = {}): DAG {
-    const { warningEmitter } = { ...BUILD_DEFAULTS, ...options };
+  build(): DAG {
     if (this.#entrypoint === null) {
       throw new ConfigurationError(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint; call .entrypoint() or add at least one node first`);
     }
@@ -405,7 +391,6 @@ export class DAGBuilder {
       const contracts = DAGDeriver.extractContracts(contractNodes);
       ContractRegistryValidator.validate(
         contracts,
-        warningEmitter,
         { 'entrypointName': this.#entrypoint },
       );
     }

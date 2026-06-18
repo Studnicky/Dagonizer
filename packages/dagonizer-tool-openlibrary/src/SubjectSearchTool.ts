@@ -37,7 +37,8 @@ import type { Tool } from '@studnicky/dagonizer/tool';
 import type { Candidate } from '@studnicky/dagonizer-book-entities';
 
 
-import { OPENLIBRARY_ENDPOINT, narrowOpenLibraryResponse, OpenLibraryDocs } from './openLibraryTypes.js';
+import { OpenLibraryResponseValidator } from './OpenLibraryResponse.js';
+import { OPENLIBRARY_ENDPOINT, OpenLibraryDocs } from './openLibraryTypes.js';
 
 interface SubjectSearchInput extends Record<string, unknown> {
   readonly subject: string;
@@ -90,11 +91,11 @@ export class SubjectSearchTool implements Tool<SubjectSearchInput, readonly Cand
       params.set('lang', input.lang);
     }
 
-    const raw = await HttpTransport.getJson<unknown>(
+    const payload = await HttpTransport.getJson(
       `${OPENLIBRARY_ENDPOINT}?${params.toString()}`,
+      OpenLibraryResponseValidator,
       { ...(signal !== undefined && { signal }) },
     );
-    const payload = narrowOpenLibraryResponse(raw);
     return OpenLibraryDocs.candidates(payload.docs ?? [], 'subject-search', 'openlibrary-subject');
   }
 }

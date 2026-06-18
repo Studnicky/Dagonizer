@@ -65,17 +65,13 @@ When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive r
 When the underlying `NodeInterface` carries a `contract` field (`hardRequired` plus `produces`), `build()` runs the same dangling-read and dead-write validation that `DAGDeriver` runs at derive time. Drift fails at build time, not run time.
 
 - **Dangling read**. A non-entrypoint node declares `hardRequired: ['foo']` but no upstream node produces `'foo'`. Throws `DAGError`.
-- **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Calls `warningEmitter.warn` (non-fatal).
+- **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Throws `DAGError`, exactly like a dangling read.
 
 <<< @/../examples/dags/02-builder.topology.ts#contract-error
 
-Pass a `warningEmitter` to capture dead writes:
-
-<<< @/../examples/dags/02-builder.topology.ts#contract-warning
-
 Placements added via `.scatter()` with a `{ dag }` body do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
 
-The `warningEmitter` passed to `build()` fires at construction time and is local to the builder call. When the resulting DAG is registered with a `Dagonizer` subclass, the dispatcher's `onContractWarning` hook fires again at `registerDAG` time if the nodes carry co-located contracts. See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
+See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
 
 ## `DAGBuilder.fromNodes()`, the linear shortcut
 

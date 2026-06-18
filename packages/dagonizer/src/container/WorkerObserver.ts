@@ -58,7 +58,7 @@ export class WorkerObserver<
    * all default to schema-safe sentinels so the emitted message is always valid.
    */
   #emit(
-    hook: 'nodeStart' | 'nodeEnd' | 'error' | 'phaseEnter' | 'phaseExit' | 'contractWarning',
+    hook: 'nodeStart' | 'nodeEnd' | 'error' | 'phaseEnter' | 'phaseExit',
     composedPath: string[],
     options: {
       phase?: 'pre' | 'post' | '';
@@ -114,9 +114,5 @@ export class WorkerObserver<
     placementPath: readonly string[],
   ): void {
     this.#emit('phaseExit', this.#composePath(placementPath), { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
-  }
-
-  protected override onContractWarning(message: string): void {
-    this.#emit('contractWarning', [], { 'message': message });
   }
 }

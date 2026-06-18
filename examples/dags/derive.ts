@@ -57,7 +57,12 @@ export class ValidateNode extends ScalarNode<PipelineState, 'success' | 'error'>
 export class TransformNode extends ScalarNode<PipelineState, 'success'> {
   readonly name     = 'transform';
   readonly outputs  = ['success'] as const;
-  override readonly contract: OperationContractFragment ={ "hardRequired": ['validated'], "produces": ['childResult'] };
+  // transform is the child DAG's terminal stage. It writes state.childResult,
+  // which the embedding parent reads back via stateMapping.output — not via an
+  // in-DAG contract edge. `produces` declares only in-registry productions a
+  // downstream node hardRequires; the cross-boundary export is the embedding
+  // contract's concern, so childResult is not declared here.
+  override readonly contract: OperationContractFragment ={ "hardRequired": ['validated'], "produces": [] };
 
   protected override async executeOne(state: PipelineState) {
     state.childResult = `[${state.intermediate}]`;
@@ -83,7 +88,11 @@ export class InvokePluginNode extends ScalarNode<PipelineState, 'success' | 'err
 export class FinalizeNode extends ScalarNode<PipelineState, 'success'> {
   readonly name     = 'finalize';
   readonly outputs  = ['success'] as const;
-  override readonly contract: OperationContractFragment ={ "hardRequired": ['childResult'], "produces": ['final'] };
+  // finalize is the parent flow's terminal stage. It writes state.final, the
+  // flow's emitted result, surfaced via the terminals.emit annotation rather
+  // than an in-DAG contract edge. `produces` declares only in-registry
+  // productions a downstream node hardRequires, so `final` is not declared here.
+  override readonly contract: OperationContractFragment ={ "hardRequired": ['childResult'], "produces": [] };
 
   protected override async executeOne(state: PipelineState) {
     state.final = `done: ${state.childResult}`;
@@ -203,9 +212,13 @@ class GatedClassifyNode extends ScalarNode<GatedState, 'success' | 'off-topic' |
 class GatedPlanNode extends ScalarNode<GatedState, 'success'> {
   readonly name    = 'plan';
   readonly outputs = ['success'] as const;
+  // plan is the flow's terminal stage; its 'plan' state field is the emitted
+  // result, surfaced via terminals.emit rather than an in-DAG contract edge.
+  // `produces` declares only in-registry productions a downstream node
+  // hardRequires, so the terminal output is not declared here.
   override readonly contract: OperationContractFragment = {
     hardRequired: ['classification'],
-    produces:     ['plan'],
+    produces:     [],
   };
   protected override async executeOne() { return NodeOutputBuilder.of('success'); }
 }
@@ -251,9 +264,11 @@ class EmitClassifyNode extends ScalarNode<GatedState, 'success' | 'fail' | 'erro
 class EmitPlanNode extends ScalarNode<GatedState, 'success'> {
   readonly name    = 'plan';
   readonly outputs = ['success'] as const;
+  // plan is the flow's terminal stage; its 'plan' state field is the emitted
+  // result, surfaced via terminals.emit rather than an in-DAG contract edge.
   override readonly contract: OperationContractFragment = {
     hardRequired: ['classification'],
-    produces:     ['plan'],
+    produces:     [],
   };
   protected override async executeOne() { return NodeOutputBuilder.of('success'); }
 }
@@ -332,9 +347,12 @@ class ScoutNode extends ScalarNode<ScatterState, 'success' | 'error'> {
 class MergeNode extends ScalarNode<ScatterState, 'all-success' | 'partial' | 'all-error' | 'empty'> {
   readonly name    = 'merge';
   readonly outputs = ['all-success', 'partial', 'all-error', 'empty'] as const;
+  // merge is the flow's terminal gather stage; its 'merged' state field is the
+  // emitted result, surfaced via terminals.emit rather than an in-DAG contract
+  // edge, so the terminal output is not declared in `produces`.
   override readonly contract: OperationContractFragment = {
     hardRequired: ['scoutResults'],
-    produces:     ['merged'],
+    produces:     [],
   };
   protected override async executeOne() { return NodeOutputBuilder.of('all-success'); }
 }
@@ -399,9 +417,12 @@ class PartitionPlanNode extends ScalarNode<PartitionState, 'success'> {
 class PartitionScoutNode extends ScalarNode<PartitionState, 'success' | 'error' | 'empty'> {
   readonly name    = 'scout';
   readonly outputs = ['success', 'error', 'empty'] as const;
+  // scout is the flow's terminal scatter stage; its partitioned 'passed' and
+  // 'failed' state buckets are the emitted result, surfaced via terminals.emit
+  // rather than in-DAG contract edges, so they are not declared in `produces`.
   override readonly contract: OperationContractFragment = {
     hardRequired: ['tasks'],
-    produces:     ['passed', 'failed'],
+    produces:     [],
   };
   protected override async executeOne() { return NodeOutputBuilder.of('success'); }
 }
@@ -465,9 +486,12 @@ class AppendPlanNode extends ScalarNode<AppendState, 'success'> {
 class AppendScoutNode extends ScalarNode<AppendState, 'success' | 'error'> {
   readonly name    = 'scout';
   readonly outputs = ['success', 'error'] as const;
+  // scout is the flow's terminal scatter stage; its 'allResults' state array is
+  // the emitted result, surfaced via terminals.emit rather than an in-DAG
+  // contract edge, so it is not declared in `produces`.
   override readonly contract: OperationContractFragment = {
     hardRequired: ['tasks'],
-    produces:     ['allResults'],
+    produces:     [],
   };
   protected override async executeOne() { return NodeOutputBuilder.of('success'); }
 }
@@ -540,9 +564,12 @@ class ParseNode extends ScalarNode<PageState, 'success' | 'error'> {
 class PersistNode extends ScalarNode<PageState, 'success'> {
   readonly name    = 'persist';
   readonly outputs = ['success'] as const;
+  // persist is the flow's terminal stage; its 'saved' state field is the
+  // emitted result, surfaced via terminals.emit rather than an in-DAG contract
+  // edge, so it is not declared in `produces`.
   override readonly contract: OperationContractFragment = {
     hardRequired: ['record'],
-    produces:     ['saved'],
+    produces:     [],
   };
   protected override async executeOne() { return NodeOutputBuilder.of('success'); }
 }
@@ -649,9 +676,12 @@ class ColocatedPlanNode extends ScalarNode<ColocatedState, 'success'> {
 class ColocatedExecuteNode extends ScalarNode<ColocatedState, 'success'> {
   readonly name    = 'execute';
   readonly outputs = ['success'] as const;
+  // execute is the flow's terminal stage; its 'done' state field is the emitted
+  // result, surfaced via terminals.emit rather than an in-DAG contract edge, so
+  // it is not declared in `produces`.
   override readonly contract: OperationContractFragment = {
     hardRequired: ['plan'],
-    produces:     ['done'],
+    produces:     [],
   };
   protected override async executeOne() { return NodeOutputBuilder.of('success'); }
 }
@@ -743,20 +773,3 @@ const _chainProof: FetchThenParse = true;
 void _chainProof;
 // #endregion chainable
 
-// ---------------------------------------------------------------------------
-// onContractWarning: subclass Dagonizer to surface dead-write warnings
-// ---------------------------------------------------------------------------
-
-// #region contract-warning
-// Subclass Dagonizer and override onContractWarning to surface dead-write
-// warnings. Called when a node produces a path no downstream node hardRequires.
-// Dead writes are non-fatal; the DAG registers and executes normally.
-class ObservingDispatcher extends Dagonizer<ColocatedState> {
-  protected override onContractWarning(message: string): void {
-    process.stderr.write(`[contract] ${message}\n`);
-  }
-}
-
-const observingDispatcher = new ObservingDispatcher();
-void observingDispatcher;
-// #endregion contract-warning

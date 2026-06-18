@@ -4,8 +4,8 @@
  *
  * The dispatcher binds logical container roles (strings declared on a placement's
  * `container` key) to concrete `DagContainerInterface` instances at construction
- * time via `DagonizerOptionsInterface.containers`. An unbound role resolves to
- * the in-process path and fires `onContractWarning`.
+ * time via `DagonizerOptionsInterface.containers`. A placement that declares an
+ * unbound role throws a `DAGError` at `registerDAG` time.
  *
  * Implementations are free to pool resources internally. `destroy()` releases
  * pool resources when the dispatcher shuts down.

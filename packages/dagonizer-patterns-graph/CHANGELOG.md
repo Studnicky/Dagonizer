@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-patterns-graph
 
+## [Unreleased]
+
+### Changed
+
+- `RdfStoreOptions.subjectPrefix` and `valuePredicate` resolve via the module-level `RDF_STORE_DEFAULTS` const using the canonical `{ ...RDF_STORE_DEFAULTS, ...options }` pattern. The public input stays partial; the resolved internal value always carries real defaults, so the constructor never threads `?? DEFAULT_*` fallbacks.
+
 ## 0.21.0
 
 ## 0.20.0

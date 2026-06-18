@@ -1,9 +1,8 @@
 /**
- * Verifies that WorkerObserver routes all six hook overrides
- * (onNodeStart, onNodeEnd, onPhaseEnter, onPhaseExit, onContractWarning,
- * onError) as BridgeMessage { kind: 'instrumentation' } messages over its
- * channel. Also confirms onFlowStart and onFlowEnd are suppressed (no
- * message sent).
+ * Verifies that WorkerObserver routes all five hook overrides
+ * (onNodeStart, onNodeEnd, onPhaseEnter, onPhaseExit, onError) as
+ * BridgeMessage { kind: 'instrumentation' } messages over its channel. Also
+ * confirms onFlowStart and onFlowEnd are suppressed (no message sent).
  *
  * Coverage target: G6.
  */
@@ -35,11 +34,10 @@ class ExposedObserver extends WorkerObserver<NodeStateBase> {
   callPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, s: NodeStateBase, path: readonly string[]): void { this.onPhaseEnter(dagName, phase, placementName, s, path); }
   callPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, s: NodeStateBase, path: readonly string[]): void { this.onPhaseExit(dagName, phase, placementName, s, path); }
   callError(nodeName: string, error: Error, s: NodeStateBase, path: readonly string[]): void { this.onError(nodeName, error, s, path); }
-  callContractWarning(message: string): void { this.onContractWarning(message); }
   callFlowStart(dagName: string, s: NodeStateBase): void { this.onFlowStart(dagName, s); }
 }
 
-void describe('WorkerObserver — all-six-hook routing (G6)', () => {
+void describe('WorkerObserver — all-five-hook routing (G6)', () => {
   void it('forwards every overridden hook as instrumentation BridgeMessage with correct fields, suppresses onFlowStart, and prepends basePath', () => {
     const ch = new CollectingChannel();
     const exposed = new ExposedObserver(ch, CORR, BASE, {});
@@ -90,17 +88,6 @@ void describe('WorkerObserver — all-six-hook routing (G6)', () => {
     if (ch.sent[0]?.kind === 'instrumentation') {
       assert.strictEqual(ch.sent[0].hook, 'phaseExit');
       assert.strictEqual(ch.sent[0].phase, 'post');
-    }
-
-    // contractWarning: message forwarded, path is just the basePath (no per-call path).
-    ch.sent.length = 0;
-    exposed.callContractWarning('unbound container role');
-    assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
-    if (ch.sent[0]?.kind === 'instrumentation') {
-      assert.strictEqual(ch.sent[0].hook, 'contractWarning');
-      assert.strictEqual(ch.sent[0].message, 'unbound container role');
-      assert.deepStrictEqual(ch.sent[0].placementPath, []);
     }
 
     // error: error message forwarded and path composed with the inner path.

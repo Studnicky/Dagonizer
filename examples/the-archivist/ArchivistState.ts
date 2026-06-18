@@ -250,11 +250,13 @@ export class ArchivistState extends NodeStateBase {
       "title":   c.book.identity.title,
       "authors": [...c.book.identity.authors],
       "price":   { "amount": c.book.availability.price.amount, "currency": c.book.availability.price.currency },
-      ...(c.book.publication.summary !== undefined          ? { "summary": c.book.publication.summary }                 : {}),
-      ...(c.book.publication.firstPublishYear !== undefined ? { "firstPublishYear": c.book.publication.firstPublishYear } : {}),
+      // Null-sentinel fields are omitted when null, so the wire shape carries a
+      // key only when a real value exists (not an explicit `null`).
+      ...(c.book.publication.summary !== null               ? { "summary": c.book.publication.summary }                 : {}),
+      ...(c.book.publication.firstPublishYear !== null      ? { "firstPublishYear": c.book.publication.firstPublishYear } : {}),
       ...(c.book.publication.subjects.length > 0           ? { "subjects": [...c.book.publication.subjects] }          : {}),
       ...(c.book.publication.publishers.length > 0         ? { "publishers": [...c.book.publication.publishers] }      : {}),
-      ...(c.book.availability.inStock !== undefined         ? { "inStock": c.book.availability.inStock }                 : {}),
+      ...(c.book.availability.inStock !== null              ? { "inStock": c.book.availability.inStock }                 : {}),
       ...(c.book.publication.languages.length > 0          ? { "languages": [...c.book.publication.languages] }        : {}),
     };
     // notes values are Record<string, unknown>; serialize only JSON-safe primitives.

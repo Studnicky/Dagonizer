@@ -2,10 +2,15 @@
  * GatherExecution / GatherRecord: adapter contracts between the dispatcher
  * and GatherStrategy implementations.
  *
- * `GatherRecord<TState>` carries per-clone results from the scatter loop.
- * `GatherExecution<TState>` is the invocation context handed to
+ * `GatherRecord<TState, TItem>` carries per-clone results from the scatter
+ * loop. `GatherExecution<TState, TItem>` is the invocation context handed to
  * `GatherStrategy.apply`; it gives strategies read access to per-clone
  * records, the live parent state, and the `invoker` seam.
+ *
+ * `TItem` defaults to `unknown`, bounding the scatter-source element type to
+ * a generic default: existing call sites stay source-compatible, while a
+ * strategy that knows its source element type narrows `record.item` without
+ * a cast.
  */
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -19,11 +24,11 @@ import type { StateAccessor } from './StateAccessor.js';
  * terminal outcome of a DAG body (or `null` for a node body), and the
  * live clone state after the body ran.
  */
-export interface GatherRecord<TState extends NodeStateInterface> {
+export interface GatherRecord<TState extends NodeStateInterface, TItem = unknown> {
   /** 0-based position of this item in the scatter source array. */
   index: number;
   /** The source item that was scattered over (the element from the source array). */
-  item: unknown;
+  item: TItem;
   /** Routing output the scatter body emitted for this clone. */
   output: string;
   /**
@@ -45,7 +50,7 @@ export interface GatherRecord<TState extends NodeStateInterface> {
  *   - `invoker`, the only way for `custom` strategies to dispatch
  *     a registered node back through the engine
  */
-export interface GatherExecution<TState extends NodeStateInterface> {
+export interface GatherExecution<TState extends NodeStateInterface, TItem = unknown> {
   /** Live parent state object. Strategies mutate it in place. */
   state: TState;
   /**
@@ -55,7 +60,7 @@ export interface GatherExecution<TState extends NodeStateInterface> {
    * through the same index-ordered batch loop on resume). Strategies rely on
    * this and must not re-sort.
    */
-  records: GatherRecord<TState>[];
+  records: GatherRecord<TState, TItem>[];
   /** Name of the DAG being executed. Used by `invoker.invokeNode` to dispatch gather nodes. */
   dagName: string;
   /**

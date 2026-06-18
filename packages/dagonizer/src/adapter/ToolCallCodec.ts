@@ -1,9 +1,6 @@
-import type { ToolCall } from './LlmAdapter.js';
+import { Validator } from '../validation/Validator.js';
 
-/** JSON wire shape emitted by text-channel models that encode tool calls inline. */
-interface TextChannelToolCallEnvelope {
-  tool_calls?: Array<{ name?: string; arguments?: Record<string, unknown> }>;
-}
+import type { ToolCall } from './LlmAdapter.js';
 
 /**
  * Per-`decode()`-call monotonic sequence counter. Incremented once per call
@@ -29,7 +26,8 @@ export class ToolCallCodec {
       const start = raw.indexOf('{');
       const end = raw.lastIndexOf('}');
       if (start < 0 || end < 0) return [];
-      const parsed = JSON.parse(raw.slice(start, end + 1)) as TextChannelToolCallEnvelope;
+      const parsed: unknown = JSON.parse(raw.slice(start, end + 1));
+      if (!Validator.textChannelToolCallEnvelope.is(parsed)) return [];
       return (parsed.tool_calls ?? [])
         .filter((c): c is { name: string; arguments: Record<string, unknown> } =>
           typeof c.name === 'string' && c.arguments !== undefined)

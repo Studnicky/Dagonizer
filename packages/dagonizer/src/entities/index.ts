@@ -218,6 +218,9 @@ export type { ChatResponse } from './adapter/ChatResponse.js';
 export { ChatResponseMessageSchema } from './adapter/ChatResponseMessage.js';
 export type { ChatResponseMessage } from './adapter/ChatResponseMessage.js';
 
+export { TextChannelToolCallEnvelopeSchema } from './adapter/TextChannelToolCallEnvelope.js';
+export type { TextChannelToolCallEnvelope } from './adapter/TextChannelToolCallEnvelope.js';
+
 export { TokenUsageSchema } from './adapter/TokenUsage.js';
 export type { TokenUsage } from './adapter/TokenUsage.js';
 

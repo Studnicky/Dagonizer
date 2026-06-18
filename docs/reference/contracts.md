@@ -54,7 +54,6 @@ import type {
   StoreSnapshot,
   StoreSnapshotEntry,
   SystemInfoInterface,
-  WarningEmitter,
 } from '@studnicky/dagonizer/contracts';
 
 // DagOutcomeInterface and DagTaskInterface ship through the root barrel
@@ -309,7 +308,7 @@ interface DagContainerInterface<TState extends NodeStateInterface = NodeStateInt
 }
 ```
 
-Adapter contract for running an embedded DAG in an isolate (worker thread, forked child, spawned process, Web Worker). Bound to the dispatcher via `DagonizerOptionsInterface.containers` keyed by logical role name. An unbound role falls back to in-process and fires `onContractWarning`.
+Adapter contract for running an embedded DAG in an isolate (worker thread, forked child, spawned process, Web Worker). Bound to the dispatcher via `DagonizerOptionsInterface.containers` keyed by logical role name. On a dispatcher with a non-empty `containers` registry, a declared-but-unbound role throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats declared roles as inert and runs every body in-process.
 
 `runDag` must never throw. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeInterface.errors` with `recoverable: false`. The `TServices` parameter on the task is unconstrained (`unknown`) so the interface stays decoupled from the dispatcher's services bag.
 
@@ -443,29 +442,6 @@ interface LlmClient {
 ```
 
 `LlmAdapter` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `LlmClient` is the minimal chat surface pattern bases accept — any `LlmAdapter` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapter` directly.
-
-## WarningEmitter
-
-```ts twoslash
-// ---cut---
-interface WarningEmitter {
-  warn(message: string): void;
-}
-```
-
-Typed contract for emitting diagnostic warnings without introducing a callback seam. Accepted by `DAGBuilder.build({ warningEmitter })` to surface dead-write warnings detected during contract validation at build time. The `NoopWarningEmitter` from `@studnicky/dagonizer/runtime` is the default when no emitter is passed.
-
-```ts twoslash
-import type { WarningEmitter } from '@studnicky/dagonizer/contracts';
-import { DAGBuilder } from '@studnicky/dagonizer';
-declare const builder: DAGBuilder;
-// ---cut---
-const emitter: WarningEmitter = {
-  warn(message) { console.warn('[contract]', message); },
-};
-
-const dag = builder.build({ warningEmitter: emitter });
-```
 
 ## NodeInvoker
 

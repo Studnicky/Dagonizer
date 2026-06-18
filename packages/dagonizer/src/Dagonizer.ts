@@ -8,7 +8,6 @@ import type { HandoffChannelInterface } from './contracts/HandoffChannelInterfac
 import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { NodeInvoker } from './contracts/NodeInvoker.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
-import type { WarningEmitter } from './contracts/WarningEmitter.js';
 import { Batch } from './core/batch/Batch.js';
 import { GatherStrategies } from './core/GatherStrategies.js';
 import type { GatherExecution, GatherRecord, GatherStrategy } from './core/GatherStrategies.js';
@@ -121,7 +120,6 @@ export interface ObserverRelay {
   onError(nodeName: string, error: Error, placementPath: readonly string[]): void;
   onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void;
   onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void;
-  onContractWarning(message: string): void;
 }
 
 /**
@@ -137,7 +135,6 @@ interface DispatcherHooks<TState extends NodeStateInterface> {
   onError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void;
   onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
   onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
-  onContractWarning(message: string): void;
 }
 
 /**
@@ -180,10 +177,6 @@ class ObserverRelayImpl<TState extends NodeStateInterface> implements ObserverRe
   onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void {
     this.#hooks.onPhaseExit(dagName, phase, placementName, this.#state, placementPath);
   }
-
-  onContractWarning(message: string): void {
-    this.#hooks.onContractWarning(message);
-  }
 }
 
 /**
@@ -210,8 +203,9 @@ export interface DagonizerOptionsInterface<TState extends NodeStateInterface = N
   /**
    * Named container backends. Keys are logical role names declared on
    * `EmbeddedDAGNode.container` and `ScatterNode.container` (dag-body
-   * only). An unbound role resolves to in-process and fires
-   * `onContractWarning`.
+   * only). A placement that declares a role not bound here throws a
+   * `DAGError` at `registerDAG` time; a consumer wanting in-process
+   * execution declares no container role.
    *
    * Containers are optional: an empty registry is the default and
    * means every placement runs in-process.
@@ -1003,7 +997,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
  * ```
  */
 export class Dagonizer<TState extends NodeStateInterface, TServices = undefined>
-implements DagonizerInterface<TState, TServices>, WarningEmitter {
+implements DagonizerInterface<TState, TServices> {
   private readonly dags = new Map<string, DAG>();
   private readonly nodes = new Map<string, NodeInterface<TState, string, TServices>>();
   private readonly nodeIndex = new Map<string, DAGNodeType>();
@@ -1070,7 +1064,6 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       'onError':     (n, e, s, p) => this.onError(n, e, s, p),
       'onPhaseEnter': (d, ph, pl, s, p) => this.onPhaseEnter(d, ph, pl, s, p),
       'onPhaseExit':  (d, ph, pl, s, p) => this.onPhaseExit(d, ph, pl, s, p),
-      'onContractWarning': (m) => this.onContractWarning(m),
     };
     this.dispatch = {
       'EmbeddedDAGNode': (entry, state, _dagName, signal, placementPath, bufferIntermediates) => {
@@ -1151,26 +1144,6 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
    */
   protected onPhaseExit(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: TState, _placementPath: readonly string[]): void { /* override */ }
 
-  /**
-   * Called for each non-fatal contract warning surfaced during DAG
-   * registration when the DAG was derived from a node registry. Default
-   * is a no-op. Subclasses can override to log or surface dead-write
-   * warnings to operators.
-   *
-   * @param _message - Human-readable warning from `ContractRegistryValidator`.
-   */
-  protected onContractWarning(_message: string): void { /* override */ }
-
-  /**
-   * Satisfies `WarningEmitter`. Routes contract warnings to the
-   * dispatcher's `onContractWarning` hook. Called by
-   * `ContractRegistryValidator.validate` when the dispatcher is passed
-   * as the emitter directly.
-   */
-  warn(message: string): void {
-    this.onContractWarning(message);
-  }
-
   // ---------------------------------------------------------------------------
   // Container support
   // ---------------------------------------------------------------------------
@@ -1183,6 +1156,15 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     if (role === undefined) return null;
     const bound = this.containers[role];
     return bound !== undefined ? bound : null;
+  }
+
+  /**
+   * True when this dispatcher has opted into container dispatch by binding at
+   * least one container role. A dispatcher with no bound containers runs every
+   * body in-process and never enforces role binding at registration.
+   */
+  #hasContainers(): boolean {
+    return Object.keys(this.containers).length > 0;
   }
 
   /**
@@ -2900,7 +2882,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
 
     // Contract validation: for each placement whose backing operation node
     // carries a co-located `contract`, run dangling-read / dead-write checks.
-    // Dangling reads throw DAGError; dead writes call onContractWarning.
+    // Both dangling reads and dead writes throw DAGError.
     //
     // A `SingleNode` is keyed by its `node` field. An `EmbeddedDAGNode` or
     // `ScatterNode` runs an operation registered under the placement's own
@@ -2934,7 +2916,6 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       try {
         ContractRegistryValidator.validate(
           contracts,
-          this,
           { 'entrypointName': dag.entrypoint },
         );
       } catch (err) {
@@ -2942,20 +2923,30 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       }
     }
 
+    // Container-role binding check (D2 = throw). A dispatcher that opts into
+    // container dispatch (a non-empty `containers` registry) must bind every
+    // role its placements declare; a declared-but-unbound role is a fatal
+    // misalignment, not a silent in-process fallback. A pure in-process
+    // dispatcher (empty `containers`) runs every body in-process by design and
+    // treats declared roles as inert — this is the path the in-isolate `DagHost`
+    // relies on when it recurses into container-declaring bodies it executes
+    // directly. Checked before mutating registries so a rejected DAG leaves no
+    // partial registration behind.
+    if (this.#hasContainers()) {
+      for (const placement of dag.nodes) {
+        const containerRole = 'container' in placement ? placement.container : undefined;
+        if (containerRole !== undefined && this.resolveContainer(containerRole) === null) {
+          throw new DAGError(
+            `DAG '${dag.name}' placement '${placement.name}' declares container role '${containerRole}' which is not bound in this dispatcher's containers`,
+          );
+        }
+      }
+    }
+
     this.dags.set(dag.name, dag);
     for (const node of dag.nodes) {
       // DAGNodeType = DAG['nodes'][number] — node already satisfies the type.
       this.nodeIndex.set(`${dag.name}:${node.name}`, node);
-    }
-
-    // Emit contractWarning for placements that declare a container role that is
-    // not bound in this.containers. Those placements will fall back to in-process.
-    for (const placement of dag.nodes) {
-      const containerRole = 'container' in placement ? placement.container : undefined;
-      if (containerRole !== undefined && this.resolveContainer(containerRole) === null) {
-        const msg = `DAG '${dag.name}' placement '${placement.name}' declares container role '${containerRole}' which is not bound; resolving to in-process`;
-        this.onContractWarning(msg);
-      }
     }
   }
 

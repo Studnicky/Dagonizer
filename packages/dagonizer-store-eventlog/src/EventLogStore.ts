@@ -195,7 +195,7 @@ export class EventLogStore extends BaseStore {
     fn: (current: T | undefined) => T,
   ): Promise<T> {
     const qualified = this.qualifyKey(key);
-    const current   = this.#latest<T>(qualified);
+    const current   = this.#latestAs<T>(qualified);
     const next      = fn(current);
     await this.#append({ 'kind': 'set', 'at': Date.now(), 'key': qualified, 'value': next });
     return next;
@@ -204,7 +204,7 @@ export class EventLogStore extends BaseStore {
   // ── Protected perform* hooks ──────────────────────────────────────────────
 
   protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
-    return this.#latest<T>(key) ?? null;
+    return this.#latestAs<T>(key) ?? null;
   }
 
   protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
@@ -254,15 +254,38 @@ export class EventLogStore extends BaseStore {
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
-  /** Scan the log in reverse; return the most-recent value for `key`, or `undefined`. */
-  #latest<T extends JsonValue>(key: string): T | undefined {
+  /**
+   * Scan the log in reverse; return the most-recent value for `key`, or
+   * `undefined`. Returns the honest stored type (`JsonValue | undefined`);
+   * callers that expect a narrower `T` apply the boundary cast at their own
+   * seam (see `performGet`). `undefined` is the "key absent / tombstoned"
+   * sentinel and is part of the contract.
+   */
+  #latest(key: string): JsonValue | undefined {
     for (let i = this.#log.length - 1; i >= 0; i -= 1) {
       const entry = this.#log[i];
       if (entry === undefined || entry.key !== key) continue;
       if (entry.kind === 'delete') return undefined;
-      return entry.value as T;
+      return entry.value;
     }
     return undefined;
+  }
+
+  /**
+   * Caller-expectation boundary cast. `#latest` returns the honest stored type
+   * (`JsonValue | undefined`); a caller that declared a narrower `T extends
+   * JsonValue` (via `get<T>` / `update<T>`) narrows the stored value to that
+   * shape here. The store neither knows nor re-validates `T` at runtime, so
+   * this single seam is where the caller's type expectation enters —
+   * structurally identical to the sanctioned `JsonValue` boundary cast in
+   * `dagonizer-store-sqlite`'s `performSnapshotEntries`. `undefined` (key
+   * absent / tombstoned) is passed through unchanged. This is the one and only
+   * unchecked cast in the store; both `performGet` and the atomic `update`
+   * override read through it.
+   */
+  #latestAs<T extends JsonValue>(key: string): T | undefined {
+    const value = this.#latest(key);
+    return value === undefined ? undefined : (value as T);
   }
 
   /** Append an event to the in-memory log and, if a file handle is open, persist it. */

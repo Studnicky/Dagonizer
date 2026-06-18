@@ -16,7 +16,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { OperationContractFragment, WarningEmitter } from '@studnicky/dagonizer/contracts';
+import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
 // #endregion imports
 
 // ---------------------------------------------------------------------------
@@ -133,41 +133,6 @@ export function contractErrorDemo(): void {
   }
 }
 // #endregion contract-error
-
-// ---------------------------------------------------------------------------
-// Contract-aware authoring: dead write → warningEmitter (non-fatal)
-// ---------------------------------------------------------------------------
-
-class WarningFetchNode extends ScalarNode<ChatState, 'success'> {
-  readonly name = 'warning-fetch';
-  readonly outputs = ['success'] as const;
-  // 'orphan' is produced but nothing hardRequires it → dead write warning.
-  override readonly contract: OperationContractFragment = { hardRequired: [], produces: ['raw', 'orphan'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-
-class WarningParseNode extends ScalarNode<ChatState, 'success'> {
-  readonly name = 'warning-parse';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['raw'], produces: ['record'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-
-// #region contract-warning
-// Pass a warningEmitter to build() to capture dead-write contract warnings.
-// 'orphan' is produced by WarningFetchNode but no downstream node hardRequires it.
-export function contractWarningDemo(): void {
-  const emitter: WarningEmitter = {
-    warn(message) { process.stdout.write(`[contract] ${message}\n`); },
-  };
-
-  new DAGBuilder('pipeline', '1.0')
-    .node('warning-fetch', new WarningFetchNode(), { success: 'warning-parse' })
-    .node('warning-parse', new WarningParseNode(), { success: 'warning-end' })
-    .terminal('warning-end')
-    .build({ warningEmitter: emitter });
-}
-// #endregion contract-warning
 
 // ---------------------------------------------------------------------------
 // DAGBuilder.fromNodes(): linear shortcut for contract-carrying node chains
