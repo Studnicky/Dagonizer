@@ -1,5 +1,7 @@
 # @noocodex/dagonizer-book-entities
 
+## 0.21.0
+
 ## 0.20.0
 
 ## [unreleased]

@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-tool-openlibrary",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Tool plugin for @noocodex/dagonizer: OpenLibrary.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -33,7 +33,7 @@
     "@types/node": "^25.2.0"
   },
   "dependencies": {
-    "@noocodex/dagonizer-book-entities": "workspace:>=0.20.0"
+    "@noocodex/dagonizer-book-entities": "workspace:>=0.21.0"
   },
   "peerDependencies": {
     "@noocodex/dagonizer": "workspace:>=0.14.0 <1.0.0"

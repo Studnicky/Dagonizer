@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-embedder-gemini-api",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Embedder plugin for @noocodex/dagonizer: GeminiApiEmbedder (Google AI Studio REST text-embedding-004).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

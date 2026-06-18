@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-adapter-gemini-nano",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "LLM adapter plugin for @noocodex/dagonizer: Browser built-in LanguageModel (GeminiNanoAdapter).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-executor-web",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Browser isolating executor backend for @noocodex/dagonizer: Web Worker pools over the bridge protocol.",
   "private": false,
   "license": "MIT",
@@ -35,7 +35,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@noocodex/dagonizer": "workspace:>=0.20.0"
+    "@noocodex/dagonizer": "workspace:>=0.21.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

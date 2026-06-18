@@ -1,5 +1,13 @@
 # @noocodex/dagonizer-executor-node
 
+## 0.21.0
+
+### Patch Changes
+
+- Updated dependencies [0296d9d]
+- Updated dependencies [0296d9d]
+  - @noocodex/dagonizer@0.21.0
+
 ## 0.20.0
 
 ### Patch Changes
