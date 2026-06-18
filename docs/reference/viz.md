@@ -215,7 +215,7 @@ Returns the `cytoscape.Core` after a successful `mount()`, or `null` if the grap
 | Hook | Signature | Purpose |
 |------|-----------|---------|
 | `construct` | `(options: cytoscape.CytoscapeOptions) => Promise<cytoscape.Core>` | Override to supply a custom `cytoscape.Core` (extensions registered, a pinned build, a headless harness). Default delegates to `Cytoscape.create`, which lazily dynamic-imports the optional `cytoscape` peer. This is the extension point that replaces the former injected factory. |
-| `buildElements` | `() => ReadonlyArray<cytoscape.ElementDefinition>` | Override to customize element construction. Default delegates to `CytoscapeRenderer.render`. |
+| `composeElements` | `() => ReadonlyArray<cytoscape.ElementDefinition>` | Override to customize element construction. Default delegates to `CytoscapeRenderer.render`. |
 | `stylesheet` | `() => cytoscape.StylesheetStyle[]` | Override to supply a custom stylesheet. |
 | `presetLayout` | `() => cytoscape.PresetLayoutOptions` | Override to change the preset layout options passed to cytoscape. Default uses `preset` with `fit: true, padding: 60`. |
 | `interactionDefaults` | `() => Record<string, unknown>` | Override to customize pan/zoom/interaction defaults spread into the cytoscape constructor. |

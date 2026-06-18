@@ -141,7 +141,7 @@ Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + 
 
 Rehydrate the state from this checkpoint via the supplied adapter. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
 
-`CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObject): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@studnicky/dagonizer/checkpoint`:
+`CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObject): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapterFn.wrap(fn)` from `@studnicky/dagonizer/checkpoint`:
 
 ```ts twoslash
 import { Checkpoint, CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
@@ -151,7 +151,7 @@ class MyState extends NodeStateBase {}
 declare const ckpt: Checkpoint;
 // ---cut---
 const { dagName, state, cursor } = ckpt.restoreState(
-  CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap as JsonObject)),
+  CheckpointRestoreAdapterFn.wrap((snap) => MyState.restore(snap as JsonObject)),
 );
 ```
 
@@ -225,7 +225,7 @@ declare const adapter: CheckpointRestoreAdapter<{ value: number }>;
 const _result: { value: number } = adapter.restore({ key: 1 } as JsonObject);
 ```
 
-Contract for restoring a state instance from a JSON snapshot. Wrap a plain function with `CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap))`. Ships from `@studnicky/dagonizer/checkpoint`.
+Contract for restoring a state instance from a JSON snapshot. Wrap a plain function with `CheckpointRestoreAdapterFn.wrap((snap) => MyState.restore(snap))`. Ships from `@studnicky/dagonizer/checkpoint`.
 
 ---
 

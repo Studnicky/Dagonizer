@@ -10,8 +10,8 @@
  *   execution/: ExecutionResult
  *   validation/: ValidationResult
  *   errors/: DAGErrorJSON
- *   constants/: GatherStrategyName, ScatterOutput, MetadataKey, Output, NodeType
- *   runtime/: BackoffStrategy
+ *   constants/: GatherStrategyNames, ScatterOutputNames, MetadataKeys, OutputNames, NodeTypes
+ *   runtime/: BackoffStrategyNames
  *   primitives/: JsonSchema (draft-2020-12 TS model)
  *
  * When jsontology lands, replace each `FromSchema<typeof FooSchema>` derived
@@ -41,7 +41,8 @@ export type { ScatterNode } from './dag/ScatterNode.js';
 export { EmbeddedDAGNodeSchema, EmbeddedDAGNodeDefaults } from './dag/EmbeddedDAGNode.js';
 export type { EmbeddedDAGNode } from './dag/EmbeddedDAGNode.js';
 
-export { DAGSchema, DAG_CONTEXT, DAG } from './dag/DAG.js';
+export { DAGSchema, DAG_CONTEXT, DAGIdentity } from './dag/DAG.js';
+export type { DAG } from './dag/DAG.js';
 
 export { Placement } from './dag/Placement.js';
 export type { DAGNodeType } from './dag/Placement.js';
@@ -116,21 +117,28 @@ export type { DAGErrorJSON } from './errors/DAGErrorJSON.js';
 // constants
 // ---------------------------------------------------------------------------
 
-// Each constant exports a value (the named-keys frozen record) and a type
-// (the union of permitted string literals) under the same identifier.
-// `export { X }` re-exports both halves.
+// Each constant exports a value (the named-keys frozen record, distinct
+// plural name) and a type (the union of permitted string literals). The
+// value and type carry distinct names: `GatherStrategyNames` the value,
+// `GatherStrategyName` the type.
 
-export { GatherStrategySchema, GatherStrategyName } from './constants/GatherStrategy.js';
-export { ScatterOutputSchema, ScatterOutput } from './constants/ScatterOutput.js';
-export { MetadataKeySchema, MetadataKey } from './constants/MetadataKey.js';
-export { OutputSchema, Output } from './constants/Output.js';
-export { NodeTypeSchema, NodeType } from './constants/NodeType.js';
+export { GatherStrategySchema, GatherStrategyNames } from './constants/GatherStrategy.js';
+export type { GatherStrategyName } from './constants/GatherStrategy.js';
+export { ScatterOutputSchema, ScatterOutputNames } from './constants/ScatterOutput.js';
+export type { ScatterOutput } from './constants/ScatterOutput.js';
+export { MetadataKeySchema, MetadataKeys } from './constants/MetadataKey.js';
+export type { MetadataKey } from './constants/MetadataKey.js';
+export { OutputSchema, OutputNames } from './constants/Output.js';
+export type { Output } from './constants/Output.js';
+export { NodeTypeSchema, NodeTypes } from './constants/NodeType.js';
+export type { NodeType } from './constants/NodeType.js';
 
 // ---------------------------------------------------------------------------
 // runtime
 // ---------------------------------------------------------------------------
 
-export { BackoffStrategySchema, BackoffStrategy } from './runtime/BackoffStrategy.js';
+export { BackoffStrategySchema, BackoffStrategyNames } from './runtime/BackoffStrategy.js';
+export type { BackoffStrategy } from './runtime/BackoffStrategy.js';
 
 // ---------------------------------------------------------------------------
 // executor (container wire shapes)

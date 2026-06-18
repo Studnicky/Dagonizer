@@ -19,7 +19,7 @@ export type Output = FromSchema<typeof OutputSchema>;
 // → 'error' | 'success'
 
 /** Common operation output names. */
-export const Output = {
+export const OutputNames = {
   'ERROR': 'error',
   'SUCCESS': 'success',
 } as const satisfies Record<string, Output>;

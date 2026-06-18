@@ -5,7 +5,7 @@
  * waiting, lazy init, death detection, eviction, and graceful shutdown.
  * Subclasses implement four abstract seams to supply the worker type:
  *
- *   createEntry()            — construct worker + wired channel; initialized: false
+ *   composeEntry()            — construct worker + wired channel; initialized: false
  *   attachDeathListeners()   — wire death events → onTransportDeath()
  *   terminateWorker()        — force-kill the worker
  *   awaitWorkerExit()        — resolves when the worker process/thread exits
@@ -65,9 +65,6 @@ export const DAG_CONTAINER_DEFAULTS = {
   'shutdownGraceMs': DEFAULT_SHUTDOWN_GRACE_MS,
 } as const;
 
-/** @internal Alias used by the constructor spread; keep in sync with DAG_CONTAINER_DEFAULTS. */
-const CONTAINER_DEFAULTS = DAG_CONTAINER_DEFAULTS;
-
 export interface DagContainerOptions {
   /** Maximum number of pool entries (workers) to maintain. */
   poolSize: number;
@@ -118,7 +115,7 @@ export abstract class DagContainerBase<
     DAG_CONTAINER_DEFAULTS;
 
   constructor(options: DagContainerOptions) {
-    const { shutdownGraceMs } = { ...CONTAINER_DEFAULTS, ...options };
+    const { shutdownGraceMs } = { ...DAG_CONTAINER_DEFAULTS, ...options };
     this.#dispatches             = new WeakMap<MessageChannelInterface, ChannelDispatch>();
     this.#channelToEntry         = new WeakMap<MessageChannelInterface, PoolEntry<TWorker>>();
     this.#pool                   = [];
@@ -139,7 +136,7 @@ export abstract class DagContainerBase<
    * `initialized: false`. Must NOT attach death listeners or send init — the
    * base handles both.
    */
-  protected abstract createEntry(): PoolEntry<TWorker>;
+  protected abstract composeEntry(): PoolEntry<TWorker>;
 
   /**
    * Attach death-detection event listeners to the given entry. Implementations
@@ -399,9 +396,9 @@ export abstract class DagContainerBase<
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  /** Grow the pool by one: createEntry → attachDeathListeners → register. */
+  /** Grow the pool by one: composeEntry → attachDeathListeners → register. */
   #grow(): PoolEntry<TWorker> {
-    const entry = this.createEntry();
+    const entry = this.composeEntry();
     this.attachDeathListeners(entry);
     this.#pool.push(entry);
     this.#channelToEntry.set(entry.channel, entry);

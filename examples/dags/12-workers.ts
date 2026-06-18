@@ -25,7 +25,7 @@ import {
 } from '@studnicky/dagonizer';
 import type { DAG } from '@studnicky/dagonizer';
 import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // State
@@ -134,7 +134,7 @@ export const dag: DAG = {
       "concurrency":  2,                           // run up to 2 items concurrently
       "container":    'cpu',                       // route each item through the worker container
       "gather": {
-        "strategy":   GatherStrategyName.APPEND,     // collect results into a state array
+        "strategy":   GatherStrategyNames.APPEND,     // collect results into a state array
         "field":      'lastResult',                // scalar field on child state (per item)
         "target":     'results',                   // target array on parent state
       },

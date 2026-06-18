@@ -309,7 +309,7 @@ void describe('Checkpoint round-trip', () => {
     const round = ckpt.toJson();
     const parsed = JSON.parse(round) as unknown;
     const ckpt2 = Checkpoint.load(parsed);
-    const { state, dagName, cursor } = ckpt2.restoreState(CheckpointRestoreAdapterFn.fromFn((snap) => CountingState.restore(snap)));
+    const { state, dagName, cursor } = ckpt2.restoreState(CheckpointRestoreAdapterFn.wrap((snap) => CountingState.restore(snap)));
     assert.equal(state.count, 1);
     assert.equal(cursor, 'b');
     const resumed = await dispatcher.resume(dagName, state, cursor);
@@ -368,16 +368,16 @@ void describe('Checkpoint round-trip', () => {
       'state': {}, 'executedNodes': ['a', 'b'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
-    assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapterFn.fromFn((snap) => NodeStateBase.restore(snap))), ValidationError);
+    assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapterFn.wrap((snap) => NodeStateBase.restore(snap))), ValidationError);
   });
 
-  void it('CheckpointRestoreAdapterFn.fromFn wraps a restore function in the adapter contract', () => {
+  void it('CheckpointRestoreAdapterFn.wrap wraps a restore function in the adapter contract', () => {
     const data = {
       'version': '2', 'dagName': 'wrap-test', 'cursor': 'node-b',
       'state': { 'count': 5 }, 'executedNodes': ['node-a'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
-    const adapter = CheckpointRestoreAdapterFn.fromFn((snap) => CountingState.restore(snap));
+    const adapter = CheckpointRestoreAdapterFn.wrap((snap) => CountingState.restore(snap));
     const { dagName, cursor, state } = ckpt.restoreState(adapter);
     assert.equal(dagName, 'wrap-test');
     assert.equal(cursor, 'node-b');
@@ -420,7 +420,7 @@ void describe('ckpt.persist + Checkpoint.recall', () => {
     assert.ok(recalled !== null);
 
     const { dagName, cursor, state, executedNodes } = recalled.restoreState<StoreState>(
-      CheckpointRestoreAdapterFn.fromFn((snap) => StoreState.restore(snap)),
+      CheckpointRestoreAdapterFn.wrap((snap) => StoreState.restore(snap)),
     );
     assert.equal(dagName, 'demo');
     assert.equal(cursor, 'next-node');

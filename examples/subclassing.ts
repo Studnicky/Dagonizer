@@ -93,7 +93,7 @@ if (partial.cursor === null) {
   const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()) as unknown);
 
   const { state: s2, dagName, cursor } = ckpt2.restoreState(
-    CheckpointRestoreAdapterFn.fromFn((snap) => CountState.restore(snap)),
+    CheckpointRestoreAdapterFn.wrap((snap) => CountState.restore(snap)),
   );
 
   const final = await dispatcher.resume(dagName, s2, cursor);

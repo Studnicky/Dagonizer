@@ -74,7 +74,7 @@ export class GeminiApiAdapter extends BaseAdapter {
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
     const url = `${ENDPOINT}/${encodeURIComponent(this.#model)}:generateContent?key=${encodeURIComponent(this.#apiKey)}`;
-    const body = this.#buildBody(request);
+    const body = this.#composeBody(request);
 
     // Compose a per-request timeout with the caller's signal so either
     // can abort the fetch independently.
@@ -94,7 +94,7 @@ export class GeminiApiAdapter extends BaseAdapter {
         signal,
       });
     } catch (err) {
-      throw LlmError.fromNetworkError(err);
+      throw LlmError.ofNetworkError(err);
     } finally {
       clearTimeout(timeoutId);
     }
@@ -111,10 +111,10 @@ export class GeminiApiAdapter extends BaseAdapter {
         Classifications['SCHEMA_VIOLATION'],
       );
     }
-    return this.#parseResponse(rawBody);
+    return this.#decodeResponse(rawBody);
   }
 
-  #buildBody(request: ChatRequest): Record<string, unknown> {
+  #composeBody(request: ChatRequest): Record<string, unknown> {
     const generationConfig: Record<string, unknown> = {
       'temperature': request.temperature,
       'maxOutputTokens': request.maxTokens,
@@ -143,7 +143,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     return body;
   }
 
-  #parseResponse(payload: GeminiResponseBodyType): ChatResponse {
+  #decodeResponse(payload: GeminiResponseBodyType): ChatResponse {
     const candidate = payload.candidates?.[0];
     const parts = candidate?.content?.parts ?? [];
     const toolCalls: ToolCall[] = [];

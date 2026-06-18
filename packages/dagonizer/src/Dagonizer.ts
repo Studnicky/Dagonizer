@@ -36,6 +36,7 @@ import type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js'
 import type { ExecutionResultInterface, InterruptionInfo } from './entities/execution/ExecutionResult.js';
 import type { DAGHandoff } from './entities/handoff/DAGHandoff.js';
 import type { JsonObject } from './entities/json.js';
+import { NodeContextBuilder } from './entities/node/NodeContext.js';
 import type { NodeContextInterface } from './entities/node/NodeContext.js';
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
 import type { ScatterAckedResult, ScatterInboxItem } from './entities/scatter/ScatterProgress.js';
@@ -88,7 +89,7 @@ export type { ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatt
  * Hook-forwarding interface that `ObserverRelayImpl` uses to call back into
  * the dispatcher without depending on `Dagonizer` itself (which is declared
  * below). All six observer hooks have the same signatures as the protected
- * hooks on `Dagonizer`; `Dagonizer.buildObserverRelay` passes `this` bound
+ * hooks on `Dagonizer`; `Dagonizer.relayFor` passes `this` bound
  * to this interface.
  */
 interface DispatcherHooks<TState extends NodeStateInterface> {
@@ -108,7 +109,7 @@ interface DispatcherHooks<TState extends NodeStateInterface> {
  * every relay instance, keeping inline-caches hot on the container dispatch path.
  *
  * Private fields are initialised in constructor-declaration order so the hidden
- * class is consistent across all instances. Only `buildObserverRelay` constructs
+ * class is consistent across all instances. Only `relayFor` constructs
  * this; it is not exported.
  */
 class ObserverRelayImpl<TState extends NodeStateInterface> implements ObserverRelay {
@@ -279,13 +280,13 @@ export interface DagonizerInterface<
 }
 
 /** Engine-private result envelope returned by every node executor method. */
-type _InternalNodeResult<TState extends NodeStateInterface> = {
+type RunNodeResultType<TState extends NodeStateInterface> = {
   'nextStage': null | string;
   'result': NodeResultInterface<TState>;
 };
 
 /** Engine-private execution context for `runNodes` and `runPostPhasesAndFinalize`. */
-type _RunOptions = { embedded: boolean };
+type RunOptionsType = { embedded: boolean };
 
 /**
  * Trailing config object for the batch-native embedded-DAG re-entry path of
@@ -297,23 +298,23 @@ type _RunOptions = { embedded: boolean };
  * outcome. Both are absent on the ordinary (non-batch) execution path, so the
  * whole object defaults to `{}`.
  */
-type _RunNodesBatch<TState extends NodeStateInterface> = {
+type RunNodesBatchType<TState extends NodeStateInterface> = {
   inputBatch?: Batch<TState>;
   terminalByItemId?: Map<string, 'completed' | 'failed'>;
 };
 
 /**
- * Module-private adapter interface that `_ScatterPoolDriverImpl` uses to
+ * Module-private adapter interface that `ScatterPoolDriverImpl` uses to
  * call dispatcher methods without requiring access to private class members.
  *
  * The adapter is constructed within `Dagonizer.executeScatter` (where private
- * members are in scope) and passed to `_ScatterPoolDriverImpl`. This is the
+ * members are in scope) and passed to `ScatterPoolDriverImpl`. This is the
  * same pattern used by `#relayHooks` for observer relay construction.
  *
  * Each field is bound at construction time so the adapter object itself has a
  * stable hidden class (same shape every construction).
  */
-interface _ScatterDispatchAdapter<TState extends NodeStateInterface, TServices> {
+interface ScatterDispatchAdapterInterface<TState extends NodeStateInterface, TServices> {
   readonly stateMapper: StateMapper<TState>;
   readonly nodes: ReadonlyMap<string, NodeInterface<TState, string, TServices>>;
   readonly accessor: StateAccessor;
@@ -322,30 +323,30 @@ interface _ScatterDispatchAdapter<TState extends NodeStateInterface, TServices> 
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
-  buildContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextInterface<TServices>;
+  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextInterface<TServices>;
   runNodes(
     dagName: string,
     state: TState,
     fromStage: string | null,
     options: ExecuteOptionsInterface,
-    runOptions: _RunOptions,
+    runOptions: RunOptionsType,
     placementPath: readonly string[],
-    batch?: _RunNodesBatch<TState>,
+    batch?: RunNodesBatchType<TState>,
   ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void>;
   resolveContainer(role: string | undefined): DagContainerInterface<TState> | null;
   nextCorrelationId(dagName: string): string;
-  buildObserverRelay(state: TState): ObserverRelay;
+  relayFor(state: TState): ObserverRelay;
 }
 
 /**
  * Context bundle for a single `executeScatter` invocation.
  *
  * Captures the scatter placement config plus the mutable accumulators that
- * `_ScatterPoolDriverImpl.ackItem` writes to. All fields are initialised
+ * `ScatterPoolDriverImpl.ackItem` writes to. All fields are initialised
  * before the driver is constructed; the driver never creates its own
  * accumulators.
  */
-interface _ScatterRunContext<TState extends NodeStateInterface> {
+interface ScatterRunContextType<TState extends NodeStateInterface> {
   readonly scatter: ScatterNode;
   readonly state: TState;
   readonly dagName: string;
@@ -395,15 +396,15 @@ function advanceWatermark(
  * Implements `ScatterPoolDriverInterface<TState>` without accessing private
  * members on `Dagonizer` directly.
  */
-class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
+class ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
   implements ScatterPoolDriverInterface<TState>, ReservoirDriverInterface<TState>
 {
-  readonly #adapter: _ScatterDispatchAdapter<TState, TServices>;
-  readonly #ctx: _ScatterRunContext<TState>;
+  readonly #adapter: ScatterDispatchAdapterInterface<TState, TServices>;
+  readonly #ctx: ScatterRunContextType<TState>;
 
   constructor(
-    adapter: _ScatterDispatchAdapter<TState, TServices>,
-    ctx: _ScatterRunContext<TState>,
+    adapter: ScatterDispatchAdapterInterface<TState, TServices>,
+    ctx: ScatterRunContextType<TState>,
   ) {
     this.#adapter = adapter;
     this.#ctx = ctx;
@@ -411,7 +412,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
 
   async executeItem(itemIndex: number, item: unknown): Promise<ScatterItemResult<TState>> {
     const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
-    const cloneState = this.#adapter.stateMapper.createChild(
+    const cloneState = this.#adapter.stateMapper.cloneChild(
       state,
       ScatterNodeDefaults.inputMapping(scatter),
     );
@@ -442,7 +443,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
 
       // Execute the node over the batch.
       const routed = await this.#adapter.withNodeTimeout(dagNode, signal, async (nodeSignal) => {
-        const context = this.#adapter.buildContext(dagName, scatter.name, nodeSignal);
+        const context = this.#adapter.context(dagName, scatter.name, nodeSignal);
         return dagNode.execute(batch, context);
       });
 
@@ -490,7 +491,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
       } else {
         // ── Contained path ─────────────────────────────────────────────────
         const correlationId = this.#adapter.nextCorrelationId(scatter.body.dag);
-        const context = this.#adapter.buildContext(scatter.body.dag, scatter.name, signal);
+        const context = this.#adapter.context(scatter.body.dag, scatter.name, signal);
         const task = new DagTask<TState, TServices>(
           scatter.body.dag,
           innerPath,
@@ -500,7 +501,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
           context,
         );
 
-        const scatterRelay = this.#adapter.buildObserverRelay(state);
+        const scatterRelay = this.#adapter.relayFor(state);
         const outcome = await container.runDag(task, { 'relay': scatterRelay });
 
         // Infrastructure/transport failure (worker died, channel lost): the
@@ -641,7 +642,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
       const clones: TState[] = [];
       const batchItems: { id: string; state: TState }[] = [];
       for (const buffered of items) {
-        const clone = this.#adapter.stateMapper.createChild(state, ScatterNodeDefaults.inputMapping(scatter));
+        const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
         // Strip engine-internal metadata keys — the child body must not inherit
         // the parent scatter/workset progress (O(N) payload, see executeItem).
         clone.deleteMetadata(SCATTER_PROGRESS_KEY);
@@ -654,7 +655,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
 
       const batch = Batch.from(batchItems);
       const routed = await this.#adapter.withNodeTimeout(dagNode, signal, async (nodeSignal) => {
-        const context = this.#adapter.buildContext(dagName, scatter.name, nodeSignal);
+        const context = this.#adapter.context(dagName, scatter.name, nodeSignal);
         return dagNode.execute(batch, context);
       });
 
@@ -691,7 +692,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
     const clones: TState[] = [];
     const batchItems: { id: string; state: TState }[] = [];
     for (const buffered of items) {
-      const clone = this.#adapter.stateMapper.createChild(state, ScatterNodeDefaults.inputMapping(scatter));
+      const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
       // Strip engine-internal metadata keys — the child body must not inherit
       // the parent scatter/workset progress (O(N) payload, see executeItem).
       clone.deleteMetadata(SCATTER_PROGRESS_KEY);
@@ -741,8 +742,8 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
 
     // ── Branch C: DAG body with container ─────────────────────────────────────
     const correlationId = this.#adapter.nextCorrelationId(scatter.body.dag);
-    const context = this.#adapter.buildContext(scatter.body.dag, scatter.name, signal);
-    const scatterRelay = this.#adapter.buildObserverRelay(state);
+    const context = this.#adapter.context(scatter.body.dag, scatter.name, signal);
+    const scatterRelay = this.#adapter.relayFor(state);
 
     let outcomes: BatchRunResult[];
 
@@ -765,7 +766,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
         const clone = clones[i] as TState;
         const buffered = items[i] as { index: number; item: unknown; bufferKey: string };
         const itemCorrelationId = this.#adapter.nextCorrelationId(scatter.body.dag);
-        const itemContext = this.#adapter.buildContext(scatter.body.dag, scatter.name, signal);
+        const itemContext = this.#adapter.context(scatter.body.dag, scatter.name, signal);
         const task = new DagTask<TState, TServices>(
           scatter.body.dag,
           innerPath,
@@ -973,7 +974,7 @@ implements DagonizerInterface<TState, TServices> {
   private readonly registryVersion: string;
   /**
    * Stable `DispatcherHooks` adapter bound to this instance's protected hooks.
-   * Created once in the constructor and reused by every `buildObserverRelay`
+   * Created once in the constructor and reused by every `relayFor`
    * call so that relay construction allocates only the `ObserverRelayImpl`
    * instance (stable hidden class) without a fresh closure-bearing adapter on
    * each invocation.
@@ -993,7 +994,7 @@ implements DagonizerInterface<TState, TServices> {
     signal: AbortSignal | null,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
-  ) => Promise<_InternalNodeResult<TState>>>>;
+  ) => Promise<RunNodeResultType<TState>>>>;
 
   /**
    * Construct a dispatcher. Subclass and override the protected hooks
@@ -1149,7 +1150,7 @@ implements DagonizerInterface<TState, TServices> {
    * A `DispatcherHooks` adapter is constructed here (within the class body so
    * `protected` members are accessible) and passed to `ObserverRelayImpl`.
    */
-  private buildObserverRelay(state: TState): ObserverRelay {
+  private relayFor(state: TState): ObserverRelay {
     return new ObserverRelayImpl<TState>(this.#relayHooks, state);
   }
 
@@ -1286,9 +1287,9 @@ implements DagonizerInterface<TState, TServices> {
     state: TState,
     fromStage: string | null,
     options: ExecuteOptionsInterface,
-    runOptions: _RunOptions = { 'embedded': false },
+    runOptions: RunOptionsType = { 'embedded': false },
     placementPath: readonly string[] = [],
-    batch: _RunNodesBatch<TState> = {},
+    batch: RunNodesBatchType<TState> = {},
   ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
     const { inputBatch, terminalByItemId } = batch;
     const dag = this.dags.get(dagName);
@@ -1350,7 +1351,7 @@ implements DagonizerInterface<TState, TServices> {
           this.onError(phase.name, error, state, placementPath);
           try { state.markFailed(error); } catch { /* already terminal */ }
           this.onPhaseExit(dagName, 'pre', phase.name, state, placementPath);
-          const result = this.buildResult(null, executedNodes, skippedNodes, null, null, state);
+          const result = this.composeResult(null, executedNodes, skippedNodes, null, null, state);
           await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
           return result;
         }
@@ -1493,7 +1494,7 @@ implements DagonizerInterface<TState, TServices> {
             }
           }
 
-          const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
+          const result = this.composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
           await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
           return result;
         }
@@ -1509,7 +1510,7 @@ implements DagonizerInterface<TState, TServices> {
           if (!runOptions.embedded) {
             try { state.markFailed(error); } catch { /* already terminal */ }
           }
-          const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
+          const result = this.composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
           await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
           return result;
         }
@@ -1582,7 +1583,7 @@ implements DagonizerInterface<TState, TServices> {
             } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
               try { state.markFailed(error); } catch { /* already terminal */ }
             }
-            const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
+            const result = this.composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
             await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
             return result;
           }
@@ -1607,7 +1608,7 @@ implements DagonizerInterface<TState, TServices> {
           const parentItems = [...batch];
           const childItems: Array<{ 'id': string; 'state': TState }> = [];
           for (const item of parentItems) {
-            const childClone = this.stateMapper.createChild(item.state, inputMapping);
+            const childClone = this.stateMapper.cloneChild(item.state, inputMapping);
             childItems.push({ 'id': item.id, 'state': childClone });
           }
           const childBatch = Batch.from(childItems);
@@ -1745,7 +1746,7 @@ implements DagonizerInterface<TState, TServices> {
             } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
               try { state.markFailed(error); } catch { /* already terminal */ }
             }
-            const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
+            const result = this.composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
             await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
             return result;
           }
@@ -1832,7 +1833,7 @@ implements DagonizerInterface<TState, TServices> {
       // and ensures a second execution of the same state instance starts clean.
       WorkSetCheckpoint.clear(state);
     }
-    const result = this.buildResult(null, executedNodes, skippedNodes, terminalOutcome, null, state);
+    const result = this.composeResult(null, executedNodes, skippedNodes, terminalOutcome, null, state);
     await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
     return result;
   }
@@ -1844,7 +1845,7 @@ implements DagonizerInterface<TState, TServices> {
    * field set), keeping V8 hidden classes stable across success and error
    * paths.
    */
-  private buildResult(
+  private composeResult(
     cursor: string | null,
     executedNodes: string[],
     skippedNodes: string[],
@@ -1878,7 +1879,7 @@ implements DagonizerInterface<TState, TServices> {
     dagName: string,
     state: TState,
     result: ExecutionResultInterface<TState>,
-    runOptions: _RunOptions,
+    runOptions: RunOptionsType,
     terminalNodeName: string | null,
     placementPath: readonly string[] = [],
   ): Promise<void> {
@@ -1966,27 +1967,9 @@ implements DagonizerInterface<TState, TServices> {
       );
     }
     await this.withNodeTimeout(node, signal, (nodeSignal) => {
-      const context = this.buildContext(dagName, phase.name, nodeSignal);
+      const context = NodeContextBuilder.of(dagName, phase.name, nodeSignal, this.services);
       return this.#runNodeOnState(node, state, context);
     });
-  }
-
-  /**
-   * Build the per-node context. Falls back to a never-aborting signal
-   * when no cancellation was requested. Carries the dispatcher's
-   * services bag (or `undefined`) on the `services` field.
-   */
-  private buildContext(
-    dagName: string,
-    nodeName: string,
-    signal: AbortSignal | null,
-  ): NodeContextInterface<TServices> {
-    return {
-      'signal': signal ?? SignalComposer.never(),
-      'dagName': dagName,
-      nodeName,
-      'services': this.services,
-    };
   }
 
   /**
@@ -2060,7 +2043,7 @@ implements DagonizerInterface<TState, TServices> {
     }
 
     const routed = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
-      const context = this.buildContext(dagName, nodeConfig.name, nodeSignal);
+      const context = NodeContextBuilder.of(dagName, nodeConfig.name, nodeSignal, this.services);
       return dagNode.execute(batch, context);
     });
 
@@ -2177,12 +2160,12 @@ implements DagonizerInterface<TState, TServices> {
     signal: AbortSignal | null,
     placementPath: readonly string[],
     bufferIntermediates: boolean = true,
-  ): Promise<_InternalNodeResult<TState>> {
+  ): Promise<RunNodeResultType<TState>> {
     const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
     const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
     const innerPath: readonly string[] = [...placementPath, placement.name];
 
-    const cloneState = this.stateMapper.createChild(state, inputMapping);
+    const cloneState = this.stateMapper.cloneChild(state, inputMapping);
     const intermediateResults: Array<NodeResultInterface<TState>> = [];
     let terminalOutcome: 'completed' | 'failed' | null;
 
@@ -2227,7 +2210,7 @@ implements DagonizerInterface<TState, TServices> {
     } else {
       // ── Contained path ─────────────────────────────────────────────────────
       const correlationId = this.nextCorrelationId(placement.dag);
-      const context = this.buildContext(placement.dag, placement.name, signal);
+      const context = NodeContextBuilder.of(placement.dag, placement.name, signal ?? SignalComposer.never(), this.services);
       const task = new DagTask<TState, TServices>(
         placement.dag,
         innerPath,
@@ -2237,7 +2220,7 @@ implements DagonizerInterface<TState, TServices> {
         context,
       );
 
-      const relay = this.buildObserverRelay(state);
+      const relay = this.relayFor(state);
       const outcome = await container.runDag(task, { relay });
 
       // Embedded DAG is cardinality-1 (not inbox-backed), so an infrastructure
@@ -2332,7 +2315,7 @@ implements DagonizerInterface<TState, TServices> {
     dagName: string,
     signal: AbortSignal | null,
     placementPath: readonly string[],
-  ): Promise<_InternalNodeResult<TState>> {
+  ): Promise<RunNodeResultType<TState>> {
     // ── 1. Resolve source and scatter defaults ───────────────────────────────
     // Resolve once here; used at the early-exit, in the worker pool, and at
     // the outcome-reducer step — no repeated `?? default` at each site.
@@ -2497,25 +2480,25 @@ implements DagonizerInterface<TState, TServices> {
     // ── 5. Bounded worker pool with lazy pull ────────────────────────────────
     // `ScatterWorkerPool` owns the slot semaphore, active-worker counter,
     // error accumulation, and the drain loop. Item body execution and
-    // acknowledgment are delegated to `_ScatterPoolDriverImpl` which is
+    // acknowledgment are delegated to `ScatterPoolDriverImpl` which is
     // constructed with:
-    //   - a `_ScatterDispatchAdapter` built here (within the class body so
+    //   - a `ScatterDispatchAdapterInterface` built here (within the class body so
     //     private members are accessible), and
-    //   - a `_ScatterRunContext` holding the scatter-local mutable accumulators.
+    //   - a `ScatterRunContextType` holding the scatter-local mutable accumulators.
 
-    const scatterAdapter: _ScatterDispatchAdapter<TState, TServices> = {
+    const scatterAdapter: ScatterDispatchAdapterInterface<TState, TServices> = {
       'stateMapper':        this.stateMapper,
       'nodes':              this.nodes,
       'accessor':           this.accessor,
       'withNodeTimeout':    (n, s, fn) => this.withNodeTimeout(n, s, fn),
-      'buildContext':       (d, n, s) => this.buildContext(d, n, s),
+      'context':            (d, n, s) => NodeContextBuilder.of(d, n, s ?? SignalComposer.never(), this.services),
       'runNodes':           (d, st, f, o, ro, pp, b) => this.runNodes(d, st, f, o, ro, pp, b),
       'resolveContainer':   (role) => this.resolveContainer(role),
       'nextCorrelationId':  (d) => this.nextCorrelationId(d),
-      'buildObserverRelay': (st) => this.buildObserverRelay(st),
+      'relayFor':           (st) => this.relayFor(st),
     };
 
-    const scatterCtx: _ScatterRunContext<TState> = {
+    const scatterCtx: ScatterRunContextType<TState> = {
       scatter,
       state,
       dagName,
@@ -2536,7 +2519,7 @@ implements DagonizerInterface<TState, TServices> {
     };
 
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
-    const driver = new _ScatterPoolDriverImpl<TState, TServices>(scatterAdapter, scatterCtx);
+    const driver = new ScatterPoolDriverImpl<TState, TServices>(scatterAdapter, scatterCtx);
 
     if (scatter.reservoir !== undefined) {
       // Reservoir path: buffer-then-release loop keyed by item field.
@@ -2576,7 +2559,7 @@ implements DagonizerInterface<TState, TServices> {
         // arg — so `allFreshRecords` is intentionally empty here (ackItem and
         // ackBatch skip the push in compactable mode to allow per-clone GC).
         // Pass an empty list; `finalize` must not depend on it.
-        const gatherExecution = this.buildGatherExecution(state, [], dagName, signal);
+        const gatherExecution = this.composeGatherExecution(state, [], dagName, signal);
         await gatherStrategy.finalize(scatter.gather, gatherExecution);
       } else {
         // Non-compactable finalize: synthesise records for prior acked items too,
@@ -2605,7 +2588,7 @@ implements DagonizerInterface<TState, TServices> {
         const merged = [...syntheticRecords, ...allFreshRecords]
           .sort((a, b) => a.index - b.index);
         if (merged.length > 0) {
-          const gatherExecution = this.buildGatherExecution(state, merged, dagName, signal);
+          const gatherExecution = this.composeGatherExecution(state, merged, dagName, signal);
           await gatherStrategy.finalize(scatter.gather, gatherExecution);
         }
       }
@@ -2643,14 +2626,14 @@ implements DagonizerInterface<TState, TServices> {
   }
 
   /**
-   * Build the per-gather execution context handed to a `GatherStrategy`.
+   * Compose the per-gather execution context handed to a `GatherStrategy`.
    *
    * The `invoker` satisfies `NodeInvoker` using an inline object that holds
    * direct references to this dispatcher and the enclosing execution context.
    * No injected function callbacks — the dispatcher instance (`this`) and the
    * entity references are the only captured values.
    */
-  private buildGatherExecution(
+  private composeGatherExecution(
     state: TState,
     records: ReadonlyArray<GatherRecord<TState>>,
     dagName: string,
@@ -2665,7 +2648,7 @@ implements DagonizerInterface<TState, TServices> {
         }
         const dagNode = dispatcher.nodes.get(nodeName);
         if (dagNode === undefined) return;
-        const context = dispatcher.buildContext(dagName, nodeName, signal);
+        const context = NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), dispatcher.services);
         await dispatcher.#runNodeOnState(dagNode, state, context);
       },
     };
@@ -2765,7 +2748,7 @@ implements DagonizerInterface<TState, TServices> {
     state: TState,
     dagName: string,
     signal: AbortSignal | null,
-  ): Promise<_InternalNodeResult<TState>> {
+  ): Promise<RunNodeResultType<TState>> {
     const dagNode = this.nodes.get(nodeConfig.node);
 
     if (!dagNode) {
@@ -2773,7 +2756,7 @@ implements DagonizerInterface<TState, TServices> {
     }
 
     const output = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
-      const context = this.buildContext(dagName, nodeConfig.name, nodeSignal);
+      const context = NodeContextBuilder.of(dagName, nodeConfig.name, nodeSignal, this.services);
       return this.#runNodeOnState(dagNode, state, context);
     });
 
@@ -2805,7 +2788,7 @@ implements DagonizerInterface<TState, TServices> {
     signal: AbortSignal | null,
     placementPath: readonly string[],
     bufferIntermediates: boolean = true,
-  ): Promise<_InternalNodeResult<TState>> {
+  ): Promise<RunNodeResultType<TState>> {
     const handler = this.dispatch[entry['@type']];
     if (handler === undefined) {
       throw new DAGError(`Unknown node type: ${entry['@type']}`);
@@ -2911,7 +2894,7 @@ implements DagonizerInterface<TState, TServices> {
 
   /**
    * Resolve a `DagonizerOptionsInterface` partial to a fully-populated
-   * `_ResolvedDagonizerOptions`. This is the single place where defaults are
+   * resolved options record. This is the single place where defaults are
    * applied; no code inside the constructor or engine internals ever sees
    * optional fields.
    *

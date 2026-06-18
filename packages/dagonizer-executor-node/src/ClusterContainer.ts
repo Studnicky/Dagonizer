@@ -7,12 +7,12 @@
  * provenance differs.
  *
  * Construction calls `cluster.setupPrimary({ exec: entryPath })` once (lazily
- * on first createEntry). All workers run the forkEntry bootstrap over IPC.
+ * on first composeEntry). All workers run the forkEntry bootstrap over IPC.
  *
  * Constructor options:
  *   registryModule   — URL string passed to DagHost init
  *   registryVersion  — version for the init ↔ ready handshake
- *   servicesConfig   — opaque JSON passed to createBundle (default: {})
+ *   servicesConfig   — opaque JSON passed to instantiate (default: {})
  *   poolSize         — number of cluster workers (default: NodeSystemInfo)
  *   entryUrl         — override the default forkEntry.js URL (for tests)
  *
@@ -54,17 +54,17 @@ export class ClusterContainer extends NodeContainerBase<Worker> {
   // ---------------------------------------------------------------------------
 
   /**
-   * createEntry: configure cluster primary (once) and fork a worker, initialized: false.
+   * composeEntry: configure cluster primary (once) and fork a worker, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override createEntry(): PoolEntry<Worker> {
+  protected override composeEntry(): PoolEntry<Worker> {
     if (!this.#setupDone) {
       cluster.setupPrimary({ 'exec': this.#entryUrl.pathname });
       this.#setupDone = true;
     }
 
     const worker = cluster.fork();
-    const channel = IpcChannel.fromChildProcess(worker);
+    const channel = IpcChannel.ofChildProcess(worker);
     return { 'worker': worker, 'channel': channel, 'initialized': false };
   }
 

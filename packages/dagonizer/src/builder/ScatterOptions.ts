@@ -24,7 +24,7 @@
  *   ⦿ `container`  — absence means "run in-process"; a present string is a
  *                     role name; there is no meaningful static default.
  *
- * Callers: `DAGBuilder.scatter` calls `ScatterOptions.from(options)` before
+ * Callers: `DAGBuilder.scatter` calls `ScatterOptions.resolve(options)` before
  * constructing the `ScatterNode` so every builder-produced placement carries
  * the resolved `itemKey` and `reducer` without the runtime `?? default` guard.
  */
@@ -58,7 +58,7 @@ export type ResolvedScatterOptions<TState extends NodeStateInterface> =
 /**
  * Static factory for scatter placement options.
  *
- * `ScatterOptions.from(partial)` fills `itemKey` and `reducer` with their
+ * `ScatterOptions.resolve(partial)` fills `itemKey` and `reducer` with their
  * static defaults when the caller omits them, returning a
  * `ResolvedScatterOptions<TState>` that is safe to spread onto a `ScatterNode`
  * without a downstream `?? 'default'` guard.
@@ -67,12 +67,12 @@ export class ScatterOptions {
   private constructor() { /* static class */ }
 
   /**
-   * Materialise scatter placement options with static defaults applied.
+   * Resolve scatter placement options with static defaults applied.
    *
    * @param partial - Caller-supplied options. `gather` is required.
    * @returns Options with `itemKey` and `reducer` always present.
    */
-  static from<TState extends NodeStateInterface>(
+  static resolve<TState extends NodeStateInterface>(
     partial: ScatterOptionsInterface<TState>,
   ): ResolvedScatterOptions<TState> {
     // Resolve only the two statically-defaultable fields via spread; all other

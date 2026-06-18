@@ -26,7 +26,7 @@ export abstract class ScoutNode<
   TItem,
 > extends ScalarNode<TState, 'success' | 'empty' | 'error', ScoutServices<TInput, TToolOutput>> {
   /** Build the input the tool's `run()` expects, from state. */
-  protected abstract buildInput(state: TState): TInput;
+  protected abstract composeInput(state: TState): TInput;
 
   /** Normalise the tool's raw output into the consumer's item shape. */
   protected abstract normalize(output: TToolOutput): readonly TItem[];
@@ -39,7 +39,7 @@ export abstract class ScoutNode<
     state: TState,
     context: NodeContextInterface<ScoutServices<TInput, TToolOutput>>,
   ): Promise<NodeOutputInterface<'success' | 'empty' | 'error'>> {
-    const input = this.buildInput(state);
+    const input = this.composeInput(state);
     try {
       const raw = await context.services.tool.execute(input, { "signal": context.signal });
       const items = this.normalize(raw);

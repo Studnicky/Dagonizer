@@ -7,6 +7,7 @@
 - `LlmDispatchNode` owns `extractContent(response)`, which extracts prose
   from the chat-response discriminated union once. `DecisionNode` and
   `ComposeNode` call it instead of repeating the tool-vs-text guard.
+- **Naming: domain-class verbs (semver-major).** The pattern override seams rename: `ScoutNode.buildInput` → `composeInput`, `LlmDispatchNode.buildPrompt` → `composePrompt`, `LlmDispatchNode.buildRequest` → `composeRequest`, `DecisionNode.parseChoice` → `decodeChoice`. Subclasses override the new names; behavior is unchanged.
 
 ## 0.21.0
 

@@ -2,7 +2,7 @@
  * MemoryDigestNode: assemble a structured digest of recent activity
  * from the triple store and write it to state.
  *
- * Consumers override `buildDigest` (compute the digest from the store)
+ * Consumers override `composeDigest` (compute the digest from the store)
  * and `applyDigest` (write it back to state).
  */
 
@@ -16,7 +16,7 @@ export abstract class MemoryDigestNode<
   TState extends NodeStateInterface,
   TDigest,
 > extends GraphNode<TState, 'success'> {
-  protected abstract buildDigest(store: TripleStore, state: TState): TDigest;
+  protected abstract composeDigest(store: TripleStore, state: TState): TDigest;
   protected abstract applyDigest(state: TState, digest: TDigest): void;
 
 
@@ -24,7 +24,7 @@ export abstract class MemoryDigestNode<
     state: TState,
     context: NodeContextInterface<GraphServices>,
   ): Promise<NodeOutputInterface<'success'>> {
-    const digest = this.buildDigest(context.services.memory, state);
+    const digest = this.composeDigest(context.services.memory, state);
     this.applyDigest(state, digest);
     return NodeOutputBuilder.of('success');
   }

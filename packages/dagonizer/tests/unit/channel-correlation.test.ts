@@ -148,7 +148,7 @@ class SingleChannelContainer extends DagContainerBase<MinimalState, null> {
   // Override releaseChannel: no-op — the channel is never pooled.
   protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
 
-  protected override createEntry(): PoolEntry<null> {
+  protected override composeEntry(): PoolEntry<null> {
     return { 'worker': null, 'channel': this.#channel, 'initialized': true };
   }
 

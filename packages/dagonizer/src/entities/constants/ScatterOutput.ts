@@ -22,7 +22,7 @@ export type ScatterOutput = FromSchema<typeof ScatterOutputSchema>;
 // → 'all-error' | 'all-success' | 'empty' | 'partial'
 
 /** Scatter aggregate output names. */
-export const ScatterOutput = {
+export const ScatterOutputNames = {
   'ALL_ERROR': 'all-error',
   'ALL_SUCCESS': 'all-success',
   'EMPTY': 'empty',

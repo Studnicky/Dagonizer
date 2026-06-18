@@ -28,7 +28,7 @@ import {
 } from '@studnicky/dagonizer';
 import type { DAG } from '@studnicky/dagonizer';
 import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // State
@@ -146,7 +146,7 @@ export const dag: DAG = {
       "itemKey":   'job',
       "concurrency": 1,              // serial so abort cuts cleanly mid-source
       "gather": {
-        "strategy": GatherStrategyName.MAP,
+        "strategy": GatherStrategyNames.MAP,
         "mapping":  { "processed": 'completed' }, // clone.processed (scalar) → parent.completed[]
       },
       "outputs": {

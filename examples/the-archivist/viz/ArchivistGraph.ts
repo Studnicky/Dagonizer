@@ -1,7 +1,7 @@
 /**
  * ArchivistGraph: minimal `CytoscapeGraph` subclass for the Archivist DAG.
  *
- * Overrides `buildElements()` to enrich every node element's `data.kind`
+ * Overrides `composeElements()` to enrich every node element's `data.kind`
  * from `NODE_KINDS`, making it available to Cytoscape stylesheets via
  * `node[kind="deterministic"]` and `node[kind="non-deterministic"]`
  * selectors. The base `CytoscapeGraph` stylesheet already defines visual
@@ -53,7 +53,7 @@ export class ArchivistGraph extends CytoscapeGraph {
    * Render the DAG elements and enrich each node's `data.kind` from
    * `NODE_KINDS`. Nodes absent from the registry are emitted unchanged.
    */
-  protected override buildElements(): ReadonlyArray<CytoscapeElement> {
+  protected override composeElements(): ReadonlyArray<CytoscapeElement> {
     const raw = CytoscapeRenderer.render(this.dag, {
       embeddedDAGs: this.embeddedDAGs,
     });

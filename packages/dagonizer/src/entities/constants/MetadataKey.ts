@@ -20,7 +20,7 @@ export type MetadataKey = FromSchema<typeof MetadataKeySchema>;
 // → 'currentItem' | 'gatherResults' | 'itemIndex'
 
 /** Reserved metadata keys used by the dispatcher. */
-export const MetadataKey = {
+export const MetadataKeys = {
   'CURRENT_ITEM': 'currentItem',
   'GATHER_RESULTS': 'gatherResults',
   'ITEM_INDEX': 'itemIndex',

@@ -14,6 +14,7 @@
   recommended-worker-count pool-size resolution and the `DagContainerBase`
   defaults spread. `NodeSystemInfo` is instantiated once at module load and
   shared across every container construction.
+- **Naming: domain-class verbs (semver-major).** `IpcChannel.fromChildProcess` → `IpcChannel.ofChildProcess`. The container override seam `createEntry` is renamed `composeEntry` (tracking the `DagContainerBase` base rename), and each registry module's `createBundle` implementation is renamed `instantiate` (tracking the `RegistryModuleInterface` rename). Behavior is unchanged.
 
 ### Added
 

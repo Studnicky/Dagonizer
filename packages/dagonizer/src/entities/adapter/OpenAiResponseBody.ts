@@ -6,7 +6,7 @@
  * The schema is deliberately permissive where providers deviate from the
  * canonical spec (all top-level fields are optional; string/null unions
  * where some providers omit nullability). The required structural
- * invariant is that `choices` is an array when present — `#parseResponse`
+ * invariant is that `choices` is an array when present — `#decodeResponse`
  * handles the empty-array and missing-field cases explicitly.
  *
  * Compiled once via `Validator.compile` on `OpenAiCompatibleAdapter`

@@ -357,11 +357,11 @@ interface RegistryBundleInterface {
 }
 
 interface RegistryModuleInterface {
-  createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface>;
+  instantiate(servicesConfig: JsonObject): Promise<RegistryBundleInterface>;
 }
 ```
 
-`RegistryModuleInterface` is the default export shape of a registry module loaded by `DagHost` via dynamic import. `createBundle` receives the opaque `servicesConfig` JSON from the `init` message and returns a fully initialised `RegistryBundleInterface`.
+`RegistryModuleInterface` is the default export shape of a registry module loaded by `DagHost` via dynamic import. `instantiate` receives the opaque `servicesConfig` JSON from the `init` message and returns a fully initialised `RegistryBundleInterface`.
 
 `RegistryBundleInterface` bundles the node+DAG registry (`bundle`), the locally constructed services bag (`services`), the semantic version for the init ↔ ready handshake (`registryVersion`), and the state restore factory (`restoreState`). Services never cross the isolate boundary — each isolate constructs its own via its registry module.
 

@@ -17,7 +17,7 @@ import type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
 
 import { RealTimeScheduler } from './RealTimeScheduler.js';
 
-let _provider: SchedulerProvider = new RealTimeScheduler();
+let activeProvider: SchedulerProvider = new RealTimeScheduler();
 
 /**
  * Engine-owned monotonic timer. All scheduling goes through
@@ -33,12 +33,12 @@ export class Scheduler {
    * timeout, per scatter clone).
    */
   static current(): SchedulerProvider {
-    return _provider;
+    return activeProvider;
   }
 
   /** Install a scheduler provider. Engine-only; called at boot or in tests. */
   static configure(provider: SchedulerProvider): void {
-    _provider = provider;
+    activeProvider = provider;
   }
 
   /**
@@ -46,7 +46,7 @@ export class Scheduler {
    * the current provider before replacing it (R10).
    */
   static reset(): void {
-    _provider.cancelAll();
-    _provider = new RealTimeScheduler();
+    activeProvider.cancelAll();
+    activeProvider = new RealTimeScheduler();
   }
 }

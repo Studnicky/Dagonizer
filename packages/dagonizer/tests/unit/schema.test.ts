@@ -172,14 +172,14 @@ void describe('DAGDocument.serialize round-trip', () => {
   });
 });
 
-void describe('DAGDocument.fromValue', () => {
+void describe('DAGDocument.ofValue', () => {
   void it('accepts an already-decoded valid DAG', () => {
-    const result = DAGDocument.fromValue(validDAG);
+    const result = DAGDocument.ofValue(validDAG);
     assert.deepEqual(result, validDAG);
   });
 
   void it('rejects schema-noncompliant value', () => {
-    assert.throws(() => DAGDocument.fromValue({ 'name': 'x' }), ValidationError);
+    assert.throws(() => DAGDocument.ofValue({ 'name': 'x' }), ValidationError);
   });
 });
 

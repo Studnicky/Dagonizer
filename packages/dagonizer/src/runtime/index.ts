@@ -3,7 +3,7 @@ export { DottedPathAccessor } from './DottedPathAccessor.js';
 export { RealTimeScheduler } from './RealTimeScheduler.js';
 export { Scheduler } from './Scheduler.js';
 export { SignalComposer } from './SignalComposer.js';
-export { BackoffStrategy, RetryPolicy } from './RetryPolicy.js';
+export { RetryPolicy } from './RetryPolicy.js';
 
 // `Timeout` is an entity (dependency-free reified time budget). It lives at
 // `entities/Timeout.ts` so `contracts/` can type-import it inward without a

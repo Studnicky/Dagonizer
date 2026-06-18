@@ -107,7 +107,7 @@ export abstract class BaseEmbedder extends BaseAdapterCore implements Embedder {
     try {
       res = await fetch(url, { ...init, signal });
     } catch (err) {
-      throw LlmError.fromNetworkError(err);
+      throw LlmError.ofNetworkError(err);
     }
     if (!res.ok) {
       const text = await res.text();

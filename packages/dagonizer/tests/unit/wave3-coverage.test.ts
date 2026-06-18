@@ -12,7 +12,7 @@
  *   TST-W3-3: Validator.interruptionInfo — valid/invalid/errors
  *   TST-W3-4: Validator.openAiResponseBody — valid/invalid/errors
  *
- *   TST-W3-5: DAG.id and DAG.placementId canonical URN helpers
+ *   TST-W3-5: DAGIdentity.id and DAGIdentity.placementId canonical URN helpers
  *
  *   TST-W3-6: StoreError extends DAGError, code, classification preserved
  *
@@ -25,7 +25,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 
-import { DAG } from '../../src/entities/dag/DAG.js';
+import { DAGIdentity } from '../../src/entities/dag/DAG.js';
 import { BridgeMessageSchema } from '../../src/entities/executor/BridgeMessage.js';
 import { ExecutionRequestSchema } from '../../src/entities/executor/ExecutionRequest.js';
 import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionResponse.js';
@@ -494,42 +494,42 @@ void describe('TST-W3-4: Validator.openAiResponseBody', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TST-W3-5: DAG.id and DAG.placementId canonical URN helpers
+// TST-W3-5: DAGIdentity.id and DAGIdentity.placementId canonical URN helpers
 // ---------------------------------------------------------------------------
 
-void describe('TST-W3-5: DAG.id and DAG.placementId URN helpers', () => {
-  void it('DAG.id produces the canonical DAG URN', () => {
-    assert.equal(DAG.id('demo'), 'urn:noocodex:dag:demo');
+void describe('TST-W3-5: DAGIdentity.id and DAGIdentity.placementId URN helpers', () => {
+  void it('DAGIdentity.id produces the canonical DAG URN', () => {
+    assert.equal(DAGIdentity.id('demo'), 'urn:noocodex:dag:demo');
   });
 
-  void it('DAG.placementId produces the canonical placement URN', () => {
-    assert.equal(DAG.placementId('demo', 'increment'), 'urn:noocodex:dag:demo/node/increment');
+  void it('DAGIdentity.placementId produces the canonical placement URN', () => {
+    assert.equal(DAGIdentity.placementId('demo', 'increment'), 'urn:noocodex:dag:demo/node/increment');
   });
 
-  void it('DAG.id handles names with hyphens and underscores', () => {
-    assert.equal(DAG.id('my-workflow_v2'), 'urn:noocodex:dag:my-workflow_v2');
+  void it('DAGIdentity.id handles names with hyphens and underscores', () => {
+    assert.equal(DAGIdentity.id('my-workflow_v2'), 'urn:noocodex:dag:my-workflow_v2');
   });
 
-  void it('DAG.placementId handles multi-word placement names', () => {
+  void it('DAGIdentity.placementId handles multi-word placement names', () => {
     assert.equal(
-      DAG.placementId('pipeline', 'fetch-data'),
+      DAGIdentity.placementId('pipeline', 'fetch-data'),
       'urn:noocodex:dag:pipeline/node/fetch-data',
     );
   });
 
-  void it('DAG (namespace object) is frozen — mutations are silently ignored', () => {
+  void it('DAGIdentity (namespace object) is frozen — mutations are silently ignored', () => {
     // Object.freeze means assignment to an existing property is a no-op (strict:
     // TypeError in strict mode, silently ignored otherwise). Verify the property
     // values are unchanged.
-    const originalId = DAG.id;
+    const originalId = DAGIdentity.id;
     try {
       // This assignment will throw in strict mode; catch it so the test continues.
-      (DAG as Record<string, unknown>)['id'] = 'mutated';
+      (DAGIdentity as Record<string, unknown>)['id'] = 'mutated';
     } catch {
       // Expected in strict mode.
     }
-    assert.strictEqual(DAG.id, originalId,
-      'frozen DAG namespace must not allow mutation of id helper');
+    assert.strictEqual(DAGIdentity.id, originalId,
+      'frozen DAGIdentity namespace must not allow mutation of id helper');
   });
 });
 

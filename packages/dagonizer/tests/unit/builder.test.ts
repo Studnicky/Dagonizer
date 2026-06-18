@@ -27,7 +27,7 @@ const greet = new GreetNode();
 const plan = new PlanNode();
 
 // ContractTestNode: a node carrying a configurable OperationContractFragment,
-// used to exercise build()-time contract validation and fromNodes() derivation.
+// used to exercise build()-time contract validation and derive() derivation.
 class ContractTestNode extends ScalarNode<NodeStateBase, string> {
   readonly name: string;
   readonly outputs: readonly string[];
@@ -161,10 +161,10 @@ void describe('DAGBuilder.build() contract validation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// DAGBuilder.fromNodes()
+// DAGBuilder.derive()
 // ---------------------------------------------------------------------------
 
-void describe('DAGBuilder.fromNodes()', () => {
+void describe('DAGBuilder.derive()', () => {
   void it('produces the same DAG as the equivalent DAGDeriver.derive({ nodes }) call', () => {
     const nodes: NodeInterface<NodeStateBase, string>[] = [
       makeNode('fetch', ['success'], { 'hardRequired': ['url'],    'produces': ['raw'] }),
@@ -178,7 +178,7 @@ void describe('DAGBuilder.fromNodes()', () => {
       },
     };
 
-    const fromBuilder = DAGBuilder.fromNodes('pipeline', '1.0', 'fetch', nodes, { annotations });
+    const fromBuilder = DAGBuilder.derive('pipeline', '1.0', 'fetch', nodes, { annotations });
 
     const fromDeriver = DAGDeriver.derive({
       'name': 'pipeline',
@@ -194,7 +194,7 @@ void describe('DAGBuilder.fromNodes()', () => {
 
   void it('throws a DAGError when nodes is empty (no contracts to derive from)', () => {
     assert.throws(
-      () => DAGBuilder.fromNodes('empty', '1', 'a', []),
+      () => DAGBuilder.derive('empty', '1', 'a', []),
       (err: unknown) => {
         assert.ok(err instanceof DAGError, `expected DAGError, got ${String(err)}`);
         return true;
@@ -216,7 +216,7 @@ void describe('DAGBuilder.fromNodes()', () => {
       },
     };
 
-    const dag = DAGBuilder.fromNodes('skip-no-contract', '1', 'a', nodes, { annotations });
+    const dag = DAGBuilder.derive('skip-no-contract', '1', 'a', nodes, { annotations });
 
     const names = dag.nodes.map((n) => n.name);
     assert.ok(!names.includes('helper'), `'helper' should be skipped; got: ${JSON.stringify(names)}`);

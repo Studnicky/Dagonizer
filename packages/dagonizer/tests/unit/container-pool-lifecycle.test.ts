@@ -76,7 +76,7 @@ class TestLoopbackContainer extends DagContainerBase<NodeStateInterface, TestWor
     });
   }
 
-  protected override createEntry(): PoolEntry<TestWorker> {
+  protected override composeEntry(): PoolEntry<TestWorker> {
     this.entriesCreated += 1;
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const host = new DagHost(hostSide);

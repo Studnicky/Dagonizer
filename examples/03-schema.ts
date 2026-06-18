@@ -44,12 +44,12 @@ await dispatcher.execute('from-json', state);
 // #endregion load-and-register
 process.stdout.write(`Executed: metadata.seen = ${String(state.getMetadata('seen'))}\n`);
 
-// ── fromValue: validate an already-parsed object (skips JSON.parse) ──────
+// ── ofValue: validate an already-parsed object (skips JSON.parse) ──────
 // #region from-value
-// DAGDocument.fromValue() validates an already-parsed value — useful when a
+// DAGDocument.ofValue() validates an already-parsed value — useful when a
 // YAML parser, database query, or message queue provides a plain object.
-const reparsed = DAGDocument.fromValue(JSON.parse(DAGDocument.serialize(dag)));
-process.stdout.write(`fromValue name: ${reparsed.name}\n`);
+const reparsed = DAGDocument.ofValue(JSON.parse(DAGDocument.serialize(dag)));
+process.stdout.write(`ofValue name: ${reparsed.name}\n`);
 // #endregion from-value
 
 // ── DAGSchema.$id ─────────────────────────────────────────────────────────

@@ -27,7 +27,7 @@
 
 import { Dagonizer, DAG_CONTEXT } from '@studnicky/dagonizer';
 import type { DAG } from '@studnicky/dagonizer';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 import { ScrapeState, ProbeNode } from './dags/04-scatter.js';
 
@@ -95,7 +95,7 @@ const scrapeWithContainerDag: DAG = {
       "gather": {
         // dag-body scatter outputs 'success'/'error' per clone (not the inner
         // node's 'ok'/'fail'); partition on those aggregate output tokens.
-        "strategy":   GatherStrategyName.PARTITION,
+        "strategy":   GatherStrategyNames.PARTITION,
         "partitions": { "success": 'succeeded', "error": 'failed' },
       },
       "outputs": { 'all-success': 'end', "partial": 'end', 'all-error': 'end', "empty": 'end' },

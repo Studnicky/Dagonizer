@@ -19,7 +19,7 @@
  * const raw = JSON.parse(await storage.get('ckpt')) as unknown;
  * const ckpt = Checkpoint.load(raw);
  * const { dagName, state: restoredState, cursor } = ckpt.restoreState(
- *   CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
+ *   CheckpointRestoreAdapterFn.wrap((snap) => MyState.restore(snap)),
  * );
  * const finalResult = await dispatcher.resume(dagName, restoredState, cursor);
  * ```
@@ -35,7 +35,7 @@
  *   const freshMemory = new MemoryStore();
  *   await ckpt2.restoreStores({ memory: freshMemory });
  *   const { dagName, state, cursor } = ckpt2.restoreState(
- *     CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
+ *     CheckpointRestoreAdapterFn.wrap((snap) => MyState.restore(snap)),
  *   );
  *   await dispatcher.resume(dagName, state, cursor);
  * }
@@ -56,7 +56,7 @@ import { Validator } from '../validation/Validator.js';
 /**
  * Bare function signature for restoring state from a JSON snapshot.
  * Used internally by `CheckpointRestoreAdapterFn`. Pass a function of this
- * shape to `CheckpointRestoreAdapterFn.fromFn(fn)` to obtain an adapter
+ * shape to `CheckpointRestoreAdapterFn.wrap(fn)` to obtain an adapter
  * that satisfies `CheckpointRestoreAdapter`.
  */
 type StateRestoreFn<TState extends NodeStateInterface>
@@ -65,14 +65,14 @@ type StateRestoreFn<TState extends NodeStateInterface>
 /**
  * Concrete `CheckpointRestoreAdapter` backed by a plain function.
  *
- * Use `CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap))` to
+ * Use `CheckpointRestoreAdapterFn.wrap((snap) => MyState.restore(snap))` to
  * wrap an inline lambda for `Checkpoint.restoreState()` without giving up the
  * ergonomics of arrow-function syntax.
  *
  * @example
  * ```ts
  * const { state, dagName, cursor } = ckpt.restoreState(
- *   CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
+ *   CheckpointRestoreAdapterFn.wrap((snap) => MyState.restore(snap)),
  * );
  * ```
  */
@@ -93,7 +93,7 @@ export class CheckpointRestoreAdapterFn<TState extends NodeStateInterface>
    * The function receives a `JsonObject` snapshot and must return a `TState`
    * instance; the typical pattern is `(snap) => MyState.restore(snap)`.
    */
-  static fromFn<TState extends NodeStateInterface>(
+  static wrap<TState extends NodeStateInterface>(
     fn: StateRestoreFn<TState>,
   ): CheckpointRestoreAdapterFn<TState> {
     return new CheckpointRestoreAdapterFn(fn);
@@ -247,7 +247,7 @@ export class Checkpoint {
    * Rehydrate the state from this checkpoint via the supplied adapter.
    * Returns the rehydrated state, dag name, cursor, and execution history.
    *
-   * Pass a `CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap))`
+   * Pass a `CheckpointRestoreAdapterFn.wrap((snap) => MyState.restore(snap))`
    * to wrap an inline lambda in the adapter contract.
    *
    * Throws `ValidationError` when `this.data.cursor === null`.

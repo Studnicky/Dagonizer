@@ -17,7 +17,7 @@ import { Validator } from '../validation/Validator.js';
  *
  * Three operations, no instances:
  *   - `DAGDocument.load(json)` — parse JSON and validate against `DAGSchema`.
- *   - `DAGDocument.fromValue(value)` — validate an already-decoded value.
+ *   - `DAGDocument.ofValue(value)` — validate an already-decoded value.
  *   - `DAGDocument.serialize(dag)` — pretty-print to JSON (2-space indent).
  *   - `DAGDocument.serializeCompact(dag)` — compact JSON (no whitespace).
  */
@@ -47,7 +47,7 @@ export class DAGDocument {
    * Parse an already-decoded value and validate. Same boundary semantics as
    * `load` but skips JSON.parse for callers that have already decoded.
    */
-  static fromValue(value: unknown): DAG {
+  static ofValue(value: unknown): DAG {
     return Validator.dag.validate(value);
   }
 

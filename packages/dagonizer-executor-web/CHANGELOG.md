@@ -9,6 +9,7 @@
   `onMessage`, and guarded-dispatch members live once in the base; the channel
   keeps only its `postMessage` transport `send` and `addEventListener`
   subscription. Runtime behavior is unchanged.
+- **Naming: domain-class verbs (semver-major).** The consumer override seam `WebWorkerContainer.createWorker` is renamed `spawnWorker`, and `createEntry` is renamed `composeEntry` (tracking the `DagContainerBase` base rename). The web registry module's `createBundle` implementation is renamed `instantiate` (tracking the `RegistryModuleInterface` rename). Subclasses override `spawnWorker()` to return a real `Worker`; behavior is unchanged.
 
 ## 0.21.0
 

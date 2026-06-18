@@ -9,7 +9,7 @@
  * Constructor options:
  *   registryModule      — URL string passed to DagHost init
  *   registryVersion     — version for the init ↔ ready handshake
- *   servicesConfig      — opaque JSON passed to createBundle (default: {})
+ *   servicesConfig      — opaque JSON passed to instantiate (default: {})
  *   poolSize            — number of workers (default: NodeSystemInfo)
  *   resourceLimits      — per-worker V8 heap budget
  *   entryUrl            — override the default workerEntry.js URL (for tests)
@@ -62,10 +62,10 @@ export class WorkerThreadContainer extends NodeContainerBase<Worker> {
   // ---------------------------------------------------------------------------
 
   /**
-   * createEntry: construct a Worker + MessagePortChannel, initialized: false.
+   * composeEntry: construct a Worker + MessagePortChannel, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override createEntry(): PoolEntry<Worker> {
+  protected override composeEntry(): PoolEntry<Worker> {
     const resourceLimits: { maxOldGenerationSizeMb?: number } = {};
     if (this.#resourceLimits.maxOldGenerationSizeMb !== undefined) {
       resourceLimits.maxOldGenerationSizeMb = this.#resourceLimits.maxOldGenerationSizeMb;

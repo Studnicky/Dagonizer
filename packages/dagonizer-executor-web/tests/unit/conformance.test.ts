@@ -176,7 +176,7 @@ class FakeWorkerScope {
 }
 
 // ---------------------------------------------------------------------------
-// FakeWebWorkerContainer: subclass overriding createWorker() to return an
+// FakeWebWorkerContainer: subclass overriding spawnWorker() to return an
 // in-process FakeWorker. Extension is by subclass (zero callbacks), mirroring
 // the production wiring where a consumer subclass returns `new Worker(url)`.
 // Every spawned worker is recorded in `spawned` so destroy()/teardown tests can
@@ -186,7 +186,7 @@ class FakeWorkerScope {
 class FakeWebWorkerContainer extends WebWorkerContainer {
   readonly spawned: FakeWorker[] = [];
 
-  protected override createWorker(): WebWorkerLikeInterface {
+  protected override spawnWorker(): WebWorkerLikeInterface {
     const worker = new FakeWorker();
     this.spawned.push(worker);
     return worker;
@@ -389,7 +389,7 @@ class ZombieWorker implements WebWorkerLikeInterface {
 class ZombieWorkerContainer extends WebWorkerContainer {
   readonly zombies: ZombieWorker[] = [];
 
-  protected override createWorker(): WebWorkerLikeInterface {
+  protected override spawnWorker(): WebWorkerLikeInterface {
     const zombie = new ZombieWorker();
     this.zombies.push(zombie);
     return zombie;

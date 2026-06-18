@@ -11,7 +11,7 @@ import {
   ScalarNode,
 } from '@studnicky/dagonizer';
 import type { DAG } from '@studnicky/dagonizer';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // #region state
 export interface Candidate {
@@ -100,7 +100,7 @@ export const dag: DAG = {
       // parent.candidates in source-index order. Because `source` is set, a
       // map gather appends (N clones ⇒ array); produced data survives.
       "gather": {
-        "strategy": GatherStrategyName.MAP,
+        "strategy": GatherStrategyNames.MAP,
         "mapping":  { "candidate": 'candidates' },     // cloneField → parentPath
       },
       // Aggregate outputs from the default 'aggregate' reducer. All providers

@@ -38,7 +38,7 @@ export class RealTimeScheduler implements SchedulerProvider {
     const signal = options?.signal;
     return new Promise<void>((resolve, reject) => {
       if (signal?.aborted === true) {
-        reject(ExecutionError.fromSignal(signal));
+        reject(ExecutionError.ofSignal(signal));
         return;
       }
       const handle = G.setTimeout(() => {
@@ -52,7 +52,7 @@ export class RealTimeScheduler implements SchedulerProvider {
         this.#activeHandles.delete(handle);
         G.clearTimeout(handle);
         signal?.removeEventListener('abort', onAbort);
-        reject(ExecutionError.fromSignal(signal));
+        reject(ExecutionError.ofSignal(signal));
       };
       signal?.addEventListener('abort', onAbort, { 'once': true });
     });

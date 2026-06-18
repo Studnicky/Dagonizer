@@ -19,7 +19,7 @@ import type { JsonObject } from '@studnicky/dagonizer/entities';
 import { ConformanceRegistry } from '@studnicky/dagonizer/testing';
 
 const registry: RegistryModuleInterface = {
-  async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
     return ConformanceRegistry.bundle();
   },
 };

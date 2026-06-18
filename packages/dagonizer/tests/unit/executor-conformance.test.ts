@@ -86,7 +86,7 @@ class LoopbackContainer extends DagContainerBase<NodeStateInterface, LoopbackWor
     });
   }
 
-  protected override createEntry(): PoolEntry<LoopbackWorker> {
+  protected override composeEntry(): PoolEntry<LoopbackWorker> {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const host = new DagHost(hostSide);
     host.start();

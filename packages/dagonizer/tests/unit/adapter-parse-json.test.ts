@@ -2,7 +2,7 @@
  * OpenAiCompatibleAdapter behavior over an injected HTTP response body.
  *
  * Covers, all through an InjectableAdapter that monkey-patches global fetch:
- *  - #parseJson rejects malformed tool-call arguments with
+ *  - #decodeJson rejects malformed tool-call arguments with
  *    LlmError(SCHEMA_VIOLATION) instead of silently returning {}.
  *  - Valid tool-call arguments parse into a typed tools message.
  *  - A response without `usage` falls back to ZERO_TOKEN_USAGE.

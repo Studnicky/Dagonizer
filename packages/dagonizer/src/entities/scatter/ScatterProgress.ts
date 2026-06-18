@@ -102,7 +102,7 @@ export type ScatterAckedResult = FromSchema<typeof ScatterAckedResultSchema>;
 // ---------------------------------------------------------------------------
 
 /** Inline inbox-item shape for use inside ScatterProgressSchema oneOf branches. */
-const _InboxItemInline = {
+const inboxItemInline = {
   'type': 'object',
   'required': ['index', 'item'],
   'properties': {
@@ -114,7 +114,7 @@ const _InboxItemInline = {
 } as const;
 
 /** Inline acked-result shape for use inside the retained branch. */
-const _AckedResultInline = {
+const ackedResultInline = {
   'oneOf': [
     {
       'type': 'object',
@@ -164,8 +164,8 @@ export const ScatterProgressSchema = {
       'properties': {
         'mode':          { 'type': 'string', 'const': 'retained' },
         'placementName': { 'type': 'string', 'minLength': 1 },
-        'inbox':         { 'type': 'array', 'items': _InboxItemInline },
-        'ackedResults':  { 'type': 'array', 'items': _AckedResultInline },
+        'inbox':         { 'type': 'array', 'items': inboxItemInline },
+        'ackedResults':  { 'type': 'array', 'items': ackedResultInline },
       },
       'additionalProperties': false,
     },
@@ -175,7 +175,7 @@ export const ScatterProgressSchema = {
       'properties': {
         'mode':          { 'type': 'string', 'const': 'bounded' },
         'placementName': { 'type': 'string', 'minLength': 1 },
-        'inbox':         { 'type': 'array', 'items': _InboxItemInline },
+        'inbox':         { 'type': 'array', 'items': inboxItemInline },
         'watermark':     { 'type': 'integer', 'minimum': 0 },
         'aheadAcked':    {
           'type': 'array',

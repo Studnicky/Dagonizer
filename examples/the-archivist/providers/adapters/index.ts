@@ -34,7 +34,7 @@ export { GroqApiAdapter }           from '@studnicky/dagonizer-adapter-groq';
 export { MistralApiAdapter }        from '@studnicky/dagonizer-adapter-mistral';
 export { OllamaApiAdapter }         from '@studnicky/dagonizer-adapter-ollama';
 export type { OllamaApiAdapterOptions } from '@studnicky/dagonizer-adapter-ollama';
-export { OllamaProbe, detectOllama, listOllamaModels } from './detectOllama.ts';
+export { OllamaProbe } from './detectOllama.ts';
 export { OpenRouterApiAdapter }     from '@studnicky/dagonizer-adapter-openrouter';
 export type { OpenRouterApiAdapterOptions } from '@studnicky/dagonizer-adapter-openrouter';
 export { WebLlmAdapter } from '@studnicky/dagonizer-adapter-web-llm';

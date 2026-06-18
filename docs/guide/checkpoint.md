@@ -74,7 +74,7 @@ When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the
 
 <<< @/../examples/08-checkpoint.ts#recall
 
-`Checkpoint.load(raw)` validates the unknown value against `CheckpointDataSchema` (Ajv 2020-12) before touching any fields. An invalid or stale payload throws `ValidationError`. `ckpt.restoreState(adapter)` accepts a `CheckpointRestoreAdapter<TState>`; wrap a plain factory function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@studnicky/dagonizer/checkpoint`.
+`Checkpoint.load(raw)` validates the unknown value against `CheckpointDataSchema` (Ajv 2020-12) before touching any fields. An invalid or stale payload throws `ValidationError`. `ckpt.restoreState(adapter)` accepts a `CheckpointRestoreAdapter<TState>`; wrap a plain factory function with `CheckpointRestoreAdapterFn.wrap(fn)` from `@studnicky/dagonizer/checkpoint`.
 
 ## Resuming execution
 

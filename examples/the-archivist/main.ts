@@ -28,7 +28,7 @@ import { DomConsoleLogger } from './logger/DomConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedArchivist } from './ObservedArchivist.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
-import { listOllamaModels, pickOllamaChatModel } from './providers/index.ts';
+import { OllamaModels, OllamaProbe } from './providers/index.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
 
 import { GeminiApiAdapter }   from '@studnicky/dagonizer-adapter-gemini-api';
@@ -136,7 +136,7 @@ registry.register(
 // daemon's installed list (GET /api/tags) so it always names a model the
 // host has actually pulled; ollama is skipped entirely when no chat model
 // is installed, so the cascade never falls into a "model not found" loop.
-const ollamaModel = pickOllamaChatModel(await listOllamaModels());
+const ollamaModel = OllamaModels.pickChat(await OllamaProbe.listModels());
 if (ollamaModel !== null) {
   registry.register(
     { 'provider': 'ollama', 'model': ollamaModel, 'capabilities': CAPS_PARTIAL_TOOLS },

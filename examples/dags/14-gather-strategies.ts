@@ -24,7 +24,7 @@ import {
   ScalarNode,
 } from '@studnicky/dagonizer';
 import type { DAG } from '@studnicky/dagonizer';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // State
@@ -108,7 +108,7 @@ export const collectDag: DAG = {
       "itemKey":   'item',
       "concurrency": 2,
       "gather": {
-        "strategy": GatherStrategyName.COLLECT,
+        "strategy": GatherStrategyNames.COLLECT,
         "target":   'tokens',           // collect each clone's output token here
       },
       "outputs": {
@@ -165,7 +165,7 @@ export const discardDag: DAG = {
       "itemKey":   'item',
       "concurrency": 2,
       "gather": {
-        "strategy": GatherStrategyName.DISCARD,   // explicit no-op merge
+        "strategy": GatherStrategyNames.DISCARD,   // explicit no-op merge
       },
       "outputs": {
         'all-success': 'end',

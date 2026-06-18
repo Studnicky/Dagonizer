@@ -83,7 +83,7 @@ import type { DagContainerOptions, PoolEntry } from '@studnicky/dagonizer/contai
 import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 class MyContainer extends DagContainerBase {
-  protected createEntry(): PoolEntry<Worker> {
+  protected composeEntry(): PoolEntry<Worker> {
     throw new Error('not implemented');
   }
   protected attachDeathListeners(_entry: PoolEntry<Worker>): void {}
@@ -102,7 +102,7 @@ const container = new MyContainer({
 
 | Method | Responsibility |
 |--------|---------------|
-| `createEntry(): PoolEntry<TWorker>` | Construct worker + wired channel; `initialized: false`. |
+| `composeEntry(): PoolEntry<TWorker>` | Construct worker + wired channel; `initialized: false`. |
 | `attachDeathListeners(entry): void` | Wire death/exit events → `onTransportDeath(entry)`. |
 | `terminateWorker(worker): void` | Force-kill the worker. Must not throw. |
 | `awaitWorkerExit(worker): Promise<void>` | Resolves when the worker process/thread exits. |
@@ -158,7 +158,7 @@ host.start();
 
 | Message | Action |
 |---------|--------|
-| `init` | Dynamic-import the registry module; call `createBundle`; reply `ready`. |
+| `init` | Dynamic-import the registry module; call `instantiate`; reply `ready`. |
 | `execute` | Restore state; run the whole DAG; stream intermediates; reply `result`. |
 | `abort` | Fire the `AbortController` for that `correlationId`. |
 | `shutdown` | Destroy registered nodes; close the channel. |

@@ -1,7 +1,7 @@
 /**
  * cartographerWorkerRegistry: RegistryModuleInterface for the in-browser
  * Cartographer worker pool. Statically imported by cartographerWorkerEntry and
- * injected into the DagHost, so the worker runs no dynamic import. createBundle
+ * injected into the DagHost, so the worker runs no dynamic import. instantiate
  * registers the stream-event body (decode → route → per-type pipelines) and a
  * deterministic offline geo services bag.
  */
@@ -14,7 +14,7 @@ import { eventPipelineBundle } from '../../../../examples/the-cartographer/dag.t
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
 
 const registry: RegistryModuleInterface = {
-  async createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
     const useRecorded = servicesConfig['useRecordedIp'] !== false;
     const services = useRecorded ? GeoResolvers.recorded() : GeoResolvers.live();
     return {

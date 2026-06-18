@@ -38,7 +38,7 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 | `LlmAdapterCascade`, `LlmAdapterRegistry`, `AdapterDescriptor` | Multi-adapter routing |
 | `EmbedderCascade`, `EmbedderRegistry`, `BaseEmbedder` | Embedding model cascade |
 | `ChatRequest`, `ChatResponse`, `ChatRequestBuilder`, `ChatResponseMessageBuilder` | Wire types and value factories |
-| `LlmError`, `Classifications` | Error taxonomy — `LlmError.classifyHttp(status, body)` and `LlmError.fromNetworkError(err)` are static methods on `LlmError` |
+| `LlmError`, `Classifications` | Error taxonomy — `LlmError.classifyHttp(status, body)` and `LlmError.ofNetworkError(err)` are static methods on `LlmError` |
 | `ToolCallCodec` | JSON envelope decoder for models that emit tool calls as text (Gemini Nano, WebLLM) |
 | `AdapterCapabilities`, `ToolCall`, `ToolChoice`, `ToolDefinition`, `TokenUsage` | Capability metadata |
 
@@ -139,11 +139,11 @@ class IntentClassifier extends DecisionNode<MyState, Intent> {
   readonly name = 'classify-intent';
   readonly outputs = ['search', 'describe', 'recommend', 'off-topic'] as const;
 
-  protected buildPrompt(s: MyState): string {
+  protected composePrompt(s: MyState): string {
     return `Classify: "${s.query}" → search | describe | recommend | off-topic. Reply with one word.`;
   }
 
-  protected parseChoice(content: string): Intent {
+  protected decodeChoice(content: string): Intent {
     const t = content.trim().toLowerCase();
     if (t === 'search' || t === 'describe' || t === 'recommend') return t;
     return 'off-topic';

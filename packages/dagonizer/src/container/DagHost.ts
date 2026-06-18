@@ -6,7 +6,7 @@
  * Validator.bridgeMessage before dispatch.
  *
  * Lifecycle:
- *   init     → dynamic-import registry module; createBundle; reply ready
+ *   init     → dynamic-import registry module; instantiate; reply ready
  *   execute  → restore state(s); run whole DAG per item; reply result + stream intermediates
  *   abort    → fire AbortController for that correlationId
  *   shutdown → destroy registered nodes; close channel
@@ -29,7 +29,8 @@
  */
 
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
-import type { RegistryBundleInterface, RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
+import type { RegistryBundleInterface } from '../contracts/RegistryBundleInterface.js';
+import type { RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
 import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
 import type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
 import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
@@ -178,29 +179,29 @@ export class DagHost {
         const mod = await import(registryModule) as { default?: unknown };
 
         // Runtime-narrow the default export via typeof checks before the cast.
-        // The guard below confirms `createBundle` is a function before the cast
+        // The guard below confirms `instantiate` is a function before the cast
         // to RegistryModuleInterface, making the subsequent typed call safe.
         const registryInterface = mod.default;
         if (
           registryInterface === null ||
           typeof registryInterface !== 'object' ||
-          typeof (registryInterface as Record<string, unknown>)['createBundle'] !== 'function'
+          typeof (registryInterface as Record<string, unknown>)['instantiate'] !== 'function'
         ) {
           this.#channel.send({
             'kind': 'error',
             'correlationId': null,
             'code': 'INVALID_REGISTRY_MODULE',
-            'message': `Registry module default export does not implement RegistryModuleInterface (missing createBundle)`,
+            'message': `Registry module default export does not implement RegistryModuleInterface (missing instantiate)`,
             'recoverable': false,
           });
           return;
         }
 
-        // Cast is safe: the typeof guard above confirms createBundle exists as a function.
+        // Cast is safe: the typeof guard above confirms instantiate exists as a function.
         registry = registryInterface as RegistryModuleInterface;
       }
 
-      const bundle = await registry.createBundle(servicesConfig);
+      const bundle = await registry.instantiate(servicesConfig);
 
       if (bundle.registryVersion !== expectedVersion) {
         this.#channel.send({

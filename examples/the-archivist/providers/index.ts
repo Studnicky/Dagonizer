@@ -431,30 +431,6 @@ export class ProviderInstantiator {
   }
 }
 
-/**
- * Free-function aliases for the provider store and detection static methods.
- */
-export const loadApiKeys = (): Partial<Record<ProviderId, string>> => ApiKeyStore.load();
-export const saveApiKeys = (keys: Partial<Record<ProviderId, string>>): void => { ApiKeyStore.save(keys); };
-export const loadOllamaModel = (): string => OllamaModels.loadModel();
-export const saveOllamaModel = (model: string): void => { OllamaModels.saveModel(model); };
-export const pickOllamaChatModel = (installed: readonly string[], preferred?: string): string | null =>
-  OllamaModels.pickChat(installed, preferred);
-export const detectBackends = (inputs: DetectionInputs = {}): Promise<readonly BackendAvailability[]> =>
-  BackendMatrix.detect(inputs);
-export const pickBestBackend = (
-  available: readonly BackendAvailability[],
-  options: PickBestOptions = {},
-): BackendAvailability | null => BackendMatrix.pickBest(available, options);
-export const hasNoRunnableModel = (
-  available: readonly BackendAvailability[],
-  options: PickBestOptions = {},
-): boolean => BackendMatrix.hasNoRunnableModel(available, options);
-export const browserVisibleBackends = (isMobile: boolean): readonly ProviderId[] =>
-  BackendMatrix.browserVisible(isMobile);
-export const instantiateProvider = (id: ProviderId, inputs: InstantiateInputs = {}): LlmClient =>
-  ProviderInstantiator.instantiate(id, inputs);
-
 export { BaseLlmClient } from './BaseLlmClient.ts';
 export {
   CerebrasApiAdapter,
@@ -466,8 +442,6 @@ export {
   OpenRouterApiAdapter,
   WebLlmAdapter,
   OllamaProbe,
-  detectOllama,
-  listOllamaModels,
 } from './adapters/index.ts';
 export { MobileDetection } from './MobileDetection.ts';
 export type { GeminiNanoAvailabilityType, WebLlmInitReportInterface };

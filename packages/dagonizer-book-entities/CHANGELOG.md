@@ -12,6 +12,7 @@
 - `firstPublishYear`, `summary`, and `inStock` use null sentinels (`T | null`, required key) instead of `T | undefined`, keeping V8 hidden-class shape stable under `exactOptionalPropertyTypes`. `BookBuilder.from` fills `null` for absent values.
 - `CanonicalId` is now a sealed static class (`private constructor`); direct instantiation is a compile error.
 - `Candidate.source` type changed from the no-op `'web-search' | string` union to `string` (honest type).
+- **Naming: domain-class verbs (semver-major).** `CanonicalId.fromIsbns` → `CanonicalId.ofIsbns` and `CanonicalId.fromWork` → `CanonicalId.ofWork`. The `noun.of<Source>()` form reads as materialising a canonical id from a source; behavior is unchanged.
 
 ## 0.19.0
 

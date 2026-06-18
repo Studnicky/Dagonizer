@@ -36,7 +36,7 @@
  * ## Extension via protected hooks
  *
  * Subclasses override any of:
- *   - `buildElements()` — enrich or replace the raw element array.
+ *   - `composeElements()` — enrich or replace the raw element array.
  *   - `stylesheet()` — alter or extend the canonical stylesheet.
  *   - `presetLayout()` — change layout options passed to cytoscape.
  *   - `interactionDefaults()` — change pan/zoom/select configuration.
@@ -220,7 +220,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * Compute layout, create the `cytoscape.Core`, and run all post-mount hooks.
    *
    * Steps:
-   *   1. Build elements via `buildElements()`.
+   *   1. Build elements via `composeElements()`.
    *   2. Compute node positions via `CompositeLayout.compute()`.
    *   3. Apply positions to each node element.
    *   4. Construct the `cytoscape.Core` via `Cytoscape.create` (lazy peer import)
@@ -232,7 +232,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * @returns The mounted `cytoscape.Core`.
    */
   async mount(): Promise<cytoscape.Core> {
-    const positioned = await this.applyLayout(this.buildElements());
+    const positioned = await this.applyLayout(this.composeElements());
 
     const cy = await this.construct({
       "container": this.container,
@@ -276,7 +276,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * with a `position` attached to every node element.
    *
    * Accepts `ReadonlyArray<CytoscapeElement>` so the internal typed elements from
-   * `buildElements()` flow through without an intermediate cast. The cast to
+   * `composeElements()` flow through without an intermediate cast. The cast to
    * `cytoscape.ElementDefinition[]` is deferred to the `Cytoscape.create` call
    * in `mount()`.
    *
@@ -322,7 +322,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * The embedded-DAG registry used for layout. Defaults to the full
    * `embeddedDAGs` passed at construction. Subclasses that render only a
    * subset of embedded-DAGs expanded (collapse/expand UX) override this to
-   * return the SAME subset they emit from `buildElements()`, so layout and
+   * return the SAME subset they emit from `composeElements()`, so layout and
    * rendering agree on which compounds are expanded.
    */
   protected layoutRegistry(): ReadonlyMap<string, DAG> {
@@ -343,7 +343,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * `cytoscape.ElementDefinition[]` is deferred to the `Cytoscape.create` call
    * in `mount()`.
    */
-  protected buildElements(): ReadonlyArray<CytoscapeElement> {
+  protected composeElements(): ReadonlyArray<CytoscapeElement> {
     return CytoscapeRenderer.render(this.dag, {
       "embeddedDAGs": this.embeddedDAGs,
     });

@@ -31,7 +31,7 @@ import { SeedLibrary } from '../../../../examples/the-archivist/data/SeedLibrary
 import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/RdfProvObserver.ts';
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
 import { NODE_KINDS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
-import { detectBackends, hasNoRunnableModel, instantiateProvider, loadApiKeys, loadOllamaModel, pickBestBackend, saveApiKeys, saveOllamaModel } from '../../../../examples/the-archivist/providers/index.ts';
+import { ApiKeyStore, BackendMatrix, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
@@ -63,15 +63,15 @@ import { RunnerMachine } from '../runner/RunnerMachine.ts';
 // ── State ───────────────────────────────────────────────────────────────
 const backends = ref<readonly BackendAvailability[]>([]);
 // Prefer a saved override; fall back to the highest-priority reachable
-// backend at mount time (resolved in onMounted once detectBackends completes).
+// backend at mount time (resolved in onMounted once BackendMatrix.detect completes).
 const savedBackend = typeof localStorage !== 'undefined'
   ? (localStorage.getItem('dagonizer-active-backend') as ProviderId | null)
   : null;
 const activeBackend = ref<ProviderId | null>(savedBackend);
 const noModel = ref(false);
 const isMobile = ref(false);
-const apiKeys = ref<Partial<Record<ProviderId, string>>>(loadApiKeys());
-const ollamaModel = ref<string>(loadOllamaModel());
+const apiKeys = ref<Partial<Record<ProviderId, string>>>(ApiKeyStore.load());
+const ollamaModel = ref<string>(OllamaModels.loadModel());
 
 // Slow-backend banner: shown when the active backend is the browser
 // built-in `LanguageModel` or WebLLM AND no cloud key is configured.
@@ -209,7 +209,7 @@ async function resumeFromCheckpoint(): Promise<void> {
     const ckpt = Checkpoint.load(parsed);
     await ckpt.restoreStores({ 'memory': memoryStore });
     restored = ckpt.restoreState(
-      CheckpointRestoreAdapterFn.fromFn((snap) => ArchivistState.restore(snap)),
+      CheckpointRestoreAdapterFn.wrap((snap) => ArchivistState.restore(snap)),
     );
   } catch (err) {
     logger.warn(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -345,7 +345,7 @@ const resolvedOllamaModel = computed<string>(() => {
 /** Construct an LLM client for the active backend, or null when none is selected. */
 function makeLlm() {
   if (activeBackend.value === null) return null;
-  return instantiateProvider(activeBackend.value, {
+  return ProviderInstantiator.instantiate(activeBackend.value, {
     'apiKeys':     apiKeys.value,
     'ollamaModel': resolvedOllamaModel.value,
   });
@@ -367,8 +367,8 @@ function clearMemory(): void {
 
 // Re-detect backend availability when apiKeys change.
 watch(apiKeys, async () => {
-  backends.value = await detectBackends({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
-  noModel.value = hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+  backends.value = await BackendMatrix.detect({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
+  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
 }, { 'deep': true });
 
 // Persist the visitor's backend selection so it survives page reloads.
@@ -538,10 +538,10 @@ onMounted(async () => {
 
   isMobile.value = MobileDetection.isLikelyMobile();
 
-  backends.value = await detectBackends({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
+  backends.value = await BackendMatrix.detect({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
 
   // Show the no-model gate when no real backend is available on this device.
-  if (hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
+  if (BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
     noModel.value = true;
     logger.warn('no LLM backend detected; visitor must enable one');
     return;
@@ -550,7 +550,7 @@ onMounted(async () => {
 
   // Auto-pick the best backend only when no saved user preference exists.
   if (savedBackend === null) {
-    const picked = pickBestBackend(backends.value, { 'isMobile': isMobile.value });
+    const picked = BackendMatrix.pickBest(backends.value, { 'isMobile': isMobile.value });
     if (picked !== null) {
       activeBackend.value = picked.id;
       logger.info(`backend auto-selected: ${picked.displayName}`);
@@ -597,8 +597,8 @@ onMounted(async () => {
   }
 });
 
-watch(apiKeys, () => { saveApiKeys(apiKeys.value); }, { 'deep': true });
-watch(ollamaModel, (next) => { saveOllamaModel(next); });
+watch(apiKeys, () => { ApiKeyStore.save(apiKeys.value); }, { 'deep': true });
+watch(ollamaModel, (next) => { OllamaModels.saveModel(next); });
 
 // ── Run ──────────────────────────────────────────────────────────────────
 async function ask(): Promise<void> {

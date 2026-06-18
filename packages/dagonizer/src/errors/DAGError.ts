@@ -95,7 +95,7 @@ export class ExecutionError extends DAGError {
    * `ExecutionError`. Used by scheduler and retry implementations that must
    * normalise AbortSignal.reason into a typed error.
    */
-  static fromSignal(signal?: AbortSignal): Error {
+  static ofSignal(signal?: AbortSignal): Error {
     const reason = signal?.reason;
     if (reason instanceof Error) return reason;
     return new ExecutionError(typeof reason === 'string' ? reason : 'aborted');

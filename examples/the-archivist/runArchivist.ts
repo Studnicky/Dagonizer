@@ -326,7 +326,7 @@ if (cancelResult.cursor !== null) {
     const freshMemory = new MemoryStore();
     await recalled.restoreStores({ 'memory': freshMemory });
     const { dagName, state, cursor } = recalled.restoreState(
-      CheckpointRestoreAdapterFn.fromFn((snap) => ArchivistState.restore(snap)),
+      CheckpointRestoreAdapterFn.wrap((snap) => ArchivistState.restore(snap)),
     );
     const resumeResult = await dispatcher.resume(dagName, state, cursor);
     logger.result(`resumed draft=${resumeResult.state.draft}`);

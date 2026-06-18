@@ -28,7 +28,7 @@ import { Validator } from '@studnicky/dagonizer/validation';
 
 Type: `EntityValidator<DAG>`
 
-Validates raw values against `DAGSchema` (Ajv 2020-12). Used internally by `Dagonizer.load`, `Dagonizer.fromValue`, and `Dagonizer.registerDAG`.
+Validates raw values against `DAGSchema` (Ajv 2020-12). Used internally by `Dagonizer.load`, `DAGDocument.ofValue`, and `Dagonizer.registerDAG`.
 
 #### `Validator.dag.validate(value)`
 

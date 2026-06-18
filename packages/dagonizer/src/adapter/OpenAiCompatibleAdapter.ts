@@ -145,11 +145,11 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   async #doRequest(request: ChatRequest): Promise<ChatResponse> {
-    return this.#sendRequest(request, this.#buildBody(request, true));
+    return this.#sendRequest(request, this.#composeBody(request, true));
   }
 
   async #doRequestWithoutTools(request: ChatRequest): Promise<ChatResponse> {
-    return this.#sendRequest(request, this.#buildBody(request, false));
+    return this.#sendRequest(request, this.#composeBody(request, false));
   }
 
   async #sendRequest(request: ChatRequest, body: Record<string, unknown>): Promise<ChatResponse> {
@@ -170,7 +170,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
         signal,
       });
     } catch (err) {
-      throw LlmError.fromNetworkError(err);
+      throw LlmError.ofNetworkError(err);
     } finally {
       clearTimeout(timeoutId);
     }
@@ -190,10 +190,10 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
         Classifications['SCHEMA_VIOLATION'],
       );
     }
-    return this.#parseResponse(rawBody);
+    return this.#decodeResponse(rawBody);
   }
 
-  #buildBody(request: ChatRequest, includeTools: boolean): Record<string, unknown> {
+  #composeBody(request: ChatRequest, includeTools: boolean): Record<string, unknown> {
     const body: Record<string, unknown> = {
       'model': this.#model,
       'messages': request.messages.map((m) => this.#toMessage(m)),
@@ -246,7 +246,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     return stringChoices[choice.type];
   }
 
-  #parseResponse(payload: OpenAiResponseBody): ChatResponse {
+  #decodeResponse(payload: OpenAiResponseBody): ChatResponse {
     if (payload.choices === undefined || payload.choices.length === 0) {
       throw new LlmError(
         `${this.#config.displayName}: response missing 'choices'`,
@@ -275,7 +275,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       return {
         'id': tc.id,
         'name': tc.function.name,
-        'arguments': this.#parseJson(tc.function.arguments),
+        'arguments': this.#decodeJson(tc.function.arguments),
       };
     });
     const text = msg?.content ?? '';
@@ -291,7 +291,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     };
   }
 
-  #parseJson(raw: string): Record<string, unknown> {
+  #decodeJson(raw: string): Record<string, unknown> {
     try {
       return JSON.parse(raw) as Record<string, unknown>;
     } catch (cause) {

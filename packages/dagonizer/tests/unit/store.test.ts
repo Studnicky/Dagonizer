@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '../../src/contracts/RemoteStore.js';
+import type { RemoteStore } from '../../src/contracts/RemoteStore.js';
+import type { RemoteStoreEndpoint } from '../../src/contracts/RemoteStoreEndpoint.js';
+import type { RemoteStoreLease } from '../../src/contracts/RemoteStoreLease.js';
 import type { StoreSnapshotEntry } from '../../src/contracts/Snapshottable.js';
 import type { JsonValue } from '../../src/entities/json.js';
 import { BaseStore, type BaseStoreOptions } from '../../src/store/BaseStore.js';

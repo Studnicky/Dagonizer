@@ -54,10 +54,8 @@
 
 
 import type { NodeInterface } from '../dist/contracts/NodeInterface.js';
-import type {
-  RegistryBundleInterface,
-  RegistryModuleInterface,
-} from '../dist/contracts/RegistryModuleInterface.js';
+import type { RegistryBundleInterface } from '../dist/contracts/RegistryBundleInterface.js';
+import type { RegistryModuleInterface } from '../dist/contracts/RegistryModuleInterface.js';
 import type { DAG } from '../dist/entities/dag/DAG.js';
 import type { JsonObject } from '../dist/entities/json.js';
 import type { NodeContextInterface } from '../dist/entities/node/NodeContext.js';
@@ -518,7 +516,7 @@ export class ConformanceRegistry {
       },
       'services': undefined,
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'restoreState': CheckpointRestoreAdapterFn.fromFn((snap: JsonObject) => restoreConformanceState(snap) as NodeStateInterface),
+      'restoreState': CheckpointRestoreAdapterFn.wrap((snap: JsonObject) => restoreConformanceState(snap) as NodeStateInterface),
     };
   }
 }
@@ -528,7 +526,7 @@ export class ConformanceRegistry {
 // ---------------------------------------------------------------------------
 
 const registryModule: RegistryModuleInterface = {
-  async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
     return ConformanceRegistry.bundle();
   },
 };

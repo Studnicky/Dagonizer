@@ -5,7 +5,7 @@
  */
 
 import {
-  BackoffStrategy,
+  BackoffStrategyNames,
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
@@ -56,7 +56,7 @@ export class FetchNode extends ScalarNode<FetchState, 'success' | 'error'> {
     // #region policy-config
     const policy = RetryPolicy.from({
       'maxAttempts':  5,
-      'strategy':     BackoffStrategy.EXPONENTIAL,  // 50ms → 100ms → 200ms → …
+      'strategy':     BackoffStrategyNames.EXPONENTIAL,  // 50ms → 100ms → 200ms → …
       'baseDelay':    50,
       'jitterFactor': 0,                            // deterministic delays for testing
       'retryOn':      [TransientError],             // only retry on this error class
@@ -87,7 +87,7 @@ export class AuthError    extends Error { constructor() { super('auth');    } }
 /** Policy that only retries NetworkError and never retries AuthError. */
 export const filteredPolicy = RetryPolicy.from({
   maxAttempts: 5,
-  strategy:    BackoffStrategy.EXPONENTIAL,
+  strategy:    BackoffStrategyNames.EXPONENTIAL,
   retryOn:     [NetworkError],  // only retry these
   abortOn:     [AuthError],     // never retry these, even if listed in retryOn
 });

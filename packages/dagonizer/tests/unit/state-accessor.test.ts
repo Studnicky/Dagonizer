@@ -151,7 +151,7 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
   });
 });
 
-// ── NodeStateBase.clone() + StateMapper.createChild subclass identity ────────
+// ── NodeStateBase.clone() + StateMapper.cloneChild subclass identity ────────
 
 void describe('NodeStateBase.clone() subclass identity', () => {
   void it('clone() returns an instance of the concrete subclass', () => {
@@ -199,17 +199,17 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     assert.strictEqual(cloned.errors.length, 0, 'errors must be empty in clone');
   });
 
-  void it('StateMapper.createChild produces a correctly-typed subclass instance with mapped metadata', () => {
+  void it('StateMapper.cloneChild produces a correctly-typed subclass instance with mapped metadata', () => {
     const mapper = new StateMapper<DomainState>(metadataAccessor);
     const parent = new DomainState();
     parent.domainValue = 55;
     parent.setMetadata('item', 3);
 
-    const child = mapper.createChild(parent, { 'item': 'item' });
+    const child = mapper.cloneChild(parent, { 'item': 'item' });
 
     assert.ok(
       child instanceof DomainState,
-      `Expected child from StateMapper.createChild to be instanceof DomainState, got ${child.constructor.name}`,
+      `Expected child from StateMapper.cloneChild to be instanceof DomainState, got ${child.constructor.name}`,
     );
     // Metadata input-mapping is applied.
     assert.strictEqual(child.getMetadata('item'), 3, 'input mapping must propagate metadata to child');

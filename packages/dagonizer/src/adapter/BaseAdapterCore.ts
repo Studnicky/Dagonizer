@@ -16,7 +16,7 @@
  */
 
 import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
-import { BackoffStrategy } from '../runtime/index.js';
+import { BackoffStrategyNames } from '../entities/runtime/BackoffStrategy.js';
 
 import { Classifications, LlmError, type ErrorClassification } from './LlmError.js';
 import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
@@ -62,7 +62,7 @@ export abstract class BaseAdapterCore {
     this.displayName = displayName;
     this.#retry = RetryableErrorPolicy.from({
       'maxAttempts': resolved.maxAttempts,
-      'strategy':    BackoffStrategy.EXPONENTIAL,
+      'strategy':    BackoffStrategyNames.EXPONENTIAL,
       'baseDelay':   resolved.baseDelayMs,
     });
   }

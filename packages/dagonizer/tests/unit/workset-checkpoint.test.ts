@@ -260,7 +260,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       const parsed = JSON.parse(raw) as unknown;
       const ckpt2 = Checkpoint.load(parsed);
       const { 'state': restoredState, dagName, cursor } = ckpt2.restoreState(
-        CheckpointRestoreAdapterFn.fromFn(restoreWalkState),
+        CheckpointRestoreAdapterFn.wrap(restoreWalkState),
       );
 
       // ── Run 2: resume ────────────────────────────────────────────────────
@@ -487,7 +487,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       const parsed = JSON.parse(raw) as unknown;
       const ckpt2 = Checkpoint.load(parsed);
       const { state, dagName, cursor } = ckpt2.restoreState(
-        CheckpointRestoreAdapterFn.fromFn((snap) => CountState.restore(snap)),
+        CheckpointRestoreAdapterFn.wrap((snap) => CountState.restore(snap)),
       );
 
       assert.equal(state.count, 1, 'restored count must be 1');
