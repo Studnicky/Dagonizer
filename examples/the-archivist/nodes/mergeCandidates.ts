@@ -23,14 +23,14 @@
  * named output union narrower than the default `'success'`.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeOutputInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeContextInterface, NodeOutputInterface } from '@studnicky/dagonizer';
 
 import type { Candidate } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import type { ArchivistServices } from '../services.ts';
-import { CanonicalId } from '@noocodex/dagonizer-book-entities';
+import { CanonicalId } from '@studnicky/dagonizer-book-entities';
 
 const SHORTLIST_LIMIT = 5;
 

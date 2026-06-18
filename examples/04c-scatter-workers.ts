@@ -25,9 +25,9 @@
  * DAG definitions: examples/dags/04-scatter.ts (reused), this file's dags block.
  */
 
-import { Dagonizer, DAG_CONTEXT } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import { GatherStrategyName } from '@noocodex/dagonizer/constants';
+import { Dagonizer, DAG_CONTEXT } from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import { GatherStrategyName } from '@studnicky/dagonizer/constants';
 
 import { ScrapeState, ProbeNode } from './dags/04-scatter.js';
 

@@ -11,7 +11,7 @@
  * Each strategy run uses:
  *   - `RetryPolicy.from(...)` with `jitterFactor: 0` (except jitter) so the
  *     delay sequence is exact and predictable.
- *   - `VirtualScheduler` (from `@noocodex/dagonizer/testing`) so retries
+ *   - `VirtualScheduler` (from `@studnicky/dagonizer/testing`) so retries
  *     complete in zero real time — virtual time is advanced programmatically.
  *   - `RecordingPolicy` (a RetryPolicy subclass) that intercepts `getDelay()`
  *     to capture the computed delay before forwarding to the scheduler.
@@ -29,10 +29,10 @@ import {
   BackoffStrategy,
   RetryPolicy,
   Scheduler,
-} from '@noocodex/dagonizer';
-import type { RetryPolicyOptionsInterface } from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
+import type { RetryPolicyOptionsInterface } from '@studnicky/dagonizer';
 
-import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 
 import { FlakyStub } from './dags/22-backoff-strategies.js';
 

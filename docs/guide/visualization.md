@@ -14,8 +14,8 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { DAG_CONTEXT } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+import { DAG_CONTEXT } from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 
 const dag: DAG = {
   '@context': DAG_CONTEXT,
@@ -34,16 +34,16 @@ const dag: DAG = {
 
 # Visualization
 
-Three renderers ship in `@noocodex/dagonizer/viz`. Each consumes a `DAG` and emits a different surface: `MermaidRenderer.render` produces `flowchart` source for embedding in Markdown; `JsonLdRenderer.render` produces a JSON-LD document for graph databases and semantic tooling; `CytoscapeRenderer.render` produces a plain `readonly CytoscapeElement[]` array for consumers who manage their own cytoscape instance.
+Three renderers ship in `@studnicky/dagonizer/viz`. Each consumes a `DAG` and emits a different surface: `MermaidRenderer.render` produces `flowchart` source for embedding in Markdown; `JsonLdRenderer.render` produces a JSON-LD document for graph databases and semantic tooling; `CytoscapeRenderer.render` produces a plain `readonly CytoscapeElement[]` array for consumers who manage their own cytoscape instance.
 
 ## API surface
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `MermaidRenderer.render(dag)` | `@noocodex/dagonizer/viz` | Returns Mermaid `flowchart` source |
-| `JsonLdRenderer.render(dag)` | `@noocodex/dagonizer/viz` | Returns a `DagJsonLdDocument` |
-| `CytoscapeRenderer.render(dag, options?)` | `@noocodex/dagonizer/viz` | Returns `readonly CytoscapeElement[]` (elements only; no positions) |
-| `DAGONIZER_VOCAB` | `@noocodex/dagonizer/viz` | Vocabulary base URI string; classes appear as `dag:ClassName` in the `@context` |
+| `MermaidRenderer.render(dag)` | `@studnicky/dagonizer/viz` | Returns Mermaid `flowchart` source |
+| `JsonLdRenderer.render(dag)` | `@studnicky/dagonizer/viz` | Returns a `DagJsonLdDocument` |
+| `CytoscapeRenderer.render(dag, options?)` | `@studnicky/dagonizer/viz` | Returns `readonly CytoscapeElement[]` (elements only; no positions) |
+| `DAGONIZER_VOCAB` | `@studnicky/dagonizer/viz` | Vocabulary base URI string; classes appear as `dag:ClassName` in the `@context` |
 
 ## MermaidRenderer
 

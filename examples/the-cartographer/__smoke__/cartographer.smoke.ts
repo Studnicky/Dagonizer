@@ -39,7 +39,7 @@ import { cartographerBundle, eventPipelineBundle } from '../dag.ts';
 import { ingestSourceBundle } from '../embedded-dags/IngestSourceDAG.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 
 const EVENT_COUNT = 20;
 let failures = 0;

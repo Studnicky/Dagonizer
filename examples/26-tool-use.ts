@@ -23,9 +23,9 @@
  * Run: npx tsx examples/26-tool-use.ts
  */
 
-import { Batch, Dagonizer } from '@noocodex/dagonizer';
-import { ToolCallCodec } from '@noocodex/dagonizer/adapter';
-import { OllamaApiAdapter } from '@noocodex/dagonizer-adapter-ollama';
+import { Batch, Dagonizer } from '@studnicky/dagonizer';
+import { ToolCallCodec } from '@studnicky/dagonizer/adapter';
+import { OllamaApiAdapter } from '@studnicky/dagonizer-adapter-ollama';
 
 import {
   ToolUseState,

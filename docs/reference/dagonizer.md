@@ -15,14 +15,14 @@ seeAlso:
 
 # Dagonizer
 
-`@noocodex/dagonizer` root export.
+`@studnicky/dagonizer` root export.
 
 ## Class: `Dagonizer<TState, TServices>`
 
 The DAG dispatcher. Holds node and DAG registries, validates configurations at registration time, and runs the node-graph iterator.
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 
 interface MyServices { logger: Console }
 class MyState extends NodeStateBase {}
@@ -38,8 +38,8 @@ const dispatcher2 = new Dagonizer<MyState, MyServices>({ services: { logger: con
 ### Constructor
 
 ```ts twoslash
-import { Dagonizer } from '@noocodex/dagonizer';
-import type { DagonizerOptionsInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
+import type { DagonizerOptionsInterface, NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 // constructor(options?: DagonizerOptionsInterface<TState, TServices>)
 declare const options: DagonizerOptionsInterface;
@@ -56,8 +56,8 @@ import type {
   NodeStateInterface,
   HandoffChannelInterface,
   DagContainerInterface,
-} from '@noocodex/dagonizer';
-import type { StateAccessor } from '@noocodex/dagonizer/types';
+} from '@studnicky/dagonizer';
+import type { StateAccessor } from '@studnicky/dagonizer/types';
 // ---cut---
 declare const _opts: DagonizerOptionsInterface;
 // accessor?: StateAccessor
@@ -81,9 +81,9 @@ export {};
 ### `registerNode(node)`
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { NodeInterface, OperationContractFragment } from '@noocodex/dagonizer';
-import { Timeout } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { NodeInterface, OperationContractFragment } from '@studnicky/dagonizer';
+import { Timeout } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const node: NodeInterface<MyState, string, undefined>;
@@ -100,8 +100,8 @@ Nodes are stored widened to `NodeInterface<TState, string, TServices>`. Narrow `
 ### `registerBundle(bundle)`
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { DispatcherBundle } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { DispatcherBundle } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const bundle: DispatcherBundle<MyState>;
@@ -117,7 +117,7 @@ import type {
   NodeStateInterface,
   NodeInterface,
   DAG,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 // ---cut---
 declare const _b: DispatcherBundle<NodeStateInterface>;
 // readonly nodes: readonly NodeInterface<TState, string, TServices>[]
@@ -134,8 +134,8 @@ Both arrays are required. Either may be empty (a node-only bundle uses `dags: []
 ### `registerDAG(dag)`
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const dag: DAG;
@@ -181,7 +181,7 @@ All four read accessors in context:
 ### `DAGDocument.load(json)` {#static-load}
 
 ```ts twoslash
-import { DAGDocument } from '@noocodex/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer';
 // ---cut---
 // static load(json: string): DAG
 declare const rawJsonString: string;
@@ -191,7 +191,7 @@ const dag = DAGDocument.load(rawJsonString);
 Parse a JSON string and validate against `DAGSchema`. The single permitted ingest boundary where `unknown` enters the package. Throws `ValidationError` for malformed JSON or schema-noncompliant input.
 
 ```ts twoslash
-import { DAGDocument, Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import { DAGDocument, Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const rawJsonString: string;
@@ -205,7 +205,7 @@ dispatcher.registerDAG(dag);
 ### `DAGDocument.fromValue(value)` {#static-fromvalue}
 
 ```ts twoslash
-import { DAGDocument } from '@noocodex/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer';
 // ---cut---
 // static fromValue(value: unknown): DAG
 declare const value: unknown;
@@ -219,8 +219,8 @@ Validate an already-parsed value. Same boundary semantics as `load` but skips `J
 ### `DAGDocument.serialize(dag)` {#static-serialize}
 
 ```ts twoslash
-import { DAGDocument } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 // ---cut---
 // static serialize(dag: DAG): string
 declare const dag: DAG;
@@ -234,8 +234,8 @@ Serialize a DAG to pretty JSON (2-space indent). Does not re-validate.
 ### `DAGDocument.serializeCompact(dag)` {#static-serializecompact}
 
 ```ts twoslash
-import { DAGDocument } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 // ---cut---
 // static serializeCompact(dag: DAG): string
 declare const dag: DAG;
@@ -249,8 +249,8 @@ Serialize a DAG to compact JSON (no whitespace).
 ### `execute(dagName, initialState, options?)`
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { ExecuteOptionsInterface, Execution } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { ExecuteOptionsInterface, Execution } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
@@ -269,8 +269,8 @@ Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution i
 ### `resume(dagName, state, fromStage, options?)`
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { ExecuteOptionsInterface, Execution } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { ExecuteOptionsInterface, Execution } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
@@ -287,7 +287,7 @@ Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoi
 ### `destroy()`
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
@@ -303,8 +303,8 @@ Calls the optional `destroy()` method on every registered node, then clears all 
 Six protected no-op methods. Subclass `Dagonizer` and override to attach metrics, logging, or tracing.
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { ExecutionResultInterface } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { ExecutionResultInterface } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 class ObservableDagonizer extends Dagonizer<MyState> {
@@ -344,7 +344,7 @@ import type {
   NodeStateInterface,
   NodeInterface,
   DAG,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 // ---cut---
 declare const bundle: DispatcherBundle<NodeStateInterface>;
 const _nodes: readonly NodeInterface<NodeStateInterface, string, undefined>[] = bundle.nodes;
@@ -358,7 +358,7 @@ A coherent unit of nodes and DAGs registered together. Plugin packages and featu
 ## Const: `SCATTER_PROGRESS_KEY`
 
 ```ts twoslash
-import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
+import { SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
 // ---cut---
 // SCATTER_PROGRESS_KEY === '__dagonizer_scatter_progress__'
 const key = SCATTER_PROGRESS_KEY; // type: "__dagonizer_scatter_progress__"

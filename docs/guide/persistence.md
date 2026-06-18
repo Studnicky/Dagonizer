@@ -21,17 +21,17 @@ seeAlso:
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `CheckpointStore` | `@noocodex/dagonizer/contracts` | Adapter contract: `save`, `load`, `delete` |
-| `Snapshottable` | `@noocodex/dagonizer/contracts` | Capability contract: `snapshot()`, `restore()`. Required by `Checkpoint.capture` and `restoreStores`. |
-| `StoreSnapshot` | `@noocodex/dagonizer/contracts` | Serialized envelope written into `CheckpointData.stores` |
-| `MemoryCheckpointStore` | `@noocodex/dagonizer/checkpoint` | In-memory reference implementation (tests, demos) |
+| `CheckpointStore` | `@studnicky/dagonizer/contracts` | Adapter contract: `save`, `load`, `delete` |
+| `Snapshottable` | `@studnicky/dagonizer/contracts` | Capability contract: `snapshot()`, `restore()`. Required by `Checkpoint.capture` and `restoreStores`. |
+| `StoreSnapshot` | `@studnicky/dagonizer/contracts` | Serialized envelope written into `CheckpointData.stores` |
+| `MemoryCheckpointStore` | `@studnicky/dagonizer/checkpoint` | In-memory reference implementation (tests, demos) |
 | `ckpt.persist(store, key)` | instance method | Serializes and writes via the store |
-| `Checkpoint.recall(store, key)` | `@noocodex/dagonizer/checkpoint` | Reads, parses, validates, wraps |
+| `Checkpoint.recall(store, key)` | `@studnicky/dagonizer/checkpoint` | Reads, parses, validates, wraps |
 
 ## The contract
 
 ```ts twoslash
-import type { CheckpointStore } from '@noocodex/dagonizer/contracts';
+import type { CheckpointStore } from '@studnicky/dagonizer/contracts';
 // ---cut---
 declare const store: CheckpointStore;
 await store.save('run-42', '{"cursor":null}');
@@ -84,7 +84,7 @@ Implement the three methods against the backend. A Postgres implementation using
 ```ts twoslash
 // pg is not a workspace dependency — declare a minimal surface for type checking.
 // Users: `npm install pg` before importing from 'pg'.
-import type { CheckpointStore } from '@noocodex/dagonizer/contracts';
+import type { CheckpointStore } from '@studnicky/dagonizer/contracts';
 interface Pool {
   query(text: string, values?: readonly unknown[]): Promise<{ rows: Array<Record<string, unknown>> }>;
   query<T>(text: string, values?: readonly unknown[]): Promise<{ rows: T[] }>;
@@ -129,8 +129,8 @@ The same three-method pattern applies for Redis (`GET`/`SET`/`DEL`), S3 (`GetObj
 `Checkpoint.capture` and `ckpt.restoreStores` both depend on the `Snapshottable` capability, not the full key-value `Store` surface. Any object that implements `snapshot(): Promise<StoreSnapshot>` and `restore(snapshot: StoreSnapshot): Promise<void>` participates in checkpointing. `Store extends Snapshottable`, so every store qualifies, but a non-KV backing (an RDF triple store, a vector index, an append-only log) can ride along in a checkpoint without implementing `get`/`set`/`has`/`delete`/`update`.
 
 ```ts twoslash
-import type { Snapshottable, StoreSnapshot } from '@noocodex/dagonizer/contracts';
-import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
+import type { Snapshottable, StoreSnapshot } from '@studnicky/dagonizer/contracts';
+import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
 
 class FactLog implements Snapshottable {
   #facts: string[] = [];

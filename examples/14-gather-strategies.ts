@@ -25,7 +25,7 @@
  * Run: npx tsx examples/14-gather-strategies.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import {
   GatherDemoState,
   TagNode,

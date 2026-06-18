@@ -1,8 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { Batch } from '@noocodex/dagonizer';
-import type { ChatResponse } from '@noocodex/dagonizer/adapter';
+import { Batch } from '@studnicky/dagonizer';
+import type { ChatResponse } from '@studnicky/dagonizer/adapter';
 
 import { DecisionNode } from '../src/index.js';
 

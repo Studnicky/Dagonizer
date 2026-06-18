@@ -1,20 +1,20 @@
-# @noocodex/dagonizer-adapter-mistral
+# @studnicky/dagonizer-adapter-mistral
 
 > **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
-Mistral REST adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Targets `mistral-small-latest` on Mistral's la Plateforme.
+Mistral REST adapter for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Targets `mistral-small-latest` on Mistral's la Plateforme.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-adapter-mistral
+npm install @studnicky/dagonizer @studnicky/dagonizer-adapter-mistral
 ```
 
 ## Usage
 
 ```ts
-import { MistralApiAdapter } from '@noocodex/dagonizer-adapter-mistral';
-import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
+import { MistralApiAdapter } from '@studnicky/dagonizer-adapter-mistral';
+import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 
 const llm = new MistralApiAdapter({ apiKey: process.env.MISTRAL_API_KEY! });
 

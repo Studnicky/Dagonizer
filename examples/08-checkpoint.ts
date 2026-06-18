@@ -25,7 +25,7 @@ import {
   Checkpoint,
   CheckpointRestoreAdapterFn,
   Dagonizer,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 import { CountingState, IncNode, dag } from './dags/08-checkpoint.js';
 
 // Step 1: partial run, abort after the first node completes

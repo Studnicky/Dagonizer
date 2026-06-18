@@ -34,9 +34,9 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import { GatherStrategyName } from '@noocodex/dagonizer/constants';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import { GatherStrategyName } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // Event log (shared between generator and worker, filled during execution)

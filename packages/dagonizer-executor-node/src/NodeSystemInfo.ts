@@ -13,9 +13,9 @@
 
 import os from 'node:os';
 
-import type { SystemInfoInterface } from '@noocodex/dagonizer/contracts';
-import { SystemInfo } from '@noocodex/dagonizer/entities';
-import type { RecommendedWorkerCountConfig } from '@noocodex/dagonizer/entities';
+import type { SystemInfoInterface } from '@studnicky/dagonizer/contracts';
+import { SystemInfo } from '@studnicky/dagonizer/entities';
+import type { RecommendedWorkerCountConfig } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // OsServices: injectable os probe surface

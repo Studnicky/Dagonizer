@@ -36,7 +36,7 @@ a custom node base, point it at the right parent:
 - a per-item base → `extends ScalarNode`;
 - a batch-native base → `extends MonadicNode`.
 
-`MonadicNode` is exported from the root (`@noocodex/dagonizer`) and `./core`; it is
+`MonadicNode` is exported from the root (`@studnicky/dagonizer`) and `./core`; it is
 also re-exported from `./patterns` for co-import with the pattern surface.
 
 ## Gather strategies → one fold

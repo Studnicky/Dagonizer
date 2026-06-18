@@ -17,8 +17,8 @@
  * Run: npx tsx examples/20-streaming.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
-import type { NodeResultInterface } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
+import type { NodeResultInterface } from '@studnicky/dagonizer';
 import { PipelineState, IngestNode, EnrichNode, PersistNode, dag } from './dags/20-streaming.js';
 
 // ---------------------------------------------------------------------------

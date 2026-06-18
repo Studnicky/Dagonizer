@@ -23,7 +23,7 @@
  * Run: npx tsx examples/04b-scatter-collect.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import { GenerateState, ProviderNode, SelectNode, dag } from './dags/04b-scatter-collect.js';
 
 // ---------------------------------------------------------------------------

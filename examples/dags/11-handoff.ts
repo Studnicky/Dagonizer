@@ -24,10 +24,10 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { DAGHandoff, JsonObject } from '@noocodex/dagonizer/entities';
-import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import type { DAGHandoff, JsonObject } from '@studnicky/dagonizer/entities';
+import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // Shared state: both DAGs operate on the same shape so the snapshot round-

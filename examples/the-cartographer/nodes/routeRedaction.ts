@@ -28,7 +28,7 @@ import { Consent } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region route-redaction-node
 export class RouteRedactionNode extends ScalarNode<CartographerState, 'needs-redaction' | 'skip-redaction', CartographerServices> {

@@ -31,18 +31,18 @@ import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import { listOllamaModels, pickOllamaChatModel } from './providers/index.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
 
-import { GeminiApiAdapter }   from '@noocodex/dagonizer-adapter-gemini-api';
-import { GeminiNanoAdapter }  from '@noocodex/dagonizer-adapter-gemini-nano';
-import { OllamaApiAdapter }   from '@noocodex/dagonizer-adapter-ollama';
-import { WebLlmAdapter }      from '@noocodex/dagonizer-adapter-web-llm';
-import type { WebLlmInitReport } from '@noocodex/dagonizer-adapter-web-llm';
+import { GeminiApiAdapter }   from '@studnicky/dagonizer-adapter-gemini-api';
+import { GeminiNanoAdapter }  from '@studnicky/dagonizer-adapter-gemini-nano';
+import { OllamaApiAdapter }   from '@studnicky/dagonizer-adapter-ollama';
+import { WebLlmAdapter }      from '@studnicky/dagonizer-adapter-web-llm';
+import type { WebLlmInitReport } from '@studnicky/dagonizer-adapter-web-llm';
 
-import { LlmAdapterCascade, LlmAdapterRegistry } from '@noocodex/dagonizer/adapter';
-import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
+import { LlmAdapterCascade, LlmAdapterRegistry } from '@studnicky/dagonizer/adapter';
+import type { AdapterCapabilities } from '@studnicky/dagonizer/adapter';
 
-import { GoogleBooksTool }       from '@noocodex/dagonizer-tool-googlebooks';
-import { OpenLibrarySearchTool, SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
-import { WikipediaSummaryTool }  from '@noocodex/dagonizer-tool-wikipedia';
+import { GoogleBooksTool }       from '@studnicky/dagonizer-tool-googlebooks';
+import { OpenLibrarySearchTool, SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
+import { WikipediaSummaryTool }  from '@studnicky/dagonizer-tool-wikipedia';
 
 // ── DOM ──────────────────────────────────────────────────────────────────
 const form    = document.getElementById('ask-form')      as HTMLFormElement;

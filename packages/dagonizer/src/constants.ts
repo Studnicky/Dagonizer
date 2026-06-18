@@ -1,11 +1,11 @@
 /**
- * `@noocodex/dagonizer/constants`: constant value+type pairs.
+ * `@studnicky/dagonizer/constants`: constant value+type pairs.
  *
  * Each named export is both a runtime value (a frozen lookup object) and a
  * `FromSchema`-derived type of the same name, alongside its source `*Schema`.
  * Consumers import the value for lookups and the type for narrowing:
  *
- *   import { NodeType } from '@noocodex/dagonizer/constants';
+ *   import { NodeType } from '@studnicky/dagonizer/constants';
  *   NodeType.SCATTER;            // value
  *   const t: NodeType = 'scatter'; // type
  */

@@ -31,8 +31,8 @@
  * the same query text so all scouts run.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';

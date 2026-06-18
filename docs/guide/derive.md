@@ -17,9 +17,9 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import { DAGDeriver } from '@studnicky/dagonizer/derive';
+import type { NodeInterface } from '@studnicky/dagonizer/contracts';
 
 class ValidateNode implements NodeInterface {
   readonly name = 'validate';
@@ -108,13 +108,13 @@ const deriveRegistry = new Map([['plugin:transform', childDAG]]);
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `DAGDeriver.derive(options)` | `@noocodex/dagonizer/derive` | Static factory: contracts + annotations → `DAG` |
-| `DAGDeriver.extractContracts(nodes)` | `@noocodex/dagonizer/derive` | Project `OperationContract[]` from a node registry |
-| `OperationContract` | `@noocodex/dagonizer/contracts` | `name`, `hardRequired`, `produces`, `outputs` |
-| `OperationContractFragment` | `@noocodex/dagonizer/contracts` | `hardRequired` + `produces` (the `NodeInterface.contract` field) |
-| `DAGDeriverAnnotations` | `@noocodex/dagonizer/derive` | `terminals`, `scatters`, `embeddedDAGs` |
-| `ContractRegistryValidator` | `@noocodex/dagonizer/derive` | Surfaces dangling reads (fatal) and dead writes (warning) |
-| `Chainable<A, B>` | `@noocodex/dagonizer` (also `/types`) | Compile-time pair check; `true` when `A.produces` covers `B.hardRequired` |
+| `DAGDeriver.derive(options)` | `@studnicky/dagonizer/derive` | Static factory: contracts + annotations → `DAG` |
+| `DAGDeriver.extractContracts(nodes)` | `@studnicky/dagonizer/derive` | Project `OperationContract[]` from a node registry |
+| `OperationContract` | `@studnicky/dagonizer/contracts` | `name`, `hardRequired`, `produces`, `outputs` |
+| `OperationContractFragment` | `@studnicky/dagonizer/contracts` | `hardRequired` + `produces` (the `NodeInterface.contract` field) |
+| `DAGDeriverAnnotations` | `@studnicky/dagonizer/derive` | `terminals`, `scatters`, `embeddedDAGs` |
+| `ContractRegistryValidator` | `@studnicky/dagonizer/derive` | Surfaces dangling reads (fatal) and dead writes (warning) |
+| `Chainable<A, B>` | `@studnicky/dagonizer` (also `/types`) | Compile-time pair check; `true` when `A.produces` covers `B.hardRequired` |
 
 `DAGDeriver` is the declarative authoring path for agentic flows where reaching the final state matters more than authoring the order: tool-driven agents, exploratory pipelines, workflows where the operation set changes per deployment. For deterministic ETL pipelines, use [DAGBuilder](./builder). See [Authoring DAGs](./authoring) for the decision matrix.
 

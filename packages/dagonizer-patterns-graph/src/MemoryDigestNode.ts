@@ -6,9 +6,9 @@
  * and `applyDigest` (write it back to state).
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { TripleStore } from '@noocodex/dagonizer/patterns';
+import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
+import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { TripleStore } from '@studnicky/dagonizer/patterns';
 
 import { GraphNode, type GraphServices } from './GraphNode.js';
 

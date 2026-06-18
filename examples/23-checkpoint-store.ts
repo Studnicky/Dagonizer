@@ -27,7 +27,7 @@ import {
   CheckpointRestoreAdapterFn,
   Dagonizer,
   MemoryCheckpointStore,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 import { PipelineState, dag, ExportNode, IngestNode, ProcessNode } from './dags/23-checkpoint-store.js';
 
 const CHECKPOINT_KEY = 'pipeline:run-001';

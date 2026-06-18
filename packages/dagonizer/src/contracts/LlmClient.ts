@@ -2,7 +2,7 @@
  * LlmClient: minimal chat contract every RAG-tier pattern needs.
  *
  * Any `LlmAdapter` satisfies this interface (the adapter contract
- * shipped at `@noocodex/dagonizer/adapter` is structurally a superset).
+ * shipped at `@studnicky/dagonizer/adapter` is structurally a superset).
  * Pattern bases accept the bag shape `{ llm: LlmClient }` so consumers
  * can pass either a raw adapter or a higher-level client wrapper.
  *

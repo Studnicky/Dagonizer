@@ -13,7 +13,7 @@ import type { CartographerServices } from '../CartographerServices.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region confirm-delivery-node
 export class ConfirmDeliveryNode extends ScalarNode<CartographerState, 'confirmed', CartographerServices> {

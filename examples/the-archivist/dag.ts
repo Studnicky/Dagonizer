@@ -113,8 +113,8 @@ import { classifyIntentSalvage, composeEmptyResponseSalvage, composeMemoryRespon
 import { declineOffTopic, respondToVisitor, composeEmptyResponse } from './nodes/respondToVisitor.ts';
 import { scoutDispatch } from './nodes/scouts.ts';
 
-import { DAGBuilder } from '@noocodex/dagonizer';
-import type { DispatcherBundle } from '@noocodex/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer';
+import type { DispatcherBundle } from '@studnicky/dagonizer';
 import type { ArchivistServices } from './services.ts';
 import type { ArchivistState } from './ArchivistState.ts';
 

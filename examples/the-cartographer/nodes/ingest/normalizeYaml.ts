@@ -14,7 +14,7 @@ import { FieldMappings } from '../../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region normalize-yaml-node
 export class NormalizeYamlNode extends ScalarNode<CartographerState, 'normalized', CartographerServices> {

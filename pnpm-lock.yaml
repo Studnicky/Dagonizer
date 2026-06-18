@@ -15,58 +15,58 @@ importers:
       '@changesets/cli':
         specifier: ^2.31.0
         version: 2.31.0(@types/node@25.9.1)
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:packages/dagonizer
-      '@noocodex/dagonizer-adapter-cerebras':
+      '@studnicky/dagonizer-adapter-cerebras':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-cerebras
-      '@noocodex/dagonizer-adapter-gemini-api':
+      '@studnicky/dagonizer-adapter-gemini-api':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-gemini-api
-      '@noocodex/dagonizer-adapter-gemini-nano':
+      '@studnicky/dagonizer-adapter-gemini-nano':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-gemini-nano
-      '@noocodex/dagonizer-adapter-groq':
+      '@studnicky/dagonizer-adapter-groq':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-groq
-      '@noocodex/dagonizer-adapter-mistral':
+      '@studnicky/dagonizer-adapter-mistral':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-mistral
-      '@noocodex/dagonizer-adapter-ollama':
+      '@studnicky/dagonizer-adapter-ollama':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-ollama
-      '@noocodex/dagonizer-adapter-openrouter':
+      '@studnicky/dagonizer-adapter-openrouter':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-openrouter
-      '@noocodex/dagonizer-adapter-web-llm':
+      '@studnicky/dagonizer-adapter-web-llm':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-web-llm
-      '@noocodex/dagonizer-book-entities':
+      '@studnicky/dagonizer-book-entities':
         specifier: workspace:^
         version: link:packages/dagonizer-book-entities
-      '@noocodex/dagonizer-executor-node':
+      '@studnicky/dagonizer-executor-node':
         specifier: workspace:^
         version: link:packages/dagonizer-executor-node
-      '@noocodex/dagonizer-executor-web':
+      '@studnicky/dagonizer-executor-web':
         specifier: workspace:^
         version: link:packages/dagonizer-executor-web
-      '@noocodex/dagonizer-patterns-flow':
+      '@studnicky/dagonizer-patterns-flow':
         specifier: workspace:^
         version: link:packages/dagonizer-patterns-flow
-      '@noocodex/dagonizer-patterns-graph':
+      '@studnicky/dagonizer-patterns-graph':
         specifier: workspace:^
         version: link:packages/dagonizer-patterns-graph
-      '@noocodex/dagonizer-patterns-rag':
+      '@studnicky/dagonizer-patterns-rag':
         specifier: workspace:^
         version: link:packages/dagonizer-patterns-rag
-      '@noocodex/dagonizer-tool-googlebooks':
+      '@studnicky/dagonizer-tool-googlebooks':
         specifier: workspace:^
         version: link:packages/dagonizer-tool-googlebooks
-      '@noocodex/dagonizer-tool-openlibrary':
+      '@studnicky/dagonizer-tool-openlibrary':
         specifier: workspace:^
         version: link:packages/dagonizer-tool-openlibrary
-      '@noocodex/dagonizer-tool-wikipedia':
+      '@studnicky/dagonizer-tool-wikipedia':
         specifier: workspace:^
         version: link:packages/dagonizer-tool-wikipedia
       '@shikijs/vitepress-twoslash':
@@ -84,16 +84,16 @@ importers:
 
   examples:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:../packages/dagonizer
-      '@noocodex/dagonizer-adapter-ollama':
+      '@studnicky/dagonizer-adapter-ollama':
         specifier: workspace:^
         version: link:../packages/dagonizer-adapter-ollama
-      '@noocodex/dagonizer-embedder-ollama':
+      '@studnicky/dagonizer-embedder-ollama':
         specifier: workspace:^
         version: link:../packages/dagonizer-embedder-ollama
-      '@noocodex/dagonizer-executor-node':
+      '@studnicky/dagonizer-executor-node':
         specifier: workspace:^
         version: link:../packages/dagonizer-executor-node
     devDependencies:
@@ -106,52 +106,52 @@ importers:
 
   examples/the-archivist:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:../../packages/dagonizer
-      '@noocodex/dagonizer-adapter-cerebras':
+      '@studnicky/dagonizer-adapter-cerebras':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-cerebras
-      '@noocodex/dagonizer-adapter-gemini-api':
+      '@studnicky/dagonizer-adapter-gemini-api':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-gemini-api
-      '@noocodex/dagonizer-adapter-gemini-nano':
+      '@studnicky/dagonizer-adapter-gemini-nano':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-gemini-nano
-      '@noocodex/dagonizer-adapter-groq':
+      '@studnicky/dagonizer-adapter-groq':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-groq
-      '@noocodex/dagonizer-adapter-mistral':
+      '@studnicky/dagonizer-adapter-mistral':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-mistral
-      '@noocodex/dagonizer-adapter-ollama':
+      '@studnicky/dagonizer-adapter-ollama':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-ollama
-      '@noocodex/dagonizer-adapter-openrouter':
+      '@studnicky/dagonizer-adapter-openrouter':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-openrouter
-      '@noocodex/dagonizer-adapter-web-llm':
+      '@studnicky/dagonizer-adapter-web-llm':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-web-llm
-      '@noocodex/dagonizer-book-entities':
+      '@studnicky/dagonizer-book-entities':
         specifier: workspace:^
         version: link:../../packages/dagonizer-book-entities
-      '@noocodex/dagonizer-embedder-gemini-api':
+      '@studnicky/dagonizer-embedder-gemini-api':
         specifier: workspace:^
         version: link:../../packages/dagonizer-embedder-gemini-api
-      '@noocodex/dagonizer-embedder-mistral':
+      '@studnicky/dagonizer-embedder-mistral':
         specifier: workspace:^
         version: link:../../packages/dagonizer-embedder-mistral
-      '@noocodex/dagonizer-embedder-ollama':
+      '@studnicky/dagonizer-embedder-ollama':
         specifier: workspace:^
         version: link:../../packages/dagonizer-embedder-ollama
-      '@noocodex/dagonizer-tool-googlebooks':
+      '@studnicky/dagonizer-tool-googlebooks':
         specifier: workspace:^
         version: link:../../packages/dagonizer-tool-googlebooks
-      '@noocodex/dagonizer-tool-openlibrary':
+      '@studnicky/dagonizer-tool-openlibrary':
         specifier: workspace:^
         version: link:../../packages/dagonizer-tool-openlibrary
-      '@noocodex/dagonizer-tool-wikipedia':
+      '@studnicky/dagonizer-tool-wikipedia':
         specifier: workspace:^
         version: link:../../packages/dagonizer-tool-wikipedia
     devDependencies:
@@ -164,7 +164,7 @@ importers:
 
   examples/the-cartographer:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:../../packages/dagonizer
       '@rapideditor/country-coder':
@@ -253,7 +253,7 @@ importers:
 
   packages/dagonizer-adapter-cerebras:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -263,7 +263,7 @@ importers:
 
   packages/dagonizer-adapter-gemini-api:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -273,7 +273,7 @@ importers:
 
   packages/dagonizer-adapter-gemini-nano:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -283,7 +283,7 @@ importers:
 
   packages/dagonizer-adapter-groq:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -293,7 +293,7 @@ importers:
 
   packages/dagonizer-adapter-mistral:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -303,7 +303,7 @@ importers:
 
   packages/dagonizer-adapter-ollama:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -313,7 +313,7 @@ importers:
 
   packages/dagonizer-adapter-openrouter:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -323,7 +323,7 @@ importers:
 
   packages/dagonizer-adapter-web-llm:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -339,7 +339,7 @@ importers:
 
   packages/dagonizer-embedder-gemini-api:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -349,7 +349,7 @@ importers:
 
   packages/dagonizer-embedder-mistral:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -359,7 +359,7 @@ importers:
 
   packages/dagonizer-embedder-ollama:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -369,7 +369,7 @@ importers:
 
   packages/dagonizer-executor-node:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.21.0
         version: link:../dagonizer
     devDependencies:
@@ -394,7 +394,7 @@ importers:
 
   packages/dagonizer-executor-web:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.21.0
         version: link:../dagonizer
     devDependencies:
@@ -419,7 +419,7 @@ importers:
 
   packages/dagonizer-patterns-flow:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -429,7 +429,7 @@ importers:
 
   packages/dagonizer-patterns-graph:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -439,7 +439,7 @@ importers:
 
   packages/dagonizer-patterns-rag:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -449,7 +449,7 @@ importers:
 
   packages/dagonizer-store-eventlog:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
     devDependencies:
@@ -459,7 +459,7 @@ importers:
 
   packages/dagonizer-store-sqlite:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.21.0
         version: link:../dagonizer
     devDependencies:
@@ -484,10 +484,10 @@ importers:
 
   packages/dagonizer-tool-googlebooks:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
-      '@noocodex/dagonizer-book-entities':
+      '@studnicky/dagonizer-book-entities':
         specifier: workspace:>=0.21.0
         version: link:../dagonizer-book-entities
     devDependencies:
@@ -497,10 +497,10 @@ importers:
 
   packages/dagonizer-tool-openlibrary:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
-      '@noocodex/dagonizer-book-entities':
+      '@studnicky/dagonizer-book-entities':
         specifier: workspace:>=0.21.0
         version: link:../dagonizer-book-entities
     devDependencies:
@@ -510,10 +510,10 @@ importers:
 
   packages/dagonizer-tool-wikipedia:
     dependencies:
-      '@noocodex/dagonizer':
+      '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
-      '@noocodex/dagonizer-book-entities':
+      '@studnicky/dagonizer-book-entities':
         specifier: workspace:>=0.21.0
         version: link:../dagonizer-book-entities
     devDependencies:

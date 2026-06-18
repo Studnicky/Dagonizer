@@ -10,7 +10,7 @@ seeAlso:
 
 # Testing
 
-`@noocodex/dagonizer/testing`
+`@studnicky/dagonizer/testing`
 
 The testing subpath exports two deterministic replacements for the real-time clock and scheduler. Install them before each test; reset them after.
 
@@ -21,14 +21,14 @@ The testing subpath exports two deterministic replacements for the real-time clo
 In-memory monotonic clock. Time advances only when you advance it.
 
 ```ts twoslash
-import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
-import { Clock } from '@noocodex/dagonizer/runtime';
+import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
+import { Clock } from '@studnicky/dagonizer/runtime';
 ```
 
 ### Constructor
 
 ```ts twoslash
-import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
+import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
 // ---cut---
 new VirtualClockProvider(0n);
 ```
@@ -38,7 +38,7 @@ new VirtualClockProvider(0n);
 ### `.tickMs(deltaMs)`
 
 ```ts twoslash
-import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
+import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
 const clock = new VirtualClockProvider(0n);
 // ---cut---
 clock.tickMs(100);
@@ -49,7 +49,7 @@ Advance the virtual clock by `deltaMs` milliseconds.
 ### `.tickNs(deltaNs)`
 
 ```ts twoslash
-import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
+import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
 const clock = new VirtualClockProvider(0n);
 // ---cut---
 clock.tickNs(100_000_000n);
@@ -60,7 +60,7 @@ Advance the virtual clock by `deltaNs` nanoseconds.
 ### `.setNs(ns)`
 
 ```ts twoslash
-import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
+import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
 const clock = new VirtualClockProvider(0n);
 // ---cut---
 clock.setNs(500_000_000n);
@@ -81,14 +81,14 @@ Set the virtual clock to an absolute nanosecond value.
 In-memory min-heap scheduler. No platform timers. Advance time via `advance(ms)`, `runUntil(atMs)`, or `runAll()`.
 
 ```ts twoslash
-import { VirtualScheduler } from '@noocodex/dagonizer/testing';
-import { Scheduler } from '@noocodex/dagonizer/runtime';
+import { VirtualScheduler } from '@studnicky/dagonizer/testing';
+import { Scheduler } from '@studnicky/dagonizer/runtime';
 ```
 
 ### Constructor
 
 ```ts twoslash
-import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 // ---cut---
 new VirtualScheduler(0);
 ```
@@ -98,7 +98,7 @@ new VirtualScheduler(0);
 ### `.advance(deltaMs)`
 
 ```ts twoslash
-import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 const scheduler = new VirtualScheduler(0);
 // ---cut---
 scheduler.advance(500);
@@ -109,7 +109,7 @@ Advance virtual time by `deltaMs`, firing all tasks scheduled in that window in 
 ### `.runUntil(atMs)`
 
 ```ts twoslash
-import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 const scheduler = new VirtualScheduler(0);
 // ---cut---
 scheduler.runUntil(1000);
@@ -120,7 +120,7 @@ Advance virtual time to `atMs`, firing tasks in order.
 ### `.runAll()`
 
 ```ts twoslash
-import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 const scheduler = new VirtualScheduler(0);
 // ---cut---
 scheduler.runAll();
@@ -131,7 +131,7 @@ Fire all pending one-shot tasks in monotonic order.
 ### `.virtualNow`
 
 ```ts twoslash
-import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 const scheduler = new VirtualScheduler(0);
 // ---cut---
 const now: number = scheduler.virtualNow;
@@ -142,7 +142,7 @@ Current virtual time in ms.
 ### `.pendingCount`
 
 ```ts twoslash
-import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 const scheduler = new VirtualScheduler(0);
 // ---cut---
 const count: number = scheduler.pendingCount;
@@ -161,9 +161,9 @@ Number of active (non-cancelled) pending tasks.
 Both `VirtualScheduler` and `RealTimeScheduler` implement `SchedulerProvider`:
 
 ```ts twoslash
-import type { SchedulerProvider } from '@noocodex/dagonizer/runtime';
+import type { SchedulerProvider } from '@studnicky/dagonizer/runtime';
 // ---cut---
-// SchedulerProvider (from @noocodex/dagonizer/runtime):
+// SchedulerProvider (from @studnicky/dagonizer/runtime):
 //   after(delayMs, options?: { signal? }): Promise<void>
 //   at(atMs, options?: { signal? }): Promise<void>
 //   every(intervalMs, options?: { signal? }): AsyncIterable<void>

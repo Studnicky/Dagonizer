@@ -19,7 +19,7 @@ seeAlso:
 
 # Core
 
-Pluggable execution primitives. Ship through `@noocodex/dagonizer/core`.
+Pluggable execution primitives. Ship through `@studnicky/dagonizer/core`.
 
 ```ts twoslash
 import {
@@ -27,8 +27,8 @@ import {
   GatherStrategies,
   OutcomeReducer,
   OutcomeReducers,
-} from '@noocodex/dagonizer/core';
-import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dagonizer/core';
+} from '@studnicky/dagonizer/core';
+import type { GatherExecution, GatherRecord, OutcomeRecord } from '@studnicky/dagonizer/core';
 ```
 
 ## GatherStrategy
@@ -36,11 +36,11 @@ import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dag
 Abstract class. Subclass and implement `reduce`; optionally override `initial` and `finalize`; register the instance with `GatherStrategies.register`.
 
 ```ts twoslash
-import { GatherStrategy, GatherStrategies, Batch } from '@noocodex/dagonizer/core';
-import type { GatherRecord } from '@noocodex/dagonizer/core';
-import type { GatherConfig } from '@noocodex/dagonizer/entities';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
+import { GatherStrategy, GatherStrategies, Batch } from '@studnicky/dagonizer/core';
+import type { GatherRecord } from '@studnicky/dagonizer/core';
+import type { GatherConfig } from '@studnicky/dagonizer/entities';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
+import type { StateAccessor } from '@studnicky/dagonizer/contracts';
 // ---cut---
 class MyGather extends GatherStrategy {
   readonly name = 'my-gather';
@@ -71,8 +71,8 @@ The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field)
 ### GatherRecord
 
 ```ts twoslash
-import type { GatherRecord } from '@noocodex/dagonizer/core';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type { GatherRecord } from '@studnicky/dagonizer/core';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 // GatherRecord carries per-clone results from the scatter loop.
 declare const record: GatherRecord<NodeStateInterface>;
@@ -91,8 +91,8 @@ Per-clone record produced by the scatter loop. Records are ordered by source ind
 ### GatherExecution
 
 ```ts twoslash
-import type { GatherExecution } from '@noocodex/dagonizer/core';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type { GatherExecution } from '@studnicky/dagonizer/core';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 // GatherExecution is the invocation context handed to GatherStrategy.finalize.
 declare const execution: GatherExecution<NodeStateInterface>;
@@ -121,7 +121,7 @@ declare const execution: GatherExecution<NodeStateInterface>;
 Static registry.
 
 ```ts twoslash
-import { GatherStrategies } from '@noocodex/dagonizer/core';
+import { GatherStrategies } from '@studnicky/dagonizer/core';
 // ---cut---
 const names: readonly string[] = GatherStrategies.list();
 ```
@@ -140,8 +140,8 @@ const names: readonly string[] = GatherStrategies.list();
 Abstract class. Subclass and implement `reduce`; register the instance with `OutcomeReducers.register`.
 
 ```ts twoslash
-import { OutcomeReducer, OutcomeReducers } from '@noocodex/dagonizer/core';
-import type { OutcomeRecord } from '@noocodex/dagonizer/core';
+import { OutcomeReducer, OutcomeReducers } from '@studnicky/dagonizer/core';
+import type { OutcomeRecord } from '@studnicky/dagonizer/core';
 // ---cut---
 class MyReducer extends OutcomeReducer {
   readonly name = 'my-reducer';
@@ -157,7 +157,7 @@ The dispatcher resolves a reducer by `name` (the `ScatterNode.reducer` field, de
 ### OutcomeRecord
 
 ```ts twoslash
-import type { OutcomeRecord } from '@noocodex/dagonizer/core';
+import type { OutcomeRecord } from '@studnicky/dagonizer/core';
 // ---cut---
 // OutcomeRecord carries per-clone summary for routing.
 declare const record: OutcomeRecord;
@@ -181,7 +181,7 @@ declare const record: OutcomeRecord;
 Static registry.
 
 ```ts twoslash
-import { OutcomeReducers } from '@noocodex/dagonizer/core';
+import { OutcomeReducers } from '@studnicky/dagonizer/core';
 // ---cut---
 const names: readonly string[] = OutcomeReducers.list();
 ```
@@ -196,4 +196,4 @@ const names: readonly string[] = OutcomeReducers.list();
 
 - [DAGBuilder](../guide/builder): placements that use `gather.strategy` and `reducer`
 - [State accessors](../guide/state-accessor): strategies receive the dispatcher's `accessor`
-- [Reference: Entities](./entities#constant-valuetype-pairs): `GatherStrategyName`, `ScatterOutput`, and `MetadataKey` are exported from `@noocodex/dagonizer/constants`
+- [Reference: Entities](./entities#constant-valuetype-pairs): `GatherStrategyName`, `ScatterOutput`, and `MetadataKey` are exported from `@studnicky/dagonizer/constants`

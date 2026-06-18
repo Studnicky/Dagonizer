@@ -7,11 +7,11 @@
  *
  * Note: `memory/MemoryStore.ts` in this directory is an N3-backed triple
  * store. This file imports the package's `MemoryStore` from
- * `@noocodex/dagonizer/store` — a separate, unrelated export.
+ * `@studnicky/dagonizer/store` — a separate, unrelated export.
  */
 
 // #region typed-store
-import { MemoryStore, TypedStore } from '@noocodex/dagonizer/store';
+import { MemoryStore, TypedStore } from '@studnicky/dagonizer/store';
 
 /** Known per-run keys with their value types. */
 interface RunSchema {

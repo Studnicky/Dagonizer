@@ -10,8 +10,8 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 // #endregion imports
 
 // #region state

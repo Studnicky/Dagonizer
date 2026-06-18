@@ -9,7 +9,7 @@
  */
 
 // #region well-formed-validate
-import { WellFormedValidator } from '@noocodex/dagonizer/validation';
+import { WellFormedValidator } from '@studnicky/dagonizer/validation';
 
 import { archivistDAG } from './dag.ts';
 import { BookSearchScatterDAG } from './embedded-dags/BookSearchScatterDAG.ts';

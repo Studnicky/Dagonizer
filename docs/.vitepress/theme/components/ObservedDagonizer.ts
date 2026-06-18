@@ -13,12 +13,12 @@
  * observers do the same.
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import type {
   DagonizerOptionsInterface,
   ExecutionResultInterface,
   NodeStateInterface,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 export interface DispatcherObserver<TState extends NodeStateInterface> {
   readonly onFlowStart?:  (dagName: string, state: TState) => void;

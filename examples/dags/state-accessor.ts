@@ -7,9 +7,9 @@
  * Imported by examples/state-accessor.ts (the executable entry point).
  */
 
-import { NodeStateBase } from '@noocodex/dagonizer';
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
-import { DottedPathAccessor } from '@noocodex/dagonizer/runtime';
+import { NodeStateBase } from '@studnicky/dagonizer';
+import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import { DottedPathAccessor } from '@studnicky/dagonizer/runtime';
 
 // ---------------------------------------------------------------------------
 // Shared state shape used by all snippets in the entry

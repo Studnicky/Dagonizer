@@ -18,7 +18,7 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region parse-yaml-node
 export class ParseYamlNode extends ScalarNode<CartographerState, 'normalized' | 'invalid', CartographerServices> {

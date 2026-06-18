@@ -34,8 +34,8 @@
  * output: 'recalled': always routes forward, even on empty recall.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
 
 import type { RecalledContext } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';

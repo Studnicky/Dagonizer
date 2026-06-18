@@ -1,17 +1,17 @@
-# @noocodex/dagonizer-embedder-ollama
+# @studnicky/dagonizer-embedder-ollama
 
 > **Beta:** not yet published to npm. Ships as part of the Dagonizer
 > plugin ecosystem (GitHub release only). Live-API smoke testing
 > against the provider has not been completed; wire-format
 > compatibility is verified via intercepted-fetch smoke tests.
 
-Local-first embedder for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer)
+Local-first embedder for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer)
 via Ollama's `/api/embeddings` endpoint.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-embedder-ollama
+npm install @studnicky/dagonizer @studnicky/dagonizer-embedder-ollama
 # host-side
 ollama pull nomic-embed-text
 ollama serve
@@ -20,7 +20,7 @@ ollama serve
 ## Usage
 
 ```ts
-import { OllamaEmbedder } from '@noocodex/dagonizer-embedder-ollama';
+import { OllamaEmbedder } from '@studnicky/dagonizer-embedder-ollama';
 
 const embedder = new OllamaEmbedder('nomic-embed-text');
 const vector = await embedder.embed('the cat sat on the mat');
@@ -50,7 +50,7 @@ For other models pass `dimensions` explicitly.
 ## Probe
 
 Hits `GET {baseUrl}/api/tags` with a 500 ms timeout. Symmetric with
-`@noocodex/dagonizer-adapter-ollama` so a single Ollama daemon being up
+`@studnicky/dagonizer-adapter-ollama` so a single Ollama daemon being up
 makes both surfaces available to the cascade.
 
 ## License

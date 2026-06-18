@@ -18,8 +18,8 @@
 
 import { computed, onMounted, ref, watch } from 'vue';
 
-import { Checkpoint, CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
-import type { ExecutionResultInterface } from '@noocodex/dagonizer';
+import { Checkpoint, CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
+import type { ExecutionResultInterface } from '@studnicky/dagonizer';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
 import { archivistBundle, archivistDAG } from '../../../../examples/the-archivist/dag.ts';
@@ -34,10 +34,10 @@ import { detectBackends, hasNoRunnableModel, instantiateProvider, loadApiKeys, l
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
-import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
-import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
-import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
-import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
+import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
+import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
+import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
+import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
 import { BookSearchScatterDAG, bookSearchScatterBundle } from '../../../../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts';
 import { ComposeRetryLoopDAG, composeRetryLoopBundle } from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 

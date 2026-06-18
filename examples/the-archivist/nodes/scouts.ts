@@ -47,16 +47,16 @@ import {
   NodeErrorBuilder,
   NodeOutputBuilder,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 import type {
   GatherConfig,
   GatherRecord,
   NodeContextInterface,
   NodeOutputInterface,
   NodeStateInterface,
-} from '@noocodex/dagonizer';
-import type { Batch } from '@noocodex/dagonizer';
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
+} from '@studnicky/dagonizer';
+import type { Batch } from '@studnicky/dagonizer';
+import type { StateAccessor } from '@studnicky/dagonizer/contracts';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';

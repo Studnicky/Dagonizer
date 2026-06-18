@@ -19,7 +19,7 @@ seeAlso:
 
 # Contracts
 
-Adapter contracts live at the root of `src/contracts/` and ship through `@noocodex/dagonizer/contracts`. Single source of truth: never re-exported from a sibling module.
+Adapter contracts live at the root of `src/contracts/` and ship through `@studnicky/dagonizer/contracts`. Single source of truth: never re-exported from a sibling module.
 
 ```ts twoslash
 import type {
@@ -55,13 +55,13 @@ import type {
   StoreSnapshotEntry,
   SystemInfoInterface,
   WarningEmitter,
-} from '@noocodex/dagonizer/contracts';
+} from '@studnicky/dagonizer/contracts';
 
 // DagOutcomeInterface and DagTaskInterface ship through the root barrel
 import type {
   DagOutcomeInterface,
   DagTaskInterface,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 ```
 
 `Chainable` is exported from the root barrel but is not part of `./contracts`. Source: `src/contracts/NodeInterface.ts`.
@@ -69,10 +69,10 @@ import type {
 ## NodeInterface
 
 ```ts twoslash
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
-import type { NodeStateInterface, ValidationResult, NodeContextInterface } from '@noocodex/dagonizer';
-import type { Batch, RoutedBatch } from '@noocodex/dagonizer';
-import { Timeout } from '@noocodex/dagonizer';
+import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
+import type { NodeStateInterface, ValidationResult, NodeContextInterface } from '@studnicky/dagonizer';
+import type { Batch, RoutedBatch } from '@studnicky/dagonizer';
+import { Timeout } from '@studnicky/dagonizer';
 // ---cut---
 interface NodeInterface<
   TState extends NodeStateInterface = NodeStateInterface,
@@ -116,7 +116,7 @@ interface ClockProvider {
 }
 ```
 
-Backend for the `Clock` singleton. Implement to swap time sources (typically in tests via `VirtualClockProvider` from `@noocodex/dagonizer/testing`).
+Backend for the `Clock` singleton. Implement to swap time sources (typically in tests via `VirtualClockProvider` from `@studnicky/dagonizer/testing`).
 
 ## SchedulerProvider
 
@@ -130,7 +130,7 @@ interface SchedulerProvider {
 }
 ```
 
-`SchedulerProvider` is the backend contract; implement it to swap in a custom scheduler. `Scheduler.current()` returns the active `SchedulerProvider`. Production uses `RealTimeScheduler`; tests install `VirtualScheduler` from `@noocodex/dagonizer/testing`.
+`SchedulerProvider` is the backend contract; implement it to swap in a custom scheduler. `Scheduler.current()` returns the active `SchedulerProvider`. Production uses `RealTimeScheduler`; tests install `VirtualScheduler` from `@studnicky/dagonizer/testing`.
 
 ## StateAccessor
 
@@ -147,7 +147,7 @@ Path resolver used for scatter source reads, state-mapping input copies, and gat
 ## Snapshottable
 
 ```ts twoslash
-import type { StoreSnapshot } from '@noocodex/dagonizer/contracts';
+import type { StoreSnapshot } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface Snapshottable {
   snapshot(): Promise<StoreSnapshot>;
@@ -186,7 +186,7 @@ interface Embedder {
 }
 ```
 
-Produces a fixed-dimensionality vector for a text input. Plugins implement this (typically by extending `BaseEmbedder` from `@noocodex/dagonizer/adapter`) to swap embedding backends. The adapter cascade pattern applies: register multiple `Embedder`s, probe at runtime, pick the first available.
+Produces a fixed-dimensionality vector for a text input. Plugins implement this (typically by extending `BaseEmbedder` from `@studnicky/dagonizer/adapter`) to swap embedding backends. The adapter cascade pattern applies: register multiple `Embedder`s, probe at runtime, pick the first available.
 
 | Member | Description |
 |---|---|
@@ -232,9 +232,9 @@ Per-operation contract consumed by `DAGDeriver.derive` to compute DAG topology a
 **Co-located pattern.** Declare the contract directly on the node so the node is the single source of truth. `DAGDeriver.derive({ nodes })` reads `node.contract` alongside `node.name` and `node.outputs`:
 
 ```ts twoslash
-import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 class FetchNode extends ScalarNode<NodeStateInterface, 'success' | 'cached' | 'error'> {
   readonly name = 'fetch';
@@ -254,7 +254,7 @@ See [co-located contracts](../guide/derive.md#co-located-contracts) and [Referen
 ## RetryPolicyOptionsInterface / ErrorConstructorType
 
 ```ts twoslash
-import { BackoffStrategy } from '@noocodex/dagonizer';
+import { BackoffStrategy } from '@studnicky/dagonizer';
 // ---cut---
 type ErrorConstructorType = new (...args: never[]) => Error;
 
@@ -274,13 +274,13 @@ Construction options for `RetryPolicy`. `retryOn` and `abortOn` are checked via 
 
 ## Store / StoreSnapshot / StoreSnapshotEntry
 
-The store contracts ship through `@noocodex/dagonizer/contracts` alongside the
+The store contracts ship through `@studnicky/dagonizer/contracts` alongside the
 other adapter interfaces. Full documentation (concurrency contract,
 `BaseStore` authoring guide, `StoreErrorClassification` taxonomy) lives in
 [Reference: Store](./store).
 
 ```ts twoslash
-import type { Store, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
+import type { Store, StoreSnapshot, StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
 ```
 
 See [Shared state](../guide/shared-state) for the decision matrix and usage patterns.
@@ -292,7 +292,7 @@ the same `Store` surface plus `endpoint`, `acquireLease`, `releaseLease`, and
 `health` for distributed coordination.
 
 ```ts twoslash
-import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
+import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@studnicky/dagonizer/contracts';
 ```
 
 See [Reference: Store](./store#interface-remotestore) for the full interface and
@@ -301,7 +301,7 @@ See [Reference: Store](./store#interface-remotestore) for the full interface and
 ## DagContainerInterface
 
 ```ts twoslash
-import type { NodeStateInterface, DagTaskInterface, DagOutcomeInterface } from '@noocodex/dagonizer';
+import type { NodeStateInterface, DagTaskInterface, DagOutcomeInterface } from '@studnicky/dagonizer';
 // ---cut---
 interface DagContainerInterface<TState extends NodeStateInterface = NodeStateInterface> {
   runDag(task: DagTaskInterface<TState, unknown>): Promise<DagOutcomeInterface>;
@@ -318,7 +318,7 @@ Adapter contract for running an embedded DAG in an isolate (worker thread, forke
 ## HandoffChannelInterface
 
 ```ts twoslash
-import type { DAGHandoff } from '@noocodex/dagonizer';
+import type { DAGHandoff } from '@studnicky/dagonizer';
 // ---cut---
 interface HandoffChannelInterface {
   publish(handoff: DAGHandoff): Promise<void>;
@@ -326,12 +326,12 @@ interface HandoffChannelInterface {
 }
 ```
 
-Adapter contract for publishing completed-DAG hand-off envelopes to a downstream transport (queue, message bus, or loopback store). Bound via `DagonizerOptionsInterface.channels` keyed by terminal placement name. Implementations must not throw out of the dispatcher; any internal transport error is the implementation's responsibility. `InMemoryChannel` in `@noocodex/dagonizer/channels` is the reference implementation.
+Adapter contract for publishing completed-DAG hand-off envelopes to a downstream transport (queue, message bus, or loopback store). Bound via `DagonizerOptionsInterface.channels` keyed by terminal placement name. Implementations must not throw out of the dispatcher; any internal transport error is the implementation's responsibility. `InMemoryChannel` in `@studnicky/dagonizer/channels` is the reference implementation.
 
 ## MessageChannelInterface
 
 ```ts twoslash
-import type { BridgeMessage } from '@noocodex/dagonizer';
+import type { BridgeMessage } from '@studnicky/dagonizer';
 // ---cut---
 interface MessageChannelInterface {
   send(message: BridgeMessage): void;
@@ -345,9 +345,9 @@ Duplex channel contract between a parent dispatcher and a `DagHost`. `send` is f
 ## RegistryModuleInterface / RegistryBundleInterface
 
 ```ts twoslash
-import type { CheckpointRestoreAdapter } from '@noocodex/dagonizer/contracts';
-import type { DispatcherBundle, NodeStateInterface } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import type { CheckpointRestoreAdapter } from '@studnicky/dagonizer/contracts';
+import type { DispatcherBundle, NodeStateInterface } from '@studnicky/dagonizer';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface RegistryBundleInterface {
   readonly bundle:          DispatcherBundle<NodeStateInterface, unknown>;
@@ -369,8 +369,8 @@ interface RegistryModuleInterface {
 ## DagOutcomeInterface
 
 ```ts twoslash
-import type { NodeError, ExecutorIntermediate } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import type { NodeError, ExecutorIntermediate } from '@studnicky/dagonizer';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface DagOutcomeInterface {
   readonly terminalOutput: string;
@@ -385,7 +385,7 @@ Result returned by `DagContainerInterface.runDag()` after an embedded DAG comple
 ## DagTaskInterface
 
 ```ts twoslash
-import type { NodeStateInterface, NodeContextInterface, ExecutionRequest } from '@noocodex/dagonizer';
+import type { NodeStateInterface, NodeContextInterface, ExecutionRequest } from '@studnicky/dagonizer';
 // ---cut---
 interface DagTaskInterface<TState extends NodeStateInterface = NodeStateInterface, TServices = undefined> {
   readonly dagName:        string;
@@ -403,7 +403,7 @@ Engine-side descriptor of a contained DAG execution. Carries a live seeded child
 ## SystemInfoInterface
 
 ```ts twoslash
-import type { RecommendedWorkerCountConfig } from '@noocodex/dagonizer';
+import type { RecommendedWorkerCountConfig } from '@studnicky/dagonizer';
 // ---cut---
 interface SystemInfoInterface {
   recommendedWorkerCount(config: RecommendedWorkerCountConfig): number;
@@ -414,10 +414,10 @@ Host-environment probe for pool sizing recommendations. Implementations are envi
 
 ## GatherExecution / GatherRecord / OutcomeRecord
 
-These contracts ship through `@noocodex/dagonizer/contracts` for use by custom gather strategy and outcome reducer implementations. See [Reference: Core](./core) for the full authoring guide.
+These contracts ship through `@studnicky/dagonizer/contracts` for use by custom gather strategy and outcome reducer implementations. See [Reference: Core](./core) for the full authoring guide.
 
 ```ts twoslash
-import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dagonizer/contracts';
+import type { GatherExecution, GatherRecord, OutcomeRecord } from '@studnicky/dagonizer/contracts';
 ```
 
 `GatherRecord<TState>` carries per-clone results from the scatter loop: `index`, `item`, `output`, `terminalOutcome`, and `cloneState`. `GatherExecution<TState>` is the invocation context handed to `GatherStrategy.apply`: it provides `records`, the live parent `state`, the `accessor`, and `invoker` (a `NodeInvoker`; used by the `custom` strategy via `invoker.invokeNode(name)`). `OutcomeRecord` is the per-clone summary handed to `OutcomeReducer.reduce`: `index`, `output`, and `terminalOutcome`.
@@ -425,7 +425,7 @@ import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dag
 ## LlmAdapter / LlmClient
 
 ```ts twoslash
-import type { AdapterCapabilities, ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
+import type { AdapterCapabilities, ChatRequest, ChatResponse } from '@studnicky/dagonizer/adapter';
 // ---cut---
 interface LlmAdapter {
   readonly id:           string;
@@ -442,7 +442,7 @@ interface LlmClient {
 }
 ```
 
-`LlmAdapter` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@noocodex/dagonizer/adapter` to inherit retry and error classification. `LlmClient` is the minimal chat surface pattern bases accept — any `LlmAdapter` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapter` directly.
+`LlmAdapter` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `LlmClient` is the minimal chat surface pattern bases accept — any `LlmAdapter` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapter` directly.
 
 ## WarningEmitter
 
@@ -453,11 +453,11 @@ interface WarningEmitter {
 }
 ```
 
-Typed contract for emitting diagnostic warnings without introducing a callback seam. Accepted by `DAGBuilder.build({ warningEmitter })` to surface dead-write warnings detected during contract validation at build time. The `NoopWarningEmitter` from `@noocodex/dagonizer/runtime` is the default when no emitter is passed.
+Typed contract for emitting diagnostic warnings without introducing a callback seam. Accepted by `DAGBuilder.build({ warningEmitter })` to surface dead-write warnings detected during contract validation at build time. The `NoopWarningEmitter` from `@studnicky/dagonizer/runtime` is the default when no emitter is passed.
 
 ```ts twoslash
-import type { WarningEmitter } from '@noocodex/dagonizer/contracts';
-import { DAGBuilder } from '@noocodex/dagonizer';
+import type { WarningEmitter } from '@studnicky/dagonizer/contracts';
+import { DAGBuilder } from '@studnicky/dagonizer';
 declare const builder: DAGBuilder;
 // ---cut---
 const emitter: WarningEmitter = {

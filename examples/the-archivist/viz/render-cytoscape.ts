@@ -14,7 +14,7 @@
  */
 
 // #region cytoscape-render
-import { CytoscapeRenderer }   from '@noocodex/dagonizer/viz';
+import { CytoscapeRenderer }   from '@studnicky/dagonizer/viz';
 import { archivistDAG }        from '../dag.ts';
 import { BookSearchScatterDAG } from '../embedded-dags/BookSearchScatterDAG.ts';
 import { ComposeRetryLoopDAG }  from '../embedded-dags/ComposeRetryLoopDAG.ts';

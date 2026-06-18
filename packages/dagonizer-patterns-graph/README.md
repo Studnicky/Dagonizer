@@ -1,11 +1,11 @@
-# @noocodex/dagonizer-patterns-graph
+# @studnicky/dagonizer-patterns-graph
 
-Triple-store-driven node pattern bases for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Patterns that read from and write to an RDF quad store via SPARQL-shaped basic graph patterns.
+Triple-store-driven node pattern bases for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Patterns that read from and write to an RDF quad store via SPARQL-shaped basic graph patterns.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-patterns-graph
+npm install @studnicky/dagonizer @studnicky/dagonizer-patterns-graph
 ```
 
 ## Taxonomy
@@ -20,7 +20,7 @@ MonadicNode (root)
 
 ## Services contract
 
-Every pattern expects `services.memory: TripleStore` (the canonical interface lives at `@noocodex/dagonizer/patterns`). Any n3-backed quad store satisfies it.
+Every pattern expects `services.memory: TripleStore` (the canonical interface lives at `@studnicky/dagonizer/patterns`). Any n3-backed quad store satisfies it.
 
 ## Pattern reference
 
@@ -71,10 +71,10 @@ class RecallActivity extends MemoryDigestNode<MyState, MyDigest> {
 
 ## RdfStore
 
-`RdfStore` is an in-process quad store that implements **both** the `Store` contract (key-value via RDF reification) and the `TripleStore` contract (native quad operations). It ships in this package so plugin authors that already depend on `@noocodex/dagonizer-patterns-graph` for the graph node patterns get a concrete, zero-dependency store to back those patterns.
+`RdfStore` is an in-process quad store that implements **both** the `Store` contract (key-value via RDF reification) and the `TripleStore` contract (native quad operations). It ships in this package so plugin authors that already depend on `@studnicky/dagonizer-patterns-graph` for the graph node patterns get a concrete, zero-dependency store to back those patterns.
 
 ```ts
-import { RdfStore } from '@noocodex/dagonizer-patterns-graph';
+import { RdfStore } from '@studnicky/dagonizer-patterns-graph';
 
 const store = new RdfStore();
 

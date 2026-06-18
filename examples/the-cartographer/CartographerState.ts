@@ -55,8 +55,8 @@ import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
 import type { EventTypeConfig } from './services.ts';
 
-import { NodeStateBase } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/types';
+import { NodeStateBase } from '@studnicky/dagonizer';
+import type { JsonObject } from '@studnicky/dagonizer/types';
 
 /** Per-region aggregated insights (fixed-size accumulator). */
 export interface RegionInsights {

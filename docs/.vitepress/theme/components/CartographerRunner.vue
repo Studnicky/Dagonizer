@@ -34,8 +34,8 @@ import type { CanonicalEventVariant } from '../../../../examples/the-cartographe
 import type { FormatMix } from '../../../../examples/the-cartographer/services.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
-import { WebWorkerContainer } from '@noocodex/dagonizer-executor-web';
-import type { WebWorkerLikeInterface } from '@noocodex/dagonizer-executor-web';
+import { WebWorkerContainer } from '@studnicky/dagonizer-executor-web';
+import type { WebWorkerLikeInterface } from '@studnicky/dagonizer-executor-web';
 import DagGraph from './DagGraph.vue';
 import PanesTabs from './PanesTabs.vue';
 import AboxAccordion from './AboxAccordion.vue';

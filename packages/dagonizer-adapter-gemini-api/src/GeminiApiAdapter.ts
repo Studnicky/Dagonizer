@@ -27,8 +27,8 @@ import type {
   ToolCall,
   ToolChoice,
   ToolDefinition,
-} from '@noocodex/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
+} from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const DEFAULT_MODEL = 'gemini-2.0-flash';

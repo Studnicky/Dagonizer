@@ -21,8 +21,8 @@
  * adapter plugins (`'mistral'`, `'groq'`, `'cerebras'`).
  */
 
-import { Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
-import type { ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
+import { Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
+import type { ChatRequest, ChatResponse } from '@studnicky/dagonizer/adapter';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
 // No portable default model: Ollama models are pulled per-host.

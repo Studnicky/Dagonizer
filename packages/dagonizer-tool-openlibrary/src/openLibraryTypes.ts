@@ -3,9 +3,9 @@
  * OpenLibrarySearchTool and SubjectSearchTool.
  */
 
-import { ToolError } from '@noocodex/dagonizer/tool';
-import type { Candidate } from '@noocodex/dagonizer-book-entities';
-import { BookBuilder, CanonicalId } from '@noocodex/dagonizer-book-entities';
+import { ToolError } from '@studnicky/dagonizer/tool';
+import type { Candidate } from '@studnicky/dagonizer-book-entities';
+import { BookBuilder, CanonicalId } from '@studnicky/dagonizer-book-entities';
 
 export const OPENLIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
 

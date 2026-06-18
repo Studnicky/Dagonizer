@@ -8,14 +8,14 @@
  */
 
 // #region remote-store
-import { BaseStore } from '@noocodex/dagonizer/store';
-import type { StoreSnapshotEntry } from '@noocodex/dagonizer/store';
+import { BaseStore } from '@studnicky/dagonizer/store';
+import type { StoreSnapshotEntry } from '@studnicky/dagonizer/store';
 import type {
   RemoteStore,
   RemoteStoreEndpoint,
   RemoteStoreLease,
-} from '@noocodex/dagonizer';
-import type { JsonValue } from '@noocodex/dagonizer/entities';
+} from '@studnicky/dagonizer';
+import type { JsonValue } from '@studnicky/dagonizer/entities';
 
 /**
  * GrpcStore: stub RemoteStore backed by an in-memory map.

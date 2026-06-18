@@ -29,9 +29,9 @@
  */
 
 // #region cytoscape-graph-subclass
-import { CytoscapeGraph }  from '@noocodex/dagonizer/viz';
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { CytoscapeElement, CytoscapeGraphOptions } from '@noocodex/dagonizer/viz';
+import { CytoscapeGraph }  from '@studnicky/dagonizer/viz';
+import { CytoscapeRenderer } from '@studnicky/dagonizer/viz';
+import type { CytoscapeElement, CytoscapeGraphOptions } from '@studnicky/dagonizer/viz';
 import { NODE_KINDS } from '../nodes/ArchivistNode.ts';
 
 /**
