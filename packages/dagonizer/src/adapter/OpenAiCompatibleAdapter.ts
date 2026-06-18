@@ -39,7 +39,6 @@ import type {
   ToolDefinition,
 } from './LlmAdapter.js';
 import { Classifications, LlmError } from './LlmError.js';
-import type { ErrorClassification } from './LlmError.js';
 
 /** Provider-specific configuration the subclass passes in. */
 export interface OpenAiCompatibleConfig {
@@ -143,12 +142,6 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
    */
   override async probe(): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
-  }
-
-  protected override classify(error: unknown): ErrorClassification {
-    if (error instanceof LlmError) return error.classification;
-    if (error instanceof Error && /aborted|timeout/iu.test(error.message)) return Classifications['TIMEOUT'];
-    return Classifications['UNKNOWN'];
   }
 
   async #doRequest(request: ChatRequest): Promise<ChatResponse> {

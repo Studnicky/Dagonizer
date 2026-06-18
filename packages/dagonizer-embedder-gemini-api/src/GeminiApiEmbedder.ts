@@ -19,7 +19,7 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
-import type { BaseAdapterCoreOptions } from '@studnicky/dagonizer/adapter';
+import type { BaseEmbedderOptions } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
 
 import { GeminiApiEmbedResponseValidator } from './GeminiApiEmbedResponse.js';
@@ -32,12 +32,12 @@ const GEMINI_API_EMBEDDER_DEFAULTS = {
   'dimensions': 768,
 } as const;
 
-export interface GeminiApiEmbedderOptions extends BaseAdapterCoreOptions {
-  /** Override the embedding model. Defaults to `text-embedding-004`. */
-  readonly model?: string;
-  /** Override dimensions when targeting a non-`text-embedding-004` model. */
-  readonly dimensions?: number;
-}
+/**
+ * Constructor options for `GeminiApiEmbedder`. Inherits `model?`/`dimensions?`
+ * from `BaseEmbedderOptions`; the provider default (`text-embedding-004`,
+ * 768-dim) is supplied by `GEMINI_API_EMBEDDER_DEFAULTS`.
+ */
+export type GeminiApiEmbedderOptions = BaseEmbedderOptions;
 
 export class GeminiApiEmbedder extends BaseEmbedder {
   readonly #apiKey: string;

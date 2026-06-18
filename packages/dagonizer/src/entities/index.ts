@@ -76,10 +76,10 @@ export type { Node } from './node/Node.js';
 export { NodeContextSchema } from './node/NodeContext.js';
 export type { NodeContext, NodeContextInterface } from './node/NodeContext.js';
 
-export { NodeErrorBuilder, NodeErrorSchema } from './node/NodeError.js';
+export { NodeErrorBuilder, NodeErrorProperties, NodeErrorSchema } from './node/NodeError.js';
 export type { NodeError, NodeErrorInterface } from './node/NodeError.js';
 
-export { NodeWarningSchema } from './node/NodeWarning.js';
+export { NodeWarningProperties, NodeWarningSchema } from './node/NodeWarning.js';
 export type { NodeWarning } from './node/NodeWarning.js';
 
 export { NodeOutputSchema, NodeOutputBuilder } from './node/NodeOutput.js';

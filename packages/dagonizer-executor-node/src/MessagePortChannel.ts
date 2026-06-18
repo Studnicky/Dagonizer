@@ -12,7 +12,7 @@
  * All properties initialised in constructor for V8 hidden-class stability.
  */
 
-import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
+import { BaseMessageChannel } from '@studnicky/dagonizer/container';
 import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
 import type { BridgeMessage } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
@@ -31,29 +31,24 @@ export interface MessagePortLike {
 // MessagePortChannel
 // ---------------------------------------------------------------------------
 
-export class MessagePortChannel implements MessageChannelInterface {
+export class MessagePortChannel extends BaseMessageChannel {
   readonly #port: MessagePortLike;
-  #handler: ((message: BridgeMessage) => void) | null;
-  #closed: boolean;
 
   constructor(port: MessagePortLike) {
+    super();
     this.#port = port;
-    this.#handler = null;
-    this.#closed = false;
 
     // Install exactly one underlying transport listener for the channel's
-    // lifetime. Inbound messages are delegated to this.#handler when set.
-    // onMessage() replaces this.#handler — it never re-subscribes to the port.
+    // lifetime. Inbound messages route through the base's guarded dispatch.
+    // onMessage() replaces the base handler — it never re-subscribes to the port.
     this.#port.on('message', (value) => {
-      if (this.#closed) return;
-      const handler = this.#handler;
-      if (handler === null) return;
+      if (this.closed) return;
       // Validate-and-narrow at the ingest boundary: the type predicate narrows
       // with zero casts; malformed payloads surface as an error BridgeMessage.
       if (Validator.bridgeMessage.is(value)) {
-        handler(value);
+        this.dispatch(value);
       } else {
-        handler(BridgeMessageBuilder.invalid(
+        this.dispatch(BridgeMessageBuilder.invalid(
           'INVALID_MESSAGE',
           'Received a message that does not conform to BridgeMessage schema',
         ));
@@ -61,19 +56,13 @@ export class MessagePortChannel implements MessageChannelInterface {
     });
   }
 
-  send(message: BridgeMessage): void {
-    if (this.#closed) return;
+  override send(message: BridgeMessage): void {
+    if (this.closed) return;
     this.#port.postMessage(message);
   }
 
-  /** Replace the inbound message handler. Single-handler replace semantics. */
-  onMessage(handler: (message: BridgeMessage) => void): void {
-    this.#handler = handler;
-  }
-
-  close(): void {
-    this.#closed = true;
-    this.#handler = null;
+  override close(): void {
+    super.close();
     this.#port.close();
   }
 }

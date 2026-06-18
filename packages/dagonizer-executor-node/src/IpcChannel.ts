@@ -14,7 +14,7 @@
  * All properties initialised in constructor for V8 hidden-class stability.
  */
 
-import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
+import { BaseMessageChannel } from '@studnicky/dagonizer/container';
 import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
 import type { BridgeMessage } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
@@ -42,10 +42,8 @@ export interface IpcProcessLike {
 // IpcChannel
 // ---------------------------------------------------------------------------
 
-export class IpcChannel implements MessageChannelInterface {
+export class IpcChannel extends BaseMessageChannel {
   readonly #endpoint: IpcEndpoint;
-  #handler: ((message: BridgeMessage) => void) | null;
-  #closed: boolean;
 
   /**
    * Construct an IpcChannel from any IpcProcessLike (ChildProcess or
@@ -63,23 +61,20 @@ export class IpcChannel implements MessageChannelInterface {
   }
 
   constructor(endpoint: IpcEndpoint) {
+    super();
     this.#endpoint = endpoint;
-    this.#handler = null;
-    this.#closed = false;
 
     // Install exactly one underlying IPC listener for the channel's lifetime.
-    // Inbound messages are delegated to this.#handler when set.
-    // onMessage() replaces this.#handler — it never re-subscribes to the endpoint.
+    // Inbound messages route through the base's guarded dispatch.
+    // onMessage() replaces the base handler — it never re-subscribes to the endpoint.
     this.#endpoint.on('message', (value) => {
-      if (this.#closed) return;
-      const handler = this.#handler;
-      if (handler === null) return;
+      if (this.closed) return;
       // Validate-and-narrow at the IPC ingest boundary: the type predicate
       // narrows with zero casts; malformed payloads surface as an error message.
       if (Validator.bridgeMessage.is(value)) {
-        handler(value);
+        this.dispatch(value);
       } else {
-        handler(BridgeMessageBuilder.invalid(
+        this.dispatch(BridgeMessageBuilder.invalid(
           'INVALID_MESSAGE',
           'Received a message that does not conform to BridgeMessage schema',
         ));
@@ -87,19 +82,11 @@ export class IpcChannel implements MessageChannelInterface {
     });
   }
 
-  send(message: BridgeMessage): void {
-    if (this.#closed) return;
+  override send(message: BridgeMessage): void {
+    if (this.closed) return;
     this.#endpoint.send(message);
   }
 
-  /** Replace the inbound message handler. Single-handler replace semantics. */
-  onMessage(handler: (message: BridgeMessage) => void): void {
-    this.#handler = handler;
-  }
-
-  close(): void {
-    this.#closed = true;
-    this.#handler = null;
-    // IPC channel lifecycle belongs to the process; we only stop delivering.
-  }
+  // IPC channel lifecycle belongs to the process; the base `close()` flips the
+  // latch and releases the handler, which is the full teardown here.
 }

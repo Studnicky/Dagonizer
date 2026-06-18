@@ -233,27 +233,20 @@ export abstract class DagContainerBase<
 
   async runDag(task: DagTaskInterface<TState, unknown>, options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
     const relay: ObserverRelay | null = options?.relay ?? null;
-    let acquiredChannel: MessageChannelInterface | null = null;
 
-    try {
-      acquiredChannel = await this.acquireChannel(task.context.signal);
-      const channel = acquiredChannel;
-      const dispatch = this.#dispatchFor(channel);
-      const request = task.toRequest();
-
-      const outcome = await dispatch.request(request, task.context.signal, relay);
-
-      return outcome;
-    } catch (err) {
-      // R6: forward the real error message so callers see the root cause rather
-      // than the generic transport-failure message.
-      const message = err instanceof Error ? err.message : String(err);
-      return DagOutcome.transportError(task.correlationId, { message });
-    } finally {
-      if (acquiredChannel !== null) {
-        this.releaseChannel(acquiredChannel);
-      }
-    }
+    return this.#withChannel(
+      task.context.signal,
+      async (_channel, dispatch) => {
+        const request = task.toRequest();
+        return dispatch.request(request, task.context.signal, relay);
+      },
+      (err) => {
+        // R6: forward the real error message so callers see the root cause
+        // rather than the generic transport-failure message.
+        const message = err instanceof Error ? err.message : String(err);
+        return DagOutcome.transportError(task.correlationId, { message });
+      },
+    );
   }
 
   /**
@@ -273,35 +266,56 @@ export abstract class DagContainerBase<
     options?: { readonly relay?: ObserverRelay },
   ): Promise<BatchRunResult[]> {
     const relay: ObserverRelay | null = options?.relay ?? null;
-    let acquiredChannel: MessageChannelInterface | null = null;
     const correlationId = task.correlationId;
 
+    return this.#withChannel(
+      task.context.signal,
+      async (_channel, dispatch) => {
+        const baseRequest = task.toRequest();
+        const batchItems = batch.items().map((item: Item<TState>) => ({
+          'id': item.id,
+          'snapshot': item.state.snapshot() as { [key: string]: unknown },
+        }));
+
+        const batchRequest = {
+          'dagName':       baseRequest.dagName,
+          'placementPath': baseRequest.placementPath,
+          'items':         batchItems,
+          'timeoutMs':     baseRequest.timeoutMs,
+          'correlationId': correlationId,
+        };
+
+        return dispatch.requestBatch(batchRequest, task.context.signal, relay);
+      },
+      (err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        // Return one transport-error result per item.
+        return batch.items().map((item: Item<TState>) =>
+          DagOutcome.batchItemTransportError(item.id, correlationId, { message }),
+        );
+      },
+    );
+  }
+
+  /**
+   * Acquire a channel, run `fn` against it and its dispatch, and always release
+   * the channel — even when `fn` throws. On error, `onError` produces the
+   * fallback value so callers never see the lease throw. This is the single
+   * acquire/try/catch/finally lease block shared by `runDag` and `runDagBatch`.
+   */
+  async #withChannel<T>(
+    signal: AbortSignal,
+    fn: (channel: MessageChannelInterface, dispatch: ChannelDispatch) => Promise<T>,
+    onError: (err: unknown) => T,
+  ): Promise<T> {
+    let acquiredChannel: MessageChannelInterface | null = null;
     try {
-      acquiredChannel = await this.acquireChannel(task.context.signal);
+      acquiredChannel = await this.acquireChannel(signal);
       const channel = acquiredChannel;
       const dispatch = this.#dispatchFor(channel);
-
-      const baseRequest = task.toRequest();
-      const batchItems = batch.items().map((item: Item<TState>) => ({
-        'id': item.id,
-        'snapshot': item.state.snapshot() as { [key: string]: unknown },
-      }));
-
-      const batchRequest = {
-        'dagName':       baseRequest.dagName,
-        'placementPath': baseRequest.placementPath,
-        'items':         batchItems,
-        'timeoutMs':     baseRequest.timeoutMs,
-        'correlationId': correlationId,
-      };
-
-      return await dispatch.requestBatch(batchRequest, task.context.signal, relay);
+      return await fn(channel, dispatch);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // Return one transport-error result per item.
-      return batch.items().map((item: Item<TState>) =>
-        DagOutcome.batchItemTransportError(item.id, correlationId, { message }),
-      );
+      return onError(err);
     } finally {
       if (acquiredChannel !== null) {
         this.releaseChannel(acquiredChannel);

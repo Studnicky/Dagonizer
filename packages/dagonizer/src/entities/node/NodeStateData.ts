@@ -9,11 +9,17 @@
  * `NodeStateInterface` is documented to reference this shape as the persistence
  * form returned by `NodeStateBase.snapshot()`.
  *
- * The NodeError and NodeWarning shapes are inlined here to avoid $ref
- * resolution complexity (same pattern as DAGSchema inlining GatherConfig).
+ * The NodeError and NodeWarning item shapes reference the single-source
+ * `NodeErrorProperties`/`NodeWarningProperties` consts and their schemas'
+ * `required` arrays structurally; `json-schema-to-ts` reads the literal at
+ * compile time, so the derived types are identical to inline copies while
+ * field changes propagate from one place.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
+
+import { NodeErrorProperties, NodeErrorSchema } from './NodeError.js';
+import { NodeWarningProperties, NodeWarningSchema } from './NodeWarning.js';
 
 export const NodeStateDataSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/NodeStateData',
@@ -25,15 +31,8 @@ export const NodeStateDataSchema = {
       'type': 'array',
       'items': {
         'type': 'object',
-        'required': ['code', 'context', 'message', 'operation', 'recoverable', 'timestamp'],
-        'properties': {
-          'code': { 'type': 'string' },
-          'context': { 'type': 'object' },
-          'message': { 'type': 'string' },
-          'operation': { 'type': 'string' },
-          'recoverable': { 'type': 'boolean' },
-          'timestamp': { 'type': 'string' },
-        },
+        'required': NodeErrorSchema.required,
+        'properties': NodeErrorProperties,
         'additionalProperties': false,
       },
     },
@@ -41,13 +40,8 @@ export const NodeStateDataSchema = {
       'type': 'array',
       'items': {
         'type': 'object',
-        'required': ['code', 'message', 'operation', 'timestamp'],
-        'properties': {
-          'code': { 'type': 'string' },
-          'message': { 'type': 'string' },
-          'operation': { 'type': 'string' },
-          'timestamp': { 'type': 'string' },
-        },
+        'required': NodeWarningSchema.required,
+        'properties': NodeWarningProperties,
         'additionalProperties': false,
       },
     },

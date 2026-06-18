@@ -35,7 +35,7 @@ export abstract class DecisionNode<
     context: NodeContextInterface<RagServices>,
   ): Promise<NodeOutputInterface<TOutput>> {
     const response = await this.dispatch(state, context);
-    const content = response.message.kind === 'tools' ? '' : response.message.content;
+    const content = this.extractContent(response);
     const choice = this.parseChoice(content);
     this.applyChoice(state, choice);
     return NodeOutputBuilder.of(this.routeFor(choice));

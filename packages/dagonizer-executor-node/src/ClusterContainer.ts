@@ -22,50 +22,29 @@
 import cluster from 'node:cluster';
 import type { Worker } from 'node:cluster';
 
-import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
+import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
 import type { PoolEntry } from '@studnicky/dagonizer/container';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
-import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { IpcChannel } from './IpcChannel.js';
-import { NodeSystemInfo } from './NodeSystemInfo.js';
+import { NodeContainerBase } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptions } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
 // ClusterContainerOptions
 // ---------------------------------------------------------------------------
 
-export interface ClusterContainerOptions {
-  readonly registryModule: string;
-  readonly registryVersion: string;
-  readonly servicesConfig?: JsonObject;
-  readonly poolSize?: number;
-  readonly entryUrl?: URL;
-}
+export type ClusterContainerOptions = NodeContainerBaseOptions;
 
 // ---------------------------------------------------------------------------
 // ClusterContainer
 // ---------------------------------------------------------------------------
 
-export class ClusterContainer extends DagContainerBase<NodeStateInterface, Worker> {
+export class ClusterContainer extends NodeContainerBase<Worker> {
   readonly #entryUrl: URL;
   #setupDone: boolean;
 
   constructor(options: ClusterContainerOptions) {
-    const sysInfo = new NodeSystemInfo();
-    const defaultPoolSize = sysInfo.recommendedWorkerCount({
-      ...RecommendedWorkerCountConfigDefault,
-      'maximumWorkers': 8,
-    });
-    super({
-      ...DagContainerBase.defaultOptions,
-      'poolSize': options.poolSize ?? defaultPoolSize,
-      'init': {
-        'registryModule': options.registryModule,
-        'registryVersion': options.registryVersion,
-        'servicesConfig': options.servicesConfig ?? {},
-      },
-    });
+    super(NodeContainerBase.resolveOptions(options));
     this.#entryUrl = options.entryUrl ?? new URL('./forkEntry.js', import.meta.url);
     this.#setupDone = false;
   }

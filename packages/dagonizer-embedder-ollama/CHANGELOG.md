@@ -7,6 +7,7 @@
 - The embed response wire shape is schema-backed. `OllamaEmbedResponseSchema` (JSON Schema 2020-12) and its `FromSchema`-derived `OllamaEmbedResponse` type live in `OllamaEmbedResponse.ts`, with an `OllamaEmbedResponseValidator` compiled once at module load through the framework's shared Ajv via `Validator.compile`. The schema, type, and validator are exported from the package root.
 - `performEmbed` routes its HTTP call through the inherited `BaseEmbedder.fetchJson`, narrows the returned body via `OllamaEmbedResponseValidator.is`, and throws an `LlmError` on a missing or empty `embedding`. The hand-written `OllamaEmbedResponse` interface, the `isOllamaEmbedResponse` predicate, and the local `fetch`/network-catch/`!res.ok` scaffold are removed.
 - Model, base-URL, and API-key defaults resolve through a module-level `OLLAMA_EMBEDDER_DEFAULTS` const spread over the options bag. The private `#apiKey` field is a required `string` (empty-string default) instead of `string | undefined`, keeping the instance shape stable; the Authorization header is gated on a non-empty key.
+- `OllamaEmbedderOptions` extends the shared `BaseEmbedderOptions` (re-exported from `@studnicky/dagonizer/adapter`), inheriting `model?`/`dimensions?` and adding only its own `baseUrl?`/`apiKey?` extras instead of re-declaring `model?`/`dimensions?` against `BaseAdapterCoreOptions`. The provider default (`nomic-embed-text`, 768-dim) still resolves through `OLLAMA_EMBEDDER_DEFAULTS` and the `KNOWN_DIMENSIONS` table. Behaviour is unchanged.
 
 ## 0.21.0
 

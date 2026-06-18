@@ -19,15 +19,13 @@
 
 import { Worker } from 'node:worker_threads';
 
-import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
+import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
 import type { PoolEntry } from '@studnicky/dagonizer/container';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
-import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { MessagePortChannel } from './MessagePortChannel.js';
 import type { MessagePortLike } from './MessagePortChannel.js';
-import { NodeSystemInfo } from './NodeSystemInfo.js';
+import { NodeContainerBase } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptions } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
 // WorkerThreadResourceLimits
@@ -41,38 +39,20 @@ export interface WorkerThreadResourceLimits {
 // WorkerThreadContainerOptions
 // ---------------------------------------------------------------------------
 
-export interface WorkerThreadContainerOptions {
-  readonly registryModule: string;
-  readonly registryVersion: string;
-  readonly servicesConfig?: JsonObject;
-  readonly poolSize?: number;
+export interface WorkerThreadContainerOptions extends NodeContainerBaseOptions {
   readonly resourceLimits?: WorkerThreadResourceLimits;
-  readonly entryUrl?: URL;
 }
 
 // ---------------------------------------------------------------------------
 // WorkerThreadContainer
 // ---------------------------------------------------------------------------
 
-export class WorkerThreadContainer extends DagContainerBase<NodeStateInterface, Worker> {
+export class WorkerThreadContainer extends NodeContainerBase<Worker> {
   readonly #resourceLimits: WorkerThreadResourceLimits;
   readonly #entryUrl: URL;
 
   constructor(options: WorkerThreadContainerOptions) {
-    const sysInfo = new NodeSystemInfo();
-    const defaultPoolSize = sysInfo.recommendedWorkerCount({
-      ...RecommendedWorkerCountConfigDefault,
-      'maximumWorkers': 8,
-    });
-    super({
-      ...DagContainerBase.defaultOptions,
-      'poolSize': options.poolSize ?? defaultPoolSize,
-      'init': {
-        'registryModule': options.registryModule,
-        'registryVersion': options.registryVersion,
-        'servicesConfig': options.servicesConfig ?? {},
-      },
-    });
+    super(NodeContainerBase.resolveOptions(options));
     this.#resourceLimits = options.resourceLimits ?? {};
     this.#entryUrl = options.entryUrl ?? new URL('./workerEntry.js', import.meta.url);
   }

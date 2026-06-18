@@ -5,6 +5,7 @@
 ### Changed
 
 - The Gemini `generateContent` response body is now schema-backed. `GeminiResponseBodySchema` (JSON Schema 2020-12) is the source of truth and `GeminiResponseBodyType` derives from it via `FromSchema`. The `geminiResponseBodyValidator`, compiled once at module load through the engine's shared `Validator.compile` (`@studnicky/dagonizer/validation`), narrows the `unknown` HTTP body at the network boundary. The hand-written `GeminiResponseBody`/`GeminiPart` interfaces and the `isGeminiResponseBody` predicate are removed.
+- The `classify` override is removed. The `LlmError` passthrough and the `aborted|timeout` → `TIMEOUT` mapping live in `BaseAdapterCore.classify`; gemini-api carries no provider-specific branch, so it inherits the base classifier directly.
 
 ### Added
 

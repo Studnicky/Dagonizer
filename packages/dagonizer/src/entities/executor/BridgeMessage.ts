@@ -20,21 +20,16 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import { NodeErrorProperties, NodeErrorSchema } from '../node/NodeError.js';
+
 // ---------------------------------------------------------------------------
 // Inline shape copies
 // ---------------------------------------------------------------------------
 
 const InlineNodeErrorShape = {
   'type': 'object',
-  'required': ['code', 'context', 'message', 'operation', 'recoverable', 'timestamp'],
-  'properties': {
-    'code':        { 'type': 'string' },
-    'context':     { 'type': 'object' },
-    'message':     { 'type': 'string' },
-    'operation':   { 'type': 'string' },
-    'recoverable': { 'type': 'boolean' },
-    'timestamp':   { 'type': 'string' },
-  },
+  'required': NodeErrorSchema.required,
+  'properties': NodeErrorProperties,
   'additionalProperties': false,
 } as const;
 

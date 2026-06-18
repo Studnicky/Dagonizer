@@ -143,31 +143,11 @@ export class ChannelDispatch {
 
       this.#pending.set(correlationId, entry);
 
-      // Forward abort signal to the host. R2: derive kind from signal.reason —
-      // a TimeoutError on the reason means the run-level deadline expired, so
-      // send 'timeout'; everything else is a caller-initiated cancel ('abort').
-      const onAbort = (): void => {
-        try {
-          const abortReason: 'abort' | 'timeout' =
-            signal.reason instanceof Error && signal.reason.name === 'TimeoutError'
-              ? 'timeout'
-              : 'abort';
-          this.#channel.send({
-            'kind': 'abort',
-            'correlationId': correlationId,
-            'reason': abortReason,
-          });
-        } catch { /* fire-and-forget */ }
-      };
-      signal.addEventListener('abort', onAbort);
+      const onAbort = this.#withAbortHandler(signal, correlationId);
 
       // Settle helper: settles once, removes abort listener, deletes pending entry.
       const settleOnce = (outcome: DagOutcomeInterface): void => {
-        if (entry.settled) return;
-        entry.settled = true;
-        signal.removeEventListener('abort', onAbort);
-        this.#pending.delete(correlationId);
-        resolve(outcome);
+        this.#settle(entry, signal, onAbort, resolve, outcome);
       };
 
       // Replace settle so #route can call it directly.
@@ -209,27 +189,10 @@ export class ChannelDispatch {
 
       this.#pending.set(correlationId, entry);
 
-      const onAbort = (): void => {
-        try {
-          const abortReason: 'abort' | 'timeout' =
-            signal.reason instanceof Error && signal.reason.name === 'TimeoutError'
-              ? 'timeout'
-              : 'abort';
-          this.#channel.send({
-            'kind': 'abort',
-            'correlationId': correlationId,
-            'reason': abortReason,
-          });
-        } catch { /* fire-and-forget */ }
-      };
-      signal.addEventListener('abort', onAbort);
+      const onAbort = this.#withAbortHandler(signal, correlationId);
 
       const settleOnce = (results: BatchRunResult[]): void => {
-        if (entry.settled) return;
-        entry.settled = true;
-        signal.removeEventListener('abort', onAbort);
-        this.#pending.delete(correlationId);
-        resolve(results);
+        this.#settle(entry, signal, onAbort, resolve, results);
       };
 
       entry.settle = settleOnce;
@@ -243,6 +206,57 @@ export class ChannelDispatch {
         ));
       }
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Register an abort listener that forwards the cancellation to the host and
+   * return the handler reference so the caller can deregister it on settle.
+   *
+   * Derives the abort kind from `signal.reason`: a `TimeoutError` on the reason
+   * means the run-level deadline expired, so it sends `'timeout'`; everything
+   * else is a caller-initiated cancel (`'abort'`). The send is fire-and-forget.
+   */
+  #withAbortHandler(signal: AbortSignal, correlationId: string): () => void {
+    const onAbort = (): void => {
+      try {
+        const abortReason: 'abort' | 'timeout' =
+          signal.reason instanceof Error && signal.reason.name === 'TimeoutError'
+            ? 'timeout'
+            : 'abort';
+        this.#channel.send({
+          'kind': 'abort',
+          'correlationId': correlationId,
+          'reason': abortReason,
+        });
+      } catch { /* fire-and-forget */ }
+    };
+    signal.addEventListener('abort', onAbort);
+    return onAbort;
+  }
+
+  /**
+   * Settle a pending entry exactly once: flip the `settled` latch, remove the
+   * abort listener, drop the correlation entry, then resolve the request's
+   * promise with `value`. Generic over the resolved type so both the
+   * single-item (`DagOutcomeInterface`) and batch (`BatchRunResult[]`) paths
+   * share one implementation.
+   */
+  #settle<T>(
+    entry: PendingEntry | BatchPendingEntry,
+    signal: AbortSignal,
+    onAbort: () => void,
+    resolve: (value: T) => void,
+    value: T,
+  ): void {
+    if (entry.settled) return;
+    entry.settled = true;
+    signal.removeEventListener('abort', onAbort);
+    this.#pending.delete(entry.correlationId);
+    resolve(value);
   }
 
   /**

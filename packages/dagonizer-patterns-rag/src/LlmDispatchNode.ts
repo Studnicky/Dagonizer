@@ -56,6 +56,15 @@ export abstract class LlmDispatchNode<
     return context.services.llm.chat(request);
   }
 
+  /**
+   * Extract prose from a chat response. The response message is a
+   * discriminated union: a `tools`-only message carries no prose, so it
+   * yields the empty string; `text` and `mixed` messages carry `content`.
+   */
+  protected extractContent(response: ChatResponse): string {
+    return response.message.kind === 'tools' ? '' : response.message.content;
+  }
+
   /** Leaves provide their own executeOne(); the dispatch loop is shared. */
   protected abstract override executeOne(
     state: TState,
