@@ -14,11 +14,11 @@ import { strict as assert } from 'node:assert';
 
 import { CandidateScorer } from '../../nodes/rankCandidates.ts';
 import { BookBuilder } from '../../entities/Book.ts';
-import type { Candidate } from '../../entities/Book.ts';
+import type { CandidateType } from '../../entities/Book.ts';
 
 /** Candidate factory for hybrid-rank unit tests. */
 class HybridRankFixture {
-  static candidate(over: Partial<Candidate>): Candidate {
+  static candidate(over: Partial<CandidateType>): CandidateType {
     return {
       book: BookBuilder.from({
         isbn: '0',

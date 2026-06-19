@@ -1,7 +1,7 @@
 /**
  * store-remote: exercises the GrpcStore stub from dags/store-remote.ts.
  *
- * GrpcStore extends BaseStore and implements RemoteStore. Its network methods
+ * GrpcStore extends BaseStore and implements RemoteStoreInterface. Its network methods
  * (connect, disconnect, health, acquireLease, releaseLease) print to stdout
  * instead of making real gRPC calls — this is a stub standing in for a real
  * gRPC backend. The in-memory data map is identical in behaviour to a real
@@ -19,7 +19,7 @@
 
 import { GrpcStore } from './dags/store-remote.js';
 
-process.stdout.write('\n=== RemoteStore stub (GrpcStore) round-trip ===\n\n');
+process.stdout.write('\n=== RemoteStoreInterface stub (GrpcStore) round-trip ===\n\n');
 
 const store = new GrpcStore('grpc://archivist.internal:50051', 'eu-west-1');
 

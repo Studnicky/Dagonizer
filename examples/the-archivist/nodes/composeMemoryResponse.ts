@@ -13,7 +13,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -26,7 +26,7 @@ export class ComposeMemoryResponseNode extends ScalarNode<ArchivistState, 'draft
   readonly name = 'compose-memory-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const recalledSummary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;
@@ -44,18 +44,13 @@ export class ComposeMemoryResponseNode extends ScalarNode<ArchivistState, 'draft
         signal,
       );
       state.clearAttempts(context.nodeName);
-      context.services.logger.info(
-        `compose-memory-response: draft length=${String(state.draft.length)}`,
-      );
       return NodeOutputBuilder.of('drafted');
     } catch (err) {
       if (context.signal.aborted) throw err;
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`compose-memory-response: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`compose-memory-response: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);

@@ -79,8 +79,10 @@ function check(name: string, fn: () => void): void {
 
 /** Call global.gc() when --expose-gc is active; no-op otherwise. */
 function tryGC(): void {
-  // `gc` is declared as `NodeJS.GCFunction | undefined` in @types/node globals.
-  gc?.();
+  // Reach `gc` through `globalThis` so it is a safe property access (undefined
+  // when --expose-gc is absent) rather than a bare reference that throws a
+  // ReferenceError on the missing global.
+  (globalThis as { gc?: () => void }).gc?.();
 }
 
 /** Build a dispatcher with the three required bundles. */

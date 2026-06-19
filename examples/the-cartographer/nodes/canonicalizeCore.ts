@@ -26,7 +26,7 @@ import {
   TimeZoneResolver,
 } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -35,7 +35,7 @@ export class CanonicalizeCoreNode extends ScalarNode<CartographerState, 'normali
   readonly 'name' = 'canonicalize-core';
   readonly 'outputs' = ['normalized', 'rejected'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'rejected'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized' | 'rejected'>> {
     const raw = state.raw;
 
     const epochMs = TimeNormalizer.toEpochMs(raw.rawTimestamp);

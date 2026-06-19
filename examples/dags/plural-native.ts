@@ -6,15 +6,15 @@
 
 // #region execute-contract
 import { MonadicNode, RoutedBatchBuilder, Batch } from '@studnicky/dagonizer';
-import type { NodeContextInterface, NodeStateInterface, RoutedBatch } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeStateInterface, RoutedBatchType } from '@studnicky/dagonizer';
 
-// The execute signature: consume Batch<TState>, return RoutedBatch<TOutput, TState>.
+// The execute signature: consume Batch<TState>, return RoutedBatchType<TOutput, TState>.
 // Items are partitioned across output ports — routing IS partitioning.
 export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
   readonly name    = 'echo';
   readonly outputs = ['out'] as const;
 
-  async execute(batch: Batch<NodeStateInterface>, _ctx: NodeContextInterface): Promise<RoutedBatch<'out', NodeStateInterface>> {
+  async execute(batch: Batch<NodeStateInterface>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', NodeStateInterface>> {
     return RoutedBatchBuilder.of('out', batch);
   }
 }
@@ -55,7 +55,7 @@ export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
   readonly name    = 'enrich';
   readonly outputs = ['enriched'] as const;
 
-  async execute(batch: Batch<EventState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'enriched', EventState>> {
+  async execute(batch: Batch<EventState>, _ctx: NodeContextType): Promise<RoutedBatchType<'enriched', EventState>> {
     for (const item of batch) {
       const state = item.state;
       if (state.coords !== null) {
@@ -69,7 +69,7 @@ export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
 
 // #region reservoir-scatter
 import { DAG_CONTEXT } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 
 // ScoreState holds the items array fed to the scatter and the collected results.
 export class ScoreState extends NodeStateBase {
@@ -89,7 +89,7 @@ export class ScoreNode extends ScalarNode<ScoreState, 'scored'> {
 // DAG with a reservoir-configured scatter: items accumulate per `route` key
 // before ScoreNode runs. Up to 10 items per key; partial batches flush after
 // 500 ms of idle time.
-export const reservoirDag: DAG = {
+export const reservoirDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:plural-native-demo',
   '@type':     'DAG',

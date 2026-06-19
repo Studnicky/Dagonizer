@@ -15,24 +15,24 @@ The lifecycle module exports the discriminated union type, the event union type,
 
 ---
 
-## Type: `DAGLifecycleState`
+## Type: `DAGLifecycleStateType`
 
 ```ts twoslash
-import type { DAGLifecycleState } from '@studnicky/dagonizer/lifecycle';
+import type { DAGLifecycleStateType } from '@studnicky/dagonizer/lifecycle';
 ```
 
 Discriminated union of the six states a DAG lifecycle can occupy:
 
 ```ts twoslash
-import type { DAGLifecycleState } from '@studnicky/dagonizer/lifecycle';
-// DAGLifecycleState is:
+import type { DAGLifecycleStateType } from '@studnicky/dagonizer/lifecycle';
+// DAGLifecycleStateType is:
 //   | { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
 //   | { kind: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
 //   | { kind: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
 //   | { kind: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
 //   | { kind: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
 //   | { kind: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null }
-const _check: DAGLifecycleState = {} as DAGLifecycleState;
+const _check: DAGLifecycleStateType = {} as DAGLifecycleStateType;
 ```
 
 All timestamps are monotonic milliseconds from `Clock.monotonicMs()`. They are relative-time values suitable for duration math, not wall-clock display.
@@ -43,19 +43,19 @@ Inspect via `state.lifecycle.kind`. Narrow to a terminal variant to access its p
 
 ---
 
-## Type: `DAGLifecycleEvent`
+## Type: `DAGLifecycleEventType`
 
 Events consumed by `DAGLifecycleMachine.transition()`.
 
 ```ts twoslash
-import type { DAGLifecycleEvent } from '@studnicky/dagonizer/lifecycle';
-// DAGLifecycleEvent is:
+import type { DAGLifecycleEventType } from '@studnicky/dagonizer/lifecycle';
+// DAGLifecycleEventType is:
 //   | { type: 'start';   at: number }
 //   | { type: 'succeed'; at: number }
 //   | { type: 'fail';    error: Error; at: number }
 //   | { type: 'cancel';  reason: string; at: number }
 //   | { type: 'timeout'; at: number }
-const _check: DAGLifecycleEvent = {} as DAGLifecycleEvent;
+const _check: DAGLifecycleEventType = {} as DAGLifecycleEventType;
 ```
 
 The `at` field carries the monotonic clock value for the transition. Supply `Clock.monotonicMs()` in production; supply a pinned value in tests for determinism.
@@ -85,11 +85,11 @@ Seed value for a new state object.
 
 ```ts twoslash
 import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
-import type { DAGLifecycleState, DAGLifecycleEvent } from '@studnicky/dagonizer/lifecycle';
+import type { DAGLifecycleStateType, DAGLifecycleEventType } from '@studnicky/dagonizer/lifecycle';
 // ---cut---
-declare const state: DAGLifecycleState;
-declare const event: DAGLifecycleEvent;
-const next: DAGLifecycleState = DAGLifecycleMachine.transition(state, event);
+declare const state: DAGLifecycleStateType;
+declare const event: DAGLifecycleEventType;
+const next: DAGLifecycleStateType = DAGLifecycleMachine.transition(state, event);
 ```
 
 Pure reducer. Returns a new state for legal transitions, returns the input state **by reference** for illegal transitions (which `NodeStateBase.dispatch` detects and converts to `DAGError`).
@@ -114,9 +114,9 @@ All other transitions return the input unchanged (illegal, detected by `NodeStat
 
 ```ts twoslash
 import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
-import type { DAGLifecycleState } from '@studnicky/dagonizer/lifecycle';
+import type { DAGLifecycleStateType } from '@studnicky/dagonizer/lifecycle';
 // ---cut---
-declare const lifecycle: DAGLifecycleState;
+declare const lifecycle: DAGLifecycleStateType;
 if (DAGLifecycleMachine.isTerminal(lifecycle)) {
   // flow has ended
 }
@@ -130,10 +130,10 @@ Callers implementing `NodeStateInterface` without extending `NodeStateBase` use 
 
 ```ts twoslash
 import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
-import type { DAGLifecycleState } from '@studnicky/dagonizer/lifecycle';
+import type { DAGLifecycleStateType } from '@studnicky/dagonizer/lifecycle';
 import { Clock } from '@studnicky/dagonizer/runtime';
 // ---cut---
-let lifecycle: DAGLifecycleState = DAGLifecycleMachine.initial();
+let lifecycle: DAGLifecycleStateType = DAGLifecycleMachine.initial();
 
 function markRunning(): void {
   const next = DAGLifecycleMachine.transition(lifecycle, { type: 'start', at: Clock.monotonicMs() });

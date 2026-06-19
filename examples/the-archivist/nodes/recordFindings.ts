@@ -24,7 +24,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
 import { PROV, ProvIris } from '../provenance/PROV.ts';
@@ -53,7 +53,7 @@ export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded', A
   readonly name = 'record-findings';
   readonly outputs = ['recorded'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory = context.services.memory;
     const embedder = context.services.embedder;
     const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.identity.isbn));
@@ -132,15 +132,10 @@ export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded', A
           const run = MemoryStore.runIri(state.runId);
           memory.assert(run, dagQueryEmbedding, MemoryStore.lit.str(JSON.stringify([...queryVec])), GRAPH_MEMORY);
         }
-        context.services.logger.info(
-          `record-findings: wrote ${String(state.shortlist.length)} book embeddings + run query embedding (dim=${String(embedder.dimensions)})`,
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        context.services.logger.warn(`record-findings: embedder unreachable, skipping embedding writes (fallback to Jaccard recall): ${message}`);
+      } catch {
+        // Embedder unreachable: skip embedding writes. Recall falls back to
+        // Jaccard similarity, so the per-run findings are still recorded.
       }
-    } else {
-      context.services.logger.info('record-findings: embedder unreachable, skipping embedding writes (fallback to Jaccard recall)');
     }
 
     return NodeOutputBuilder.of('recorded');

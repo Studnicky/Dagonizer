@@ -5,7 +5,7 @@ seeAlso:
     description: '`GatherStrategy`, `OutcomeReducer` extension classes'
   - text: 'Reference: Derive'
     link: './derive'
-    description: 'uses `OperationContract`'
+    description: 'uses `OperationContractType`'
   - text: 'Reference: Runtime'
     link: './runtime'
     description: 'default implementations of the runtime contracts'
@@ -25,53 +25,52 @@ Adapter contracts live at the root of `src/contracts/` and ship through `@studni
 import type {
   // Core dispatcher contracts
   HandoffChannelInterface,
-  CheckpointStore,
-  ClockProvider,
+  CheckpointStoreInterface,
+  ClockProviderInterface,
   DagContainerInterface,
-  Embedder,
+  EmbedderInterface,
   ErrorConstructorType,
-  ExecuteOptionsInterface,
-  GatherExecution,
-  GatherRecord,
-  LlmAdapter,
-  LlmClient,
+  ExecuteOptionsType,
+  GatherExecutionType,
+  GatherRecordType,
+  LlmAdapterInterface,
+  LlmClientInterface,
   MessageChannelInterface,
   NodeInterface,
-  NodeInvoker,
-  OperationContract,
-  OperationContractFragment,
-  OutcomeRecord,
+  NodeInvokerInterface,
+  OperationContractType,
+  OperationContractFragmentType,
+  OutcomeRecordType,
   RegistryBundleInterface,
   RegistryModuleInterface,
-  RemoteStore,
-  RemoteStoreEndpoint,
-  RemoteStoreLease,
-  RetryPolicyOptionsInterface,
-  SchedulerProvider,
-  Snapshottable,
-  StateAccessor,
-  Store,
-  StoreSnapshot,
-  StoreSnapshotEntry,
+  RemoteStoreInterface,
+  RemoteStoreEndpointType,
+  RemoteStoreLeaseType,
+  RetryPolicyOptionsType,
+  SchedulerProviderInterface,
+  SnapshottableInterface,
+  StateAccessorInterface,
+  StoreInterface,
+  StoreSnapshotType,
+  StoreSnapshotEntryType,
   SystemInfoInterface,
-  WarningEmitter,
 } from '@studnicky/dagonizer/contracts';
 
-// DagOutcomeInterface and DagTaskInterface ship through the root barrel
+// DagOutcomeType and DagTaskInterface ship through the root barrel
 import type {
-  DagOutcomeInterface,
+  DagOutcomeType,
   DagTaskInterface,
 } from '@studnicky/dagonizer';
 ```
 
-`Chainable` is exported from the root barrel but is not part of `./contracts`. Source: `src/contracts/NodeInterface.ts`.
+`ChainableType` is exported from the root barrel but is not part of `./contracts`. Source: `src/contracts/NodeInterface.ts`.
 
 ## NodeInterface
 
 ```ts twoslash
-import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
-import type { NodeStateInterface, ValidationResult, NodeContextInterface } from '@studnicky/dagonizer';
-import type { Batch, RoutedBatch } from '@studnicky/dagonizer';
+import type { OperationContractFragmentType } from '@studnicky/dagonizer/contracts';
+import type { NodeStateInterface, ValidationResultType, NodeContextType } from '@studnicky/dagonizer';
+import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 import { Timeout } from '@studnicky/dagonizer';
 // ---cut---
 interface NodeInterface<
@@ -82,10 +81,10 @@ interface NodeInterface<
   readonly name: string;
   readonly outputs: readonly TOutput[];
   readonly timeout: Timeout;
-  readonly contract: OperationContractFragment;
-  execute(batch: Batch<TState>, context: NodeContextInterface<TServices>): Promise<RoutedBatch<TOutput, TState>>;
+  readonly contract: OperationContractFragmentType;
+  execute(batch: Batch<TState>, context: NodeContextType<TServices>): Promise<RoutedBatchType<TOutput, TState>>;
   destroy?(): Promise<void>;
-  validate?(): ValidationResult;
+  validate?(): ValidationResultType;
 }
 ```
 
@@ -93,13 +92,13 @@ The contract every consumer node implements. Nodes are stateless; they mutate st
 
 `timeout` is an optional per-node wall-clock budget expressed as a `Timeout` value (`Timeout.ofMs(n)` or `Timeout.none()`). When set to a non-none value, the engine derives a child `AbortController` from the run's signal and schedules an abort after the budget. On expiry, `NodeTimeoutError` is thrown and the run is marked failed. The `MonadicNode` base class defaults to `Timeout.none()`; nodes that do not extend it should omit the field (treated as `Timeout.none()` by the engine).
 
-`contract` is a required `OperationContractFragment`. Nodes that do not participate in derivation set it to the `EMPTY_CONTRACT_FRAGMENT` constant (both arrays empty). `DAGDeriver.derive({ nodes })` projects the fragment plus the node's `name` and `outputs` into a full `OperationContract`. `Dagonizer.registerDAG` runs `ContractRegistryValidator` against all contract-bearing nodes in the DAG.
+`contract` is a required `OperationContractFragmentType`. Nodes that do not participate in derivation set it to the `EMPTY_CONTRACT_FRAGMENT` constant (both arrays empty). `DAGDeriver.derive({ nodes })` projects the fragment plus the node's `name` and `outputs` into a full `OperationContractType`. `Dagonizer.registerDAG` runs `ContractRegistryValidator` against all contract-bearing nodes in the DAG.
 
-## ExecuteOptionsInterface
+## ExecuteOptionsType
 
 ```ts twoslash
 // ---cut---
-interface ExecuteOptionsInterface {
+interface ExecuteOptionsType {
   readonly signal?: AbortSignal;
   readonly deadlineMs?: number;
 }
@@ -147,15 +146,15 @@ Path resolver used for scatter source reads, state-mapping input copies, and gat
 ## Snapshottable
 
 ```ts twoslash
-import type { StoreSnapshot } from '@studnicky/dagonizer/contracts';
+import type { StoreSnapshotType } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface Snapshottable {
-  snapshot(): Promise<StoreSnapshot>;
-  restore(snapshot: StoreSnapshot): Promise<void>;
+  snapshot(): Promise<StoreSnapshotType>;
+  restore(snapshot: StoreSnapshotType): Promise<void>;
 }
 ```
 
-The capability checkpointing depends on. `Checkpoint.capture(dag, result, { stores })` and `ckpt.restoreStores(map)` take `Record<string, Snapshottable>`, so a non-KV backing (RDF triple store, vector index) can ride along in a checkpoint without implementing the key-value surface. `Store extends Snapshottable`. The `StoreSnapshot` / `StoreSnapshotEntry` envelopes live with it. See [Store](./store.md) for the envelope shape and `BaseStore`.
+The capability checkpointing depends on. `Checkpoint.capture(dag, result, { stores })` and `ckpt.restoreStores(map)` take `Record<string, Snapshottable>`, so a non-KV backing (RDF triple store, vector index) can ride along in a checkpoint without implementing the key-value surface. `Store extends Snapshottable`. The `StoreSnapshotType` / `StoreSnapshotEntryType` envelopes live with it. See [Store](./store.md) for the envelope shape and `BaseStore`.
 
 ## CheckpointStore
 
@@ -198,48 +197,48 @@ Produces a fixed-dimensionality vector for a text input. Plugins implement this 
 | `probe()` | Quick availability check. Must not throw; returns `false` so a cascade can route around the embedder |
 | `connect()` / `disconnect()` | Per-session lifecycle hooks |
 
-## OperationContractFragment
+## OperationContractFragmentType
 
 ```ts twoslash
 // ---cut---
-interface OperationContractFragment {
+interface OperationContractFragmentType {
   readonly hardRequired: readonly string[];
   readonly produces:     readonly string[];
 }
 ```
 
-The deriver-only fields of an `OperationContract`. Lives on `NodeInterface.contract` so a node carries its own data-flow declaration. The node's `name` and `outputs` fields complete the full `OperationContract` surface; the fragment carries only the fields `DAGDeriver` uses to wire edges.
+The deriver-only fields of an `OperationContractType`. Lives on `NodeInterface.contract` so a node carries its own data-flow declaration. The node's `name` and `outputs` fields complete the full `OperationContractType` surface; the fragment carries only the fields `DAGDeriver` uses to wire edges.
 
-Use `OperationContractFragment` when co-locating the contract on a node. The deriver reads it from `node.contract` alongside `node.name` and `node.outputs` to derive the full `OperationContract`.
+Use `OperationContractFragmentType` when co-locating the contract on a node. The deriver reads it from `node.contract` alongside `node.name` and `node.outputs` to derive the full `OperationContractType`.
 
-## OperationContract
+## OperationContractType
 
 ```ts twoslash
 // ---cut---
-interface OperationContractFragment {
+interface OperationContractFragmentType {
   readonly hardRequired: readonly string[];
   readonly produces:     readonly string[];
 }
 
-interface OperationContract extends OperationContractFragment {
+interface OperationContractType extends OperationContractFragmentType {
   readonly name:    string;
   readonly outputs: readonly string[];
 }
 ```
 
-Per-operation contract consumed by `DAGDeriver.derive` to compute DAG topology automatically. Extends `OperationContractFragment` with `name` and `outputs`. `outputs` lists every port the node can emit; every port auto-wires to the next derived stage. `DAGDeriverAnnotations.terminals` overrides individual ports. A multi-port node like `['success', 'cached', 'skipped', 'error']` routes uniformly with one contract field instead of N terminal annotations.
+Per-operation contract consumed by `DAGDeriver.derive` to compute DAG topology automatically. Extends `OperationContractFragmentType` with `name` and `outputs`. `outputs` lists every port the node can emit; every port auto-wires to the next derived stage. `DAGDeriverAnnotationsType.terminals` overrides individual ports. A multi-port node like `['success', 'cached', 'skipped', 'error']` routes uniformly with one contract field instead of N terminal annotations.
 
 **Co-located pattern.** Declare the contract directly on the node so the node is the single source of truth. `DAGDeriver.derive({ nodes })` reads `node.contract` alongside `node.name` and `node.outputs`:
 
 ```ts twoslash
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
+import type { OperationContractFragmentType } from '@studnicky/dagonizer/contracts';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 class FetchNode extends ScalarNode<NodeStateInterface, 'success' | 'cached' | 'error'> {
   readonly name = 'fetch';
   readonly outputs = ['success', 'cached', 'error'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['url'],
     produces:     ['raw'],
   };
@@ -251,16 +250,16 @@ class FetchNode extends ScalarNode<NodeStateInterface, 'success' | 'cached' | 'e
 
 See [co-located contracts](../guide/derive.md#co-located-contracts) and [Reference: Derive](./derive).
 
-## RetryPolicyOptionsInterface / ErrorConstructorType
+## RetryPolicyOptionsType / ErrorConstructorType
 
 ```ts twoslash
-import { BackoffStrategy } from '@studnicky/dagonizer';
+import { BackoffStrategyType } from '@studnicky/dagonizer';
 // ---cut---
 type ErrorConstructorType = new (...args: never[]) => Error;
 
-interface RetryPolicyOptionsInterface {
+interface RetryPolicyOptionsType {
   readonly maxAttempts?: number;
-  readonly strategy?: BackoffStrategy;
+  readonly strategy?: BackoffStrategyType;
   readonly baseDelay?: number;
   readonly maxDelay?: number;
   readonly multiplier?: number;
@@ -272,7 +271,7 @@ interface RetryPolicyOptionsInterface {
 
 Construction options for `RetryPolicy`. `retryOn` and `abortOn` are checked via `instanceof`. Supply error classes, not error names.
 
-## Store / StoreSnapshot / StoreSnapshotEntry
+## Store / StoreSnapshotType / StoreSnapshotEntryType
 
 The store contracts ship through `@studnicky/dagonizer/contracts` alongside the
 other adapter interfaces. Full documentation (concurrency contract,
@@ -280,19 +279,19 @@ other adapter interfaces. Full documentation (concurrency contract,
 [Reference: Store](./store).
 
 ```ts twoslash
-import type { Store, StoreSnapshot, StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
+import type { StoreInterface, StoreSnapshotType, StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
 ```
 
 See [Shared state](../guide/shared-state) for the decision matrix and usage patterns.
 
-## RemoteStore / RemoteStoreEndpoint / RemoteStoreLease
+## RemoteStore / RemoteStoreEndpointType / RemoteStoreLeaseType
 
 Extension of `Store` for network-backed or replicated store plugins. Implements
 the same `Store` surface plus `endpoint`, `acquireLease`, `releaseLease`, and
 `health` for distributed coordination.
 
 ```ts twoslash
-import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@studnicky/dagonizer/contracts';
+import type { RemoteStoreInterface, RemoteStoreEndpointType, RemoteStoreLeaseType } from '@studnicky/dagonizer/contracts';
 ```
 
 See [Reference: Store](./store#interface-remotestore) for the full interface and
@@ -301,41 +300,41 @@ See [Reference: Store](./store#interface-remotestore) for the full interface and
 ## DagContainerInterface
 
 ```ts twoslash
-import type { NodeStateInterface, DagTaskInterface, DagOutcomeInterface } from '@studnicky/dagonizer';
+import type { NodeStateInterface, DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer';
 // ---cut---
 interface DagContainerInterface<TState extends NodeStateInterface = NodeStateInterface> {
-  runDag(task: DagTaskInterface<TState, unknown>): Promise<DagOutcomeInterface>;
+  runDag(task: DagTaskInterface<TState, unknown>): Promise<DagOutcomeType>;
   destroy?(): Promise<void>;
 }
 ```
 
-Adapter contract for running an embedded DAG in an isolate (worker thread, forked child, spawned process, Web Worker). Bound to the dispatcher via `DagonizerOptionsInterface.containers` keyed by logical role name. An unbound role falls back to in-process and fires `onContractWarning`.
+Adapter contract for running an embedded DAG in an isolate (worker thread, forked child, spawned process, Web Worker). Bound to the dispatcher via `DagonizerOptionsType.containers` keyed by logical role name. On a dispatcher with a non-empty `containers` registry, a declared-but-unbound role throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats declared roles as inert and runs every body in-process.
 
-`runDag` must never throw. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeInterface.errors` with `recoverable: false`. The `TServices` parameter on the task is unconstrained (`unknown`) so the interface stays decoupled from the dispatcher's services bag.
+`runDag` must never throw. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeType.errors` with `recoverable: false`. The `TServices` parameter on the task is unconstrained (`unknown`) so the interface stays decoupled from the dispatcher's services bag.
 
 `destroy()` is optional. Implement it to release pool resources when the dispatcher shuts down.
 
 ## HandoffChannelInterface
 
 ```ts twoslash
-import type { DAGHandoff } from '@studnicky/dagonizer';
+import type { DAGHandoffType } from '@studnicky/dagonizer';
 // ---cut---
 interface HandoffChannelInterface {
-  publish(handoff: DAGHandoff): Promise<void>;
+  publish(handoff: DAGHandoffType): Promise<void>;
   destroy?(): Promise<void>;
 }
 ```
 
-Adapter contract for publishing completed-DAG hand-off envelopes to a downstream transport (queue, message bus, or loopback store). Bound via `DagonizerOptionsInterface.channels` keyed by terminal placement name. Implementations must not throw out of the dispatcher; any internal transport error is the implementation's responsibility. `InMemoryChannel` in `@studnicky/dagonizer/channels` is the reference implementation.
+Adapter contract for publishing completed-DAG hand-off envelopes to a downstream transport (queue, message bus, or loopback store). Bound via `DagonizerOptionsType.channels` keyed by terminal placement name. Implementations must not throw out of the dispatcher; any internal transport error is the implementation's responsibility. `InMemoryChannel` in `@studnicky/dagonizer/channels` is the reference implementation.
 
 ## MessageChannelInterface
 
 ```ts twoslash
-import type { BridgeMessage } from '@studnicky/dagonizer';
+import type { BridgeMessageType } from '@studnicky/dagonizer';
 // ---cut---
 interface MessageChannelInterface {
-  send(message: BridgeMessage): void;
-  onMessage(handler: (message: BridgeMessage) => void): void;
+  send(message: BridgeMessageType): void;
+  onMessage(handler: (message: BridgeMessageType) => void): void;
   close(): void;
 }
 ```
@@ -345,38 +344,38 @@ Duplex channel contract between a parent dispatcher and a `DagHost`. `send` is f
 ## RegistryModuleInterface / RegistryBundleInterface
 
 ```ts twoslash
-import type { CheckpointRestoreAdapter } from '@studnicky/dagonizer/contracts';
-import type { DispatcherBundle, NodeStateInterface } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { CheckpointRestoreAdapterInterface } from '@studnicky/dagonizer/contracts';
+import type { DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface RegistryBundleInterface {
-  readonly bundle:          DispatcherBundle<NodeStateInterface, unknown>;
+  readonly bundle:          DispatcherBundleType<NodeStateInterface, unknown>;
   readonly services:        unknown;
   readonly registryVersion: string;
-  readonly restoreState:    CheckpointRestoreAdapter<NodeStateInterface>;
+  readonly restoreState:    CheckpointRestoreAdapterInterface<NodeStateInterface>;
   destroy?():               Promise<void>;
 }
 
 interface RegistryModuleInterface {
-  createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface>;
+  instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface>;
 }
 ```
 
-`RegistryModuleInterface` is the default export shape of a registry module loaded by `DagHost` via dynamic import. `createBundle` receives the opaque `servicesConfig` JSON from the `init` message and returns a fully initialised `RegistryBundleInterface`.
+`RegistryModuleInterface` is the default export shape of a registry module loaded by `DagHost` via dynamic import. `instantiate` receives the opaque `servicesConfig` JSON from the `init` message and returns a fully initialised `RegistryBundleInterface`.
 
 `RegistryBundleInterface` bundles the node+DAG registry (`bundle`), the locally constructed services bag (`services`), the semantic version for the init ↔ ready handshake (`registryVersion`), and the state restore factory (`restoreState`). Services never cross the isolate boundary — each isolate constructs its own via its registry module.
 
-## DagOutcomeInterface
+## DagOutcomeType
 
 ```ts twoslash
-import type { NodeError, ExecutorIntermediate } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { NodeErrorType, ExecutorIntermediateType } from '@studnicky/dagonizer';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 // ---cut---
-interface DagOutcomeInterface {
+interface DagOutcomeType {
   readonly terminalOutput: string;
-  readonly errors:         readonly NodeError[];
-  readonly stateSnapshot:  JsonObject | null;
-  readonly intermediates:  readonly ExecutorIntermediate[];
+  readonly errors:         readonly NodeErrorType[];
+  readonly stateSnapshot:  JsonObjectType | null;
+  readonly intermediates:  readonly ExecutorIntermediateType[];
 }
 ```
 
@@ -385,7 +384,7 @@ Result returned by `DagContainerInterface.runDag()` after an embedded DAG comple
 ## DagTaskInterface
 
 ```ts twoslash
-import type { NodeStateInterface, NodeContextInterface, ExecutionRequest } from '@studnicky/dagonizer';
+import type { NodeStateInterface, NodeContextType, ExecutionRequestType } from '@studnicky/dagonizer';
 // ---cut---
 interface DagTaskInterface<TState extends NodeStateInterface = NodeStateInterface, TServices = undefined> {
   readonly dagName:        string;
@@ -393,8 +392,8 @@ interface DagTaskInterface<TState extends NodeStateInterface = NodeStateInterfac
   readonly correlationId:  string;
   readonly timeoutMs:      number | null;
   readonly state:          TState;
-  readonly context:        NodeContextInterface<TServices>;
-  toRequest(): ExecutionRequest;
+  readonly context:        NodeContextType<TServices>;
+  toRequest(): ExecutionRequestType;
 }
 ```
 
@@ -403,69 +402,46 @@ Engine-side descriptor of a contained DAG execution. Carries a live seeded child
 ## SystemInfoInterface
 
 ```ts twoslash
-import type { RecommendedWorkerCountConfig } from '@studnicky/dagonizer';
+import type { RecommendedWorkerCountConfigType } from '@studnicky/dagonizer';
 // ---cut---
 interface SystemInfoInterface {
-  recommendedWorkerCount(config: RecommendedWorkerCountConfig): number;
+  recommendedWorkerCount(config: RecommendedWorkerCountConfigType): number;
 }
 ```
 
 Host-environment probe for pool sizing recommendations. Implementations are environment-specific (Node `os.availableParallelism()` + `os.totalmem()`; Web `navigator.hardwareConcurrency`). The recommended count follows the quadrascope formula: `clamp(parallelism − mainThreadReservation, fallbackWorkerCount, maximumWorkers)`, optionally further clamped by `memoryPerWorkerBytes`.
 
-## GatherExecution / GatherRecord / OutcomeRecord
+## GatherExecutionType / GatherRecordType / OutcomeRecordType
 
 These contracts ship through `@studnicky/dagonizer/contracts` for use by custom gather strategy and outcome reducer implementations. See [Reference: Core](./core) for the full authoring guide.
 
 ```ts twoslash
-import type { GatherExecution, GatherRecord, OutcomeRecord } from '@studnicky/dagonizer/contracts';
+import type { GatherExecutionType, GatherRecordType, OutcomeRecordType } from '@studnicky/dagonizer/contracts';
 ```
 
-`GatherRecord<TState>` carries per-clone results from the scatter loop: `index`, `item`, `output`, `terminalOutcome`, and `cloneState`. `GatherExecution<TState>` is the invocation context handed to `GatherStrategy.apply`: it provides `records`, the live parent `state`, the `accessor`, and `invoker` (a `NodeInvoker`; used by the `custom` strategy via `invoker.invokeNode(name)`). `OutcomeRecord` is the per-clone summary handed to `OutcomeReducer.reduce`: `index`, `output`, and `terminalOutcome`.
+`GatherRecordType<TState>` carries per-clone results from the scatter loop: `index`, `item`, `output`, `terminalOutcome`, and `cloneState`. `GatherExecutionType<TState>` is the invocation context handed to `GatherStrategy.apply`: it provides `records`, the live parent `state`, the `accessor`, and `invoker` (a `NodeInvoker`; used by the `custom` strategy via `invoker.invokeNode(name)`). `OutcomeRecordType` is the per-clone summary handed to `OutcomeReducer.reduce`: `index`, `output`, and `terminalOutcome`.
 
 ## LlmAdapter / LlmClient
 
 ```ts twoslash
-import type { AdapterCapabilities, ChatRequest, ChatResponse } from '@studnicky/dagonizer/adapter';
+import type { AdapterCapabilitiesType, ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
 // ---cut---
 interface LlmAdapter {
   readonly id:           string;
   readonly displayName:  string;
-  readonly capabilities: AdapterCapabilities;
-  chat(request: ChatRequest): Promise<ChatResponse>;
+  readonly capabilities: AdapterCapabilitiesType;
+  chat(request: ChatRequestType): Promise<ChatResponseType>;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   probe(): Promise<boolean>;
 }
 
 interface LlmClient {
-  chat(request: ChatRequest): Promise<ChatResponse>;
+  chat(request: ChatRequestType): Promise<ChatResponseType>;
 }
 ```
 
 `LlmAdapter` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `LlmClient` is the minimal chat surface pattern bases accept — any `LlmAdapter` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapter` directly.
-
-## WarningEmitter
-
-```ts twoslash
-// ---cut---
-interface WarningEmitter {
-  warn(message: string): void;
-}
-```
-
-Typed contract for emitting diagnostic warnings without introducing a callback seam. Accepted by `DAGBuilder.build({ warningEmitter })` to surface dead-write warnings detected during contract validation at build time. The `NoopWarningEmitter` from `@studnicky/dagonizer/runtime` is the default when no emitter is passed.
-
-```ts twoslash
-import type { WarningEmitter } from '@studnicky/dagonizer/contracts';
-import { DAGBuilder } from '@studnicky/dagonizer';
-declare const builder: DAGBuilder;
-// ---cut---
-const emitter: WarningEmitter = {
-  warn(message) { console.warn('[contract]', message); },
-};
-
-const dag = builder.build({ warningEmitter: emitter });
-```
 
 ## NodeInvoker
 
@@ -476,7 +452,7 @@ interface NodeInvoker {
 }
 ```
 
-Typed contract for dispatching a registered node back through the engine. Lives on `GatherExecution.invoker`; used exclusively by `custom` gather strategies to invoke the registered node named in `GatherConfig.customNode`. Custom strategies access it via `execution.invoker.invokeNode(name)`.
+Typed contract for dispatching a registered node back through the engine. Lives on `GatherExecutionType.invoker`; used exclusively by `custom` gather strategies to invoke the registered node named in `GatherConfig.customNode`. Custom strategies access it via `execution.invoker.invokeNode(name)`.
 
 ## Related guides
 

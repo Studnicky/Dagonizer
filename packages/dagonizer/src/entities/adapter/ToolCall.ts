@@ -21,8 +21,8 @@ export const ToolCallSchema = {
 } as const;
 
 /**
- * Tool invocation emitted by the model.
+ * ToolInterface invocation emitted by the model.
  * `arguments` resolves to `Record<string, unknown>` from `{ type: 'object' }`
  * without `additionalProperties:false` — identical to the previous hand-written field.
  */
-export type ToolCall = FromSchema<typeof ToolCallSchema>;
+export type ToolCallType = FromSchema<typeof ToolCallSchema>;

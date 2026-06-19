@@ -3,7 +3,7 @@
  * from dags/state-accessor.ts wired into a Dagonizer instance.
  *
  * DottedPathAccessor is the built-in path resolver used by scatter source reads
- * and gather writes. Consumers implement the StateAccessor contract to replace
+ * and gather writes. Consumers implement the StateAccessorInterface contract to replace
  * it. PrefixAccessor (defined in dags/state-accessor.ts) prepends a fixed
  * namespace segment to every key before delegating to DottedPathAccessor.
  *
@@ -21,7 +21,7 @@ import { Dagonizer } from '@studnicky/dagonizer';
 import { DottedPathAccessor } from '@studnicky/dagonizer/runtime';
 import { ArchiveState, PrefixAccessor } from './dags/state-accessor.js';
 
-process.stdout.write('\n=== StateAccessor: DottedPathAccessor + PrefixAccessor ===\n\n');
+process.stdout.write('\n=== StateAccessorInterface: DottedPathAccessor + PrefixAccessor ===\n\n');
 
 // ── 1. DottedPathAccessor: get and set on nested paths ──────────────────────
 
@@ -61,7 +61,7 @@ const dispatcher = new Dagonizer<ArchiveState>({ accessor: prefix });
 process.stdout.write(`\nDagonizer constructed with PrefixAccessor('archivist')\n`);
 process.stdout.write(`typeof dispatcher = ${typeof dispatcher}\n`);
 
-process.stdout.write('\nLesson: implement StateAccessor to swap the path resolver;\n');
+process.stdout.write('\nLesson: implement StateAccessorInterface to swap the path resolver;\n');
 process.stdout.write('        scatter reads and gather writes use the custom accessor.\n');
 
 // #region gather-strategy
@@ -70,17 +70,17 @@ import {
   GatherStrategy,
   Batch,
 } from '@studnicky/dagonizer';
-import type { GatherRecord, NodeStateInterface } from '@studnicky/dagonizer';
-import type { GatherConfig } from '@studnicky/dagonizer/entities';
-import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import type { GatherRecordType, NodeStateInterface } from '@studnicky/dagonizer';
+import type { GatherConfigType } from '@studnicky/dagonizer/entities';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 
 class AverageGather extends GatherStrategy {
   readonly name = 'average';
   reduce(
-    config: GatherConfig,
-    batch: Batch<GatherRecord<NodeStateInterface>>,
+    config: GatherConfigType,
+    batch: Batch<GatherRecordType<NodeStateInterface>>,
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     if (config.target === undefined) return;
     const all: number[] = [];

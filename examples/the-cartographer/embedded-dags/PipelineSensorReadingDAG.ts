@@ -30,10 +30,10 @@ import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const pipelineSensorReadingDAG: DAG = new DAGBuilder('pipeline-sensor-reading', '1.0')
+export const pipelineSensorReadingDAG: DAGType = new DAGBuilder('pipeline-sensor-reading', '1.0')
 
   // 1. parse-variant: decode the event union into a typed sensor-reading shape.
   .node('parse-variant', parseVariant, {
@@ -48,14 +48,16 @@ export const pipelineSensorReadingDAG: DAG = new DAGBuilder('pipeline-sensor-rea
     'error':   'rejected',
   }, {
     'inputs': {
-      'raw':       'raw',
-      'canonical': 'canonical',
-      'routing':   'routing',
+      'raw':            'raw',
+      'canonical':      'canonical',
+      'routing':        'routing',
+      'capturedErrors': 'capturedErrors',
     },
     'outputs': {
-      'geoContext':  'geoContext',
-      'resolvedGeo': 'resolvedGeo',
-      'routing':     'routing',
+      'geoContext':     'geoContext',
+      'resolvedGeo':    'resolvedGeo',
+      'routing':        'routing',
+      'capturedErrors': 'capturedErrors',
     },
   })
 
@@ -87,7 +89,7 @@ export const pipelineSensorReadingDAG: DAG = new DAGBuilder('pipeline-sensor-rea
 
   .build();
 
-export const pipelineSensorReadingBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const pipelineSensorReadingBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [parseVariant, canonicalizeCore, coldChainCheck, enrichLeg, aggregateEvent],
   'dags':  [pipelineSensorReadingDAG],
 };

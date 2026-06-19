@@ -20,7 +20,7 @@ import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 type IntentOutput =
   | 'lookup-author'
@@ -43,7 +43,7 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput,
   readonly name = 'classify-intent';
   readonly outputs = ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'off-topic', 'retry', 'salvage'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const summary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;
@@ -57,7 +57,6 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput,
       const intent = await context.services.llm.classifyIntent(state.query, summary, conversation, signal);
       state.intent = intent;
       state.clearAttempts(context.nodeName);
-      context.services.logger.info(`intent=${intent}`);
       switch (intent) {
         case 'off-topic':         return NodeOutputBuilder.of('off-topic');
         case 'lookup-author':     return NodeOutputBuilder.of('lookup-author');
@@ -73,11 +72,9 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput,
       // Node-local timeout or LLM failure → retry budget decides the flow. The
       // classifier never fabricates an intent it didn't receive.
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`classify-intent: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`classify-intent: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);

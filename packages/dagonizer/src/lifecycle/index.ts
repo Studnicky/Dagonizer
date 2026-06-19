@@ -1,5 +1,5 @@
 export { DAGLifecycleMachine } from './DAGLifecycleMachine.js';
 export type {
-  DAGLifecycleEvent,
-  DAGLifecycleState,
+  DAGLifecycleEventType,
+  DAGLifecycleStateType,
 } from './DAGLifecycleState.js';

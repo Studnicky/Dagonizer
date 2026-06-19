@@ -2,7 +2,7 @@
  * TransportErrorCode: canonical NodeError.code values for container
  * infrastructure failures.
  *
- * These codes mark a `DagOutcomeInterface` whose DAG never ran to a terminal
+ * These codes mark a `DagOutcomeType` whose DAG never ran to a terminal
  * because the transport itself failed — a closed channel, a send failure, an
  * unroutable message, or a worker/child that died without sending a result.
  * They are the discriminator the parent uses to tell an INFRASTRUCTURE failure

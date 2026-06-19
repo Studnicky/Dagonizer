@@ -78,10 +78,10 @@ export class StateProjection {
       for (const author of candidate.book.identity.authors) {
         store.assert(book, dag('author'), MemoryStore.lit.str(author), graph);
       }
-      if (candidate.book.publication.summary !== undefined) {
+      if (candidate.book.publication.summary !== null) {
         store.assert(book, dag('summary'), MemoryStore.lit.str(candidate.book.publication.summary), graph);
       }
-      if (candidate.book.publication.firstPublishYear !== undefined) {
+      if (candidate.book.publication.firstPublishYear !== null) {
         store.assert(book, dag('firstPublishYear'), MemoryStore.lit.int(candidate.book.publication.firstPublishYear), graph);
       }
       for (const subject of candidate.book.publication.subjects) {
@@ -105,7 +105,7 @@ export class StateProjection {
         MemoryStore.lit.bool(shortlistIsbns.has(candidate.book.identity.isbn)), graph);
     }
 
-    // Tool plan: one triple per planned call
+    // ToolInterface plan: one triple per planned call
     for (const call of state.toolPlan) {
       store.assert(run, dag('toolPlanned'), MemoryStore.lit.str(call.name), graph);
     }

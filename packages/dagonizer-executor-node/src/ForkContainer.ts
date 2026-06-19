@@ -9,7 +9,7 @@
  * Constructor options:
  *   registryModule   — URL string passed to DagHost init
  *   registryVersion  — version for the init ↔ ready handshake
- *   servicesConfig   — opaque JSON passed to createBundle (default: {})
+ *   servicesConfig   — opaque JSON passed to instantiate (default: {})
  *   poolSize         — number of child processes (default: NodeSystemInfo)
  *   entryUrl         — override the default forkEntry.js URL (for tests)
  *
@@ -19,49 +19,28 @@
 import { fork } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 
-import type { NodeStateInterface } from '@studnicky/dagonizer';
-import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
-import type { PoolEntry } from '@studnicky/dagonizer/container';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
+import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
 
 import { IpcChannel } from './IpcChannel.js';
-import { NodeSystemInfo } from './NodeSystemInfo.js';
+import { NodeContainerBase } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptionsType } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
-// ForkContainerOptions
+// ForkContainerOptionsType
 // ---------------------------------------------------------------------------
 
-export interface ForkContainerOptions {
-  readonly registryModule: string;
-  readonly registryVersion: string;
-  readonly servicesConfig?: JsonObject;
-  readonly poolSize?: number;
-  readonly entryUrl?: URL;
-}
+export type ForkContainerOptionsType = NodeContainerBaseOptionsType;
 
 // ---------------------------------------------------------------------------
 // ForkContainer
 // ---------------------------------------------------------------------------
 
-export class ForkContainer extends DagContainerBase<NodeStateInterface, ChildProcess> {
+export class ForkContainer extends NodeContainerBase<ChildProcess> {
   readonly #entryUrl: URL;
 
-  constructor(options: ForkContainerOptions) {
-    const sysInfo = new NodeSystemInfo();
-    const defaultPoolSize = sysInfo.recommendedWorkerCount({
-      ...RecommendedWorkerCountConfigDefault,
-      'maximumWorkers': 8,
-    });
-    super({
-      ...DagContainerBase.defaultOptions,
-      'poolSize': options.poolSize ?? defaultPoolSize,
-      'init': {
-        'registryModule': options.registryModule,
-        'registryVersion': options.registryVersion,
-        'servicesConfig': options.servicesConfig ?? {},
-      },
-    });
+  constructor(options: ForkContainerOptionsType) {
+    super(NodeContainerBase.resolveOptions(options));
     this.#entryUrl = options.entryUrl ?? new URL('./forkEntry.js', import.meta.url);
   }
 
@@ -70,15 +49,15 @@ export class ForkContainer extends DagContainerBase<NodeStateInterface, ChildPro
   // ---------------------------------------------------------------------------
 
   /**
-   * createEntry: fork a child process + construct an IpcChannel, initialized: false.
+   * composeEntry: fork a child process + construct an IpcChannel, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override createEntry(): PoolEntry<ChildProcess> {
+  protected override composeEntry(): PoolEntryType<ChildProcess> {
     // Fork the entry module. IPC is enabled by default for fork().
     // No execArgv override needed: package.json "type": "module" makes
     // the compiled .js output ESM.
     const child = fork(this.#entryUrl.pathname, []);
-    const channel = IpcChannel.fromChildProcess(child);
+    const channel = IpcChannel.ofChildProcess(child);
     return { 'worker': child, 'channel': channel, 'initialized': false };
   }
 
@@ -87,7 +66,7 @@ export class ForkContainer extends DagContainerBase<NodeStateInterface, ChildPro
    * Called unconditionally; the base's #destroyed guard prevents spurious
    * eviction during intentional teardown.
    */
-  protected override attachDeathListeners(entry: PoolEntry<ChildProcess>): void {
+  protected override attachDeathListeners(entry: PoolEntryType<ChildProcess>): void {
     entry.worker.on('error', (err: Error) => {
       this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, `child error: ${err.message}`);
     });

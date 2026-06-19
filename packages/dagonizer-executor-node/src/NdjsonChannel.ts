@@ -27,9 +27,9 @@
 
 import type { Readable, Writable } from 'node:stream';
 
-import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
+import { BaseMessageChannel } from '@studnicky/dagonizer/container';
 import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
-import type { BridgeMessage } from '@studnicky/dagonizer/entities';
+import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 
 // ---------------------------------------------------------------------------
@@ -43,32 +43,29 @@ const MAX_BUFFER_BYTES = 8 * 1024 * 1024; // 8 MiB
 // NdjsonChannel
 // ---------------------------------------------------------------------------
 
-export class NdjsonChannel implements MessageChannelInterface {
+export class NdjsonChannel extends BaseMessageChannel {
   readonly #readable: Readable;
   readonly #writable: Writable;
-  #handler: ((message: BridgeMessage) => void) | null;
   #buffer: string;
-  #closed: boolean;
 
   constructor(readable: Readable, writable: Writable) {
+    super();
     this.#readable = readable;
     this.#writable = writable;
-    this.#handler = null;
     this.#buffer = '';
-    this.#closed = false;
 
     // Install exactly one underlying 'data' listener for the channel's lifetime.
-    // Inbound chunks are buffered and dispatched to this.#handler when set.
-    // onMessage() replaces this.#handler — it never re-subscribes to the stream.
+    // Inbound chunks are buffered and routed through the base's guarded dispatch.
+    // onMessage() replaces the base handler — it never re-subscribes to the stream.
     this.#readable.on('data', (chunk: Buffer | string) => {
-      if (this.#closed) return;
+      if (this.closed) return;
       const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       this.#buffer += text;
 
       // Buffer overflow guard: cap at MAX_BUFFER_BYTES to prevent unbounded growth.
       if (this.#buffer.length > MAX_BUFFER_BYTES) {
         this.#buffer = '';
-        this.#dispatch(BridgeMessageBuilder.invalid(
+        this.dispatch(BridgeMessageBuilder.invalid(
           'NDJSON_PARSE_ERROR',
           `NDJSON buffer overflow: accumulated data exceeded ${MAX_BUFFER_BYTES} bytes; buffer reset`,
         ));
@@ -79,20 +76,20 @@ export class NdjsonChannel implements MessageChannelInterface {
     });
 
     this.#readable.on('error', (err: Error) => {
-      if (this.#closed) return;
-      this.#dispatch(BridgeMessageBuilder.invalid(
+      if (this.closed) return;
+      this.dispatch(BridgeMessageBuilder.invalid(
         'NDJSON_PARSE_ERROR',
         `NDJSON readable stream error: ${err.message}`,
       ));
     });
 
     this.#readable.on('close', () => {
-      if (this.#closed) return;
+      if (this.closed) return;
       // Trace any un-terminated trailing line that was never delimited.
       const trailing = this.#buffer.trim();
       if (trailing.length > 0) {
         this.#buffer = '';
-        this.#dispatch(BridgeMessageBuilder.invalid(
+        this.dispatch(BridgeMessageBuilder.invalid(
           'NDJSON_PARSE_ERROR',
           `NDJSON stream closed with un-terminated trailing line: ${trailing.slice(0, 200)}`,
         ));
@@ -100,8 +97,8 @@ export class NdjsonChannel implements MessageChannelInterface {
     });
   }
 
-  send(message: BridgeMessage): void {
-    if (this.#closed) return;
+  override send(message: BridgeMessageType): void {
+    if (this.closed) return;
     try {
       this.#writable.write(JSON.stringify(message) + '\n');
     } catch {
@@ -109,14 +106,8 @@ export class NdjsonChannel implements MessageChannelInterface {
     }
   }
 
-  /** Replace the inbound message handler. Single-handler replace semantics. */
-  onMessage(handler: (message: BridgeMessage) => void): void {
-    this.#handler = handler;
-  }
-
-  close(): void {
-    this.#closed = true;
-    this.#handler = null;
+  override close(): void {
+    super.close();
     try { this.#readable.destroy(); } catch { /* suppress */ }
     try { this.#writable.destroy(); } catch { /* suppress */ }
   }
@@ -138,40 +129,32 @@ export class NdjsonChannel implements MessageChannelInterface {
   }
 
   #dispatchLine(line: string): void {
-    if (this.#handler === null || this.#closed) return;
+    if (this.closed) return;
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(line) as unknown;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.#dispatch(BridgeMessageBuilder.invalid(
+      this.dispatch(BridgeMessageBuilder.invalid(
         'NDJSON_PARSE_ERROR',
         `Failed to parse NDJSON line: ${message}`,
       ));
       return;
     }
 
-    let validated: BridgeMessage;
+    let validated: BridgeMessageType;
     try {
       validated = Validator.bridgeMessage.validate(parsed);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.#dispatch(BridgeMessageBuilder.invalid(
+      this.dispatch(BridgeMessageBuilder.invalid(
         'NDJSON_VALIDATION_ERROR',
         `BridgeMessage validation failed: ${message}`,
       ));
       return;
     }
 
-    this.#dispatch(validated);
-  }
-
-  /** Deliver a message to the handler if the channel is open and a handler is set. */
-  #dispatch(message: BridgeMessage): void {
-    const handler = this.#handler;
-    if (handler !== null && !this.#closed) {
-      handler(message);
-    }
+    this.dispatch(validated);
   }
 }

@@ -26,8 +26,8 @@
  */
 
 import { Dagonizer, DAG_CONTEXT } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import type { DAGType } from '@studnicky/dagonizer';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 import { ScrapeState, ProbeNode } from './dags/04-scatter.js';
 
@@ -37,7 +37,7 @@ import { ScrapeState, ProbeNode } from './dags/04-scatter.js';
 // When no container is bound (today's default) it runs in-process.
 // ---------------------------------------------------------------------------
 
-const probeItemDag: DAG = {
+const probeItemDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:probe-item',
   '@type':     'DAG',
@@ -74,7 +74,7 @@ const probeItemDag: DAG = {
 // To actually bind the container, pass WorkerThreadContainer to the dispatcher:
 //   new Dagonizer<ScrapeState>({ containers: { io: container } })
 // Without the binding the dispatcher falls back to in-process (this demo's path).
-const scrapeWithContainerDag: DAG = {
+const scrapeWithContainerDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:scrape-c',
   '@type':     'DAG',
@@ -95,7 +95,7 @@ const scrapeWithContainerDag: DAG = {
       "gather": {
         // dag-body scatter outputs 'success'/'error' per clone (not the inner
         // node's 'ok'/'fail'); partition on those aggregate output tokens.
-        "strategy":   GatherStrategyName.PARTITION,
+        "strategy":   GatherStrategyNames.PARTITION,
         "partitions": { "success": 'succeeded', "error": 'failed' },
       },
       "outputs": { 'all-success': 'end', "partial": 'end', 'all-error': 'end', "empty": 'end' },

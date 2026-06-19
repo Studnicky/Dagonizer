@@ -47,15 +47,15 @@ Worker threads load a separate Node.js module — the main process's in-memory r
 | `NodeSystemInfo` | `@studnicky/dagonizer-executor-node` | Pool sizing: `recommendedWorkerCount(config)` |
 | `DagContainerInterface` | `@studnicky/dagonizer/contracts` | Adapter contract: `runDag(task)` |
 | `RegistryModuleInterface` | `@studnicky/dagonizer/contracts` | Default export shape loaded by `DagHost` inside each worker |
-| `RegistryBundleInterface` | `@studnicky/dagonizer/contracts` | Return type of `createBundle`: bundle, services, version, restoreState |
-| `DagonizerOptionsInterface.containers` | `@studnicky/dagonizer` | Binds logical role strings to backend instances |
+| `RegistryBundleInterface` | `@studnicky/dagonizer/contracts` | Return type of `instantiate`: bundle, services, version, restoreState |
+| `DagonizerOptionsType.containers` | `@studnicky/dagonizer` | Binds logical role strings to backend instances |
 
 ## What it demonstrates
 
 - **`container` key on a scatter placement.** A `ScatterNode` with a dag body and `container: "cpu"` delegates each clone's sub-DAG to the bound `WorkerThreadContainer`. Node-body scatter (no `dag` key in `body`) is not containable; validation rejects `container` on a node body.
 - **`containers` option.** `new Dagonizer({ containers: { cpu: workerContainer } })` binds the `"cpu"` role. Any scatter or embedded-DAG placement declaring `container: "cpu"` uses this backend.
 - **Pool lifecycle.** `WorkerThreadContainer` manages a pool of workers. Workers initialize on first use (sending `init` with the registry module URL and services config) and reuse across requests. Call `await container.destroy()` or `await dispatcher.destroy()` to shut down the pool cleanly.
-- **`registryVersion` handshake.** The container sends the `registryVersion` to each worker during `init`. The worker's `DagHost` rejects an `init` message whose version does not match the string from `RegistryModuleInterface.createBundle`. This prevents a stale bundle from executing state from a newer bundle's run.
+- **`registryVersion` handshake.** The container sends the `registryVersion` to each worker during `init`. The worker's `DagHost` rejects an `init` message whose version does not match the string from `RegistryModuleInterface.instantiate`. This prevents a stale bundle from executing state from a newer bundle's run.
 - **In-process fallback.** Remove the `container` key from the scatter placement (or omit `containers` from the dispatcher options) to run the scatter in-process. The output is byte-identical; no code changes are needed in node implementations.
 - **V8 resource limits.** `WorkerThreadContainerOptions.resourceLimits` accepts a `maxOldGenerationSizeMb` cap to prevent runaway heap growth in individual workers.
 

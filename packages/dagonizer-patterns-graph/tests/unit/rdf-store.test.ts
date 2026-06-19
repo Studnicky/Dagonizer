@@ -22,9 +22,9 @@ function namedGraph(value: string): Term {
 
 const DEFAULT_GRAPH: Term = { "termType": 'DefaultGraph', "value": '' };
 
-// ── 1. Store contract: get/set/has/delete round-trip ─────────────────────────
+// ── 1. StoreInterface contract: get/set/has/delete round-trip ─────────────────────────
 
-void describe('RdfStore: Store contract (reified key-value)', () => {
+void describe('RdfStore: StoreInterface contract (reified key-value)', () => {
   void it('set then get returns the stored value', async () => {
     const store = new RdfStore();
     await store.set<string>('greeting', 'hello');
@@ -54,7 +54,7 @@ void describe('RdfStore: Store contract (reified key-value)', () => {
     assert.equal(await store.get<number>('n'), 2);
   });
 
-  void it('stores complex JsonValue (object, array)', async () => {
+  void it('stores complex JsonValueType (object, array)', async () => {
     const store = new RdfStore();
     await store.set('obj', { "a": 1, "b": [2, 3] });
     assert.deepEqual(await store.get('obj'), { "a": 1, "b": [2, 3] });
@@ -86,9 +86,9 @@ void describe('RdfStore: update(key, fn) atomic RMW', () => {
   });
 });
 
-// ── 3. TripleStore contract ───────────────────────────────────────────────────
+// ── 3. TripleStoreInterface contract ───────────────────────────────────────────────────
 
-void describe('RdfStore: TripleStore contract', () => {
+void describe('RdfStore: TripleStoreInterface contract', () => {
   void it('assert adds a quad; ask returns true for a matching pattern', () => {
     const store = new RdfStore();
     const s = namedNode('urn:test:subject');
@@ -185,7 +185,7 @@ void describe('RdfStore: triples()', () => {
     store.assert(namedNode('urn:a'), p, literal('1'));
     store.assert(namedNode('urn:b'), p, literal('2'));
 
-    // Store-reified entry.
+    // StoreInterface-reified entry.
     await store.set<string>('key', 'val');
 
     const quads = [...store.triples()];
@@ -205,9 +205,9 @@ void describe('RdfStore: triples()', () => {
   });
 });
 
-// ── 6. Coexistence of reified Store entries and user-asserted quads ───────────
+// ── 6. Coexistence of reified StoreInterface entries and user-asserted quads ───────────
 
-void describe('RdfStore: Store entries and native quads coexist', () => {
+void describe('RdfStore: StoreInterface entries and native quads coexist', () => {
   void it('store set/get does not disturb user-asserted quads on other predicates', async () => {
     const store = new RdfStore();
     const p = namedNode('urn:test:custom');
@@ -220,7 +220,7 @@ void describe('RdfStore: Store entries and native quads coexist', () => {
     assert.equal(await store.get<number>('score'), 99);
   });
 
-  void it('snapshot() captures only reified Store entries, not user-asserted quads', async () => {
+  void it('snapshot() captures only reified StoreInterface entries, not user-asserted quads', async () => {
     const store = new RdfStore();
     // User-asserted quad on a different predicate.
     store.assert(
@@ -229,7 +229,7 @@ void describe('RdfStore: Store entries and native quads coexist', () => {
       literal('native-value'),
     );
 
-    // Store-reified entry.
+    // StoreInterface-reified entry.
     await store.set<string>('name', 'dagonizer');
 
     const snap = await store.snapshot();
@@ -247,7 +247,7 @@ void describe('RdfStore: Store entries and native quads coexist', () => {
 // ── 7. restore(): clears all quads, reseeds from snapshot, rejects bad input ──
 
 void describe('RdfStore: restore()', () => {
-  void it('restores Store entries from a valid snapshot', async () => {
+  void it('restores StoreInterface entries from a valid snapshot', async () => {
     const source = new RdfStore();
     await source.set<number>('x', 10);
     await source.set<string>('y', 'hello');
@@ -259,7 +259,7 @@ void describe('RdfStore: restore()', () => {
     assert.equal(await target.get<string>('y'), 'hello');
   });
 
-  void it('restore() replaces previous Store entries', async () => {
+  void it('restore() replaces previous StoreInterface entries', async () => {
     const store = new RdfStore();
     await store.set<number>('old', 1);
 

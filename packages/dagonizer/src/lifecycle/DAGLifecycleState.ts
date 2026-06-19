@@ -1,5 +1,5 @@
 /**
- * DAGLifecycleState: discriminated union of the six kinds a DAG lifecycle
+ * DAGLifecycleStateType: discriminated union of the six kinds a DAG lifecycle
  * machine can occupy.
  *
  * All six variants share an identical 5-field shape so V8 sees a single
@@ -19,7 +19,7 @@
  * Timestamps are monotonic milliseconds from `Clock.monotonicMs()`.
  * Fields that are not meaningful for a given `kind` are `null`.
  */
-export type DAGLifecycleState =
+export type DAGLifecycleStateType =
   | { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
   | { kind: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
   | { kind: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
@@ -33,7 +33,7 @@ export type DAGLifecycleState =
  * supply `clock.monotonicMs()` explicitly. Tests supply a pinned value for
  * determinism.
  */
-export type DAGLifecycleEvent =
+export type DAGLifecycleEventType =
   | { type: 'start'; at: number }
   | { type: 'succeed'; at: number }
   | { type: 'fail'; error: Error; at: number }

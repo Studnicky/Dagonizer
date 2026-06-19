@@ -32,7 +32,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -219,7 +219,7 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
   readonly name = 'decide-tools';
   readonly outputs = ['tools', 'no-tools', 'retry', 'salvage'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     // ── Deterministic shortcut prelude ────────────────────────────────────
     // Pattern-match common query shapes (author lookup, single quoted title,
     // "books about X", catalog browsing). When a pattern fires, populate
@@ -229,8 +229,6 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
     if (shortcut !== null) {
       state.toolPlan = shortcut.calls;
       state.clearAttempts(context.nodeName);
-      context.services.logger.info(`decide-tools: deterministic shortcut "${shortcut.pattern}"`);
-      context.services.logger.info(`tool plan: ${shortcut.calls.map((c) => c.name).join(', ')}`);
       return NodeOutputBuilder.of('tools');
     }
 
@@ -252,12 +250,7 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
       // catalog tools for a full-catalog intent, add the missing ones so
       // all scouts run across all sources.
       if (isFullCatalog) {
-        const hadCount = calls.length;
         calls = ShortcutMatcher.enforceFullCatalog(calls, state.query);
-        if (calls.length > hadCount) {
-          const added = calls.slice(hadCount).map((c) => c.name);
-          context.services.logger.info(`decideTools safety-net added: ${added.join(', ')}`);
-        }
       }
 
       // Safety net for on-topic intent with a sparse tool plan: force the full
@@ -276,23 +269,18 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
           { 'name': 'subject_search',      'arguments': { 'limit': 8 } },
           { 'name': 'wikipedia_summary',   'arguments': {} },
         ];
-        context.services.logger.info('decideTools safety-net: forced all four scouts for sparse on-topic plan');
       } else if (!isFullCatalog && calls.length === 0) {
         // Minimal safety net for other non-full-catalog intents: ensure at least
         // web_search_books is in the plan so openLibraryScout runs.
         calls = [{ 'name': 'web_search_books', 'arguments': { 'limit': 8 } }];
-        context.services.logger.info('decideTools safety-net: added web_search_books (LLM emitted empty plan)');
       }
 
       state.toolPlan = calls;
       if (calls.length > 0) {
-        context.services.logger.info(
-          `tool plan: ${calls.map((c) => c.name).join(', ')}`,
-        );
         return NodeOutputBuilder.of('tools');
       }
 
-      state.failureCause += 'Tool plan: no tools selected. ';
+      state.failureCause += 'ToolInterface plan: no tools selected. ';
       return NodeOutputBuilder.of('no-tools');
     } catch (err) {
       // External cancellation / run deadline propagates unchanged.
@@ -300,11 +288,9 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
       // Node-local timeout or LLM failure → retry budget decides the flow. The
       // minimal-plan fallback lives in decide-tools-salvage, not here.
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`decide-tools: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`decide-tools: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);

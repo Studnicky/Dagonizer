@@ -16,7 +16,7 @@
  * ```ts
  * class ThresholdReducer extends OutcomeReducer {
  *   readonly name = 'threshold-75';
- *   reduce(records: ReadonlyArray<OutcomeRecord>): string {
+ *   reduce(records: ReadonlyArray<OutcomeRecordType>): string {
  *     const successRate = records.filter((r) => r.output === 'success').length / records.length;
  *     return successRate >= 0.75 ? 'all-success' : 'partial';
  *   }
@@ -26,10 +26,10 @@
  * ```
  */
 
-import type { OutcomeRecord } from '../contracts/OutcomeRecord.js';
+import type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
 import { DAGError } from '../errors/DAGError.js';
 
-export type { OutcomeRecord };
+export type { OutcomeRecordType };
 
 /**
  * Extension point for outcome reducers.
@@ -44,7 +44,7 @@ export abstract class OutcomeReducer {
   /**
    * Reduce per-clone records to a single routing output token.
    */
-  abstract reduce(records: ReadonlyArray<OutcomeRecord>): string;
+  abstract reduce(records: ReadonlyArray<OutcomeRecordType>): string;
 }
 
 /**
@@ -57,7 +57,7 @@ export abstract class OutcomeReducer {
  */
 class AggregateOutcomeReducer extends OutcomeReducer {
   readonly name = 'aggregate';
-  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+  reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     if (records.length === 0) return 'empty';
     const successCount = records.filter((r) => r.output === 'success').length;
     if (successCount === records.length) return 'all-success';
@@ -76,7 +76,7 @@ class AggregateOutcomeReducer extends OutcomeReducer {
  */
 class TerminalOutcomeReducer extends OutcomeReducer {
   readonly name = 'terminal';
-  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+  reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     if (records.length === 0) return 'error';
     const rec = records[0];
     if (rec === undefined) return 'error';
@@ -93,7 +93,7 @@ class TerminalOutcomeReducer extends OutcomeReducer {
  */
 class AllSuccessOutcomeReducer extends OutcomeReducer {
   readonly name = 'all-success';
-  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+  reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     if (records.length === 0) return 'error';
     return records.every((r) => r.output === 'success') ? 'success' : 'error';
   }
@@ -107,7 +107,7 @@ class AllSuccessOutcomeReducer extends OutcomeReducer {
  */
 class AnySuccessOutcomeReducer extends OutcomeReducer {
   readonly name = 'any-success';
-  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+  reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     if (records.length === 0) return 'error';
     return records.some((r) => r.output === 'success') ? 'success' : 'error';
   }

@@ -18,13 +18,13 @@ export const ScatterOutputSchema = {
 } as const;
 
 /** Union type derived from `ScatterOutputSchema` via `json-schema-to-ts`. */
-export type ScatterOutput = FromSchema<typeof ScatterOutputSchema>;
+export type ScatterOutputType = FromSchema<typeof ScatterOutputSchema>;
 // → 'all-error' | 'all-success' | 'empty' | 'partial'
 
 /** Scatter aggregate output names. */
-export const ScatterOutput = {
+export const ScatterOutputNames = {
   'ALL_ERROR': 'all-error',
   'ALL_SUCCESS': 'all-success',
   'EMPTY': 'empty',
   'PARTIAL': 'partial',
-} as const satisfies Record<string, ScatterOutput>;
+} as const satisfies Record<string, ScatterOutputType>;

@@ -8,8 +8,8 @@
  *   - IpcChannel          — child_process IPC endpoint ingest validation.
  *
  * Every channel validates inbound payloads via Validator.bridgeMessage and
- * surfaces a malformed message as an error BridgeMessage delivered to the
- * handler — never an unvalidated cast, never a throw. The error BridgeMessage
+ * surfaces a malformed message as an error BridgeMessageType delivered to the
+ * handler — never an unvalidated cast, never a throw. The error BridgeMessageType
  * carries correlationId: null and recoverable: false.
  */
 
@@ -17,24 +17,24 @@ import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { describe, it } from 'node:test';
 
-import type { BridgeMessage } from '@studnicky/dagonizer/entities';
+import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 
 import { IpcChannel } from '../../src/IpcChannel.js';
-import type { IpcEndpoint } from '../../src/IpcChannel.js';
+import type { IpcEndpointInterface } from '../../src/IpcChannel.js';
 import { MessagePortChannel } from '../../src/MessagePortChannel.js';
-import type { MessagePortLike } from '../../src/MessagePortChannel.js';
+import type { MessagePortLikeInterface } from '../../src/MessagePortChannel.js';
 import { NdjsonChannel } from '../../src/NdjsonChannel.js';
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
 // ---------------------------------------------------------------------------
 
-function readyMessage(): BridgeMessage {
+function readyMessage(): BridgeMessageType {
   return { 'kind': 'ready', 'registryVersion': '1.0.0', 'capabilities': [] };
 }
 
-function logMessage(): BridgeMessage {
-  return { 'kind': 'log', 'level': 'info', 'component': 'test', 'operation': 'test', 'message': 'hi' };
+function errorMessage(): BridgeMessageType {
+  return { 'kind': 'error', 'correlationId': null, 'code': 'TEST', 'message': 'hi', 'recoverable': false };
 }
 
 // ---------------------------------------------------------------------------
@@ -48,18 +48,18 @@ function makeNdjsonChannel(): { channel: NdjsonChannel; readable: PassThrough; w
   return { 'channel': channel, 'readable': readable, 'writable': writable };
 }
 
-function collectNdjsonMessages(channel: NdjsonChannel): BridgeMessage[] {
-  const messages: BridgeMessage[] = [];
+function collectNdjsonMessages(channel: NdjsonChannel): BridgeMessageType[] {
+  const messages: BridgeMessageType[] = [];
   channel.onMessage((msg) => { messages.push(msg); });
   return messages;
 }
 
 // ---------------------------------------------------------------------------
-// Fake MessagePortLike — captures the registered listener so a test can
+// Fake MessagePortLikeInterface — captures the registered listener so a test can
 // deliver arbitrary payloads to it.
 // ---------------------------------------------------------------------------
 
-class FakePort implements MessagePortLike {
+class FakePort implements MessagePortLikeInterface {
   #listener: ((value: unknown) => void) | null;
 
   constructor() {
@@ -82,10 +82,10 @@ class FakePort implements MessagePortLike {
 }
 
 // ---------------------------------------------------------------------------
-// Fake IpcEndpoint — same idea for the IPC side.
+// Fake IpcEndpointInterface — same idea for the IPC side.
 // ---------------------------------------------------------------------------
 
-class FakeEndpoint implements IpcEndpoint {
+class FakeEndpoint implements IpcEndpointInterface {
   #listener: ((value: unknown) => void) | null;
 
   constructor() {
@@ -117,7 +117,7 @@ void describe('NdjsonChannel.send', () => {
     writable.on('end', () => {
       const output = chunks.join('');
       assert.ok(output.endsWith('\n'), 'must end with newline');
-      const parsed = JSON.parse(output.trimEnd()) as BridgeMessage;
+      const parsed = JSON.parse(output.trimEnd()) as BridgeMessageType;
       assert.strictEqual(parsed.kind, 'ready');
       done();
     });
@@ -165,13 +165,13 @@ void describe('NdjsonChannel.onMessage — framing', () => {
     const messages = collectNdjsonMessages(channel);
 
     const m1 = JSON.stringify(readyMessage()) + '\n';
-    const m2 = JSON.stringify(logMessage() satisfies BridgeMessage) + '\n';
+    const m2 = JSON.stringify(errorMessage() satisfies BridgeMessageType) + '\n';
 
     await new Promise<void>((resolve) => { readable.write(m1 + m2, () => resolve()); });
 
     assert.strictEqual(messages.length, 2);
     assert.strictEqual(messages[0]?.kind, 'ready');
-    assert.strictEqual(messages[1]?.kind, 'log');
+    assert.strictEqual(messages[1]?.kind, 'error');
   });
 
   void it('stops delivering messages after close', async () => {
@@ -191,9 +191,9 @@ void describe('NdjsonChannel.onMessage — framing', () => {
 // ---------------------------------------------------------------------------
 // NdjsonChannel — ingest validation (parse error vs validation error)
 //
-// Both error paths surface an error BridgeMessage with correlationId: null and
+// Both error paths surface an error BridgeMessageType with correlationId: null and
 // recoverable: false, distinguished by code: a syntactically-invalid line is an
-// NDJSON_PARSE_ERROR; a well-formed JSON line that is not a valid BridgeMessage
+// NDJSON_PARSE_ERROR; a well-formed JSON line that is not a valid BridgeMessageType
 // is an NDJSON_VALIDATION_ERROR. Neither path throws.
 // ---------------------------------------------------------------------------
 
@@ -212,7 +212,7 @@ void describe('NdjsonChannel.onMessage — ingest validation', () => {
     assert.strictEqual(errMsg.recoverable, false);
   });
 
-  void it('surfaces a valid-JSON-but-invalid-BridgeMessage line as an NDJSON_VALIDATION_ERROR', async () => {
+  void it('surfaces a valid-JSON-but-invalid-BridgeMessageType line as an NDJSON_VALIDATION_ERROR', async () => {
     const { channel, readable } = makeNdjsonChannel();
     const messages = collectNdjsonMessages(channel);
 
@@ -232,14 +232,14 @@ void describe('NdjsonChannel.onMessage — ingest validation', () => {
 // MessagePortChannel / IpcChannel — ingest validation
 //
 // Both wrap a transport that delivers raw payloads. Each validates inbound
-// payloads via Validator.bridgeMessage: a valid BridgeMessage passes through
+// payloads via Validator.bridgeMessage: a valid BridgeMessageType passes through
 // unchanged; any malformed payload (bad object shape, wrong primitive type,
-// null) is surfaced as an INVALID_MESSAGE error BridgeMessage with
+// null) is surfaced as an INVALID_MESSAGE error BridgeMessageType with
 // correlationId: null and recoverable: false, without throwing.
 // ---------------------------------------------------------------------------
 
 interface IngestTransport {
-  onMessage(handler: (message: BridgeMessage) => void): void;
+  onMessage(handler: (message: BridgeMessageType) => void): void;
   deliver(value: unknown): void;
 }
 
@@ -270,9 +270,9 @@ const ingestChannels: ReadonlyArray<{ name: string; make: () => IngestTransport 
 
 for (const { name, make } of ingestChannels) {
   void describe(`${name} — ingest validation`, () => {
-    void it('delivers a valid BridgeMessage unchanged', () => {
+    void it('delivers a valid BridgeMessageType unchanged', () => {
       const transport = make();
-      const received: BridgeMessage[] = [];
+      const received: BridgeMessageType[] = [];
       transport.onMessage((m) => received.push(m));
 
       transport.deliver(readyMessage());
@@ -283,7 +283,7 @@ for (const { name, make } of ingestChannels) {
 
     void it('surfaces a malformed object payload as an INVALID_MESSAGE error, does not throw', () => {
       const transport = make();
-      const received: BridgeMessage[] = [];
+      const received: BridgeMessageType[] = [];
       transport.onMessage((m) => received.push(m));
 
       assert.doesNotThrow(() => transport.deliver({ 'kind': 'bogus', 'junk': true }));
@@ -298,7 +298,7 @@ for (const { name, make } of ingestChannels) {
 
     void it('surfaces a non-object string payload as an INVALID_MESSAGE error', () => {
       const transport = make();
-      const received: BridgeMessage[] = [];
+      const received: BridgeMessageType[] = [];
       transport.onMessage((m) => received.push(m));
 
       transport.deliver('not-an-object');
@@ -311,7 +311,7 @@ for (const { name, make } of ingestChannels) {
 
     void it('surfaces a null payload as an INVALID_MESSAGE error', () => {
       const transport = make();
-      const received: BridgeMessage[] = [];
+      const received: BridgeMessageType[] = [];
       transport.onMessage((m) => received.push(m));
 
       transport.deliver(null);

@@ -5,7 +5,7 @@
  * registers the canonical DAG (and its embedded-DAG components), and runs one
  * visitor question through.
  *
- * Bundle registration order: each `DispatcherBundle` packages its own nodes
+ * Bundle registration order: each `DispatcherBundleType` packages its own nodes
  * and DAG; `registerBundle` installs every node before every DAG so the
  * validator can resolve node references. Embedded-DAG bundles register before
  * the parent, which references them by name:
@@ -54,7 +54,7 @@ import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import { IntentClassifier } from './providers/IntentClassifier.ts';
 import { OllamaModels } from './providers/index.ts';
 import { OllamaProbe } from './providers/adapters/index.ts';
-import type { ArchivistServices, LlmClient } from './services.ts';
+import type { ArchivistServices, LlmClientInterface } from './services.ts';
 import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
@@ -68,9 +68,9 @@ import {
   LlmError,
 } from '@studnicky/dagonizer/adapter';
 import { ExecutionError, NodeTimeoutError } from '@studnicky/dagonizer/errors';
-import type { AdapterCapabilities } from '@studnicky/dagonizer/adapter';
-import type { Embedder } from '@studnicky/dagonizer/contracts';
-import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
+import type { AdapterCapabilitiesType } from '@studnicky/dagonizer/adapter';
+import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
+import { Checkpoint, CheckpointRestoreAdapter, MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
 
 const logger = new ConsoleLogger();
 
@@ -98,8 +98,8 @@ const OLLAMA_MODEL    = Env.get('OLLAMA_MODEL')
 // registry descriptor stays faithful to runtime behaviour. The
 // registry doesn't enforce the value, but consumers reading
 // `registry.list()` see the real shape.
-const CAPS_FULL_TOOLS:    AdapterCapabilities = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
-const CAPS_PARTIAL_TOOLS: AdapterCapabilities = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
+const CAPS_FULL_TOOLS:    AdapterCapabilitiesType = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
+const CAPS_PARTIAL_TOOLS: AdapterCapabilitiesType = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
 
 // #region adapter-cascade
 const registry = new LlmAdapterRegistry();
@@ -159,7 +159,7 @@ logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 // #endregion adapter-cascade
 
 // #region embedder-cascade
-// ── Embedder cascade: vector intent classification when reachable.
+// ── EmbedderInterface cascade: vector intent classification when reachable.
 //    Order of preference mirrors the LLM cascade for symmetric local-first
 //    behaviour: Ollama (loopback, no key) → Gemini REST → Mistral. When
 //    nothing probes true the cascade throws; we catch and continue with
@@ -191,7 +191,7 @@ const embedderCascade = new EmbedderCascade(embedderRegistry, [
 ]);
 
 let intentClassifier: IntentClassifier | undefined;
-let resolvedEmbedder: Embedder | null = null;
+let resolvedEmbedder: EmbedderInterface | null = null;
 try {
   resolvedEmbedder = await embedderCascade.select();
   intentClassifier = await IntentClassifier.create(resolvedEmbedder);
@@ -205,7 +205,7 @@ try {
 }
 // #endregion embedder-cascade
 
-const llm: LlmClient = new BaseLlmClient(adapter, intentClassifier !== undefined ? { intentClassifier } : {});
+const llm: LlmClientInterface = new BaseLlmClient(adapter, intentClassifier !== undefined ? { intentClassifier } : {});
 
 const services: ArchivistServices = {
   "webSearch":         new OpenLibrarySearchTool(),
@@ -216,17 +216,15 @@ const services: ArchivistServices = {
   "llm":               llm,
   "embedder":          resolvedEmbedder,
   "nodeTimeouts":      {},
-  "logger":            logger,
 };
 
 // #region linear-run
 // ── Dispatcher ───────────────────────────────────────────────────────────
-// ObservedArchivist: Dagonizer subclass wiring every lifecycle hook to the
-// logger via protected hook overrides (the sole observability surface).
-const dispatcher = new ObservedArchivist(
-  { services },
-  logger,
-);
+// ObservedArchivist: Dagonizer subclass wiring every lifecycle hook to its
+// own internally-owned logger via protected hook overrides (the sole
+// observability surface). The driver reads `dispatcher.logger` for its own
+// stage / result display so both streams share one console sink.
+const dispatcher = new ObservedArchivist({ services });
 
 // ── Bundle registration (molecular pattern) ──────────────────────────────
 // Each bundle packages its nodes + DAG. Embedded-DAG bundles register first
@@ -326,7 +324,7 @@ if (cancelResult.cursor !== null) {
     const freshMemory = new MemoryStore();
     await recalled.restoreStores({ 'memory': freshMemory });
     const { dagName, state, cursor } = recalled.restoreState(
-      CheckpointRestoreAdapterFn.fromFn((snap) => ArchivistState.restore(snap)),
+      CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
     );
     const resumeResult = await dispatcher.resume(dagName, state, cursor);
     logger.result(`resumed draft=${resumeResult.state.draft}`);

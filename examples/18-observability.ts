@@ -18,7 +18,7 @@
  * inner nodes across multiple placements.
  *
  * Worker/container hooks fire the same way: WorkerObserver bridges events
- * from the isolate back through the ObserverRelay to the parent Dagonizer's
+ * from the isolate back through the ObserverRelayInterface to the parent Dagonizer's
  * protected hooks. The `placementPath` for inner nodes starts with the
  * outer placement name so you see the full ancestry.
  *
@@ -28,7 +28,7 @@
  */
 
 import { Dagonizer } from '@studnicky/dagonizer';
-import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { PipelineState, ValidateNode, TransformNode, dag } from './dags/18-observability.js';
 
 // ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ class TracingDispatcher extends Dagonizer<PipelineState> {
   protected override onFlowEnd(
     dagName: string,
     _state: PipelineState,
-    result: ExecutionResultInterface<PipelineState>,
+    result: ExecutionResultType<PipelineState>,
   ): void {
     this.#lines.push(
       `${this.#prefix} flowEnd    dag=${dagName} outcome=${result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none'} nodes=${String(result.executedNodes.length)}`,
@@ -165,7 +165,7 @@ for (const line of dispatcher.lines) {
 }
 
 process.stdout.write('\nSubclass hooks fire at every execution boundary.\n');
-process.stdout.write('For worker/container nodes the same hooks fire via ObserverRelay —\n');
+process.stdout.write('For worker/container nodes the same hooks fire via ObserverRelayInterface —\n');
 process.stdout.write('the placementPath carries the full ancestry so inner nodes are\n');
 process.stdout.write('identifiable even when they share names across placements.\n');
 

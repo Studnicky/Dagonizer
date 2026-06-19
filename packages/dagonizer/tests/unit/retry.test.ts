@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
+import { BackoffStrategyNames } from '../../src/entities/runtime/BackoffStrategy.js';
 import { Clock } from '../../src/runtime/Clock.js';
-import { BackoffStrategy, RetryPolicy } from '../../src/runtime/RetryPolicy.js';
+import { RetryPolicy } from '../../src/runtime/RetryPolicy.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
@@ -12,28 +13,28 @@ class FatalError extends Error { constructor() { super('fatal'); } }
 
 void describe('RetryPolicy.getDelay backoff math', () => {
   void it('constant strategy returns baseDelay on every attempt', () => {
-    const p = RetryPolicy.from({ "strategy": BackoffStrategy.CONSTANT, "baseDelay": 500, "jitterFactor": 0 });
+    const p = RetryPolicy.from({ "strategy": BackoffStrategyNames.CONSTANT, "baseDelay": 500, "jitterFactor": 0 });
     assert.equal(p.getDelay(1), 500);
     assert.equal(p.getDelay(2), 500);
     assert.equal(p.getDelay(5), 500);
   });
 
   void it('linear strategy scales delay with the attempt number', () => {
-    const p = RetryPolicy.from({ "strategy": BackoffStrategy.LINEAR, "baseDelay": 100, "jitterFactor": 0 });
+    const p = RetryPolicy.from({ "strategy": BackoffStrategyNames.LINEAR, "baseDelay": 100, "jitterFactor": 0 });
     assert.equal(p.getDelay(1), 100);
     assert.equal(p.getDelay(2), 200);
     assert.equal(p.getDelay(3), 300);
   });
 
   void it('exponential strategy multiplies the base by multiplier^(attempt-1)', () => {
-    const p = RetryPolicy.from({ "strategy": BackoffStrategy.EXPONENTIAL, "baseDelay": 100, "multiplier": 2, "jitterFactor": 0 });
+    const p = RetryPolicy.from({ "strategy": BackoffStrategyNames.EXPONENTIAL, "baseDelay": 100, "multiplier": 2, "jitterFactor": 0 });
     assert.equal(p.getDelay(1), 100);
     assert.equal(p.getDelay(2), 200);
     assert.equal(p.getDelay(3), 400);
   });
 
   void it('clamps the computed delay at maxDelay', () => {
-    const p = RetryPolicy.from({ "strategy": BackoffStrategy.EXPONENTIAL, "baseDelay": 100, "maxDelay": 250, "jitterFactor": 0 });
+    const p = RetryPolicy.from({ "strategy": BackoffStrategyNames.EXPONENTIAL, "baseDelay": 100, "maxDelay": 250, "jitterFactor": 0 });
     // attempt 1 (100) is under the cap; attempt 5 (1600) is clamped to 250.
     assert.equal(p.getDelay(1), 100);
     assert.equal(p.getDelay(5), 250);
@@ -89,7 +90,7 @@ void describe('RetryPolicy.run execution loop', () => {
     const p = RetryPolicy.from({
       "maxAttempts": 3,
       "baseDelay": 100,
-      "strategy": BackoffStrategy.CONSTANT,
+      "strategy": BackoffStrategyNames.CONSTANT,
       "jitterFactor": 0,
     });
 
@@ -115,7 +116,7 @@ void describe('RetryPolicy.run execution loop', () => {
     const sched = new VirtualScheduler(0);
     Scheduler.configure(sched);
     const controller = new AbortController();
-    const p = RetryPolicy.from({ "maxAttempts": 5, "baseDelay": 1000, "strategy": BackoffStrategy.CONSTANT, "jitterFactor": 0 });
+    const p = RetryPolicy.from({ "maxAttempts": 5, "baseDelay": 1000, "strategy": BackoffStrategyNames.CONSTANT, "jitterFactor": 0 });
 
     const promise = p.run(() => { throw new TransientError(); }, { 'signal': controller.signal });
     await new Promise<void>((r) => setImmediate(r));
@@ -127,7 +128,7 @@ void describe('RetryPolicy.run execution loop', () => {
     const sched = new VirtualScheduler(0);
     Scheduler.configure(sched);
     const attempts: number[] = [];
-    const p = RetryPolicy.from({ "maxAttempts": 2, "baseDelay": 0, "strategy": BackoffStrategy.CONSTANT, "jitterFactor": 0 });
+    const p = RetryPolicy.from({ "maxAttempts": 2, "baseDelay": 0, "strategy": BackoffStrategyNames.CONSTANT, "jitterFactor": 0 });
     await assert.rejects(p.run((attempt) => {
       attempts.push(attempt);
       throw new TransientError();
@@ -143,7 +144,7 @@ void describe('RetryPolicy.run execution loop', () => {
     const sched = new VirtualScheduler(0);
     Scheduler.configure(sched);
     const controller = new AbortController();
-    const p = RetryPolicy.from({ "maxAttempts": 3, "baseDelay": 0, "strategy": BackoffStrategy.CONSTANT, "jitterFactor": 0 });
+    const p = RetryPolicy.from({ "maxAttempts": 3, "baseDelay": 0, "strategy": BackoffStrategyNames.CONSTANT, "jitterFactor": 0 });
 
     const promise = p.run(() => {
       controller.abort(new Error('aborted-during-task'));

@@ -10,7 +10,7 @@
  *
  * Fix: the pull-loop condition adds `&& signal?.aborted !== true`; after the
  * drain loop, if the signal is aborted and no pool error occurred, throw
- * `ExecutionError.fromSignal(signal)` BEFORE any `ScatterCheckpoint.clear()`.
+ * `ExecutionError.ofSignal(signal)` BEFORE any `ScatterCheckpoint.clear()`.
  *
  * This test file:
  *   1. Reproduces the defect against current code (should FAIL before the fix).
@@ -21,13 +21,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { ScalarNode } from '../../src/core/ScalarNode.js';
-import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
-import type { ScatterProgress } from '../../src/Dagonizer.js';
+import { Dagonizer } from '../../src/Dagonizer.js';
+import type { ScatterProgressType } from '../../src/Dagonizer.js';
+import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // ── test state ────────────────────────────────────────────────────────────────
@@ -40,13 +41,13 @@ class AbortState extends NodeStateBase {
   items: ScatterSource<number> = [];
   processed: number[] = [];
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     // items may be an AsyncIterable at runtime; only array form is JSON-serialisable.
     const itemsSnap = Array.isArray(this.items) ? [...this.items] : [];
     return { 'items': itemsSnap, 'processed': [...this.processed] };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     const iv = snap['items'];
     if (Array.isArray(iv)) this.items = iv.filter((x): x is number => typeof x === 'number');
     const v = snap['processed'];
@@ -59,7 +60,7 @@ class AbortState extends NodeStateBase {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 /** Build a simple scatter DAG over an `items` source with an append gather. */
-const makeAbortDag = (name: string, concurrency: number): DAG => ({
+const makeAbortDag = (name: string, concurrency: number): DAGType => ({
   '@context': DAG_CONTEXT,
   '@id':      `urn:noocodex:dag:${name}`,
   '@type':    'DAG',
@@ -112,7 +113,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     class WorkerNode extends ScalarNode<AbortState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: AbortState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: AbortState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         // Simulate some async work.
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 2);
@@ -154,7 +155,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
       `cursor should be 'fan' after abort; got '${result.cursor}'`);
 
     // 2. The checkpoint must survive — progress entry must still be present.
-    const stored = result.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const stored = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     assert.ok(stored !== undefined,
       'checkpoint must be present after abort (ScatterCheckpoint.clear must NOT have run)');
 
@@ -186,7 +187,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     class ResumeWorkerNode extends ScalarNode<AbortState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: AbortState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: AbortState): Promise<NodeOutputType<'success'>> {
         state.processed.push(state.getMetadata<number>('item') ?? -1);
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -194,7 +195,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     resumeDispatcher.registerNode(new ResumeWorkerNode());
 
     // Supply an array-based resume DAG so the engine can skip seen indices.
-    const resumeDag: DAG = {
+    const resumeDag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:abort-async-resume',
       '@type':    'DAG',
@@ -222,7 +223,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     // array source (index-stable), preserve the checkpoint metadata.
     const resumeState = new AbortState();
     // Copy the checkpoint metadata from the aborted state.
-    const abortedCheckpoint = result.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const abortedCheckpoint = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     if (abortedCheckpoint !== undefined) {
       resumeState.setMetadata(SCATTER_PROGRESS_KEY, abortedCheckpoint);
     }
@@ -256,7 +257,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     class PreAbortWorkerNode extends ScalarNode<AbortState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: AbortState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: AbortState): Promise<NodeOutputType<'success'>> {
         state.processed.push(state.getMetadata<number>('item') ?? -1);
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -299,7 +300,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     class ExactlyOnceWorkerNode extends ScalarNode<AbortState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: AbortState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: AbortState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 1);
           context.signal.addEventListener('abort', () => {
@@ -319,7 +320,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     dispatcher.registerNode(new ExactlyOnceWorkerNode());
 
     // Use array source for deterministic index-stable resume.
-    const abortDag: DAG = {
+    const abortDag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:exactly-once-abort',
       '@type':    'DAG',
@@ -356,7 +357,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     class ExactlyOnceResumeWorkerNode extends ScalarNode<AbortState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: AbortState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: AbortState): Promise<NodeOutputType<'success'>> {
         const item = state.getMetadata<number>('item') ?? -1;
         resumeItems.push(item);
         state.processed.push(item);
@@ -368,7 +369,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
 
     // Restore state for resume.
     const resumeState = new AbortState();
-    const checkpoint = partial.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const checkpoint = partial.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     if (checkpoint !== undefined) {
       resumeState.setMetadata(SCATTER_PROGRESS_KEY, checkpoint);
     }

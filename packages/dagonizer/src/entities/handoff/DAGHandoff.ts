@@ -50,4 +50,4 @@ export const DAGHandoffSchema = {
 } as const;
 
 /** TypeScript type derived from `DAGHandoffSchema` via `json-schema-to-ts`. */
-export type DAGHandoff = FromSchema<typeof DAGHandoffSchema>;
+export type DAGHandoffType = FromSchema<typeof DAGHandoffSchema>;

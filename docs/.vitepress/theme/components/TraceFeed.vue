@@ -6,15 +6,17 @@
  * Merges two sources:
  *   • `entries`: node start/end/error events from the ObservedDagonizer
  *     observer (passed down from ArchivistRunner as the `trace` ref).
- *   • `logger`: ConsoleLogger subscriber (info/warn/result lines).
+ *   • `logEvents`: the reactive `DomConsoleLogger.events` array (info/warn/
+ *     result lines), owned by ArchivistRunner and appended to by the logger's
+ *     `onEmit` override — no subscribe callback.
  *
  * Both are sorted by `ts` so the feed reads as a single timeline even
  * when logger messages arrive between node events. New items animate in
  * from the left.
  */
 
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import type { ConsoleLogger, LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
+import { computed } from 'vue';
+import type { LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 
 type TraceEntry =
   | { readonly kind: 'start'; readonly node: string; readonly ts: number }
@@ -28,29 +30,19 @@ type FeedItem =
 
 const props = defineProps<{
   entries: readonly TraceEntry[];
-  logger: ConsoleLogger;
+  logEvents: readonly LogEvent[];
 }>();
 
 const emit = defineEmits<{
   (event: 'node-click', name: string): void;
 }>();
 
-/** Live log events pushed by the subscriber. */
-const logEvents = ref<LogEvent[]>([...props.logger.history()]);
-
-const logHandler = (event: LogEvent): void => {
-  logEvents.value = [...logEvents.value, event];
-};
-
-onMounted(() => { props.logger.subscribe(logHandler); });
-onBeforeUnmount(() => { props.logger.unsubscribe(logHandler); });
-
 const feed = computed<readonly FeedItem[]>(() => {
   const items: FeedItem[] = [];
   for (const entry of props.entries) {
     items.push({ 'feedKind': 'trace', 'ts': entry.ts, entry });
   }
-  for (const event of logEvents.value) {
+  for (const event of props.logEvents) {
     items.push({ 'feedKind': 'log', 'ts': event.ts, event });
   }
   items.sort((a, b) => a.ts - b.ts);

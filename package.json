@@ -19,12 +19,12 @@
     "lint": "pnpm -r --filter \"./packages/*\" run lint",
     "lint:dags": "tsx scripts/lint-example-dags.ts",
     "check:docs": "tsx scripts/check-doc-snippets.ts",
-    "ci": "pnpm run typecheck && pnpm run typecheck:examples && pnpm run typecheck:docs && pnpm run lint && pnpm run test && pnpm run lint:dags && pnpm run check:docs",
+    "ci": "pnpm run typecheck && pnpm run typecheck:examples && pnpm run typecheck:docs && pnpm run lint && pnpm run test && pnpm run lint:dags && pnpm run check:docs && pnpm run docs:build",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only",
     "release": "pnpm run ci && changeset publish",
     "docs:dev": "vitepress dev docs",
-    "docs:build": "pnpm run stamp-version && vitepress build docs",
+    "docs:build": "pnpm run stamp-version && node scripts/docs-build.mjs",
     "docs:preview": "vitepress preview docs",
     "docs:theme": "node docs/.vitepress/scripts/build-palette.mjs",
     "stamp-version": "node packages/dagonizer/scripts/stamp-version.mjs",
@@ -44,7 +44,11 @@
     "example:11": "tsx examples/11-handoff.ts",
     "example:12": "tsc -p examples/tsconfig.workers.json && node examples/dist/12-workers.js",
     "example:13": "tsc -p examples/tsconfig.multibackend.json && node examples/dist/13-multibackend.js",
-    "example:derive": "tsx examples/derive.ts"
+    "example:derive": "tsx examples/derive.ts",
+    "example:custom-checkpoint-store": "tsx examples/custom-checkpoint-store.ts",
+    "example:custom-adapter": "tsx examples/custom-adapter.ts",
+    "example:pattern-node": "tsx examples/pattern-node.ts",
+    "example:serverless-handler": "tsx examples/serverless-handler.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
@@ -75,10 +79,6 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "unrs-resolver"
-    ],
-    "overrides": {
-      "vue": "3.5.38",
-      "@shikijs/twoslash": "2.5.0"
-    }
+    ]
   }
 }

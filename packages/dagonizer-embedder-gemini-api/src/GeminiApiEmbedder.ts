@@ -19,31 +19,25 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
-import type { BaseAdapterCoreOptions } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 
-const DEFAULT_MODEL = 'text-embedding-004';
-const DEFAULT_DIMENSIONS = 768;
+import { GeminiApiEmbedResponseValidator } from './GeminiApiEmbedResponse.js';
+
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-export interface GeminiApiEmbedderOptions extends BaseAdapterCoreOptions {
-  /** Override the embedding model. Defaults to `text-embedding-004`. */
-  readonly model?: string;
-  /** Override dimensions when targeting a non-`text-embedding-004` model. */
-  readonly dimensions?: number;
-}
+/** Module-level defaults; the producer fills them so the consumer never sees absence. */
+const GEMINI_API_EMBEDDER_DEFAULTS = {
+  'model': 'text-embedding-004',
+  'dimensions': 768,
+} as const;
 
-interface GeminiEmbedResponse {
-  readonly embedding: { readonly values: readonly number[] };
-}
-
-function isGeminiEmbedResponse(v: unknown): v is GeminiEmbedResponse {
-  if (typeof v !== 'object' || v === null) return false;
-  const obj = v as Record<string, unknown>;
-  if (typeof obj['embedding'] !== 'object' || obj['embedding'] === null) return false;
-  const emb = obj['embedding'] as Record<string, unknown>;
-  return Array.isArray(emb['values']);
-}
+/**
+ * Constructor options for `GeminiApiEmbedder`. Inherits `model?`/`dimensions?`
+ * from `BaseEmbedderOptions`; the provider default (`text-embedding-004`,
+ * 768-dim) is supplied by `GEMINI_API_EMBEDDER_DEFAULTS`.
+ */
+export type GeminiApiEmbedderOptionsType = BaseEmbedderOptionsType;
 
 export class GeminiApiEmbedder extends BaseEmbedder {
   readonly #apiKey: string;
@@ -56,42 +50,25 @@ export class GeminiApiEmbedder extends BaseEmbedder {
    * its `probe()` can return false, letting the cascade route around
    * it cleanly.
    */
-  constructor(apiKey: string, options: GeminiApiEmbedderOptions = {}) {
-    const model = options.model ?? DEFAULT_MODEL;
-    const dimensions = options.dimensions ?? DEFAULT_DIMENSIONS;
-    super('gemini-api', `Gemini REST (${model})`, dimensions, options);
+  constructor(apiKey: string, options: GeminiApiEmbedderOptionsType = {}) {
+    const resolved = { ...GEMINI_API_EMBEDDER_DEFAULTS, ...options };
+    super('gemini-api', `Gemini REST (${resolved.model})`, resolved.dimensions, options);
     this.#apiKey = apiKey;
-    this.#model = model;
+    this.#model = resolved.model;
   }
 
   protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
     const url = `${ENDPOINT}/${encodeURIComponent(this.#model)}:embedContent?key=${encodeURIComponent(this.#apiKey)}`;
-    let res: Response;
-    try {
-      res = await fetch(url, {
+    const raw = await this.fetchJson(
+      url,
+      {
         'method': 'POST',
         'headers': { 'Content-Type': 'application/json' },
         'body': JSON.stringify({ 'content': { 'parts': [{ 'text': text }] } }),
-        signal,
-      });
-    } catch (err) {
-      throw new LlmError(
-        `Gemini embed network error: ${err instanceof Error ? err.message : String(err)}`,
-        Classifications['NETWORK'],
-        { 'cause': err },
-      );
-    }
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new LlmError(
-        `Gemini embed failed: ${String(res.status)} ${body}`,
-        LlmError.classifyHttp(res.status, { 'body': body }),
-      );
-    }
-
-    const raw: unknown = await res.json();
-    if (!isGeminiEmbedResponse(raw) || raw.embedding.values.length === 0) {
+      },
+      signal,
+    );
+    if (!GeminiApiEmbedResponseValidator.is(raw) || raw.embedding.values.length === 0) {
       throw new LlmError(
         `Gemini embed: missing or empty 'embedding.values' field`,
         Classifications['SCHEMA_VIOLATION'],
@@ -104,7 +81,7 @@ export class GeminiApiEmbedder extends BaseEmbedder {
    * Probe true when a non-empty API key was supplied. Never throws.
    * Symmetric with `GeminiApiAdapter.probe`.
    */
-  override async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
+  override async probe(_options?: AbortableOptionsType): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 }

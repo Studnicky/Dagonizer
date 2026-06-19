@@ -7,9 +7,15 @@
  * `@studnicky/dagonizer/adapter`'s `LlmError` so downstream observability
  * sees a consistent vocabulary regardless of whether the failure was
  * model-side or tool-side.
+ *
+ * Extends `DAGError` (code `'TOOL_ERROR'`) so `instanceof DAGError` holds for
+ * every tool failure and the dispatcher's framework-error guards classify it
+ * uniformly alongside `StoreError`, `ExecutionError`, and the rest.
  */
 
-export type ToolErrorReason =
+import { DAGError } from '../errors/DAGError.js';
+
+export type ToolErrorReasonType =
   | 'NETWORK'
   | 'HTTP_4XX'
   | 'HTTP_5XX'
@@ -20,8 +26,8 @@ export type ToolErrorReason =
   | 'ABORTED'
   | 'UNKNOWN';
 
-export interface ToolErrorOptions {
-  reason: ToolErrorReason;
+export type ToolErrorOptionsType = {
+  reason: ToolErrorReasonType;
   retryable: boolean;
   /** HTTP status code. Omit (or null) when no HTTP status applies; defaults to null. */
   status?: number | null;
@@ -29,17 +35,18 @@ export interface ToolErrorOptions {
   cause?: unknown;
 }
 
-export class ToolError extends Error {
-  readonly reason: ToolErrorReason;
+export class ToolError extends DAGError {
+  readonly reason: ToolErrorReasonType;
   readonly retryable: boolean;
   // Always initialised (null = no HTTP status) so every ToolError instance
   // shares one stable V8 hidden class; declaration order matches assignment.
   readonly status: number | null;
 
-  constructor(message: string, options: ToolErrorOptions) {
-    const opts: ErrorOptions = {};
-    if (options.cause !== undefined) opts.cause = options.cause;
-    super(message, opts);
+  constructor(message: string, options: ToolErrorOptionsType) {
+    super(message, {
+      'code': 'TOOL_ERROR',
+      ...(options.cause instanceof Error && { 'cause': options.cause }),
+    });
     this.name = 'ToolError';
     this.reason = options.reason;
     this.retryable = options.retryable;

@@ -31,13 +31,13 @@ The registry module is dynamic-imported by the `DagHost` inside each worker. It 
 ```ts
 // registry.ts
 import type { RegistryModuleInterface, RegistryBundleInterface } from '@studnicky/dagonizer/contracts';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { MyState } from './MyState.js';
 import { myNode } from './myNode.js';
 import { myDag } from './myDag.js';
 
 const registry: RegistryModuleInterface = {
-  async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async createBundle(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     return {
       bundle: { nodes: [myNode], dags: [myDag] },
       services: undefined,

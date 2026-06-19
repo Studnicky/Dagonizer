@@ -6,11 +6,10 @@
  *  - Aborting during the backoff sleep rejects before the full delay elapses.
  *  - Retries still work when no signal is provided.
  *
- * Caller-side shape validation:
- *  - HttpRequestOptions carries no `validate` callback; getJson/postJson return
- *    the parsed JSON typed as TResponse for the caller to narrow.
- *  - Wrong-shaped bodies are returned unmodified (no transport-level error).
- *  - getJson works with no options (all defaults).
+ * Schema-backed shape validation:
+ *  - getJson/postJson require an `EntityValidatorInterface` and narrow the parsed JSON
+ *    body to its derived type before returning.
+ *  - A wrong-shaped body throws a non-retryable `ToolError(PARSE_ERROR)`.
  */
 
 import assert from 'node:assert/strict';
@@ -18,6 +17,7 @@ import { describe, it } from 'node:test';
 
 import { HttpTransport } from '../../src/tool/HttpTransport.js';
 import { ToolError } from '../../src/tool/ToolError.js';
+import type { EntityValidatorInterface } from '../../src/validation/Validator.js';
 
 /** Patch globalThis.fetch for one test, restore after. */
 async function withFetchPatch<T>(
@@ -31,6 +31,27 @@ async function withFetchPatch<T>(
   } finally {
     globalThis.fetch = saved;
   }
+}
+
+/**
+ * Minimal structural `EntityValidatorInterface<T>` for tests: narrows a body that
+ * contains every key of `keys`. Mirrors the shape predicate a compiled
+ * `Validator.<entity>` exposes without pulling a full Ajv schema into the
+ * test fixture.
+ */
+function keyValidator<T>(keys: readonly string[]): EntityValidatorInterface<T> {
+  const matches = (value: unknown): value is T =>
+    typeof value === 'object' && value !== null && keys.every((k) => k in value);
+  return {
+    'is': matches,
+    'validate'(value): T {
+      if (matches(value)) return value;
+      throw new Error('invalid');
+    },
+    'errors'(value): string[] | null {
+      return matches(value) ? null : [`<root>: missing one of ${keys.join(', ')}`];
+    },
+  };
 }
 
 void describe('HttpTransport abort-aware sleep (ADP-4)', () => {
@@ -89,7 +110,7 @@ void describe('HttpTransport abort-aware sleep (ADP-4)', () => {
   void it('request succeeds on first try without signal', async () => {
     const result = await withFetchPatch(
       async () => new Response(JSON.stringify({ 'ok': true }), { 'status': 200, 'headers': { 'content-type': 'application/json' } }),
-      () => HttpTransport.getJson<{ ok: boolean }>('https://example.test/api'),
+      () => HttpTransport.getJson<{ ok: boolean }>('https://example.test/api', keyValidator<{ ok: boolean }>(['ok'])),
     );
     assert.equal(result.ok, true);
   });
@@ -114,9 +135,9 @@ void describe('HttpTransport abort-aware sleep (ADP-4)', () => {
   });
 });
 
-void describe('HttpTransport — caller-side shape validation', () => {
-  // Caller receives the raw parsed JSON and can narrow it themselves.
-  void it('returns parsed JSON as TResponse for the caller to narrow', async () => {
+void describe('HttpTransport — schema-backed shape validation', () => {
+  // The validator narrows the parsed body to its derived type.
+  void it('returns the body narrowed by the validator', async () => {
     interface Expected { count: number }
 
     const result = await withFetchPatch(
@@ -124,31 +145,35 @@ void describe('HttpTransport — caller-side shape validation', () => {
         JSON.stringify({ 'count': 42 }),
         { 'status': 200, 'headers': { 'content-type': 'application/json' } },
       ),
-      () => HttpTransport.getJson<Expected>('https://example.test/api'),
+      () => HttpTransport.getJson<Expected>('https://example.test/api', keyValidator<Expected>(['count'])),
     );
 
     assert.equal(result.count, 42);
   });
 
-  // Wrong-shaped body is returned as-is; caller must validate.
-  void it('returns wrong-shaped body without error — validation is caller responsibility', async () => {
+  // Wrong-shaped body now throws a non-retryable PARSE_ERROR.
+  void it('throws ToolError(PARSE_ERROR) on a shape mismatch', async () => {
     interface Expected { ok: boolean }
 
-    const result = await withFetchPatch(
-      async () => new Response(
-        JSON.stringify({ 'wrong': 'shape' }),
-        { 'status': 200, 'headers': { 'content-type': 'application/json' } },
+    await assert.rejects(
+      () => withFetchPatch(
+        async () => new Response(
+          JSON.stringify({ 'wrong': 'shape' }),
+          { 'status': 200, 'headers': { 'content-type': 'application/json' } },
+        ),
+        () => HttpTransport.getJson<Expected>('https://example.test/api', keyValidator<Expected>(['ok'])),
       ),
-      () => HttpTransport.getJson<Expected>('https://example.test/api'),
+      (err: unknown): err is ToolError => {
+        if (!(err instanceof ToolError)) return false;
+        assert.equal(err.reason, 'PARSE_ERROR');
+        assert.equal(err.retryable, false);
+        return true;
+      },
     );
-
-    // Shape is wrong but HttpTransport does not validate; the caller receives
-    // the raw parsed object typed as TResponse.
-    assert.deepEqual(result, { 'wrong': 'shape' });
   });
 
-  // postJson also returns parsed JSON without transport-level shape checking.
-  void it('postJson returns parsed JSON as TResponse', async () => {
+  // postJson narrows the parsed body through the validator too.
+  void it('postJson returns the body narrowed by the validator', async () => {
     interface Expected { id: string }
 
     const result = await withFetchPatch(
@@ -156,20 +181,22 @@ void describe('HttpTransport — caller-side shape validation', () => {
         JSON.stringify({ 'id': 'abc-123' }),
         { 'status': 200, 'headers': { 'content-type': 'application/json' } },
       ),
-      () => HttpTransport.postJson<Expected>('https://example.test/api', { 'query': 'test' }),
+      () => HttpTransport.postJson<Expected>('https://example.test/api', { 'query': 'test' }, keyValidator<Expected>(['id'])),
     );
 
     assert.equal(result.id, 'abc-123');
   });
 
-  // No options required.
+  // No options required beyond the validator.
   void it('works without any options (all defaults)', async () => {
+    interface Expected { arbitrary: string }
+
     const result = await withFetchPatch(
       async () => new Response(
         JSON.stringify({ 'arbitrary': 'data' }),
         { 'status': 200, 'headers': { 'content-type': 'application/json' } },
       ),
-      () => HttpTransport.getJson<{ arbitrary: string }>('https://example.test/api'),
+      () => HttpTransport.getJson<Expected>('https://example.test/api', keyValidator<Expected>(['arbitrary'])),
     );
 
     assert.equal(result.arbitrary, 'data');

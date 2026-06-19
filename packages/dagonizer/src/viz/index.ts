@@ -11,29 +11,33 @@
  *     active nodes, drag the layout, click for inspection).
  *   - `CytoscapeGraph`: subclassable factory that builds a fully
  *     configured `cytoscape.Core` (elements + canonical stylesheet +
- *     preset layout) from a `DAG`. The cytoscape constructor is
- *     dependency-injected; subclass it to layer on live-run animation.
+ *     preset layout) from a `DAG`. The `cytoscape` peer is loaded lazily
+ *     via `Cytoscape.create`; subclass `CytoscapeGraph` to layer on
+ *     live-run animation.
+ *   - `Cytoscape`: domain module whose `Cytoscape.create(options)` static
+ *     dynamic-imports the optional `cytoscape` peer and constructs a `Core`.
  */
 
 export { MermaidRenderer } from './MermaidRenderer.js';
 export { JsonLdRenderer, DAGONIZER_VOCAB, DagJsonLdDocumentSchema } from './JsonLdRenderer.js';
-export type { DagJsonLdDocument, JsonLdGraphEntry } from './JsonLdRenderer.js';
+export type { DagJsonLdDocumentType, JsonLdGraphEntryType } from './JsonLdRenderer.js';
 export { CytoscapeRenderer } from './CytoscapeRenderer.js';
 export type {
-  CytoscapeElement,
-  CytoscapeNodeData,
-  CytoscapeNodeElement,
-  CytoscapeEdgeElement,
-  RenderOptions,
+  CytoscapeElementType,
+  CytoscapeNodeDataType,
+  CytoscapeNodeElementType,
+  CytoscapeEdgeElementType,
+  RenderOptionsType,
 } from './CytoscapeRenderer.js';
 export { CompositeLayout } from './CompositeLayout.js';
 export type {
-  NodePosition,
-  LayoutResult,
-  CompositeLayoutOptions,
+  NodePositionType,
+  LayoutResultType,
+  CompositeLayoutOptionsType,
 } from './CompositeLayout.js';
+export { Cytoscape } from './Cytoscape.js';
 export { CytoscapeGraph } from './CytoscapeGraph.js';
 export type {
   CytoscapeGraphInterface,
-  CytoscapeGraphOptions,
+  CytoscapeGraphOptionsType,
 } from './CytoscapeGraph.js';

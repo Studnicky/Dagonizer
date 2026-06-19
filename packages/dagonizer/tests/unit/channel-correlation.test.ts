@@ -33,17 +33,17 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
-import type { DagContainerOptions, PoolEntry } from '../../src/container/DagContainerBase.js';
-import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
+import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
-import type { ObserverRelay } from '../../src/Dagonizer.js';
-import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
-import type { ExecutionRequest } from '../../src/entities/executor/ExecutionRequest.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
+import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
+import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 
 // ---------------------------------------------------------------------------
@@ -63,11 +63,11 @@ class CountingChannel implements MessageChannelInterface {
     return this.#onMessageCallCount;
   }
 
-  send(message: BridgeMessage): void {
+  send(message: BridgeMessageType): void {
     this.#inner.send(message);
   }
 
-  onMessage(handler: (message: BridgeMessage) => void): void {
+  onMessage(handler: (message: BridgeMessageType) => void): void {
     this.#onMessageCallCount += 1;
     this.#inner.onMessage(handler);
   }
@@ -99,12 +99,12 @@ function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<
       'nodeName': 'test-node',
       'signal': signal,
       'services': undefined,
-    } as NodeContextInterface<undefined>,
-    toRequest(): ExecutionRequest {
+    } as NodeContextType<undefined>,
+    toRequest(): ExecutionRequestType {
       return {
         'dagName': 'test-dag',
         'placementPath': [],
-        'items': [{ 'id': correlationId, 'snapshot': {} as JsonObject }],
+        'items': [{ 'id': correlationId, 'snapshot': {} as JsonObjectType }],
         'timeoutMs': null,
         'correlationId': correlationId,
       };
@@ -122,7 +122,7 @@ function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<
 // concurrency invariants, not pool growth.
 // ---------------------------------------------------------------------------
 
-const NOOP_INIT: DagContainerOptions['init'] = {
+const NOOP_INIT: DagContainerOptionsType['init'] = {
   'registryModule': 'test',
   'registryVersion': '0.0.0',
   'servicesConfig': {},
@@ -131,7 +131,7 @@ const NOOP_INIT: DagContainerOptions['init'] = {
 class SingleChannelContainer extends DagContainerBase<MinimalState, null> {
   readonly #channel: MessageChannelInterface;
 
-  constructor(channel: MessageChannelInterface, _options: Partial<DagContainerOptions> = {}) {
+  constructor(channel: MessageChannelInterface, _options: Partial<DagContainerOptionsType> = {}) {
     super({
       ...DagContainerBase.defaultOptions,
       'poolSize': 1,
@@ -148,11 +148,11 @@ class SingleChannelContainer extends DagContainerBase<MinimalState, null> {
   // Override releaseChannel: no-op — the channel is never pooled.
   protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
 
-  protected override createEntry(): PoolEntry<null> {
+  protected override composeEntry(): PoolEntryType<null> {
     return { 'worker': null, 'channel': this.#channel, 'initialized': true };
   }
 
-  protected override attachDeathListeners(_entry: PoolEntry<null>): void {
+  protected override attachDeathListeners(_entry: PoolEntryType<null>): void {
     // Test channel — no death events.
   }
 
@@ -223,7 +223,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
 
     const REQUEST_COUNT = 30;
     const ac = new AbortController();
-    const results: DagOutcomeInterface[] = [];
+    const results: DagOutcomeType[] = [];
 
     for (let i = 0; i < REQUEST_COUNT; i++) {
       const task = makeTask(`req-${i}`, ac.signal);
@@ -377,13 +377,12 @@ void describe('worker observability: forwarded node events reach the parent obse
     // exactly this shape (Dagonizer.buildObserverRelay); a recording stand-in
     // proves the forwarded event lands on that surface.
     const seen: Array<{ readonly node: string; readonly path: readonly string[] }> = [];
-    const relay: ObserverRelay = {
+    const relay: ObserverRelayInterface = {
       onNodeStart(node, path) { seen.push({ 'node': node, 'path': path }); },
       onNodeEnd() { /* unused in this test */ },
       onError() { /* unused in this test */ },
       onPhaseEnter() { /* unused in this test */ },
       onPhaseExit() { /* unused in this test */ },
-      onContractWarning() { /* unused in this test */ },
     };
 
     const ac = new AbortController();

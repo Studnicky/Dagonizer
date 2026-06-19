@@ -30,4 +30,4 @@ export const ChatResponseSchema = {
 } as const;
 
 /** What the adapter returns; every field always present. */
-export type ChatResponse = FromSchema<typeof ChatResponseSchema>;
+export type ChatResponseType = FromSchema<typeof ChatResponseSchema>;

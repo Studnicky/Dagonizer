@@ -1,6 +1,6 @@
 /**
  * DAGLifecycleMachine: pure reducer + initial-state factory + terminal
- * predicate for the lifecycle defined in `DAGLifecycleState.ts`.
+ * predicate for the lifecycle defined in `DAGLifecycleStateType.ts`.
  *
  * Side-effect-free: no IO, no logging. The `at` field on each event carries
  * the monotonic clock value; callers supply it explicitly (production callers
@@ -22,19 +22,19 @@
  */
 
 import type {
-  DAGLifecycleEvent,
-  DAGLifecycleState,
+  DAGLifecycleEventType,
+  DAGLifecycleStateType,
 } from './DAGLifecycleState.js';
 
-type StateKind = DAGLifecycleState['kind'];
-type EventType = DAGLifecycleEvent['type'];
+type StateKind = DAGLifecycleStateType['kind'];
+type EventType = DAGLifecycleEventType['type'];
 type Handler<K extends StateKind, T extends EventType> = (
-  state: Extract<DAGLifecycleState, { kind: K }>,
-  event: Extract<DAGLifecycleEvent, { type: T }>,
-) => DAGLifecycleState;
+  state: Extract<DAGLifecycleStateType, { kind: K }>,
+  event: Extract<DAGLifecycleEventType, { type: T }>,
+) => DAGLifecycleStateType;
 
 /**
- * Pure reducer for `DAGLifecycleState`. Static class; never
+ * Pure reducer for `DAGLifecycleStateType`. Static class; never
  * instantiated. Use `initial()` to seed a new state and `transition()` to
  * advance it. Illegal transitions return the input state unchanged;
  * `NodeStateBase.dispatch` detects the identity return and throws.
@@ -44,14 +44,14 @@ export class DAGLifecycleMachine {
     /* utility class; never instantiated */
   }
 
-  static initial(): DAGLifecycleState {
+  static initial(): DAGLifecycleStateType {
     return { 'kind': 'pending', 'startedAt': null, 'finishedAt': null, 'error': null, 'reason': null };
   }
 
   static transition(
-    state: DAGLifecycleState,
-    event: DAGLifecycleEvent,
-  ): DAGLifecycleState {
+    state: DAGLifecycleStateType,
+    event: DAGLifecycleEventType,
+  ): DAGLifecycleStateType {
     // Terminal stickiness: delegate to `isTerminal` — the single source of
     // truth for which kinds are terminal so the two sites never diverge.
     if (DAGLifecycleMachine.isTerminal(state)) {
@@ -61,21 +61,21 @@ export class DAGLifecycleMachine {
     // TypeScript's control-flow analysis cannot infer that `isTerminal`
     // eliminates the terminal variants; the cast to `ActiveState` is sound
     // because the guard above returns early for every terminal kind.
-    type ActiveState = Extract<DAGLifecycleState, { kind: 'pending' | 'running' }>;
+    type ActiveState = Extract<DAGLifecycleStateType, { kind: 'pending' | 'running' }>;
     const activeState = state as ActiveState;
     // The TRANSITION_TABLE is keyed on `ActiveState['kind']` × `EventType`,
     // but the index signature returns `Handler<K,T> | undefined`. The wider
-    // cast to a plain `(state, event) => DAGLifecycleState` is necessary
+    // cast to a plain `(state, event) => DAGLifecycleStateType` is necessary
     // because the generic K/T are not propagatable through a dynamic index
     // lookup; the shape is structurally identical at runtime.
-    const handlerFn = DAGLifecycleMachine.TRANSITION_TABLE[activeState.kind][event.type] as
-      | ((state: ActiveState, event: DAGLifecycleEvent) => DAGLifecycleState)
+    const transition = DAGLifecycleMachine.TRANSITION_TABLE[activeState.kind][event.type] as
+      | ((state: ActiveState, event: DAGLifecycleEventType) => DAGLifecycleStateType)
       | undefined;
-    return handlerFn ? handlerFn(activeState, event) : state;
+    return transition ? transition(activeState, event) : state;
   }
 
   /** True iff `state` has reached one of the four terminal kinds. */
-  static isTerminal(state: DAGLifecycleState): boolean {
+  static isTerminal(state: DAGLifecycleStateType): boolean {
     return (
       state.kind === 'completed'
       || state.kind === 'failed'
@@ -85,16 +85,16 @@ export class DAGLifecycleMachine {
   }
 
   private static handlePendingStart(
-    _state: Extract<DAGLifecycleState, { kind: 'pending' }>,
-    event: Extract<DAGLifecycleEvent, { type: 'start' }>,
-  ): DAGLifecycleState {
+    _state: Extract<DAGLifecycleStateType, { kind: 'pending' }>,
+    event: Extract<DAGLifecycleEventType, { type: 'start' }>,
+  ): DAGLifecycleStateType {
     return { 'kind': 'running', 'startedAt': event.at, 'finishedAt': null, 'error': null, 'reason': null };
   }
 
   private static handleRunningSucceed(
-    state: Extract<DAGLifecycleState, { kind: 'running' }>,
-    event: Extract<DAGLifecycleEvent, { type: 'succeed' }>,
-  ): DAGLifecycleState {
+    state: Extract<DAGLifecycleStateType, { kind: 'running' }>,
+    event: Extract<DAGLifecycleEventType, { type: 'succeed' }>,
+  ): DAGLifecycleStateType {
     return {
       'kind': 'completed',
       'startedAt': state.startedAt,
@@ -105,9 +105,9 @@ export class DAGLifecycleMachine {
   }
 
   private static handleRunningFail(
-    state: Extract<DAGLifecycleState, { kind: 'running' }>,
-    event: Extract<DAGLifecycleEvent, { type: 'fail' }>,
-  ): DAGLifecycleState {
+    state: Extract<DAGLifecycleStateType, { kind: 'running' }>,
+    event: Extract<DAGLifecycleEventType, { type: 'fail' }>,
+  ): DAGLifecycleStateType {
     return {
       'kind': 'failed',
       'startedAt': state.startedAt,
@@ -118,9 +118,9 @@ export class DAGLifecycleMachine {
   }
 
   private static handleRunningCancel(
-    state: Extract<DAGLifecycleState, { kind: 'running' }>,
-    event: Extract<DAGLifecycleEvent, { type: 'cancel' }>,
-  ): DAGLifecycleState {
+    state: Extract<DAGLifecycleStateType, { kind: 'running' }>,
+    event: Extract<DAGLifecycleEventType, { type: 'cancel' }>,
+  ): DAGLifecycleStateType {
     return {
       'kind': 'cancelled',
       'startedAt': state.startedAt,
@@ -131,9 +131,9 @@ export class DAGLifecycleMachine {
   }
 
   private static handleRunningTimeout(
-    state: Extract<DAGLifecycleState, { kind: 'running' }>,
-    event: Extract<DAGLifecycleEvent, { type: 'timeout' }>,
-  ): DAGLifecycleState {
+    state: Extract<DAGLifecycleStateType, { kind: 'running' }>,
+    event: Extract<DAGLifecycleEventType, { type: 'timeout' }>,
+  ): DAGLifecycleStateType {
     return {
       'kind': 'timed_out',
       'startedAt': state.startedAt,

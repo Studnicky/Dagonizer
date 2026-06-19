@@ -6,7 +6,7 @@
  * whether the caller provides those fields, and that the builder emits a
  * well-formed ScatterNode (including the full descriptor-source shape).
  *
- * Also exercises the `ScatterOptions.from` factory directly to confirm the
+ * Also exercises the `ScatterOptions.resolve` factory directly to confirm the
  * default constants are applied and caller-supplied values are preserved, and
  * the reservoir option round-trips through the builder and the validator.
  */
@@ -21,20 +21,20 @@ import {
   ScatterOptions,
 } from '../../src/builder/ScatterOptions.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 class NoopNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'noop';
   readonly outputs = ['success'] as const;
-  protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 const noop = new NoopNode();
 
-void describe('ScatterOptions.from — static factory', () => {
+void describe('ScatterOptions.resolve — static factory', () => {
   void it('fills itemKey and reducer with their default constants when omitted', () => {
-    const resolved = ScatterOptions.from({ 'gather': { 'strategy': 'discard' } });
+    const resolved = ScatterOptions.resolve({ 'gather': { 'strategy': 'discard' } });
     assert.equal(resolved.itemKey, SCATTER_ITEM_KEY_DEFAULT);
     assert.equal(resolved.itemKey, 'currentItem');
     assert.equal(resolved.reducer, SCATTER_REDUCER_DEFAULT);
@@ -42,7 +42,7 @@ void describe('ScatterOptions.from — static factory', () => {
   });
 
   void it('preserves caller-supplied itemKey and reducer', () => {
-    const resolved = ScatterOptions.from({
+    const resolved = ScatterOptions.resolve({
       'itemKey': 'task',
       'reducer': 'any-success',
       'gather':  { 'strategy': 'discard' },
@@ -52,7 +52,7 @@ void describe('ScatterOptions.from — static factory', () => {
   });
 
   void it('leaves concurrency, inputs, and container absent when omitted', () => {
-    const resolved = ScatterOptions.from({ 'gather': { 'strategy': 'discard' } });
+    const resolved = ScatterOptions.resolve({ 'gather': { 'strategy': 'discard' } });
     assert.equal(resolved.concurrency, undefined);
     assert.equal(resolved.inputs, undefined);
     assert.equal(resolved.container, undefined);

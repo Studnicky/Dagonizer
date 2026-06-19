@@ -36,7 +36,7 @@ import { composeResponse, validateResponse } from '../nodes/composeResponse.ts';
 import { composeResponseSalvage } from '../nodes/salvage.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
 
@@ -50,7 +50,7 @@ import { DAGBuilder } from '@studnicky/dagonizer';
  * exactly ONE respond-to-visitor fires per run regardless of how many branches
  * converge into this sub-DAG.
  */
-export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.1')
+export const ComposeRetryLoopDAG: DAGType = new DAGBuilder('compose-retry-loop', '1.1')
 
   // ── 1. compose-response ──────────────────────────────────────────────────
   // Writes state.draft via an intent-specific compose method. A transient LLM
@@ -89,7 +89,7 @@ export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.
  * Bundle of every node used by `ComposeRetryLoopDAG` plus the DAG itself.
  * Register with `dispatcher.registerBundle(composeRetryLoopBundle)`.
  */
-export const composeRetryLoopBundle: DispatcherBundle<ArchivistState, ArchivistServices> = {
+export const composeRetryLoopBundle: DispatcherBundleType<ArchivistState, ArchivistServices> = {
   'nodes': [composeResponse, validateResponse, composeResponseSalvage],
   'dags': [ComposeRetryLoopDAG],
 };

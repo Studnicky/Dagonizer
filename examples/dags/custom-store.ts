@@ -2,7 +2,7 @@
  * custom-store/dags: demonstrates extending BaseStore for a custom in-process backend.
  *
  * MapStore is a real, runnable implementation backed by a plain JavaScript
- * Map<string, JsonValue>. It implements all six protected abstract hooks and
+ * Map<string, JsonValueType>. It implements all six protected abstract hooks and
  * overrides `update` with a lock-free atomic read-modify-write that is safe
  * because the Map access between read and write contains no `await` — no
  * concurrent microtask can interleave.
@@ -18,9 +18,9 @@
  */
 
 // #region custom-store
-import type { JsonValue } from '@studnicky/dagonizer/entities';
-import type { StoreSnapshotEntry } from '@studnicky/dagonizer/store';
-import { BaseStore, type BaseStoreOptions } from '@studnicky/dagonizer/store';
+import type { JsonValueType } from '@studnicky/dagonizer/entities';
+import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/store';
+import { BaseStore, type BaseStoreOptionsType } from '@studnicky/dagonizer/store';
 
 /**
  * MapStore: a fully functional custom store backed by a plain Map.
@@ -35,11 +35,11 @@ import { BaseStore, type BaseStoreOptions } from '@studnicky/dagonizer/store';
  * resume path — bump `snapshotVersion` when the storage shape changes.
  */
 export class MapStore extends BaseStore {
-  readonly #data: Map<string, JsonValue>;
+  readonly #data: Map<string, JsonValueType>;
 
-  constructor(options: BaseStoreOptions = {}) {
+  constructor(options: BaseStoreOptionsType = {}) {
     super(options);
-    this.#data = new Map<string, JsonValue>();
+    this.#data = new Map<string, JsonValueType>();
   }
 
   protected get snapshotType(): string    { return 'map-store'; }
@@ -51,7 +51,7 @@ export class MapStore extends BaseStore {
    * instance. The base-class default uses performGet + performSet,
    * which has two await points and is not safe under concurrent calls.
    */
-  override async update<T extends JsonValue>(
+  override async update<T extends JsonValueType>(
     key: string,
     fn: (current: T | undefined) => T,
   ): Promise<T> {
@@ -62,12 +62,12 @@ export class MapStore extends BaseStore {
     return next;
   }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
     const value = this.#data.get(key);
     return value === undefined ? null : (value as T);
   }
 
-  protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
+  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
     this.#data.set(key, value);
   }
 
@@ -79,11 +79,11 @@ export class MapStore extends BaseStore {
     return this.#data.delete(key);
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
+  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
     return [...this.#data.entries()].map(([key, value]) => ({ key, value }));
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void> {
+  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
     this.#data.clear();
     for (const { key, value } of entries) {
       this.#data.set(key, value);

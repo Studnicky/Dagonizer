@@ -7,11 +7,11 @@
  * scheduler and Clock observe the same virtual time.
  */
 
-import type { ClockProvider } from '../dist/contracts/ClockProvider.js';
+import type { ClockProviderInterface } from '../dist/contracts/ClockProviderInterface.js';
 
 const NS_PER_MS = 1_000_000n;
 
-export class VirtualClockProvider implements ClockProvider {
+export class VirtualClockProvider implements ClockProviderInterface {
   #hrtimeNs: bigint;
 
   constructor(initialNs: bigint = 0n) {

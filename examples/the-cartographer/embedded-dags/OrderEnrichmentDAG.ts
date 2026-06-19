@@ -35,11 +35,11 @@ import { enrichEta }      from '../nodes/enrichEta.ts';
 import type { CartographerState }   from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DispatcherBundle } from '@studnicky/dagonizer';
+import type { DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
-import type { DAG }              from '@studnicky/dagonizer/entities';
+import type { DAGType }              from '@studnicky/dagonizer/entities';
 
-export const orderEnrichmentDAG: DAG = new DAGBuilder('order-enrichment', '1.0')
+export const orderEnrichmentDAG: DAGType = new DAGBuilder('order-enrichment', '1.0')
 
   // 1. enrich-pricing: basket → PricedOrder with FX normalisation.
   .node('enrich-pricing', enrichPricing, {
@@ -61,7 +61,7 @@ export const orderEnrichmentDAG: DAG = new DAGBuilder('order-enrichment', '1.0')
 
   .build();
 
-export const orderEnrichmentBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const orderEnrichmentBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [enrichPricing, enrichShipping, enrichEta],
   'dags':  [orderEnrichmentDAG],
 };

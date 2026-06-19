@@ -22,15 +22,15 @@ import {
   ScalarNode,
 } from '@studnicky/dagonizer';
 import type {
-  DAG,
-  GatherConfig,
-  GatherExecution,
-  NodeContextInterface,
+  DAGType,
+  GatherConfigType,
+  GatherExecutionType,
+  NodeContextType,
   NodeStateInterface,
-  OutcomeRecord,
-  RoutedBatch,
+  OutcomeRecordType,
+  RoutedBatchType,
 } from '@studnicky/dagonizer';
-import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 
 // ── Domain state (re-exported so entry can reference the type) ────────────────
 
@@ -71,8 +71,8 @@ export class BatchEnrichNode extends MonadicNode<RankingState, 'enriched'> {
 
   async execute(
     batch: Batch<RankingState>,
-    _ctx: NodeContextInterface,
-  ): Promise<RoutedBatch<'enriched', RankingState>> {
+    _ctx: NodeContextType,
+  ): Promise<RoutedBatchType<'enriched', RankingState>> {
     // Operate on the whole batch at once: normalise every item's score.
     const items = batch.items();
     const max = Math.max(...items.map((item) => item.state.candidate.score), 1);
@@ -89,13 +89,13 @@ export class BatchEnrichNode extends MonadicNode<RankingState, 'enriched'> {
 
 // #region call-node-directly
 // Direct node invocation: create a Batch from a single state and call execute().
-// Returns a RoutedBatch; check routed.has('success') to inspect results.
+// Returns a RoutedBatchType; check routed.has('success') to inspect results.
 // Used in tests for per-node isolation without a full dispatcher.
 export async function scoreOneItem(item: string): Promise<boolean> {
   const state = new RankingState();
   state.candidate = { title: item, score: 0 };
   const node = new ScoreNode();
-  const ctx: NodeContextInterface = {
+  const ctx: NodeContextType = {
     signal: new AbortController().signal,
     dagName: 'test',
     nodeName: 'score',
@@ -121,17 +121,17 @@ class TopNGatherStrategy extends GatherStrategy {
   readonly name = 'top-n';
 
   override reduce(
-    _config: GatherConfig,
+    _config: GatherConfigType,
     _batch: Parameters<GatherStrategy['reduce']>[1],
     _state: NodeStateInterface,
-    _accessor: StateAccessor,
+    _accessor: StateAccessorInterface,
   ): void {
     // accumulate nothing per-clone — finalize handles all records
   }
 
   override async finalize(
-    config: GatherConfig,
-    execution: GatherExecution<NodeStateInterface>,
+    config: GatherConfigType,
+    execution: GatherExecutionType<NodeStateInterface>,
   ): Promise<void> {
     const target = config.target ?? 'topCandidates';
     const n = 3;
@@ -159,7 +159,7 @@ GatherStrategies.register(new TopNGatherStrategy());
 class ThresholdReducer extends OutcomeReducer {
   readonly name = 'threshold-75';
 
-  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+  reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     if (records.length === 0) return 'empty';
     const successRate = records.filter((r) => r.output === 'success').length / records.length;
     if (successRate >= 0.75) return 'all-success';
@@ -178,7 +178,7 @@ OutcomeReducers.register(new ThresholdReducer());
  * before the score node runs. The reservoir holds up to 10 items per partition
  * key; a partial batch flushes after 500 ms of idle time.
  */
-export const reservoirDag: DAG = {
+export const reservoirDag: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:reservoir-demo',
   '@type':    'DAG',

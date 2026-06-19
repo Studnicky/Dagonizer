@@ -4,7 +4,7 @@
  * Uses hand-written `NodeInterface` implementations to drive multi-item batches
  * through the DAG. The `execute()` API starts with a size-1 batch from the
  * provided initial state; multi-item batches are produced when an entry node
- * fans out (returns a RoutedBatch whose single port holds N items), then flow
+ * fans out (returns a RoutedBatchType whose single port holds N items), then flow
  * through subsequent placements until reaching a TerminalNode.
  *
  * Coverage groups:
@@ -21,14 +21,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
+import type { ItemType } from '../../src/entities/batch/Item.js';
+import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/dag/DAG.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { DAGType } from '../../src/entities/dag/DAG.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -36,7 +36,7 @@ import { TestNode } from '../_support/TestNode.js';
 // DAG builder helpers
 // ===========================================================================
 
-function makeDAG(name: string, entrypoint: string, nodes: DAG['nodes']): DAG {
+function makeDAG(name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType {
   return {
     '@context': DAG_CONTEXT,
     '@id': `urn:noocodex:dag:${name}`,
@@ -48,7 +48,7 @@ function makeDAG(name: string, entrypoint: string, nodes: DAG['nodes']): DAG {
   };
 }
 
-function singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAG['nodes'][number] {
+function singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
   return {
     '@id': `urn:noocodex:dag:${dag}/node/${name}`,
     '@type': 'SingleNode',
@@ -58,7 +58,7 @@ function singleNode(dag: string, name: string, node: string, outputs: Record<str
   };
 }
 
-function terminalNode(dag: string, name: string, outcome: 'completed' | 'failed'): DAG['nodes'][number] {
+function terminalNode(dag: string, name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
   return {
     '@id': `urn:noocodex:dag:${dag}/node/${name}`,
     '@type': 'TerminalNode',
@@ -73,7 +73,7 @@ function embedNode(
   childDag: string,
   outputs: Record<string, string>,
   stateMapping: { input: Record<string, string>; output: Record<string, string> },
-): DAG['nodes'][number] {
+): DAGType['nodes'][number] {
   return {
     '@id': `urn:noocodex:dag:${dag}/node/${name}`,
     '@type': 'EmbeddedDAGNode',
@@ -120,7 +120,7 @@ class FanOutNode extends MonadicNode<WalkState, 'out'> {
     this.n = n;
   }
 
-  override async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'out', WalkState>> {
+  override async execute(batch: Batch<WalkState>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', WalkState>> {
     const sourceState = batch.row(0).state;
     const items: Array<{ 'id': string; 'state': WalkState }> = [];
     for (let i = 0; i < this.n; i++) {
@@ -149,7 +149,7 @@ class PartitionNode extends MonadicNode<WalkState, 'even' | 'odd'> {
     this.name = name;
   }
 
-  override async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'even' | 'odd', WalkState>> {
+  override async execute(batch: Batch<WalkState>, _ctx: NodeContextType): Promise<RoutedBatchType<'even' | 'odd', WalkState>> {
     const partitioned = batch.partition((s) => s.count % 2 === 0 ? 'even' : 'odd');
     const result = new Map<'even' | 'odd', Batch<WalkState>>();
     for (const [key, b] of partitioned) {
@@ -176,7 +176,7 @@ class RecordingNode extends MonadicNode<WalkState, 'done'> {
     this.firings = firings;
   }
 
-  override async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', WalkState>> {
+  override async execute(batch: Batch<WalkState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', WalkState>> {
     this.firings.push(batch.size);
     const items: Array<{ 'id': string; 'state': WalkState }> = [];
     for (const item of batch) {
@@ -209,7 +209,7 @@ class AccumulatorNode extends MonadicNode<WalkState, 'done'> {
     this.collected = collected;
   }
 
-  override async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', WalkState>> {
+  override async execute(batch: Batch<WalkState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', WalkState>> {
     for (const item of batch) {
       this.collected.push(item.state);
     }
@@ -257,9 +257,9 @@ class CompositeFanOutNode extends MonadicNode<CompositeState, 'out'> {
     this.name = name;
   }
 
-  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'out', CompositeState>> {
+  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', CompositeState>> {
     const source = batch.row(0).state;
-    const items: Array<Item<CompositeState>> = [];
+    const items: Array<ItemType<CompositeState>> = [];
     for (let i = 0; i < this.n; i++) {
       const clone = source.clone();
       clone.value = i;
@@ -285,7 +285,7 @@ class CompositeAccumulatorNode extends MonadicNode<CompositeState, 'done'> {
     this.name = name;
   }
 
-  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', CompositeState>> {
+  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', CompositeState>> {
     for (const item of batch) {
       this.collected.push(item.state);
     }
@@ -311,7 +311,7 @@ class CompositeRecordingNode extends MonadicNode<CompositeState, 'done'> {
     this.name = name;
   }
 
-  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', CompositeState>> {
+  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', CompositeState>> {
     this.firings.push(batch.size);
     const result = new Map<'done', Batch<CompositeState>>();
     result.set('done', batch);
@@ -395,8 +395,8 @@ function makeCycleFanOutNode(name: string, n: number): MonadicNode<CycleState, '
 
     override async execute(
       batch: Batch<CycleState>,
-      _ctx: NodeContextInterface,
-    ): Promise<RoutedBatch<'out', CycleState>> {
+      _ctx: NodeContextType,
+    ): Promise<RoutedBatchType<'out', CycleState>> {
       const sourceState = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': CycleState }> = [];
       for (let i = 0; i < this.n; i++) {
@@ -435,8 +435,8 @@ function makeHomogeneousFanOutNode(
 
     override async execute(
       batch: Batch<CycleState>,
-      _ctx: NodeContextInterface,
-    ): Promise<RoutedBatch<'out', CycleState>> {
+      _ctx: NodeContextType,
+    ): Promise<RoutedBatchType<'out', CycleState>> {
       const sourceState = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': CycleState }> = [];
       for (let i = 0; i < this.n; i++) {
@@ -475,8 +475,8 @@ function makeRetryNode(
 
     override async execute(
       batch: Batch<CycleState>,
-      _ctx: NodeContextInterface,
-    ): Promise<RoutedBatch<'retry' | 'done', CycleState>> {
+      _ctx: NodeContextType,
+    ): Promise<RoutedBatchType<'retry' | 'done', CycleState>> {
       this.firings.push(batch.size);
 
       const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
@@ -529,8 +529,8 @@ function makeBudgetRetryNode(
 
     override async execute(
       batch: Batch<CycleState>,
-      _ctx: NodeContextInterface,
-    ): Promise<RoutedBatch<'retry' | 'done' | 'salvage', CycleState>> {
+      _ctx: NodeContextType,
+    ): Promise<RoutedBatchType<'retry' | 'done' | 'salvage', CycleState>> {
       this.firings.push(batch.size);
 
       const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
@@ -582,8 +582,8 @@ function makeCycleAccumulatorNode(
 
     override async execute(
       batch: Batch<CycleState>,
-      _ctx: NodeContextInterface,
-    ): Promise<RoutedBatch<'done', CycleState>> {
+      _ctx: NodeContextType,
+    ): Promise<RoutedBatchType<'done', CycleState>> {
       for (const item of batch) {
         this.collected.push(item.state);
       }
@@ -614,8 +614,8 @@ function makeCycleRecordingNode(
 
     override async execute(
       batch: Batch<CycleState>,
-      _ctx: NodeContextInterface,
-    ): Promise<RoutedBatch<'done', CycleState>> {
+      _ctx: NodeContextType,
+    ): Promise<RoutedBatchType<'done', CycleState>> {
       this.firings.push(batch.size);
       const result = new Map<'done', Batch<CycleState>>();
       result.set('done', batch);
@@ -637,7 +637,7 @@ void describe('Batch walk — size-1 parity', () => {
     dispatcher.registerNode(TestNode.make('step2', ['ok'], () => 'ok'));
     dispatcher.registerNode(TestNode.make('step3', ['ok'], () => 'ok'));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:parity-linear',
       '@type': 'DAG',
@@ -668,7 +668,7 @@ void describe('Batch walk — size-1 parity', () => {
     dispatcher.registerNode(TestNode.make('classify', ['ok', 'skip'], () => 'ok'));
     dispatcher.registerNode(TestNode.make('process', ['done'], () => 'done'));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:parity-branch',
       '@type': 'DAG',
@@ -749,7 +749,7 @@ void describe('Batch walk — size-1 parity', () => {
       readonly name = 'parity-body';
       readonly outputs = ['success'] as const;
 
-      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'success', ScatterParentState>> {
+      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatchType<'success', ScatterParentState>> {
         const result = new Map<'success', Batch<ScatterParentState>>();
         result.set('success', batch);
         return result;
@@ -805,7 +805,7 @@ void describe('Batch walk — multi-item plain placements', () => {
     const collected: WalkState[] = [];
     dispatcher.registerNode(makeAccumulatorNode('acc', collected));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:linear-multi',
       '@type': 'DAG',
@@ -853,7 +853,7 @@ void describe('Batch walk — multi-item plain placements', () => {
     dispatcher.registerNode(makeAccumulatorNode('even-acc', evenCollected));
     dispatcher.registerNode(makeAccumulatorNode('odd-acc', oddCollected));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:branch-multi',
       '@type': 'DAG',
@@ -911,7 +911,7 @@ void describe('Batch walk — multi-item plain placements', () => {
     dispatcher.registerNode(makeRecordingNode('join', dFirings));  // THE JOIN
     dispatcher.registerNode(makeAccumulatorNode('acc', collected));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:diamond-join',
       '@type': 'DAG',
@@ -978,7 +978,7 @@ void describe('Batch walk — multi-item composites', () => {
         super();
       }
 
-      override async execute(batch: Batch<CompositeState>): Promise<RoutedBatch<'done', CompositeState>> {
+      override async execute(batch: Batch<CompositeState>): Promise<RoutedBatchType<'done', CompositeState>> {
         for (const item of batch) {
           this.childItemsSeen.push(item.state.value);
           item.state.value += 10;
@@ -1066,9 +1066,9 @@ void describe('Batch walk — multi-item composites', () => {
       readonly name = 'child-router';
       readonly outputs = ['success', 'failure'] as const;
 
-      override async execute(batch: Batch<CompositeState>): Promise<RoutedBatch<'success' | 'failure', CompositeState>> {
-        const even: Array<Item<CompositeState>> = [];
-        const odd: Array<Item<CompositeState>> = [];
+      override async execute(batch: Batch<CompositeState>): Promise<RoutedBatchType<'success' | 'failure', CompositeState>> {
+        const even: Array<ItemType<CompositeState>> = [];
+        const odd: Array<ItemType<CompositeState>> = [];
         for (const item of batch) {
           if (item.state.value % 2 === 0) {
             even.push(item);
@@ -1161,9 +1161,9 @@ void describe('Batch walk — multi-item composites', () => {
       readonly name = 'parent-fan';
       readonly outputs = ['out'] as const;
 
-      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'out', ScatterParentState>> {
+      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatchType<'out', ScatterParentState>> {
         const source = batch.row(0).state;
-        const items: Array<Item<ScatterParentState>> = [];
+        const items: Array<ItemType<ScatterParentState>> = [];
         for (let i = 0; i < 3; i++) {
           const clone = source.clone();
           clone.parentId = i;
@@ -1188,7 +1188,7 @@ void describe('Batch walk — multi-item composites', () => {
       readonly name = 'scatter-body';
       readonly outputs = ['success'] as const;
 
-      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'success', ScatterParentState>> {
+      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatchType<'success', ScatterParentState>> {
         const result = new Map<'success', Batch<ScatterParentState>>();
         result.set('success', batch);
         return result;
@@ -1207,7 +1207,7 @@ void describe('Batch walk — multi-item composites', () => {
         super();
       }
 
-      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'done', ScatterParentState>> {
+      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatchType<'done', ScatterParentState>> {
         for (const item of batch) {
           this.downstreamCollected.push(item.state);
         }
@@ -1303,7 +1303,7 @@ void describe('Batch walk — cycles and retry loops', () => {
     const collected: CycleState[] = [];
     dispatcher.registerNode(makeCycleAccumulatorNode('acc', collected));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:cycle-size1',
       '@type': 'DAG',
@@ -1363,7 +1363,7 @@ void describe('Batch walk — cycles and retry loops', () => {
     const collected: CycleState[] = [];
     dispatcher.registerNode(makeCycleAccumulatorNode('acc', collected));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:cycle-immediate',
       '@type': 'DAG',
@@ -1417,7 +1417,7 @@ void describe('Batch walk — cycles and retry loops', () => {
     const collected: CycleState[] = [];
     dispatcher.registerNode(makeCycleAccumulatorNode('acc', collected));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:cycle-homogeneous',
       '@type': 'DAG',
@@ -1488,7 +1488,7 @@ void describe('Batch walk — cycles and retry loops', () => {
     const collected: CycleState[] = [];
     dispatcher.registerNode(makeCycleAccumulatorNode('acc', collected));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:cycle-heterogeneous',
       '@type': 'DAG',
@@ -1572,8 +1572,8 @@ void describe('Batch walk — cycles and retry loops', () => {
 
       override async execute(
         batch: Batch<CycleState>,
-        _ctx: NodeContextInterface,
-      ): Promise<RoutedBatch<'out', CycleState>> {
+        _ctx: NodeContextType,
+      ): Promise<RoutedBatchType<'out', CycleState>> {
         const sourceState = batch.row(0).state;
         const s0 = sourceState.clone(); s0.exitAt = 0; s0.attempts = 0;
         const s1 = sourceState.clone(); s1.exitAt = 0; s1.attempts = 0;
@@ -1600,7 +1600,7 @@ void describe('Batch walk — cycles and retry loops', () => {
     dispatcher.registerNode(makeCycleAccumulatorNode('success-acc', successCollected));
     dispatcher.registerNode(makeCycleAccumulatorNode('salvage-acc', salvageCollected));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:cycle-budget',
       '@type': 'DAG',
@@ -1686,8 +1686,8 @@ void describe('Batch walk — cycles and retry loops', () => {
 
       override async execute(
         batch: Batch<CycleState>,
-        _ctx: NodeContextInterface,
-      ): Promise<RoutedBatch<'loop-out' | 'straight-out', CycleState>> {
+        _ctx: NodeContextType,
+      ): Promise<RoutedBatchType<'loop-out' | 'straight-out', CycleState>> {
         const sourceState = batch.row(0).state;
 
         const l0 = sourceState.clone(); l0.exitAt = 0;
@@ -1719,7 +1719,7 @@ void describe('Batch walk — cycles and retry loops', () => {
     dispatcher.registerNode(makeCycleRecordingNode('j-join', jFirings));
     dispatcher.registerNode(makeCycleAccumulatorNode('j-acc', collected));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:cycle-join',
       '@type': 'DAG',

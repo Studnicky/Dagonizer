@@ -15,7 +15,7 @@
 
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 
-import type { DAG } from '../../../../packages/dagonizer/src/entities/dag/DAG.js';
+import type { DAGType } from '../../../../packages/dagonizer/src/entities/dag/DAG.js';
 
 import DiagramFrame from './DiagramFrame.vue';
 import GraphDpad from './graph/GraphDpad.vue';
@@ -25,8 +25,8 @@ import { AnimatedDagGraph } from './viz/AnimatedDagGraph.ts';
 import type { DagVizEvent } from './viz/DagVizMachine.ts';
 
 const props = defineProps<{
-  dag: DAG;
-  embeddedDAGs?: ReadonlyMap<string, DAG>;
+  dag: DAGType;
+  embeddedDAGs?: ReadonlyMap<string, DAGType>;
   nodeKinds?: Readonly<Record<string, string>>;
   expandAll?: boolean;
   ariaLabel?: string;
@@ -67,12 +67,12 @@ const dagLegendTabs: readonly LegendTab[] = [
 ];
 
 onMounted(async () => {
-  let cytoscape: typeof import('cytoscape');
+  // Probe cytoscape availability up-front so the loading/error UX can render
+  // before mount. AnimatedDagGraph (via CytoscapeGraph) resolves the real
+  // cytoscape runtime internally through Cytoscape.create's lazy import; the
+  // probe only gates the UI and is not passed into the constructor.
   try {
-    // cytoscape uses `export =`; with Vite/ESM bundler the module default is the callable function.
-    // The type cast is safe: at runtime coreMod.default is the cytoscape factory function.
-    const coreMod = await import('cytoscape') as unknown as { default: typeof import('cytoscape') };
-    cytoscape = coreMod.default;
+    await import('cytoscape');
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : String(err);
     loading.value = false;
@@ -87,7 +87,7 @@ onMounted(async () => {
   // before cytoscape measures the container.
   await nextTick();
 
-  const instance = new AnimatedDagGraph(cytoscape, container, props.dag, {
+  const instance = new AnimatedDagGraph(container, props.dag, {
     ...(props.embeddedDAGs !== undefined ? { 'embeddedDAGs': props.embeddedDAGs } : {}),
     ...(props.nodeKinds    !== undefined ? { 'nodeKinds':    props.nodeKinds    } : {}),
     ...(props.expandAll    !== undefined ? { 'expandAll':    props.expandAll    } : {}),

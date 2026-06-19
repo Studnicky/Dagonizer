@@ -3,50 +3,44 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
-import type { WarningEmitter } from '../../src/contracts/WarningEmitter.js';
+import type { OperationContractFragmentType } from '../../src/contracts/OperationContractFragment.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 
 class GreetNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'greet';
   readonly outputs = ['success'] as const;
-  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 
 class PlanNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
   readonly name = 'plan';
   readonly outputs = ['success', 'error'] as const;
-  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success' | 'error'>> { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success' | 'error'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 
 const greet = new GreetNode();
 const plan = new PlanNode();
 
-class CollectingWarningEmitter implements WarningEmitter {
-  readonly collected: string[] = [];
-  warn(message: string): void { this.collected.push(message); }
-}
-
-// ContractTestNode: a node carrying a configurable OperationContractFragment,
-// used to exercise build()-time contract validation and fromNodes() derivation.
+// ContractTestNode: a node carrying a configurable OperationContractFragmentType,
+// used to exercise build()-time contract validation and derive() derivation.
 class ContractTestNode extends ScalarNode<NodeStateBase, string> {
   readonly name: string;
   readonly outputs: readonly string[];
-  override readonly contract: OperationContractFragment;
+  override readonly contract: OperationContractFragmentType;
 
-  constructor(name: string, outputs: readonly string[], contract: OperationContractFragment = { 'hardRequired': [], 'produces': [] }) {
+  constructor(name: string, outputs: readonly string[], contract: OperationContractFragmentType = { 'hardRequired': [], 'produces': [] }) {
     super();
     this.name = name;
     this.outputs = outputs;
     this.contract = contract;
   }
 
-  protected async executeOne(): Promise<NodeOutputInterface<string>> {
+  protected async executeOne(): Promise<NodeOutputType<string>> {
     return { 'errors': [], 'output': this.outputs[0] ?? 'success' };
   }
 }
@@ -54,7 +48,7 @@ class ContractTestNode extends ScalarNode<NodeStateBase, string> {
 function makeNode(
   name: string,
   outputs: readonly string[],
-  contract?: OperationContractFragment,
+  contract?: OperationContractFragmentType,
 ): NodeInterface<NodeStateBase, string> {
   return new ContractTestNode(name, outputs, contract);
 }
@@ -113,7 +107,9 @@ void describe('DAGBuilder', () => {
 void describe('DAGBuilder.build() contract validation', () => {
   void it('returns a valid DAG when producer → consumer contracts match correctly', () => {
     const produce = makeNode('produce', ['success'], { 'hardRequired': ['input'], 'produces': ['result'] });
-    const consume = makeNode('consume', ['success'], { 'hardRequired': ['result'], 'produces': ['done'] });
+    // 'consume' is the terminal node: it consumes 'result' and produces nothing,
+    // so the chain has no dead write.
+    const consume = makeNode('consume', ['success'], { 'hardRequired': ['result'], 'produces': [] });
 
     const dag = new DAGBuilder('valid-chain', '1.0')
       .node('produce', produce, { 'success': 'consume' })
@@ -142,46 +138,39 @@ void describe('DAGBuilder.build() contract validation', () => {
     );
   });
 
-  void it('emits warn() on warningEmitter when a node produces a path no downstream consumer needs', () => {
+  void it('throws DAGError when a node produces a path no downstream consumer needs', () => {
     const a = makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['used', 'dead'] });
-    const b = makeNode('b', ['success'], { 'hardRequired': ['used'],  'produces': ['done'] });
+    const b = makeNode('b', ['success'], { 'hardRequired': ['used'],  'produces': [] });
 
-    const emitter = new CollectingWarningEmitter();
-    new DAGBuilder('dead-write', '1.0')
-      .node('a', a, { 'success': 'b' })
-      .node('b', b, { 'success': 'end' })
-      .build({ 'warningEmitter': emitter });
-
-    const deadWarning = emitter.collected.find((w) => w.includes("'dead'"));
-    assert.ok(deadWarning !== undefined, `expected dead-write warning for 'dead'; got: ${JSON.stringify(emitter.collected)}`);
-    assert.ok(deadWarning.includes('produces'), `warning should mention produces; got: ${deadWarning}`);
-  });
-
-  void it('silently no-ops on dead writes when warningEmitter is omitted', () => {
-    const a = makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['used', 'dead'] });
-    const b = makeNode('b', ['success'], { 'hardRequired': ['used'],  'produces': ['done'] });
-
-    // Must not throw; dead writes without a callback are silently ignored.
-    assert.doesNotThrow(() =>
-      new DAGBuilder('silent-dead-write', '1.0')
+    // 'dead' is produced by 'a' but no node hardRequires it → dead write → throw.
+    assert.throws(
+      () => new DAGBuilder('dead-write', '1.0')
         .node('a', a, { 'success': 'b' })
         .node('b', b, { 'success': 'end' })
         .build(),
+      (err: unknown) => {
+        assert.ok(err instanceof DAGError, `expected DAGError, got ${String(err)}`);
+        assert.ok(err.message.includes("'dead'"), `message: ${err.message}`);
+        assert.ok(err.message.includes('produces'), `message: ${err.message}`);
+        assert.ok(err.message.includes('no node in the registry hardRequires it'), `message: ${err.message}`);
+        return true;
+      },
     );
   });
 
 });
 
 // ---------------------------------------------------------------------------
-// DAGBuilder.fromNodes()
+// DAGBuilder.derive()
 // ---------------------------------------------------------------------------
 
-void describe('DAGBuilder.fromNodes()', () => {
+void describe('DAGBuilder.derive()', () => {
   void it('produces the same DAG as the equivalent DAGDeriver.derive({ nodes }) call', () => {
     const nodes: NodeInterface<NodeStateBase, string>[] = [
       makeNode('fetch', ['success'], { 'hardRequired': ['url'],    'produces': ['raw'] }),
       makeNode('parse', ['success'], { 'hardRequired': ['raw'],    'produces': ['record'] }),
-      makeNode('save',  ['success'], { 'hardRequired': ['record'], 'produces': ['saved'] }),
+      // 'save' is the terminal node: consumes 'record', produces nothing.
+      makeNode('save',  ['success'], { 'hardRequired': ['record'], 'produces': [] }),
     ];
     const annotations = {
       'terminals': {
@@ -189,7 +178,7 @@ void describe('DAGBuilder.fromNodes()', () => {
       },
     };
 
-    const fromBuilder = DAGBuilder.fromNodes('pipeline', '1.0', 'fetch', nodes, { annotations });
+    const fromBuilder = DAGBuilder.derive('pipeline', '1.0', 'fetch', nodes, { annotations });
 
     const fromDeriver = DAGDeriver.derive({
       'name': 'pipeline',
@@ -205,7 +194,7 @@ void describe('DAGBuilder.fromNodes()', () => {
 
   void it('throws a DAGError when nodes is empty (no contracts to derive from)', () => {
     assert.throws(
-      () => DAGBuilder.fromNodes('empty', '1', 'a', []),
+      () => DAGBuilder.derive('empty', '1', 'a', []),
       (err: unknown) => {
         assert.ok(err instanceof DAGError, `expected DAGError, got ${String(err)}`);
         return true;
@@ -216,7 +205,8 @@ void describe('DAGBuilder.fromNodes()', () => {
   void it('skips contract-less nodes during derivation (matches deriver behavior)', () => {
     const nodes: NodeInterface<NodeStateBase, string>[] = [
       makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['x'] }),
-      makeNode('b', ['success'], { 'hardRequired': ['x'],     'produces': ['y'] }),
+      // 'b' is the terminal node: consumes 'x', produces nothing.
+      makeNode('b', ['success'], { 'hardRequired': ['x'],     'produces': [] }),
       // no contract; should be silently skipped
       makeNode('helper', ['success']),
     ];
@@ -226,7 +216,7 @@ void describe('DAGBuilder.fromNodes()', () => {
       },
     };
 
-    const dag = DAGBuilder.fromNodes('skip-no-contract', '1', 'a', nodes, { annotations });
+    const dag = DAGBuilder.derive('skip-no-contract', '1', 'a', nodes, { annotations });
 
     const names = dag.nodes.map((n) => n.name);
     assert.ok(!names.includes('helper'), `'helper' should be skipped; got: ${JSON.stringify(names)}`);
