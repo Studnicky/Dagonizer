@@ -164,7 +164,6 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {
       state.clearAttempts(context.nodeName);
-      context.services.logger.info('rank-candidates: no candidates to rank');
       return NodeOutputBuilder.of('ranked');
     }
 
@@ -185,9 +184,9 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
         try {
           queryVec  = await embedder.embed(queryText);
           titleVecs = await CandidateScorer.embedTitles(embedder, state.candidates);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          context.services.logger.warn(`rank-candidates: embedder threw, dropping cosine term: ${message}`);
+        } catch {
+          // Embedder threw: drop the cosine term and fall back to the
+          // deterministic composite score for every candidate.
           queryVec  = null;
           titleVecs = state.candidates.map(() => null);
         }
@@ -202,7 +201,6 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
       scored.sort((a, b) => b.score - a.score);
 
       // ── Step 3: LLM tiebreak on the top-3 when scores are within ε ──────
-      let llmTiebreaks = 0;
       const top3 = scored.slice(0, 3);
       const needsTiebreak = top3.length === 3 &&
         (top3[0]!.score - top3[2]!.score) <= TIE_WINDOW;
@@ -225,12 +223,9 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
           // Defensive: if the LLM dropped one (schema drift), fall back.
           if (reorderedTop.length === 3) {
             scored.splice(0, 3, ...reorderedTop);
-            llmTiebreaks = 3;
           }
-        } catch (err) {
-          // Salvage: keep deterministic order.
-          const message = err instanceof Error ? err.message : String(err);
-          context.services.logger.info(`rank-candidates: tiebreak fell back to deterministic order (${message})`);
+        } catch {
+          // Salvage: the tiebreak call failed; keep the deterministic order.
         }
       }
 
@@ -251,10 +246,6 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
       });
       state.candidates = ranked;
 
-      const top = ranked[0];
-      context.services.logger.info(
-        `rank-candidates: hybrid (${String(scored.length)} deterministic, ${String(llmTiebreaks)} LLM-tiebreaks); top: ${top !== undefined ? `"${top.book.identity.title}" score=${top.score.toFixed(3)}` : 'none'}`,
-      );
       state.clearAttempts(context.nodeName);
       return NodeOutputBuilder.of('ranked');
     } catch (err) {
@@ -272,11 +263,9 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
         new Date().toISOString(),
       ));
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`rank-candidates: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`rank-candidates: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);

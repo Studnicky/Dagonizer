@@ -14,7 +14,10 @@
  *                ASK the store.
  *   llm:        the brain. Decides tools, ranks candidates, composes
  *                and validates the response.
- *   logger:     Node stdout + browser observable stream.
+ *
+ * Observability is not a service. Nodes are pure: they route to outputs and
+ * never log. Logging is the `ObservedArchivist` subclass's lifecycle-hook
+ * responsibility, which owns its own `ConsoleLogger`.
  */
 
 import type { ConversationTurn, MemoryDigest } from './ArchivistState.ts';
@@ -259,6 +262,5 @@ export interface ArchivistServices {
    * default. The live demo wires this from the TimeoutPane sliders.
    */
   readonly nodeTimeouts: Readonly<Record<string, number>>;
-  readonly logger: { info(message: string): void; warn(message: string): void };
 }
 // #endregion services-shape

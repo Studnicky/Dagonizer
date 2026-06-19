@@ -43,7 +43,7 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     const targetIso2 = UserLanguage.toIso6392(state.userLanguage);
 
     // ── Both pools empty → soft gate ──────────────────────────────────────
@@ -52,7 +52,6 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
       if (state.failureCause.trim().length === 0) {
         state.failureCause = 'No candidates found after searching all available sources. ';
       }
-      context.services.logger.info('merge: live scouts returned 0, no prior memory candidates; routing empty');
       return NodeOutputBuilder.of('empty');
     }
 
@@ -62,9 +61,6 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
     if (state.candidates.length === 0) {
       // Case 1: live empty, fall back to prior memory exclusively.
       pool = state.priorCandidates;
-      context.services.logger.info(
-        `merge: live scouts returned 0, falling back to ${String(state.priorCandidates.length)} prior memory candidates`,
-      );
     } else if (state.priorCandidates.length === 0) {
       // Case 2a: live only (original path).
       pool = state.candidates;
@@ -75,9 +71,6 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
       // Only add prior candidates whose ISBN is NOT already in live results.
       const priorOnly = state.priorCandidates.filter((c) => !liveIsbns.has(c.book.identity.isbn));
       pool = [...state.candidates, ...priorOnly];
-      context.services.logger.info(
-        `merge: ${String(state.candidates.length)} live + ${String(priorOnly.length)} prior (${String(pool.length)} combined before dedupe)`,
-      );
     }
 
     // #region merge-aggregation
@@ -98,7 +91,6 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
       .slice(0, SHORTLIST_LIMIT);
 
     state.shortlist = ranked;
-    context.services.logger.info(`shortlist=${String(ranked.length)} (from ${String(pool.length)} pool, ${String(deduped.length)} after dedupe, ${String(inLanguage.length)} in ${state.userLanguage})`);
     if (ranked.length === 0 && state.failureCause.trim().length === 0) {
       state.failureCause = 'No candidates found after searching all available sources. ';
     }

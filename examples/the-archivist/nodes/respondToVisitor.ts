@@ -29,8 +29,7 @@ export class RespondToVisitorNode extends ScalarNode<ArchivistState, 'success', 
   readonly name = 'respond-to-visitor';
   readonly outputs = ['success'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    context.services.logger.info(`responded with ${String(state.shortlist.length)} candidates`);
+  protected override async executeOne(_state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     return NodeOutputBuilder.of('success');
   }
 }
@@ -77,16 +76,13 @@ export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafte
     try {
       state.draft = await context.services.llm.composeEmptyResponse(state.query, state.failureCause, conversation, signal);
       state.clearAttempts(context.nodeName);
-      context.services.logger.info('compose-empty: LLM response composed');
       return NodeOutputBuilder.of('drafted');
     } catch (err) {
       if (context.signal.aborted) throw err;
       if (state.withinRetryBudget(context.nodeName, EMPTY_RETRY_BUDGET)) {
-        context.services.logger.warn(`compose-empty: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(EMPTY_RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`compose-empty: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);

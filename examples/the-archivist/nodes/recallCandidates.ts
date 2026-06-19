@@ -101,9 +101,8 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
       try {
         queryVec = await embedder.embed(queryText);
         useCosine = true;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        context.services.logger.warn(`recall-candidates: embedder threw, falling back to Jaccard: ${message}`);
+      } catch {
+        // Embedder threw: fall back to Jaccard similarity for recall.
         useCosine = false;
       }
     }
@@ -162,10 +161,6 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
     }
 
     if (matchingRunIris.length === 0) {
-      const reason = useCosine
-        ? 'no similar prior runs (cosine >= 0.70)'
-        : 'no similar prior runs (Jaccard >= 0.35, embedder unreachable)';
-      context.services.logger.info(`recall-candidates: ${reason}`);
       return NodeOutputBuilder.of('recalled');
     }
 
@@ -216,11 +211,6 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
     }
 
     state.priorCandidates = priorCandidates;
-
-    const detail = useCosine ? 'cosine >= 0.70' : 'Jaccard >= 0.35, embedder unreachable';
-    context.services.logger.info(
-      `recall-candidates: ${String(priorCandidates.length)} prior shortlisted books from ${String(matchingRunIris.length)} similar prior runs (${detail})`,
-    );
 
     return NodeOutputBuilder.of('recalled');
   }

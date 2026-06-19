@@ -11,6 +11,8 @@
  */
 
 // #region typed-store
+import { strict as assert } from 'node:assert';
+
 import { MemoryStore, TypedStore } from '@studnicky/dagonizer/store';
 
 /** Known per-run keys with their value types. */
@@ -36,8 +38,11 @@ const approved = await store.get('approved');
 await store.update('approved', () => true);
 const approvedNow = await store.get('approved');
 
-console.log('TypedRunStore: ok');
-console.log(`  query:    ${query}`);
-console.log(`  intent:   ${intent}`);
-console.log(`  approved: ${approved} → ${approvedNow}`);
+// Assert the typed round-trip rather than printing it: each `get` returns the
+// schema-narrowed value type, and `update` flips the boolean in place. The
+// example demonstrates the API surface; it produces no console output.
+assert.equal(query, 'books about machine learning');
+assert.equal(intent, 'on-topic');
+assert.equal(approved, false);
+assert.equal(approvedNow, true);
 // #endregion typed-store

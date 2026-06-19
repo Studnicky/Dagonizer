@@ -44,18 +44,13 @@ export class ComposeMemoryResponseNode extends ScalarNode<ArchivistState, 'draft
         signal,
       );
       state.clearAttempts(context.nodeName);
-      context.services.logger.info(
-        `compose-memory-response: draft length=${String(state.draft.length)}`,
-      );
       return NodeOutputBuilder.of('drafted');
     } catch (err) {
       if (context.signal.aborted) throw err;
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`compose-memory-response: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`compose-memory-response: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);

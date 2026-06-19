@@ -216,17 +216,15 @@ const services: ArchivistServices = {
   "llm":               llm,
   "embedder":          resolvedEmbedder,
   "nodeTimeouts":      {},
-  "logger":            logger,
 };
 
 // #region linear-run
 // ── Dispatcher ───────────────────────────────────────────────────────────
-// ObservedArchivist: Dagonizer subclass wiring every lifecycle hook to the
-// logger via protected hook overrides (the sole observability surface).
-const dispatcher = new ObservedArchivist(
-  { services },
-  logger,
-);
+// ObservedArchivist: Dagonizer subclass wiring every lifecycle hook to its
+// own internally-owned logger via protected hook overrides (the sole
+// observability surface). The driver reads `dispatcher.logger` for its own
+// stage / result display so both streams share one console sink.
+const dispatcher = new ObservedArchivist({ services });
 
 // ── Bundle registration (molecular pattern) ──────────────────────────────
 // Each bundle packages its nodes + DAG. Embedded-DAG bundles register first

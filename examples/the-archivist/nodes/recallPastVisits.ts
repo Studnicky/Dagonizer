@@ -84,9 +84,6 @@ export class RecallPastVisitsNode extends ScalarNode<ArchivistState, 'recalled',
     state.priorContext = priorContext;
 
     if (priorContext.length > 0) {
-      context.services.logger.info(
-        `recall: ${String(recentQueries.length)} prior queries, ${String(titles.size)} prior titles (across ${String(recentQueries.length)} state graphs)`,
-      );
     }
     return NodeOutputBuilder.of('recalled');
   }

@@ -222,8 +222,6 @@ export class OpenLibraryScoutNode extends ScalarNode<ArchivistState, 'success' |
       const rawCandidates = await tool.execute(toolInput as Parameters<typeof tool.execute>[0], { signal });
       const candidates = ScoutUtils.filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      const firstTitle = rawCandidates[0]?.book.identity.title ?? '(none)';
-      context.services.logger.info(`openlibrary GET https://openlibrary.org/search.json?${logDimension}&limit=${String(limit)} → ${String(rawCandidates.length)} hits, first: "${firstTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `OpenLibrary: 0 hits for (${logDimension}). `;
       }
@@ -241,7 +239,6 @@ export class OpenLibraryScoutNode extends ScalarNode<ArchivistState, 'success' |
         new Date().toISOString(),
       ));
       state.failureCause += `OpenLibrary: error: ${msg}. `;
-      context.services.logger.warn(`openlibrary failed: ${String(error)}`);
       return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
@@ -283,8 +280,6 @@ export class GoogleBooksScoutNode extends ScalarNode<ArchivistState, 'success' |
       const rawCandidates = await tool.execute({ query, "maxResults": args.maxResults ?? 8, "langRestrict": langRestrict }, { signal });
       const candidates = ScoutUtils.filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      const firstGbTitle = rawCandidates[0]?.book.identity.title ?? '(none)';
-      context.services.logger.info(`google-books GET https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=${String(args.maxResults ?? 8)} → ${String(rawCandidates.length)} hits, first: "${firstGbTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Google Books: 0 hits for "${query}". `;
       }
@@ -301,7 +296,6 @@ export class GoogleBooksScoutNode extends ScalarNode<ArchivistState, 'success' |
         new Date().toISOString(),
       ));
       state.failureCause += `Google Books: error: ${msg}. `;
-      context.services.logger.warn(`google-books failed: ${String(error)}`);
       return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
@@ -345,8 +339,6 @@ export class SubjectScoutNode extends ScalarNode<ArchivistState, 'success' | 'em
       const rawCandidates = await tool.execute({ subject, "limit": args.limit ?? 8, "lang": lang }, { signal });
       const candidates = ScoutUtils.filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      const firstSubjectTitle = rawCandidates[0]?.book.identity.title ?? '(none)';
-      context.services.logger.info(`subject-search GET https://openlibrary.org/search.json?subject=${encodeURIComponent(subject)}&limit=${String(args.limit ?? 8)} → ${String(rawCandidates.length)} hits, first: "${firstSubjectTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Subject search: 0 hits for "${subject}". `;
       }
@@ -363,7 +355,6 @@ export class SubjectScoutNode extends ScalarNode<ArchivistState, 'success' | 'em
         new Date().toISOString(),
       ));
       state.failureCause += `Subject search: error: ${msg}. `;
-      context.services.logger.warn(`subject-search failed: ${String(error)}`);
       return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
@@ -398,12 +389,9 @@ export class WikipediaScoutNode extends ScalarNode<ArchivistState, 'success' | '
     try {
       const tool = context.services.wikipediaSummary;
       const lang = UserLanguage.normalize(state.userLanguage);
-      const wikiTitle = encodeURIComponent(query.replace(/\s+/gu, '_'));
       const rawCandidates = await tool.execute({ query, "lang": lang }, { signal });
       const candidates = ScoutUtils.filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      const firstWikiTitle = rawCandidates[0]?.book.identity.title ?? '(none)';
-      context.services.logger.info(`wikipedia GET https://${lang}.wikipedia.org/api/rest_v1/page/summary/${wikiTitle} → ${String(rawCandidates.length)} hits, first: "${firstWikiTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Wikipedia: 0 hits for "${query}". `;
       }
@@ -420,7 +408,6 @@ export class WikipediaScoutNode extends ScalarNode<ArchivistState, 'success' | '
         new Date().toISOString(),
       ));
       state.failureCause += `Wikipedia: error: ${msg}. `;
-      context.services.logger.warn(`wikipedia failed: ${String(error)}`);
       return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
@@ -459,7 +446,6 @@ export class ScoutDispatchNode extends ScalarNode<ArchivistState, 'success' | 'e
       case 'subject':     return subjectScoutNode.runItem(state, context);
       case 'wikipedia':   return wikipediaScoutNode.runItem(state, context);
       default:
-        context.services.logger.warn(`scout-dispatch: unknown provider '${String(provider)}'`);
         return NodeOutputBuilder.of('empty');
     }
   }

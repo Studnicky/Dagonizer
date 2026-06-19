@@ -28,9 +28,8 @@ export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked', Archi
   readonly name = 'rank-by-rating';
   readonly outputs = ['ranked'] as const;
 
-  protected override executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {
-      context.services.logger.info('rank-by-rating: no candidates');
       return Promise.resolve(NodeOutputBuilder.of('ranked'));
     }
 
@@ -51,14 +50,6 @@ export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked', Archi
       }));
 
     state.candidates = ranked;
-
-    const top = ranked[0];
-    context.services.logger.info(
-      `rank-by-rating: ${String(ranked.length)} ranked` +
-      (top !== undefined
-        ? ` (top score ${top.score.toFixed(3)}: "${top.book.identity.title}")`
-        : ''),
-    );
 
     return Promise.resolve(NodeOutputBuilder.of('ranked'));
   }

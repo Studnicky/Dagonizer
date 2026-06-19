@@ -2,44 +2,40 @@
  * ObservedArchivist: Dagonizer subclass wiring every lifecycle hook to the
  * Archivist's logger (and, optionally, to RdfProvObserver / StateProjection).
  *
- * Demonstrates the subclass observability surface of the dispatcher:
- *   onFlowStart       – logs DAG entry; where RdfProvObserver.recordFlowStart would be called
- *   onFlowEnd         – logs outcome + executed-node count; where StateProjection.capture would flush
- *   onNodeStart       – logs node name + placement path
- *   onNodeEnd         – logs node name + output routing decision
- *   onError           – logs error message and class
- *   onPhaseEnter      – logs phase entry (pre/post)
- *   onPhaseExit       – logs phase exit (pre/post)
- *   onContractWarning – surfaces dead-write warnings from DAG derivation
+ * Demonstrates the subclass observability surface of the dispatcher. The
+ * subclass owns its logger: it instantiates a `ConsoleLogger` internally and
+ * is the sole observability surface — nodes never log. Each lifecycle hook
+ * emits a leveled line through the full taxonomy:
+ *   onFlowStart  – `info`  DAG entry; where RdfProvObserver.recordFlowStart would be called
+ *   onFlowEnd    – `info`  outcome + executed-node count; where StateProjection.capture would flush
+ *   onNodeStart  – `debug` node name + placement path
+ *   onNodeEnd    – `debug` node name + output routing decision
+ *   onError      – `error` error message and class
+ *   onPhaseEnter – `trace` phase entry (pre/post)
+ *   onPhaseExit  – `trace` phase exit (pre/post)
  *
- * Constructor accepts the same `DagonizerOptionsType` as the base, plus
- * an injected `logger` that matches `ArchivistServices.logger`.
+ * The CLI / DOM driver reads `observed.logger` to stream the same events into
+ * stdout / a `<pre>` panel (the DOM driver subscribes via `DomConsoleLogger`'s
+ * `onEmit` override). The logger is not injected: construction takes only the
+ * base `DagonizerOptionsType`.
  */
 
 // #region observed-archivist
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { Dagonizer } from '@studnicky/dagonizer';
-import type { DagonizerOptionsType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from './ArchivistState.ts';
 import type { ArchivistServices } from './services.ts';
-
-/** Subset of `ConsoleLogger` the observer needs; avoids importing the class directly. */
-interface ObservabilityLogger {
-  info(message: string): void;
-  warn(message: string): void;
-}
+import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 
 export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServices> {
-  readonly #logger: ObservabilityLogger;
+  readonly #logger = new ConsoleLogger();
 
-  constructor(
-    options: DagonizerOptionsType<ArchivistState, ArchivistServices>,
-    logger: ObservabilityLogger,
-  ) {
-    super(options);
-    this.#logger = logger;
-  }
+  /**
+   * The subclass-owned logger. The CLI / DOM driver reads this to stream the
+   * same leveled events the hooks emit into stdout or an in-browser panel.
+   */
+  get logger(): ConsoleLogger { return this.#logger; }
 
   /**
    * Fires before the entrypoint node runs.
@@ -91,7 +87,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
     placementPath: readonly string[],
   ): void {
     const path = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
-    this.#logger.info(`[archivist:node] start ${path}${nodeName}`);
+    this.#logger.debug(`[archivist:node] start ${path}${nodeName}`);
     // RdfProvObserver.recordNodeStart(nodeName) — open per-node prov activity here
   }
 
@@ -112,7 +108,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
   ): void {
     const path   = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
     const outTag = output ?? '(terminal)';
-    this.#logger.info(`[archivist:node] end ${path}${nodeName} → ${outTag}`);
+    this.#logger.debug(`[archivist:node] end ${path}${nodeName} → ${outTag}`);
     // RdfProvObserver.recordNodeEnd(nodeName, output) — close per-node prov activity here
   }
 
@@ -131,7 +127,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
     placementPath: readonly string[],
   ): void {
     const path = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
-    this.#logger.warn(
+    this.#logger.error(
       `[archivist:error] ${path}${nodeName} threw ${error.constructor.name}: ${error.message}`,
     );
     // RdfProvObserver.recordError(nodeName, error) — surface in prov graph here
@@ -150,7 +146,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
     _state: ArchivistState,
     _placementPath: readonly string[],
   ): void {
-    this.#logger.info(`[archivist:phase] enter dag=${dagName} phase=${phase} placement=${placementName}`);
+    this.#logger.trace(`[archivist:phase] enter dag=${dagName} phase=${phase} placement=${placementName}`);
   }
 
   /**
@@ -163,7 +159,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
     _state: ArchivistState,
     _placementPath: readonly string[],
   ): void {
-    this.#logger.info(`[archivist:phase] exit dag=${dagName} phase=${phase} placement=${placementName}`);
+    this.#logger.trace(`[archivist:phase] exit dag=${dagName} phase=${phase} placement=${placementName}`);
   }
 }
 // #endregion observed-archivist

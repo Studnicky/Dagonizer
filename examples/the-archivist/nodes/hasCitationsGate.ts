@@ -53,9 +53,6 @@ export class HasCitationsGateNode extends ScalarNode<ArchivistState, 'pass' | 'f
         'graph':     graph,
       });
       if (hasSource) {
-        context.services.logger.info(
-          `gate pass: ${String(shortlisted.length)} shortlisted in state graph, ≥1 sourced`,
-        );
         return NodeOutputBuilder.of('pass');
       }
     }
