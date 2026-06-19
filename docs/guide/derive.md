@@ -31,7 +31,12 @@ class ValidateNode implements NodeInterface {
 class TransformNode implements NodeInterface {
   readonly name = 'transform';
   readonly outputs = ['success'] as const;
-  readonly contract = { hardRequired: ['validated'], produces: ['childResult'] };
+  // Terminal of the child DAG: its `success` outcome is emitted via the
+  // `terminals` annotation below, so it declares no in-DAG `produces` (an
+  // unconsumed produced path is a dead write, which throws). The child's
+  // `childResult` state reaches the parent through the embedded-DAG `output`
+  // state mapping, where the `invoke-plugin` placement declares it.
+  readonly contract = { hardRequired: ['validated'], produces: [] };
   async execute() { return NodeOutputBuilder.of('success'); }
 }
 
@@ -52,7 +57,10 @@ class InvokePluginNode implements NodeInterface {
 class FinalizeNode implements NodeInterface {
   readonly name = 'finalize';
   readonly outputs = ['success'] as const;
-  readonly contract = { hardRequired: ['childResult'], produces: ['final'] };
+  // Terminal of the parent DAG: emits via the `terminals` annotation, so it
+  // declares no in-DAG `produces` (a produced path no node reads is a dead
+  // write and throws).
+  readonly contract = { hardRequired: ['childResult'], produces: [] };
   async execute() { return NodeOutputBuilder.of('success'); }
 }
 

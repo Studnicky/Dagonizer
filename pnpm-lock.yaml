@@ -92,6 +92,9 @@ importers:
       '@studnicky/dagonizer-executor-node':
         specifier: workspace:^
         version: link:../packages/dagonizer-executor-node
+      '@studnicky/dagonizer-patterns-rag':
+        specifier: workspace:^
+        version: link:../packages/dagonizer-patterns-rag
     devDependencies:
       '@types/node':
         specifier: ^25.2.0
