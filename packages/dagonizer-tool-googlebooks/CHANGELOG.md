@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-tool-googlebooks
 
+## 0.22.0
+
+### Patch Changes
+
+- @studnicky/dagonizer-book-entities@0.22.0
+
 ## 0.21.0
 
 ### Patch Changes
