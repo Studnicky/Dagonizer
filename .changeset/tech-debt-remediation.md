@@ -1,5 +1,5 @@
 ---
-"@studnicky/dagonizer": major
+"@studnicky/dagonizer": minor
 ---
 
 Tech-debt remediation — a coherent breaking release across the whole monorepo (all
