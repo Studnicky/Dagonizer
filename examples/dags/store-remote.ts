@@ -1,5 +1,5 @@
 /**
- * store-remote/dags: demonstrates implementing the RemoteStore contract by
+ * store-remote/dags: demonstrates implementing the RemoteStoreInterface contract by
  * extending BaseStore. GrpcStore is a stub whose network methods log instead
  * of hitting a gRPC endpoint — shows every required method with the correct
  * shape.
@@ -9,29 +9,29 @@
 
 // #region remote-store
 import { BaseStore } from '@studnicky/dagonizer/store';
-import type { StoreSnapshotEntry } from '@studnicky/dagonizer/store';
+import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/store';
 import type {
-  RemoteStore,
-  RemoteStoreEndpoint,
-  RemoteStoreLease,
+  RemoteStoreInterface,
+  RemoteStoreEndpointType,
+  RemoteStoreLeaseType,
 } from '@studnicky/dagonizer';
-import type { JsonValue } from '@studnicky/dagonizer/entities';
+import type { JsonValueType } from '@studnicky/dagonizer/entities';
 
 /**
- * GrpcStore: stub RemoteStore backed by an in-memory map.
+ * GrpcStore: stub RemoteStoreInterface backed by an in-memory map.
  * Network methods (connect, disconnect, health, acquireLease, releaseLease)
  * log instead of making real gRPC calls — illustrating the contract surface.
  */
-export class GrpcStore extends BaseStore implements RemoteStore {
-  readonly endpoint: RemoteStoreEndpoint;
-  readonly #data = new Map<string, JsonValue>();
+export class GrpcStore extends BaseStore implements RemoteStoreInterface {
+  readonly endpoint: RemoteStoreEndpointType;
+  readonly #data = new Map<string, JsonValueType>();
 
   constructor(url: string, region: string = '') {
     super({ namespace: 'archivist' });
     this.endpoint = { url, region };
   }
 
-  // ── RemoteStore distributed contract ─────────────────────────────────────
+  // ── RemoteStoreInterface distributed contract ─────────────────────────────────────
 
   override async connect(): Promise<void> {
     process.stdout.write(`[GrpcStore] connect -> ${this.endpoint.url}\n`);
@@ -47,7 +47,7 @@ export class GrpcStore extends BaseStore implements RemoteStore {
     return true;
   }
 
-  async acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLease> {
+  async acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLeaseType> {
     process.stdout.write(`[GrpcStore] acquireLease subject=${subject} ttl=${ttlMs}ms maxWait=${maxWaitMs}ms\n`);
     return {
       token:     `token:${subject}:${Date.now()}`,
@@ -56,7 +56,7 @@ export class GrpcStore extends BaseStore implements RemoteStore {
     };
   }
 
-  async releaseLease(lease: RemoteStoreLease): Promise<void> {
+  async releaseLease(lease: RemoteStoreLeaseType): Promise<void> {
     process.stdout.write(`[GrpcStore] releaseLease token=${lease.token}\n`);
   }
 
@@ -65,12 +65,12 @@ export class GrpcStore extends BaseStore implements RemoteStore {
   protected get snapshotType(): string    { return 'grpc-store'; }
   protected get snapshotVersion(): number { return 1; }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
     const value = this.#data.get(key);
     return value === undefined ? null : (value as T);
   }
 
-  protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
+  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
     this.#data.set(key, value);
   }
 
@@ -82,11 +82,11 @@ export class GrpcStore extends BaseStore implements RemoteStore {
     return this.#data.delete(key);
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
+  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
     return [...this.#data.entries()].map(([key, value]) => ({ key, value }));
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void> {
+  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
     this.#data.clear();
     for (const { key, value } of entries) {
       this.#data.set(key, value);
@@ -94,7 +94,7 @@ export class GrpcStore extends BaseStore implements RemoteStore {
   }
 
   // Override update for atomic RMW — in-memory direct access is safe.
-  override async update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
+  override async update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     const qualified = this.qualifyKey(key);
     const current   = this.#data.get(qualified) as T | undefined;
     const next      = fn(current);

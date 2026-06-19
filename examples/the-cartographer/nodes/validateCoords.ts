@@ -8,7 +8,7 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -17,7 +17,7 @@ export class ValidateCoordsNode extends ScalarNode<CartographerState, 'valid' | 
   readonly 'name' = 'validate-coords';
   readonly 'outputs' = ['valid', 'rejected'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'valid' | 'rejected'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'valid' | 'rejected'>> {
     const { latitude, longitude } = state.raw;
     const isValid = latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
     return NodeOutputBuilder.of(isValid ? 'valid' : 'rejected');

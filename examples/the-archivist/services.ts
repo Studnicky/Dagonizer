@@ -14,25 +14,28 @@
  *                ASK the store.
  *   llm:        the brain. Decides tools, ranks candidates, composes
  *                and validates the response.
- *   logger:     Node stdout + browser observable stream.
+ *
+ * Observability is not a service. Nodes are pure: they route to outputs and
+ * never log. Logging is the `ObservedArchivist` subclass's lifecycle-hook
+ * responsibility, which owns its own `ConsoleLogger`.
  */
 
 import type { ConversationTurn, MemoryDigest } from './ArchivistState.ts';
-import type { Candidate } from './entities/Book.ts';
+import type { CandidateType } from './entities/Book.ts';
 import type { MemoryStore } from './memory/MemoryStore.ts';
-import type { Embedder } from '@studnicky/dagonizer/contracts';
-import type { Tool } from '@studnicky/dagonizer/tool';
+import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
+import type { ToolInterface } from '@studnicky/dagonizer/tool';
 
 /**
  * WebSearchTool: adapter contract for the live-web book search.
  * Concrete instance lives in `tools/OpenLibrarySearchTool.ts` and runs
  * unmodified in Node and in the browser (OpenLibrary serves CORS).
  */
-export type WebSearchTool = Tool<{ query: string; limit?: number } & Record<string, unknown>, readonly Candidate[]>;
+export type WebSearchTool = ToolInterface<{ query: string; limit?: number } & Record<string, unknown>, readonly CandidateType[]>;
 
 /** One candidate with the LLM's chosen score (0..1). */
 export interface ScoredCandidate {
-  readonly candidate: Candidate;
+  readonly candidate: CandidateType;
   readonly score:     number;
   readonly reason?:   string;
   /**
@@ -63,7 +66,7 @@ export type ClassifiedIntent =
   | 'recommend'
   | 'off-topic';
 
-export interface LlmClient {
+export interface LlmClientInterface {
   /**
    * Classify the visitor's question into one of the supported intents.
    * The optional `recalledSummary` is a 1–2 sentence hint from the
@@ -95,11 +98,11 @@ export interface LlmClient {
    * candidate a score in [0, 1]; there are no hand-crafted score
    * floors; the model is the ranker.
    *
-   * `signal` is optional and forwarded to the adapter's `ChatRequest`.
+   * `signal` is optional and forwarded to the adapter's `ChatRequestType`.
    * When the node's `context.signal` is already aborted the adapter
    * short-circuits via `AbortSignal.any` before making the network call.
    */
-  rankCandidates(query: string, candidates: readonly Candidate[], signal?: AbortSignal): Promise<readonly ScoredCandidate[]>;
+  rankCandidates(query: string, candidates: readonly CandidateType[], signal?: AbortSignal): Promise<readonly ScoredCandidate[]>;
   /**
    * Compose a prose response from a shortlist of candidates. The
    * optional `priorContext` carries facts the agent should reference
@@ -111,7 +114,7 @@ export interface LlmClient {
    */
   compose(
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
@@ -120,7 +123,7 @@ export interface LlmClient {
   /** Author-survey compose: chronological body-of-work prose. */
   composeAuthor(
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
@@ -129,7 +132,7 @@ export interface LlmClient {
   /** Reviews compose: weight ratings (notes.rating / notes.ratingsCount). */
   composeReviews(
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
@@ -138,7 +141,7 @@ export interface LlmClient {
   /** Describe a single title; no recommendations. */
   describeBook(
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
@@ -147,14 +150,14 @@ export interface LlmClient {
   /** Recommend similar: anchored on persistent memory. */
   composeSimilar(
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,
   ): Promise<string>;
   /** Validate a draft against quality rules (length, citations, tone). */
-  validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean>;
+  validate(draft: string, shortlist: readonly CandidateType[]): Promise<boolean>;
   /**
    * Compose a friendly prose response listing what the Archivist
    * remembers. `digest` is the structured roll-up from `recallMemories`;
@@ -212,7 +215,7 @@ export interface LlmClient {
  * source had them; the `find-reviews` branch weights those during compose
  * via the `weightRatings` directive.
  */
-export type GoogleBooksToolContract = Tool<{ query: string; maxResults?: number } & Record<string, unknown>, readonly Candidate[]>;
+export type GoogleBooksToolContract = ToolInterface<{ query: string; maxResults?: number } & Record<string, unknown>, readonly CandidateType[]>;
 
 /**
  * WikipediaSummaryTool: adapter contract for the Wikipedia REST
@@ -221,7 +224,7 @@ export type GoogleBooksToolContract = Tool<{ query: string; maxResults?: number 
  * keyed by a work URN or `urn:wiki:<title>`; `CanonicalId.dedupe` folds
  * it into the candidate stream at merge time.
  */
-export type WikipediaSummaryToolContract = Tool<{ query: string } & Record<string, unknown>, readonly Candidate[]>;
+export type WikipediaSummaryToolContract = ToolInterface<{ query: string } & Record<string, unknown>, readonly CandidateType[]>;
 
 /**
  * SubjectSearchTool: adapter contract for the OpenLibrary subject/theme
@@ -229,7 +232,7 @@ export type WikipediaSummaryToolContract = Tool<{ query: string } & Record<strin
  * `subject_search` tool lets visitors locate books by thematic content
  * (e.g. "labyrinth", "haunted house") rather than by title or author.
  */
-export type SubjectSearchToolContract = Tool<{ subject: string; limit?: number } & Record<string, unknown>, readonly Candidate[]>;
+export type SubjectSearchToolContract = ToolInterface<{ subject: string; limit?: number } & Record<string, unknown>, readonly CandidateType[]>;
 
 // #region services-shape
 export interface ArchivistServices {
@@ -237,7 +240,7 @@ export interface ArchivistServices {
   readonly googleBooks: GoogleBooksToolContract;
   readonly wikipediaSummary: WikipediaSummaryToolContract;
   readonly subjectSearch: SubjectSearchToolContract;
-  readonly llm: LlmClient;
+  readonly llm: LlmClientInterface;
   /**
    * RDF triple store (n3.js in-memory). Per-run scratchpad: memory
    * nodes write findings; gate nodes ASK the store; the live UI panel
@@ -252,13 +255,12 @@ export interface ArchivistServices {
    * gracefully and fall back to deterministic Jaccard / heuristics.
    * Explicit-null sentinel (not optional) keeps V8 hidden-class stability.
    */
-  readonly embedder: Embedder | null;
+  readonly embedder: EmbedderInterface | null;
   /**
    * Per-placement deadline overrides in milliseconds, keyed by node/placement
    * name (`context.nodeName`). Empty map ⇒ every node uses its built-in
    * default. The live demo wires this from the TimeoutPane sliders.
    */
   readonly nodeTimeouts: Readonly<Record<string, number>>;
-  readonly logger: { info(message: string): void; warn(message: string): void };
 }
 // #endregion services-shape

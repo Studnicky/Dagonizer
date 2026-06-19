@@ -3,16 +3,16 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/index.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
+import type { ItemType } from '../../src/entities/batch/Item.js';
+import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
+import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ class TrackingState extends NodeStateBase {
   trace: string[] = [];
 }
 
-class PhaseMakeNodeImpl extends ScalarNode<TrackingState, string> {
+class PhaseMakeNode extends ScalarNode<TrackingState, string> {
   readonly name: string;
   readonly outputs: readonly string[];
   private readonly side: ((state: TrackingState) => void | Promise<void>) | undefined;
@@ -33,7 +33,7 @@ class PhaseMakeNodeImpl extends ScalarNode<TrackingState, string> {
     this.side = side ?? undefined;
   }
 
-  protected async executeOne(state: TrackingState): Promise<NodeOutputInterface<string>> {
+  protected async executeOne(state: TrackingState): Promise<NodeOutputType<string>> {
     if (this.side) {
       await this.side(state);
     } else {
@@ -43,7 +43,7 @@ class PhaseMakeNodeImpl extends ScalarNode<TrackingState, string> {
   }
 }
 
-class PhaseThrowingNodeImpl extends ScalarNode<TrackingState, string> {
+class PhaseThrowingNode extends ScalarNode<TrackingState, string> {
   readonly name: string;
   readonly outputs: readonly ['success'] = ['success'];
   private readonly message: string;
@@ -54,7 +54,7 @@ class PhaseThrowingNodeImpl extends ScalarNode<TrackingState, string> {
     this.message = message;
   }
 
-  protected async executeOne(): Promise<NodeOutputInterface<string>> {
+  protected async executeOne(): Promise<NodeOutputType<string>> {
     throw new Error(this.message);
   }
 }
@@ -63,13 +63,13 @@ const makeNode = (
   name: string,
   outputs: readonly string[] = ['success'],
   side?: (state: TrackingState) => void | Promise<void>,
-): PhaseMakeNodeImpl => new PhaseMakeNodeImpl(name, outputs, side);
+): PhaseMakeNode => new PhaseMakeNode(name, outputs, side);
 
-const makeThrowingNode = (name: string, message: string): PhaseThrowingNodeImpl =>
-  new PhaseThrowingNodeImpl(name, message);
+const makeThrowingNode = (name: string, message: string): PhaseThrowingNode =>
+  new PhaseThrowingNode(name, message);
 
 // Recording Dagonizer subclass captures phase hook invocations in order.
-interface Call {
+type Call = {
   readonly hook: string;
   readonly args: readonly unknown[];
 }
@@ -282,8 +282,8 @@ void describe('PhaseNode placements: post-phase execution', () => {
       'outputs': ['success'],
       'contract': EMPTY_CONTRACT_FRAGMENT,
       'timeout': Timeout.none(),
-      async execute(batch: Batch<TrackingState>, ctx): Promise<RoutedBatch<string, TrackingState>> {
-        const acc = new Map<string, Item<TrackingState>[]>();
+      async execute(batch: Batch<TrackingState>, ctx): Promise<RoutedBatchType<string, TrackingState>> {
+        const acc = new Map<string, ItemType<TrackingState>[]>();
         for (const item of batch) {
           resolveNodeReady();
           await new Promise<void>((_resolve, reject) => {
@@ -429,7 +429,7 @@ void describe('PhaseNode placements: registration validation', () => {
     const dispatcher = new Dagonizer<TrackingState>();
     dispatcher.registerNode(makeNode('entry', ['success']));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:bad-phase',
       '@type':    'DAG',

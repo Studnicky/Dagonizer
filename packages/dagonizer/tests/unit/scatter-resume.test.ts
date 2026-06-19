@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
+import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
-import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
-import type { ScatterProgress } from '../../src/Dagonizer.js';
+import { Dagonizer } from '../../src/Dagonizer.js';
+import type { ScatterProgressType } from '../../src/Dagonizer.js';
+import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 /** State carrying a typed items / processed array plus an optional second
@@ -23,7 +24,7 @@ class ScatterState extends NodeStateBase {
   produced = 0;
   results: number[] = [];
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       'items':     [...this.items],
       'items2':    [...this.items2],
@@ -34,7 +35,7 @@ class ScatterState extends NodeStateBase {
     };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     const items = snap['items'];
     if (Array.isArray(items)) this.items = items.filter((x): x is number => typeof x === 'number');
     const items2 = snap['items2'];
@@ -57,7 +58,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputType<'success'>> {
         calls++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.setMetadata('processedItem', item);
@@ -65,7 +66,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       }
     }
     dispatcher.registerNode(new WorkerNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-clean',
       '@type':    'DAG',
@@ -103,7 +104,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(): Promise<NodeOutputType<'success'>> {
         const idx = ++completedCount;
         if (idx === 3) {
           throw new Error('simulated mid-flight failure');
@@ -112,7 +113,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       }
     }
     dispatcher.registerNode(new WorkerNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-interrupt',
       '@type':    'DAG',
@@ -135,7 +136,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // Scatter threw; cursor stays on 'fan'.
     assert.equal(result.cursor, 'fan');
 
-    const stored = result.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const stored = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     assert.ok(stored !== undefined, 'expected progress entry after interruption');
     const entry = stored['fan'];
     assert.ok(entry !== undefined, 'expected an entry under scatter name');
@@ -157,13 +158,13 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(): Promise<NodeOutputType<'success'>> {
         calls++;
         return { 'errors': [], 'output': 'success' as const };
       }
     }
     dispatcher.registerNode(new WorkerNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-resume',
       '@type':    'DAG',
@@ -209,12 +210,12 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(): Promise<NodeOutputType<'success'>> {
         return { 'errors': [], 'output': 'success' as const };
       }
     }
     dispatcher.registerNode(new WorkerNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-aggregate',
       '@type':    'DAG',
@@ -271,7 +272,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     class InterruptingWorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'producer';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputType<'success'>> {
         const item = state.getMetadata<number>('item') ?? 0;
         const idx = ++runCount;
         if (idx === 3) {
@@ -284,7 +285,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       }
     }
     interruptDispatcher.registerNode(new InterruptingWorkerNode());
-    const mapDag = (dagName: string): DAG => ({
+    const mapDag = (dagName: string): DAGType => ({
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
       '@type':    'DAG',
@@ -307,7 +308,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // Scatter aborted on the third item; cursor stays on 'fan', and the
     // first two indices are persisted with their produced values.
     assert.equal(partial.cursor, 'fan');
-    const persisted = partial.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const persisted = partial.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     assert.ok(persisted !== undefined, 'expected progress after interruption');
     const persistedEntry = persisted['fan'];
     assert.ok(persistedEntry !== undefined);
@@ -335,7 +336,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     class ResumeWorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'producer';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputType<'success'>> {
         resumeRunCount++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.produced = f(item);
@@ -373,7 +374,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     class WorkerANode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'workerA';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(): Promise<NodeOutputType<'success'>> {
         aCalls++;
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -381,14 +382,14 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     class WorkerBNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'workerB';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(): Promise<NodeOutputType<'success'>> {
         bCalls++;
         return { 'errors': [], 'output': 'success' as const };
       }
     }
     dispatcher.registerNode(new WorkerANode());
     dispatcher.registerNode(new WorkerBNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-twin',
       '@type':    'DAG',
@@ -473,12 +474,12 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(): Promise<NodeOutputType<'success'>> {
         return { 'errors': [], 'output': 'success' as const };
       }
     }
     dispatcher.registerNode(new WorkerNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-batched',
       '@type':    'DAG',
@@ -508,13 +509,13 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(): Promise<NodeOutputType<'success'>> {
         calls++;
         return { 'errors': [], 'output': 'success' as const };
       }
     }
     dispatcher.registerNode(new WorkerNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-ckpt',
       '@type':    'DAG',
@@ -553,7 +554,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     });
     const snap = state.snapshot();
     const restored = ScatterState.restore(snap);
-    const storedRestored = restored.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const storedRestored = restored.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     assert.ok(storedRestored !== undefined);
     const fanEntry = storedRestored['fan'];
     assert.ok(fanEntry !== undefined);
@@ -575,7 +576,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(_state: ScatterState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(_state: ScatterState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         // Long-running so we can abort mid-flight.
         await new Promise<void>((resolve, reject) => {
           const t = setTimeout(resolve, 1000);
@@ -588,7 +589,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       }
     }
     dispatcher.registerNode(new WorkerNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-e2e',
       '@type':    'DAG',
@@ -630,10 +631,10 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const round = ckpt.toJson();
     const parsed = JSON.parse(round) as unknown;
     const ckpt2 = Checkpoint.load(parsed);
-    const { 'state': rehydrated, cursor, dagName } = ckpt2.restoreState(CheckpointRestoreAdapterFn.fromFn((snap) => ScatterState.restore(snap)));
+    const { 'state': rehydrated, cursor, dagName } = ckpt2.restoreState(CheckpointRestoreAdapter.wrap((snap) => ScatterState.restore(snap)));
     assert.equal(cursor, 'fan');
 
-    const stored = rehydrated.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const stored = rehydrated.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     assert.ok(stored !== undefined, 'progress key should survive checkpoint codec');
     // At minimum one item should have been acked (the pre-seeded entry or any fresh ack).
     const fanStored = stored['fan'];

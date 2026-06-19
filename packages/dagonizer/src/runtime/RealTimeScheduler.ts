@@ -13,8 +13,8 @@
  * build (Vite, esbuild, Rollup) without polyfills or aliases.
  */
 
-import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
-import type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
+import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
+import type { SchedulerProviderInterface } from '../contracts/SchedulerProviderInterface.js';
 import { ExecutionError } from '../errors/DAGError.js';
 
 import { Clock } from './Clock.js';
@@ -27,18 +27,18 @@ type TimerGlobals = typeof globalThis & {
 const G = globalThis as TimerGlobals;
 
 /**
- * Default `SchedulerProvider`. The single permitted call site for
+ * Default `SchedulerProviderInterface`. The single permitted call site for
  * platform timer APIs in the runtime. Works in Node and the browser
  * unmodified; both expose `setTimeout` on `globalThis`.
  */
-export class RealTimeScheduler implements SchedulerProvider {
+export class RealTimeScheduler implements SchedulerProviderInterface {
   readonly #activeHandles = new Set<unknown>();
 
-  async after(delayMs: number, options?: AbortableOptionsInterface): Promise<void> {
+  async after(delayMs: number, options?: AbortableOptionsType): Promise<void> {
     const signal = options?.signal;
     return new Promise<void>((resolve, reject) => {
       if (signal?.aborted === true) {
-        reject(ExecutionError.fromSignal(signal));
+        reject(ExecutionError.ofSignal(signal));
         return;
       }
       const handle = G.setTimeout(() => {
@@ -52,17 +52,17 @@ export class RealTimeScheduler implements SchedulerProvider {
         this.#activeHandles.delete(handle);
         G.clearTimeout(handle);
         signal?.removeEventListener('abort', onAbort);
-        reject(ExecutionError.fromSignal(signal));
+        reject(ExecutionError.ofSignal(signal));
       };
       signal?.addEventListener('abort', onAbort, { 'once': true });
     });
   }
 
-  async at(atMs: number, options?: AbortableOptionsInterface): Promise<void> {
+  async at(atMs: number, options?: AbortableOptionsType): Promise<void> {
     return this.after(Math.max(0, atMs - Clock.monotonicMs()), options);
   }
 
-  async *every(intervalMs: number, options?: AbortableOptionsInterface): AsyncIterable<void> {
+  async *every(intervalMs: number, options?: AbortableOptionsType): AsyncIterable<void> {
     const signal = options?.signal;
     while (signal?.aborted !== true) {
       // Track the in-flight handle so a consumer `break` (which triggers the

@@ -12,11 +12,11 @@
  */
 
 import { ref, watch } from 'vue';
-import type { LlmClient } from '../../../../examples/the-archivist/services.ts';
+import type { LlmClientInterface } from '../../../../examples/the-archivist/services.ts';
 
 const props = defineProps<{
   selectedTool: string | null;
-  llm: LlmClient | null;
+  llm: LlmClientInterface | null;
   toolContextMap: Record<string, string>;
 }>();
 

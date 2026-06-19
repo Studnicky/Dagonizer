@@ -2,7 +2,7 @@
  * NodeResult: result yielded after each node execution.
  *
  * The `state` field is opaque (`{ type: 'object' }`) at the JSON boundary.
- * `NodeResultInterface<TState>` extends this via `Omit<NodeResult, 'state'>`
+ * `NodeResultType<TState>` extends this via `Omit<NodeResultType, 'state'>`
  * and narrows `state` to the concrete `TState` generic.
  */
 
@@ -28,20 +28,19 @@ export const NodeResultSchema = {
 } as const;
 
 /** TypeScript type derived from `NodeResultSchema` via `json-schema-to-ts`. */
-export type NodeResult = FromSchema<typeof NodeResultSchema>;
+export type NodeResultWireType = FromSchema<typeof NodeResultSchema>;
 
 /**
  * Result yielded after each node execution.
  *
- * Extends `NodeResult` entity via `Omit<NodeResult, 'state'>`:
+ * Extends `NodeResultWireType` entity via `Omit<NodeResultWireType, 'state'>`:
  *   - `state` is narrowed from `object` to the concrete `TState` generic
  *   - `intermediateResults` is a runtime-only field (not wire data): the
  *     per-step results a composite node (parallel / scatter / embedded-DAG)
  *     produced internally. Required-with-default `[]` for leaf nodes so every
  *     result has one stable object shape (no post-construction mutation).
  */
-export interface NodeResultInterface<TState extends NodeStateInterface>
-  extends Omit<NodeResult, 'state'> {
+export type NodeResultType<TState extends NodeStateInterface> = Omit<NodeResultWireType, 'state'> & {
   'state': TState;
-  'intermediateResults': NodeResultInterface<TState>[];
-}
+  'intermediateResults': NodeResultType<TState>[];
+};

@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
+import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
 import { StateMapper } from '../../src/runtime/StateMapper.js';
@@ -23,7 +23,7 @@ class DomainState extends NodeStateBase {
     this.domainValue = 0;
   }
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return { 'domainValue': this.domainValue };
   }
 
@@ -33,8 +33,8 @@ class DomainState extends NodeStateBase {
   }
 }
 
-// Minimal metadata-backed StateAccessor for the StateMapper path.
-const metadataAccessor: StateAccessor = {
+// Minimal metadata-backed StateAccessorInterface for the StateMapper path.
+const metadataAccessor: StateAccessorInterface = {
   get<T = unknown>(state: NodeStateBase, key: string): T | null {
     return state.getMetadata<T>(key) ?? null;
   },
@@ -91,12 +91,12 @@ void describe('DottedPathAccessor', () => {
   });
 });
 
-// ── Dagonizer custom StateAccessor injection ─────────────────────────────────
+// ── Dagonizer custom StateAccessorInterface injection ─────────────────────────────────
 
-void describe('Dagonizer accepts a custom StateAccessor', () => {
+void describe('Dagonizer accepts a custom StateAccessorInterface', () => {
   void it('uses the supplied accessor for scatter source reads', async () => {
     let getCalls = 0;
-    const trackingAccessor: StateAccessor = {
+    const trackingAccessor: StateAccessorInterface = {
       get<T = unknown>(state: object, path: string): T | null {
         getCalls += 1;
         return new DottedPathAccessor().get<T>(state, path);
@@ -114,7 +114,7 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
     class HandlerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'handler';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputType<'success'>> {
         const item = state.getMetadata<number>('item') ?? 0;
         state.results.push(item * 2);
         return { 'errors': [], 'output': 'success' as const };
@@ -123,7 +123,7 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
 
     const dispatcher = new Dagonizer<ScatterState>({ 'accessor': trackingAccessor });
     dispatcher.registerNode(new HandlerNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:fan-test',
       '@type':    'DAG',
@@ -151,7 +151,7 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
   });
 });
 
-// ── NodeStateBase.clone() + StateMapper.createChild subclass identity ────────
+// ── NodeStateBase.clone() + StateMapper.cloneChild subclass identity ────────
 
 void describe('NodeStateBase.clone() subclass identity', () => {
   void it('clone() returns an instance of the concrete subclass', () => {
@@ -199,17 +199,17 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     assert.strictEqual(cloned.errors.length, 0, 'errors must be empty in clone');
   });
 
-  void it('StateMapper.createChild produces a correctly-typed subclass instance with mapped metadata', () => {
+  void it('StateMapper.cloneChild produces a correctly-typed subclass instance with mapped metadata', () => {
     const mapper = new StateMapper<DomainState>(metadataAccessor);
     const parent = new DomainState();
     parent.domainValue = 55;
     parent.setMetadata('item', 3);
 
-    const child = mapper.createChild(parent, { 'item': 'item' });
+    const child = mapper.cloneChild(parent, { 'item': 'item' });
 
     assert.ok(
       child instanceof DomainState,
-      `Expected child from StateMapper.createChild to be instanceof DomainState, got ${child.constructor.name}`,
+      `Expected child from StateMapper.cloneChild to be instanceof DomainState, got ${child.constructor.name}`,
     );
     // Metadata input-mapping is applied.
     assert.strictEqual(child.getMetadata('item'), 3, 'input mapping must propagate metadata to child');

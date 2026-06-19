@@ -11,8 +11,8 @@
  * output port naming. The same class extension pattern applies.
  */
 
-import type { NodeStateInterface } from '@studnicky/dagonizer';
-import type { ToolCall } from '@studnicky/dagonizer/adapter';
+import type { ToolCallType } from '@studnicky/dagonizer/adapter';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { ComposeNode } from './ComposeNode.js';
 import { DecisionNode } from './DecisionNode.js';
@@ -35,7 +35,7 @@ export abstract class ClassifyIntentNode<
  */
 export abstract class DecideToolsNode<
   TState extends NodeStateInterface,
-> extends DecisionNode<TState, readonly ToolCall[], 'planned' | 'skip'> {}
+> extends DecisionNode<TState, readonly ToolCallType[], 'planned' | 'skip'> {}
 
 /**
  * ValidateResponseNode: LLM judges a draft yes/no. Output port is
@@ -50,13 +50,13 @@ export abstract class ValidateResponseNode<
  * is the array of `(id, score)` pairs; consumer routes 'ranked' or
  * 'empty' depending on whether any candidates were scored.
  */
-export interface Score {
+export type ScoreType = {
   readonly id: string;
   readonly score: number;
-}
+};
 export abstract class RankCandidatesNode<
   TState extends NodeStateInterface,
-> extends DecisionNode<TState, readonly Score[], 'ranked' | 'empty'> {}
+> extends DecisionNode<TState, readonly ScoreType[], 'ranked' | 'empty'> {}
 
 // ── ComposeNode leaves ────────────────────────────────────────────────────
 

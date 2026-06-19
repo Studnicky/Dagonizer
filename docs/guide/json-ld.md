@@ -84,7 +84,7 @@ The serializer is a thin wrapper over `JSON.stringify`. There is no transformati
 - Missing required fields (`@context`, `@id`, `@type`, `name`, `version`, `entrypoint`, `nodes`).
 - Invalid `@type` discriminator on any placement.
 
-For callers that have already decoded their input (a database row that returned a parsed object, for example), `DAGDocument.fromValue(value)` skips the JSON parse step and runs only the schema validation.
+For callers that have already decoded their input (a database row that returned a parsed object, for example), `DAGDocument.ofValue(value)` skips the JSON parse step and runs only the schema validation.
 
 ## Round-trip
 
@@ -114,7 +114,7 @@ Database column (text or JSON body):
 
 <<< @/../examples/json-ld.ts#persistence-db
 
-For HTTP transport, use `serializeCompact` and the `application/ld+json` content-type. For already-parsed values (Postgres `jsonb`, decoded message envelope), use `DAGDocument.fromValue`:
+For HTTP transport, use `serializeCompact` and the `application/ld+json` content-type. For already-parsed values (Postgres `jsonb`, decoded message envelope), use `DAGDocument.ofValue`:
 
 <<< @/../examples/json-ld.ts#from-value-round-trip
 

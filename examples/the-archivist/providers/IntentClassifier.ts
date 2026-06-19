@@ -22,7 +22,7 @@
  * verifies the union narrowed correctly at the type level.
  */
 
-import type { Embedder } from '@studnicky/dagonizer/contracts';
+import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
 import type { ClassifiedIntent } from '../services.ts';
 
@@ -74,10 +74,10 @@ interface IntentVector {
 }
 
 export class IntentClassifier {
-  readonly #embedder: Embedder;
+  readonly #embedder: EmbedderInterface;
   readonly #intentVectors: readonly IntentVector[];
 
-  private constructor(embedder: Embedder, intentVectors: readonly IntentVector[]) {
+  private constructor(embedder: EmbedderInterface, intentVectors: readonly IntentVector[]) {
     this.#embedder = embedder;
     this.#intentVectors = intentVectors;
   }
@@ -89,7 +89,7 @@ export class IntentClassifier {
    * (typically by skipping vector classification and falling back to
    * LLM-only).
    */
-  static async create(embedder: Embedder): Promise<IntentClassifier> {
+  static async create(embedder: EmbedderInterface): Promise<IntentClassifier> {
     const vectors = await Promise.all(
       INTENT_LABELS.map<Promise<IntentVector>>(async (intent) => ({
         intent,

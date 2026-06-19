@@ -20,21 +20,16 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import { NodeErrorProperties, NodeErrorSchema } from '../node/NodeError.js';
+
 // ---------------------------------------------------------------------------
 // Inline shape copies
 // ---------------------------------------------------------------------------
 
 const InlineNodeErrorShape = {
   'type': 'object',
-  'required': ['code', 'context', 'message', 'operation', 'recoverable', 'timestamp'],
-  'properties': {
-    'code':        { 'type': 'string' },
-    'context':     { 'type': 'object' },
-    'message':     { 'type': 'string' },
-    'operation':   { 'type': 'string' },
-    'recoverable': { 'type': 'boolean' },
-    'timestamp':   { 'type': 'string' },
-  },
+  'required': NodeErrorSchema.required,
+  'properties': NodeErrorProperties,
   'additionalProperties': false,
 } as const;
 
@@ -203,7 +198,7 @@ export const BridgeMessageSchema = {
       'properties': {
         'kind':          { 'type': 'string', 'const': 'instrumentation' },
         'correlationId': { 'type': 'string' },
-        'hook':          { 'type': 'string', 'enum': ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error', 'contractWarning'] },
+        'hook':          { 'type': 'string', 'enum': ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error'] },
         // 'pre'/'post' for phaseEnter/phaseExit; '' for every other hook.
         'phase':         { 'type': 'string', 'enum': ['pre', 'post', ''] },
         'dagName':       { 'type': 'string' },
@@ -226,23 +221,11 @@ export const BridgeMessageSchema = {
       },
       'additionalProperties': false,
     },
-    {
-      'type': 'object',
-      'required': ['kind', 'level', 'component', 'operation', 'message'],
-      'properties': {
-        'kind':      { 'type': 'string', 'const': 'log' },
-        'level':     { 'type': 'string', 'enum': ['debug', 'info', 'warn', 'error'] },
-        'component': { 'type': 'string' },
-        'operation': { 'type': 'string' },
-        'message':   { 'type': 'string' },
-      },
-      'additionalProperties': false,
-    },
   ],
 } as const;
 
 /** TypeScript type derived from `BridgeMessageSchema` via `json-schema-to-ts`. */
-export type BridgeMessage = FromSchema<typeof BridgeMessageSchema>;
+export type BridgeMessageType = FromSchema<typeof BridgeMessageSchema>;
 
 // ---------------------------------------------------------------------------
 // BridgeMessageBuilder
@@ -262,7 +245,7 @@ export class BridgeMessageBuilder {
    * Use when no specific request is in flight (e.g. init failures, transport
    * setup errors, invalid message receipts).
    */
-  static invalid(code: string, message: string): BridgeMessage & { kind: 'error' } {
+  static invalid(code: string, message: string): BridgeMessageType & { kind: 'error' } {
     return {
       'kind': 'error',
       'correlationId': null,

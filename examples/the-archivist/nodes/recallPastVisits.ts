@@ -11,7 +11,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -28,7 +28,7 @@ export class RecallPastVisitsNode extends ScalarNode<ArchivistState, 'recalled',
   readonly name = 'recall-past-visits';
   readonly outputs = ['recalled'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory = context.services.memory;
     const currentGraph = MemoryStore.stateGraphIri(state.runId).value;
 
@@ -84,9 +84,6 @@ export class RecallPastVisitsNode extends ScalarNode<ArchivistState, 'recalled',
     state.priorContext = priorContext;
 
     if (priorContext.length > 0) {
-      context.services.logger.info(
-        `recall: ${String(recentQueries.length)} prior queries, ${String(titles.size)} prior titles (across ${String(recentQueries.length)} state graphs)`,
-      );
     }
     return NodeOutputBuilder.of('recalled');
   }

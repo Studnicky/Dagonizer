@@ -28,7 +28,7 @@ import { setImmediate, setTimeout } from 'node:timers';
 import { URL } from 'node:url';
 
 import { Dagonizer } from '@studnicky/dagonizer';
-import type { DagonizerInterface, DispatcherBundle, NodeStateInterface } from '@studnicky/dagonizer';
+import type { DagonizerInterface, DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
 import { DagTask } from '@studnicky/dagonizer/container';
 import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
 import { Timeout } from '@studnicky/dagonizer/runtime';
@@ -45,7 +45,7 @@ import type {
 } from '@studnicky/dagonizer/testing';
 
 import { WebWorkerContainer } from '../../src/WebWorkerContainer.js';
-import type { WebWorkerContainerOptions } from '../../src/WebWorkerContainer.js';
+import type { WebWorkerContainerOptionsType } from '../../src/WebWorkerContainer.js';
 import { WebWorkerEntry } from '../../src/webWorkerEntry.js';
 import type { WebWorkerLikeInterface, WorkerScopeLikeInterface } from '../../src/WebWorkerLike.js';
 
@@ -176,7 +176,7 @@ class FakeWorkerScope {
 }
 
 // ---------------------------------------------------------------------------
-// FakeWebWorkerContainer: subclass overriding createWorker() to return an
+// FakeWebWorkerContainer: subclass overriding spawnWorker() to return an
 // in-process FakeWorker. Extension is by subclass (zero callbacks), mirroring
 // the production wiring where a consumer subclass returns `new Worker(url)`.
 // Every spawned worker is recorded in `spawned` so destroy()/teardown tests can
@@ -186,7 +186,7 @@ class FakeWorkerScope {
 class FakeWebWorkerContainer extends WebWorkerContainer {
   readonly spawned: FakeWorker[] = [];
 
-  protected override createWorker(): WebWorkerLikeInterface {
+  protected override spawnWorker(): WebWorkerLikeInterface {
     const worker = new FakeWorker();
     this.spawned.push(worker);
     return worker;
@@ -200,7 +200,7 @@ class FakeWebWorkerContainer extends WebWorkerContainer {
 // ---------------------------------------------------------------------------
 
 function buildContainer(): FakeWebWorkerContainer {
-  const opts: WebWorkerContainerOptions = {
+  const opts: WebWorkerContainerOptionsType = {
     'registryModule': conformanceRegistryUrl(),
     'registryVersion': CONFORMANCE_REGISTRY_VERSION,
     'poolSize': 1,
@@ -220,7 +220,7 @@ const perLawContainers: FakeWebWorkerContainer[] = [];
 
 const harness: DagConformanceHarnessInterface = {
   'createDispatcher'(
-    bundle: DispatcherBundle<NodeStateInterface, undefined>,
+    bundle: DispatcherBundleType<NodeStateInterface, undefined>,
     _containers: Readonly<Record<string, DagContainerInterface>>,
   ): DagonizerInterface<NodeStateInterface, undefined> {
     // Create a fresh per-law container. Ignore the incoming _containers arg —
@@ -272,7 +272,7 @@ void describe('WebWorkerContainer pool behavior', () => {
       'poolSize': 2,
     });
 
-    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
     const containers = { [CONFORMANCE_CONTAINER_ROLE]: container as DagContainerInterface };
     const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
     dispatcher.registerBundle(bundle);
@@ -389,7 +389,7 @@ class ZombieWorker implements WebWorkerLikeInterface {
 class ZombieWorkerContainer extends WebWorkerContainer {
   readonly zombies: ZombieWorker[] = [];
 
-  protected override createWorker(): WebWorkerLikeInterface {
+  protected override spawnWorker(): WebWorkerLikeInterface {
     const zombie = new ZombieWorker();
     this.zombies.push(zombie);
     return zombie;
@@ -505,7 +505,7 @@ void describe('WebWorkerContainer destroy() — terminate on all workers', () =>
     });
     const spawnedWorkers = container.spawned;
 
-    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
     const containers = { [CONFORMANCE_CONTAINER_ROLE]: container as DagContainerInterface };
     const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
     dispatcher.registerBundle(bundle);

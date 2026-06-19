@@ -1,4 +1,4 @@
-import type { RetryPolicyOptionsInterface } from '../contracts/RetryPolicyOptionsInterface.js';
+import type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
 import { RetryPolicy } from '../runtime/index.js';
 
 import { LlmError } from './LlmError.js';
@@ -20,7 +20,7 @@ export class RetryableErrorPolicy extends RetryPolicy {
    * Materialise a `RetryableErrorPolicy` from a partial options object.
    * Delegates to the base `RetryPolicy` constructor via `from()`.
    */
-  static override from(partial: RetryPolicyOptionsInterface = {}): RetryableErrorPolicy {
+  static override from(partial: RetryPolicyOptionsType = {}): RetryableErrorPolicy {
     return new RetryableErrorPolicy(partial);
   }
 

@@ -6,21 +6,21 @@
  * any public subpath; it is consumed only by the dispatcher and the
  * scatter implementation. Consumers do not interact with it directly.
  *
- * Uses a `StateAccessor` for dotted-path reads and writes so the mapping
+ * Uses a `StateAccessorInterface` for dotted-path reads and writes so the mapping
  * logic is decoupled from the concrete accessor implementation.
  */
 
-import type { StateAccessor } from '../contracts/StateAccessor.js';
+import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 export class StateMapper<TState extends NodeStateInterface> {
-  readonly #accessor: StateAccessor;
+  readonly #accessor: StateAccessorInterface;
 
-  constructor(accessor: StateAccessor) {
+  constructor(accessor: StateAccessorInterface) {
     this.#accessor = accessor;
   }
 
-  createChild(parentState: TState, inputMapping: Record<string, string>): TState {
+  cloneChild(parentState: TState, inputMapping: Record<string, string>): TState {
     const childState = parentState.clone();
     for (const [childKey, parentKey] of Object.entries(inputMapping)) {
       this.#accessor.set(childState, childKey, this.#accessor.get(parentState, parentKey));

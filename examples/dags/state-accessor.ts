@@ -1,5 +1,5 @@
 /**
- * state-accessor/dags: demonstrates DottedPathAccessor and the StateAccessor
+ * state-accessor/dags: demonstrates DottedPathAccessor and the StateAccessorInterface
  * contract. Shows get/set on nested paths and how to wire a custom accessor
  * into a Dagonizer instance.
  *
@@ -8,7 +8,7 @@
  */
 
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 import { DottedPathAccessor } from '@studnicky/dagonizer/runtime';
 
 // ---------------------------------------------------------------------------
@@ -21,19 +21,19 @@ export class ArchiveState extends NodeStateBase {
 }
 
 // #region contract-declaration
-// StateAccessor: get(target, path) → T | null; set(target, path, value) → void.
+// StateAccessorInterface: get(target, path) → T | null; set(target, path, value) → void.
 // Implementations are stateless; the same instance resolves every scatter source
 // read, state-mapping input copy, and gather write.
-export const dotAccessor: StateAccessor = new DottedPathAccessor();
+export const dotAccessor: StateAccessorInterface = new DottedPathAccessor();
 // #endregion contract-declaration
 
 // #region custom-accessor
 /**
- * PrefixAccessor: a custom StateAccessor that silently adds a fixed namespace
+ * PrefixAccessor: a custom StateAccessorInterface that silently adds a fixed namespace
  * prefix to every key before delegating to DottedPathAccessor.
  * Demonstrates the adapter contract: implement get + set, no callbacks.
  */
-export class PrefixAccessor implements StateAccessor {
+export class PrefixAccessor implements StateAccessorInterface {
   readonly #prefix: string;
   readonly #inner: DottedPathAccessor;
 
@@ -63,7 +63,7 @@ export const writeAccessor = new DottedPathAccessor();
 // #endregion dotted-set
 
 // #region wire-accessor
-// Pass any StateAccessor to the Dagonizer constructor; scatter source reads
+// Pass any StateAccessorInterface to the Dagonizer constructor; scatter source reads
 // and gather writes will use it for every execution.
 export const prefixedAccessor = new PrefixAccessor('archivist');
 // #endregion wire-accessor

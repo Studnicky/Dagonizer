@@ -17,7 +17,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Consent, GdprRedactor, GeoCoarsener, Jurisdictions } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -27,7 +27,7 @@ export class ConsentGateNode extends ScalarNode<CartographerState, 'classify', C
   readonly 'name' = 'consent-gate';
   readonly 'outputs' = ['classify'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'classify'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'classify'>> {
     // Resolve marketing consent (10% of consented treated as lapsed/expired).
     const consentStatus = Consent.statusFor(state.currentEvent.shipmentId, state.currentEvent.marketingConsent);
     state.gdprResult = {
@@ -44,7 +44,7 @@ export class ClassifyPiiNode extends ScalarNode<CartographerState, 'redact', Car
   readonly 'name' = 'classify-pii';
   readonly 'outputs' = ['redact'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'redact'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'redact'>> {
     const classification = GdprRedactor.classify(state.currentEvent);
     state.gdprResult = {
       ...state.gdprResult,
@@ -59,7 +59,7 @@ export class RedactPiiNode extends ScalarNode<CartographerState, 'ok' | 'violati
   readonly 'name' = 'redact-pii';
   readonly 'outputs' = ['ok', 'violation'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'ok' | 'violation'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'ok' | 'violation'>> {
     // Genuine violation: special-category data with no lawful basis (rare drop).
     if (!GdprRedactor.hasLawfulBasis(state.raw.lawfulBasis, state.raw.specialCategory)) {
       return NodeOutputBuilder.of('violation');

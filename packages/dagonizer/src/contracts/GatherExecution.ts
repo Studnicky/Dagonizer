@@ -1,17 +1,22 @@
 /**
- * GatherExecution / GatherRecord: adapter contracts between the dispatcher
+ * GatherExecutionType / GatherRecordType: adapter contracts between the dispatcher
  * and GatherStrategy implementations.
  *
- * `GatherRecord<TState>` carries per-clone results from the scatter loop.
- * `GatherExecution<TState>` is the invocation context handed to
+ * `GatherRecordType<TState, TItem>` carries per-clone results from the scatter
+ * loop. `GatherExecutionType<TState, TItem>` is the invocation context handed to
  * `GatherStrategy.apply`; it gives strategies read access to per-clone
  * records, the live parent state, and the `invoker` seam.
+ *
+ * `TItem` defaults to `unknown`, bounding the scatter-source element type to
+ * a generic default: existing call sites stay source-compatible, while a
+ * strategy that knows its source element type narrows `record.item` without
+ * a cast.
  */
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import type { NodeInvoker } from './NodeInvoker.js';
-import type { StateAccessor } from './StateAccessor.js';
+import type { NodeInvokerInterface } from './NodeInvokerInterface.js';
+import type { StateAccessorInterface } from './StateAccessorInterface.js';
 
 /**
  * Per-clone record produced by the scatter loop. Carries the source item
@@ -19,11 +24,11 @@ import type { StateAccessor } from './StateAccessor.js';
  * terminal outcome of a DAG body (or `null` for a node body), and the
  * live clone state after the body ran.
  */
-export interface GatherRecord<TState extends NodeStateInterface> {
+export type GatherRecordType<TState extends NodeStateInterface, TItem = unknown> = {
   /** 0-based position of this item in the scatter source array. */
   index: number;
   /** The source item that was scattered over (the element from the source array). */
-  item: unknown;
+  item: TItem;
   /** Routing output the scatter body emitted for this clone. */
   output: string;
   /**
@@ -41,11 +46,11 @@ export interface GatherRecord<TState extends NodeStateInterface> {
  *   - the live parent state object (mutated in place by the strategy)
  *   - the per-clone records produced by every scatter clone
  *   - the current dag/signal for any nested node invocation
- *   - the `StateAccessor` the dispatcher is configured with
+ *   - the `StateAccessorInterface` the dispatcher is configured with
  *   - `invoker`, the only way for `custom` strategies to dispatch
  *     a registered node back through the engine
  */
-export interface GatherExecution<TState extends NodeStateInterface> {
+export type GatherExecutionType<TState extends NodeStateInterface, TItem = unknown> = {
   /** Live parent state object. Strategies mutate it in place. */
   state: TState;
   /**
@@ -55,7 +60,7 @@ export interface GatherExecution<TState extends NodeStateInterface> {
    * through the same index-ordered batch loop on resume). Strategies rely on
    * this and must not re-sort.
    */
-  records: GatherRecord<TState>[];
+  records: GatherRecordType<TState, TItem>[];
   /** Name of the DAG being executed. Used by `invoker.invokeNode` to dispatch gather nodes. */
   dagName: string;
   /**
@@ -67,7 +72,7 @@ export interface GatherExecution<TState extends NodeStateInterface> {
    */
   signal: AbortSignal | null;
   /** State path accessor the dispatcher is configured with; used by built-in strategies to read and write state paths. */
-  accessor: StateAccessor;
+  accessor: StateAccessorInterface;
   /** The only dispatch seam for `custom` gather strategies to invoke a registered node through the engine. */
-  invoker: NodeInvoker;
+  invoker: NodeInvokerInterface;
 }

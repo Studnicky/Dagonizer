@@ -5,20 +5,21 @@
  * by looping a per-item `executeOne` over the batch — "a scalar is a batch of
  * one." Subclasses implement `executeOne` with the per-item signature; the base
  * maps it over the batch, forwards per-item errors via `state.collectError`,
- * and groups items by the returned output port into a `RoutedBatch`.
+ * and groups items by the returned output port into a `RoutedBatchType`.
  *
  * Use `ScalarNode` for the common per-item leaf node (LLM/IO leaves, most
  * domain nodes). Author a batch-native hot-path node by extending `MonadicNode`
  * directly and implementing `execute`.
  */
 
-import type { NodeContextInterface } from '../entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
+import { Batch } from '../entities/batch/Batch.js';
+import type { ItemType } from '../entities/batch/Item.js';
+import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
+import type { NodeContextType } from '../entities/node/NodeContext.js';
+import type { NodeOutputType } from '../entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import { Batch } from './batch/Batch.js';
-import type { Item } from './batch/Item.js';
-import type { RoutedBatch } from './batch/RoutedBatch.js';
+
 import { MonadicNode } from './MonadicNode.js';
 
 export abstract class ScalarNode<
@@ -32,19 +33,19 @@ export abstract class ScalarNode<
    */
   protected abstract executeOne(
     state: TState,
-    context: NodeContextInterface<TServices>,
-  ): Promise<NodeOutputInterface<TOutput>>;
+    context: NodeContextType<TServices>,
+  ): Promise<NodeOutputType<TOutput>>;
 
   /**
    * Iterates items in order, calls `executeOne` for each, forwards errors via
    * `state.collectError`, groups items by the returned output port, and returns
-   * a `RoutedBatch`.
+   * a `RoutedBatchType`.
    */
   override async execute(
     batch: Batch<TState>,
-    context: NodeContextInterface<TServices>,
-  ): Promise<RoutedBatch<TOutput, TState>> {
-    const acc = new Map<TOutput, Item<TState>[]>();
+    context: NodeContextType<TServices>,
+  ): Promise<RoutedBatchType<TOutput, TState>> {
+    const acc = new Map<TOutput, ItemType<TState>[]>();
 
     for (const item of batch) {
       const result = await this.executeOne(item.state, context);

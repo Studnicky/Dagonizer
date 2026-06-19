@@ -33,10 +33,10 @@ import { fuseGeo } from '../nodes/geo/fuseGeo.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const geoResolveDAG: DAG = new DAGBuilder('geo-resolve', '1.0')
+export const geoResolveDAG: DAGType = new DAGBuilder('geo-resolve', '1.0')
 
   // 1. reverse-geocode: GPS modality (offline country-coder). Always runs.
   .node('reverse-geocode', reverseGeocode, {
@@ -63,7 +63,7 @@ export const geoResolveDAG: DAG = new DAGBuilder('geo-resolve', '1.0')
 
   .build();
 
-export const geoResolveBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const geoResolveBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [reverseGeocode, routeModalities, ipGeolocate, fuseGeo],
   'dags': [geoResolveDAG],
 };

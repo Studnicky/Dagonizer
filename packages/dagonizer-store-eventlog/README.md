@@ -84,7 +84,7 @@ await store.update<number>('counter', (c) => (c ?? 0) + 1);
 
 ```ts
 type EventLogEntry =
-  | { readonly kind: 'set';    readonly at: number; readonly key: string; readonly value: JsonValue }
+  | { readonly kind: 'set';    readonly at: number; readonly key: string; readonly value: JsonValueType }
   | { readonly kind: 'delete'; readonly at: number; readonly key: string };
 ```
 

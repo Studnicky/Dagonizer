@@ -1,11 +1,11 @@
 import type { NodeInterface } from '../contracts/NodeInterface.js';
-import type { DAG } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { PhaseNode } from '../entities/dag/PhaseNode.js';
+import type { DAGType } from '../entities/dag/DAG.js';
+import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
-import type { ScatterNode } from '../entities/dag/ScatterNode.js';
-import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
+import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
+import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import { DAGError, ValidationError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
@@ -13,9 +13,9 @@ export class DAGValidator {
   private constructor() { /* static class */ }
 
   static validateDAGConfig<TState extends NodeStateInterface, TServices>(
-    dag: DAG,
+    dag: DAGType,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
-    dags: Map<string, DAG>,
+    dags: Map<string, DAGType>,
   ): void {
     const errors: string[] = [];
     const nodeNames = new Set<string>();
@@ -49,7 +49,7 @@ export class DAGValidator {
   private static validateDAGNode<TState extends NodeStateInterface, TServices>(
     entry: DAGNodeType,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
-    dags: Map<string, DAG>,
+    dags: Map<string, DAGType>,
     nodeNames: Set<string>,
     errors: string[],
   ): void {
@@ -66,7 +66,7 @@ export class DAGValidator {
   }
 
   private static validatePhaseNode<TState extends NodeStateInterface, TServices>(
-    phase: PhaseNode,
+    phase: PhaseNodeType,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
     errors: string[],
   ): void {
@@ -76,7 +76,7 @@ export class DAGValidator {
   }
 
   private static validateSingleNode<TState extends NodeStateInterface, TServices>(
-    nodeConfig: SingleNodePlacementInterface,
+    nodeConfig: SingleNodePlacementType,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
     nodeNames: Set<string>,
     errors: string[],
@@ -102,8 +102,8 @@ export class DAGValidator {
   }
 
   private static validateEmbeddedDAGNode(
-    placement: EmbeddedDAGNode,
-    dags: Map<string, DAG>,
+    placement: EmbeddedDAGNodeType,
+    dags: Map<string, DAGType>,
     nodeNames: Set<string>,
     errors: string[],
   ): void {
@@ -119,9 +119,9 @@ export class DAGValidator {
   }
 
   private static validateScatterNode<TState extends NodeStateInterface, TServices>(
-    scatter: ScatterNode,
+    scatter: ScatterNodeType,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
-    dags: Map<string, DAG>,
+    dags: Map<string, DAGType>,
     nodeNames: Set<string>,
     errors: string[],
   ): void {
@@ -160,7 +160,7 @@ export class DAGValidator {
   }
 
   private static validateReservoir(
-    scatter: ScatterNode,
+    scatter: ScatterNodeType,
     errors: string[],
   ): void {
     // reservoir is already narrowed to defined by the caller; assert shape exists.

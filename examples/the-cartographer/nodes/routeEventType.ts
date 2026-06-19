@@ -20,7 +20,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -50,7 +50,7 @@ export class RouteEventTypeNode extends ScalarNode<CartographerState, VariantRou
   readonly 'name' = 'route-event-type-variant';
   readonly 'outputs' = ['position-ping', 'sensor-reading', 'customs-event', 'facility-scan', 'delivery-confirmation'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<VariantRoute>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<VariantRoute>> {
     const variant = state.getMetadata<CanonicalEventVariant>('canonical-event');
     const t = (variant !== null && variant !== undefined) ? variant.eventType : state.canonicalVariant.eventType;
 

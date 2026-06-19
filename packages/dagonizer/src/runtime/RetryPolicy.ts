@@ -14,18 +14,17 @@
  * and override `shouldRetry` / `getDelay` for custom behavior. No callbacks.
  *
  * Use `RetryPolicy.from(partial)` to construct from a
- * `RetryPolicyOptionsInterface` partial; defaults are materialised once here.
+ * `RetryPolicyOptionsType` partial; defaults are materialised once here.
  */
 
-import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
+import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
 import type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
-import type { RetryPolicyOptionsInterface } from '../contracts/RetryPolicyOptionsInterface.js';
-import { BackoffStrategy } from '../entities/runtime/BackoffStrategy.js';
+import type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
+import { BackoffStrategyNames } from '../entities/runtime/BackoffStrategy.js';
+import type { BackoffStrategyType } from '../entities/runtime/BackoffStrategy.js';
 import { DAGError, ExecutionError } from '../errors/DAGError.js';
 
 import { Scheduler } from './Scheduler.js';
-
-export { BackoffStrategy };
 
 const DEFAULT_BASE_DELAY_MS = 1000;
 const DEFAULT_MAX_DELAY_MS = 30_000;
@@ -34,10 +33,10 @@ const DEFAULT_JITTER_FACTOR = 0.1;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DECORRELATED_JITTER_MULTIPLIER = 3;
 
-/** Canonical defaults for `RetryPolicyOptionsInterface` numeric/strategy fields. */
+/** Canonical defaults for `RetryPolicyOptionsType` numeric/strategy fields. */
 const RETRY_POLICY_DEFAULTS = {
   'maxAttempts':  DEFAULT_MAX_ATTEMPTS,
-  'strategy':     BackoffStrategy.EXPONENTIAL as BackoffStrategy,
+  'strategy':     BackoffStrategyNames.EXPONENTIAL as BackoffStrategyType,
   'baseDelay':    DEFAULT_BASE_DELAY_MS,
   'maxDelay':     DEFAULT_MAX_DELAY_MS,
   'multiplier':   DEFAULT_MULTIPLIER,
@@ -47,7 +46,7 @@ const RETRY_POLICY_DEFAULTS = {
 } as const;
 
 
-const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategy, (attempt: number, baseDelay: number, multiplier: number) => number>> = {
+const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyType, (attempt: number, baseDelay: number, multiplier: number) => number>> = {
   'constant': (_attempt, baseDelay) => baseDelay,
   'linear': (attempt, baseDelay) => baseDelay * attempt,
   'exponential': (attempt, baseDelay, multiplier) => baseDelay * Math.pow(multiplier, attempt - 1),
@@ -73,7 +72,7 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategy, (attempt: number, base
  * ```ts
  * const policy = RetryPolicy.from({
  *   maxAttempts: 3,
- *   strategy: BackoffStrategy.EXPONENTIAL,
+ *   strategy: BackoffStrategyNames.EXPONENTIAL,
  *   retryOn: [NetworkError],
  *   abortOn: [AuthError],
  * });
@@ -87,7 +86,7 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategy, (attempt: number, base
  */
 export class RetryPolicy {
   readonly maxAttempts: number;
-  readonly strategy: BackoffStrategy;
+  readonly strategy: BackoffStrategyType;
   readonly baseDelay: number;
   readonly maxDelay: number;
   readonly multiplier: number;
@@ -117,7 +116,7 @@ export class RetryPolicy {
    * Constructor is `protected` (not public) to prevent direct `new RetryPolicy()`
    * from external callers. External callers use `RetryPolicy.from(partial)`.
    */
-  protected constructor(options: RetryPolicyOptionsInterface = {}) {
+  protected constructor(options: RetryPolicyOptionsType = {}) {
     const resolved = { ...RETRY_POLICY_DEFAULTS, ...options };
     this.maxAttempts  = resolved.maxAttempts;
     this.strategy     = resolved.strategy;
@@ -133,7 +132,7 @@ export class RetryPolicy {
    * Materialise a complete `RetryPolicy` from a partial options object.
    * Single canonical creation path; all `DEFAULT_*` defaulting lives here.
    */
-  static from(partial: RetryPolicyOptionsInterface = {}): RetryPolicy {
+  static from(partial: RetryPolicyOptionsType = {}): RetryPolicy {
     return new RetryPolicy(partial);
   }
 
@@ -142,16 +141,16 @@ export class RetryPolicy {
    * Override for custom backoff. The base implementation honors the
    * configured strategy + jitter.
    */
-  getDelay(attempt: number, options: { readonly error?: Error | null } = {}): number {
+  getDelay(attempt: number, options: { readonly error: Error | null } = { 'error': null }): number {
     // `options.error` is reserved for subclass overrides; the base implementation ignores it.
     void options;
     const computer = BACKOFF_COMPUTERS[this.strategy];
     if (computer === undefined) {
-      throw new DAGError(`Unknown backoff strategy: ${this.strategy as string}`);
+      throw new DAGError(`Unknown backoff strategy: ${this.strategy}`);
     }
     let delay = computer(attempt, this.baseDelay, this.multiplier);
 
-    if (this.jitterFactor > 0 && this.strategy !== BackoffStrategy.DECORRELATED_JITTER) {
+    if (this.jitterFactor > 0 && this.strategy !== BackoffStrategyNames.DECORRELATED_JITTER) {
       const jitter = delay * this.jitterFactor * (Math.random() * 2 - 1);
       delay += jitter;
     }
@@ -201,14 +200,14 @@ export class RetryPolicy {
    * `options.signal` fires; the abort takes effect at the next decision
    * point (after the current attempt or during the next wait).
    */
-  async run<T>(task: (attempt: number) => Promise<T> | T, options?: AbortableOptionsInterface): Promise<T> {
+  async run<T>(task: (attempt: number) => Promise<T> | T, options?: AbortableOptionsType): Promise<T> {
     const signal = options?.signal;
     let lastError: Error | null = null;
     let attempt = 0;
 
     while (attempt < this.maxAttempts) {
       if (signal?.aborted) {
-        throw ExecutionError.fromSignal(signal);
+        throw ExecutionError.ofSignal(signal);
       }
       attempt++;
 
@@ -218,7 +217,7 @@ export class RetryPolicy {
         // while `task` was executing but before `await` returned control here,
         // treat it as an abort rather than a successful result.
         if (signal?.aborted === true) {
-          throw ExecutionError.fromSignal(signal);
+          throw ExecutionError.ofSignal(signal);
         }
         return result;
       } catch (error) {
@@ -240,7 +239,7 @@ export class RetryPolicy {
    * Sleep `ms` via the installed `Scheduler`. Resolves early if
    * `options.signal` aborts during the wait.
    */
-  private static async sleep(ms: number, options: AbortableOptionsInterface = {}): Promise<void> {
+  private static async sleep(ms: number, options: AbortableOptionsType = {}): Promise<void> {
     if (ms <= 0) return;
     const signal = options.signal;
     try {
@@ -248,7 +247,7 @@ export class RetryPolicy {
     } catch (err) {
       // Re-throw abort errors as the signal's reason for consistent error shape.
       if (signal?.aborted === true) {
-        throw ExecutionError.fromSignal(signal);
+        throw ExecutionError.ofSignal(signal);
       }
       throw err;
     }

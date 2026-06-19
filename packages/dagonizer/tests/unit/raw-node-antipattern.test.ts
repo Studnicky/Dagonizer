@@ -5,7 +5,7 @@
  * This test asserts the engine treats a hand-rolled `NodeInterface` identically
  * to the equivalent `ScalarNode`, and that a node's `contract` is readable
  * without execution. The taxonomy base classes add no semantics over the bare
- * `execute(batch) → RoutedBatch` contract; they only reduce boilerplate.
+ * `execute(batch) → RoutedBatchType` contract; they only reduce boilerplate.
  *
  * Extend `ScalarNode` or `MonadicNode` instead of hand-rolling `NodeInterface`.
  */
@@ -15,16 +15,16 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
+import type { ItemType } from '../../src/entities/batch/Item.js';
+import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
+import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 class TagState extends NodeStateBase {
   value: number;
@@ -34,7 +34,7 @@ class TagState extends NodeStateBase {
   }
 }
 
-const ctx: NodeContextInterface = {
+const ctx: NodeContextType = {
   'signal': new AbortController().signal,
   'dagName': 'antipattern-dag',
   'nodeName': 'tag',
@@ -45,7 +45,7 @@ const ctx: NodeContextInterface = {
 class TagScalarNode extends ScalarNode<TagState, 'tagged' | 'skip'> {
   readonly name = 'tag';
   readonly outputs = ['tagged', 'skip'] as const;
-  protected override async executeOne(state: TagState): Promise<NodeOutputInterface<'tagged' | 'skip'>> {
+  protected override async executeOne(state: TagState): Promise<NodeOutputType<'tagged' | 'skip'>> {
     return NodeOutputBuilder.of(state.value > 0 ? 'tagged' : 'skip');
   }
 }
@@ -62,8 +62,8 @@ void describe('Antipattern — hand-rolled raw NodeInterface', () => {
       // work the same either way.
       'contract': EMPTY_CONTRACT_FRAGMENT,
       'timeout': Timeout.none(),
-      async execute(batch: Batch<TagState>): Promise<RoutedBatch<'tagged' | 'skip', TagState>> {
-        const acc = new Map<'tagged' | 'skip', Item<TagState>[]>();
+      async execute(batch: Batch<TagState>): Promise<RoutedBatchType<'tagged' | 'skip', TagState>> {
+        const acc = new Map<'tagged' | 'skip', ItemType<TagState>[]>();
         for (const item of batch) {
           const output = item.state.value > 0 ? 'tagged' as const : 'skip' as const;
           const bucket = acc.get(output);
@@ -75,7 +75,7 @@ void describe('Antipattern — hand-rolled raw NodeInterface', () => {
       },
     };
 
-    const items: Item<TagState>[] = [
+    const items: ItemType<TagState>[] = [
       { 'id': '1', 'state': new TagState(1) },
       { 'id': '2', 'state': new TagState(-1) },
       { 'id': '3', 'state': new TagState(3) },

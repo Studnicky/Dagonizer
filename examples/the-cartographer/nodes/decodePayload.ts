@@ -21,7 +21,7 @@ import type { SourcePayload } from '../entities/SourcePayload.ts';
 import { CanonicalEventVariantBuilder } from '../entities/CanonicalEvent.ts';
 import { TypedPayloadDecoder } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -30,7 +30,7 @@ export class DecodePayloadNode extends ScalarNode<CartographerState, 'decoded' |
   readonly 'name' = 'decode-payload';
   readonly 'outputs' = ['decoded', 'invalid'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'decoded' | 'invalid'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'decoded' | 'invalid'>> {
     const payload = state.getMetadata<SourcePayload>('source-payload');
     if (payload === undefined || payload === null) {
       return NodeOutputBuilder.of('invalid');

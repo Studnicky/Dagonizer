@@ -123,5 +123,5 @@ See [Testing](../reference/testing) for the full `VirtualScheduler` and `Virtual
 
 - [Phase 07, Retry demo](../examples/07-retry)
 - [Reference, Runtime, `RetryPolicy`, `BackoffStrategy`](../reference/runtime)
-- [Reference, Contracts, `RetryPolicyOptionsInterface`](../reference/contracts)
+- [Reference, Contracts, `RetryPolicyOptionsType`](../reference/contracts)
 - [Guide, Shared state](./shared-state)

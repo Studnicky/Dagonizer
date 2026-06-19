@@ -10,12 +10,15 @@
  *                     ├─valid────► geo-resolve (embedded)
  *                     │             ├─success──► resolved
  *                     │             └─error────► resolved
- *                     └─rejected──► rejected
+ *                     └─rejected─► geo-resolve (embedded)
  *
  * route-geo routes 'has-geo' when the source pre-resolved geo (apply-geo
  * materialises GeoContext from carried geo, skipping the live lookup).
- * validate-coords enforces WGS-84 bounds before delegating to geo-resolve.
- * geo-resolve's own nodes ship in geoResolveBundle, registered separately.
+ * validate-coords classifies WGS-84 bounds. Out-of-range coords are NOT silently
+ * dropped at a failed terminal — they flow into geo-resolve too, where the GPS
+ * transport (OfflineGeo) captures the RangeError as a GeoErrorRecord on
+ * state.errors and degrades gracefully. The fault rides as DATA through the
+ * gather rather than vanishing. geo-resolve's nodes ship in geoResolveBundle.
  */
 
 // #region geo-pipeline-dag
@@ -25,10 +28,10 @@ import { validateCoords } from '../nodes/validateCoords.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const geoPipelineDAG: DAG = new DAGBuilder('geo-pipeline', '1.0')
+export const geoPipelineDAG: DAGType = new DAGBuilder('geo-pipeline', '1.0')
 
   // 1. route-geo: skip the geo lookup when the source pre-resolved location.
   .node('route-geo', routeGeo, {
@@ -41,10 +44,12 @@ export const geoPipelineDAG: DAG = new DAGBuilder('geo-pipeline', '1.0')
     'normalize': 'resolved',
   })
 
-  // 3. validate-coords (lookup path): WGS-84 bounds check on the scan coords.
+  // 3. validate-coords (lookup path): WGS-84 bounds classification. Both valid
+  //    and rejected coords flow into geo-resolve — rejected ones are NOT dropped;
+  //    the GPS transport captures their RangeError as data and degrades.
   .node('validate-coords', validateCoords, {
     'valid':    'geo-resolve',
-    'rejected': 'rejected',
+    'rejected': 'geo-resolve',
   })
 
   // 4. geo-resolve: embedded multi-modal geo-resolution sub-DAG.
@@ -54,24 +59,29 @@ export const geoPipelineDAG: DAG = new DAGBuilder('geo-pipeline', '1.0')
     'error':   'resolved',
   }, {
     'inputs': {
-      'raw':       'raw',
-      'canonical': 'canonical',
-      'routing':   'routing',
+      'raw':            'raw',
+      'canonical':      'canonical',
+      'routing':        'routing',
+      // Inherit the parent's captured-error list so the geo nodes APPEND to it
+      // (the output below maps the appended list back).
+      'capturedErrors': 'capturedErrors',
     },
     'outputs': {
-      'geoContext':  'geoContext',
-      'resolvedGeo': 'resolvedGeo',
-      'routing':     'routing',
+      'geoContext':     'geoContext',
+      'resolvedGeo':    'resolvedGeo',
+      'routing':        'routing',
+      // Thread the geo nodes' captured errors back so they reach the clone state
+      // the gather folds — errors flow as DATA across the embedded boundary.
+      'capturedErrors': 'capturedErrors',
     },
   })
 
   // Terminals
   .terminal('resolved', { outcome: 'completed' })
-  .terminal('rejected', { outcome: 'failed' })
 
   .build();
 
-export const geoPipelineBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const geoPipelineBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [routeGeo, applyGeo, validateCoords],
   'dags':  [geoPipelineDAG],
 };

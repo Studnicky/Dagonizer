@@ -20,7 +20,7 @@ Scatter source reads, scatter state-mapping input copies, and gather writes all 
 |--------|--------|------|
 | `StateAccessor` | `@studnicky/dagonizer/contracts` | The contract, `get(state, path)` and `set(state, path, value)` |
 | `DottedPathAccessor` | `@studnicky/dagonizer/runtime` | Default impl: `path.split('.')` walks, writes auto-vivify intermediate objects |
-| `DagonizerOptionsInterface.accessor` | `@studnicky/dagonizer` | Constructor slot for a custom accessor |
+| `DagonizerOptionsType.accessor` | `@studnicky/dagonizer` | Constructor slot for a custom accessor |
 
 ## The contract
 

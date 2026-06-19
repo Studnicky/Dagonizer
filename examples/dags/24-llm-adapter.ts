@@ -13,8 +13,8 @@
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { LlmAdapter } from '@studnicky/dagonizer/adapter';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
 import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 
 // ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 
 export class ChatAdapterState extends NodeStateBase {
   prompt: string = '';
-  adapter: LlmAdapter | null = null;
+  adapter: LlmAdapterInterface | null = null;
   response: string = '';
   finishReason: string = '';
 }
@@ -81,7 +81,7 @@ export class HandleToolsNode extends ScalarNode<ChatAdapterState, 'done'> {
 // DAG
 // ---------------------------------------------------------------------------
 
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:llm-adapter-demo',
   '@type':    'DAG',

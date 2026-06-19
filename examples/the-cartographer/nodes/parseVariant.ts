@@ -12,7 +12,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -32,7 +32,7 @@ export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | '
     return s.length > 0 ? s : 'in transit';
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'parsed' | 'invalid'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'parsed' | 'invalid'>> {
     const variant = state.getMetadata<CanonicalEventVariant>('canonical-event');
     if (variant === null || variant === undefined || !variant.shipmentId) {
       return NodeOutputBuilder.of('invalid');

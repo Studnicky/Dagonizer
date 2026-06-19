@@ -7,16 +7,19 @@
  * timeout). Never throws. The picker uses this to decide whether to mark
  * the Ollama row runnable.
  *
- * OllamaProbe.listModels: Lists models the local Ollama daemon has pulled,
- * via `GET /api/tags`. Returns model names or an empty array on failure.
+ * OllamaProbe.listModels: Lists models the local Ollama daemon has pulled.
+ * Delegates to `OllamaApiAdapter.listModels` so the schema-validated
+ * `/api/tags` fetch lives in exactly one place (the adapter package). Returns
+ * model names or an empty array on failure.
  *
  * CORS: by default Ollama only accepts requests from a small allowlist.
  * Configure `OLLAMA_ORIGINS=http://localhost:5173` (or your docs origin)
  * before starting the daemon so the browser can probe it.
  */
 
+import { OllamaApiAdapter } from '@studnicky/dagonizer-adapter-ollama';
+
 const PING_URL = 'http://127.0.0.1:11434/api/version';
-const TAGS_URL = 'http://127.0.0.1:11434/api/tags';
 const TIMEOUT_MS = 600;
 
 export class OllamaProbe {
@@ -39,35 +42,17 @@ export class OllamaProbe {
   }
 
   /**
-   * List the models the local Ollama daemon has pulled, via `GET /api/tags`.
+   * List the models the local Ollama daemon has pulled.
    *
-   * Returns the model names (e.g. `['llama3.2:3b', 'nomic-embed-text:latest']`)
-   * or an empty array on any failure (daemon down, CORS, timeout). Never throws.
-   * The picker uses this to select an installed chat model instead of assuming a
-   * fixed default that the host may not have pulled.
+   * Delegates to `OllamaApiAdapter.listModels`, the single schema-validated
+   * `/api/tags` reader in the adapter package. Returns the model names (e.g.
+   * `['llama3.2:3b', 'nomic-embed-text:latest']`) or an empty array on any
+   * failure (daemon down, CORS, timeout). Never throws. The picker uses this
+   * to select an installed chat model instead of assuming a fixed default the
+   * host may not have pulled.
    */
   static async listModels(): Promise<readonly string[]> {
     if (typeof fetch === 'undefined') return [];
-    const controller = new AbortController();
-    const timer = setTimeout(() => { controller.abort(); }, TIMEOUT_MS);
-    try {
-      const res = await fetch(TAGS_URL, { 'method': 'GET', 'signal': controller.signal });
-      if (!res.ok) return [];
-      const data = await res.json() as { models?: ReadonlyArray<{ name?: string }> };
-      const models = data.models ?? [];
-      return models
-        .map((entry) => entry.name)
-        .filter((name): name is string => typeof name === 'string' && name.length > 0);
-    } catch {
-      return [];
-    } finally {
-      clearTimeout(timer);
-    }
+    return OllamaApiAdapter.listModels();
   }
 }
-
-/**
- * Free-function aliases for the OllamaProbe static methods.
- */
-export const detectOllama = (): Promise<boolean> => OllamaProbe.detect();
-export const listOllamaModels = (): Promise<readonly string[]> => OllamaProbe.listModels();

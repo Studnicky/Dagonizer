@@ -21,7 +21,7 @@ import type {
   RegionInsights,
 } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -30,7 +30,7 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
   readonly 'name' = 'summarize';
   readonly 'outputs' = ['success'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'success'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'success'>> {
     // Streaming path: insights-fold gather already produced state.insights,
     // state.journeys, and state.sampleRecords with bounded memory. Nothing to do.
     if (state.insights.size > 0 || state.journeys.size > 0) {

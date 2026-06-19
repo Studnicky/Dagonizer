@@ -1,0 +1,113 @@
+import type { DagRegistrarSourceInterface } from '../dag/DagRegistrar.js';
+import { DagRegistrar } from '../dag/DagRegistrar.js';
+import type { NodeStateInterface } from '../NodeStateBase.js';
+import type { DispatcherRelaySourceInterface } from '../observer/DispatcherHooks.js';
+import { DispatcherHooks } from '../observer/DispatcherHooks.js';
+import type { DispatcherHooksInterface } from '../observer/ObserverRelay.js';
+
+import { BodyExecutor } from './BodyExecutor.js';
+import type { BodyRunPortInterface } from './BodyExecutor.js';
+import { EmbeddedDagExecutor } from './EmbeddedDagExecutor.js';
+import type { EmbeddedDagExecutorSourceType } from './EmbeddedDagExecutor.js';
+import { Gather } from './Gather.js';
+import type { GatherSourceInterface } from './Gather.js';
+import { LeafExecutor } from './LeafExecutor.js';
+import type { LeafExecutorSourceInterface } from './LeafExecutor.js';
+import { NodeScheduler } from './NodeScheduler.js';
+import type { NodeSchedulerSourceInterface } from './NodeScheduler.js';
+import { PlacementDispatch } from './PlacementDispatch.js';
+import type { ScatterDispatchSourceInterface } from './ScatterDispatch.js';
+import { ScatterExecutor } from './ScatterExecutor.js';
+
+/**
+ * The composition host the engine modules wire against. Every narrow
+ * source-port interface an engine module depends on is composed here into a
+ * single host contract; `Dagonizer` (the composition root) satisfies it.
+ *
+ * Declared as an intersection rather than `interface … extends` because the
+ * constituent ports declare the same collaborator (`nodes`, `dags`) at
+ * different read variances — one as `Map`, another as `ReadonlyMap`. A class
+ * with a `Map` field satisfies every port (which is why `Dagonizer` can
+ * `implements` them all), but an `interface extends` would reject the
+ * variance mismatch. The intersection resolves each shared member to the
+ * narrower `Map & ReadonlyMap`, and `Dagonizer`'s `Map` fields are assignable
+ * to that intersection.
+ *
+ * `EngineComposer.compose` takes one value of this type and constructs the
+ * whole engine module graph, so the explicit dependency ordering lives in one
+ * place rather than being implied by constructor statement order on the root.
+ */
+export type EngineHostType<TState extends NodeStateInterface, TServices> =
+  & DispatcherRelaySourceInterface<TState>
+  & BodyRunPortInterface<TState, TServices>
+  & GatherSourceInterface<TState, TServices>
+  & LeafExecutorSourceInterface<TState, TServices>
+  & EmbeddedDagExecutorSourceType<TState>
+  & ScatterDispatchSourceInterface<TState, TServices>
+  & NodeSchedulerSourceInterface<TState, TServices>
+  & DagRegistrarSourceInterface<TState, TServices>;
+
+/**
+ * Immutable record of every engine module constructed for one dispatcher
+ * instance. A data record (method-less), so it is a `type` ending in `Type`
+ * per the canonical-naming rule. `EngineComposer.compose` returns it; the
+ * composition root reads each field onto its own `this.X` slots in declaration
+ * order, preserving V8 shape stability and every existing internal call site.
+ */
+export type EngineBundleType<TState extends NodeStateInterface, TServices> = {
+  readonly relayHooks: DispatcherHooksInterface<TState>;
+  readonly bodyExecutor: BodyExecutor<TState, TServices>;
+  readonly gather: Gather<TState, TServices>;
+  readonly leafExecutor: LeafExecutor<TState, TServices>;
+  readonly embeddedDagExecutor: EmbeddedDagExecutor<TState, TServices>;
+  readonly scatterExecutor: ScatterExecutor<TState, TServices>;
+  readonly placementDispatch: PlacementDispatch<TState>;
+  readonly nodeScheduler: NodeScheduler<TState, TServices>;
+  readonly dagRegistrar: DagRegistrar<TState, TServices>;
+};
+
+/**
+ * Owns the engine module wiring graph.
+ *
+ * `compose` constructs the nine engine modules in their one valid dependency
+ * order and returns them as an immutable `EngineBundleType`. The ordering is
+ * load-bearing:
+ *
+ *   - `bodyExecutor` is built first; both `embeddedDagExecutor` and
+ *     `scatterExecutor` take it as a collaborator.
+ *   - `gather` is built before `scatterExecutor`, which takes it for the
+ *     finalize-pass gather composition.
+ *   - `leafExecutor`, `embeddedDagExecutor`, and `scatterExecutor` are all built
+ *     before `placementDispatch`, which routes per-`@type` across the three.
+ *
+ * Keeping this graph in one static method makes the dependency edges explicit
+ * and keeps the composition root's constructor a flat field-assignment list.
+ */
+export class EngineComposer {
+  private constructor() { /* static class */ }
+
+  static compose<TState extends NodeStateInterface, TServices>(
+    host: EngineHostType<TState, TServices>,
+  ): EngineBundleType<TState, TServices> {
+    const relayHooks = new DispatcherHooks<TState>(host);
+    const bodyExecutor = new BodyExecutor<TState, TServices>(host);
+    const gather = new Gather<TState, TServices>(host);
+    const leafExecutor = new LeafExecutor<TState, TServices>(host);
+    const embeddedDagExecutor = new EmbeddedDagExecutor<TState, TServices>(host, bodyExecutor);
+    const scatterExecutor = new ScatterExecutor<TState, TServices>(host, bodyExecutor, gather);
+    const placementDispatch = new PlacementDispatch<TState>(leafExecutor, embeddedDagExecutor, scatterExecutor);
+    const nodeScheduler = new NodeScheduler<TState, TServices>(host);
+    const dagRegistrar = new DagRegistrar<TState, TServices>(host);
+    return {
+      relayHooks,
+      bodyExecutor,
+      gather,
+      leafExecutor,
+      embeddedDagExecutor,
+      scatterExecutor,
+      placementDispatch,
+      nodeScheduler,
+      dagRegistrar,
+    };
+  }
+}

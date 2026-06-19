@@ -9,7 +9,7 @@
  *   init()         — send init, await ready; rejects on version mismatch or error.
  *   request()      — send execute (single-item N=1), await result; unpacks items[0].
  *                    Forwards abort + observer relay hook calls per request.
- *   requestBatch() — send execute (multi-item N>1), await result; returns BatchRunResult[].
+ *   requestBatch() — send execute (multi-item N>1), await result; returns BatchRunResultType[].
  *
  * Transport-error contract: request() and requestBatch() never throw. A closed
  * channel, send failure, or unroutable error message produces transport-error
@@ -20,16 +20,16 @@
  */
 
 
-import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
+import type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
-import type { ObserverRelay } from '../Dagonizer.js';
-import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
-import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
-import type { JsonObject } from '../entities/json.js';
-import type { NodeError } from '../entities/node/NodeError.js';
+import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
+import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
+import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
+import type { JsonObjectType } from '../entities/json.js';
+import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 
 import { DagOutcome } from './DagOutcome.js';
-import type { BatchRunResult } from './DagOutcome.js';
+import type { BatchRunResultType } from './DagOutcome.js';
 
 // ---------------------------------------------------------------------------
 // Internal shapes
@@ -42,29 +42,29 @@ import type { BatchRunResult } from './DagOutcome.js';
  * and then omits the `kind` field (which the init sender does not supply as a
  * separate argument — it is added by ChannelDispatch.init() internally).
  */
-export type InitMessageShape = Omit<BridgeMessage & { kind: 'init' }, 'kind'>;
+export type InitMessageShapeType = Omit<BridgeMessageType & { kind: 'init' }, 'kind'>;
 
 /** Per-request correlation entry for single-item (N=1) requests. */
-interface PendingEntry {
+type PendingEntry = {
   correlationId: string;
-  settle: (outcome: DagOutcomeInterface) => void;
-  relay: ObserverRelay | null;
+  settle: (outcome: DagOutcomeType) => void;
+  relay: ObserverRelayInterface | null;
   settled: boolean;
   kind: 'single';
 }
 
 /** Per-request correlation entry for multi-item batch (N>1) requests. */
-interface BatchPendingEntry {
+type BatchPendingEntry = {
   correlationId: string;
-  settle: (results: BatchRunResult[]) => void;
-  relay: ObserverRelay | null;
+  settle: (results: BatchRunResultType[]) => void;
+  relay: ObserverRelayInterface | null;
   settled: boolean;
   kind: 'batch';
   itemIds: readonly string[];
 }
 
 /** Pending init-waiter state. */
-interface InitWaiter {
+type InitWaiter = {
   resolve: () => void;
   reject: (err: Error) => void;
   expectedVersion: string;
@@ -82,13 +82,13 @@ export class ChannelDispatch {
   // function reference is always registered with the channel. An inline
   // closure would create a fresh function on every construction, preventing
   // any identity-based deregistration and complicating V8 inline-cache stability.
-  readonly #onMessage: (msg: BridgeMessage) => void;
+  readonly #onMessage: (msg: BridgeMessageType) => void;
 
   constructor(channel: MessageChannelInterface) {
     this.#channel = channel;
     this.#pending = new Map<string, PendingEntry | BatchPendingEntry>();
     this.#initWaiter = null;
-    this.#onMessage = (msg: BridgeMessage): void => { this.#route(msg); };
+    this.#onMessage = (msg: BridgeMessageType): void => { this.#route(msg); };
 
     // EXACTLY ONE onMessage registration for the channel's lifetime.
     // All inbound messages are demuxed through #route via the stable handler.
@@ -103,18 +103,18 @@ export class ChannelDispatch {
    * Send init, await ready. Rejects on version mismatch or 'error' message.
    * Call after constructing the dispatch and before the first request().
    */
-  init(message: InitMessageShape): Promise<void> {
+  init(message: InitMessageShapeType): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       this.#initWaiter = {
         resolve,
         reject,
-        'expectedVersion': message.registryVersion,
+        'expectedVersion': message['registryVersion'],
       };
       this.#channel.send({
         'kind': 'init',
-        'registryModule': message.registryModule,
-        'registryVersion': message.registryVersion,
-        'servicesConfig': message.servicesConfig,
+        'registryModule': message['registryModule'],
+        'registryVersion': message['registryVersion'],
+        'servicesConfig': message['servicesConfig'],
       });
     });
   }
@@ -123,16 +123,16 @@ export class ChannelDispatch {
    * Send execute, await the correlated result. `signal` is a required positional
    * arg; `relay` receives forwarded worker hook events (nodeStart, nodeEnd, etc.)
    * and may be null when no observer is bound. Never throws —
-   * transport failures resolve to a transport-error DagOutcomeInterface.
+   * transport failures resolve to a transport-error DagOutcomeType.
    */
   request(
-    request: ExecutionRequest,
+    request: ExecutionRequestType,
     signal: AbortSignal,
-    relay: ObserverRelay | null,
-  ): Promise<DagOutcomeInterface> {
+    relay: ObserverRelayInterface | null,
+  ): Promise<DagOutcomeType> {
     const { correlationId } = request;
 
-    return new Promise<DagOutcomeInterface>((resolve) => {
+    return new Promise<DagOutcomeType>((resolve) => {
       const entry: PendingEntry = {
         'correlationId': correlationId,
         'settle': resolve,
@@ -143,31 +143,11 @@ export class ChannelDispatch {
 
       this.#pending.set(correlationId, entry);
 
-      // Forward abort signal to the host. R2: derive kind from signal.reason —
-      // a TimeoutError on the reason means the run-level deadline expired, so
-      // send 'timeout'; everything else is a caller-initiated cancel ('abort').
-      const onAbort = (): void => {
-        try {
-          const abortReason: 'abort' | 'timeout' =
-            signal.reason instanceof Error && signal.reason.name === 'TimeoutError'
-              ? 'timeout'
-              : 'abort';
-          this.#channel.send({
-            'kind': 'abort',
-            'correlationId': correlationId,
-            'reason': abortReason,
-          });
-        } catch { /* fire-and-forget */ }
-      };
-      signal.addEventListener('abort', onAbort);
+      const onAbort = this.#withAbortHandler(signal, correlationId);
 
       // Settle helper: settles once, removes abort listener, deletes pending entry.
-      const settleOnce = (outcome: DagOutcomeInterface): void => {
-        if (entry.settled) return;
-        entry.settled = true;
-        signal.removeEventListener('abort', onAbort);
-        this.#pending.delete(correlationId);
-        resolve(outcome);
+      const settleOnce = (outcome: DagOutcomeType): void => {
+        this.#settle(entry, signal, onAbort, resolve, outcome);
       };
 
       // Replace settle so #route can call it directly.
@@ -184,20 +164,20 @@ export class ChannelDispatch {
 
   /**
    * Send a multi-item batch execute request, await the correlated result, and
-   * return a `BatchRunResult[]` — one entry per item in the request. `signal`
+   * return a `BatchRunResultType[]` — one entry per item in the request. `signal`
    * is a required positional arg; `relay` receives forwarded worker hook events
    * and may be null when no observer is bound. Never throws — transport failures
-   * resolve to transport-error `BatchRunResult` entries.
+   * resolve to transport-error `BatchRunResultType` entries.
    */
   requestBatch(
-    request: ExecutionRequest,
+    request: ExecutionRequestType,
     signal: AbortSignal,
-    relay: ObserverRelay | null,
-  ): Promise<BatchRunResult[]> {
+    relay: ObserverRelayInterface | null,
+  ): Promise<BatchRunResultType[]> {
     const { correlationId } = request;
-    const itemIds = request.items.map((item) => item.id);
+    const itemIds = request.items.map((item: { id: string; snapshot: Record<string, unknown> }) => item.id);
 
-    return new Promise<BatchRunResult[]>((resolve) => {
+    return new Promise<BatchRunResultType[]>((resolve) => {
       const entry: BatchPendingEntry = {
         'correlationId': correlationId,
         'settle': resolve,
@@ -209,27 +189,10 @@ export class ChannelDispatch {
 
       this.#pending.set(correlationId, entry);
 
-      const onAbort = (): void => {
-        try {
-          const abortReason: 'abort' | 'timeout' =
-            signal.reason instanceof Error && signal.reason.name === 'TimeoutError'
-              ? 'timeout'
-              : 'abort';
-          this.#channel.send({
-            'kind': 'abort',
-            'correlationId': correlationId,
-            'reason': abortReason,
-          });
-        } catch { /* fire-and-forget */ }
-      };
-      signal.addEventListener('abort', onAbort);
+      const onAbort = this.#withAbortHandler(signal, correlationId);
 
-      const settleOnce = (results: BatchRunResult[]): void => {
-        if (entry.settled) return;
-        entry.settled = true;
-        signal.removeEventListener('abort', onAbort);
-        this.#pending.delete(correlationId);
-        resolve(results);
+      const settleOnce = (results: BatchRunResultType[]): void => {
+        this.#settle(entry, signal, onAbort, resolve, results);
       };
 
       entry.settle = settleOnce;
@@ -238,11 +201,62 @@ export class ChannelDispatch {
         this.#channel.send({ 'kind': 'execute', 'request': request });
       } catch {
         // Send failure: return transport-error results for all items.
-        settleOnce(itemIds.map((id) =>
+        settleOnce(itemIds.map((id: string) =>
           DagOutcome.batchItemTransportError(id, correlationId),
         ));
       }
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Register an abort listener that forwards the cancellation to the host and
+   * return the handler reference so the caller can deregister it on settle.
+   *
+   * Derives the abort kind from `signal.reason`: a `TimeoutError` on the reason
+   * means the run-level deadline expired, so it sends `'timeout'`; everything
+   * else is a caller-initiated cancel (`'abort'`). The send is fire-and-forget.
+   */
+  #withAbortHandler(signal: AbortSignal, correlationId: string): () => void {
+    const onAbort = (): void => {
+      try {
+        const abortReason: 'abort' | 'timeout' =
+          signal.reason instanceof Error && signal.reason.name === 'TimeoutError'
+            ? 'timeout'
+            : 'abort';
+        this.#channel.send({
+          'kind': 'abort',
+          'correlationId': correlationId,
+          'reason': abortReason,
+        });
+      } catch { /* fire-and-forget */ }
+    };
+    signal.addEventListener('abort', onAbort);
+    return onAbort;
+  }
+
+  /**
+   * Settle a pending entry exactly once: flip the `settled` latch, remove the
+   * abort listener, drop the correlation entry, then resolve the request's
+   * promise with `value`. Generic over the resolved type so both the
+   * single-item (`DagOutcomeType`) and batch (`BatchRunResultType[]`) paths
+   * share one implementation.
+   */
+  #settle<T>(
+    entry: PendingEntry | BatchPendingEntry,
+    signal: AbortSignal,
+    onAbort: () => void,
+    resolve: (value: T) => void,
+    value: T,
+  ): void {
+    if (entry.settled) return;
+    entry.settled = true;
+    signal.removeEventListener('abort', onAbort);
+    this.#pending.delete(entry.correlationId);
+    resolve(value);
   }
 
   /**
@@ -286,7 +300,7 @@ export class ChannelDispatch {
   // Routing
   // ---------------------------------------------------------------------------
 
-  #route(msg: BridgeMessage): void {
+  #route(msg: BridgeMessageType): void {
     switch (msg.kind) {
       case 'ready': {
         const waiter = this.#initWaiter;
@@ -308,31 +322,31 @@ export class ChannelDispatch {
         if (entry === undefined) return;
         // Protocol-boundary narrowing: BridgeMessage's 'result' branch carries
         // inline schema copies (InlineNodeErrorShape, InlineExecutionResponseShape)
-        // that are structurally identical to the canonical NodeError and JsonObject
+        // that are structurally identical to the canonical NodeError and JsonObjectType
         // types but produce distinct FromSchema derivations. Ajv has validated the
         // wire message, so these casts are safe:
         //   errors: same required fields/types as NodeErrorSchema; only nominal gap.
         //   items[*].snapshot: schema { type: ['object', 'null'] } → Ajv-validated JSON
         //     object, values confirmed JSON-compatible by the validator; safe to narrow
-        //     from { [k: string]: unknown } | null to JsonObject | null.
+        //     from { [k: string]: unknown } | null to JsonObjectType | null.
 
         if (entry.kind === 'single') {
-          // Single-item (N=1): unpack items[0] into a flat DagOutcomeInterface.
+          // Single-item (N=1): unpack items[0] into a flat DagOutcomeType.
           const firstItem = msg.response.items[0];
           entry.settle({
             'terminalOutput': firstItem?.terminalOutcome ?? 'failed',
-            'errors': msg.response.errors as readonly NodeError[],
-            'stateSnapshot': (firstItem?.snapshot ?? null) as JsonObject | null,
+            'errors': msg.response.errors as readonly NodeErrorWireType[],
+            'stateSnapshot': (firstItem?.snapshot ?? null) as JsonObjectType | null,
             'intermediates': msg.response.intermediates,
           });
         } else {
-          // Batch (N>1): produce one BatchRunResult per item.
-          const batchErrors = msg.response.errors as readonly NodeError[];
-          const results: BatchRunResult[] = msg.response.items.map((item) => ({
+          // Batch (N>1): produce one BatchRunResultType per item.
+          const batchErrors = msg.response.errors as readonly NodeErrorWireType[];
+          const results: BatchRunResultType[] = msg.response.items.map((item: { id: string; terminalOutcome: string; snapshot?: Record<string, unknown> | null }) => ({
             'id': item.id,
             'terminalOutput': item.terminalOutcome,
             'errors': batchErrors,
-            'stateSnapshot': (item.snapshot ?? null) as JsonObject | null,
+            'stateSnapshot': (item.snapshot ?? null) as JsonObjectType | null,
             'intermediates': msg.response.intermediates,
           }));
           entry.settle(results);
@@ -346,7 +360,7 @@ export class ChannelDispatch {
         const { relay } = entry;
         // Ajv-validated boundary: placementPath is confirmed an array of strings
         // by the BridgeMessage schema; cast from schema-inferred type to the
-        // narrower readonly string[] used by ObserverRelay.
+        // narrower readonly string[] used by ObserverRelayInterface.
         const path = msg.placementPath as readonly string[];
         // Dispatch map over switch: each hook handler is a closed-over function
         // that forwards the instrumentation event to the relay.
@@ -370,9 +384,6 @@ export class ChannelDispatch {
             if (m.phase === 'pre' || m.phase === 'post') {
               relay.onPhaseExit(m.dagName, m.phase, m.nodeName, path);
             }
-          },
-          'contractWarning': (m) => {
-            relay.onContractWarning(m.message);
           },
         };
         hookDispatch[msg.hook]?.(msg as InstrMsg);
@@ -404,8 +415,8 @@ export class ChannelDispatch {
         break;
       }
 
-      // 'intermediate', 'log', and all other message kinds are observability-
-      // only and do not require correlation action at this layer.
+      // 'intermediate' and all other message kinds are observability-only and
+      // do not require correlation action at this layer.
       default:
         break;
     }

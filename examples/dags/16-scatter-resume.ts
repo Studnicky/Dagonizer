@@ -26,9 +26,9 @@ import {
   SCATTER_PROGRESS_KEY,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // State
@@ -46,7 +46,7 @@ export class ResumeState extends NodeStateBase {
   // snapshotData / restoreData so the checkpoint captures domain fields.
   // The scatter checkpoint (SCATTER_PROGRESS_KEY in metadata) is automatically
   // captured by snapshot() via the base class metadata serialization.
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       "jobs":      [...this.jobs],
       "processed": this.processed,
@@ -54,7 +54,7 @@ export class ResumeState extends NodeStateBase {
     };
   }
 
-  protected override restoreData(snapshot: JsonObject): void {
+  protected override restoreData(snapshot: JsonObjectType): void {
     const jobs = snapshot['jobs'];
     if (Array.isArray(jobs)) this.jobs = jobs.filter((x): x is string => typeof x === 'string');
     const proc = snapshot['processed'];
@@ -129,7 +129,7 @@ export class ProcessJobNode extends ScalarNode<ResumeState, 'done'> {
 // ---------------------------------------------------------------------------
 
 // #region dag
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:scatter-resume',
   '@type':     'DAG',
@@ -146,7 +146,7 @@ export const dag: DAG = {
       "itemKey":   'job',
       "concurrency": 1,              // serial so abort cuts cleanly mid-source
       "gather": {
-        "strategy": GatherStrategyName.MAP,
+        "strategy": GatherStrategyNames.MAP,
         "mapping":  { "processed": 'completed' }, // clone.processed (scalar) → parent.completed[]
       },
       "outputs": {

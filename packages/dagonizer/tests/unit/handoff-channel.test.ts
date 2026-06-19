@@ -10,7 +10,7 @@
  *     unchanged terminalOutcome, and state.errors contains HANDOFF_PUBLISH_FAILED.
  * (d) Embedded/contained child DAG ending at a terminal does NOT publish — only
  *     the top-level run publishes.
- * (e) DAGHandoff schema validation: value-variant valid; ref-variant valid;
+ * (e) DAGHandoffType schema validation: value-variant valid; ref-variant valid;
  *     both-present invalid; neither-present invalid; additionalProperties invalid.
  */
 
@@ -22,10 +22,10 @@ import type { HandoffChannelInterface } from '../../src/contracts/HandoffChannel
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAGHandoff } from '../../src/entities/handoff/DAGHandoff.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGHandoffType } from '../../src/entities/handoff/DAGHandoff.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 
@@ -59,7 +59,7 @@ class HandoffState extends NodeStateBase {
 class IncrementNode extends ScalarNode<HandoffState, 'next'> {
   readonly name = 'increment';
   readonly outputs = ['next'] as const;
-  protected async executeOne(state: HandoffState): Promise<NodeOutputInterface<'next'>> {
+  protected async executeOne(state: HandoffState): Promise<NodeOutputType<'next'>> {
     state.counter += 1;
     return { 'errors': [], 'output': 'next' as const };
   }
@@ -68,7 +68,7 @@ class IncrementNode extends ScalarNode<HandoffState, 'next'> {
 class NoopNode extends ScalarNode<HandoffState, 'done'> {
   readonly name = 'noop';
   readonly outputs = ['done'] as const;
-  protected async executeOne(_state: HandoffState): Promise<NodeOutputInterface<'done'>> {
+  protected async executeOne(_state: HandoffState): Promise<NodeOutputType<'done'>> {
     return { 'errors': [], 'output': 'done' as const };
   }
 }
@@ -80,7 +80,7 @@ const noopNode = new NoopNode();
 // DAG helpers
 // ---------------------------------------------------------------------------
 
-function makeSimpleDAG(dagName: string, terminalName: string, outcome: 'completed' | 'failed'): DAG {
+function makeSimpleDAG(dagName: string, terminalName: string, outcome: 'completed' | 'failed'): DAGType {
   return {
     '@context': DAG_CONTEXT,
     '@id': `urn:noocodex:dag:${dagName}`,
@@ -127,7 +127,7 @@ void describe('handoff-channel: bound terminal', () => {
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(channel.published.length, 1);
 
-    const envelope = channel.published[0] as DAGHandoff;
+    const envelope = channel.published[0] as DAGHandoffType;
     assert.equal(envelope.dagName, 'handoff-bound');
     assert.equal(envelope.terminalName, 'done');
     assert.equal(envelope.terminalOutput, 'completed');
@@ -138,7 +138,7 @@ void describe('handoff-channel: bound terminal', () => {
     assert.ok(!('stateSnapshotRef' in envelope), 'envelope should not have stateSnapshotRef');
 
     // Round-trip fixed point: restore → snapshot must equal original snapshot
-    const byValueEnvelope = envelope as { stateSnapshot: JsonObject };
+    const byValueEnvelope = envelope as { stateSnapshot: JsonObjectType };
     const originalSnapshot = byValueEnvelope.stateSnapshot;
     const restored = HandoffState.restore(originalSnapshot);
     const restoredSnapshot = restored.snapshot();
@@ -158,9 +158,9 @@ void describe('handoff-channel: bound terminal', () => {
     await dispatcher.execute('handoff-counter', state);
 
     assert.equal(channel.published.length, 1);
-    const envelope = channel.published[0] as DAGHandoff;
+    const envelope = channel.published[0] as DAGHandoffType;
     assert.ok('stateSnapshot' in envelope);
-    const snap = (envelope as { stateSnapshot: JsonObject }).stateSnapshot;
+    const snap = (envelope as { stateSnapshot: JsonObjectType }).stateSnapshot;
     assert.equal((snap as { counter?: number }).counter, 1);
   });
 });
@@ -244,7 +244,7 @@ void describe('handoff-channel: embedded child does not publish', () => {
     const channel = new InMemoryChannel();
 
     // child DAG: single node → terminal 'done'
-    const childDag: DAG = {
+    const childDag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:handoff-child',
       '@type': 'DAG',
@@ -269,7 +269,7 @@ void describe('handoff-channel: embedded child does not publish', () => {
     };
 
     // parent DAG: embeds the child, then reaches own terminal
-    const parentDag: DAG = {
+    const parentDag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:handoff-parent',
       '@type': 'DAG',
@@ -311,15 +311,15 @@ void describe('handoff-channel: embedded child does not publish', () => {
     // Only ONE publish: the top-level parent-done terminal.
     // The embedded child-done terminal must not publish.
     assert.equal(channel.published.length, 1);
-    assert.equal((channel.published[0] as DAGHandoff).terminalName, 'parent-done');
+    assert.equal((channel.published[0] as DAGHandoffType).terminalName, 'parent-done');
   });
 });
 
 // ---------------------------------------------------------------------------
-// (e) DAGHandoff schema validation
+// (e) DAGHandoffType schema validation
 // ---------------------------------------------------------------------------
 
-void describe('handoff-channel: DAGHandoff schema', () => {
+void describe('handoff-channel: DAGHandoffType schema', () => {
   void it('validates a by-value envelope', () => {
     const envelope: unknown = {
       'dagName': 'test-dag',
@@ -419,9 +419,9 @@ void describe('handoff-channel: DAGHandoff schema', () => {
 
 void describe('InMemoryChannel: onPublished hook', () => {
   void it('invokes onPublished after recording the envelope', async () => {
-    const received: DAGHandoff[] = [];
+    const received: DAGHandoffType[] = [];
     class RecordingChannel extends InMemoryChannel {
-      protected override async onPublished(handoff: DAGHandoff): Promise<void> {
+      protected override async onPublished(handoff: DAGHandoffType): Promise<void> {
         received.push(handoff);
       }
     }
@@ -438,12 +438,12 @@ void describe('InMemoryChannel: onPublished hook', () => {
     assert.equal(channel.published.length, 1);
     assert.equal(received.length, 1);
     // The hook receives the same deep-cloned envelope stored in published
-    assert.deepEqual(received[0] as DAGHandoff, channel.published[0] as DAGHandoff);
+    assert.deepEqual(received[0] as DAGHandoffType, channel.published[0] as DAGHandoffType);
   });
 
   void it('publishErrors collects errors thrown by onPublished; envelope still recorded', async () => {
     class ThrowingChannel extends InMemoryChannel {
-      protected override async onPublished(_handoff: DAGHandoff): Promise<void> {
+      protected override async onPublished(_handoff: DAGHandoffType): Promise<void> {
         throw new Error('hook-failure');
       }
     }

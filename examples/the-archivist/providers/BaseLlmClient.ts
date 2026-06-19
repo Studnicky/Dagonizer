@@ -1,6 +1,6 @@
 /**
- * BaseLlmClient: single LlmClient implementation that runs on any
- * `LlmAdapter`. The DAG's nodes call `classifyIntent`, `extractTerms`,
+ * BaseLlmClient: single LlmClientInterface implementation that runs on any
+ * `LlmAdapterInterface`. The DAG's nodes call `classifyIntent`, `extractTerms`,
  * `decideTools`, `rankCandidates`, `compose`, `validate`; this class
  * translates each to a `chat(...)` round-trip on the supplied adapter.
  *
@@ -11,12 +11,12 @@
  */
 
 import type { ConversationTurn, MemoryDigest } from '../ArchivistState.ts';
-import type { Candidate } from '../entities/Book.ts';
-import type { ClassifiedIntent, LlmClient, ScoredCandidate } from '../services.ts';
+import type { CandidateType } from '../entities/Book.ts';
+import type { ClassifiedIntent, LlmClientInterface, ScoredCandidate } from '../services.ts';
 
-import type { LlmAdapter } from '@studnicky/dagonizer/adapter';
+import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
 import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
-import type { ChatResponseMessage } from '@studnicky/dagonizer/adapter';
+import type { ChatResponseMessageType } from '@studnicky/dagonizer/adapter';
 import type { IntentClassifier } from './IntentClassifier.ts';
 import { prompts, schemas } from './prompts.ts';
 
@@ -54,8 +54,8 @@ export interface BaseLlmClientOptions {
   readonly intentClassifier?: IntentClassifier;
 }
 
-export class BaseLlmClient implements LlmClient {
-  readonly adapter: LlmAdapter;
+export class BaseLlmClient implements LlmClientInterface {
+  readonly adapter: LlmAdapterInterface;
   /** Visitor device language; passed to every prompt builder. */
   readonly language: string;
   /** Optional vector-similarity classifier; null when not configured. */
@@ -64,7 +64,7 @@ export class BaseLlmClient implements LlmClient {
   get id():          string { return this.adapter.id; }
   get displayName(): string { return this.adapter.displayName; }
 
-  constructor(adapter: LlmAdapter, options: BaseLlmClientOptions = {}) {
+  constructor(adapter: LlmAdapterInterface, options: BaseLlmClientOptions = {}) {
     this.adapter  = adapter;
     this.language = options.language !== undefined && options.language.length > 0
       ? options.language
@@ -134,7 +134,7 @@ export class BaseLlmClient implements LlmClient {
     return calls;
   }
 
-  async rankCandidates(query: string, candidates: readonly Candidate[], signal?: AbortSignal): Promise<readonly ScoredCandidate[]> {
+  async rankCandidates(query: string, candidates: readonly CandidateType[], signal?: AbortSignal): Promise<readonly ScoredCandidate[]> {
     if (candidates.length === 0) return [];
     const request = ChatRequestBuilder.from({
       'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(this.language, query, candidates) }],
@@ -180,7 +180,7 @@ export class BaseLlmClient implements LlmClient {
 
   async compose(
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
@@ -191,7 +191,7 @@ export class BaseLlmClient implements LlmClient {
 
   async composeAuthor(
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
@@ -202,7 +202,7 @@ export class BaseLlmClient implements LlmClient {
 
   async composeReviews(
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
@@ -213,7 +213,7 @@ export class BaseLlmClient implements LlmClient {
 
   async describeBook(
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
@@ -224,7 +224,7 @@ export class BaseLlmClient implements LlmClient {
 
   async composeSimilar(
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
@@ -233,7 +233,7 @@ export class BaseLlmClient implements LlmClient {
     return (await this.#text(prompts.composeSimilar(this.language, query, shortlist, priorContext, recalledSummary, conversation), signal)).trim();
   }
 
-  async validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean> {
+  async validate(draft: string, shortlist: readonly CandidateType[]): Promise<boolean> {
     const raw = (await this.#text(prompts.validate(this.language, draft, shortlist))).trim().toLowerCase();
     return raw.startsWith('yes');
   }
@@ -279,7 +279,7 @@ export class BaseLlmClient implements LlmClient {
   }
 
   /** Discriminated-union accessor for the ChatResponse.message shape. */
-  private static contentOf(msg: ChatResponseMessage): string {
+  private static contentOf(msg: ChatResponseMessageType): string {
     return msg.kind === 'tools' ? '' : msg.content;
   }
 

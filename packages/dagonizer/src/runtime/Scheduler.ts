@@ -13,11 +13,11 @@
  * Static class; no instances, no free helpers.
  */
 
-import type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
+import type { SchedulerProviderInterface } from '../contracts/SchedulerProviderInterface.js';
 
 import { RealTimeScheduler } from './RealTimeScheduler.js';
 
-let _provider: SchedulerProvider = new RealTimeScheduler();
+let activeProvider: SchedulerProviderInterface = new RealTimeScheduler();
 
 /**
  * Engine-owned monotonic timer. All scheduling goes through
@@ -32,13 +32,13 @@ export class Scheduler {
    * no wrapper is allocated. This call is on the hot path (per node with a
    * timeout, per scatter clone).
    */
-  static current(): SchedulerProvider {
-    return _provider;
+  static current(): SchedulerProviderInterface {
+    return activeProvider;
   }
 
   /** Install a scheduler provider. Engine-only; called at boot or in tests. */
-  static configure(provider: SchedulerProvider): void {
-    _provider = provider;
+  static configure(provider: SchedulerProviderInterface): void {
+    activeProvider = provider;
   }
 
   /**
@@ -46,7 +46,7 @@ export class Scheduler {
    * the current provider before replacing it (R10).
    */
   static reset(): void {
-    _provider.cancelAll();
-    _provider = new RealTimeScheduler();
+    activeProvider.cancelAll();
+    activeProvider = new RealTimeScheduler();
   }
 }

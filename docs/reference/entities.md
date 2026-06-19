@@ -26,7 +26,7 @@ import { DAGSchema } from '@studnicky/dagonizer/entities';
 Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement kind (`SingleNode`, `ScatterNode`, `EmbeddedDAGNode`, `TerminalNode`, `PhaseNode`).
 
 ```ts twoslash
-import type { DAG } from '@studnicky/dagonizer/entities';
+import type { DAGType } from '@studnicky/dagonizer/entities';
 ```
 
 ---
@@ -39,7 +39,7 @@ Single-node placement. Required: `@id`, `@type: 'SingleNode'`, `name`, `node`, `
 
 ```ts twoslash
 import { SingleNodeSchema } from '@studnicky/dagonizer/entities';
-import type { SingleNode } from '@studnicky/dagonizer/entities';
+import type { SingleNodeType } from '@studnicky/dagonizer/entities';
 ```
 
 `outputs` is a `Record<string, string>`: each key is an output name, the value is the next placement name. Flows terminate at an explicit `TerminalNode` placement, not via a `null` output value.
@@ -54,12 +54,12 @@ Scatter placement: fork a source array (one clone per item), run a body (node or
 
 ```ts twoslash
 import { ScatterNodeSchema } from '@studnicky/dagonizer/entities';
-import type { ScatterNode } from '@studnicky/dagonizer/entities';
+import type { ScatterNodeType } from '@studnicky/dagonizer/entities';
 ```
 
 `body` is a discriminated union: `{ node: string }` for a registered node body or `{ dag: string }` for a registered sub-DAG body.
 
-`stateMapping.input` seeds each clone before its body runs: a `Record<string, string>` mapping child-state keys to parent-state dotted paths. This is the same seeding concept and orientation as `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`: the N→1 merge back into the parent is `gather`'s job. Builder option: `inputs` in `ScatterOptionsInterface`.
+`stateMapping.input` seeds each clone before its body runs: a `Record<string, string>` mapping child-state keys to parent-state dotted paths. This is the same seeding concept and orientation as `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`: the N→1 merge back into the parent is `gather`'s job. Builder option: `inputs` in `ScatterOptionsType`.
 
 ---
 
@@ -71,10 +71,10 @@ Embedded-DAG placement: invoke a nested DAG exactly once (cardinality 1) with op
 
 ```ts twoslash
 import { EmbeddedDAGNodeSchema } from '@studnicky/dagonizer/entities';
-import type { EmbeddedDAGNode } from '@studnicky/dagonizer/entities';
+import type { EmbeddedDAGNodeType } from '@studnicky/dagonizer/entities';
 ```
 
-`stateMapping.input` seeds the child before it runs (child-state key → parent-state dotted path). `stateMapping.output` copies fields back into the parent after the child completes (parent-state dotted path → child-state key). Builder options: `inputs` and `outputs` in `TypedEmbeddedDAGOptionsInterface`.
+`stateMapping.input` seeds the child before it runs (child-state key → parent-state dotted path). `stateMapping.output` copies fields back into the parent after the child completes (parent-state dotted path → child-state key). Builder options: `inputs` and `outputs` in `TypedEmbeddedDAGOptionsType`.
 
 Use `EmbeddedDAGNode` for a single nested-DAG invocation (cardinality 1). For a 1→N fork over a source array, use `ScatterNode` with `source`.
 
@@ -97,7 +97,7 @@ Gather strategy configuration for scatter nodes. Required: `strategy` (open `str
 
 ```ts twoslash
 import { GatherConfigSchema } from '@studnicky/dagonizer/entities';
-import type { GatherConfig } from '@studnicky/dagonizer/entities';
+import type { GatherConfigType } from '@studnicky/dagonizer/entities';
 ```
 
 ---
@@ -110,7 +110,7 @@ Explicit terminal placement. Required: `@id`, `@type: 'TerminalNode'`, `name`, `
 
 ```ts twoslash
 import { TerminalNodeSchema } from '@studnicky/dagonizer/entities';
-import type { TerminalNode } from '@studnicky/dagonizer/entities';
+import type { TerminalNodeType } from '@studnicky/dagonizer/entities';
 ```
 
 When the engine reaches a `TerminalNode`, the flow ends with the declared `outcome`. `outcome: 'completed'` resolves the state cleanly; `outcome: 'failed'` marks the state as failed before resolving. See [`DAGBuilder.terminal()`](../guide/builder#terminal-name-outcome) for the authoring API and [Phase 09 · Terminal placements](../examples/09-terminals) for runnable examples.
@@ -125,7 +125,7 @@ Lifecycle-attached placement that runs outside the main DAG loop. Required: `@id
 
 ```ts twoslash
 import { PhaseNodeSchema } from '@studnicky/dagonizer/entities';
-import type { PhaseNode } from '@studnicky/dagonizer/entities';
+import type { PhaseNodeType } from '@studnicky/dagonizer/entities';
 ```
 
 `pre` placements run in declaration order before the entrypoint; an error aborts the run. `post` placements run on every exit path; errors are collected as warnings (code `POST_PHASE_FAILED`). See [Reference: Nodes](./nodes#phasenode) for the placement table.
@@ -140,7 +140,7 @@ JSON-serializable wire shape of `DAGLifecycleState`. Covers all six `kind` varia
 
 ```ts twoslash
 import { DAGLifecycleStateSchema } from '@studnicky/dagonizer/entities';
-import type { DAGLifecycleStateData } from '@studnicky/dagonizer/entities';
+import type { DAGLifecycleStateDataType } from '@studnicky/dagonizer/entities';
 ```
 
 ---
@@ -153,7 +153,7 @@ Persistable snapshot of an in-flight DAG execution. Required: `version`, `dagNam
 
 ```ts twoslash
 import { CheckpointDataSchema, CHECKPOINT_DATA_VERSION } from '@studnicky/dagonizer/entities';
-import type { CheckpointData } from '@studnicky/dagonizer/entities';
+import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 ```
 
 ---
@@ -188,11 +188,11 @@ import {
 
 | Schema | Derived type | Purpose |
 |---|---|---|
-| `ExecutionResultSchema` | `ExecutionResult` | Wire shape of `ExecutionResultInterface` (no narrowed `state`) |
+| `ExecutionResultSchema` | `ExecutionResult` | Wire shape of `ExecutionResultType` (no narrowed `state`) |
 | `ValidationResultSchema` | `ValidationResult` | Validation envelope used by node `validate()` |
 | `DAGErrorJSONSchema` | `DAGErrorJSON` | JSON shape returned from `DAGError.toJSON()` |
 
-`InterruptionInfo` (`{ nodeName: string, reason: 'abort' | 'timeout' }`) lives alongside `ExecutionResultInterface` and is exported from the root barrel.
+`InterruptionInfo` (`{ nodeName: string, reason: 'abort' | 'timeout' }`) lives alongside `ExecutionResultType` and is exported from the root barrel.
 
 ## Constant value+type pairs
 
@@ -200,33 +200,33 @@ These constants are available from `@studnicky/dagonizer/constants` as value+typ
 
 <<< @/../examples/dags/constants-usage.ts#constants
 
-Constants are exported with paired value and type so the JSON literal can be used as a discriminator.
+Each constant is exported as a value object (plural name) paired with a type (singular name) so the JSON literal can be used as a discriminator.
 
-| Constant | Members |
-|---|---|
-| `GatherStrategyName` | `'map'`, `'append'`, `'partition'`, `'custom'`, `'collect'`, `'discard'` |
-| `ScatterOutput` | `'all-success'`, `'partial'`, `'all-error'`, `'empty'` |
-| `MetadataKey` | `'currentItem'`, `'gatherResults'`, `'itemIndex'` |
-| `Output` | Reserved canonical output names |
-| `NodeType` | `'embedded'`, `'scatter'`, `'single'` |
-| `BackoffStrategy` | `'constant'`, `'linear'`, `'exponential'`, `'decorrelated-jitter'` |
+| Value | Type | Members |
+|---|---|---|
+| `GatherStrategyNames` | `GatherStrategyName` | `'map'`, `'append'`, `'partition'`, `'custom'`, `'collect'`, `'discard'` |
+| `ScatterOutputNames` | `ScatterOutput` | `'all-success'`, `'partial'`, `'all-error'`, `'empty'` |
+| `MetadataKeys` | `MetadataKey` | `'currentItem'`, `'gatherResults'`, `'itemIndex'` |
+| `OutputNames` | `Output` | Reserved canonical output names |
+| `NodeTypes` | `NodeType` | `'embedded'`, `'scatter'`, `'single'` |
+| `BackoffStrategyNames` | `BackoffStrategy` | `'constant'`, `'linear'`, `'exponential'`, `'decorrelated-jitter'` |
 
-Each constant has a matching `*Schema` JSON Schema for `oneOf`-style validation. See [Reference: Runtime](./runtime#const-backoffstrategy) for `BackoffStrategy` usage details.
+Each constant has a matching `*Schema` JSON Schema for `oneOf`-style validation. See [Reference: Runtime](./runtime#const-backoffstrategynames-and-type-backoffstrategy) for `BackoffStrategyNames` usage details.
 
 ---
 
 ## JSON types
 
 ```ts twoslash
-import type { JsonValue, JsonObject, JsonArray, JsonPrimitive } from '@studnicky/dagonizer/entities';
+import type { JsonValueType, JsonObjectType, JsonArrayType, JsonPrimitiveType } from '@studnicky/dagonizer/entities';
 ```
 
 | Type | Description |
 |------|-------------|
-| `JsonPrimitive` | `string \| number \| boolean \| null` |
-| `JsonValue` | `JsonPrimitive \| JsonObject \| JsonArray` |
-| `JsonObject` | `Record<string, JsonValue>` |
-| `JsonArray` | `JsonValue[]` |
+| `JsonPrimitiveType` | `string \| number \| boolean \| null` |
+| `JsonValueType` | `JsonPrimitiveType \| JsonObjectType \| JsonArrayType` |
+| `JsonObjectType` | `Record<string, JsonValueType>` |
+| `JsonArrayType` | `JsonValueType[]` |
 
 Used as the constraint for `snapshotData()` return values and `restoreData()` arguments.
 ## Related guides

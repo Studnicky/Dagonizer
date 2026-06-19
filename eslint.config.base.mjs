@@ -2,6 +2,85 @@ import js from '@eslint/js';
 import importPlugin from 'eslint-plugin-import-x';
 import tseslint from 'typescript-eslint';
 
+import { noocodec } from './eslint-rules/noocodec.mjs';
+
+/**
+ * Inline canonical-naming plugin (§2.1). No new npm dependency: these rules
+ * are defined in-config and ride the existing per-package flat configs.
+ *
+ *   no-type-value-collision — a module must not export `type X` and `const X`
+ *     under one identifier. The value takes a distinct plural name; the type
+ *     keeps the singular. Detected by collecting exported type-alias /
+ *     interface names and exported const names per file, then reporting any
+ *     identifier that appears in both sets.
+ */
+const canonicalNamingPlugin = {
+  rules: {
+    'no-type-value-collision': {
+      meta: {
+        type: 'problem',
+        docs: {
+          description:
+            'Disallow exporting a type and a value (const) under the same identifier in one module.',
+        },
+        messages: {
+          collision:
+            "'{{name}}' is exported as both a type and a value. Give the value a distinct name (e.g. a plural) so the type and value never share one identifier.",
+        },
+        schema: [],
+      },
+      create(context) {
+        /** @type {Map<string, import('estree').Node>} exported type/interface names */
+        const typeNames = new Map();
+        /** @type {Map<string, import('estree').Node>} exported const value names */
+        const valueNames = new Map();
+
+        const recordType = (node, name) => {
+          if (typeof name === 'string') typeNames.set(name, node);
+        };
+        const recordValue = (node, name) => {
+          if (typeof name === 'string') valueNames.set(name, node);
+        };
+
+        return {
+          // `export type X = …` and `export interface X {}`
+          'ExportNamedDeclaration > TSTypeAliasDeclaration': (node) => {
+            recordType(node, node.id?.name);
+          },
+          'ExportNamedDeclaration > TSInterfaceDeclaration': (node) => {
+            recordType(node, node.id?.name);
+          },
+          // `export const X = …` (value-position const, not `export type`)
+          'ExportNamedDeclaration > VariableDeclaration > VariableDeclarator': (node) => {
+            if (node.id?.type === 'Identifier') recordValue(node, node.id.name);
+          },
+          // `export { X }` / `export type { X }` specifiers
+          'ExportNamedDeclaration > ExportSpecifier': (node) => {
+            if (node.exported?.type !== 'Identifier') return;
+            const parent = node.parent;
+            if (parent?.exportKind === 'type') {
+              recordType(node, node.exported.name);
+            } else if (node.exportKind === 'type') {
+              recordType(node, node.exported.name);
+            } else {
+              // A non-type export specifier carries the value binding; the type
+              // half (if any) is exported via a separate `export type { … }`.
+              recordValue(node, node.exported.name);
+            }
+          },
+          'Program:exit': () => {
+            for (const [name, node] of typeNames) {
+              if (valueNames.has(name)) {
+                context.report({ node, messageId: 'collision', data: { name } });
+              }
+            }
+          },
+        };
+      },
+    },
+  },
+};
+
 /**
  * Shared ESLint flat config factory for all @studnicky/dagonizer-* packages.
  *
@@ -91,6 +170,8 @@ export function dagonizerEslintConfig(tsconfigRootDir, options = {}) {
       plugins: {
         '@typescript-eslint': tseslint.plugin,
         'import-x': importPlugin,
+        'canonical-naming': canonicalNamingPlugin,
+        'noocodec': noocodec,
       },
       rules: {
         ...js.configs.recommended.rules,
@@ -144,6 +225,123 @@ export function dagonizerEslintConfig(tsconfigRootDir, options = {}) {
           },
         ],
         'import-x/no-duplicates': 'error',
+      },
+    },
+    // Framework-purity gate: package runtime (`src/**`) emits nothing. No
+    // `console.*`, no direct `process.stdout`/`process.stderr` writes. Logging
+    // and observability are the consumer's job; the framework throws on
+    // conditions it cannot continue past. `examples/**`, `tests/**`, and
+    // `testing/**` are exempt — they are not the framework runtime. The single
+    // sanctioned exception (the stdin/stdout transport in
+    // `dagonizer-executor-node/src/spawnEntry.ts`) is re-allowed in that
+    // package's own flat config.
+    {
+      files: ['src/**/*.ts'],
+      rules: {
+        'no-console': 'error',
+        'no-restricted-properties': [
+          'error',
+          {
+            'object': 'process',
+            'property': 'stdout',
+            'message': 'Framework runtime must not write to process.stdout; logging is the consumer\'s job (subclass Dagonizer and emit from lifecycle hooks).',
+          },
+          {
+            'object': 'process',
+            'property': 'stderr',
+            'message': 'Framework runtime must not write to process.stderr; logging is the consumer\'s job (subclass Dagonizer and emit from lifecycle hooks).',
+          },
+        ],
+      },
+    },
+    // §2.1 Canonical naming gate: framework runtime (`src/**`). One symbol, one
+    // name; no underscore-prefixed declarations; no freestanding exported
+    // functions. `tests/**`, `testing/**`, and `examples/**` are exempt — the
+    // `^_` unused-binding marker (for-await discards, type-assertion scaffolds)
+    // is the sanctioned convention there and is honoured by
+    // @typescript-eslint/no-unused-vars.
+    {
+      files: ['src/**/*.ts'],
+      rules: {
+        // Type+value collision: a module must not export `type X` and `const X`
+        // under one identifier (inline plugin defined above).
+        'canonical-naming/no-type-value-collision': 'error',
+
+        // Type substrate convention (ported @noocodec rule): types are DATA
+        // structures (every exported `type` alias ends in `Type`); interfaces
+        // are CONTRACTS (every `interface` carries a method/call/construct
+        // signature). A method-less data shape must be a `type`, not an
+        // `interface`. The suffix keeps a type distinct from a runtime/value
+        // import at the call site.
+        'noocodec/type-alias-must-end-type': 'error',
+        'noocodec/interface-must-be-contract': 'error',
+        'noocodec/interface-must-end-interface': 'error',
+
+        'no-restricted-syntax': [
+          'error',
+          // Leading-underscore identifiers on DECLARATIONS (camelCase for
+          // values/methods, PascalCase for types/classes, `#` for privates).
+          // PARAMETERS are intentionally not matched: `^_` is the sanctioned
+          // unused-argument marker.
+          {
+            'selector': 'TSTypeAliasDeclaration[id.name=/^_/]',
+            'message': 'No leading-underscore identifiers. Use a canonical PascalCase type name.',
+          },
+          {
+            'selector': 'TSInterfaceDeclaration[id.name=/^_/]',
+            'message': 'No leading-underscore identifiers. Use a canonical PascalCase interface name.',
+          },
+          {
+            'selector': 'ClassDeclaration[id.name=/^_/]',
+            'message': 'No leading-underscore identifiers. Use a canonical PascalCase class name.',
+          },
+          {
+            'selector': 'FunctionDeclaration[id.name=/^_/]',
+            'message': 'No leading-underscore identifiers. Use a canonical camelCase function name.',
+          },
+          {
+            'selector': 'VariableDeclarator[id.type="Identifier"][id.name=/^_/]',
+            'message': 'No leading-underscore identifiers. Use a canonical camelCase name, or `#` for private class members.',
+          },
+          // Freestanding exported functions: every public operation is a
+          // `noun.verb()` static method on a domain class. No module-level
+          // `export function` / `export const … = (…) =>`.
+          {
+            'selector': 'ExportNamedDeclaration > FunctionDeclaration',
+            'message': 'No freestanding exported functions. Make it a static `noun.verb()` method on a domain class.',
+          },
+          {
+            'selector': 'ExportNamedDeclaration > VariableDeclaration > VariableDeclarator[init.type="ArrowFunctionExpression"]',
+            'message': 'No freestanding exported functions. Make it a static `noun.verb()` method on a domain class.',
+          },
+          {
+            'selector': 'ExportNamedDeclaration > VariableDeclaration > VariableDeclarator[init.type="FunctionExpression"]',
+            'message': 'No freestanding exported functions. Make it a static `noun.verb()` method on a domain class.',
+          },
+          // Domain-class verb gate (§ noun.verb()): no make/build/from/parse/create-prefixed
+          // method, function, or static-factory names. The registered name is the contract.
+          // Bare `from` (no uppercase suffix) stays allowed — it is the canonical materializer.
+          {
+            'selector': 'MethodDefinition[key.name=/^(make|build|from|parse|create)[A-Z]/]',
+            'message': 'No make/build/from/parse/create-prefixed method names. Use an idiomatic noun.verb() (e.g. compose/of/decode/render/spawn). Bare `from` is allowed.',
+          },
+          {
+            'selector': 'PropertyDefinition[key.name=/^(make|build|from|parse|create)[A-Z]/]',
+            'message': 'No make/build/from/parse/create-prefixed member names. Use an idiomatic noun.verb().',
+          },
+          {
+            'selector': 'FunctionDeclaration[id.name=/^(make|build|from|parse|create)[A-Z]/]',
+            'message': 'No make/build/from/parse/create-prefixed function names. Use an idiomatic noun.verb().',
+          },
+          {
+            'selector': 'TSMethodSignature[key.name=/^(make|build|from|parse|create)[A-Z]/]',
+            'message': 'No make/build/from/parse/create-prefixed interface method names. Use an idiomatic noun.verb().',
+          },
+          {
+            'selector': 'TSPropertySignature[key.name=/^(make|build|from|parse|create)[A-Z]/]',
+            'message': 'No make/build/from/parse/create-prefixed interface member names. Use an idiomatic noun.verb().',
+          },
+        ],
       },
     },
   );

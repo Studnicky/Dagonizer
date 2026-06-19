@@ -55,9 +55,10 @@ const ipGeolocate: Record<string, GeoCandidate> = {};
 const ipList = [...ips];
 let ipDone = 0;
 for (const ip of ipList) {
-  ipGeolocate[ip] = await ipGeolocator.lookup(ip, ac.signal);
+  const outcome = await ipGeolocator.lookup(ip, ac.signal);
+  ipGeolocate[ip] = outcome.candidate;
   ipDone++;
-  const r = ipGeolocate[ip];
+  const r = outcome.candidate;
   console.log(`  ip-geolocated ${ipDone}/${ipList.length}: ${ip} → ${r.resolved ? `${r.country}/${r.locality}` : 'unresolved'}`);
   await new Promise((resolve) => setTimeout(resolve, 1500));
 }

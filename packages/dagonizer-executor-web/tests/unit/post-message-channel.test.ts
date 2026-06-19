@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { setImmediate } from 'node:timers';
 
-import type { BridgeMessage } from '@studnicky/dagonizer/entities';
+import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 
 import { PostMessageChannel } from '../../src/PostMessageChannel.js';
 import type {
@@ -104,10 +104,10 @@ void describe('PostMessageChannel', () => {
     const mainChannel = new PostMessageChannel(pair.mainSide);
     const workerChannel = new PostMessageChannel(pair.workerSide);
 
-    const received: BridgeMessage[] = [];
+    const received: BridgeMessageType[] = [];
     workerChannel.onMessage((msg) => received.push(msg));
 
-    const msg: BridgeMessage = {
+    const msg: BridgeMessageType = {
       'kind': 'shutdown',
     };
     mainChannel.send(msg);
@@ -122,10 +122,10 @@ void describe('PostMessageChannel', () => {
     const mainChannel = new PostMessageChannel(pair.mainSide);
     const workerChannel = new PostMessageChannel(pair.workerSide);
 
-    const received: BridgeMessage[] = [];
+    const received: BridgeMessageType[] = [];
     mainChannel.onMessage((msg) => received.push(msg));
 
-    const msg: BridgeMessage = {
+    const msg: BridgeMessageType = {
       'kind': 'ready',
       'registryVersion': '1.0.0',
       'capabilities': [],
@@ -142,10 +142,10 @@ void describe('PostMessageChannel', () => {
     const mainChannel = new PostMessageChannel(pair.mainSide);
     const workerChannel = new PostMessageChannel(pair.workerSide);
 
-    let received: BridgeMessage | null = null;
+    let received: BridgeMessageType | null = null;
     workerChannel.onMessage((msg) => { received = msg; });
 
-    const msg: BridgeMessage = {
+    const msg: BridgeMessageType = {
       'kind': 'init',
       'registryModule': '/path/to/registry.js',
       'registryVersion': '2.0.0',
@@ -155,8 +155,8 @@ void describe('PostMessageChannel', () => {
 
     await nextTick();
     assert.ok(received !== null);
-    assert.strictEqual((received as BridgeMessage & { kind: 'init' }).kind, 'init');
-    assert.strictEqual((received as BridgeMessage & { kind: 'init' }).registryVersion, '2.0.0');
+    assert.strictEqual((received as BridgeMessageType & { kind: 'init' }).kind, 'init');
+    assert.strictEqual((received as BridgeMessageType & { kind: 'init' }).registryVersion, '2.0.0');
   });
 
   // ── StructuredClone isolation ───────────────────────────────────────────────
@@ -166,10 +166,10 @@ void describe('PostMessageChannel', () => {
     const mainChannel = new PostMessageChannel(pair.mainSide);
     const workerChannel = new PostMessageChannel(pair.workerSide);
 
-    let received: BridgeMessage | null = null;
+    let received: BridgeMessageType | null = null;
     workerChannel.onMessage((msg) => { received = msg; });
 
-    const msg: BridgeMessage = {
+    const msg: BridgeMessageType = {
       'kind': 'init',
       'registryModule': '/original.js',
       'registryVersion': '1.0.0',
@@ -178,7 +178,7 @@ void describe('PostMessageChannel', () => {
     mainChannel.send(msg);
 
     // Mutate the original after send — receiver should not see this change.
-    // Since BridgeMessage is readonly-typed, we verify via structuredClone
+    // Since BridgeMessageType is readonly-typed, we verify via structuredClone
     // behaviour: the sent message is a value copy.
     await nextTick();
     assert.ok(received !== null);
@@ -189,14 +189,14 @@ void describe('PostMessageChannel', () => {
   // ── Invalid payload handling ────────────────────────────────────────────────
 
   void it('surfaces any invalid inbound payload as a non-recoverable INVALID_MESSAGE error', async () => {
-    // Both a non-BridgeMessage object and null are injected via the worker
+    // Both a non-BridgeMessageType object and null are injected via the worker
     // scope's postMessage — bypassing PostMessageChannel.send() so the payload
-    // is NOT a valid BridgeMessage. Each must surface the full error shape.
+    // is NOT a valid BridgeMessageType. Each must surface the full error shape.
     for (const badPayload of [{ 'notAValidMessage': true }, null] as const) {
       const pair = new FakeWorkerPair();
       const mainChannel = new PostMessageChannel(pair.mainSide);
 
-      const received: BridgeMessage[] = [];
+      const received: BridgeMessageType[] = [];
       // pair.workerSide.postMessage delivers to the main-side listeners, so the
       // bad payload arrives at mainChannel — register its handler here.
       mainChannel.onMessage((msg) => received.push(msg));
@@ -222,7 +222,7 @@ void describe('PostMessageChannel', () => {
     const mainChannel = new PostMessageChannel(pair.mainSide);
     const workerChannel = new PostMessageChannel(pair.workerSide);
 
-    const received: BridgeMessage[] = [];
+    const received: BridgeMessageType[] = [];
     workerChannel.onMessage((msg) => received.push(msg));
 
     mainChannel.close();
@@ -237,7 +237,7 @@ void describe('PostMessageChannel', () => {
     const mainChannel = new PostMessageChannel(pair.mainSide);
     const workerChannel = new PostMessageChannel(pair.workerSide);
 
-    const received: BridgeMessage[] = [];
+    const received: BridgeMessageType[] = [];
     workerChannel.onMessage((msg) => received.push(msg));
 
     // Close worker side, then send from main side.
@@ -253,8 +253,8 @@ void describe('PostMessageChannel', () => {
     const mainChannel = new PostMessageChannel(pair.mainSide);
     const workerChannel = new PostMessageChannel(pair.workerSide);
 
-    const first: BridgeMessage[] = [];
-    const second: BridgeMessage[] = [];
+    const first: BridgeMessageType[] = [];
+    const second: BridgeMessageType[] = [];
 
     workerChannel.onMessage((msg) => first.push(msg));
     workerChannel.onMessage((msg) => second.push(msg));

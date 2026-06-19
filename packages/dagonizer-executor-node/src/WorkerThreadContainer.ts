@@ -9,7 +9,7 @@
  * Constructor options:
  *   registryModule      — URL string passed to DagHost init
  *   registryVersion     — version for the init ↔ ready handshake
- *   servicesConfig      — opaque JSON passed to createBundle (default: {})
+ *   servicesConfig      — opaque JSON passed to instantiate (default: {})
  *   poolSize            — number of workers (default: NodeSystemInfo)
  *   resourceLimits      — per-worker V8 heap budget
  *   entryUrl            — override the default workerEntry.js URL (for tests)
@@ -19,60 +19,40 @@
 
 import { Worker } from 'node:worker_threads';
 
-import type { NodeStateInterface } from '@studnicky/dagonizer';
-import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
-import type { PoolEntry } from '@studnicky/dagonizer/container';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
+import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
 
 import { MessagePortChannel } from './MessagePortChannel.js';
-import type { MessagePortLike } from './MessagePortChannel.js';
-import { NodeSystemInfo } from './NodeSystemInfo.js';
+import type { MessagePortLikeInterface } from './MessagePortChannel.js';
+import { NodeContainerBase } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptionsType } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
-// WorkerThreadResourceLimits
+// WorkerThreadResourceLimitsType
 // ---------------------------------------------------------------------------
 
-export interface WorkerThreadResourceLimits {
+export type WorkerThreadResourceLimitsType = {
   readonly maxOldGenerationSizeMb?: number;
-}
+};
 
 // ---------------------------------------------------------------------------
-// WorkerThreadContainerOptions
+// WorkerThreadContainerOptionsType
 // ---------------------------------------------------------------------------
 
-export interface WorkerThreadContainerOptions {
-  readonly registryModule: string;
-  readonly registryVersion: string;
-  readonly servicesConfig?: JsonObject;
-  readonly poolSize?: number;
-  readonly resourceLimits?: WorkerThreadResourceLimits;
-  readonly entryUrl?: URL;
-}
+export type WorkerThreadContainerOptionsType = NodeContainerBaseOptionsType & {
+  readonly resourceLimits?: WorkerThreadResourceLimitsType;
+};
 
 // ---------------------------------------------------------------------------
 // WorkerThreadContainer
 // ---------------------------------------------------------------------------
 
-export class WorkerThreadContainer extends DagContainerBase<NodeStateInterface, Worker> {
-  readonly #resourceLimits: WorkerThreadResourceLimits;
+export class WorkerThreadContainer extends NodeContainerBase<Worker> {
+  readonly #resourceLimits: WorkerThreadResourceLimitsType;
   readonly #entryUrl: URL;
 
-  constructor(options: WorkerThreadContainerOptions) {
-    const sysInfo = new NodeSystemInfo();
-    const defaultPoolSize = sysInfo.recommendedWorkerCount({
-      ...RecommendedWorkerCountConfigDefault,
-      'maximumWorkers': 8,
-    });
-    super({
-      ...DagContainerBase.defaultOptions,
-      'poolSize': options.poolSize ?? defaultPoolSize,
-      'init': {
-        'registryModule': options.registryModule,
-        'registryVersion': options.registryVersion,
-        'servicesConfig': options.servicesConfig ?? {},
-      },
-    });
+  constructor(options: WorkerThreadContainerOptionsType) {
+    super(NodeContainerBase.resolveOptions(options));
     this.#resourceLimits = options.resourceLimits ?? {};
     this.#entryUrl = options.entryUrl ?? new URL('./workerEntry.js', import.meta.url);
   }
@@ -82,10 +62,10 @@ export class WorkerThreadContainer extends DagContainerBase<NodeStateInterface, 
   // ---------------------------------------------------------------------------
 
   /**
-   * createEntry: construct a Worker + MessagePortChannel, initialized: false.
+   * composeEntry: construct a Worker + MessagePortChannel, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override createEntry(): PoolEntry<Worker> {
+  protected override composeEntry(): PoolEntryType<Worker> {
     const resourceLimits: { maxOldGenerationSizeMb?: number } = {};
     if (this.#resourceLimits.maxOldGenerationSizeMb !== undefined) {
       resourceLimits.maxOldGenerationSizeMb = this.#resourceLimits.maxOldGenerationSizeMb;
@@ -95,9 +75,9 @@ export class WorkerThreadContainer extends DagContainerBase<NodeStateInterface, 
       'resourceLimits': Object.keys(resourceLimits).length > 0 ? resourceLimits : undefined,
     });
 
-    // Worker lacks `close()` (it uses `terminate()`). Wrap in a MessagePortLike
+    // Worker lacks `close()` (it uses `terminate()`). Wrap in a MessagePortLikeInterface
     // adapter; close() is a no-op here — the worker is terminated via destroy().
-    const portLike: MessagePortLike = {
+    const portLike: MessagePortLikeInterface = {
       'postMessage': (value: unknown) => worker.postMessage(value),
       'on': (event: 'message', listener: (value: unknown) => void) => {
         worker.on(event, listener);
@@ -115,7 +95,7 @@ export class WorkerThreadContainer extends DagContainerBase<NodeStateInterface, 
    * Called unconditionally; the base's #destroyed guard prevents spurious
    * eviction during intentional teardown.
    */
-  protected override attachDeathListeners(entry: PoolEntry<Worker>): void {
+  protected override attachDeathListeners(entry: PoolEntryType<Worker>): void {
     entry.worker.on('error', (err: Error) => {
       this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, `worker error: ${err.message}`);
     });

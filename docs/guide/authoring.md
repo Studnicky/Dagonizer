@@ -126,11 +126,11 @@ All three authoring journeys can produce any DAG the schema allows. The differen
 | Capability | Raw `DAG` | DAGBuilder | DAGDeriver |
 |---|---|---|---|
 | `SingleNode` placement | yes | yes | yes |
-| `ScatterNode` placement | yes | yes via `.scatter()` | yes via `DAGDeriverAnnotations.scatters` (node body) |
+| `ScatterNode` placement | yes | yes via `.scatter()` | yes via `DAGDeriverAnnotationsType.scatters` (node body) |
 | Gather strategy (`map` / `append` / `partition` / `custom` / `collect` / `discard`) | yes | yes via `options.gather` | yes via `DAGDeriverScatter.strategy` |
 | Outcome reducer (`aggregate` / `all-success` / `any-success` / custom) | yes | yes via `options.reducer` | (via scatter scatter outcomes) |
 | Scatter body kind (`node` or `dag`) | yes | yes via `body` argument | node body via `DAGDeriverScatter`; dag body via `embeddedDAGs` or raw `DAG` |
-| `EmbeddedDAGNode` placement | yes | yes via `.embeddedDAG()` | yes via `DAGDeriverAnnotations.embeddedDAGs` |
+| `EmbeddedDAGNode` placement | yes | yes via `.embeddedDAG()` | yes via `DAGDeriverAnnotationsType.embeddedDAGs` |
 | `TerminalNode` placement | yes | yes via `.terminal()` | (not a target, use DAGBuilder) |
 | `inputs` (parent → clone seed) | yes | yes via `options.inputs` | yes via `DAGDeriverScatter` |
 | Multi-port routing | yes | yes via `routes` map | yes via `contract.outputs` and `terminals` |

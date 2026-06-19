@@ -20,7 +20,7 @@ Hand-off channel implementations. Ships through `@studnicky/dagonizer/channels`.
 
 ```ts twoslash
 import { InMemoryChannel } from '@studnicky/dagonizer/channels';
-import type { InMemoryChannelOptions } from '@studnicky/dagonizer/channels';
+import type { InMemoryChannelOptionsType } from '@studnicky/dagonizer/channels';
 ```
 
 ---
@@ -31,16 +31,16 @@ Local default and loopback `HandoffChannelInterface` implementation. Stores ever
 
 ```ts twoslash
 import { InMemoryChannel } from '@studnicky/dagonizer/channels';
-import type { InMemoryChannelOptions, } from '@studnicky/dagonizer/channels';
+import type { InMemoryChannelOptionsType, } from '@studnicky/dagonizer/channels';
 import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
-import type { DAGHandoff } from '@studnicky/dagonizer/entities';
+import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
 // ---cut---
 // class InMemoryChannel implements HandoffChannelInterface
-//   constructor(options?: InMemoryChannelOptions)
-//   get published(): readonly DAGHandoff[]
+//   constructor(options?: InMemoryChannelOptionsType)
+//   get published(): readonly DAGHandoffType[]
 //   get publishErrors(): readonly Error[]
-//   publish(handoff: DAGHandoff): Promise<void>
-//   protected onPublished(handoff: DAGHandoff): Promise<void>
+//   publish(handoff: DAGHandoffType): Promise<void>
+//   protected onPublished(handoff: DAGHandoffType): Promise<void>
 const _check: HandoffChannelInterface = new InMemoryChannel();
 ```
 
@@ -53,16 +53,16 @@ new InMemoryChannel();
 new InMemoryChannel({});
 ```
 
-`InMemoryChannelOptions` carries no fields; the type is the extension point for future channel configuration.
+`InMemoryChannelOptionsType` carries no fields; the type is the extension point for future channel configuration.
 
 ### `published`
 
 ```ts twoslash
 import { InMemoryChannel } from '@studnicky/dagonizer/channels';
-import type { DAGHandoff } from '@studnicky/dagonizer/entities';
+import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
 const channel = new InMemoryChannel();
 // ---cut---
-const envelopes: readonly DAGHandoff[] = channel.published;
+const envelopes: readonly DAGHandoffType[] = channel.published;
 ```
 
 All envelopes in publish order. Each entry is the deep-cloned, stored copy — independent from the dispatcher's internal state.
@@ -71,9 +71,9 @@ All envelopes in publish order. Each entry is the deep-cloned, stored copy — i
 
 ```ts twoslash
 import { InMemoryChannel } from '@studnicky/dagonizer/channels';
-import type { DAGHandoff } from '@studnicky/dagonizer/entities';
+import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
 const channel = new InMemoryChannel();
-declare const handoff: DAGHandoff;
+declare const handoff: DAGHandoffType;
 // ---cut---
 await channel.publish(handoff);
 ```
@@ -84,20 +84,20 @@ Deep-clones `handoff` via `structuredClone`, appends to `published`, then awaits
 
 Default no-op. Override in a subclass to chain a downstream DAG. Receives the deep-cloned, stored envelope (same instance as the last entry in `published`).
 
-**Extension via subclass, zero callbacks.** The dispatcher calls `channel.publish(handoff)` when a non-embedded flow reaches a terminal bound in `DagonizerOptionsInterface.channels`. The default `onPublished` is a no-op; subclass to restore state and run the continuation:
+**Extension via subclass, zero callbacks.** The dispatcher calls `channel.publish(handoff)` when a non-embedded flow reaches a terminal bound in `DagonizerOptionsType.channels`. The default `onPublished` is a no-op; subclass to restore state and run the continuation:
 
 ```ts twoslash
 import { InMemoryChannel } from '@studnicky/dagonizer/channels';
 import { Dagonizer } from '@studnicky/dagonizer';
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { DAGHandoff } from '@studnicky/dagonizer/entities';
+import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
 class AppState extends NodeStateBase {}
 declare const downstreamDispatcher: Dagonizer<AppState>;
 // ---cut---
 class HandoffChannel extends InMemoryChannel {
-  protected override async onPublished(handoff: DAGHandoff): Promise<void> {
+  protected override async onPublished(handoff: DAGHandoffType): Promise<void> {
     if (!('stateSnapshot' in handoff) || handoff.stateSnapshot == null) return;
-    const snapshot = handoff.stateSnapshot as import('@studnicky/dagonizer/entities').JsonObject;
+    const snapshot = handoff.stateSnapshot as import('@studnicky/dagonizer/entities').JsonObjectType;
     const state = AppState.restore(snapshot);
     await downstreamDispatcher.execute('continuation-dag', state);
   }
@@ -110,12 +110,12 @@ const dispatcher = new Dagonizer<AppState>({
 
 ---
 
-## Type: `InMemoryChannelOptions`
+## Type: `InMemoryChannelOptionsType`
 
 ```ts twoslash
-import type { InMemoryChannelOptions } from '@studnicky/dagonizer/channels';
+import type { InMemoryChannelOptionsType } from '@studnicky/dagonizer/channels';
 // ---cut---
-const _opts: InMemoryChannelOptions = {};
+const _opts: InMemoryChannelOptionsType = {};
 ```
 
 Constructor options for `InMemoryChannel`. Currently carries no fields. The type is the extension point for future channel configuration: adding a field here is non-breaking (callers that pass `{}` continue to compile).
@@ -128,11 +128,11 @@ Replace `InMemoryChannel` with any class that implements `HandoffChannelInterfac
 
 ```ts twoslash
 import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
-import type { DAGHandoff } from '@studnicky/dagonizer/entities';
+import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
 declare const sqsClient: { sendMessage(params: { Body: string }): Promise<void> };
 // ---cut---
 class SqsChannel implements HandoffChannelInterface {
-  async publish(handoff: DAGHandoff): Promise<void> {
+  async publish(handoff: DAGHandoffType): Promise<void> {
     // Never throw: the dispatcher does not catch channel errors.
     try {
       await sqsClient.sendMessage({ Body: JSON.stringify(handoff) });

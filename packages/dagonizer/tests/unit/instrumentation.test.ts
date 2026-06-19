@@ -5,9 +5,10 @@ import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
+import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -18,7 +19,7 @@ const makeNodeWithContract = TestNode.withContract;
 
 // Recording Dagonizer subclass captures every hook invocation in order so
 // tests can assert on the full call sequence rather than aggregate counts.
-interface Call {
+type Call = {
   readonly hook: string;
   readonly args: readonly unknown[];
 }
@@ -29,7 +30,7 @@ class RecordingDagonizer extends Dagonizer<NodeStateBase> {
   protected override onFlowStart(dagName: string, state: NodeStateBase): void {
     this.calls.push({ 'hook': 'flowStart', 'args': [dagName, state] });
   }
-  protected override onFlowEnd(dagName: string, state: NodeStateBase, result: ExecutionResultInterface<NodeStateBase>): void {
+  protected override onFlowEnd(dagName: string, state: NodeStateBase, result: ExecutionResultType<NodeStateBase>): void {
     this.calls.push({ 'hook': 'flowEnd', 'args': [dagName, state, result] });
   }
   protected override onNodeStart(nodeName: string, state: NodeStateBase, placementPath: readonly string[]): void {
@@ -37,9 +38,6 @@ class RecordingDagonizer extends Dagonizer<NodeStateBase> {
   }
   protected override onNodeEnd(nodeName: string, output: string | null, state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeEnd', 'args': [nodeName, output, state, placementPath] });
-  }
-  protected override onContractWarning(message: string): void {
-    this.calls.push({ 'hook': 'contractWarning', 'args': [message] });
   }
   protected override onError(nodeName: string, error: Error, state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'error', 'args': [nodeName, error, state, placementPath] });
@@ -63,7 +61,7 @@ class RecordingDagonizer extends Dagonizer<NodeStateBase> {
 
 // ── Three-node linear DAG used by several tests ──────────────────────────
 
-const linearDAG: DAG = {
+const linearDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:linear',
   '@type':    'DAG',
@@ -87,7 +85,7 @@ const linearDAG: DAG = {
 // execution exercises empty / one-deep / two-deep placement paths.
 
 // Innermost DAG: used as the inner placement inside `middleDAG`.
-const leafDAG: DAG = {
+const leafDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':   'urn:noocodex:dag:pp-leaf',
   '@type': 'DAG',
@@ -107,7 +105,7 @@ const leafDAG: DAG = {
 };
 
 // Middle DAG: wraps `leafDAG` so the leaf runs at depth 2 inside the parent.
-const middleDAG: DAG = {
+const middleDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':   'urn:noocodex:dag:pp-middle',
   '@type': 'DAG',
@@ -136,7 +134,7 @@ const middleDAG: DAG = {
 // Parent DAG: top-level placement, then one embedded-DAG (which itself
 // nests another embedded-DAG). Used to assert empty / one-deep / two-deep
 // paths in a single execution.
-const placementParentDAG: DAG = {
+const placementParentDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':   'urn:noocodex:dag:pp-parent',
   '@type': 'DAG',
@@ -168,7 +166,7 @@ void describe('Dagonizer subclass hooks contract', () => {
   void it('runs end-to-end without subclass hooks (base protected hooks are no-ops)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('only', ['success']));
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:noop-default',
       '@type':    'DAG',
@@ -208,7 +206,7 @@ void describe('Dagonizer subclass hooks contract', () => {
     const dispatcher = new RecordingDagonizer();
 
     // Child DAG ----------------------------------------------------------
-    const childDAG: DAG = {
+    const childDAG: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:inst-child',
       '@type':    'DAG',
@@ -223,7 +221,7 @@ void describe('Dagonizer subclass hooks contract', () => {
     };
 
     // Parent DAG with an embedded-DAG placement ----------------------------
-    const parentDAG: DAG = {
+    const parentDAG: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:inst-parent',
       '@type':    'DAG',
@@ -254,33 +252,31 @@ void describe('Dagonizer subclass hooks contract', () => {
     assert.equal(dispatcher.hooksOfType('flowEnd')[0]?.args[0],   'inst-parent');
   });
 
-  void it('onContractWarning fires when a contract-bearing DAG has a dead-write', () => {
-    const dispatcher = new RecordingDagonizer();
-
+  void it('throws DAGError when a contract-bearing DAG has a dead-write', () => {
     const rootNode = makeNodeWithContract<NodeStateBase>('root', ['success'], { 'hardRequired': [], 'produces': ['input'] });
     const aNode    = makeNodeWithContract<NodeStateBase>('a',    ['success'], { 'hardRequired': ['input'], 'produces': ['x', 'unused'] });
-    const bNode    = makeNodeWithContract<NodeStateBase>('b',    ['success'], { 'hardRequired': ['x'],     'produces': ['done'] });
+    const bNode    = makeNodeWithContract<NodeStateBase>('b',    ['success'], { 'hardRequired': ['x'],     'produces': [] });
 
-    dispatcher.registerNode(rootNode);
-    dispatcher.registerNode(aNode);
-    dispatcher.registerNode(bNode);
-
-    const dag = DAGDeriver.derive({
-      'name':       'inst-warn',
-      'version':    '1',
-      'entrypoint': 'root',
-      'nodes':      [rootNode, aNode, bNode],
-      'annotations': {
-        'terminals': {
-          'b': [{ 'outcome': 'success', 'emit': { 'name': 'inst-warn-end', 'outcome': 'completed' } }],
+    // 'unused' is produced by 'a' but no node hardRequires it → dead write → throw
+    // at derive-time preflight (the same check registerDAG runs).
+    assert.throws(
+      () => DAGDeriver.derive({
+        'name':       'inst-warn',
+        'version':    '1',
+        'entrypoint': 'root',
+        'nodes':      [rootNode, aNode, bNode],
+        'annotations': {
+          'terminals': {
+            'b': [{ 'outcome': 'success', 'emit': { 'name': 'inst-warn-end', 'outcome': 'completed' } }],
+          },
         },
+      }),
+      (err: unknown) => {
+        assert.ok(err instanceof DAGError);
+        assert.ok(err.message.includes("'unused'"));
+        return true;
       },
-    });
-    dispatcher.registerDAG(dag);
-
-    const warnings = dispatcher.hooksOfType('contractWarning').map((c) => c.args[0] as string);
-    const deadWrite = warnings.find((w) => w.includes("'unused'"));
-    assert.ok(deadWrite !== undefined, `expected dead-write warning; got: ${JSON.stringify(warnings)}`);
+    );
   });
 
   void it('onError fires when a node throws', async () => {
@@ -289,11 +285,11 @@ void describe('Dagonizer subclass hooks contract', () => {
     class BoomNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'boom';
       readonly outputs = ['success'] as const;
-      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { throw new Error('boom went off'); }
+      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { throw new Error('boom went off'); }
     }
     dispatcher.registerNode(new BoomNode());
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:inst-err',
       '@type':    'DAG',
@@ -332,7 +328,7 @@ void describe('Dagonizer subclass hooks contract', () => {
 
     const dispatcher = new ThrowingDagonizer();
     dispatcher.registerNode(makeNode('a', ['success']));
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:inst-throw',
       '@type':    'DAG',
@@ -418,7 +414,7 @@ void describe('Dagonizer subclass hooks contract', () => {
     // and each fire must carry its OWN outer name as the path so the
     // visualiser can disambiguate same-named inner nodes.
 
-    const innerDAG: DAG = {
+    const innerDAG: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':   'urn:noocodex:dag:pp-shared-inner',
       '@type': 'DAG',
@@ -437,7 +433,7 @@ void describe('Dagonizer subclass hooks contract', () => {
       ],
     };
 
-    const twoInstancesDAG: DAG = {
+    const twoInstancesDAG: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':   'urn:noocodex:dag:pp-two-instances',
       '@type': 'DAG',

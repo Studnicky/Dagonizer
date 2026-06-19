@@ -5,7 +5,7 @@ seeAlso:
     description: 'what `execute` and `resume` return'
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`NodeInterface`, `ExecuteOptionsInterface`'
+    description: '`NodeInterface`, `ExecuteOptionsType`'
   - text: 'Reference: Core'
     link: './core'
     description: '`GatherStrategies`, `OutcomeReducers`'
@@ -39,28 +39,28 @@ const dispatcher2 = new Dagonizer<MyState, MyServices>({ services: { logger: con
 
 ```ts twoslash
 import { Dagonizer } from '@studnicky/dagonizer';
-import type { DagonizerOptionsInterface, NodeStateInterface } from '@studnicky/dagonizer';
+import type { DagonizerOptionsType, NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-// constructor(options?: DagonizerOptionsInterface<TState, TServices>)
-declare const options: DagonizerOptionsInterface;
+// constructor(options?: DagonizerOptionsType<TState, TServices>)
+declare const options: DagonizerOptionsType;
 const d = new Dagonizer(options);
 ```
 
 `options.accessor` swaps the path resolver for scatter source reads, state-mapping input copies, and gather writes. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
 
-### `DagonizerOptionsInterface`
+### `DagonizerOptionsType`
 
 ```ts twoslash
 import type {
-  DagonizerOptionsInterface,
+  DagonizerOptionsType,
   NodeStateInterface,
   HandoffChannelInterface,
   DagContainerInterface,
 } from '@studnicky/dagonizer';
-import type { StateAccessor } from '@studnicky/dagonizer/types';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/types';
 // ---cut---
-declare const _opts: DagonizerOptionsInterface;
-// accessor?: StateAccessor
+declare const _opts: DagonizerOptionsType;
+// accessor?: StateAccessorInterface
 // services?: TServices
 // containers?: Readonly<Record<string, DagContainerInterface<TState>>>
 // channels?: Readonly<Record<string, HandoffChannelInterface>>
@@ -72,7 +72,7 @@ export {};
 |---|---|---|
 | `accessor` | `StateAccessor` | Path resolver for scatter source reads, gather writes, and state-mapping copies. Defaults to `DottedPathAccessor`. |
 | `services` | `TServices` | Typed services bag exposed to every node via `context.services`. Defaults to `undefined`. |
-| `containers` | `Readonly<Record<string, DagContainerInterface<TState>>>` | Named container backends keyed by logical role name. An unbound role falls back to in-process and fires `onContractWarning`. Defaults to an empty registry (all placements run in-process). |
+| `containers` | `Readonly<Record<string, DagContainerInterface<TState>>>` | Named container backends keyed by logical role name. On a non-empty registry, a placement that declares a role this map does not bind throws `DAGError` at `registerDAG` time. Defaults to an empty registry, where declared roles are inert and all placements run in-process. |
 | `channels` | `Readonly<Record<string, HandoffChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
 | `registryVersion` | `string` | Registry version string included in every `DAGHandoff` envelope for receiver version-handshake validation. Defaults to `'0'`. |
 
@@ -82,7 +82,7 @@ export {};
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { NodeInterface, OperationContractFragment } from '@studnicky/dagonizer';
+import type { NodeInterface, OperationContractFragmentType } from '@studnicky/dagonizer';
 import { Timeout } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
@@ -101,10 +101,10 @@ Nodes are stored widened to `NodeInterface<TState, string, TServices>`. Narrow `
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { DispatcherBundle } from '@studnicky/dagonizer';
+import type { DispatcherBundleType } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
-declare const bundle: DispatcherBundle<MyState>;
+declare const bundle: DispatcherBundleType<MyState>;
 const d = new Dagonizer<MyState>();
 d.registerBundle(bundle);
 ```
@@ -113,15 +113,15 @@ Register every node, then every DAG, in the supplied bundle. Order is fixed: nod
 
 ```ts twoslash
 import type {
-  DispatcherBundle,
+  DispatcherBundleType,
   NodeStateInterface,
   NodeInterface,
-  DAG,
+  DAGType,
 } from '@studnicky/dagonizer';
 // ---cut---
-declare const _b: DispatcherBundle<NodeStateInterface>;
+declare const _b: DispatcherBundleType<NodeStateInterface>;
 // readonly nodes: readonly NodeInterface<TState, string, TServices>[]
-// readonly dags:  readonly DAG[]
+// readonly dags:  readonly DAGType[]
 export {};
 ```
 
@@ -135,10 +135,10 @@ Both arrays are required. Either may be empty (a node-only bundle uses `dags: []
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
-declare const dag: DAG;
+declare const dag: DAGType;
 const d = new Dagonizer<MyState>();
 d.registerDAG(dag);
 ```
@@ -148,7 +148,7 @@ Registers a DAG after two validation passes, followed by an optional contract ch
 1. **Schema pass.** `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
 2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular embedded-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
 
-After both passes, `ContractRegistryValidator` runs a data-flow check for each placement whose backing node carries a co-located contract. Dangling reads (a non-entrypoint node requires a path no upstream node produces) throw `DAGError`; dead writes call `onContractWarning`. This check is skipped for placements without a contract.
+After both passes, `ContractRegistryValidator` runs a data-flow check for each placement whose backing node carries a co-located contract. Dangling reads (a non-entrypoint node requires a path no upstream node produces) and dead writes (a node produces a path no downstream node requires) both throw `DAGError`. This check is skipped for placements without a contract.
 
 Throws `DAGError` with a multi-line message listing all failures.
 
@@ -202,14 +202,14 @@ dispatcher.registerDAG(dag);
 
 ---
 
-### `DAGDocument.fromValue(value)` {#static-fromvalue}
+### `DAGDocument.ofValue(value)` {#static-ofvalue}
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
 // ---cut---
-// static fromValue(value: unknown): DAG
+// static ofValue(value: unknown): DAG
 declare const value: unknown;
-const dag = DAGDocument.fromValue(value);
+const dag = DAGDocument.ofValue(value);
 ```
 
 Validate an already-parsed value. Same boundary semantics as `load` but skips `JSON.parse`.
@@ -220,10 +220,10 @@ Validate an already-parsed value. Same boundary semantics as `load` but skips `J
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
-// static serialize(dag: DAG): string
-declare const dag: DAG;
+// static serialize(dag: DAGType): string
+declare const dag: DAGType;
 const json: string = DAGDocument.serialize(dag);
 ```
 
@@ -235,10 +235,10 @@ Serialize a DAG to pretty JSON (2-space indent). Does not re-validate.
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
-// static serializeCompact(dag: DAG): string
-declare const dag: DAG;
+// static serializeCompact(dag: DAGType): string
+declare const dag: DAGType;
 const json: string = DAGDocument.serializeCompact(dag);
 ```
 
@@ -250,7 +250,7 @@ Serialize a DAG to compact JSON (no whitespace).
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { ExecuteOptionsInterface, Execution } from '@studnicky/dagonizer';
+import type { ExecuteOptionsType, Execution } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
@@ -262,7 +262,7 @@ Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution i
 
 <<< @/../examples/the-archivist/runArchivist.ts#linear-run
 
-`ExecuteOptionsInterface` has two fields: `signal?: AbortSignal` and `deadlineMs?: number`.
+`ExecuteOptionsType` has two fields: `signal?: AbortSignal` and `deadlineMs?: number`.
 
 ---
 
@@ -270,7 +270,7 @@ Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution i
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { ExecuteOptionsInterface, Execution } from '@studnicky/dagonizer';
+import type { ExecuteOptionsType, Execution } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
@@ -278,7 +278,7 @@ declare const state: MyState;
 const execution: Execution<MyState> = dispatcher.resume('my-flow', state, 'node-b');
 ```
 
-Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(CheckpointRestoreAdapterFn.fromFn(fn))`) before calling.
+Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(CheckpointRestoreAdapter.wrap(fn))`) before calling.
 
 <<< @/../examples/the-archivist/runArchivist.ts#resume-run
 
@@ -300,24 +300,23 @@ Calls the optional `destroy()` method on every registered node, then clears all 
 
 ### Observability hooks
 
-Six protected no-op methods. Subclass `Dagonizer` and override to attach metrics, logging, or tracing.
+Five protected no-op methods. Subclass `Dagonizer` and override to attach metrics, logging, or tracing.
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 class ObservableDagonizer extends Dagonizer<MyState> {
   protected override onFlowStart(dagName: string, state: MyState): void {
     console.log('start', dagName);
   }
-  protected override onFlowEnd(dagName: string, state: MyState, result: ExecutionResultInterface<MyState>): void {
+  protected override onFlowEnd(dagName: string, state: MyState, result: ExecutionResultType<MyState>): void {
     console.log('end', dagName, result.terminalOutcome);
   }
   protected override onNodeStart(nodeName: string, state: MyState, placementPath: readonly string[]): void {}
   protected override onNodeEnd(nodeName: string, output: string | null, state: MyState, placementPath: readonly string[]): void {}
   protected override onError(nodeName: string, error: Error, state: MyState, placementPath: readonly string[]): void {}
-  protected override onContractWarning(message: string): void {}
 }
 ```
 
@@ -328,30 +327,29 @@ class ObservableDagonizer extends Dagonizer<MyState> {
 | `onNodeStart` | Before `node.execute()` for each node entry point |
 | `onNodeEnd` | After each node resolves, before the result is yielded; `output` is `string \| null` (`null` = no route emitted) |
 | `onError` | When the signal fires or a node throws |
-| `onContractWarning` | When `ContractRegistryValidator` detects a dead-write during `registerDAG` |
 
 `placementPath` is the ordered array of parent embedded-DAG placement names leading to the current node. Top-level nodes receive `[]`; a node inside an `EmbeddedDAGNode` named `'search'` receives `['search']`. The full cytoscape-style node id is `[...placementPath, nodeName].join('/')`.
 
-See [Observability](/guide/observability) for usage examples. See [catching contract drift](../guide/derive.md#catching-contract-drift) for `onContractWarning` usage.
+See [Observability](/guide/observability) for usage examples. Contract misalignment — a dangling read or a dead write — throws a `DAGError` at `registerDAG`/`build` time rather than surfacing a warning; see [catching contract drift](../guide/derive.md#catching-contract-drift).
 
 ---
 
-## Interface: `DispatcherBundle`
+## Interface: `DispatcherBundleType`
 
 ```ts twoslash
 import type {
-  DispatcherBundle,
+  DispatcherBundleType,
   NodeStateInterface,
   NodeInterface,
-  DAG,
+  DAGType,
 } from '@studnicky/dagonizer';
 // ---cut---
-declare const bundle: DispatcherBundle<NodeStateInterface>;
+declare const bundle: DispatcherBundleType<NodeStateInterface>;
 const _nodes: readonly NodeInterface<NodeStateInterface, string, undefined>[] = bundle.nodes;
-const _dags: readonly DAG[] = bundle.dags;
+const _dags: readonly DAGType[] = bundle.dags;
 ```
 
-A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundle` so consumers register the whole unit in one call.
+A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundleType` so consumers register the whole unit in one call.
 
 ---
 

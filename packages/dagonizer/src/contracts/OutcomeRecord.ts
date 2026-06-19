@@ -1,11 +1,11 @@
 /**
- * OutcomeRecord: adapter contract between the dispatcher and
+ * OutcomeRecordType: adapter contract between the dispatcher and
  * OutcomeReducer implementations.
  *
  * Per-clone summary passed to `OutcomeReducer.reduce`. Contains only
  * the information needed for routing; no clone state.
  */
-export interface OutcomeRecord {
+export type OutcomeRecordType = {
   /** 0-based position of this clone in the scatter source array. */
   index: number;
   /** Routing output the scatter body emitted for this clone. */

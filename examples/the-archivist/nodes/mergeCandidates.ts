@@ -24,9 +24,9 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface, NodeOutputInterface } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer';
 
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -39,11 +39,11 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
   readonly outputs = ['ranked', 'empty'] as const;
 
   /** Public per-item entry point for tests and dispatch delegation. */
-  public async runItem(state: ArchivistState, context: NodeContextInterface<ArchivistServices>): Promise<NodeOutputInterface<'ranked' | 'empty'>> {
+  public async runItem(state: ArchivistState, context: NodeContextType<ArchivistServices>): Promise<NodeOutputType<'ranked' | 'empty'>> {
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     const targetIso2 = UserLanguage.toIso6392(state.userLanguage);
 
     // ── Both pools empty → soft gate ──────────────────────────────────────
@@ -52,19 +52,15 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
       if (state.failureCause.trim().length === 0) {
         state.failureCause = 'No candidates found after searching all available sources. ';
       }
-      context.services.logger.info('merge: live scouts returned 0, no prior memory candidates; routing empty');
       return NodeOutputBuilder.of('empty');
     }
 
     // ── Build the combined pool ────────────────────────────────────────────
-    let pool: readonly Candidate[];
+    let pool: readonly CandidateType[];
 
     if (state.candidates.length === 0) {
       // Case 1: live empty, fall back to prior memory exclusively.
       pool = state.priorCandidates;
-      context.services.logger.info(
-        `merge: live scouts returned 0, falling back to ${String(state.priorCandidates.length)} prior memory candidates`,
-      );
     } else if (state.priorCandidates.length === 0) {
       // Case 2a: live only (original path).
       pool = state.candidates;
@@ -75,9 +71,6 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
       // Only add prior candidates whose ISBN is NOT already in live results.
       const priorOnly = state.priorCandidates.filter((c) => !liveIsbns.has(c.book.identity.isbn));
       pool = [...state.candidates, ...priorOnly];
-      context.services.logger.info(
-        `merge: ${String(state.candidates.length)} live + ${String(priorOnly.length)} prior (${String(pool.length)} combined before dedupe)`,
-      );
     }
 
     // #region merge-aggregation
@@ -98,7 +91,6 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
       .slice(0, SHORTLIST_LIMIT);
 
     state.shortlist = ranked;
-    context.services.logger.info(`shortlist=${String(ranked.length)} (from ${String(pool.length)} pool, ${String(deduped.length)} after dedupe, ${String(inLanguage.length)} in ${state.userLanguage})`);
     if (ranked.length === 0 && state.failureCause.trim().length === 0) {
       state.failureCause = 'No candidates found after searching all available sources. ';
     }

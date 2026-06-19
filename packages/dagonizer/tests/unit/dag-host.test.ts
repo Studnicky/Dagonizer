@@ -12,7 +12,7 @@
  *   - init handshake: ready reply with matching registryVersion
  *   - init version mismatch: error with VERSION_MISMATCH code
  *   - init non-existent module: error with INIT_FAILED code
- *   - init invalid module (no createBundle): INVALID_REGISTRY_MODULE error
+ *   - init invalid module (no instantiate): INVALID_REGISTRY_MODULE error
  *   - execute a dag: result with items[0].terminalOutcome + items[0].snapshot + intermediates
  *   - execute forwards intermediate messages
  *   - abort fires the AbortController (sleeper terminates)
@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 import { DagHost } from '../../src/container/DagHost.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
-import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
+import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 
@@ -47,7 +47,7 @@ const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '
 const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRegistry.js');
 const REGISTRY_VERSION = '1.0.0';
 
-// A module URL that exists but is not a registry module (no createBundle export).
+// A module URL that exists but is not a registry module (no instantiate export).
 const INVALID_MODULE_URL = resolve(PACKAGE_ROOT, 'dist', 'index.js');
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ function buildHostPair(): {
 }
 
 /** Collect the next single message from a channel. */
-function nextMessage(parentSide: MessageChannelInterface): Promise<BridgeMessage> {
+function nextMessage(parentSide: MessageChannelInterface): Promise<BridgeMessageType> {
   return new Promise((resolve) => {
     parentSide.onMessage((msg) => resolve(msg));
   });
@@ -76,7 +76,7 @@ async function sendInit(
   parentSide: MessageChannelInterface,
   registryModule: string = REGISTRY_MODULE_URL,
   registryVersion: string = REGISTRY_VERSION,
-): Promise<BridgeMessage> {
+): Promise<BridgeMessageType> {
   const reply = nextMessage(parentSide);
   parentSide.send({
     'kind': 'init',
@@ -126,7 +126,7 @@ void describe('DagHost — init handshake', () => {
     }
   });
 
-  void it('replies error with INVALID_REGISTRY_MODULE for module without createBundle', async () => {
+  void it('replies error with INVALID_REGISTRY_MODULE for module without instantiate', async () => {
     const { parentSide } = buildHostPair();
     const reply = await sendInit(parentSide, INVALID_MODULE_URL);
 
@@ -153,7 +153,7 @@ void describe('DagHost — execute returns result', () => {
     assert.strictEqual(ready.kind, 'ready');
 
     // Collect messages until we see a 'result' (intermediates + instrumentation may arrive first).
-    const resultPromise = new Promise<BridgeMessage>((resolve) => {
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
         if (msg.kind === 'result') resolve(msg);
       });
@@ -192,8 +192,8 @@ void describe('DagHost — execute returns result', () => {
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.kind, 'ready');
 
-    const intermediates: BridgeMessage[] = [];
-    const resultPromise = new Promise<BridgeMessage>((resolve) => {
+    const intermediates: BridgeMessageType[] = [];
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
         if (msg.kind === 'intermediate') intermediates.push(msg);
         if (msg.kind === 'result') resolve(msg);
@@ -230,7 +230,7 @@ void describe('DagHost — execute returns result', () => {
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.kind, 'ready');
 
-    const resultPromise = new Promise<BridgeMessage>((resolve) => {
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
         if (msg.kind === 'result') resolve(msg);
       });
@@ -272,7 +272,7 @@ void describe('DagHost — abort', () => {
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.kind, 'ready');
 
-    const resultPromise = new Promise<BridgeMessage>((resolve) => {
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
         if (msg.kind === 'result') resolve(msg);
       });

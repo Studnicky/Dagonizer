@@ -15,7 +15,7 @@
  * Run: npx tsx examples/07-retry.ts
  */
 
-import { BackoffStrategy, RetryPolicy, Scheduler } from '@studnicky/dagonizer';
+import { BackoffStrategyNames, RetryPolicy, Scheduler } from '@studnicky/dagonizer';
 import { Clock, Dagonizer } from '@studnicky/dagonizer';
 import { VirtualClockProvider, VirtualScheduler } from '@studnicky/dagonizer/testing';
 import { FetchState, FetchNode, FlakyDownstream, TransientError, dag } from './dags/07-retry.js';
@@ -55,7 +55,7 @@ Scheduler.configure(scheduler);
 
 const testPolicy = RetryPolicy.from({
   maxAttempts:  3,
-  strategy:     BackoffStrategy.EXPONENTIAL,
+  strategy:     BackoffStrategyNames.EXPONENTIAL,
   baseDelay:    1_000,   // 1 s → 2 s; instant under VirtualScheduler
   jitterFactor: 0,
   retryOn:      [TransientError],

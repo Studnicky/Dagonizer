@@ -9,16 +9,16 @@
  *     The entrypoint node's `hardRequired` are external initial-state fields and
  *     are not validated (they are seeded before execution starts).
  *   - **Dead-write**: a node declares `produces: ['baz']` but no downstream-in-DAG
- *     node `hardRequires` `'baz'`. Emitted as a non-fatal warning via the supplied
- *     `onWarning` callback.
+ *     node `hardRequires` `'baz'`. Thrown as a `DAGError`: a declared production
+ *     that nothing consumes is contract misalignment, fatal exactly like a
+ *     dangling read.
  *
  * Validation walks the full contract set via the same edge semantics
  * (`produces ↔ hardRequired`) that `DAGDeriver` uses to build topology, so the
  * check respects placement boundaries.
  */
 
-import type { OperationContract } from '../contracts/OperationContract.js';
-import type { WarningEmitter } from '../contracts/WarningEmitter.js';
+import type { OperationContractType } from '../contracts/OperationContract.js';
 import { DAGError } from '../errors/DAGError.js';
 
 /** Co-located defaults for `ContractRegistryValidator.validate()` options. */
@@ -31,8 +31,8 @@ export class ContractRegistryValidator {
    * Build the adjacency set (name → set of names it can reach) using the same
    * `produces ↔ hardRequired` edge rule as `DAGDeriver.edges`.
    */
-  private static buildUpstreamProducers(
-    contracts: readonly OperationContract[],
+  private static composeUpstreamProducers(
+    contracts: readonly OperationContractType[],
   ): Map<string, Set<string>> {
     // upstreamProducers[B] = set of all field paths produced by any ancestor of B.
     // We compute this via transitive closure over the direct-edge graph.
@@ -56,7 +56,7 @@ export class ContractRegistryValidator {
     // (nodes that can reach it via topological paths).
     // Index contracts by name once for O(1) lookup inside the BFS loop,
     // avoiding an O(n) linear scan per iteration.
-    const contractByName = new Map<string, OperationContract>(
+    const contractByName = new Map<string, OperationContractType>(
       contracts.map((c) => [c.name, c]),
     );
 
@@ -94,22 +94,21 @@ export class ContractRegistryValidator {
    * Validate a contract set for dangling reads and dead writes.
    *
    * @param contracts - The full set of contracts derived from the node registry.
-   * @param warningEmitter - Receives each dead-write warning (non-fatal).
    * @param options.entrypointName - Entrypoint operation name. The entrypoint's
    *   `hardRequired` paths are treated as external initial-state fields and are
    *   not checked for dangling reads. Pass an empty string when there is no
    *   named entrypoint (skips external-key seeding).
    *
    * @throws {DAGError} When any non-entrypoint node declares a `hardRequired` path
-   *   that no upstream-in-DAG node produces.
+   *   that no upstream-in-DAG node produces, or when a node declares a `produces`
+   *   path that no node in the registry `hardRequires`.
    */
   static validate(
-    contracts: readonly OperationContract[],
-    warningEmitter: WarningEmitter,
+    contracts: readonly OperationContractType[],
     options: { entrypointName: string } = CONTRACT_VALIDATION_DEFAULTS,
   ): void {
     const { entrypointName } = { ...CONTRACT_VALIDATION_DEFAULTS, ...options };
-    const upstreamProducers = ContractRegistryValidator.buildUpstreamProducers(contracts);
+    const upstreamProducers = ContractRegistryValidator.composeUpstreamProducers(contracts);
 
     // The entrypoint's hardRequired paths are the flow's external initial
     // state: ambient and present from the start, so ANY node may read them
@@ -147,7 +146,7 @@ export class ContractRegistryValidator {
     for (const contract of contracts) {
       for (const path of contract.produces) {
         if (!allRequired.has(path)) {
-          warningEmitter.warn(
+          throw new DAGError(
             `ContractRegistryValidator: node '${contract.name}' produces '${path}' but no node in the registry hardRequires it`,
           );
         }

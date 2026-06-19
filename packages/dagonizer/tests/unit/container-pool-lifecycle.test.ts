@@ -22,19 +22,19 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
-import type { DagContainerOptions, PoolEntry } from '../../src/container/DagContainerBase.js';
+import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
 import { DagHost } from '../../src/container/DagHost.js';
-import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
+import type { DispatcherBundleType } from '../../src/contracts/DispatcherBundle.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { DispatcherBundle } from '../../src/Dagonizer.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import {
   ConformanceRegistry,
   ConformanceState,
@@ -55,7 +55,7 @@ const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRe
 // TestWorker / TestLoopbackContainer
 // ---------------------------------------------------------------------------
 
-interface TestWorker {
+type TestWorker = {
   hostSide: MessageChannelInterface;
 }
 
@@ -63,20 +63,20 @@ class TestLoopbackContainer extends DagContainerBase<NodeStateInterface, TestWor
   entriesCreated: number = 0;
   readonly #deathCallbacks: Array<() => void> = [];
 
-  constructor(poolSize: number, options: Partial<Pick<DagContainerOptions, 'shutdownGraceMs'>> = {}) {
+  constructor(poolSize: number, options: Partial<Pick<DagContainerOptionsType, 'shutdownGraceMs'>> = {}) {
     super({
       ...DagContainerBase.defaultOptions,
       poolSize,
       'init': {
         'registryModule': REGISTRY_MODULE_URL,
         'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-        'servicesConfig': {} as JsonObject,
+        'servicesConfig': {} as JsonObjectType,
       },
       ...options,
     });
   }
 
-  protected override createEntry(): PoolEntry<TestWorker> {
+  protected override composeEntry(): PoolEntryType<TestWorker> {
     this.entriesCreated += 1;
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const host = new DagHost(hostSide);
@@ -84,7 +84,7 @@ class TestLoopbackContainer extends DagContainerBase<NodeStateInterface, TestWor
     return { 'worker': { 'hostSide': hostSide }, 'channel': parentSide, 'initialized': false };
   }
 
-  protected override attachDeathListeners(entry: PoolEntry<TestWorker>): void {
+  protected override attachDeathListeners(entry: PoolEntryType<TestWorker>): void {
     this.#deathCallbacks.push(() => {
       this.onTransportDeath(entry, 'WORKER_DIED', 'test-triggered death');
     });
@@ -125,7 +125,7 @@ class MinimalTask implements DagTaskInterface<NodeStateInterface, undefined> {
   readonly correlationId: string;
   readonly timeout: Timeout;
   readonly state: NodeStateInterface;
-  readonly context: NodeContextInterface<undefined>;
+  readonly context: NodeContextType<undefined>;
 
   constructor(correlationId: string) {
     this.dagName = CONFORMANCE_DAG.law1;
@@ -159,7 +159,7 @@ class MinimalTask implements DagTaskInterface<NodeStateInterface, undefined> {
 function buildDispatcher(
   container: TestLoopbackContainer,
 ): Dagonizer<NodeStateInterface, undefined> {
-  const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundle<NodeStateInterface, undefined>;
+  const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundleType<NodeStateInterface, undefined>;
   const containers: Readonly<Record<string, DagContainerInterface<NodeStateInterface>>> = {
     [CONFORMANCE_CONTAINER_ROLE]: container,
   };
@@ -290,7 +290,7 @@ void describe('DagContainerBase — destroy() under parked runDag() (G3)', () =>
       const _ch1 = await container.acquireForTest();
 
       // Start a runDag() that will park (no free slot).
-      const runDagPromise: Promise<DagOutcomeInterface> = container.runDag(new MinimalTask('g3-parked'));
+      const runDagPromise: Promise<DagOutcomeType> = container.runDag(new MinimalTask('g3-parked'));
 
       // Let the parked acquire register.
       await new Promise<void>((r) => setImmediate(r));
@@ -458,7 +458,7 @@ void describe('Cross-container abort propagation (G5)', () => {
     // Give the sleeper node time to start inside DagHost.
     await new Promise<void>((r) => setTimeout(r, 50));
 
-    // Abort — signal propagates: Dagonizer → ChannelDispatch → abort BridgeMessage
+    // Abort — signal propagates: Dagonizer → ChannelDispatch → abort BridgeMessageType
     // → LoopbackChannel → DagHost → AbortController for the execution.
     controller.abort();
 

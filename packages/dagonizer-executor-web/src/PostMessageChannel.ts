@@ -14,9 +14,9 @@
  * All properties initialised in constructor for V8 shape stability.
  */
 
-import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
+import { BaseMessageChannel } from '@studnicky/dagonizer/container';
 import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
-import type { BridgeMessage } from '@studnicky/dagonizer/entities';
+import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 
 import type { WebWorkerLikeInterface, WorkerScopeLikeInterface } from './WebWorkerLike.js';
@@ -26,7 +26,7 @@ import type { WebWorkerLikeInterface, WorkerScopeLikeInterface } from './WebWork
 // ---------------------------------------------------------------------------
 
 /** Endpoints this channel can wrap: a main-thread worker or an inside-worker scope. */
-export type PostMessageEndpoint = WebWorkerLikeInterface | WorkerScopeLikeInterface;
+export type PostMessageEndpointType = WebWorkerLikeInterface | WorkerScopeLikeInterface;
 
 // ---------------------------------------------------------------------------
 // PostMessageChannel
@@ -38,36 +38,25 @@ export type PostMessageEndpoint = WebWorkerLikeInterface | WorkerScopeLikeInterf
  * Constructor DI: the endpoint is passed in; this class never constructs
  * a Worker or accesses `self` / global references.
  */
-export class PostMessageChannel implements MessageChannelInterface {
-  readonly #endpoint: PostMessageEndpoint;
-  #handler: ((message: BridgeMessage) => void) | null;
-  #closed: boolean;
+export class PostMessageChannel extends BaseMessageChannel {
+  readonly #endpoint: PostMessageEndpointType;
 
-  constructor(endpoint: PostMessageEndpoint) {
+  constructor(endpoint: PostMessageEndpointType) {
+    super();
     this.#endpoint = endpoint;
-    this.#handler = null;
-    this.#closed = false;
 
     // Subscribe to inbound messages at construction time.
-    // The listener is held on the endpoint; it references this.#handler so
-    // replacing the handler (via onMessage) does not require re-subscribing.
+    // The listener is held on the endpoint; it routes through the base's
+    // guarded dispatch, so replacing the handler (via onMessage) never
+    // requires re-subscribing.
     this.#endpoint.addEventListener('message', (event) => {
       this.#handleInbound(event.data);
     });
   }
 
-  send(message: BridgeMessage): void {
-    if (this.#closed) return;
+  override send(message: BridgeMessageType): void {
+    if (this.closed) return;
     this.#endpoint.postMessage(message);
-  }
-
-  onMessage(handler: (message: BridgeMessage) => void): void {
-    this.#handler = handler;
-  }
-
-  close(): void {
-    this.#closed = true;
-    this.#handler = null;
   }
 
   // ---------------------------------------------------------------------------
@@ -75,24 +64,22 @@ export class PostMessageChannel implements MessageChannelInterface {
   // ---------------------------------------------------------------------------
 
   #handleInbound(data: unknown): void {
-    if (this.#closed) return;
-    const handler = this.#handler;
-    if (handler === null) return;
+    if (this.closed) return;
 
-    let message: BridgeMessage;
+    let message: BridgeMessageType;
     try {
       message = Validator.bridgeMessage.validate(data);
     } catch {
       // Invalid payload: surface as an error message to the handler.
       // This keeps the channel alive and lets the DagHost or DagContainerBase
       // surface the failure rather than silently swallowing it.
-      handler(BridgeMessageBuilder.invalid(
+      this.dispatch(BridgeMessageBuilder.invalid(
         'INVALID_MESSAGE',
         'PostMessageChannel received a payload that does not conform to BridgeMessage schema',
       ));
       return;
     }
 
-    handler(message);
+    this.dispatch(message);
   }
 }

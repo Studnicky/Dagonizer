@@ -2,31 +2,31 @@
  * RecallContextNode: SPARQL select against the memory store, map
  * bindings into the consumer's binding shape, write to state.
  *
- * Consumers override `buildQuery` (the SlotPattern) and `mapBindings`
+ * Consumers override `composeQuery` (the SlotPattern) and `mapBindings`
  * (turn the raw bindings into their domain shape) plus `applyRecall`
  * (write the recalled context back to state).
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { Binding, SlotPattern } from '@studnicky/dagonizer/patterns';
+import type { BindingType, SlotPatternType } from '@studnicky/dagonizer/patterns';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
-import { GraphNode, type GraphServices } from './GraphNode.js';
+import { GraphNode, type GraphServicesType } from './GraphNode.js';
 
 export abstract class RecallContextNode<
   TState extends NodeStateInterface,
   TBinding,
 > extends GraphNode<TState, 'success' | 'empty'> {
-  protected abstract buildQuery(state: TState): SlotPattern;
-  protected abstract mapBindings(rows: readonly Binding[]): readonly TBinding[];
+  protected abstract composeQuery(state: TState): SlotPatternType;
+  protected abstract mapBindings(rows: readonly BindingType[]): readonly TBinding[];
   protected abstract applyRecall(state: TState, bindings: readonly TBinding[]): void;
 
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextInterface<GraphServices>,
-  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
-    const pattern = this.buildQuery(state);
+    context: NodeContextType<GraphServicesType>,
+  ): Promise<NodeOutputType<'success' | 'empty'>> {
+    const pattern = this.composeQuery(state);
     const rows = context.services.memory.select(pattern);
     const bindings = this.mapBindings(rows);
     this.applyRecall(state, bindings);

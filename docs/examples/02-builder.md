@@ -29,7 +29,7 @@ const archivistRegistry = new Map([
 
 # Phase 02: DAGBuilder
 
-The same [Archivist](./the-archivist) DAG, authored with the chainable `DAGBuilder` API. The builder is a thin layer over plain-object DAG configs; `.build()` returns the exact same `DAG` data structure the dispatcher consumes. The win is compile-time exhaustiveness: each `.node(name, nodeImpl, routes)` call narrows `routes` to the node's `TOutput` union, so TypeScript flags any missing or stray output mapping before the code ships.
+The same [Archivist](./the-archivist) DAG, authored with the chainable `DAGBuilder` API. The builder is a thin layer over plain-object DAG configs; `.build()` returns the exact same `DAG` data structure the dispatcher consumes. The win is compile-time exhaustiveness: each `.node(name, dagNode, routes)` call narrows `routes` to the node's `TOutput` union, so TypeScript flags any missing or stray output mapping before the code ships.
 
 <DagGraph :dag="archivistDAG" :embedded-d-a-gs="archivistRegistry" :expand-all="true" aria-label="The Archivist DAG authored via DAGBuilder, with sub-DAGs expanded." />
 
@@ -41,7 +41,7 @@ The complete `archivistDAG`, the parent DAG as a single `DAGBuilder` chain. The 
 
 ## What it demonstrates
 
-- **Chainable authoring.** Every `.node()` and `.scatter()` returns `this` for fluent composition. The chain calls `build()` once at the end to produce the plain `DAG` object.
+- **ChainableType authoring.** Every `.node()` and `.scatter()` returns `this` for fluent composition. The chain calls `build()` once at the end to produce the plain `DAG` object.
 - **Compile-time route exhaustiveness.** The `routes` argument is typed as `Record<TOutput, null | string>`. TypeScript catches missing outputs (forgot `'error'`) and stray outputs (typo in output name) at compile time.
 - **Auto-entrypoint.** The first `.node()` call (`'recall-context'`) sets the DAG entrypoint automatically. Override with `.entrypoint(name)` if needed.
 - **Embedded-DAG placements via `.embeddedDAG()`.** `on-topic-search`, `author-search`, `similar-search`, and `compose-loop` are `EmbeddedDAGNode` placements. Each references a registered sub-DAG by name and declares its `stateMapping.outputs`.
