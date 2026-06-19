@@ -27,10 +27,10 @@ import { consentGate, classifyPii, redactPii } from '../nodes/gdprNodes.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const gdprComplianceDAG: DAG = new DAGBuilder('gdpr-compliance', '1.0')
+export const gdprComplianceDAG: DAGType = new DAGBuilder('gdpr-compliance', '1.0')
 
   // ── 1. consent-gate ──────────────────────────────────────────────────────
   // Resolves the consent status from marketingConsent + simulated expiry.
@@ -60,7 +60,7 @@ export const gdprComplianceDAG: DAG = new DAGBuilder('gdpr-compliance', '1.0')
   .build();
 // #endregion gdpr-compliance-dag
 
-export const gdprComplianceBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const gdprComplianceBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [consentGate, classifyPii, redactPii],
   'dags': [gdprComplianceDAG],
 };

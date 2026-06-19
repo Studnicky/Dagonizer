@@ -31,4 +31,4 @@ export const NodeWarningSchema = {
 } as const;
 
 /** TypeScript type derived from `NodeWarningSchema` via `json-schema-to-ts`. */
-export type NodeWarning = FromSchema<typeof NodeWarningSchema>;
+export type NodeWarningType = FromSchema<typeof NodeWarningSchema>;

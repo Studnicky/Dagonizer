@@ -59,7 +59,7 @@ void registeredDag; void registeredNode; void allDags; void allNodes;
 // ---------------------------------------------------------------------------
 
 // #region execute-await
-// Awaitable form: await the execution for the final ExecutionResultInterface.
+// Awaitable form: await the execution for the final ExecutionResultType.
 //   result.state         the final state (same reference as input)
 //   result.cursor        null if completed; a node name if interrupted
 //   result.executedNodes ordered array of nodes that ran

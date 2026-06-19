@@ -4,6 +4,8 @@
 
 ### Changed
 
+- **Mandatory `Interface` suffix on every contract this package exports (semver-major rename).** The four contract interfaces the package publishes through `src/index.ts` carry the `Interface` suffix: `OsServices` → `OsServicesInterface` (`NodeSystemInfo`), `IpcEndpoint` → `IpcEndpointInterface` and `IpcProcessLike` → `IpcProcessLikeInterface` (`IpcChannel`), `MessagePortLike` → `MessagePortLikeInterface` (`MessagePortChannel`). The renames track the framework-wide adapter-contract convention; the engine contracts these implementations satisfy (`StateAccessorInterface`, `ObserverRelayInterface`, `SchedulerProviderInterface`, …) are imported under their suffixed names from `@studnicky/dagonizer/types`. The renames are type-only; runtime behavior is byte-identical.
+
 - The three message channels (`IpcChannel`, `MessagePortChannel`, `NdjsonChannel`)
   extend the shared `BaseMessageChannel` from `@studnicky/dagonizer/container`.
   The duplicated inbound-handler, closed-latch, `onMessage`, and guarded-dispatch

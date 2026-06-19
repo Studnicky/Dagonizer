@@ -1,7 +1,7 @@
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 /**
- * DAGDeriverAnnotations: declarative hooks for routing the contract-derived
+ * DAGDeriverAnnotationsType: declarative hooks for routing the contract-derived
  * flow cannot express by data-graph alone.
  *
  *   terminals: alternate exit outputs that terminate the flow rather
@@ -25,7 +25,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * entry in the DAG's `nodes` array and routes the operation's matching output
  * port to it.
  */
-export interface DAGDeriverEmitTerminal {
+export type DAGDeriverEmitTerminalType = {
   /** Placement name for the synthesized TerminalNode. */
   name: string;
   /** Lifecycle outcome the terminal triggers on the parent run. */
@@ -49,9 +49,9 @@ export interface DAGDeriverEmitTerminal {
  * the deriver deduplicates by name. If two `emit` entries share a name but
  * disagree on `outcome`, `DAGDeriver.derive` throws `DAGError`.
  */
-export type DAGDeriverTerminal =
+export type DAGDeriverTerminalType =
   | { outcome: string; target: string }
-  | { outcome: string; emit: DAGDeriverEmitTerminal };
+  | { outcome: string; emit: DAGDeriverEmitTerminalType };
 
 /**
  * Sentinel value for `DAGDeriverScatterBase.concurrency` meaning "unbounded —
@@ -65,7 +65,7 @@ export const DEFAULT_SCATTER_CONCURRENCY = 0;
  * Common fields every scatter annotation carries regardless of strategy.
  * The per-item kind is a registered node.
  */
-interface DAGDeriverScatterBase {
+type DAGDeriverScatterBase = {
   /** Dotted path on state to the source array. */
   source:      string;
   /** Metadata key the per-item executions read for the current item. */
@@ -101,7 +101,7 @@ interface DAGDeriverScatterBase {
  * Compile-time discriminator types enforce mutual exclusion;
  * `DAGDeriver.derive` re-validates at runtime as a defensive backstop.
  */
-export type DAGDeriverScatter = DAGDeriverScatterBase & (
+export type DAGDeriverScatterType = DAGDeriverScatterBase & (
   | { strategy: 'custom';    customNode: string;
       partitions?: never;    target?: never }
   | { strategy: 'partition'; partitions: Record<string, string>;
@@ -150,12 +150,12 @@ type ChildKey<T extends NodeStateInterface> =
  *         input:  { payload: 'parent.seed' },   // 'payload' must be a key of ChildState
  *         output: { 'parent.result': 'result' },
  *       },
- *     } satisfies DAGDeriverEmbeddedDAG<ChildState>,
+ *     } satisfies DAGDeriverEmbeddedDAGType<ChildState>,
  *   },
  * }
  * ```
  */
-export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface> {
+export type DAGDeriverEmbeddedDAGType<TChildState extends NodeStateInterface = NodeStateInterface> = {
   /** Registered DAG name to invoke as the embedded-DAG. */
   dag: string;
   /**
@@ -181,7 +181,7 @@ export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = 
   };
   /**
    * Output ports the embedded-DAG can route on. Each port auto-wires to
-   * the next derived stage; `DAGDeriverAnnotations.terminals` overrides
+   * the next derived stage; `DAGDeriverAnnotationsType.terminals` overrides
    * individual ports.
    */
   outputs: string[];
@@ -192,8 +192,8 @@ export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = 
  * optional; when all are absent every operation renders as a
  * `SingleNode` with `success` routing to the next derived operation.
  */
-export interface DAGDeriverAnnotations {
-  terminals?:   Record<string, DAGDeriverTerminal[]>;
-  scatters?:    Record<string, DAGDeriverScatter>;
-  embeddedDAGs?: Record<string, DAGDeriverEmbeddedDAG>;
+export type DAGDeriverAnnotationsType = {
+  terminals?:   Record<string, DAGDeriverTerminalType[]>;
+  scatters?:    Record<string, DAGDeriverScatterType>;
+  embeddedDAGs?: Record<string, DAGDeriverEmbeddedDAGType>;
 }

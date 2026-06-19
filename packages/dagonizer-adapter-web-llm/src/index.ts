@@ -1,5 +1,5 @@
 export { WebLlmAdapter } from './WebLlmAdapter.js';
-export type { WebLlmAdapterOptions } from './WebLlmAdapter.js';
+export type { WebLlmAdapterOptionsType } from './WebLlmAdapter.js';
 export {
   WebLlmEngineSchema,
   WebLlmModuleSchema,
@@ -7,11 +7,11 @@ export {
   webLlmModuleValidator,
 } from './WebLlmHost.js';
 export type {
-  WebLlmCompletionParamsInterface,
-  WebLlmCompletionResultInterface,
+  WebLlmCompletionParamsType,
+  WebLlmCompletionResultType,
   WebLlmEngineBaseType,
-  WebLlmEngineInterface,
-  WebLlmInitReportInterface,
+  WebLlmEngineType,
+  WebLlmInitReportType,
   WebLlmModuleBaseType,
   WebLlmModuleInterface,
 } from './WebLlmHost.js';

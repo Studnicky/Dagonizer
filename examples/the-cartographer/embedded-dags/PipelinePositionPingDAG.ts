@@ -27,10 +27,10 @@ import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const pipelinePositionPingDAG: DAG = new DAGBuilder('pipeline-position-ping', '1.0')
+export const pipelinePositionPingDAG: DAGType = new DAGBuilder('pipeline-position-ping', '1.0')
 
   // 1. parse-variant: decode the event union into a typed position-ping shape.
   .node('parse-variant', parseVariant, {
@@ -80,7 +80,7 @@ export const pipelinePositionPingDAG: DAG = new DAGBuilder('pipeline-position-pi
 
   .build();
 
-export const pipelinePositionPingBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const pipelinePositionPingBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [parseVariant, canonicalizeCore, enrichLeg, aggregateEvent],
   'dags':  [pipelinePositionPingDAG],
 };

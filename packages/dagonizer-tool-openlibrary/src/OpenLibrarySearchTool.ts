@@ -24,17 +24,17 @@
  * cite in its prose response.
  */
 
-import type { ToolDefinition } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { ToolDefinitionType } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 import { HttpTransport } from '@studnicky/dagonizer/tool';
-import type { Tool } from '@studnicky/dagonizer/tool';
-import type { Candidate } from '@studnicky/dagonizer-book-entities';
+import type { ToolInterface } from '@studnicky/dagonizer/tool';
+import type { CandidateType } from '@studnicky/dagonizer-book-entities';
 
 
 import { OpenLibraryResponseValidator } from './OpenLibraryResponse.js';
 import { OPENLIBRARY_ENDPOINT, OpenLibraryDocs } from './openLibraryTypes.js';
 
-interface OpenLibrarySearchInput extends Record<string, unknown> {
+type OpenLibrarySearchInputType = Record<string, unknown> & {
   readonly query?: string;
   readonly isbn?: string;
   readonly limit?: number;
@@ -42,15 +42,15 @@ interface OpenLibrarySearchInput extends Record<string, unknown> {
   readonly author?: string;
   readonly first_publish_year?: number;
   readonly lang?: string;
-}
+};
 
-export class OpenLibrarySearchTool implements Tool<OpenLibrarySearchInput, readonly Candidate[]> {
+export class OpenLibrarySearchTool implements ToolInterface<OpenLibrarySearchInputType, readonly CandidateType[]> {
   // The data contract: every field carries description, examples, and
   // where relevant default + format. The agent reads this through the
   // adapter's native function-declaration / responseConstraint channel
   // (Gemini API's `functionDeclarations.parameters`, Nano's
   // `responseConstraint`). No need to repeat any of this in prose.
-  readonly definition: ToolDefinition = {
+  readonly definition: ToolDefinitionType = {
     'name': 'web_search_books',
     'description': 'Search openlibrary.org for real books.',
     'inputSchema': {
@@ -104,7 +104,7 @@ export class OpenLibrarySearchTool implements Tool<OpenLibrarySearchInput, reado
     'strict': true,
   };
 
-  async execute(input: OpenLibrarySearchInput, options?: AbortableOptionsInterface): Promise<readonly Candidate[]> {
+  async execute(input: OpenLibrarySearchInputType, options?: AbortableOptionsType): Promise<readonly CandidateType[]> {
     const signal = options?.signal;
     const limit = Math.max(1, Math.min(20, input.limit ?? 8));
 

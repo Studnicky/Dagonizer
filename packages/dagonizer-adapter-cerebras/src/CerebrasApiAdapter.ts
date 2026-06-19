@@ -5,15 +5,15 @@
  * inference. Cerebras serves no `llama-3.3-70b` variant, so that model
  * id resolves to a model-not-found error.
  *
- * Tool-use is `'partial'`; model coverage varies. `shouldFallbackWithoutTools`
+ * ToolInterface-use is `'partial'`; model coverage varies. `shouldFallbackWithoutTools`
  * retries as plain chat when the provider signals tools are unsupported.
  */
 
 import { LlmError, OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
-import type { OpenAiCompatibleAdapterOptions } from '@studnicky/dagonizer/adapter';
+import type { OpenAiCompatibleAdapterOptionsType } from '@studnicky/dagonizer/adapter';
 
 export class CerebrasApiAdapter extends OpenAiCompatibleAdapter {
-  constructor(apiKey: string, options: OpenAiCompatibleAdapterOptions = {}) {
+  constructor(apiKey: string, options: OpenAiCompatibleAdapterOptionsType = {}) {
     super(
       apiKey,
       {

@@ -35,7 +35,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ export class ConsumeNode extends ScalarNode<AsyncSourceState, 'done'> {
 // ---------------------------------------------------------------------------
 
 // #region dag
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:async-source',
   '@type':     'DAG',

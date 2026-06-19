@@ -1,13 +1,13 @@
 /**
- * StoreSnapshot: persistable snapshot envelope for a named store.
+ * StoreSnapshotType: persistable snapshot envelope for a named store.
  *
- * `StoreSnapshotEntry` is one key-value pair in the snapshot.
- * `StoreSnapshot` is the versioned envelope that wraps a store's full
+ * `StoreSnapshotEntryType` is one key-value pair in the snapshot.
+ * `StoreSnapshotType` is the versioned envelope that wraps a store's full
  * contents at a point in time. Authors set `type` to a stable identifier
  * (e.g. `'memory-store-v1'`) so resume code can refuse incompatible snapshots.
  *
- * These schemas are the single source of truth; `contracts/Snapshottable.ts`
- * imports its `StoreSnapshotEntry` and `StoreSnapshot` types from here.
+ * These schemas are the single source of truth; `contracts/SnapshottableInterface.ts`
+ * imports its `StoreSnapshotEntryType` and `StoreSnapshotType` types from here.
  * `CheckpointDataSchema` embeds structurally identical inline shapes inside its
  * `stores` additionalProperties; both representations describe the same wire
  * format. The schema-derived types are identical due to structural typing.
@@ -16,7 +16,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const StoreSnapshotEntrySchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/StoreSnapshotEntry',
+  '$id': 'https://noocodex.dev/schemas/dagonizer/StoreSnapshotEntryType',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['key', 'value'],
@@ -28,10 +28,10 @@ export const StoreSnapshotEntrySchema = {
 } as const;
 
 /** TypeScript type derived from `StoreSnapshotEntrySchema` via `json-schema-to-ts`. */
-export type StoreSnapshotEntry = FromSchema<typeof StoreSnapshotEntrySchema>;
+export type StoreSnapshotEntryWireType = FromSchema<typeof StoreSnapshotEntrySchema>;
 
 export const StoreSnapshotSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/StoreSnapshot',
+  '$id': 'https://noocodex.dev/schemas/dagonizer/StoreSnapshotType',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['version', 'type', 'entries'],
@@ -55,4 +55,4 @@ export const StoreSnapshotSchema = {
 } as const;
 
 /** TypeScript type derived from `StoreSnapshotSchema` via `json-schema-to-ts`. */
-export type StoreSnapshot = FromSchema<typeof StoreSnapshotSchema>;
+export type StoreSnapshotWireType = FromSchema<typeof StoreSnapshotSchema>;

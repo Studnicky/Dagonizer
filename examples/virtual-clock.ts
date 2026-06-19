@@ -8,7 +8,7 @@
  *
  * The example uses a flaky operation that fails on the first two attempts and
  * succeeds on the third. Exponential backoff delays are 100ms → 200ms (300ms
- * total virtual time). Both ClockProvider and Scheduler are restored to real
+ * total virtual time). Both ClockProviderInterface and Scheduler are restored to real
  * time after the demonstration.
  *
  * DAG definition (re-exported providers): examples/dags/virtual-clock.ts

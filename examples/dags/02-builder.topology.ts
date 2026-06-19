@@ -16,7 +16,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
+import type { OperationContractFragmentType } from '@studnicky/dagonizer/contracts';
 // #endregion imports
 
 // ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ export const typeSafeRoutingDag = new DAGBuilder('type-safe-demo', '1')
 class ContractFetchNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'contract-fetch';
   readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: [], produces: ['raw'] };
+  override readonly contract: OperationContractFragmentType = { hardRequired: [], produces: ['raw'] };
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
@@ -113,7 +113,7 @@ class ContractParseNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'contract-parse';
   readonly outputs = ['success'] as const;
   // Deliberate mismatch: hardRequires 'data' but upstream only produces 'raw'.
-  override readonly contract: OperationContractFragment = { hardRequired: ['data'], produces: ['record'] };
+  override readonly contract: OperationContractFragmentType = { hardRequired: ['data'], produces: ['record'] };
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
@@ -141,21 +141,21 @@ export function contractErrorDemo(): void {
 class LinearFetchNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'linear-fetch';
   readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: [], produces: ['raw'] };
+  override readonly contract: OperationContractFragmentType = { hardRequired: [], produces: ['raw'] };
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
 class LinearParseNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'linear-parse';
   readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['raw'], produces: ['record'] };
+  override readonly contract: OperationContractFragmentType = { hardRequired: ['raw'], produces: ['record'] };
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
 class LinearSaveNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'linear-save';
   readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['record'], produces: [] };
+  override readonly contract: OperationContractFragmentType = { hardRequired: ['record'], produces: [] };
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 

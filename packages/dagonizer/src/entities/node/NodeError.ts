@@ -43,19 +43,19 @@ export const NodeErrorSchema = {
 } as const;
 
 /** TypeScript type derived from `NodeErrorSchema` via `json-schema-to-ts`. */
-export type NodeError = FromSchema<typeof NodeErrorSchema>;
+export type NodeErrorWireType = FromSchema<typeof NodeErrorSchema>;
 
 /**
  * Error collected during node execution.
  *
- * Extends the `NodeError` entity with a narrowed `context` type. The entity
- * uses `{ type: 'object' }` (opaque JSON object); the interface narrows it to
+ * Extends the `NodeErrorWireType` entity with a narrowed `context` type. The entity
+ * uses `{ type: 'object' }` (opaque JSON object); the type narrows it to
  * `Record<string, unknown>` for ergonomic access in TypeScript consumers.
  *
  * `context` is required — always present, defaults to `{}` when no additional
  * diagnostic data is available. One hidden class across all instances.
  */
-export interface NodeErrorInterface extends Omit<NodeError, 'context'> {
+export type NodeErrorType = Omit<NodeErrorWireType, 'context'> & {
   /**
    * Diagnostic context bag for this error.
    *
@@ -63,10 +63,10 @@ export interface NodeErrorInterface extends Omit<NodeError, 'context'> {
    * `NodeErrorBuilder.from` fills `context: {}` automatically.
    */
   'context': Record<string, unknown>;
-}
+};
 
 /**
- * Static factory for `NodeErrorInterface`.
+ * Static factory for `NodeErrorType`.
  *
  * Named `NodeErrorBuilder` to avoid the identifier collision with the
  * schema-derived `NodeError` type (per the canonical-names rule: when a type
@@ -100,7 +100,7 @@ export class NodeErrorBuilder {
   private constructor() { /* static class */ }
 
   /**
-   * Construct a complete `NodeErrorInterface`, defaulting `context` to `{}`.
+   * Construct a complete `NodeErrorType`, defaulting `context` to `{}`.
    *
    * @param code - Error code (e.g. `'FETCH_FAILED'`).
    * @param message - Human-readable error description.
@@ -116,7 +116,7 @@ export class NodeErrorBuilder {
     recoverable: boolean,
     timestamp: string,
     options: { context?: Record<string, unknown> } = {},
-  ): NodeErrorInterface {
+  ): NodeErrorType {
     return {
       'code': code,
       'context': options.context ?? {},

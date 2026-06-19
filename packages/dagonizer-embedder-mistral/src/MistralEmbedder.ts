@@ -21,8 +21,8 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
-import type { BaseEmbedderOptions } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 
 import { MistralEmbedResponseValidator } from './MistralEmbedResponse.js';
 
@@ -39,7 +39,7 @@ const MISTRAL_EMBEDDER_DEFAULTS = {
  * from `BaseEmbedderOptions`; the provider default (`mistral-embed`, 1024-dim)
  * is supplied by `MISTRAL_EMBEDDER_DEFAULTS`.
  */
-export type MistralEmbedderOptions = BaseEmbedderOptions;
+export type MistralEmbedderOptionsType = BaseEmbedderOptionsType;
 
 export class MistralEmbedder extends BaseEmbedder {
   readonly #apiKey: string;
@@ -51,7 +51,7 @@ export class MistralEmbedder extends BaseEmbedder {
    * and its `probe()` can return false, letting the cascade route
    * around it cleanly.
    */
-  constructor(apiKey: string, options: MistralEmbedderOptions = {}) {
+  constructor(apiKey: string, options: MistralEmbedderOptionsType = {}) {
     const resolved = { ...MISTRAL_EMBEDDER_DEFAULTS, ...options };
     super('mistral', `Mistral (${resolved.model})`, resolved.dimensions, options);
     this.#apiKey = apiKey;
@@ -91,7 +91,7 @@ export class MistralEmbedder extends BaseEmbedder {
    * Probe true when a non-empty API key was supplied. Never throws.
    * Symmetric with `MistralApiAdapter.probe`.
    */
-  override async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
+  override async probe(_options?: AbortableOptionsType): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 }

@@ -8,7 +8,7 @@
  * on dispatcher state — they operate purely on the wire shape.
  */
 
-import type { DAG } from '../entities/dag/DAG.js';
+import type { DAGType } from '../entities/dag/DAG.js';
 import { ValidationError } from '../errors/index.js';
 import { Validator } from '../validation/Validator.js';
 
@@ -32,7 +32,7 @@ export class DAGDocument {
    *
    * Throws `ValidationError` for malformed JSON or schema-noncompliant input.
    */
-  static load(json: string): DAG {
+  static load(json: string): DAGType {
     let parsed: unknown;
     try {
       parsed = JSON.parse(json);
@@ -47,17 +47,17 @@ export class DAGDocument {
    * Parse an already-decoded value and validate. Same boundary semantics as
    * `load` but skips JSON.parse for callers that have already decoded.
    */
-  static ofValue(value: unknown): DAG {
+  static ofValue(value: unknown): DAGType {
     return Validator.dag.validate(value);
   }
 
   /** Serialize a DAG to pretty JSON (2-space indent). */
-  static serialize(dag: DAG): string {
+  static serialize(dag: DAGType): string {
     return JSON.stringify(dag, null, 2);
   }
 
   /** Serialize a DAG to compact JSON (no whitespace). */
-  static serializeCompact(dag: DAG): string {
+  static serializeCompact(dag: DAGType): string {
     return JSON.stringify(dag);
   }
 }

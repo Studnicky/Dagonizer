@@ -1,6 +1,6 @@
 ---
 title: 'Contract-derived flows'
-description: 'DAGDeriver.derive builds a DAG by matching produces ↔ hardRequired; OperationContract declares the data; DAGDeriverAnnotations adds routing patterns the data graph cannot express; ContractRegistryValidator catches dangling reads and writes.'
+description: 'DAGDeriver.derive builds a DAG by matching produces ↔ hardRequired; OperationContractType declares the data; DAGDeriverAnnotationsType adds routing patterns the data graph cannot express; ContractRegistryValidator catches dangling reads and writes.'
 seeAlso:
   - text: 'Authoring DAGs'
     link: './authoring'
@@ -102,19 +102,19 @@ const deriveRegistry = new Map([['plugin:transform', childDAG]]);
 
 # Contract-derived flows
 
-`DAGDeriver.derive` builds a `DAG` from a registry of `OperationContract`s by matching `produces ↔ hardRequired`. Each operation declares the field paths it needs and the field paths it produces; an edge `A → B` exists when some path in `A.produces` appears in `B.hardRequired`. Operations that share a topological depth and that the `scatters` annotation targets become scatter placements; otherwise they are sequenced by depth.
+`DAGDeriver.derive` builds a `DAG` from a registry of `OperationContractType`s by matching `produces ↔ hardRequired`. Each operation declares the field paths it needs and the field paths it produces; an edge `A → B` exists when some path in `A.produces` appears in `B.hardRequired`. Operations that share a topological depth and that the `scatters` annotation targets become scatter placements; otherwise they are sequenced by depth.
 
 ## API surface
 
 | Symbol | Source | Role |
 |--------|--------|------|
 | `DAGDeriver.derive(options)` | `@studnicky/dagonizer/derive` | Static factory: contracts + annotations → `DAG` |
-| `DAGDeriver.extractContracts(nodes)` | `@studnicky/dagonizer/derive` | Project `OperationContract[]` from a node registry |
-| `OperationContract` | `@studnicky/dagonizer/contracts` | `name`, `hardRequired`, `produces`, `outputs` |
-| `OperationContractFragment` | `@studnicky/dagonizer/contracts` | `hardRequired` + `produces` (the `NodeInterface.contract` field) |
-| `DAGDeriverAnnotations` | `@studnicky/dagonizer/derive` | `terminals`, `scatters`, `embeddedDAGs` |
+| `DAGDeriver.extractContracts(nodes)` | `@studnicky/dagonizer/derive` | Project `OperationContractType[]` from a node registry |
+| `OperationContractType` | `@studnicky/dagonizer/contracts` | `name`, `hardRequired`, `produces`, `outputs` |
+| `OperationContractFragmentType` | `@studnicky/dagonizer/contracts` | `hardRequired` + `produces` (the `NodeInterface.contract` field) |
+| `DAGDeriverAnnotationsType` | `@studnicky/dagonizer/derive` | `terminals`, `scatters`, `embeddedDAGs` |
 | `ContractRegistryValidator` | `@studnicky/dagonizer/derive` | Surfaces dangling reads (fatal) and dead writes (warning) |
-| `Chainable<A, B>` | `@studnicky/dagonizer` (also `/types`) | Compile-time pair check; `true` when `A.produces` covers `B.hardRequired` |
+| `ChainableType<A, B>` | `@studnicky/dagonizer` (also `/types`) | Compile-time pair check; `true` when `A.produces` covers `B.hardRequired` |
 
 `DAGDeriver` is the declarative authoring path for agentic flows where reaching the final state matters more than authoring the order: tool-driven agents, exploratory pipelines, workflows where the operation set changes per deployment. For deterministic ETL pipelines, use [DAGBuilder](./builder). See [Authoring DAGs](./authoring) for the decision matrix.
 
@@ -124,7 +124,7 @@ The example below derives a parent DAG with one embedded-DAG placement. `prepare
 
 <DagGraph :dag="parentDAG" :embedded-d-a-gs="deriveRegistry" :expand-all="true" aria-label="Derived parent DAG: prepare → invoke-plugin (embedded-DAG) → finalize, with child DAG validate → transform expanded inline." />
 
-## OperationContract
+## OperationContractType
 
 <<< @/../examples/dags/derive.ts#operation-contract
 
@@ -217,13 +217,13 @@ When an operation delegates execution to a nested registered DAG (plugin dispatc
 - The embedded-DAG placement cannot terminate the run; the parent DAG owns END. The embedded-DAG step must route to another parent placement; if every port routes to `null` the engine rejects the DAG at registration.
 - An operation cannot appear in both `scatters` and `embeddedDAGs`; the placement kind must be unambiguous.
 
-#### Typed `stateMapping` via `DAGDeriverEmbeddedDAG<TChildState>`
+#### Typed `stateMapping` via `DAGDeriverEmbeddedDAGType<TChildState>`
 
 Supply `TChildState` to narrow `stateMapping.input` keys to names that actually exist on the child state at compile time. The wire shape emitted to the rendered `EmbeddedDAGNode` is always `Record<string, string>`; the generic is for authoring ergonomics only.
 
 <<< @/../examples/dags/derive.ts#embedded-dag-typed
 
-Omitting `TChildState` (using bare `DAGDeriverEmbeddedDAG`) preserves backward compatibility; the default accepts any string on both sides of the mapping.
+Omitting `TChildState` (using bare `DAGDeriverEmbeddedDAGType`) preserves backward compatibility; the default accepts any string on both sides of the mapping.
 
 ## Co-located contracts
 
@@ -241,9 +241,9 @@ Use `DAGDeriver.extractContracts(nodes)` to inspect the projected contracts befo
 
 Three mechanisms surface drift between what nodes declare they need and what others provide.
 
-### Type-level: `Chainable<A, B>`
+### Type-level: `ChainableType<A, B>`
 
-`Chainable<A, B>` resolves to `true` when `B`'s `hardRequired` set is fully satisfied by `A`'s `produces` set, and `never` otherwise. Use it in test helpers or contract authoring to catch drift before running the code.
+`ChainableType<A, B>` resolves to `true` when `B`'s `hardRequired` set is fully satisfied by `A`'s `produces` set, and `never` otherwise. Use it in test helpers or contract authoring to catch drift before running the code.
 
 Most useful when nodes are typed with `as const` literal-tuple contracts:
 

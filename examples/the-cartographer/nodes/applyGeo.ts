@@ -13,7 +13,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { GeoLookup } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -22,7 +22,7 @@ export class ApplyGeoNode extends ScalarNode<CartographerState, 'normalize', Car
   readonly 'name' = 'apply-geo';
   readonly 'outputs' = ['normalize'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalize'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalize'>> {
     const geo = state.canonical.geo;
     // route-geo guarantees geo is present on this branch; fall back defensively.
     const country   = geo?.country ?? state.raw.recipientCountry;

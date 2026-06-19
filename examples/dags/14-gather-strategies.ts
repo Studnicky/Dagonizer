@@ -23,7 +23,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ export class TagNode extends ScalarNode<GatherDemoState, 'done'> {
  * After execution:
  *   tokens = ['done', 'done', 'done', 'done']  (one per source item)
  */
-export const collectDag: DAG = {
+export const collectDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:gather-demo:collect-run',
   '@type':     'DAG',
@@ -148,7 +148,7 @@ export const collectDag: DAG = {
  *   tokens      = []   (discard strategy folds nothing)
  *   sideEffects = []   (clone writes discarded — the point of `discard`)
  */
-export const discardDag: DAG = {
+export const discardDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:gather-demo:discard-run',
   '@type':     'DAG',

@@ -19,12 +19,12 @@
 // #region registry
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
 import { CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import { dag, SquareWorkerNode, workerDag, WorkState } from './12-workers.js';
 
 const registry: RegistryModuleInterface = {
-  async instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     return {
       "bundle": {
         "nodes": [new SquareWorkerNode()],
@@ -32,7 +32,7 @@ const registry: RegistryModuleInterface = {
       },
       "services":        undefined,
       "registryVersion": '1.0.0',
-      "restoreState":    CheckpointRestoreAdapterFn.wrap((snapshot: JsonObject) => WorkState.restore(snapshot)),
+      "restoreState":    CheckpointRestoreAdapterFn.wrap((snapshot: JsonObjectType) => WorkState.restore(snapshot)),
     };
   },
 };

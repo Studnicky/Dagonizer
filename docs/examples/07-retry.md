@@ -10,7 +10,7 @@ seeAlso:
     link: './06-cancellation'
   - text: 'Reference: Runtime, `RetryPolicy`, `BackoffStrategy`'
     link: '../reference/runtime'
-  - text: 'Reference: Contracts, `RetryPolicyOptionsInterface`'
+  - text: 'Reference: Contracts, `RetryPolicyOptionsType`'
     link: '../reference/contracts'
 ---
 

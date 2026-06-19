@@ -15,7 +15,7 @@
  *
  * MemoryCheckpointStore is in-process only: the map is discarded when the
  * process exits. In production, swap it for a file-, Redis-, or DB-backed
- * CheckpointStore that implements save / load / delete.
+ * CheckpointStoreInterface that implements save / load / delete.
  *
  * DAG definition (state, nodes, dag): examples/dags/23-checkpoint-store.ts
  *

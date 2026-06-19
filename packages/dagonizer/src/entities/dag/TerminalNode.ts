@@ -32,5 +32,5 @@ export const TerminalNodeSchema = {
 } as const;
 
 /** TypeScript type derived from `TerminalNodeSchema` via `json-schema-to-ts`. */
-export type TerminalNode = FromSchema<typeof TerminalNodeSchema>;
+export type TerminalNodeType = FromSchema<typeof TerminalNodeSchema>;
 

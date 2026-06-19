@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 
 import { DagHost } from '../../src/container/DagHost.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
-import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
+import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 
@@ -67,7 +67,7 @@ function buildHostPair(): { host: DagHost; parentSide: MessageChannelInterface }
 
 /** Initialize the host and assert it replied 'ready'. */
 async function initHost(parentSide: MessageChannelInterface): Promise<void> {
-  const readyPromise = new Promise<BridgeMessage>((resolve) => {
+  const readyPromise = new Promise<BridgeMessageType>((resolve) => {
     parentSide.onMessage((msg) => {
       if (msg.kind === 'ready' || msg.kind === 'error') resolve(msg);
     });
@@ -105,14 +105,14 @@ void describe('DagHost — batch request: intermediates are empty, live messages
     const initialState = new NodeStateBase();
 
     const { result, intermediateMessages } = await new Promise<{
-      result: BridgeMessage & { kind: 'result' };
-      intermediateMessages: (BridgeMessage & { kind: 'intermediate' })[];
+      result: BridgeMessageType & { kind: 'result' };
+      intermediateMessages: (BridgeMessageType & { kind: 'intermediate' })[];
     }>((resolve) => {
-      const intermediateMessages: (BridgeMessage & { kind: 'intermediate' })[] = [];
+      const intermediateMessages: (BridgeMessageType & { kind: 'intermediate' })[] = [];
       parentSide.onMessage((msg) => {
         if (msg.kind === 'intermediate') intermediateMessages.push(msg);
         if (msg.kind === 'result') {
-          resolve({ 'result': msg as BridgeMessage & { kind: 'result' }, intermediateMessages });
+          resolve({ 'result': msg as BridgeMessageType & { kind: 'result' }, intermediateMessages });
         }
       });
       // Send N items in a single batch request.
@@ -184,9 +184,9 @@ void describe('DagHost — batch request: intermediates are empty, live messages
 
     const initialState = new NodeStateBase();
 
-    const singleResult = await new Promise<BridgeMessage & { kind: 'result' }>((resolve) => {
+    const singleResult = await new Promise<BridgeMessageType & { kind: 'result' }>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.kind === 'result') resolve(msg as BridgeMessage & { kind: 'result' });
+        if (msg.kind === 'result') resolve(msg as BridgeMessageType & { kind: 'result' });
       });
       parentSide.send({
         'kind': 'execute',
@@ -222,9 +222,9 @@ void describe('DagHost — batch request: intermediates are empty, live messages
     const N = 50;
     const initialState = new NodeStateBase();
 
-    const batchResult = await new Promise<BridgeMessage & { kind: 'result' }>((resolve) => {
+    const batchResult = await new Promise<BridgeMessageType & { kind: 'result' }>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.kind === 'result') resolve(msg as BridgeMessage & { kind: 'result' });
+        if (msg.kind === 'result') resolve(msg as BridgeMessageType & { kind: 'result' });
       });
       parentSide.send({
         'kind': 'execute',

@@ -10,8 +10,8 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // State: overrides snapshot/restore to persist domain fields
@@ -26,7 +26,7 @@ export class CountingState extends NodeStateBase {
    * Serialize domain fields into a plain JSON-serialisable object.
    * Called by Checkpoint.capture() to capture state at the abort point.
    */
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return { "count": this.count, "log": [...this.log] };
   }
 
@@ -34,7 +34,7 @@ export class CountingState extends NodeStateBase {
    * Restore domain fields from a previously-captured snapshot.
    * Called by CountingState.restore() after the parse step.
    */
-  protected override restoreData(snapshot: JsonObject): void {
+  protected override restoreData(snapshot: JsonObjectType): void {
     const c = snapshot['count'];
     if (typeof c === 'number') this.count = c;
     const l = snapshot['log'];
@@ -62,7 +62,7 @@ export class IncNode extends ScalarNode<CountingState, 'success'> {
 // DAG: three sequential inc placements: a -> b -> c -> end
 // ---------------------------------------------------------------------------
 
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:count',
   '@type':     'DAG',

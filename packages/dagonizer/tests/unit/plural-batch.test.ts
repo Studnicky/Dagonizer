@@ -4,11 +4,11 @@ import { describe, it } from 'node:test';
 import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
-import type { Item } from '../../src/entities/batch/Item.js';
-import { RoutedBatchBuilder } from '../../src/entities/batch/RoutedBatch.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { ItemType } from '../../src/entities/batch/Item.js';
+import { RoutedBatchBuilder } from '../../src/entities/batch/RoutedBatchType.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../src/entities/node/NodeError.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
@@ -25,7 +25,7 @@ class TestState extends NodeStateBase {
   }
 }
 
-const ctx: NodeContextInterface = {
+const ctx: NodeContextType = {
   'signal': new AbortController().signal,
   'dagName': 'test-dag',
   'nodeName': 'test-node',
@@ -54,7 +54,7 @@ void describe('Batch', () => {
   });
 
   void it('Batch.from: builds batch from items array preserving id and order', () => {
-    const items: Item<TestState>[] = [
+    const items: ItemType<TestState>[] = [
       { 'id': 'x', 'state': new TestState(10) },
       { 'id': 'y', 'state': new TestState(20) },
     ];
@@ -221,8 +221,8 @@ class TagNode extends ScalarNode<TestState, 'tagged' | 'skip'> {
   readonly outputs = ['tagged', 'skip'] as const;
   protected async executeOne(
     state: TestState,
-    _ctx: NodeContextInterface,
-  ): Promise<NodeOutputInterface<'tagged' | 'skip'>> {
+    _ctx: NodeContextType,
+  ): Promise<NodeOutputType<'tagged' | 'skip'>> {
     return NodeOutputBuilder.of(state.value > 0 ? 'tagged' : 'skip');
   }
 }
@@ -232,8 +232,8 @@ class ErroringNode extends ScalarNode<TestState, 'done'> {
   readonly outputs = ['done'] as const;
   protected async executeOne(
     _state: TestState,
-    _ctx: NodeContextInterface,
-  ): Promise<NodeOutputInterface<'done'>> {
+    _ctx: NodeContextType,
+  ): Promise<NodeOutputType<'done'>> {
     const err = NodeErrorBuilder.from(
       'TEST_ERROR',
       'test error message',

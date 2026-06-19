@@ -5,10 +5,10 @@ import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -36,8 +36,8 @@ class IncNodeImpl extends ScalarNode<CounterState, string> {
 
   protected async executeOne(
     state: CounterState,
-    _ctx: NodeContextInterface,
-  ): Promise<NodeOutputInterface<string>> {
+    _ctx: NodeContextType,
+  ): Promise<NodeOutputType<string>> {
     state.value += this.delta;
     return { 'errors': [], 'output': 'success' };
   }
@@ -51,7 +51,7 @@ const incNode = (name: string, delta: number): IncNodeImpl =>
 // full descent and ascent.
 const VALUE_MAPPING = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
-const singleNode = (dag: string, name: string, outputs: Record<string, string>): DAG['nodes'][number] => ({
+const singleNode = (dag: string, name: string, outputs: Record<string, string>): DAGType['nodes'][number] => ({
   '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
   '@type': 'SingleNode',
   name,
@@ -59,7 +59,7 @@ const singleNode = (dag: string, name: string, outputs: Record<string, string>):
   outputs,
 });
 
-const embedNode = (dag: string, name: string, childDag: string): DAG['nodes'][number] => ({
+const embedNode = (dag: string, name: string, childDag: string): DAGType['nodes'][number] => ({
   '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
   '@type': 'EmbeddedDAGNode',
   name,
@@ -68,7 +68,7 @@ const embedNode = (dag: string, name: string, childDag: string): DAG['nodes'][nu
   'outputs': { 'success': 'end', 'error': 'end' },
 });
 
-const makeDAG = (name: string, entrypoint: string, nodes: DAG['nodes']): DAG => ({
+const makeDAG = (name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType => ({
   '@context': DAG_CONTEXT,
   '@id':      `urn:noocodex:dag:${name}`,
   '@type':    'DAG',
@@ -78,7 +78,7 @@ const makeDAG = (name: string, entrypoint: string, nodes: DAG['nodes']): DAG => 
   nodes,
 });
 
-const terminalNode = (dag: string): DAG['nodes'][number] => ({
+const terminalNode = (dag: string): DAGType['nodes'][number] => ({
   '@id':     `urn:noocodex:dag:${dag}/node/end`,
   '@type':   'TerminalNode',
   'name':    'end',
@@ -195,7 +195,7 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
     this.flowStartCount++;
   }
 
-  protected override onFlowEnd(_dagName: string, _state: TState, _result: ExecutionResultInterface<TState>): void {
+  protected override onFlowEnd(_dagName: string, _state: TState, _result: ExecutionResultType<TState>): void {
     this.flowEndCount++;
   }
 
@@ -220,8 +220,8 @@ class MakeNodeImpl extends ScalarNode<NodeStateBase, string> {
 
   protected async executeOne(
     _state: NodeStateBase,
-    _ctx: NodeContextInterface,
-  ): Promise<NodeOutputInterface<string>> {
+    _ctx: NodeContextType,
+  ): Promise<NodeOutputType<string>> {
     return { 'errors': [], 'output': this.outputs[0] as string };
   }
 }
@@ -230,7 +230,7 @@ const makeNode = (name: string, outputs: readonly string[]): MakeNodeImpl =>
   new MakeNodeImpl(name, outputs);
 
 // Child DAG (two nodes: start → finish).
-const childDAG: DAG = {
+const childDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:child',
   '@type':    'DAG',
@@ -257,7 +257,7 @@ const childDAG: DAG = {
 };
 
 // Parent DAG: entry → run-child (embedded-DAG node) → parent-end.
-const parentDAG: DAG = {
+const parentDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:parent',
   '@type':    'DAG',
@@ -374,7 +374,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
 class PassNode extends ScalarNode<NodeStateBase, 'ok'> {
   readonly name = 'pass';
   readonly outputs = ['ok'] as const;
-  protected async executeOne(): Promise<NodeOutputInterface<'ok'>> { return { 'errors': [], 'output': 'ok' as const }; }
+  protected async executeOne(): Promise<NodeOutputType<'ok'>> { return { 'errors': [], 'output': 'ok' as const }; }
 }
 
 const passNode = new PassNode();
@@ -479,7 +479,7 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
 // ── Registration / validation fixtures ──────────────────────────────────────
 
 // Sub-DAG used as a reusable component.
-const helperDAG: DAG = {
+const helperDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:helper',
   '@type':    'DAG',
@@ -506,7 +506,7 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
     dispatcher.registerDAG(helperDAG);
 
     // Parent DAG where the embedded-DAG body routes 'success' → end (terminate-completed)
-    const parentWithNullScatter: DAG = {
+    const parentWithNullScatter: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:null-parent',
       '@type':    'DAG',
@@ -547,7 +547,7 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
 
     dispatcher.registerDAG(helperDAG);
 
-    const parentWithMixedRoutes: DAG = {
+    const parentWithMixedRoutes: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:mixed-parent',
       '@type':    'DAG',
@@ -598,7 +598,7 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
     dispatcher.registerDAG(helperDAG);
 
     // All embedded-DAG outputs route to a real parent placement; no nulls
-    const validParent: DAG = {
+    const validParent: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:valid-parent',
       '@type':    'DAG',

@@ -23,8 +23,8 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
@@ -37,7 +37,7 @@ export class WorkState extends NodeStateBase {
   results:    number[] = [];    // gather target: computed results land here
   lastResult: number   = 0;     // scalar written per-item; gathered by 'append'
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       "tasks":      [...this.tasks],
       "results":    [...this.results],
@@ -45,7 +45,7 @@ export class WorkState extends NodeStateBase {
     };
   }
 
-  protected override restoreData(snapshot: JsonObject): void {
+  protected override restoreData(snapshot: JsonObjectType): void {
     const tasks = snapshot['tasks'];
     if (Array.isArray(tasks)) {
       this.tasks = tasks.filter((x): x is number => typeof x === 'number');
@@ -72,7 +72,7 @@ export class SquareWorkerNode extends ScalarNode<WorkState, 'done'> {
   protected override async executeOne(state: WorkState) {
     // Each scatter item is written to metadata under the itemKey ('task').
     const task = state.getMetadata<number>('task') ?? 0;
-    // Store the per-item result in a scalar field. The 'append' gather
+    // StoreInterface the per-item result in a scalar field. The 'append' gather
     // strategy reads this field from the child clone and appends it to
     // state.results on the parent after all items complete.
     state.lastResult = task * task;
@@ -86,7 +86,7 @@ export class SquareWorkerNode extends ScalarNode<WorkState, 'done'> {
 // ---------------------------------------------------------------------------
 
 // #region worker-dag
-export const workerDag: DAG = {
+export const workerDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:square-item',
   '@type':     'DAG',
@@ -116,7 +116,7 @@ export const workerDag: DAG = {
 // ---------------------------------------------------------------------------
 
 // #region parent-dag
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:square-all',
   '@type':     'DAG',

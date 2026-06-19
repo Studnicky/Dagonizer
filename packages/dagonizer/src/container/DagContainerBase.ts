@@ -18,24 +18,24 @@
  */
 
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
-import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
+import type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
 import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
-import type { ObserverRelay } from '../contracts/ObserverRelay.js';
+import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { Batch } from '../entities/batch/Batch.js';
-import type { Item } from '../entities/batch/Item.js';
-import type { JsonObject } from '../entities/json.js';
+import type { ItemType } from '../entities/batch/Item.js';
+import type { JsonObjectType } from '../entities/json.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import { ChannelDispatch } from './ChannelDispatch.js';
-import type { InitMessageShape } from './ChannelDispatch.js';
+import type { InitMessageShapeType } from './ChannelDispatch.js';
 import { DagContainerError } from './DagContainerError.js';
 import { DagOutcome } from './DagOutcome.js';
-import type { BatchRunResult } from './DagOutcome.js';
+import type { BatchRunResultType } from './DagOutcome.js';
 import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED } from './TransportErrorCode.js';
 
 // ---------------------------------------------------------------------------
-// PoolEntry
+// PoolEntryType
 // ---------------------------------------------------------------------------
 
 /**
@@ -43,21 +43,21 @@ import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED } from './TransportE
  * its wired channel, and whether the channel has received a successful
  * init ↔ ready handshake.
  */
-export interface PoolEntry<TWorker> {
+export type PoolEntryType<TWorker> = {
   worker: TWorker;
   channel: MessageChannelInterface;
   initialized: boolean;
 }
 
 // ---------------------------------------------------------------------------
-// DagContainerOptions
+// DagContainerOptionsType
 // ---------------------------------------------------------------------------
 
 /** Default grace period (ms) before a shutdown worker is force-terminated. */
 export const DEFAULT_SHUTDOWN_GRACE_MS = 2000;
 
 /**
- * Module-level defaults for `DagContainerOptions`, following the codebase
+ * Module-level defaults for `DagContainerOptionsType`, following the codebase
  * `*_DEFAULTS` constant convention (cf. `BASE_STORE_DEFAULTS`). Subclasses
  * may spread this constant to fill optional fields without repeating values.
  */
@@ -65,11 +65,11 @@ export const DAG_CONTAINER_DEFAULTS = {
   'shutdownGraceMs': DEFAULT_SHUTDOWN_GRACE_MS,
 } as const;
 
-export interface DagContainerOptions {
+export type DagContainerOptionsType = {
   /** Maximum number of pool entries (workers) to maintain. */
   poolSize: number;
   /** Init shape forwarded to each DagHost on first channel use. */
-  init: InitMessageShape;
+  init: InitMessageShapeType;
   /**
    * Grace period (ms) before a shutting-down worker is force-terminated.
    * Defaults to `DEFAULT_SHUTDOWN_GRACE_MS` (2000 ms). Override by passing
@@ -90,34 +90,34 @@ export abstract class DagContainerBase<
   // Channel → dispatch map. WeakMap so GC'd channels release their dispatches.
   readonly #dispatches: WeakMap<MessageChannelInterface, ChannelDispatch>;
   // Channel → pool entry reverse lookup. Used by releaseChannel and eviction.
-  readonly #channelToEntry: WeakMap<MessageChannelInterface, PoolEntry<TWorker>>;
+  readonly #channelToEntry: WeakMap<MessageChannelInterface, PoolEntryType<TWorker>>;
   // All live pool entries.
-  readonly #pool: PoolEntry<TWorker>[];
+  readonly #pool: PoolEntryType<TWorker>[];
   // Entries available for immediate checkout.
-  readonly #free: PoolEntry<TWorker>[];
+  readonly #free: PoolEntryType<TWorker>[];
   // Promises waiting for a free slot to become available.
   // Each entry carries both a resolve (wake) and reject (abort) so a fired
   // signal can eject a parked waiter without waiting for a free slot.
   readonly #waiters: Array<{ resolve: () => void; reject: (err: Error) => void }>;
   #destroyed: boolean;
   readonly #poolSize: number;
-  readonly #init: InitMessageShape;
+  readonly #init: InitMessageShapeType;
   readonly #shutdownGraceMs: number;
 
   /**
-   * Ergonomic spread defaults for `DagContainerOptions`. Sources from the
+   * Ergonomic spread defaults for `DagContainerOptionsType`. Sources from the
    * module-level `DAG_CONTAINER_DEFAULTS` constant. Subclasses may spread
    * `{ ...DagContainerBase.defaultOptions, poolSize, init, ...overrides }` for
    * explicit control; `shutdownGraceMs` is optional and resolved from
    * `DAG_CONTAINER_DEFAULTS` automatically when omitted.
    */
-  static readonly defaultOptions: Pick<Required<DagContainerOptions>, 'shutdownGraceMs'> =
+  static readonly defaultOptions: Pick<Required<DagContainerOptionsType>, 'shutdownGraceMs'> =
     DAG_CONTAINER_DEFAULTS;
 
-  constructor(options: DagContainerOptions) {
+  constructor(options: DagContainerOptionsType) {
     const { shutdownGraceMs } = { ...DAG_CONTAINER_DEFAULTS, ...options };
     this.#dispatches             = new WeakMap<MessageChannelInterface, ChannelDispatch>();
-    this.#channelToEntry         = new WeakMap<MessageChannelInterface, PoolEntry<TWorker>>();
+    this.#channelToEntry         = new WeakMap<MessageChannelInterface, PoolEntryType<TWorker>>();
     this.#pool                   = [];
     this.#free                   = [];
     this.#waiters                = [];
@@ -132,18 +132,18 @@ export abstract class DagContainerBase<
   // ---------------------------------------------------------------------------
 
   /**
-   * Construct a new worker and its wired channel. Must return a PoolEntry with
+   * Construct a new worker and its wired channel. Must return a PoolEntryType with
    * `initialized: false`. Must NOT attach death listeners or send init — the
    * base handles both.
    */
-  protected abstract composeEntry(): PoolEntry<TWorker>;
+  protected abstract composeEntry(): PoolEntryType<TWorker>;
 
   /**
    * Attach death-detection event listeners to the given entry. Implementations
    * call `this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, reason)` when
    * the worker dies unexpectedly.
    */
-  protected abstract attachDeathListeners(entry: PoolEntry<TWorker>): void;
+  protected abstract attachDeathListeners(entry: PoolEntryType<TWorker>): void;
 
   /**
    * Force-kill the worker. Called during eviction and destroy. Must not throw.
@@ -218,7 +218,7 @@ export abstract class DagContainerBase<
    * Fails all in-flight requests on the channel and evicts the pool entry so a
    * fresh worker is spawned on the next acquire.
    */
-  protected onTransportDeath(entry: PoolEntry<TWorker>, code: string, reason: string): void {
+  protected onTransportDeath(entry: PoolEntryType<TWorker>, code: string, reason: string): void {
     if (this.#destroyed) return;
     this.failChannel(entry.channel, code, reason);
     this.#evict(entry);
@@ -228,8 +228,8 @@ export abstract class DagContainerBase<
   // runDag
   // ---------------------------------------------------------------------------
 
-  async runDag(task: DagTaskInterface<TState, unknown>, options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
-    const relay: ObserverRelay | null = options?.relay ?? null;
+  async runDag(task: DagTaskInterface<TState, unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+    const relay: ObserverRelayInterface | null = options?.relay ?? null;
 
     return this.#withChannel(
       task.context.signal,
@@ -248,28 +248,28 @@ export abstract class DagContainerBase<
 
   /**
    * Run a batch of items through the same DAG in a single transport round-trip.
-   * Returns one `BatchRunResult` per item in the batch, preserving item order.
+   * Returns one `BatchRunResultType` per item in the batch, preserving item order.
    *
    * `task` supplies the DAG name, placement path, timeout, and abort signal.
    * `batch` carries the per-item states. `task.state` is used only for the
    * abort signal and task identity; items come from `batch`.
    *
-   * Never throws — transport failures resolve to transport-error `BatchRunResult`
+   * Never throws — transport failures resolve to transport-error `BatchRunResultType`
    * entries, one per item.
    */
   async runDagBatch(
     task: DagTaskInterface<TState, unknown>,
     batch: Batch<TState>,
-    options?: { readonly relay?: ObserverRelay },
-  ): Promise<BatchRunResult[]> {
-    const relay: ObserverRelay | null = options?.relay ?? null;
+    options?: { readonly relay?: ObserverRelayInterface },
+  ): Promise<BatchRunResultType[]> {
+    const relay: ObserverRelayInterface | null = options?.relay ?? null;
     const correlationId = task.correlationId;
 
     return this.#withChannel(
       task.context.signal,
       async (_channel, dispatch) => {
         const baseRequest = task.toRequest();
-        const batchItems = batch.items().map((item: Item<TState>) => ({
+        const batchItems = batch.items().map((item: ItemType<TState>) => ({
           'id': item.id,
           'snapshot': item.state.snapshot() as { [key: string]: unknown },
         }));
@@ -287,7 +287,7 @@ export abstract class DagContainerBase<
       (err) => {
         const message = err instanceof Error ? err.message : String(err);
         // Return one transport-error result per item.
-        return batch.items().map((item: Item<TState>) =>
+        return batch.items().map((item: ItemType<TState>) =>
           DagOutcome.batchItemTransportError(item.id, correlationId, { message }),
         );
       },
@@ -377,7 +377,7 @@ export abstract class DagContainerBase<
    */
   protected initializeChannel(
     channel: MessageChannelInterface,
-    init: InitMessageShape,
+    init: InitMessageShapeType,
   ): Promise<void> {
     return this.#dispatchFor(channel).init(init);
   }
@@ -397,7 +397,7 @@ export abstract class DagContainerBase<
   // ---------------------------------------------------------------------------
 
   /** Grow the pool by one: composeEntry → attachDeathListeners → register. */
-  #grow(): PoolEntry<TWorker> {
+  #grow(): PoolEntryType<TWorker> {
     const entry = this.composeEntry();
     this.attachDeathListeners(entry);
     this.#pool.push(entry);
@@ -406,7 +406,7 @@ export abstract class DagContainerBase<
   }
 
   /** Send init to the entry's channel if it has not been initialized yet. */
-  async #ensureInitialized(entry: PoolEntry<TWorker>): Promise<void> {
+  async #ensureInitialized(entry: PoolEntryType<TWorker>): Promise<void> {
     if (!entry.initialized) {
       await this.initializeChannel(entry.channel, this.#init);
       entry.initialized = true;
@@ -418,7 +418,7 @@ export abstract class DagContainerBase<
    * force-terminates the worker. Wakes one waiter so a parked acquirer can
    * regrow the pool.
    */
-  #evict(entry: PoolEntry<TWorker>): void {
+  #evict(entry: PoolEntryType<TWorker>): void {
     const poolIdx = this.#pool.indexOf(entry);
     if (poolIdx === -1) return; // already evicted
     this.#pool.splice(poolIdx, 1);
@@ -492,5 +492,5 @@ export abstract class DagContainerBase<
 export { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED };
 
 // Convenience re-exports so subclass files need only one import from this module.
-export type { InitMessageShape };
-export type { JsonObject };
+export type { InitMessageShapeType };
+export type { JsonObjectType };

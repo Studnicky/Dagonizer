@@ -19,26 +19,26 @@
  */
 
 import type {
-  ChatRequest,
-  ChatResponse,
-  ErrorClassification,
-  ToolDefinition,
+  ChatRequestType,
+  ChatResponseType,
+  ErrorClassificationType,
+  ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 
 import type {
   GeminiNanoAvailabilityType,
   LanguageModelStaticInterface,
-  PromptOptionsInterface,
+  PromptOptionsType,
 } from './LanguageModelHost.js';
 import {
   languageModelSessionValidator,
   languageModelStaticValidator,
 } from './LanguageModelHost.js';
 
-export interface GeminiNanoAdapterOptions {
+export type GeminiNanoAdapterOptionsType = {
   readonly maxAttempts?: number;
-}
+};
 
 export class GeminiNanoAdapter extends BaseAdapter {
   /**
@@ -67,11 +67,11 @@ export class GeminiNanoAdapter extends BaseAdapter {
     }
   }
 
-  constructor(options: GeminiNanoAdapterOptions = {}) {
+  constructor(options: GeminiNanoAdapterOptionsType = {}) {
     super(
       'gemini-nano',
       'Browser built-in LanguageModel (on-device)',
-      // Tool calls are emitted via JSON coercion (responseConstraint +
+      // ToolInterface calls are emitted via JSON coercion (responseConstraint +
       // ToolCallCodec.decode) rather than a native function-calling channel.
       { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': false },
       { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS },
@@ -89,7 +89,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
     return (await GeminiNanoAdapter.detect()) === 'available';
   }
 
-  protected async performChat(request: ChatRequest): Promise<ChatResponse> {
+  protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     const lm = GeminiNanoAdapter.languageModel();
     if (lm === undefined) {
       throw new LlmError('window.LanguageModel is not present', Classifications['MODEL_NOT_FOUND']);
@@ -105,7 +105,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
     const rawSession: unknown = await lm.create(initialPrompts === undefined ? undefined : { initialPrompts });
     const session = languageModelSessionValidator.validate(rawSession);
     try {
-      const options: PromptOptionsInterface = {};
+      const options: PromptOptionsType = {};
       if (request.tools.length > 0) {
         options.responseConstraint = this.#toolPlanSchema(request.tools);
       } else if (request.outputSchema.kind === 'schema') {
@@ -131,14 +131,14 @@ export class GeminiNanoAdapter extends BaseAdapter {
     }
   }
 
-  protected override classify(error: unknown): ErrorClassification {
+  protected override classify(error: unknown): ErrorClassificationType {
     const msg = error instanceof Error ? error.message : String(error);
     if (/availability|not present/iu.test(msg)) return Classifications['MODEL_NOT_FOUND'];
     return super.classify(error);
   }
 
-  #collapseUserMessages(request: ChatRequest): string {
-    // Nano sessions take one prompt; concatenate user turns. Tool
+  #collapseUserMessages(request: ChatRequestType): string {
+    // Nano sessions take one prompt; concatenate user turns. ToolInterface
     // results round-tripped from the DAG land as `role: 'tool'`; we
     // surface them as `[tool <name> result] <content>` so the next turn knows.
     return request.messages
@@ -150,7 +150,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       .join('\n\n');
   }
 
-  #toolPlanSchema(tools: readonly ToolDefinition[]): Record<string, unknown> {
+  #toolPlanSchema(tools: readonly ToolDefinitionType[]): Record<string, unknown> {
     // Per-tool variants: each enforces the tool's own inputSchema on
     // `arguments`. Without this Nano gets a free `{}` and tends to
     // hallucinate extra fields (e.g. padding the query with prose) that

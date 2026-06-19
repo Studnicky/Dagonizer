@@ -4,7 +4,7 @@
  */
 
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -20,8 +20,8 @@ export abstract class ReduceNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextInterface<undefined>,
-  ): Promise<NodeOutputInterface<'success'>> {
+    _context: NodeContextType<undefined>,
+  ): Promise<NodeOutputType<'success'>> {
     const items = this.readItems(state);
     const result = this.reduce(items);
     this.writeBack(state, result);

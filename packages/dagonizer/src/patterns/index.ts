@@ -3,15 +3,15 @@
  *
  * Ships:
  *   - `MonadicNode<TState, TOutput, TServices>`: the root node base (the monad —
- *     `execute(batch) → RoutedBatch`), re-exported here from `core` for
+ *     `execute(batch) → RoutedBatchType`), re-exported here from `core` for
  *     co-import with the pattern surface. Per-item pattern bases extend
  *     `ScalarNode` (which extends `MonadicNode`); hot-path nodes extend
  *     `MonadicNode` directly.
- *   - `LlmClient`: minimal chat-shaped service contract; any
- *     `LlmAdapter` satisfies it.
- *   - `TripleStore`: minimal RDF quad-store service contract.
+ *   - `LlmClientInterface`: minimal chat-shaped service contract; any
+ *     `LlmAdapterInterface` satisfies it.
+ *   - `TripleStoreInterface`: minimal RDF quad-store service contract.
  *
- * Tool-shaped patterns (e.g. `ScoutNode`) reference the canonical `Tool`
+ * ToolInterface-shaped patterns (e.g. `ScoutNode`) reference the canonical `ToolInterface`
  * type from `@studnicky/dagonizer/tool` directly — there is no aliased
  * re-export.
  *
@@ -22,12 +22,12 @@
 
 export { MonadicNode } from '../core/MonadicNode.js';
 
-export type { LlmClient } from '../contracts/LlmClient.js';
+export type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
 
 export type {
-  Binding,
-  Quad,
-  SlotPattern,
-  Term,
-  TripleStore,
-} from '../contracts/TripleStore.js';
+  BindingType,
+  QuadType,
+  SlotPatternType,
+  TermType,
+  TripleStoreInterface,
+} from '../contracts/TripleStoreInterface.js';

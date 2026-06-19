@@ -105,7 +105,7 @@ export class StateProjection {
         MemoryStore.lit.bool(shortlistIsbns.has(candidate.book.identity.isbn)), graph);
     }
 
-    // Tool plan: one triple per planned call
+    // ToolInterface plan: one triple per planned call
     for (const call of state.toolPlan) {
       store.assert(run, dag('toolPlanned'), MemoryStore.lit.str(call.name), graph);
     }

@@ -30,9 +30,9 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface, NodeOutputInterface } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer';
 
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import { BookBuilder } from '../entities/Book.ts';
 import { BOOK_NS, GRAPH_MEMORY, MemoryStore, RUN_NS, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -77,11 +77,11 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
   readonly outputs = ['recalled'] as const;
 
   /** Public per-item entry point for tests and dispatch delegation. */
-  public async runItem(state: ArchivistState, context: NodeContextInterface<ArchivistServices>): Promise<NodeOutputInterface<'recalled'>> {
+  public async runItem(state: ArchivistState, context: NodeContextType<ArchivistServices>): Promise<NodeOutputType<'recalled'>> {
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory   = context.services.memory;
     const embedder = context.services.embedder;
 
@@ -171,7 +171,7 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
 
     // ── Collect shortlisted book IRIs from matching runs ──────────────
     const seenIsbns    = new Set<string>();
-    const priorCandidates: Candidate[] = [];
+    const priorCandidates: CandidateType[] = [];
 
     for (const runIri of matchingRunIris) {
       if (priorCandidates.length >= MAX_PRIOR_CANDIDATES) break;

@@ -12,10 +12,10 @@
 
 import { DAGDeriver } from '@studnicky/dagonizer/derive';
 import { Dagonizer, NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
-import type { OperationContract } from '@studnicky/dagonizer/contracts';
-import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
-import type { Chainable } from '@studnicky/dagonizer/contracts';
-import type { DAGDeriverAnnotations, DAGDeriverEmbeddedDAG } from '@studnicky/dagonizer/derive';
+import type { OperationContractType } from '@studnicky/dagonizer/contracts';
+import type { OperationContractFragmentType } from '@studnicky/dagonizer/contracts';
+import type { ChainableType } from '@studnicky/dagonizer/contracts';
+import type { DAGDeriverAnnotationsType, DAGDeriverEmbeddedDAGType } from '@studnicky/dagonizer/derive';
 
 // ---------------------------------------------------------------------------
 // State
@@ -35,7 +35,7 @@ export class PipelineState extends NodeStateBase {
 export class PrepareNode extends ScalarNode<PipelineState, 'success'> {
   readonly name     = 'prepare';
   readonly outputs  = ['success'] as const;
-  override readonly contract: OperationContractFragment ={ "hardRequired": ['input'], "produces": ['intermediate'] };
+  override readonly contract: OperationContractFragmentType ={ "hardRequired": ['input'], "produces": ['intermediate'] };
 
   protected override async executeOne(state: PipelineState) {
     state.intermediate = state.input.toUpperCase();
@@ -46,7 +46,7 @@ export class PrepareNode extends ScalarNode<PipelineState, 'success'> {
 export class ValidateNode extends ScalarNode<PipelineState, 'success' | 'error'> {
   readonly name     = 'validate';
   readonly outputs  = ['success', 'error'] as const;
-  override readonly contract: OperationContractFragment ={ "hardRequired": ['intermediate'], "produces": ['validated'] };
+  override readonly contract: OperationContractFragmentType ={ "hardRequired": ['intermediate'], "produces": ['validated'] };
 
   protected override async executeOne(state: PipelineState) {
     if (state.intermediate.length === 0) return NodeOutputBuilder.of('error');
@@ -62,7 +62,7 @@ export class TransformNode extends ScalarNode<PipelineState, 'success'> {
   // in-DAG contract edge. `produces` declares only in-registry productions a
   // downstream node hardRequires; the cross-boundary export is the embedding
   // contract's concern, so childResult is not declared here.
-  override readonly contract: OperationContractFragment ={ "hardRequired": ['validated'], "produces": [] };
+  override readonly contract: OperationContractFragmentType ={ "hardRequired": ['validated'], "produces": [] };
 
   protected override async executeOne(state: PipelineState) {
     state.childResult = `[${state.intermediate}]`;
@@ -78,7 +78,7 @@ export class InvokePluginNode extends ScalarNode<PipelineState, 'success' | 'err
   // Its `outputs` declare the ports the EmbeddedDAGNode routes on.
   readonly name     = 'invoke-plugin';
   readonly outputs  = ['success', 'error'] as const;
-  override readonly contract: OperationContractFragment ={ "hardRequired": ['intermediate'], "produces": ['childResult'] };
+  override readonly contract: OperationContractFragmentType ={ "hardRequired": ['intermediate'], "produces": ['childResult'] };
 
   protected override async executeOne(_state: PipelineState) {
     return NodeOutputBuilder.of('success');
@@ -92,7 +92,7 @@ export class FinalizeNode extends ScalarNode<PipelineState, 'success'> {
   // flow's emitted result, surfaced via the terminals.emit annotation rather
   // than an in-DAG contract edge. `produces` declares only in-registry
   // productions a downstream node hardRequires, so `final` is not declared here.
-  override readonly contract: OperationContractFragment ={ "hardRequired": ['childResult'], "produces": [] };
+  override readonly contract: OperationContractFragmentType ={ "hardRequired": ['childResult'], "produces": [] };
 
   protected override async executeOne(state: PipelineState) {
     state.final = `done: ${state.childResult}`;
@@ -169,15 +169,15 @@ export const parentDAG = DAGDeriver.derive({
 // #endregion derive
 
 // ---------------------------------------------------------------------------
-// OperationContract: full four-field form (name + hardRequired + produces + outputs)
+// OperationContractType: full four-field form (name + hardRequired + produces + outputs)
 // ---------------------------------------------------------------------------
 
 // #region operation-contract
-// Full OperationContract: name + hardRequired + produces + outputs.
+// Full OperationContractType: name + hardRequired + produces + outputs.
 // Used when contracts are managed as a separate registry rather than
 // co-located on the node. DAGDeriver.derive({ nodes }) projects these
 // automatically via extractContracts; this form is for tooling and display.
-const classifyContract: OperationContract = {
+const classifyContract: OperationContractType = {
   name:         'classify',
   hardRequired: ['input'],
   produces:     ['classification'],
@@ -202,7 +202,7 @@ class GatedState extends NodeStateBase {
 class GatedClassifyNode extends ScalarNode<GatedState, 'success' | 'off-topic' | 'error'> {
   readonly name    = 'classify';
   readonly outputs = ['success', 'off-topic', 'error'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['input'],
     produces:     ['classification'],
   };
@@ -216,7 +216,7 @@ class GatedPlanNode extends ScalarNode<GatedState, 'success'> {
   // result, surfaced via terminals.emit rather than an in-DAG contract edge.
   // `produces` declares only in-registry productions a downstream node
   // hardRequires, so the terminal output is not declared here.
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['classification'],
     produces:     [],
   };
@@ -254,7 +254,7 @@ export const gatedTargetDAG = DAGDeriver.derive({
 class EmitClassifyNode extends ScalarNode<GatedState, 'success' | 'fail' | 'error'> {
   readonly name    = 'classify';
   readonly outputs = ['success', 'fail', 'error'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['input'],
     produces:     ['classification'],
   };
@@ -266,7 +266,7 @@ class EmitPlanNode extends ScalarNode<GatedState, 'success'> {
   readonly outputs = ['success'] as const;
   // plan is the flow's terminal stage; its 'plan' state field is the emitted
   // result, surfaced via terminals.emit rather than an in-DAG contract edge.
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['classification'],
     produces:     [],
   };
@@ -308,7 +308,7 @@ const mixedTerminals = {
     { outcome: 'retry', target: 'classify' },
     { outcome: 'error', emit: { name: 'end-error', outcome: 'failed' } },
   ],
-} satisfies DAGDeriverAnnotations['terminals'];
+} satisfies DAGDeriverAnnotationsType['terminals'];
 
 void mixedTerminals;
 // #endregion terminals-mix
@@ -327,7 +327,7 @@ class ScatterState extends NodeStateBase {
 class ScatterPlanNode extends ScalarNode<ScatterState, 'success'> {
   readonly name    = 'plan';
   readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['input'],
     produces:     ['tasks'],
   };
@@ -337,7 +337,7 @@ class ScatterPlanNode extends ScalarNode<ScatterState, 'success'> {
 class ScoutNode extends ScalarNode<ScatterState, 'success' | 'error'> {
   readonly name    = 'scout';
   readonly outputs = ['success', 'error'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['tasks'],
     produces:     ['scoutResults'],
   };
@@ -350,7 +350,7 @@ class MergeNode extends ScalarNode<ScatterState, 'all-success' | 'partial' | 'al
   // merge is the flow's terminal gather stage; its 'merged' state field is the
   // emitted result, surfaced via terminals.emit rather than an in-DAG contract
   // edge, so the terminal output is not declared in `produces`.
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['scoutResults'],
     produces:     [],
   };
@@ -407,7 +407,7 @@ class PartitionState extends NodeStateBase {
 class PartitionPlanNode extends ScalarNode<PartitionState, 'success'> {
   readonly name    = 'plan';
   readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['input'],
     produces:     ['tasks'],
   };
@@ -420,7 +420,7 @@ class PartitionScoutNode extends ScalarNode<PartitionState, 'success' | 'error' 
   // scout is the flow's terminal scatter stage; its partitioned 'passed' and
   // 'failed' state buckets are the emitted result, surfaced via terminals.emit
   // rather than in-DAG contract edges, so they are not declared in `produces`.
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['tasks'],
     produces:     [],
   };
@@ -443,7 +443,7 @@ const partitionAnnotations = {
       outcomes:    ['success', 'error', 'empty'],
     },
   },
-} satisfies DAGDeriverAnnotations;
+} satisfies DAGDeriverAnnotationsType;
 
 export const partitionFlowDAG = DAGDeriver.derive({
   name:       'partition-flow',
@@ -476,7 +476,7 @@ class AppendState extends NodeStateBase {
 class AppendPlanNode extends ScalarNode<AppendState, 'success'> {
   readonly name    = 'plan';
   readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['input'],
     produces:     ['tasks'],
   };
@@ -489,7 +489,7 @@ class AppendScoutNode extends ScalarNode<AppendState, 'success' | 'error'> {
   // scout is the flow's terminal scatter stage; its 'allResults' state array is
   // the emitted result, surfaced via terminals.emit rather than an in-DAG
   // contract edge, so it is not declared in `produces`.
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['tasks'],
     produces:     [],
   };
@@ -511,7 +511,7 @@ const appendAnnotations = {
       outcomes:    ['success', 'error'],
     },
   },
-} satisfies DAGDeriverAnnotations;
+} satisfies DAGDeriverAnnotationsType;
 
 export const appendFlowDAG = DAGDeriver.derive({
   name:       'append-flow',
@@ -544,7 +544,7 @@ class PageState extends NodeStateBase {
 class FetchNode extends ScalarNode<PageState, 'success' | 'cached' | 'error'> {
   readonly name    = 'fetch';
   readonly outputs = ['success', 'cached', 'error'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['url'],
     produces:     ['html'],
   };
@@ -554,7 +554,7 @@ class FetchNode extends ScalarNode<PageState, 'success' | 'cached' | 'error'> {
 class ParseNode extends ScalarNode<PageState, 'success' | 'error'> {
   readonly name    = 'parse';
   readonly outputs = ['success', 'error'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['html'],
     produces:     ['record'],
   };
@@ -567,7 +567,7 @@ class PersistNode extends ScalarNode<PageState, 'success'> {
   // persist is the flow's terminal stage; its 'saved' state field is the
   // emitted result, surfaced via terminals.emit rather than an in-DAG contract
   // edge, so it is not declared in `produces`.
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['record'],
     produces:     [],
   };
@@ -613,7 +613,7 @@ export const pagePipelineDAG = DAGDeriver.derive({
 // #endregion embedded-dag
 
 // ---------------------------------------------------------------------------
-// embeddedDAGs: typed stateMapping via DAGDeriverEmbeddedDAG<TChildState>
+// embeddedDAGs: typed stateMapping via DAGDeriverEmbeddedDAGType<TChildState>
 // ---------------------------------------------------------------------------
 
 // #region embedded-dag-typed
@@ -632,7 +632,7 @@ const typedEmbeddedDAG = {
     input:  { html:   'parent.html' },     // 'html' must be a key of ParseChildState
     output: { 'parent.record': 'record' }, // 'record' must be a key of ParseChildState
   },
-} satisfies DAGDeriverEmbeddedDAG<ParseChildState>;
+} satisfies DAGDeriverEmbeddedDAGType<ParseChildState>;
 
 void typedEmbeddedDAG;
 // #endregion embedded-dag-typed
@@ -654,7 +654,7 @@ class ColocatedState extends NodeStateBase {
 class ColocatedFetchNode extends ScalarNode<ColocatedState, 'success' | 'cached' | 'error'> {
   readonly name    = 'fetch';
   readonly outputs = ['success', 'cached', 'error'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['url'],
     produces:     ['raw'],
   };
@@ -666,7 +666,7 @@ class ColocatedFetchNode extends ScalarNode<ColocatedState, 'success' | 'cached'
 class ColocatedPlanNode extends ScalarNode<ColocatedState, 'success'> {
   readonly name    = 'plan';
   readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['raw'],
     produces:     ['plan'],
   };
@@ -679,7 +679,7 @@ class ColocatedExecuteNode extends ScalarNode<ColocatedState, 'success'> {
   // execute is the flow's terminal stage; its 'done' state field is the emitted
   // result, surfaced via terminals.emit rather than an in-DAG contract edge, so
   // it is not declared in `produces`.
-  override readonly contract: OperationContractFragment = {
+  override readonly contract: OperationContractFragmentType = {
     hardRequired: ['plan'],
     produces:     [],
   };
@@ -722,18 +722,18 @@ colocatedDispatcher.registerDAG(colocatedDAG);
 // ---------------------------------------------------------------------------
 
 // #region extract-contracts
-// extractContracts projects OperationContract[] from the node registry.
+// extractContracts projects OperationContractType[] from the node registry.
 // Nodes carrying EMPTY_CONTRACT_FRAGMENT (both arrays empty) are skipped.
 const contracts = DAGDeriver.extractContracts([fetchNode, planNode, executeNode]);
-// contracts is OperationContract[]; each entry carries name, outputs, hardRequired, produces.
+// contracts is OperationContractType[]; each entry carries name, outputs, hardRequired, produces.
 void contracts;
 // #endregion extract-contracts
 
 // ---------------------------------------------------------------------------
-// Chainable<A, B>: compile-time proof that B's hardRequired is covered by A's produces
+// ChainableType<A, B>: compile-time proof that B's hardRequired is covered by A's produces
 // ---------------------------------------------------------------------------
 
-// Typed-contract nodes for Chainable demonstration (as const literal tuples).
+// Typed-contract nodes for ChainableType demonstration (as const literal tuples).
 class ChainFetchNode extends ScalarNode<ColocatedState, 'success'> {
   readonly name    = 'fetch';
   readonly outputs = ['success'] as const;
@@ -755,16 +755,16 @@ class ChainParseNode extends ScalarNode<ColocatedState, 'success'> {
 }
 
 // #region chainable
-// Chainable<A, B> resolves to `true` when B's hardRequired is fully satisfied
+// ChainableType<A, B> resolves to `true` when B's hardRequired is fully satisfied
 // by A's produces; `never` otherwise. Catches contract drift at compile time.
 const chainFetch = new ChainFetchNode();
 const chainParse = new ChainParseNode();
 
 // Compiles: 'raw' in chainFetch.produces satisfies chainParse.hardRequired.
-type FetchThenParse = Chainable<typeof chainFetch, typeof chainParse>;   // true
+type FetchThenParse = ChainableType<typeof chainFetch, typeof chainParse>;   // true
 
 // Would not compile: chainParse.produces is ['record'], not ['raw'].
-// type BackwardChain = Chainable<typeof chainParse, typeof chainFetch>; // never
+// type BackwardChain = ChainableType<typeof chainParse, typeof chainFetch>; // never
 
 void chainFetch;
 void chainParse;

@@ -2,10 +2,10 @@
  * batch-container-transport.test.ts
  *
  * Tests for the batch-native container transport (Wave 2):
- *   (a) Single-item request(): items[0] is unpacked into a flat DagOutcomeInterface.
- *   (b) Multi-item requestBatch(): N items produce N BatchRunResult entries, each
+ *   (a) Single-item request(): items[0] is unpacked into a flat DagOutcomeType.
+ *   (b) Multi-item requestBatch(): N items produce N BatchRunResultType entries, each
  *       carrying its own id, terminalOutput, stateSnapshot, errors, intermediates.
- *   (c) Batch abort: aborting mid-batch sends an 'abort' BridgeMessage; the result
+ *   (c) Batch abort: aborting mid-batch sends an 'abort' BridgeMessageType; the result
  *       is determined by the host's response (no client-side fabrication on abort).
  *   (d) Batch send failure: when channel.send throws before the result arrives,
  *       all items resolve to transport-error BatchRunResults.
@@ -17,19 +17,19 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
-import type { DagContainerOptions, PoolEntry } from '../../src/container/DagContainerBase.js';
+import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
 import {
   DAG_CONTAINER_TRANSPORT,
   DagOutcome,
 } from '../../src/container/DagOutcome.js';
-import type { BatchRunResult, DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { BatchRunResultType, DagOutcomeType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
-import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
-import type { ExecutionRequest } from '../../src/entities/executor/ExecutionRequest.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
+import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
@@ -41,11 +41,11 @@ import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 class TestState extends NodeStateBase {
   value: number = 0;
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return { 'value': this.value };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     const v = snap['value'];
     if (typeof v === 'number') this.value = v;
   }
@@ -55,7 +55,7 @@ class TestState extends NodeStateBase {
 // Helpers: makeTask, SingleChannelContainer
 // ---------------------------------------------------------------------------
 
-const NOOP_INIT: DagContainerOptions['init'] = {
+const NOOP_INIT: DagContainerOptionsType['init'] = {
   'registryModule': 'test',
   'registryVersion': '0.0.0',
   'servicesConfig': {},
@@ -81,8 +81,8 @@ function makeTask(
       'nodeName': 'test-node',
       signal,
       'services': undefined,
-    } as NodeContextInterface<undefined>,
-    toRequest(): ExecutionRequest {
+    } as NodeContextType<undefined>,
+    toRequest(): ExecutionRequestType {
       return {
         'dagName': 'test-dag',
         'placementPath': [],
@@ -116,11 +116,11 @@ class SingleChannelContainer extends DagContainerBase<TestState, null> {
 
   protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
 
-  protected override composeEntry(): PoolEntry<null> {
+  protected override composeEntry(): PoolEntryType<null> {
     return { 'worker': null, 'channel': this.#channel, 'initialized': true };
   }
 
-  protected override attachDeathListeners(_entry: PoolEntry<null>): void { /* no-op */ }
+  protected override attachDeathListeners(_entry: PoolEntryType<null>): void { /* no-op */ }
   protected override terminateWorker(_worker: null): void { /* no-op */ }
   protected override awaitWorkerExit(_worker: null): Promise<void> {
     return new Promise(() => { /* never */ });
@@ -128,12 +128,12 @@ class SingleChannelContainer extends DagContainerBase<TestState, null> {
 }
 
 // ---------------------------------------------------------------------------
-// (a) Single-item: request() unpacks items[0] into DagOutcomeInterface
+// (a) Single-item: request() unpacks items[0] into DagOutcomeType
 // ---------------------------------------------------------------------------
 
 void describe('batch-container-transport: (a) single-item request unpacks items[0]', () => {
 
-  void it('runDag() items[0] terminalOutcome maps to DagOutcomeInterface.terminalOutput', async () => {
+  void it('runDag() items[0] terminalOutcome maps to DagOutcomeType.terminalOutput', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const container = new SingleChannelContainer(parentSide);
 
@@ -157,7 +157,7 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
 
     const ac = new AbortController();
     const task = makeTask('single-1', ac.signal);
-    const outcome: DagOutcomeInterface = await container.runDag(task);
+    const outcome: DagOutcomeType = await container.runDag(task);
 
     // items[0].terminalOutcome → outcome.terminalOutput
     assert.strictEqual(outcome.terminalOutput, 'completed');
@@ -197,7 +197,7 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
 });
 
 // ---------------------------------------------------------------------------
-// (b) Multi-item: requestBatch() → N BatchRunResult entries
+// (b) Multi-item: requestBatch() → N BatchRunResultType entries
 // ---------------------------------------------------------------------------
 
 void describe('batch-container-transport: (b) multi-item requestBatch returns N results', () => {
@@ -248,7 +248,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
     // Use the first item's task for task identity (correlationId / abort signal).
     const task = makeTask('batch-1', ac.signal, stateA);
 
-    const results: BatchRunResult[] = await container.runDagBatch(task, batch);
+    const results: BatchRunResultType[] = await container.runDagBatch(task, batch);
 
     assert.strictEqual(results.length, 3);
 
@@ -268,7 +268,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const container = new SingleChannelContainer(parentSide);
 
-    const receivedRequests: BridgeMessage[] = [];
+    const receivedRequests: BridgeMessageType[] = [];
 
     hostSide.onMessage((msg) => {
       if (msg.kind === 'init') {
@@ -322,9 +322,9 @@ void describe('batch-container-transport: (d) send failure returns transport-err
   void it('when channel.send throws, runDagBatch returns transport-error results for each item', async () => {
     // Build a channel whose send throws immediately.
     class FailSendChannel implements MessageChannelInterface {
-      #onMessageHandler: ((msg: BridgeMessage) => void) | null = null;
+      #onMessageHandler: ((msg: BridgeMessageType) => void) | null = null;
 
-      send(msg: BridgeMessage): void {
+      send(msg: BridgeMessageType): void {
         // Allow init/ready handshake to succeed; fail only execute messages.
         if (msg.kind === 'execute') {
           throw new Error('channel closed');
@@ -332,11 +332,11 @@ void describe('batch-container-transport: (d) send failure returns transport-err
         // No-op for other message types.
       }
 
-      onMessage(handler: (msg: BridgeMessage) => void): void {
+      onMessage(handler: (msg: BridgeMessageType) => void): void {
         this.#onMessageHandler = handler;
       }
 
-      sendToHandler(msg: BridgeMessage): void {
+      sendToHandler(msg: BridgeMessageType): void {
         this.#onMessageHandler?.(msg);
       }
 
@@ -349,7 +349,7 @@ void describe('batch-container-transport: (d) send failure returns transport-err
     // Trigger the init handshake by replying with ready after init is sent.
     // We use a wrapper that intercepts the first 'init' send and fakes the ready.
     const realSend = failChannel.send.bind(failChannel);
-    failChannel.send = (msg: BridgeMessage): void => {
+    failChannel.send = (msg: BridgeMessageType): void => {
       if (msg.kind === 'init') {
         // Queue the ready reply so the dispatch.init() resolves.
         setImmediate(() => {

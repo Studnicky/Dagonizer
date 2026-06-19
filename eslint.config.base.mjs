@@ -2,6 +2,8 @@ import js from '@eslint/js';
 import importPlugin from 'eslint-plugin-import-x';
 import tseslint from 'typescript-eslint';
 
+import { noocodec } from './eslint-rules/noocodec.mjs';
+
 /**
  * Inline canonical-naming plugin (§2.1). No new npm dependency: these rules
  * are defined in-config and ride the existing per-package flat configs.
@@ -169,6 +171,7 @@ export function dagonizerEslintConfig(tsconfigRootDir, options = {}) {
         '@typescript-eslint': tseslint.plugin,
         'import-x': importPlugin,
         'canonical-naming': canonicalNamingPlugin,
+        'noocodec': noocodec,
       },
       rules: {
         ...js.configs.recommended.rules,
@@ -263,6 +266,16 @@ export function dagonizerEslintConfig(tsconfigRootDir, options = {}) {
         // Type+value collision: a module must not export `type X` and `const X`
         // under one identifier (inline plugin defined above).
         'canonical-naming/no-type-value-collision': 'error',
+
+        // Type substrate convention (ported @noocodec rule): types are DATA
+        // structures (every exported `type` alias ends in `Type`); interfaces
+        // are CONTRACTS (every `interface` carries a method/call/construct
+        // signature). A method-less data shape must be a `type`, not an
+        // `interface`. The suffix keeps a type distinct from a runtime/value
+        // import at the call site.
+        'noocodec/type-alias-must-end-type': 'error',
+        'noocodec/interface-must-be-contract': 'error',
+        'noocodec/interface-must-end-interface': 'error',
 
         'no-restricted-syntax': [
           'error',

@@ -25,8 +25,8 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { DAGHandoff, JsonObject } from '@studnicky/dagonizer/entities';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
 import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
@@ -39,14 +39,14 @@ export class PipelineState extends NodeStateBase {
   items:   string[] = [];   // items accumulated by DAG A
   summary: string   = '';   // written by DAG B
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       "items":   [...this.items],
       "summary": this.summary,
     };
   }
 
-  protected override restoreData(snapshot: JsonObject): void {
+  protected override restoreData(snapshot: JsonObjectType): void {
     const items = snapshot['items'];
     if (Array.isArray(items)) {
       this.items = items.filter((x): x is string => typeof x === 'string');
@@ -112,7 +112,7 @@ export class SummarizeNode extends ScalarNode<PipelineState, 'done'> {
 // ---------------------------------------------------------------------------
 
 // #region dag-a
-export const dagA: DAG = {
+export const dagA: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:pipeline-a',
   '@type':     'DAG',
@@ -158,7 +158,7 @@ export const dagA: DAG = {
 // ---------------------------------------------------------------------------
 
 // #region dag-b
-export const dagB: DAG = {
+export const dagB: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:pipeline-b',
   '@type':     'DAG',
@@ -194,7 +194,7 @@ export const dagB: DAG = {
  * dispatcher catches all errors.
  */
 export class QueueChannel implements HandoffChannelInterface {
-  async publish(handoff: DAGHandoff): Promise<void> {
+  async publish(handoff: DAGHandoffType): Promise<void> {
     // await myQueueSdk.send(JSON.stringify(handoff));
     void handoff;
   }

@@ -1,5 +1,5 @@
 /**
- * Batch: an immutable, ordered collection of `Item<TState>` values.
+ * Batch: an immutable, ordered collection of `ItemType<TState>` values.
  *
  * Every mutating operation (map, filter, partition, concat) returns a new
  * `Batch` rather than modifying in place. The single private field `#items`
@@ -7,12 +7,12 @@
  * class for every instance.
  */
 
-import type { Item, ItemId } from './Item.js';
+import type { ItemType, ItemIdType } from './Item.js';
 
 export class Batch<TState> {
-  readonly #items: readonly Item<TState>[];
+  readonly #items: readonly ItemType<TState>[];
 
-  private constructor(items: readonly Item<TState>[]) {
+  private constructor(items: readonly ItemType<TState>[]) {
     this.#items = items;
   }
 
@@ -20,7 +20,7 @@ export class Batch<TState> {
    * Creates a size-1 batch containing a single state value.
    * Uses `'0'` as the default item id when none is provided.
    */
-  static of<TState>(state: TState, id: ItemId = '0'): Batch<TState> {
+  static of<TState>(state: TState, id: ItemIdType = '0'): Batch<TState> {
     return new Batch<TState>([{ id, state }]);
   }
 
@@ -30,7 +30,7 @@ export class Batch<TState> {
   }
 
   /** Creates a batch from an existing array of items. Order is preserved. */
-  static from<TState>(items: readonly Item<TState>[]): Batch<TState> {
+  static from<TState>(items: readonly ItemType<TState>[]): Batch<TState> {
     return new Batch<TState>(items);
   }
 
@@ -43,10 +43,10 @@ export class Batch<TState> {
    * Maps state values through `fn`, preserving item ids and order.
    * Returns a new `Batch<U>` with the transformed states.
    */
-  map<U>(fn: (state: TState, id: ItemId) => U): Batch<U> {
-    const mapped: Item<U>[] = new Array(this.#items.length);
+  map<U>(fn: (state: TState, id: ItemIdType) => U): Batch<U> {
+    const mapped: ItemType<U>[] = new Array(this.#items.length);
     for (let i = 0; i < this.#items.length; i++) {
-      const item = this.#items[i] as Item<TState>;
+      const item = this.#items[i] as ItemType<TState>;
       mapped[i] = { 'id': item.id, 'state': fn(item.state, item.id) };
     }
     return new Batch<U>(mapped);
@@ -56,8 +56,8 @@ export class Batch<TState> {
    * Returns a new batch containing only items for which `fn` returns `true`.
    * Order among retained items is preserved.
    */
-  filter(fn: (state: TState, id: ItemId) => boolean): Batch<TState> {
-    const kept: Item<TState>[] = [];
+  filter(fn: (state: TState, id: ItemIdType) => boolean): Batch<TState> {
+    const kept: ItemType<TState>[] = [];
     for (const item of this.#items) {
       if (fn(item.state, item.id)) {
         kept.push(item);
@@ -71,9 +71,9 @@ export class Batch<TState> {
    * key to sub-batch. Item order within each group is preserved.
    */
   partition<K extends string>(
-    fn: (state: TState, id: ItemId) => K,
+    fn: (state: TState, id: ItemIdType) => K,
   ): ReadonlyMap<K, Batch<TState>> {
-    const buckets = new Map<K, Item<TState>[]>();
+    const buckets = new Map<K, ItemType<TState>[]>();
     for (const item of this.#items) {
       const key = fn(item.state, item.id);
       const bucket = buckets.get(key);
@@ -99,7 +99,7 @@ export class Batch<TState> {
   }
 
   /** Returns item ids in order. */
-  ids(): readonly ItemId[] {
+  ids(): readonly ItemIdType[] {
     return this.#items.map((item) => item.id);
   }
 
@@ -107,20 +107,20 @@ export class Batch<TState> {
    * Returns the item at index `i`.
    * Throws `RangeError` when `i` is out of bounds.
    */
-  row(i: number): Item<TState> {
+  row(i: number): ItemType<TState> {
     if (i < 0 || i >= this.#items.length) {
       throw new RangeError(`Batch.row(${i}): index out of bounds (size ${this.#items.length})`);
     }
-    return this.#items[i] as Item<TState>;
+    return this.#items[i] as ItemType<TState>;
   }
 
   /** Returns all items as a readonly array. */
-  items(): readonly Item<TState>[] {
+  items(): readonly ItemType<TState>[] {
     return this.#items;
   }
 
   /** Iterates over all items in order. */
-  [Symbol.iterator](): Iterator<Item<TState>> {
+  [Symbol.iterator](): Iterator<ItemType<TState>> {
     return this.#items[Symbol.iterator]();
   }
 }

@@ -18,7 +18,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import type { Binding } from '../memory/MemoryStore.ts';
 import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
@@ -37,7 +37,7 @@ export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 
   readonly name = 'recommend-similar';
   readonly outputs = ['seeded', 'empty'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory = context.services.memory;
     const currentGraph = MemoryStore.stateGraphIri(state.runId).value;
 

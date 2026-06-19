@@ -4,8 +4,8 @@ import { describe, it } from 'node:test';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import {
   ConfigurationError,
   DAGError,
@@ -25,7 +25,7 @@ void describe('Dagonizer single-node routing', () => {
     dispatcher.registerNode(makeNode('plan', ['success'], () => 'success'));
     dispatcher.registerNode(makeNode('reject', ['success'], () => 'success'));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:classify-route',
       '@type':    'DAG',
@@ -61,7 +61,7 @@ void describe('Dagonizer single-node routing', () => {
     // without requiring a second registration.
     dispatcher.registerNode(makeNode('rogue', ['success'], () => 'phantom'));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:rogue',
       '@type':    'DAG',
@@ -97,7 +97,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
     class DoubleNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'double';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'success'>> {
         const item = state.getMetadata<number>('item');
         if (item === undefined) throw new Error('no item');
         seen.push(item);
@@ -106,7 +106,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
     }
     dispatcher.registerNode(new DoubleNode());
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:fan',
       '@type':    'DAG',
@@ -137,7 +137,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('noop', ['success'], () => 'success'));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:empty',
       '@type':    'DAG',
@@ -172,7 +172,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
     class IncNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'inc';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'success'>> {
         const s = state as NestState;
         s.result = (s.childValue ?? 0) + 1;
         return { 'errors': [], 'output': 'success' as const };
@@ -181,7 +181,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
     dispatcher.registerNode(new IncNode());
     dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
 
-    const child: DAG = {
+    const child: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:child',
       '@type':    'DAG',
@@ -196,7 +196,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
       ],
     };
     // Parent DAG: embedded-DAG invocation routes to a parent-owned terminal node.
-    const parent: DAG = {
+    const parent: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:parent',
       '@type':    'DAG',
@@ -229,7 +229,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
   void it('rejects scatter placement referencing an unregistered DAG', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:orphan',
       '@type':    'DAG',
@@ -257,7 +257,7 @@ void describe('Dagonizer validation', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('op', ['success'], () => 'success'));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:dup',
       '@type':    'DAG',
@@ -280,7 +280,7 @@ void describe('Dagonizer validation', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('op', ['success'], () => 'success'));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:noentry',
       '@type':    'DAG',
@@ -302,7 +302,7 @@ void describe('Dagonizer validation', () => {
     class BadNode extends ScalarNode<NodeStateBase, string> {
       readonly name = 'bad';
       readonly outputs = ['success'] as const;
-      protected override async executeOne(): Promise<NodeOutputInterface<string>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected override async executeOne(): Promise<NodeOutputType<string>> { return { 'errors': [], 'output': 'success' as const }; }
       override validate() { return { 'valid': false, 'errors': ['bad config'] }; }
     }
     assert.throws(() => dispatcher.registerNode(new BadNode()), DAGError);
@@ -328,7 +328,7 @@ void describe('Dagonizer validation', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('op', ['success'], () => 'success'));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:once',
       '@type':    'DAG',
@@ -349,7 +349,7 @@ void describe('Dagonizer validation', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('op2', ['success'], () => 'success'));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:dup-dag',
       '@type':    'DAG',
@@ -367,7 +367,7 @@ void describe('Dagonizer validation', () => {
     // Idempotent by identity: re-registering the SAME object is a no-op.
     assert.doesNotThrow(() => dispatcher.registerDAG(dag));
     // A DIFFERENT object under the same name is a real collision → throws.
-    const other: DAG = { ...dag };
+    const other: DAGType = { ...dag };
     assert.throws(() => dispatcher.registerDAG(other), DAGError);
   });
 });
@@ -378,7 +378,7 @@ void describe('Dagonizer iterative execution', () => {
     dispatcher.registerNode(makeNode('a', ['success'], () => 'success'));
     dispatcher.registerNode(makeNode('b', ['success'], () => 'success'));
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:iter',
       '@type':    'DAG',

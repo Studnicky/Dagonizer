@@ -21,13 +21,13 @@ export const ProgressKeySchema = {
 } as const;
 
 /** Union type derived from `ProgressKeySchema` via `json-schema-to-ts`. */
-export type ProgressKey = FromSchema<typeof ProgressKeySchema>;
+export type ProgressKeyType = FromSchema<typeof ProgressKeySchema>;
 
 /** Reserved progress metadata keys used by the dispatcher. */
 export const ProgressKeys = {
   'SCATTER': '__dagonizer_scatter_progress__',
   'WORK_SET': '__dagonizer_workset_progress__',
-} as const satisfies Record<string, ProgressKey>;
+} as const satisfies Record<string, ProgressKeyType>;
 
 /**
  * Reserved metadata key used by the scatter scheduler to persist per-placement

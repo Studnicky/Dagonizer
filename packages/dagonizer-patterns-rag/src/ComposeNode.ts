@@ -10,9 +10,9 @@
  */
 
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
-import { LlmDispatchNode, type RagServices } from './LlmDispatchNode.js';
+import { LlmDispatchNode, type RagServicesType } from './LlmDispatchNode.js';
 
 export abstract class ComposeNode<
   TState extends NodeStateInterface,
@@ -22,8 +22,8 @@ export abstract class ComposeNode<
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextInterface<RagServices>,
-  ): Promise<NodeOutputInterface<'success'>> {
+    context: NodeContextType<RagServicesType>,
+  ): Promise<NodeOutputType<'success'>> {
     const response = await this.dispatch(state, context);
     const draft = this.extractContent(response);
     this.applyDraft(state, draft);

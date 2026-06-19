@@ -18,7 +18,7 @@
  * check respects placement boundaries.
  */
 
-import type { OperationContract } from '../contracts/OperationContract.js';
+import type { OperationContractType } from '../contracts/OperationContract.js';
 import { DAGError } from '../errors/DAGError.js';
 
 /** Co-located defaults for `ContractRegistryValidator.validate()` options. */
@@ -32,7 +32,7 @@ export class ContractRegistryValidator {
    * `produces ↔ hardRequired` edge rule as `DAGDeriver.edges`.
    */
   private static composeUpstreamProducers(
-    contracts: readonly OperationContract[],
+    contracts: readonly OperationContractType[],
   ): Map<string, Set<string>> {
     // upstreamProducers[B] = set of all field paths produced by any ancestor of B.
     // We compute this via transitive closure over the direct-edge graph.
@@ -56,7 +56,7 @@ export class ContractRegistryValidator {
     // (nodes that can reach it via topological paths).
     // Index contracts by name once for O(1) lookup inside the BFS loop,
     // avoiding an O(n) linear scan per iteration.
-    const contractByName = new Map<string, OperationContract>(
+    const contractByName = new Map<string, OperationContractType>(
       contracts.map((c) => [c.name, c]),
     );
 
@@ -104,7 +104,7 @@ export class ContractRegistryValidator {
    *   path that no node in the registry `hardRequires`.
    */
   static validate(
-    contracts: readonly OperationContract[],
+    contracts: readonly OperationContractType[],
     options: { entrypointName: string } = CONTRACT_VALIDATION_DEFAULTS,
   ): void {
     const { entrypointName } = { ...CONTRACT_VALIDATION_DEFAULTS, ...options };

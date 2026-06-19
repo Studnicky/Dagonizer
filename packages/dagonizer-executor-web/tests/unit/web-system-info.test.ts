@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { RecommendedWorkerCountConfig } from '@studnicky/dagonizer/entities';
+import type { RecommendedWorkerCountConfigType } from '@studnicky/dagonizer/entities';
 
 import { WebSystemInfo } from '../../src/WebSystemInfo.js';
 
@@ -17,7 +17,7 @@ import { WebSystemInfo } from '../../src/WebSystemInfo.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function config(overrides: Partial<RecommendedWorkerCountConfig> = {}): RecommendedWorkerCountConfig {
+function config(overrides: Partial<RecommendedWorkerCountConfigType> = {}): RecommendedWorkerCountConfigType {
   return {
     'maximumWorkers': 8,
     'mainThreadReservation': 1,

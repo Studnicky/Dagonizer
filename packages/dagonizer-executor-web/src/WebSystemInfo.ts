@@ -15,7 +15,7 @@
 
 import type { SystemInfoInterface } from '@studnicky/dagonizer/contracts';
 import { SystemInfo } from '@studnicky/dagonizer/entities';
-import type { RecommendedWorkerCountConfig } from '@studnicky/dagonizer/entities';
+import type { RecommendedWorkerCountConfigType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // WebNavigatorProbes: injectable navigator probe surface
@@ -23,16 +23,16 @@ import type { RecommendedWorkerCountConfig } from '@studnicky/dagonizer/entities
 
 /**
  * Injectable navigator probes for `WebSystemInfo`.
- * Mirrors `OsServices` in `NodeSystemInfo`: a typed boundary object so tests
+ * Mirrors `OsServicesInterface` in `NodeSystemInfo`: a typed boundary object so tests
  * inject fake values without touching browser globals.
  */
-export interface WebNavigatorProbes {
+export type WebNavigatorProbesType = {
   /**
    * Number of logical processors available to the browser context.
    * Maps to `navigator.hardwareConcurrency`.
    */
   readonly hardwareConcurrency: number;
-}
+};
 
 // ---------------------------------------------------------------------------
 // WebSystemInfoProbes: constructor DI bag
@@ -42,14 +42,14 @@ export interface WebNavigatorProbes {
  * Injectable environment probes for WebSystemInfo.
  * All fields are optional; each has a documented safe fallback.
  */
-export interface WebSystemInfoProbes {
+export type WebSystemInfoProbesType = {
   /**
    * Number of logical processors available to the browser context.
    * Defaults to 1 when absent or zero (safe fallback for restricted contexts).
    * Maps to `navigator.hardwareConcurrency`.
    */
   readonly hardwareConcurrency?: number;
-}
+};
 
 // ---------------------------------------------------------------------------
 // DEFAULT_WEB_PROBES: production default reads real navigator
@@ -67,7 +67,7 @@ function readNavigatorHardwareConcurrency(): number {
   return (typeof hc === 'number' && hc > 0) ? hc : 1;
 }
 
-export const DEFAULT_WEB_PROBES: WebNavigatorProbes = {
+export const DEFAULT_WEB_PROBES: WebNavigatorProbesType = {
   get 'hardwareConcurrency'(): number { return readNavigatorHardwareConcurrency(); },
 };
 
@@ -78,14 +78,14 @@ export const DEFAULT_WEB_PROBES: WebNavigatorProbes = {
 export class WebSystemInfo implements SystemInfoInterface {
   readonly #hardwareConcurrency: number;
 
-  constructor(probes: WebSystemInfoProbes = {}) {
+  constructor(probes: WebSystemInfoProbesType = {}) {
     // Safe fallback: 1 when probe is absent, zero, or negative.
     this.#hardwareConcurrency = (probes.hardwareConcurrency !== undefined && probes.hardwareConcurrency > 0)
       ? probes.hardwareConcurrency
       : 1;
   }
 
-  recommendedWorkerCount(config: RecommendedWorkerCountConfig): number {
+  recommendedWorkerCount(config: RecommendedWorkerCountConfigType): number {
     return SystemInfo.recommendedWorkerCount(config, {
       'parallelism': this.#hardwareConcurrency,
       'freeMemoryBytes': null,

@@ -7,20 +7,20 @@
  * items is dispatched as one `executeBatch` call, then acked as one `ackBatch`
  * call.
  *
- * The companion `ScatterItemBatchResult` envelope is the driver's batch return
- * shape (one `ScatterItemResult` per item in the batch). It is part of the
+ * The companion `ScatterItemBatchResultType` envelope is the driver's batch return
+ * shape (one `ScatterItemResultType` per item in the batch). It is part of the
  * contract surface, so it lives here beside the contract.
  */
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import type { ScatterItemResult } from './ScatterPoolDriver.js';
+import type { ScatterItemResultType } from './ScatterPoolDriver.js';
 
 /**
  * Result envelope for a batch execution. One result per item in the batch.
  */
-export type ScatterItemBatchResult<TState extends NodeStateInterface> = {
-  results: ScatterItemResult<TState>[];
+export type ScatterItemBatchResultType<TState extends NodeStateInterface> = {
+  results: ScatterItemResultType<TState>[];
 };
 
 /**
@@ -31,6 +31,6 @@ export type ScatterItemBatchResult<TState extends NodeStateInterface> = {
  * batch; all DAG/state mutation logic lives in the implementor, not the buffer.
  */
 export interface ReservoirDriverInterface<TState extends NodeStateInterface> {
-  executeBatch(items: { index: number; item: unknown; bufferKey: string }[]): Promise<ScatterItemBatchResult<TState>>;
-  ackBatch(batchResult: ScatterItemBatchResult<TState>): Promise<void>;
+  executeBatch(items: { index: number; item: unknown; bufferKey: string }[]): Promise<ScatterItemBatchResultType<TState>>;
+  ackBatch(batchResult: ScatterItemBatchResultType<TState>): Promise<void>;
 }

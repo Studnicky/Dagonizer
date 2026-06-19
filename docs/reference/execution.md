@@ -33,7 +33,7 @@ Iterate stage results as they complete:
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { NodeResultInterface } from '@studnicky/dagonizer';
+import type { NodeResultType } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const dispatcher: Dagonizer<MyState>;
@@ -46,7 +46,7 @@ for await (const node of execution) {
 const result = await execution; // cached, no second run
 ```
 
-Each yielded `NodeResultInterface<TState>` carries:
+Each yielded `NodeResultType<TState>` carries:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -54,7 +54,7 @@ Each yielded `NodeResultInterface<TState>` carries:
 | `output` | `string \| null` | Output name returned by the operation; `null` when no route was emitted |
 | `skipped` | `boolean` | `true` for an empty scatter source that bypassed execution |
 | `state` | `TState` | Reference to the shared state object (mutated in place) |
-| `intermediateResults` | `readonly NodeResultInterface<TState>[]` | Per-step results from composite nodes (scatter / embedded-DAG); `[]` for leaf nodes |
+| `intermediateResults` | `readonly NodeResultType<TState>[]` | Per-step results from composite nodes (scatter / embedded-DAG); `[]` for leaf nodes |
 
 For scatter and embedded-DAG placements, the iterator first yields intermediate results for each constituent clone or inner node, then yields the group result.
 
@@ -64,22 +64,22 @@ Phase placements (`PhaseNode`) run out of band and do not yield through the iter
 
 ### `.then(onfulfilled, onrejected)`
 
-`Execution` implements `PromiseLike`. Await it for the final `ExecutionResultInterface<TState>`:
+`Execution` implements `PromiseLike`. Await it for the final `ExecutionResultType<TState>`:
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const dispatcher: Dagonizer<MyState>;
 declare const state: MyState;
 
-const result: ExecutionResultInterface<MyState> = await dispatcher.execute('my-flow', state);
+const result: ExecutionResultType<MyState> = await dispatcher.execute('my-flow', state);
 ```
 
 If the iterator has already been consumed, the cached result is returned; the generator is not re-run.
 
-`ExecutionResultInterface<TState>` carries:
+`ExecutionResultType<TState>` carries:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -93,10 +93,10 @@ If the iterator has already been consumed, the cached result is returned; the ge
 `InterruptionInfo`:
 
 ```ts twoslash
-import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-declare const result: ExecutionResultInterface<NodeStateInterface>;
+declare const result: ExecutionResultType<NodeStateInterface>;
 const interrupted = result.interruptedAt;
 if (interrupted !== null) {
   const nodeName: string = interrupted.nodeName;
@@ -161,7 +161,7 @@ const result = await execution; // same run, cached
 console.log(nodes, result.cursor);
 ```
 
-The iterator never throws. Cancellation and operation errors resolve to a final `ExecutionResultInterface` with a non-`null` `cursor`, populated `interruptedAt`, and the appropriate `state.lifecycle` kind.
+The iterator never throws. Cancellation and operation errors resolve to a final `ExecutionResultType` with a non-`null` `cursor`, populated `interruptedAt`, and the appropriate `state.lifecycle` kind.
 
 ## Related guides
 

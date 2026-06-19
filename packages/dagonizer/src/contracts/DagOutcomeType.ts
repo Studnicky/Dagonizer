@@ -1,5 +1,5 @@
 /**
- * DagOutcomeInterface: adapter contract for the result returned by a
+ * DagOutcomeType: adapter contract for the result returned by a
  * `DagContainerInterface.runDag()` call after an embedded DAG completes
  * in an isolate.
  *
@@ -15,13 +15,13 @@
  *                     parent execution stream as intermediate yields.
  */
 
-import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
-import type { JsonObject } from '../entities/json.js';
-import type { NodeError } from '../entities/node/NodeError.js';
+import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
+import type { JsonObjectType } from '../entities/json.js';
+import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 
-export interface DagOutcomeInterface {
+export type DagOutcomeType = {
   readonly terminalOutput: string;
-  readonly errors: readonly NodeError[];
-  readonly stateSnapshot: JsonObject | null;
-  readonly intermediates: readonly ExecutorIntermediate[];
-}
+  readonly errors: readonly NodeErrorWireType[];
+  readonly stateSnapshot: JsonObjectType | null;
+  readonly intermediates: readonly ExecutorIntermediateType[];
+};

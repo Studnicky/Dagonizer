@@ -4,17 +4,17 @@
  *
  * The response wire shape lives in `OpenLibraryResponse.ts` as a JSON Schema
  * 2020-12 `*Schema` const with `FromSchema`-derived types and a module-load
- * `EntityValidator`. `OpenLibraryDocs` maps narrowed docs to the canonical
+ * `EntityValidatorInterface`. `OpenLibraryDocs` maps narrowed docs to the canonical
  * `Candidate` shape and exposes `narrowResponse` for callers that hold a raw
  * `unknown` body (the search tools fetch through `HttpTransport.getJson`, which
  * narrows for them; `narrowResponse` covers any direct-narrowing caller).
  */
 
 import { OpenApiGuard } from '@studnicky/dagonizer/tool';
-import type { Candidate } from '@studnicky/dagonizer-book-entities';
+import type { CandidateType } from '@studnicky/dagonizer-book-entities';
 import { BookBuilder, CanonicalId } from '@studnicky/dagonizer-book-entities';
 
-import type { OpenLibraryDoc, OpenLibraryResponse } from './OpenLibraryResponse.js';
+import type { OpenLibraryDocType, OpenLibraryResponseType } from './OpenLibraryResponse.js';
 import { OpenLibraryResponseValidator } from './OpenLibraryResponse.js';
 
 export const OPENLIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
@@ -30,11 +30,11 @@ export class OpenLibraryDocs {
    * `OpenLibraryResponse` via the compiled schema validator. Throws a
    * non-retryable `ToolError(PARSE_ERROR)` when the shape does not match.
    */
-  static narrowResponse(raw: unknown): OpenLibraryResponse {
+  static narrowResponse(raw: unknown): OpenLibraryResponseType {
     return OpenApiGuard.assertShape(raw, OpenLibraryResponseValidator, 'OpenLibrary search.json');
   }
 
-  static pickDescription(doc: OpenLibraryDoc): string | undefined {
+  static pickDescription(doc: OpenLibraryDocType): string | undefined {
     if (typeof doc.description === 'string' && doc.description.length > 0) return doc.description;
     if (typeof doc.description === 'object' && typeof doc.description.value === 'string') return doc.description.value;
     const first = doc.first_sentence?.[0];
@@ -48,11 +48,11 @@ export class OpenLibraryDocs {
   }
 
   static candidates(
-    docs: readonly OpenLibraryDoc[],
+    docs: readonly OpenLibraryDocType[],
     source: string,
     sourcesLabel: string,
-  ): Candidate[] {
-    const result: Candidate[] = [];
+  ): CandidateType[] {
+    const result: CandidateType[] = [];
     for (const doc of docs) {
       if (doc.title === undefined) continue;
       const canonical = CanonicalId.pick({

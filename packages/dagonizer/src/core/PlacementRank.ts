@@ -14,7 +14,7 @@
  * of their `outputs` record (next placement names).
  */
 
-import type { DAG } from '../entities/dag/DAG.js';
+import type { DAGType } from '../entities/dag/DAG.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 
@@ -49,7 +49,7 @@ export class PlacementRank {
    * placement, rank = 1 + max(rank of non-back-edge predecessors). The entry
    * placement has no predecessors, so its rank is 0.
    */
-  static compute(dag: DAG): ReadonlyMap<string, number> {
+  static compute(dag: DAGType): ReadonlyMap<string, number> {
     // Build adjacency map: placement name → forward next-placement names.
     const adjacency = new Map<string, readonly string[]>();
     for (const placement of dag.nodes) {

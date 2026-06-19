@@ -33,9 +33,9 @@ import {
   DAG_CONTAINER_WORKER_DIED,
 } from '@studnicky/dagonizer/container';
 import type {
-  PoolEntry,
+  PoolEntryType,
 } from '@studnicky/dagonizer/container';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
@@ -47,7 +47,7 @@ import type { WebWorkerLikeInterface } from './WebWorkerLike.js';
 // WebWorkerContainerOptions
 // ---------------------------------------------------------------------------
 
-export interface WebWorkerContainerOptions {
+export type WebWorkerContainerOptionsType = {
   /**
    * Module URL forwarded to the DagHost via the `init` message.
    * The host dynamic-imports this URL to load the registry.
@@ -61,7 +61,7 @@ export interface WebWorkerContainerOptions {
    * Services config forwarded to the DagHost's registry module.
    * Defaults to an empty object.
    */
-  readonly servicesConfig?: JsonObject;
+  readonly servicesConfig?: JsonObjectType;
   /**
    * Number of workers in the pool.
    * Defaults to `WebSystemInfo.recommendedWorkerCount` with
@@ -69,7 +69,7 @@ export interface WebWorkerContainerOptions {
    * from `navigator` when available, falling back to 2.
    */
   readonly poolSize?: number;
-}
+};
 
 // ---------------------------------------------------------------------------
 // WebWorkerContainer
@@ -77,9 +77,9 @@ export interface WebWorkerContainerOptions {
 
 export class WebWorkerContainer extends DagContainerBase<NodeStateInterface, WebWorkerLikeInterface> {
 
-  constructor(options: WebWorkerContainerOptions) {
+  constructor(options: WebWorkerContainerOptionsType) {
     const poolSize = options.poolSize ?? WebWorkerContainer.#resolvePoolSize();
-    const servicesConfig: JsonObject = options.servicesConfig ?? {};
+    const servicesConfig: JsonObjectType = options.servicesConfig ?? {};
 
     super({
       ...DagContainerBase.defaultOptions,
@@ -98,10 +98,10 @@ export class WebWorkerContainer extends DagContainerBase<NodeStateInterface, Web
 
   /**
    * Construct a fresh worker and its wired channel. Delegates worker creation
-   * to `spawnWorker()` (the consumer override point). Returns a PoolEntry with
+   * to `spawnWorker()` (the consumer override point). Returns a PoolEntryType with
    * `initialized: false`; the base attaches death listeners and inits separately.
    */
-  protected override composeEntry(): PoolEntry<WebWorkerLikeInterface> {
+  protected override composeEntry(): PoolEntryType<WebWorkerLikeInterface> {
     const worker = this.spawnWorker();
     const channel = new PostMessageChannel(worker);
     return { 'worker': worker, 'channel': channel, 'initialized': false };
@@ -111,8 +111,8 @@ export class WebWorkerContainer extends DagContainerBase<NodeStateInterface, Web
    * Attach the 'error' listener that fires `onTransportDeath` when the worker
    * throws an uncaught exception. This is the death-detection backstop (Law 4).
    */
-  protected override attachDeathListeners(entry: PoolEntry<WebWorkerLikeInterface>): void {
-    entry.worker.addEventListener('error', (event) => {
+  protected override attachDeathListeners(entry: PoolEntryType<WebWorkerLikeInterface>): void {
+    entry.worker.addEventListener('error', (event: { message?: string }) => {
       const reason = `web worker error: ${event.message ?? 'uncaught error'}`;
       this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, reason);
     });

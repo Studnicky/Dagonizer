@@ -4,7 +4,7 @@
  * Uses `@type: 'SingleNode'` as the discriminator (replacing the flat `type`
  * key). `@id` is the placement URN: `urn:noocodex:dag:<dagName>/node/<name>`.
  *
- * Compile-time consumers may use `SingleNodePlacementInterface<TOutput>` for
+ * Compile-time consumers may use `SingleNodePlacementType<TOutput>` for
  * exhaustiveness-checked output routing. The schema itself is necessarily
  * generic-free: `outputs` is a `Record<string, string>` at the JSON boundary.
  * All output routes must target named placements; null routes are not permitted.
@@ -35,19 +35,18 @@ export const SingleNodeSchema = {
 } as const;
 
 /** TypeScript type derived from `SingleNodeSchema` via `json-schema-to-ts`. */
-export type SingleNode = FromSchema<typeof SingleNodeSchema>;
+export type SingleNodeType = FromSchema<typeof SingleNodeSchema>;
 
 /**
  * Single node placement.
  * Routes to next node(s) based on the node's output.
  *
- * Extends `SingleNode` entity via `Omit<SingleNode, 'outputs'>`:
+ * Extends `SingleNodeType` entity via `Omit<SingleNodeType, 'outputs'>`:
  *   - `outputs` is narrowed from `Record<string, string | null>` to
  *     `Record<TOutput, null | string>` for exhaustiveness-checking at
  *     compile time when `TOutput` is a narrow union.
  */
-export interface SingleNodePlacementInterface<TOutput extends string = string>
-  extends Omit<SingleNode, 'outputs'> {
+export type SingleNodePlacementType<TOutput extends string = string> = Omit<SingleNodeType, 'outputs'> & {
   /**
    * Output routing - maps node outputs to next placement names.
    * Key: output name from node (e.g., 'success', 'error', 'retry')
@@ -59,4 +58,4 @@ export interface SingleNodePlacementInterface<TOutput extends string = string>
    * routes.
    */
   'outputs': Record<TOutput, string>;
-}
+};

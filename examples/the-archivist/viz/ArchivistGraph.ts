@@ -32,7 +32,7 @@
 // #region cytoscape-graph-subclass
 import { CytoscapeGraph }  from '@studnicky/dagonizer/viz';
 import { CytoscapeRenderer } from '@studnicky/dagonizer/viz';
-import type { CytoscapeElement, CytoscapeGraphOptions } from '@studnicky/dagonizer/viz';
+import type { CytoscapeElementType, CytoscapeGraphOptionsType } from '@studnicky/dagonizer/viz';
 import { NODE_KINDS } from '../nodes/ArchivistNode.ts';
 
 /**
@@ -44,7 +44,7 @@ export class ArchivistGraph extends CytoscapeGraph {
   constructor(
     container: ConstructorParameters<typeof CytoscapeGraph>[0],
     dag: ConstructorParameters<typeof CytoscapeGraph>[1],
-    options: CytoscapeGraphOptions = {},
+    options: CytoscapeGraphOptionsType = {},
   ) {
     super(container, dag, options);
   }
@@ -53,7 +53,7 @@ export class ArchivistGraph extends CytoscapeGraph {
    * Render the DAG elements and enrich each node's `data.kind` from
    * `NODE_KINDS`. Nodes absent from the registry are emitted unchanged.
    */
-  protected override composeElements(): ReadonlyArray<CytoscapeElement> {
+  protected override composeElements(): ReadonlyArray<CytoscapeElementType> {
     const raw = CytoscapeRenderer.render(this.dag, {
       embeddedDAGs: this.embeddedDAGs,
     });

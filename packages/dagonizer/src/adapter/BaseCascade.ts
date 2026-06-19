@@ -20,7 +20,7 @@
 import { Classifications, LlmError } from './LlmError.js';
 
 /** One entry in a cascade preference list. Canonical single type for all cascades. */
-export interface CascadePreference {
+export type CascadePreferenceType = {
   provider: string;
   model: string;
 }
@@ -31,12 +31,12 @@ export abstract class BaseCascade<
 > {
   readonly #cascadeName: string;
   readonly #registry:    TRegistry;
-  readonly #preferences: readonly CascadePreference[];
+  readonly #preferences: readonly CascadePreferenceType[];
 
   protected constructor(
     cascadeName: string,
     registry: TRegistry,
-    preferences: readonly CascadePreference[],
+    preferences: readonly CascadePreferenceType[],
   ) {
     this.#cascadeName = cascadeName;
     this.#registry    = registry;

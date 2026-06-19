@@ -26,7 +26,7 @@ import { Validator } from '@studnicky/dagonizer/validation';
 
 ### `Validator.dag`
 
-Type: `EntityValidator<DAG>`
+Type: `EntityValidatorInterface<DAG>`
 
 Validates raw values against `DAGSchema` (Ajv 2020-12). Used internally by `Dagonizer.load`, `DAGDocument.ofValue`, and `Dagonizer.registerDAG`.
 
@@ -34,23 +34,23 @@ Validates raw values against `DAGSchema` (Ajv 2020-12). Used internally by `Dago
 
 ```ts twoslash
 import { Validator } from '@studnicky/dagonizer/validation';
-import type { DAG } from '@studnicky/dagonizer/entities';
+import type { DAGType } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const raw: unknown;
-const dag: DAG = Validator.dag.validate(raw);
+const dag: DAGType = Validator.dag.validate(raw);
 ```
 
-Validates `value` against `DAGSchema`. Returns a typed `DAG` on success. Throws `ValidationError` with a multi-line message listing every Ajv failure on error.
+Validates `value` against `DAGSchema`. Returns a typed `DAGType` on success. Throws `ValidationError` with a multi-line message listing every Ajv failure on error.
 
 #### `Validator.dag.is(value)`
 
 ```ts twoslash
 import { Validator } from '@studnicky/dagonizer/validation';
-import type { DAG } from '@studnicky/dagonizer/entities';
+import type { DAGType } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const raw: unknown;
 if (Validator.dag.is(raw)) {
-  const dag: DAG = raw;
+  const dag: DAGType = raw;
 }
 ```
 
@@ -71,16 +71,16 @@ Returns formatted `path: message` error strings, or `null` if valid.
 
 ### `Validator.checkpoint`
 
-Type: `EntityValidator<CheckpointData>`
+Type: `EntityValidatorInterface<CheckpointData>`
 
 Validates raw values against `CheckpointDataSchema`. Used by `Checkpoint.load`.
 
 ```ts twoslash
 import { Validator } from '@studnicky/dagonizer/validation';
-import type { CheckpointData } from '@studnicky/dagonizer/entities';
+import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const raw: unknown;
-const data: CheckpointData = Validator.checkpoint.validate(raw);
+const data: CheckpointDataType = Validator.checkpoint.validate(raw);
 ```
 
 Returns a typed `CheckpointData` or throws `ValidationError`. Called by `Checkpoint.load` before any field access.
@@ -89,7 +89,7 @@ Returns a typed `CheckpointData` or throws `ValidationError`. Called by `Checkpo
 
 ### Other validators
 
-Every JSON Schema in `@studnicky/dagonizer/entities` has a matching static `EntityValidator` on `Validator`. Names use camelCase derived from the schema name.
+Every JSON Schema in `@studnicky/dagonizer/entities` has a matching static `EntityValidatorInterface` on `Validator`. Names use camelCase derived from the schema name.
 
 | Field | Entity | Schema |
 |---|---|---|
@@ -113,21 +113,21 @@ Every JSON Schema in `@studnicky/dagonizer/entities` has a matching static `Enti
 | `Validator.validationResult` | `ValidationResult` | `ValidationResultSchema` |
 | `Validator.dagErrorJson` | `DAGErrorJSON` | `DAGErrorJSONSchema` |
 
-Every entry exposes the same `EntityValidator<T>` surface: `is(value)`, `validate(value)`, `errors(value)`.
+Every entry exposes the same `EntityValidatorInterface<T>` surface: `is(value)`, `validate(value)`, `errors(value)`.
 
 ---
 
-## `EntityValidator<T>`
+## `EntityValidatorInterface<T>`
 
-Per-entity validator interface. Every `Validator.<entity>` field is an `EntityValidator`.
+Per-entity validator interface. Every `Validator.<entity>` field is an `EntityValidatorInterface`.
 
 ```ts twoslash
-import type { EntityValidator } from '@studnicky/dagonizer/validation';
-// EntityValidator<T>:
+import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
+// EntityValidatorInterface<T>:
 //   is(value: unknown): value is T
 //   validate(value: unknown): T
 //   errors(value: unknown): string[] | null
-declare const _v: EntityValidator<unknown>;
+declare const _v: EntityValidatorInterface<unknown>;
 ```
 ## Related guides
 

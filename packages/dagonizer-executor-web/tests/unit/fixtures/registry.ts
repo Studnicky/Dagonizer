@@ -16,11 +16,11 @@
  */
 
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { ConformanceRegistry } from '@studnicky/dagonizer/testing';
 
 const registryModule: RegistryModuleInterface = {
-  async instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     return ConformanceRegistry.bundle();
   },
 };

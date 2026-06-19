@@ -21,7 +21,7 @@ import {
   ScalarNode,
 } from '@studnicky/dagonizer';
 import { Timeout } from '@studnicky/dagonizer/runtime';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -61,7 +61,7 @@ export class SlowTaskNode extends ScalarNode<TaskState, 'done'> {
   readonly outputs = ['done'] as const;
   // Per-node timeout budget: 50 ms. The node tries to wait 5 s → NodeTimeoutError.
   override readonly timeout = Timeout.ofMs(50);
-  protected override async executeOne(_state: TaskState, context: NodeContextInterface) {
+  protected override async executeOne(_state: TaskState, context: NodeContextType) {
     // Await a 5-second delay, but honour context.signal so the engine's
     // per-node abort terminates the wait promptly at the 50 ms boundary.
     await new Promise<void>((_resolve, reject) => {

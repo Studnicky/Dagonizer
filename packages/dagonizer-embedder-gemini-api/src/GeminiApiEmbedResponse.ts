@@ -39,9 +39,9 @@ export const GeminiApiEmbedResponseSchema = {
 } as const;
 
 /** TypeScript type derived from `GeminiApiEmbedResponseSchema` via `json-schema-to-ts`. */
-export type GeminiApiEmbedResponse = FromSchema<typeof GeminiApiEmbedResponseSchema>;
+export type GeminiApiEmbedResponseType = FromSchema<typeof GeminiApiEmbedResponseSchema>;
 
 /** Module-load validator compiled through the framework's shared Ajv. */
-export const GeminiApiEmbedResponseValidator = Validator.compile<GeminiApiEmbedResponse>(
+export const GeminiApiEmbedResponseValidator = Validator.compile<GeminiApiEmbedResponseType>(
   GeminiApiEmbedResponseSchema,
 );

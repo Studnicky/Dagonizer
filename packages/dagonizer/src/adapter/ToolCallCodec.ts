@@ -1,6 +1,6 @@
 import { Validator } from '../validation/Validator.js';
 
-import type { ToolCall } from './LlmAdapter.js';
+import type { ToolCallType } from './LlmAdapter.js';
 
 /**
  * Per-`decode()`-call monotonic sequence counter. Incremented once per call
@@ -20,7 +20,7 @@ let decodeSeq = 0;
 export class ToolCallCodec {
   private constructor() { /* static class */ }
 
-  static decode(raw: string, idPrefix: string): ToolCall[] {
+  static decode(raw: string, idPrefix: string): ToolCallType[] {
     const seq = decodeSeq++;
     try {
       const start = raw.indexOf('{');

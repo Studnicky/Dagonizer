@@ -1,7 +1,7 @@
 /**
  * WikipediaSummaryResponse: JSON Schema 2020-12 description of the Wikipedia
  * REST `page/summary` response wire shape, plus its `FromSchema`-derived type
- * and a module-load-compiled `EntityValidator`.
+ * and a module-load-compiled `EntityValidatorInterface`.
  *
  * The parsed JSON body crosses a foreign boundary (`HttpTransport.getJson`
  * returns it narrowed by `WikipediaSummaryResponseValidator`). The schema is
@@ -14,7 +14,7 @@
  */
 
 import { Validator } from '@studnicky/dagonizer/validation';
-import type { EntityValidator } from '@studnicky/dagonizer/validation';
+import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const WikipediaSummaryResponseSchema = {
@@ -47,13 +47,13 @@ export const WikipediaSummaryResponseSchema = {
 } as const;
 
 /** TypeScript type derived from `WikipediaSummaryResponseSchema` via `json-schema-to-ts`. */
-export type WikipediaSummaryResponse = FromSchema<typeof WikipediaSummaryResponseSchema>;
+export type WikipediaSummaryResponseType = FromSchema<typeof WikipediaSummaryResponseSchema>;
 
 /**
  * Module-load-compiled validator for the Wikipedia summary response.
- * Narrows the `unknown` HTTP body to `WikipediaSummaryResponse` via the
+ * Narrows the `unknown` HTTP body to `WikipediaSummaryResponseType` via the
  * framework's shared Ajv (`Validator.compile`); `HttpTransport.getJson`
  * consumes it.
  */
-export const WikipediaSummaryResponseValidator: EntityValidator<WikipediaSummaryResponse> =
-  Validator.compile<WikipediaSummaryResponse>(WikipediaSummaryResponseSchema);
+export const WikipediaSummaryResponseValidator: EntityValidatorInterface<WikipediaSummaryResponseType> =
+  Validator.compile<WikipediaSummaryResponseType>(WikipediaSummaryResponseSchema);

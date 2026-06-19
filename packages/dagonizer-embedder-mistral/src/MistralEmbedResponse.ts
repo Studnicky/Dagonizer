@@ -42,9 +42,9 @@ export const MistralEmbedResponseSchema = {
 } as const;
 
 /** TypeScript type derived from `MistralEmbedResponseSchema` via `json-schema-to-ts`. */
-export type MistralEmbedResponse = FromSchema<typeof MistralEmbedResponseSchema>;
+export type MistralEmbedResponseType = FromSchema<typeof MistralEmbedResponseSchema>;
 
 /** Module-load validator compiled through the framework's shared Ajv. */
-export const MistralEmbedResponseValidator = Validator.compile<MistralEmbedResponse>(
+export const MistralEmbedResponseValidator = Validator.compile<MistralEmbedResponseType>(
   MistralEmbedResponseSchema,
 );

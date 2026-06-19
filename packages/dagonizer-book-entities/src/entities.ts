@@ -6,13 +6,13 @@
  * is the single source of truth and no hand-written wire shape exists.
  *
  * Each sub-entity owns one cohesive responsibility:
- *   BookIdentity     — stable identifiers: isbn, title, authors
- *   BookPublication  — bibliographic metadata: year, languages, publishers,
- *                      subjects, summary
- *   BookAvailability — commercial metadata: price, inStock
+ *   BookIdentityType     — stable identifiers: isbn, title, authors
+ *   BookPublicationType  — bibliographic metadata: year, languages, publishers,
+ *                          subjects, summary
+ *   BookAvailabilityType — commercial metadata: price, inStock
  *
- * `Book` composes all three. `BookBuilder.from(partial)` materialises a
- * complete `Book` from the sparse data the tool layer collects, applying
+ * `BookType` composes all three. `BookBuilder.from(partial)` materialises a
+ * complete `BookType` from the sparse data the tool layer collects, applying
  * required-with-defaults within each sub-entity so consumers never deal with
  * an absent property. Fields whose source value may be genuinely absent
  * (`firstPublishYear`, `summary`, `inStock`) carry a null sentinel (`T | null`,
@@ -20,8 +20,8 @@
  * with a real value, keeping V8 hidden-class shape stable under
  * `exactOptionalPropertyTypes`.
  *
- * `Candidate` wraps a scored `Book` with provenance (source, optional reason
- * and notes).
+ * `CandidateType` wraps a scored `BookType` with provenance (source, optional
+ * reason and notes).
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -37,7 +37,7 @@ export const MoneySchema = {
   'additionalProperties': false,
 } as const;
 
-export type Money = FromSchema<typeof MoneySchema>;
+export type MoneyType = FromSchema<typeof MoneySchema>;
 
 /** Stable identifiers for the work. */
 export const BookIdentitySchema = {
@@ -53,7 +53,7 @@ export const BookIdentitySchema = {
   'additionalProperties': false,
 } as const;
 
-export type BookIdentity = FromSchema<typeof BookIdentitySchema>;
+export type BookIdentityType = FromSchema<typeof BookIdentitySchema>;
 
 /**
  * Bibliographic metadata. `firstPublishYear` and `summary` carry a null
@@ -78,7 +78,7 @@ export const BookPublicationSchema = {
   'additionalProperties': false,
 } as const;
 
-export type BookPublication = FromSchema<typeof BookPublicationSchema>;
+export type BookPublicationType = FromSchema<typeof BookPublicationSchema>;
 
 /** Commercial availability metadata. */
 export const BookAvailabilitySchema = {
@@ -93,7 +93,7 @@ export const BookAvailabilitySchema = {
   'additionalProperties': false,
 } as const;
 
-export type BookAvailability = FromSchema<typeof BookAvailabilitySchema>;
+export type BookAvailabilityType = FromSchema<typeof BookAvailabilitySchema>;
 
 /** Complete composed book record. */
 export const BookSchema = {
@@ -109,7 +109,7 @@ export const BookSchema = {
   'additionalProperties': false,
 } as const;
 
-export type Book = FromSchema<typeof BookSchema>;
+export type BookType = FromSchema<typeof BookSchema>;
 
 /** Scored book record with provenance. */
 export const CandidateSchema = {
@@ -127,14 +127,14 @@ export const CandidateSchema = {
   'additionalProperties': false,
 } as const;
 
-export type Candidate = FromSchema<typeof CandidateSchema>;
+export type CandidateType = FromSchema<typeof CandidateSchema>;
 
 // ── Module-level defaults ──────────────────────────────────────────────────────
 
-const DEFAULT_PRICE: Money = { 'amount': 0, 'currency': 'USD' };
+const DEFAULT_PRICE: MoneyType = { 'amount': 0, 'currency': 'USD' };
 
 /** Partial input the tool layer supplies; `BookBuilder.from()` fills defaults. */
-export interface BookInput {
+export type BookInputType = {
   readonly isbn: string;
   readonly title: string;
   readonly authors?: readonly string[];
@@ -143,22 +143,22 @@ export interface BookInput {
   readonly publishers?: readonly string[];
   readonly subjects?: readonly string[];
   readonly summary?: string;
-  readonly price?: Money;
+  readonly price?: MoneyType;
   readonly inStock?: boolean;
-}
+};
 
 /**
- * BookBuilder: static factory for the `Book` value type.
+ * BookBuilder: static factory for the `BookType` value type.
  *
- * Separate from the `Book` type because TypeScript cannot merge a class and a
+ * Separate from the `BookType` type because TypeScript cannot merge a class and a
  * type of the same name without aliasing. The name `BookBuilder` makes the
- * role explicit — it is the constructor for the `Book` value.
+ * role explicit — it is the constructor for the `BookType` value.
  */
 export class BookBuilder {
   private constructor() { /* static class */ }
 
-  /** Materialise a complete Book from partial tool output. Applies defaults. */
-  static from(input: BookInput): Book {
+  /** Materialise a complete BookType from partial tool output. Applies defaults. */
+  static from(input: BookInputType): BookType {
     return {
       'identity': {
         'isbn':    input.isbn,

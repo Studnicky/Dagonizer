@@ -1,5 +1,5 @@
 export { GeminiApiAdapter } from './GeminiApiAdapter.js';
-export type { GeminiApiAdapterOptions } from './GeminiApiAdapter.js';
+export type { GeminiApiAdapterOptionsType } from './GeminiApiAdapter.js';
 export {
   GeminiCandidateSchema,
   GeminiContentSchema,

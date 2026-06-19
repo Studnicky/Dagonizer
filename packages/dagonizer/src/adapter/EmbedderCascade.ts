@@ -12,13 +12,13 @@
  * Symmetric with `LlmAdapterCascade`.
  */
 
-import type { Embedder } from '../contracts/Embedder.js';
+import type { EmbedderInterface } from '../contracts/EmbedderInterface.js';
 
-import { BaseCascade, type CascadePreference } from './BaseCascade.js';
+import { BaseCascade, type CascadePreferenceType } from './BaseCascade.js';
 import type { EmbedderRegistry } from './EmbedderRegistry.js';
 
-export class EmbedderCascade extends BaseCascade<EmbedderRegistry, Embedder> {
-  constructor(registry: EmbedderRegistry, preferences: readonly CascadePreference[]) {
+export class EmbedderCascade extends BaseCascade<EmbedderRegistry, EmbedderInterface> {
+  constructor(registry: EmbedderRegistry, preferences: readonly CascadePreferenceType[]) {
     super('EmbedderCascade', registry, preferences);
   }
 }

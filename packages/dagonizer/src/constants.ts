@@ -12,12 +12,12 @@
  */
 
 export { GatherStrategySchema, GatherStrategyNames } from './entities/constants/GatherStrategy.js';
-export type { GatherStrategyName } from './entities/constants/GatherStrategy.js';
+export type { GatherStrategyNameType } from './entities/constants/GatherStrategy.js';
 export { MetadataKeySchema, MetadataKeys } from './entities/constants/MetadataKey.js';
-export type { MetadataKey } from './entities/constants/MetadataKey.js';
+export type { MetadataKeyType } from './entities/constants/MetadataKey.js';
 export { NodeTypeSchema, NodeTypes } from './entities/constants/NodeType.js';
 export type { NodeType } from './entities/constants/NodeType.js';
 export { OutputSchema, OutputNames } from './entities/constants/Output.js';
-export type { Output } from './entities/constants/Output.js';
+export type { OutputType } from './entities/constants/Output.js';
 export { ScatterOutputSchema, ScatterOutputNames } from './entities/constants/ScatterOutput.js';
-export type { ScatterOutput } from './entities/constants/ScatterOutput.js';
+export type { ScatterOutputType } from './entities/constants/ScatterOutput.js';

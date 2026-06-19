@@ -2,7 +2,7 @@
  * LlmAdapterRegistry: process-local map of (provider, model) →
  * adapter factory.
  *
- * Consumers register an `AdapterDescriptorShape` plus a zero-arg factory
+ * Consumers register an `AdapterDescriptorShapeType` plus a zero-arg factory
  * that constructs the configured adapter. The registry never stores
  * adapter instances; the factory is invoked on each `resolve()` call so
  * each consumer gets a fresh instance with its own retry state, session
@@ -16,14 +16,14 @@
  * owns the shared Map logic.
  */
 
-import type { LlmAdapter } from '../contracts/LlmAdapter.js';
+import type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
 
 import { BaseRegistry } from './BaseRegistry.js';
 
 /** Zero-arg constructor for an adapter; built fresh per `resolve()`. */
-export type AdapterFactory = () => LlmAdapter;
+export type AdapterFactoryType = () => LlmAdapterInterface;
 
-export class LlmAdapterRegistry extends BaseRegistry<LlmAdapter> {
+export class LlmAdapterRegistry extends BaseRegistry<LlmAdapterInterface> {
   constructor() {
     super('LlmAdapterRegistry');
   }

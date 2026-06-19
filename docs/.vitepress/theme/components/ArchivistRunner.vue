@@ -19,7 +19,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 
 import { Checkpoint, CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
-import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
 import { archivistBundle, archivistDAG } from '../../../../examples/the-archivist/dag.ts';
@@ -168,7 +168,7 @@ const checkpointNode = ref<string | null>(null);
 const hasCheckpoint = ref(
   typeof localStorage !== 'undefined' && localStorage.getItem('dagonizer-archivist-checkpoint') !== null
 );
-let lastResult: ExecutionResultInterface<ArchivistState> | null = null;
+let lastResult: ExecutionResultType<ArchivistState> | null = null;
 let lastDagName = 'the-archivist';
 
 async function saveCheckpoint(): Promise<void> {

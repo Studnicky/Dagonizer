@@ -35,7 +35,7 @@ Dispatcher deadline (fires automatically after the budget):
 
 Both produce a non-`null` `result.cursor` and a non-`null` `result.interruptedAt`; the only difference is the discriminator on `interruptedAt.reason` (`'abort'` versus `'timeout'`).
 
-## `NodeContextInterface`
+## `NodeContextType`
 
 Nodes receive the composed signal in the `context` argument and must propagate it into every IO call to be cancellable. The Phase 06 node wires `context.signal` into its delay primitive:
 
@@ -81,4 +81,4 @@ This is equivalent to passing both as `signal` plus `deadlineMs`. Pick whichever
 
 - [Phase 06, Cancellation demo](../examples/06-cancellation)
 - [Reference, Runtime, `SignalComposer`](../reference/runtime)
-- [Reference, Contracts, `ExecuteOptionsInterface`](../reference/contracts)
+- [Reference, Contracts, `ExecuteOptionsType`](../reference/contracts)

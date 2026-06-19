@@ -22,10 +22,10 @@
  */
 
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
-import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
+import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 
 export abstract class BaseMessageChannel implements MessageChannelInterface {
-  #handler: ((message: BridgeMessage) => void) | null;
+  #handler: ((message: BridgeMessageType) => void) | null;
   #closed: boolean;
 
   protected constructor() {
@@ -34,10 +34,10 @@ export abstract class BaseMessageChannel implements MessageChannelInterface {
   }
 
   /** Transport-specific delivery to the peer. Fire-and-forget; does not throw. */
-  abstract send(message: BridgeMessage): void;
+  abstract send(message: BridgeMessageType): void;
 
   /** Replace the inbound message handler. Single-handler replace semantics. */
-  onMessage(handler: (message: BridgeMessage) => void): void {
+  onMessage(handler: (message: BridgeMessageType) => void): void {
     this.#handler = handler;
   }
 
@@ -62,7 +62,7 @@ export abstract class BaseMessageChannel implements MessageChannelInterface {
    * is closed or no handler is registered; otherwise forwards it to the current
    * handler. Subclasses route every validated inbound `BridgeMessage` here.
    */
-  protected dispatch(message: BridgeMessage): void {
+  protected dispatch(message: BridgeMessageType): void {
     const handler = this.#handler;
     if (handler !== null && !this.#closed) {
       handler(message);

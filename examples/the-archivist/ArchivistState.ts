@@ -7,10 +7,10 @@
  * `snapshot()` round-trips for `Checkpoint.capture` / `ckpt.restoreState`.
  */
 
-import type { Candidate } from './entities/Book.ts';
+import type { CandidateType } from './entities/Book.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/types';
+import type { JsonObjectType } from '@studnicky/dagonizer/types';
 
 /**
  * A single turn in the visitor–archivist conversation.
@@ -55,7 +55,7 @@ export interface RecalledContext {
     readonly ts: string;
   }>;
   /** Books seen in recent state graphs (shortlisted candidates). */
-  readonly recentCandidates: ReadonlyArray<Candidate>;
+  readonly recentCandidates: ReadonlyArray<CandidateType>;
   /** Prior queries that overlap with the current query text. */
   readonly similarPriorQueries: ReadonlyArray<{
     readonly query: string;
@@ -93,9 +93,9 @@ export class ArchivistState extends NodeStateBase {
   /** Structured query terms; set by `extractQuery`. */
   terms: readonly string[] = [];
   /** Candidates returned by each scout, partitioned by source. */
-  candidates: readonly Candidate[] = [];
+  candidates: readonly CandidateType[] = [];
   /** Final shortlist after merge + dedupe + rank. */
-  shortlist: readonly Candidate[] = [];
+  shortlist: readonly CandidateType[] = [];
   /** The Archivist's draft response. */
   draft = '';
   /**
@@ -106,7 +106,7 @@ export class ArchivistState extends NodeStateBase {
    */
   approvalState: 'pending' | 'approved' | 'rejected' = 'pending';
   /**
-   * Tool plan emitted by the LLM via `decideTools`. The DAG inspects
+   * ToolInterface plan emitted by the LLM via `decideTools`. The DAG inspects
    * this to gate the optional scouts (web search runs only when the
    * LLM asked for it). Empty = no tools needed.
    */
@@ -157,7 +157,7 @@ export class ArchivistState extends NodeStateBase {
    * `mergeCandidates` falls back to this pool when live scouts return zero.
    * Always initialized; never undefined (V8 shape stability).
    */
-  priorCandidates: readonly Candidate[] = [];
+  priorCandidates: readonly CandidateType[] = [];
   /**
    * Fixed provider descriptor array seeded once at state construction.
    * Each scatter fan-out (book-search, reviews, describe) reads this as
@@ -214,7 +214,7 @@ export class ArchivistState extends NodeStateBase {
   // #endregion clone
 
   // #region snapshot-restore
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       "query":        this.query,
       "userLanguage": this.userLanguage,
@@ -244,8 +244,8 @@ export class ArchivistState extends NodeStateBase {
   }
 
   // #region snapshot-helpers
-  private static candidateToJson(c: Candidate): JsonObject {
-    const book: JsonObject = {
+  private static candidateToJson(c: CandidateType): JsonObjectType {
+    const book: JsonObjectType = {
       "isbn":    c.book.identity.isbn,
       "title":   c.book.identity.title,
       "authors": [...c.book.identity.authors],
@@ -260,12 +260,12 @@ export class ArchivistState extends NodeStateBase {
       ...(c.book.publication.languages.length > 0          ? { "languages": [...c.book.publication.languages] }        : {}),
     };
     // notes values are Record<string, unknown>; serialize only JSON-safe primitives.
-    const notesOut: JsonObject = c.notes !== undefined
+    const notesOut: JsonObjectType = c.notes !== undefined
       ? Object.fromEntries(
           Object.entries(c.notes).filter(([, v]) =>
             v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean',
           ),
-        ) as JsonObject
+        ) as JsonObjectType
       : {};
     return {
       "book":   book,
@@ -276,20 +276,20 @@ export class ArchivistState extends NodeStateBase {
     };
   }
 
-  private static priorIntentToJson(p: RecalledContext['priorIntents'][number]): JsonObject {
+  private static priorIntentToJson(p: RecalledContext['priorIntents'][number]): JsonObjectType {
     return { "query": p.query, "intent": p.intent, "ts": p.ts };
   }
 
-  private static priorQueryToJson(q: RecalledContext['similarPriorQueries'][number]): JsonObject {
+  private static priorQueryToJson(q: RecalledContext['similarPriorQueries'][number]): JsonObjectType {
     return { "query": q.query, "ts": q.ts };
   }
 
-  private static turnToJson(t: ConversationTurn): JsonObject {
+  private static turnToJson(t: ConversationTurn): JsonObjectType {
     return { "role": t.role, "text": t.text, "ts": t.ts };
   }
   // #endregion snapshot-helpers
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     if (typeof snap['query']        === 'string') this.query        = snap['query'];
     if (typeof snap['userLanguage'] === 'string') this.userLanguage = snap['userLanguage'];
     if (typeof snap['intent']       === 'string') this.intent       = snap['intent'] as ArchivistIntent;
@@ -300,8 +300,8 @@ export class ArchivistState extends NodeStateBase {
     }
     if (typeof snap['failureCause'] === 'string') this.failureCause = snap['failureCause'];
     if (Array.isArray(snap['terms']))      this.terms      = snap['terms'] as string[];
-    if (Array.isArray(snap['candidates'])) this.candidates = snap['candidates'] as unknown as Candidate[];
-    if (Array.isArray(snap['shortlist']))  this.shortlist  = snap['shortlist'] as unknown as Candidate[];
+    if (Array.isArray(snap['candidates'])) this.candidates = snap['candidates'] as unknown as CandidateType[];
+    if (Array.isArray(snap['shortlist']))  this.shortlist  = snap['shortlist'] as unknown as CandidateType[];
     const rc = snap['recalledContext'];
     if (rc !== null && rc !== undefined && typeof rc === 'object' && !Array.isArray(rc)) {
       const rcObj = rc as Record<string, unknown>;
@@ -313,7 +313,7 @@ export class ArchivistState extends NodeStateBase {
       };
     }
     if (Array.isArray(snap['priorCandidates'])) {
-      this.priorCandidates = snap['priorCandidates'] as unknown as Candidate[];
+      this.priorCandidates = snap['priorCandidates'] as unknown as CandidateType[];
     }
     if (Array.isArray(snap['conversation'])) {
       this.conversation = snap['conversation'] as unknown as ConversationTurn[];

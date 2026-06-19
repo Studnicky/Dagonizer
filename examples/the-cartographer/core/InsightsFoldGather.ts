@@ -18,10 +18,10 @@
  * executions are safe because executions run one at a time.
  */
 
-import type { GatherExecution, GatherRecord } from '@studnicky/dagonizer/contracts';
+import type { GatherExecutionType, GatherRecordType } from '@studnicky/dagonizer/contracts';
 import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
-import type { GatherConfig, NodeStateInterface } from '@studnicky/dagonizer/types';
-import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import type { GatherConfigType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 
 import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { JourneyInsights, JourneyScan, RegionInsights } from '../CartographerState.ts';
@@ -77,9 +77,9 @@ export class InsightsFoldGather extends GatherStrategy {
   // ── initial: reset accumulators and parent state targets ─────────────────
 
   override initial(
-    _config: GatherConfig,
+    _config: GatherConfigType,
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     this.regionMap  = new Map();
     this.journeyMap = new Map();
@@ -93,13 +93,13 @@ export class InsightsFoldGather extends GatherStrategy {
   // ── reduce: per-clone fold (batch.size === 1) ─────────────────────────────
 
   override reduce(
-    _config: GatherConfig,
+    _config: GatherConfigType,
     batch: Parameters<GatherStrategy['reduce']>[1],
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     for (const item of batch) {
-      const record: GatherRecord<NodeStateInterface> = item.state;
+      const record: GatherRecordType<NodeStateInterface> = item.state;
       const enriched = accessor.get<EnrichedShipment>(record.cloneState, 'enriched');
       if (enriched === null || !enriched.shipmentId) continue;
 
@@ -112,8 +112,8 @@ export class InsightsFoldGather extends GatherStrategy {
   // ── finalize: build state.journeys from bounded accumulators ─────────────
 
   override async finalize(
-    _config: GatherConfig,
-    execution: GatherExecution<NodeStateInterface>,
+    _config: GatherConfigType,
+    execution: GatherExecutionType<NodeStateInterface>,
   ): Promise<void> {
     const built = new Map<string, JourneyInsights>();
 
@@ -178,7 +178,7 @@ export class InsightsFoldGather extends GatherStrategy {
   private foldRegion(
     enriched: EnrichedShipment,
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     const key = enriched.geoStatus === 'water'
       ? 'International Waters / Maritime'
@@ -319,7 +319,7 @@ export class InsightsFoldGather extends GatherStrategy {
   private pushSampleRing(
     enriched: EnrichedShipment,
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     this.sampleRing.push(enriched);
     if (this.sampleRing.length > MAX_SAMPLE_RECORDS) this.sampleRing.shift();

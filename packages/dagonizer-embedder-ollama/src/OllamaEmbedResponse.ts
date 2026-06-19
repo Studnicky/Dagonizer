@@ -32,9 +32,9 @@ export const OllamaEmbedResponseSchema = {
 } as const;
 
 /** TypeScript type derived from `OllamaEmbedResponseSchema` via `json-schema-to-ts`. */
-export type OllamaEmbedResponse = FromSchema<typeof OllamaEmbedResponseSchema>;
+export type OllamaEmbedResponseType = FromSchema<typeof OllamaEmbedResponseSchema>;
 
 /** Module-load validator compiled through the framework's shared Ajv. */
-export const OllamaEmbedResponseValidator = Validator.compile<OllamaEmbedResponse>(
+export const OllamaEmbedResponseValidator = Validator.compile<OllamaEmbedResponseType>(
   OllamaEmbedResponseSchema,
 );

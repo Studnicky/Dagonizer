@@ -16,7 +16,7 @@ export const MetadataKeySchema = {
 } as const;
 
 /** Union type derived from `MetadataKeySchema` via `json-schema-to-ts`. */
-export type MetadataKey = FromSchema<typeof MetadataKeySchema>;
+export type MetadataKeyType = FromSchema<typeof MetadataKeySchema>;
 // → 'currentItem' | 'gatherResults' | 'itemIndex'
 
 /** Reserved metadata keys used by the dispatcher. */
@@ -24,4 +24,4 @@ export const MetadataKeys = {
   'CURRENT_ITEM': 'currentItem',
   'GATHER_RESULTS': 'gatherResults',
   'ITEM_INDEX': 'itemIndex',
-} as const satisfies Record<string, MetadataKey>;
+} as const satisfies Record<string, MetadataKeyType>;

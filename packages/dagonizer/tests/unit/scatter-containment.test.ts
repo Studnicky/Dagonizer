@@ -18,18 +18,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import type { ObserverRelay } from '../../src/contracts/ObserverRelay.js';
+import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 
@@ -52,7 +52,7 @@ class ScatterContainerState extends NodeStateBase {
     this.value = 0;
   }
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       'items': [...this.items],
       'processed': [...this.processed],
@@ -81,7 +81,7 @@ class ScatterContainerState extends NodeStateBase {
 class CounterNode extends ScalarNode<ScatterContainerState, 'done'> {
   readonly name = 'counter';
   readonly outputs = ['done'] as const;
-  protected async executeOne(state: ScatterContainerState): Promise<NodeOutputInterface<'done'>> {
+  protected async executeOne(state: ScatterContainerState): Promise<NodeOutputType<'done'>> {
     const item = state.getMetadata<number>('item') ?? 0;
     // value is a declared field on ScatterContainerState; no cast required.
     state.value = item;
@@ -96,7 +96,7 @@ const counterNode = new CounterNode();
 
 const BODY_DAG_NAME = 'scatter-body';
 
-const bodyDag: DAG = Validator.dag.validate({
+const bodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:test:scatter-body',
   '@type': 'DAG',
@@ -127,7 +127,7 @@ const bodyDag: DAG = Validator.dag.validate({
 const RUNNER_DAG_NAME = 'scatter-runner';
 const CONTAINER_ROLE = 'test-container';
 
-const runnerDag: DAG = Validator.dag.validate({
+const runnerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:test:scatter-runner',
   '@type': 'DAG',
@@ -162,7 +162,7 @@ const runnerDag: DAG = Validator.dag.validate({
 });
 
 // In-process runner DAG (no container bound)
-const inProcessRunnerDag: DAG = Validator.dag.validate({
+const inProcessRunnerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:test:scatter-inprocess',
   '@type': 'DAG',
@@ -196,7 +196,7 @@ const inProcessRunnerDag: DAG = Validator.dag.validate({
 });
 
 // Node-body runner DAG (node body scatter, NO container)
-const nodeBodyRunnerDag: DAG = Validator.dag.validate({
+const nodeBodyRunnerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:test:scatter-nodebody',
   '@type': 'DAG',
@@ -242,7 +242,7 @@ function buildTestContainer(): DagContainerInterface<ScatterContainerState> {
   innerDispatcher.registerDAG(bodyDag);
 
   return {
-    async runDag(task: DagTaskInterface<ScatterContainerState, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
+    async runDag(task: DagTaskInterface<ScatterContainerState, unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
       const cloneState = task.state;
       const intermediates: Array<{ output: string | null; skipped: boolean; nodeName: string }> = [];
 
@@ -316,7 +316,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     let runDagCallCount = 0;
     const trackingContainer: DagContainerInterface<ScatterContainerState> = {
-      async runDag(task, options): Promise<DagOutcomeInterface> {
+      async runDag(task, options): Promise<DagOutcomeType> {
         runDagCallCount++;
         return testContainer.runDag(task, options);
       },
@@ -350,7 +350,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     let inlineNodeCalls = 0;
 
     const container: DagContainerInterface<ScatterContainerState> = {
-      async runDag(_task, _options): Promise<DagOutcomeInterface> {
+      async runDag(_task, _options): Promise<DagOutcomeType> {
         containerCalls++;
         return {
           'terminalOutput': 'completed',
@@ -366,7 +366,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     class CountingNodeBodyNode extends ScalarNode<ScatterContainerState, 'done'> {
       readonly name = 'node-body-worker';
       readonly outputs = ['done'] as const;
-      protected async executeOne(_state: ScatterContainerState): Promise<NodeOutputInterface<'done'>> {
+      protected async executeOne(_state: ScatterContainerState): Promise<NodeOutputType<'done'>> {
         inlineNodeCalls++;
         return { 'errors': [], 'output': 'done' as const };
       }
@@ -397,7 +397,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
   // ── (d) Container error → collected error, not unhandled throw ───────────
   void it('transport failure from container collects error; scatter routes to error output', async () => {
     const failContainer: DagContainerInterface<ScatterContainerState> = {
-      async runDag(task, _options): Promise<DagOutcomeInterface> {
+      async runDag(task, _options): Promise<DagOutcomeType> {
         return {
           'terminalOutput': 'failed',
           'errors': [{

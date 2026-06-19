@@ -67,4 +67,4 @@ export const GatherConfigSchema = {
 } as const;
 
 /** TypeScript type derived from `GatherConfigSchema` via `json-schema-to-ts`. */
-export type GatherConfig = FromSchema<typeof GatherConfigSchema>;
+export type GatherConfigType = FromSchema<typeof GatherConfigSchema>;

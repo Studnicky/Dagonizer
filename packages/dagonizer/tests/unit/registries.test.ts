@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import type { OutcomeRecord } from '../../src/contracts/OutcomeRecord.js';
+import type { OutcomeRecordType } from '../../src/contracts/OutcomeRecord.js';
 import {
   GatherStrategies,
   GatherStrategy,
@@ -10,7 +10,7 @@ import {
 } from '../../src/core/index.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
+import type { DAGType } from '../../src/entities/index.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -123,7 +123,7 @@ void describe('OutcomeReducers registry', () => {
 
   void it('aggregate reducer: all success → "all-success"', () => {
     const reducer = OutcomeReducers.resolve('aggregate');
-    const records: OutcomeRecord[] = [
+    const records: OutcomeRecordType[] = [
       { 'index': 0, 'output': 'success', 'terminalOutcome': null },
       { 'index': 1, 'output': 'success', 'terminalOutcome': null },
     ];
@@ -132,7 +132,7 @@ void describe('OutcomeReducers registry', () => {
 
   void it('aggregate reducer: no success → "all-error"', () => {
     const reducer = OutcomeReducers.resolve('aggregate');
-    const records: OutcomeRecord[] = [
+    const records: OutcomeRecordType[] = [
       { 'index': 0, 'output': 'error', 'terminalOutcome': null },
       { 'index': 1, 'output': 'error', 'terminalOutcome': null },
     ];
@@ -141,7 +141,7 @@ void describe('OutcomeReducers registry', () => {
 
   void it('aggregate reducer: mixed → "partial"', () => {
     const reducer = OutcomeReducers.resolve('aggregate');
-    const records: OutcomeRecord[] = [
+    const records: OutcomeRecordType[] = [
       { 'index': 0, 'output': 'success', 'terminalOutcome': null },
       { 'index': 1, 'output': 'error',   'terminalOutcome': null },
     ];
@@ -150,7 +150,7 @@ void describe('OutcomeReducers registry', () => {
 
   void it('terminal reducer: success output → "success"', () => {
     const reducer = OutcomeReducers.resolve('terminal');
-    const records: OutcomeRecord[] = [
+    const records: OutcomeRecordType[] = [
       { 'index': 0, 'output': 'success', 'terminalOutcome': null },
     ];
     assert.equal(reducer.reduce(records), 'success');
@@ -158,7 +158,7 @@ void describe('OutcomeReducers registry', () => {
 
   void it('terminal reducer: error output → "error"', () => {
     const reducer = OutcomeReducers.resolve('terminal');
-    const records: OutcomeRecord[] = [
+    const records: OutcomeRecordType[] = [
       { 'index': 0, 'output': 'error', 'terminalOutcome': null },
     ];
     assert.equal(reducer.reduce(records), 'error');
@@ -166,7 +166,7 @@ void describe('OutcomeReducers registry', () => {
 
   void it('terminal reducer: failed terminalOutcome → "error"', () => {
     const reducer = OutcomeReducers.resolve('terminal');
-    const records: OutcomeRecord[] = [
+    const records: OutcomeRecordType[] = [
       { 'index': 0, 'output': 'success', 'terminalOutcome': 'failed' },
     ];
     assert.equal(reducer.reduce(records), 'error');
@@ -180,7 +180,7 @@ void describe('OutcomeReducers registry', () => {
   void it('register installs a custom reducer that resolves by name', () => {
     class ThresholdReducer extends OutcomeReducer {
       readonly name = 'threshold-75';
-      reduce(records: ReadonlyArray<OutcomeRecord>): string {
+      reduce(records: ReadonlyArray<OutcomeRecordType>): string {
         const successRate = records.filter((r) => r.output === 'success').length / records.length;
         return successRate >= 0.75 ? 'all-success' : 'partial';
       }
@@ -188,7 +188,7 @@ void describe('OutcomeReducers registry', () => {
     OutcomeReducers.register(new ThresholdReducer());
     const reducer = OutcomeReducers.resolve('threshold-75');
     assert.equal(reducer.name, 'threshold-75');
-    const records: OutcomeRecord[] = [
+    const records: OutcomeRecordType[] = [
       { 'index': 0, 'output': 'success', 'terminalOutcome': null },
       { 'index': 1, 'output': 'success', 'terminalOutcome': null },
       { 'index': 2, 'output': 'success', 'terminalOutcome': null },
@@ -262,7 +262,7 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
     const node = makeNode('greet', ['done'], () => 'done');
     dispatcher.registerNode(node);
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:demo',
       '@type':    'DAG',
@@ -297,7 +297,7 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
   // No shared state: each test creates its own Dagonizer instance.
 });
 
-const makeSingleNodeDAG = (dagName: string, nodeName: string): DAG => ({
+const makeSingleNodeDAG = (dagName: string, nodeName: string): DAGType => ({
   '@context': DAG_CONTEXT,
   '@id':      `urn:noocodex:dag:${dagName}`,
   '@type':    'DAG',

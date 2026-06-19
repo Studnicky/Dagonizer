@@ -1,12 +1,12 @@
 /**
- * RemoteStoreEndpoint: identity + capability descriptor for a remote store.
+ * RemoteStoreEndpointType: identity + capability descriptor for a remote store.
  *
- * Surfaces in observability and placement decisions. A `RemoteStore` carries
+ * Surfaces in observability and placement decisions. A `RemoteStoreInterface` carries
  * one as its `endpoint` field.
  */
 
 /** Identity + capability descriptor for a remote store. */
-export interface RemoteStoreEndpoint {
+export type RemoteStoreEndpointType = {
   /** Stable identifier for the remote endpoint (URL, gRPC target, etc.). */
   url: string;
   /**

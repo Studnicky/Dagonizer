@@ -1,5 +1,5 @@
 /**
- * DAGDeriver: derive a `DAG` from a registry of `OperationContract`s
+ * DAGDeriver: derive a `DAG` from a registry of `OperationContractType`s
  * by matching `produces ↔ hardRequired`.
  *
  * An edge `A → B` exists iff some path in `A.produces` appears in
@@ -32,26 +32,26 @@
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
-import type { OperationContract } from '../contracts/OperationContract.js';
+import type { OperationContractType } from '../contracts/OperationContract.js';
 import { DAGIdentity, DAG_CONTEXT } from '../entities/dag/DAG.js';
-import type { DAG } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { ScatterNode } from '../entities/dag/ScatterNode.js';
-import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { TerminalNode } from '../entities/dag/TerminalNode.js';
+import type { DAGType } from '../entities/dag/DAG.js';
+import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
+import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
+import type { TerminalNodeType } from '../entities/dag/TerminalNode.js';
 import { DAGError } from '../errors/DAGError.js';
 
 import { ContractRegistryValidator } from './ContractRegistryValidator.js';
 import type {
-  DAGDeriverAnnotations,
-  DAGDeriverEmitTerminal,
-  DAGDeriverScatter,
-  DAGDeriverEmbeddedDAG,
+  DAGDeriverAnnotationsType,
+  DAGDeriverEmitTerminalType,
+  DAGDeriverScatterType,
+  DAGDeriverEmbeddedDAGType,
 } from './DAGDeriverAnnotations.js';
 
-type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNode;
+type DAGNodeEntry = EmbeddedDAGNodeType | ScatterNodeType | SingleNodePlacementType | TerminalNodeType;
 
-export interface DAGDeriverOptions {
+export type DAGDeriverOptionsType = {
   name: string;
   version: string;
   entrypoint: string;
@@ -63,23 +63,23 @@ export interface DAGDeriverOptions {
    * single-source-of-truth on the node; there is no standalone contracts input.
    */
   nodes: NodeInterface[];
-  annotations?: DAGDeriverAnnotations;
+  annotations?: DAGDeriverAnnotationsType;
 }
 
 export class DAGDeriver {
   private constructor() { /* static class */ }
 
   /**
-   * Project contract-bearing nodes from a node registry into `OperationContract`s.
+   * Project contract-bearing nodes from a node registry into `OperationContractType`s.
    * Nodes carrying `EMPTY_CONTRACT_FRAGMENT` (both arrays empty) are skipped;
    * they contribute no derived edges.
    *
    * The node's own `name` and `outputs` fields complete the full
-   * `OperationContract` surface alongside the fragment's `hardRequired`
+   * `OperationContractType` surface alongside the fragment's `hardRequired`
    * and `produces`.
    */
-  static extractContracts(nodes: readonly NodeInterface[]): OperationContract[] {
-    const result: OperationContract[] = [];
+  static extractContracts(nodes: readonly NodeInterface[]): OperationContractType[] {
+    const result: OperationContractType[] = [];
     for (const node of nodes) {
       const c = node.contract;
       if (c.hardRequired.length === 0 && c.produces.length === 0) continue;
@@ -106,7 +106,7 @@ export class DAGDeriver {
    * Topology is derived from the contracts co-located on `opts.nodes`. At
    * least one node must declare a `contract`.
    */
-  static derive(opts: DAGDeriverOptions): DAG {
+  static derive(opts: DAGDeriverOptionsType): DAGType {
     const annotations = opts.annotations ?? {};
 
     const contracts = DAGDeriver.extractContracts(opts.nodes);
@@ -134,7 +134,7 @@ export class DAGDeriver {
     DAGDeriver.validateAnnotations(annotations, contracts);
 
     const eligibleContracts = contracts.filter((contract) => !gatherOps.has(contract.name));
-    const contractsByName = new Map<string, OperationContract>();
+    const contractsByName = new Map<string, OperationContractType>();
     for (const contract of eligibleContracts) contractsByName.set(contract.name, contract);
 
     const edges = DAGDeriver.edges(eligibleContracts);
@@ -160,8 +160,8 @@ export class DAGDeriver {
    * loaded JSON, etc.).
    */
   private static validateAnnotations(
-    annotations: DAGDeriverAnnotations,
-    contracts: readonly OperationContract[],
+    annotations: DAGDeriverAnnotationsType,
+    contracts: readonly OperationContractType[],
   ): void {
     const contractNames = new Set(contracts.map((c) => c.name));
 
@@ -194,7 +194,7 @@ export class DAGDeriver {
    * iff some `path` in `A.produces` appears in `B.hardRequired`.
    */
   static edges(
-    contracts: readonly OperationContract[],
+    contracts: readonly OperationContractType[],
   ): ReadonlyMap<string, ReadonlySet<string>> {
     const out = new Map<string, Set<string>>();
     for (const contract of contracts) {
@@ -222,7 +222,7 @@ export class DAGDeriver {
    * bucket order.
    */
   static depthBuckets(
-    contracts: readonly OperationContract[],
+    contracts: readonly OperationContractType[],
     edges: ReadonlyMap<string, ReadonlySet<string>>,
   ): readonly (readonly string[])[] {
     const indeg = new Map<string, number>();
@@ -277,8 +277,8 @@ export class DAGDeriver {
     declaredOutputs: readonly string[],
     sourceLabel: string,
     successors: ReadonlySet<string>,
-    annotations: DAGDeriverAnnotations,
-    emitCollector: Map<string, DAGDeriverEmitTerminal>,
+    annotations: DAGDeriverAnnotationsType,
+    emitCollector: Map<string, DAGDeriverEmitTerminalType>,
   ): Record<string, string> {
     const overrides = new Map<string, string>();
     const terminals = annotations.terminals?.[name] ?? [];
@@ -321,8 +321,8 @@ export class DAGDeriver {
    * on `outcome`.
    */
   private static collectEmit(
-    emit: DAGDeriverEmitTerminal,
-    collector: Map<string, DAGDeriverEmitTerminal>,
+    emit: DAGDeriverEmitTerminalType,
+    collector: Map<string, DAGDeriverEmitTerminalType>,
   ): void {
     const existing = collector.get(emit.name);
     if (existing === undefined) {
@@ -339,8 +339,8 @@ export class DAGDeriver {
   private static renderNodes(
     buckets: readonly (readonly string[])[],
     edges: ReadonlyMap<string, ReadonlySet<string>>,
-    contracts: ReadonlyMap<string, OperationContract>,
-    annotations: DAGDeriverAnnotations,
+    contracts: ReadonlyMap<string, OperationContractType>,
+    annotations: DAGDeriverAnnotationsType,
     dagName: string,
   ): DAGNodeEntry[] {
     const nodes: DAGNodeEntry[] = [];
@@ -348,7 +348,7 @@ export class DAGDeriver {
     // Collect all synthesized TerminalNode placements from `emit` annotations.
     // Keyed by placement name; populated incrementally as each operation is
     // rendered and its terminals are resolved.
-    const emitCollector = new Map<string, DAGDeriverEmitTerminal>();
+    const emitCollector = new Map<string, DAGDeriverEmitTerminalType>();
 
     // All operation names that will be placed as SingleNode/ScatterNode/etc.
     // Used to detect name collisions with emit terminal names.
@@ -375,7 +375,7 @@ export class DAGDeriver {
           if (contract === undefined) {
             throw new DAGError(`DAGDeriver: contract for '${name}' not found in registry`);
           }
-          const single: SingleNodePlacementInterface = {
+          const single: SingleNodePlacementType = {
             '@id':   DAGIdentity.placementId(dagName, name),
             '@type': 'SingleNode',
             name,
@@ -402,7 +402,7 @@ export class DAGDeriver {
           `DAGDeriver: emit terminal name '${emitName}' collides with an existing operation placement; choose a distinct name`,
         );
       }
-      const terminalNode: TerminalNode = {
+      const terminalNode: TerminalNodeType = {
         '@id':     DAGIdentity.placementId(dagName, emitName),
         '@type':   'TerminalNode',
         'name':    emitName,
@@ -415,7 +415,7 @@ export class DAGDeriver {
   }
 
   /**
-   * Render a `ScatterNode` placement from a `DAGDeriverScatter` annotation.
+   * Render a `ScatterNode` placement from a `DAGDeriverScatterType` annotation.
    *
    * A scatter runs its per-item `node` body once per item in `source`. The
    * gather `strategy` maps onto the scatter's `gather` config:
@@ -425,12 +425,12 @@ export class DAGDeriver {
    */
   private static renderScatterNode(
     name: string,
-    scatter: DAGDeriverScatter,
+    scatter: DAGDeriverScatterType,
     successors: ReadonlySet<string>,
-    annotations: DAGDeriverAnnotations,
+    annotations: DAGDeriverAnnotationsType,
     dagName: string,
-    emitCollector: Map<string, DAGDeriverEmitTerminal>,
-  ): ScatterNode {
+    emitCollector: Map<string, DAGDeriverEmitTerminalType>,
+  ): ScatterNodeType {
     const next0 = [...successors][0];
     const outcomeOverrides = new Map<string, string>();
     for (const terminal of annotations.terminals?.[name] ?? []) {
@@ -461,16 +461,16 @@ export class DAGDeriver {
     }
 
     // Dispatch map over strategy → gather config. Exhaustive: TypeScript narrows
-    // `scatter` in each branch via the discriminated union on `DAGDeriverScatter['strategy']`.
-    type GatherResolver = (s: DAGDeriverScatter) => ScatterNode['gather'];
-    const gatherByStrategy: Record<DAGDeriverScatter['strategy'], GatherResolver> = {
-      'custom':    (s) => ({ 'strategy': 'custom',    'customNode':  (s as Extract<DAGDeriverScatter, { strategy: 'custom' }>).customNode }),
-      'partition': (s) => ({ 'strategy': 'partition', 'partitions':  { ...(s as Extract<DAGDeriverScatter, { strategy: 'partition' }>).partitions } }),
-      'append':    (s) => ({ 'strategy': 'append',    'target':      (s as Extract<DAGDeriverScatter, { strategy: 'append' }>).target }),
+    // `scatter` in each branch via the discriminated union on `DAGDeriverScatterType['strategy']`.
+    type GatherResolver = (s: DAGDeriverScatterType) => ScatterNodeType['gather'];
+    const gatherByStrategy: Record<DAGDeriverScatterType['strategy'], GatherResolver> = {
+      'custom':    (s) => ({ 'strategy': 'custom',    'customNode':  (s as Extract<DAGDeriverScatterType, { strategy: 'custom' }>).customNode }),
+      'partition': (s) => ({ 'strategy': 'partition', 'partitions':  { ...(s as Extract<DAGDeriverScatterType, { strategy: 'partition' }>).partitions } }),
+      'append':    (s) => ({ 'strategy': 'append',    'target':      (s as Extract<DAGDeriverScatterType, { strategy: 'append' }>).target }),
     };
-    const gather: ScatterNode['gather'] = gatherByStrategy[scatter.strategy](scatter);
+    const gather: ScatterNodeType['gather'] = gatherByStrategy[scatter.strategy](scatter);
 
-    const scatterNode: ScatterNode = {
+    const scatterNode: ScatterNodeType = {
       '@id':     DAGIdentity.placementId(dagName, name),
       '@type':   'ScatterNode',
       name,
@@ -487,7 +487,7 @@ export class DAGDeriver {
   }
 
   /**
-   * Render an `EmbeddedDAGNode` placement from a `DAGDeriverEmbeddedDAG`
+   * Render an `EmbeddedDAGNode` placement from a `DAGDeriverEmbeddedDAGType`
    * annotation.
    *
    * An embedded-DAG runs a named sub-DAG at cardinality 1. The
@@ -500,12 +500,12 @@ export class DAGDeriver {
    */
   private static renderEmbeddedDAGNode(
     name: string,
-    embeddedDAG: DAGDeriverEmbeddedDAG,
+    embeddedDAG: DAGDeriverEmbeddedDAGType,
     successors: ReadonlySet<string>,
-    annotations: DAGDeriverAnnotations,
+    annotations: DAGDeriverAnnotationsType,
     dagName: string,
-    emitCollector: Map<string, DAGDeriverEmitTerminal>,
-  ): EmbeddedDAGNode {
+    emitCollector: Map<string, DAGDeriverEmitTerminalType>,
+  ): EmbeddedDAGNodeType {
     // CON-7/CON-11: Build stateMapping in the object literal (no post-construction
     // assignment). The annotation allows a subset of state keys (Partial<Record<K,V>>
     // with exactOptionalPropertyTypes: present keys always have string values, absent
@@ -516,7 +516,7 @@ export class DAGDeriver {
     //   is required at the annotation level so callers supply only the keys they
     //   need to map (requiring all keys would force mapping every state property).
     const mapping = embeddedDAG.stateMapping;
-    const stateMapping: EmbeddedDAGNode['stateMapping'] = (
+    const stateMapping: EmbeddedDAGNodeType['stateMapping'] = (
       mapping !== undefined && (mapping.input !== undefined || mapping.output !== undefined)
     )
       ? {
@@ -525,7 +525,7 @@ export class DAGDeriver {
         }
       : undefined;
 
-    const embeddedNode: EmbeddedDAGNode = {
+    const embeddedNode: EmbeddedDAGNodeType = {
       '@id':   DAGIdentity.placementId(dagName, name),
       '@type': 'EmbeddedDAGNode',
       name,

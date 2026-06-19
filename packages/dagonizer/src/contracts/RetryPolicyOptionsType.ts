@@ -1,4 +1,4 @@
-import type { BackoffStrategy } from '../entities/runtime/BackoffStrategy.js';
+import type { BackoffStrategyType } from '../entities/runtime/BackoffStrategy.js';
 
 import type { ErrorConstructorType } from './ErrorConstructorType.js';
 
@@ -8,11 +8,11 @@ import type { ErrorConstructorType } from './ErrorConstructorType.js';
  * `RETRY_POLICY_DEFAULTS` inside `RetryPolicy`. Callers only need to supply
  * the fields they want to override.
  */
-export interface RetryPolicyOptionsInterface {
+export type RetryPolicyOptionsType = {
   /** Maximum number of attempts (initial + retries). Defaults to `RETRY_POLICY_DEFAULTS.maxAttempts`. */
   maxAttempts?: number;
   /** Delay growth strategy. Defaults to `'exponential'`. */
-  strategy?: BackoffStrategy;
+  strategy?: BackoffStrategyType;
   /** Base delay in milliseconds before the first retry. Defaults to `RETRY_POLICY_DEFAULTS.baseDelay`. */
   baseDelay?: number;
   /** Upper bound on the computed delay in milliseconds. Defaults to `RETRY_POLICY_DEFAULTS.maxDelay`. */
@@ -25,4 +25,4 @@ export interface RetryPolicyOptionsInterface {
   retryOn?: ErrorConstructorType[];
   /** Error classes that abort the retry loop immediately regardless of `retryOn`. */
   abortOn?: ErrorConstructorType[];
-}
+};

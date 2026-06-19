@@ -1,23 +1,23 @@
 /**
- * RemoteStore: Store extended with distribution-specific operations.
+ * RemoteStoreInterface: StoreInterface extended with distribution-specific operations.
  *
- * Plugins implement `RemoteStore` when their backing is over the network
+ * Plugins implement `RemoteStoreInterface` when their backing is over the network
  * (HTTP, gRPC, WebSocket) or replicated across processes. Local
- * in-memory and single-node-durable stores implement `Store` directly.
+ * in-memory and single-node-durable stores implement `StoreInterface` directly.
  *
- * The engine consumes a `RemoteStore` through the `Store` surface; the
+ * The engine consumes a `RemoteStoreInterface` through the `StoreInterface` surface; the
  * extra methods are observability + coordination primitives the
  * dispatcher uses when distributed execution is active.
  */
 
-import type { RemoteStoreEndpoint } from './RemoteStoreEndpoint.js';
-import type { RemoteStoreLease } from './RemoteStoreLease.js';
-import type { Store } from './Store.js';
+import type { RemoteStoreEndpointType } from './RemoteStoreEndpoint.js';
+import type { RemoteStoreLeaseType } from './RemoteStoreLease.js';
+import type { StoreInterface } from './StoreInterface.js';
 
-/** RemoteStore: distributed shared-state contract. */
-export interface RemoteStore extends Store {
+/** RemoteStoreInterface: distributed shared-state contract. */
+export interface RemoteStoreInterface extends StoreInterface {
   /** Endpoint descriptor; surfaces in observability / placement decisions. */
-  readonly endpoint: RemoteStoreEndpoint;
+  readonly endpoint: RemoteStoreEndpointType;
 
   /**
    * Acquire a lease for `subject` with a maximum lifetime. The lease
@@ -27,15 +27,15 @@ export interface RemoteStore extends Store {
    * before throwing.
    *
    * Lease semantics are advisory unless the store enforces them on
-   * writes; consumers must treat `RemoteStoreLease.token` as opaque.
+   * writes; consumers must treat `RemoteStoreLeaseType.token` as opaque.
    */
-  acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLease>;
+  acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLeaseType>;
 
   /**
    * Release a previously-acquired lease. Idempotent: releasing an
    * already-expired lease is a no-op.
    */
-  releaseLease(lease: RemoteStoreLease): Promise<void>;
+  releaseLease(lease: RemoteStoreLeaseType): Promise<void>;
 
   /**
    * Health probe. Returns `true` when the endpoint is reachable AND the

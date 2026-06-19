@@ -3,7 +3,7 @@
  *
  * Behavioral tests for new and changed surface added in Waves 1–2:
  *
- *   TST-W3-1: BridgeMessage inline shape structural identity
+ *   TST-W3-1: BridgeMessageType inline shape structural identity
  *             (InlineNodeErrorShape ≡ NodeErrorSchema properties,
  *              InlineExecutionRequestShape ≡ ExecutionRequestSchema properties,
  *              InlineExecutionResponseShape ≡ ExecutionResponseSchema properties)
@@ -30,27 +30,27 @@ import { BridgeMessageSchema } from '../../src/entities/executor/BridgeMessage.j
 import { ExecutionRequestSchema } from '../../src/entities/executor/ExecutionRequest.js';
 import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionResponse.js';
 import { NodeErrorSchema, NodeErrorBuilder  } from '../../src/entities/node/NodeError.js';
-import type { NodeErrorInterface } from '../../src/entities/node/NodeError.js';
+import type { NodeErrorType } from '../../src/entities/node/NodeError.js';
 import { DAGError, ValidationError  } from '../../src/errors/DAGError.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // ---------------------------------------------------------------------------
-// TST-W3-1: BridgeMessage inline shape structural identity
+// TST-W3-1: BridgeMessageType inline shape structural identity
 // ---------------------------------------------------------------------------
 //
 // The inline shapes are embedded inside the BridgeMessageSchema oneOf branches.
 // They are not exported as named constants, so we assert structural identity
 // via validator round-trips: a value accepted by the canonical schema must
-// also be accepted by the BridgeMessage branch that uses the corresponding
+// also be accepted by the BridgeMessageType branch that uses the corresponding
 // inline shape, and vice versa.
 //
 // Tested via Validator.bridgeMessage round-trips because the inline shapes are
 // private constants (not exported). This guards against silent drift between
 // the inline copies and the canonical schemas.
 
-void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via validator round-trips', () => {
+void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity via validator round-trips', () => {
   // ── InlineNodeErrorShape ≡ NodeErrorSchema ───────────────────────────────
 
   void it('a value valid per NodeErrorSchema is accepted in the result.response.errors array', () => {
@@ -67,7 +67,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
     assert.ok(Validator.nodeError.is(validNodeError),
       'canonical NodeErrorSchema must accept the fixture');
 
-    // Confirm the inline shape inside BridgeMessage result.response.errors also accepts it.
+    // Confirm the inline shape inside BridgeMessageType result.response.errors also accepts it.
     const resultMsg = {
       'kind': 'result',
       'response': {
@@ -78,7 +78,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
       },
     };
     assert.ok(Validator.bridgeMessage.is(resultMsg),
-      'BridgeMessage result branch must accept a NodeError-valid errors entry');
+      'BridgeMessageType result branch must accept a NodeError-valid errors entry');
   });
 
   void it('a NodeError with an extra property is rejected by both NodeErrorSchema and the inline shape', () => {
@@ -96,7 +96,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
     assert.equal(Validator.nodeError.is(withExtra), false,
       'canonical NodeErrorSchema must reject extra property');
 
-    // BridgeMessage result branch must also reject it via inline shape.
+    // BridgeMessageType result branch must also reject it via inline shape.
     const resultMsg = {
       'kind': 'result',
       'response': {
@@ -107,7 +107,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
       },
     };
     assert.equal(Validator.bridgeMessage.is(resultMsg), false,
-      'BridgeMessage result branch must reject extra property in errors entry (inline shape ≡ canonical)');
+      'BridgeMessageType result branch must reject extra property in errors entry (inline shape ≡ canonical)');
   });
 
   void it('a NodeError missing a required field is rejected by both schemas', () => {
@@ -133,7 +133,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
       },
     };
     assert.equal(Validator.bridgeMessage.is(resultMsg), false,
-      'BridgeMessage result branch must reject errors entry missing required field');
+      'BridgeMessageType result branch must reject errors entry missing required field');
   });
 
   // ── InlineExecutionRequestShape ≡ ExecutionRequestSchema ────────────────
@@ -155,7 +155,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
       'request': validRequest,
     };
     assert.ok(Validator.bridgeMessage.is(executeMsg),
-      'BridgeMessage execute branch must accept an ExecutionRequest-valid request');
+      'BridgeMessageType execute branch must accept an ExecutionRequest-valid request');
   });
 
   void it('a request with an extra field is rejected by both ExecutionRequestSchema and inline shape', () => {
@@ -176,7 +176,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
       'request': withExtra,
     };
     assert.equal(Validator.bridgeMessage.is(executeMsg), false,
-      'BridgeMessage execute branch must reject extra nodeName in request (inline shape ≡ canonical)');
+      'BridgeMessageType execute branch must reject extra nodeName in request (inline shape ≡ canonical)');
   });
 
   // ── InlineExecutionResponseShape ≡ ExecutionResponseSchema ──────────────
@@ -197,7 +197,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
       'response': validResponse,
     };
     assert.ok(Validator.bridgeMessage.is(resultMsg),
-      'BridgeMessage result branch must accept an ExecutionResponse-valid response');
+      'BridgeMessageType result branch must accept an ExecutionResponse-valid response');
   });
 
   void it('a response with extra field on intermediate item is rejected by both', () => {
@@ -221,7 +221,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
       'response': withExtra,
     };
     assert.equal(Validator.bridgeMessage.is(resultMsg), false,
-      'BridgeMessage result branch must reject extra field on intermediates item (inline shape ≡ canonical)');
+      'BridgeMessageType result branch must reject extra field on intermediates item (inline shape ≡ canonical)');
   });
 
   // ── Schema property/required keys are identical ──────────────────────────
@@ -229,8 +229,11 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
   void it('NodeErrorSchema and InlineNodeErrorShape declare the same required fields', () => {
     // Extract inline shape from BridgeMessageSchema. The result branch's
     // response.properties.errors.items is the InlineNodeErrorShape.
-    const resultBranch = BridgeMessageSchema.oneOf.find(
-      (b) => 'properties' in b && 'kind' in b.properties && 'const' in b.properties.kind && b.properties.kind.const === 'result',
+    const resultBranch = (BridgeMessageSchema.oneOf as readonly object[]).find(
+      (b: object) => {
+        const node = b as { properties?: { kind?: { const?: unknown } } };
+        return node.properties?.kind?.const === 'result';
+      },
     );
     assert.ok(resultBranch !== undefined, 'result branch must exist in BridgeMessageSchema.oneOf');
 
@@ -249,8 +252,11 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
   });
 
   void it('ExecutionRequestSchema and InlineExecutionRequestShape declare the same required fields', () => {
-    const executeBranch = BridgeMessageSchema.oneOf.find(
-      (b) => 'properties' in b && 'kind' in b.properties && 'const' in b.properties.kind && b.properties.kind.const === 'execute',
+    const executeBranch = (BridgeMessageSchema.oneOf as readonly object[]).find(
+      (b: object) => {
+        const node = b as { properties?: { kind?: { const?: unknown } } };
+        return node.properties?.kind?.const === 'execute';
+      },
     );
     assert.ok(executeBranch !== undefined, 'execute branch must exist in BridgeMessageSchema.oneOf');
 
@@ -269,8 +275,11 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
   });
 
   void it('ExecutionResponseSchema and InlineExecutionResponseShape declare the same required fields', () => {
-    const resultBranch = BridgeMessageSchema.oneOf.find(
-      (b) => 'properties' in b && 'kind' in b.properties && 'const' in b.properties.kind && b.properties.kind.const === 'result',
+    const resultBranch = (BridgeMessageSchema.oneOf as readonly object[]).find(
+      (b: object) => {
+        const node = b as { properties?: { kind?: { const?: unknown } } };
+        return node.properties?.kind?.const === 'result';
+      },
     );
     assert.ok(resultBranch !== undefined, 'result branch must exist in BridgeMessageSchema.oneOf');
 
@@ -648,7 +657,7 @@ void describe('TST-W3-7: BaseStore.connect / disconnect no-op defaults', () => {
     await store.set('key', 'value');
     assert.equal(await store.get('key'), 'value');
     await store.disconnect();
-    // Store remains readable after disconnect (in-memory; no actual teardown).
+    // StoreInterface remains readable after disconnect (in-memory; no actual teardown).
     assert.equal(await store.get('key'), 'value',
       'store must remain operational after no-op disconnect');
   });
@@ -715,8 +724,8 @@ void describe('TST-W3-8: NodeErrorBuilder.from positional signature', () => {
       'provided context must be preserved');
   });
 
-  void it('produces an object satisfying NodeErrorInterface shape', () => {
-    const err: NodeErrorInterface = NodeErrorBuilder.from(
+  void it('produces an object satisfying NodeErrorType shape', () => {
+    const err: NodeErrorType = NodeErrorBuilder.from(
       'FETCH_FAILED',
       'HTTP 503',
       'fetchUser',

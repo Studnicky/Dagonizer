@@ -33,10 +33,10 @@
  * ```
  */
 
-import type { DAG } from '../entities/dag/DAG.js';
+import type { DAGType } from '../entities/dag/DAG.js';
 
 import { PlacementUtils, RoleColorUtils } from './internal.js';
-import type { PlacementEntry } from './internal.js';
+import type { PlacementEntryType } from './internal.js';
 
 /**
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
@@ -50,7 +50,7 @@ import type { PlacementEntry } from './internal.js';
 export class MermaidRenderer {
   private constructor() { /* static class */ }
 
-  static render(dag: DAG): string {
+  static render(dag: DAGType): string {
     const lines: string[] = [];
     lines.push('flowchart LR');
     lines.push(`  %% ${dag.name} (v${dag.version})`);
@@ -150,7 +150,7 @@ export class MermaidRenderer {
   }
 
   /** Render a placement's Mermaid shape syntax (rectangle / trapezoid / double-circle / flag). */
-  private static renderShape(placement: PlacementEntry): string {
+  private static renderShape(placement: PlacementEntryType): string {
     const label = MermaidRenderer.escapeLabel(placement.name);
     switch (placement['@type']) {
       case 'SingleNode':
@@ -187,7 +187,7 @@ export class MermaidRenderer {
   }
 
   /** Render a placement's outbound edges as `from -->|label| to` lines. */
-  private static renderEdges(placement: PlacementEntry): readonly string[] {
+  private static renderEdges(placement: PlacementEntryType): readonly string[] {
     // TerminalNode placements are leaf placements; they have no outputs field.
     if (!('outputs' in placement)) return [];
     const lines: string[] = [];

@@ -1,11 +1,11 @@
 /**
- * Store: shared key-value store contract for cross-embedded-DAG state.
+ * StoreInterface: shared key-value store contract for cross-embedded-DAG state.
  *
  * Every method returns a Promise. This is the only call shape; there is
  * no sync variant. Durable backings (SQLite, network, RDF) await real work;
  * in-memory backings resolve immediately. Consumers always `await`.
  *
- *   Store contract → BaseStore ┐
+ *   StoreInterface contract → BaseStore ┐
  *                              ├─ get/set/has/delete → performGet/performSet/performHas/performDelete
  *                              ├─ update(key, fn)    → atomic read-modify-write
  *                              └─ snapshot/restore   → performSnapshotEntries/performRestoreEntries
@@ -20,9 +20,9 @@
  *     across processes.
  */
 
-import type { JsonValue } from '../entities/json.js';
+import type { JsonValueType } from '../entities/json.js';
 
-import type { Snapshottable } from './Snapshottable.js';
+import type { SnapshottableInterface } from './SnapshottableInterface.js';
 
 /**
  * Shared key-value store for cross-embedded-DAG state.
@@ -30,23 +30,23 @@ import type { Snapshottable } from './Snapshottable.js';
  * Plugin authors implement this interface (typically by extending
  * `BaseStore`) to swap the backing without touching DAG topology.
  *
- * Values are typed per-call via the method's `<T extends JsonValue>`
+ * Values are typed per-call via the method's `<T extends JsonValueType>`
  * parameter; there is no class-level value generic. This keeps stores
  * heterogeneous (one store can hold strings, numbers, and records under
- * different keys) and keeps a `Store` assignable into any
- * `Record<string, Store>` boundary without variance casts.
+ * different keys) and keeps a `StoreInterface` assignable into any
+ * `Record<string, StoreInterface>` boundary without variance casts.
  *
  * Every value crosses a serialization boundary at `snapshot()` time, so
- * stored values must be `JsonValue`. Domain types that aren't JSON-shaped
+ * stored values must be `JsonValueType`. Domain types that aren't JSON-shaped
  * (class instances, Date, Map) serialize to a JSON form before `set` and
  * rehydrate after `get`.
  *
  * The generic `T` has no default; callers MUST specify the value type
  * at every call site. The engine never uses `unknown` here.
  */
-export interface Store extends Snapshottable {
-  get<T extends JsonValue>(key: string): Promise<T | null>;
-  set<T extends JsonValue>(key: string, value: T): Promise<void>;
+export interface StoreInterface extends SnapshottableInterface {
+  get<T extends JsonValueType>(key: string): Promise<T | null>;
+  set<T extends JsonValueType>(key: string, value: T): Promise<void>;
   has(key: string): Promise<boolean>;
   delete(key: string): Promise<boolean>;
 
@@ -57,9 +57,9 @@ export interface Store extends Snapshottable {
    * Permitted callback under the "zero callbacks in topology" rule:
    * this is in-process composition, not dispatch behavior.
    */
-  update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T>;
+  update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T>;
 
-  // snapshot() / restore() are inherited from Snapshottable.
+  // snapshot() / restore() are inherited from SnapshottableInterface.
 
   /**
    * Lifecycle hook for stores that hold a connection. Called before first use.

@@ -20,10 +20,10 @@
 
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistServices } from '../services.ts';
 
 const MAX_COMPOSE_ATTEMPTS = 3;
@@ -35,7 +35,7 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
   readonly name = 'compose-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.recordAttempt('compose');
     const llm = context.services.llm;
     const prior = state.priorContext.length > 0 ? state.priorContext : undefined;
@@ -146,8 +146,8 @@ export class ResponseAnalysis {
    */
   static antiHallucinationCheck(
     draft: string,
-    shortlist: readonly Candidate[],
-    priorCandidates: readonly Candidate[],
+    shortlist: readonly CandidateType[],
+    priorCandidates: readonly CandidateType[],
   ): { readonly status: 'pass' | 'fail'; readonly count: number; readonly cause: string } {
     const knownTitles: readonly string[] = [
       ...shortlist.map((c) => c.book.identity.title.toLowerCase()),
@@ -198,7 +198,7 @@ export class ValidateResponseNode extends ScalarNode<
   readonly name = 'validate-response';
   readonly outputs = ['approved', 'retry', 'exhausted'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     // ── Deterministic anti-hallucination pre-check ───────────────────────
     // Runs BEFORE the LLM validator. When it fails we force a retry
     // without paying for an LLM round-trip; we accumulate a

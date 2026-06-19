@@ -6,7 +6,7 @@
  *      different (provider, model) keys.
  *   2. Wire an LlmAdapterCascade that walks the preference list in order,
  *      probing each adapter and selecting the first available one.
- *   3. Inject the selected LlmAdapter into state and call .chat() inside
+ *   3. Inject the selected LlmAdapterInterface into state and call .chat() inside
  *      a DAG node that routes on the response kind (text vs tool_call).
  *
  * Prerequisites:

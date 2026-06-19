@@ -26,16 +26,16 @@ import {
   DagContainerBase,
 } from '@studnicky/dagonizer/container';
 import type {
-  DagContainerOptions,
+  DagContainerOptionsType,
 } from '@studnicky/dagonizer/container';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { NodeSystemInfo } from './NodeSystemInfo.js';
 
 // ---------------------------------------------------------------------------
-// NodeContainerBaseOptions: shared constructor input fields
+// NodeContainerBaseOptionsType: shared constructor input fields
 // ---------------------------------------------------------------------------
 
 /**
@@ -48,13 +48,13 @@ import { NodeSystemInfo } from './NodeSystemInfo.js';
  *   poolSize         — number of workers (default: recommended worker count)
  *   entryUrl         — override the default entry module URL (for tests)
  */
-export interface NodeContainerBaseOptions {
+export type NodeContainerBaseOptionsType = {
   readonly registryModule: string;
   readonly registryVersion: string;
-  readonly servicesConfig?: JsonObject;
+  readonly servicesConfig?: JsonObjectType;
   readonly poolSize?: number;
   readonly entryUrl?: URL;
-}
+};
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -64,7 +64,7 @@ export interface NodeContainerBaseOptions {
 const MAXIMUM_WORKERS = 8;
 
 /** Empty services config used when a container omits `servicesConfig`. */
-const DEFAULT_SERVICES_CONFIG: JsonObject = {};
+const DEFAULT_SERVICES_CONFIG: JsonObjectType = {};
 
 /**
  * Single host-probe instance shared by every container construction. Built once
@@ -73,7 +73,7 @@ const DEFAULT_SERVICES_CONFIG: JsonObject = {};
 const SYSTEM_INFO = new NodeSystemInfo();
 
 // ---------------------------------------------------------------------------
-// NodeContainerBaseInterface: class-shape interface for NodeContainerBase
+// NodeContainerBaseType: class-shape type for NodeContainerBase
 // ---------------------------------------------------------------------------
 
 /**
@@ -81,7 +81,7 @@ const SYSTEM_INFO = new NodeSystemInfo();
  * beyond `DagContainerBase`; the shared behavior lives in the static
  * `resolveOptions` factory the subclass constructors call.
  */
-export type NodeContainerBaseInterface<
+export type NodeContainerBaseType<
   TWorker,
 > = DagContainerBase<NodeStateInterface, TWorker>;
 
@@ -93,14 +93,14 @@ export abstract class NodeContainerBase<TWorker>
   extends DagContainerBase<NodeStateInterface, TWorker> {
 
   /**
-   * Resolve a `NodeContainerBaseOptions` into the complete `DagContainerOptions`
+   * Resolve a `NodeContainerBaseOptionsType` into the complete `DagContainerOptionsType`
    * the `DagContainerBase` constructor consumes. Fills the default pool size
    * from the shared `NodeSystemInfo` probe (clamped to `MAXIMUM_WORKERS`) and
    * the empty `servicesConfig` default, then layers the base defaults spread.
    *
    * Subclasses call this as the argument to `super(...)`.
    */
-  protected static resolveOptions(options: NodeContainerBaseOptions): DagContainerOptions {
+  protected static resolveOptions(options: NodeContainerBaseOptionsType): DagContainerOptionsType {
     const defaultPoolSize = SYSTEM_INFO.recommendedWorkerCount({
       ...RecommendedWorkerCountConfigDefault,
       'maximumWorkers': MAXIMUM_WORKERS,

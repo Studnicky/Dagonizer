@@ -7,14 +7,14 @@
  *   - ClassifyIntentNode: TChoice = TIntent ∈ token union
  *   - DecideToolsNode:    TChoice = readonly ToolCall[]
  *   - ValidateResponseNode: TChoice = 'yes' | 'no'
- *   - RankCandidatesNode: TChoice = readonly Score[]
+ *   - RankCandidatesNode: TChoice = readonly ScoreType[]
  */
 
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { LlmDispatchNode } from './LlmDispatchNode.js';
-import type { RagServices } from './LlmDispatchNode.js';
+import type { RagServicesType } from './LlmDispatchNode.js';
 
 export abstract class DecisionNode<
   TState extends NodeStateInterface,
@@ -32,8 +32,8 @@ export abstract class DecisionNode<
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextInterface<RagServices>,
-  ): Promise<NodeOutputInterface<TOutput>> {
+    context: NodeContextType<RagServicesType>,
+  ): Promise<NodeOutputType<TOutput>> {
     const response = await this.dispatch(state, context);
     const content = this.extractContent(response);
     const choice = this.decodeChoice(content);

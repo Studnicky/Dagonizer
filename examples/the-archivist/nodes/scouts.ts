@@ -49,17 +49,17 @@ import {
   ScalarNode,
 } from '@studnicky/dagonizer';
 import type {
-  GatherConfig,
-  GatherRecord,
-  NodeContextInterface,
-  NodeOutputInterface,
+  GatherConfigType,
+  GatherRecordType,
+  NodeContextType,
+  NodeOutputType,
   NodeStateInterface,
 } from '@studnicky/dagonizer';
 import type { Batch } from '@studnicky/dagonizer';
-import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 
 import type { ArchivistState } from '../ArchivistState.ts';
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import type { ArchivistServices } from '../services.ts';
 
@@ -76,9 +76,9 @@ class ScoutUtils {
    * code are dropped.
    */
   static filterByLanguage(
-    candidates: readonly Candidate[],
+    candidates: readonly CandidateType[],
     userLanguage: string,
-  ): readonly Candidate[] {
+  ): readonly CandidateType[] {
     const target = UserLanguage.toIso6392(userLanguage);
     return candidates.filter((c) => {
       const langs = c.book.publication.languages;
@@ -171,12 +171,12 @@ export class OpenLibraryScoutNode extends ScalarNode<ArchivistState, 'success' |
 
   async runItem(
     state: ArchivistState,
-    context: NodeContextInterface<ArchivistServices>,
-  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
+    context: NodeContextType<ArchivistServices>,
+  ): Promise<NodeOutputType<'success' | 'empty'>> {
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const planned = state.toolPlan.find((call) => call.name === 'web_search_books');
     if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as {
@@ -260,12 +260,12 @@ export class GoogleBooksScoutNode extends ScalarNode<ArchivistState, 'success' |
 
   async runItem(
     state: ArchivistState,
-    context: NodeContextInterface<ArchivistServices>,
-  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
+    context: NodeContextType<ArchivistServices>,
+  ): Promise<NodeOutputType<'success' | 'empty'>> {
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const planned = state.toolPlan.find((call) => call.name === 'google_books_search');
     if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as { query?: string; maxResults?: number };
@@ -319,12 +319,12 @@ export class SubjectScoutNode extends ScalarNode<ArchivistState, 'success' | 'em
 
   async runItem(
     state: ArchivistState,
-    context: NodeContextInterface<ArchivistServices>,
-  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
+    context: NodeContextType<ArchivistServices>,
+  ): Promise<NodeOutputType<'success' | 'empty'>> {
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const planned = state.toolPlan.find((call) => call.name === 'subject_search');
     if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as { subject?: string; limit?: number };
@@ -381,12 +381,12 @@ export class WikipediaScoutNode extends ScalarNode<ArchivistState, 'success' | '
 
   async runItem(
     state: ArchivistState,
-    context: NodeContextInterface<ArchivistServices>,
-  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
+    context: NodeContextType<ArchivistServices>,
+  ): Promise<NodeOutputType<'success' | 'empty'>> {
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     // Wikipedia shaping: the REST summary endpoint resolves exact article
     // titles best. Prefer the first capitalised term (proper noun heuristic
     // e.g. "Neuromancer", "Philip K. Dick". Fall back to joining all terms.
@@ -450,8 +450,8 @@ export class ScoutDispatchNode extends ScalarNode<ArchivistState, 'success' | 'e
 
   protected override async executeOne(
     state: ArchivistState,
-    context: NodeContextInterface<ArchivistServices>,
-  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
+    context: NodeContextType<ArchivistServices>,
+  ): Promise<NodeOutputType<'success' | 'empty'>> {
     const provider = state.getMetadata<ScoutProvider>('currentItem');
     switch (provider) {
       case 'openlibrary': return openLibraryScoutNode.runItem(state, context);
@@ -479,21 +479,21 @@ class ScoutGatherStrategy extends GatherStrategy {
   readonly name = 'scout-merge';
 
   override reduce(
-    _config: GatherConfig,
-    batch: Batch<GatherRecord<NodeStateInterface>>,
+    _config: GatherConfigType,
+    batch: Batch<GatherRecordType<NodeStateInterface>>,
     state: NodeStateInterface,
-    _accessor: StateAccessor,
+    _accessor: StateAccessorInterface,
   ): void {
     // This strategy is registered for use with ArchivistState exclusively;
     // the cast is safe because only ArchivistState DAGs register 'scout-merge'.
     const parentState = state as ArchivistState;
 
-    const merged: Candidate[] = [...parentState.candidates];
+    const merged: CandidateType[] = [...parentState.candidates];
     for (const item of batch) {
       const record = item.state;
       const cloneState = record.cloneState as ArchivistState;
       // Flat-merge the clone's candidates into parent (order is source-index order
-      // because GatherExecution.records is guaranteed source-index ordered).
+      // because GatherExecutionType.records is guaranteed source-index ordered).
       for (const candidate of cloneState.candidates) {
         merged.push(candidate);
       }

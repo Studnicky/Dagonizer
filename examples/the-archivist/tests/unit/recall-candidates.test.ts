@@ -25,11 +25,11 @@ import { ArchivistState } from '../../ArchivistState.ts';
 import { recallCandidates } from '../../nodes/recallCandidates.ts';
 import { GRAPH_MEMORY, MemoryStore } from '../../memory/MemoryStore.ts';
 
-import type { Embedder } from '@studnicky/dagonizer/contracts';
+import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
 // ── Deterministic embedder ───────────────────────────────────────────────────
 
-class DeterministicEmbedder implements Embedder {
+class DeterministicEmbedder implements EmbedderInterface {
   readonly id = 'deterministic';
   readonly displayName = 'deterministic-embedder';
   readonly dimensions = 4;
@@ -60,7 +60,7 @@ const logs: string[] = [];
 
 /** Context and seed helpers for recallCandidates unit tests. */
 class RecallCandidatesFixture {
-  static makeContext(memory: MemoryStore, embedder: Embedder | null = null) {
+  static makeContext(memory: MemoryStore, embedder: EmbedderInterface | null = null) {
     return {
       signal: new AbortController().signal,
       services: {
@@ -252,7 +252,7 @@ void test('recallCandidates cosine: similar query (cos >= 0.70) loads prior book
   RecallCandidatesFixture.seedPriorRun(memory, 'prior-cos-1', 'existentialism', [
     { isbn: '1110000001', title: 'Being and Nothingness' },
   ], [1, 0, 0, 0]);
-  // Embedder returns a query vector close to axis 0 → cosine ~ 1.0
+  // EmbedderInterface returns a query vector close to axis 0 → cosine ~ 1.0
   const embedder = new DeterministicEmbedder([0.95, 0.05, 0, 0]);
   const state = new ArchivistState();
   state.runId = 'cur-cos-1';

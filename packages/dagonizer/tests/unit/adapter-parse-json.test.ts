@@ -17,16 +17,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { AdapterCapabilities, ChatRequest, ChatResponse } from '../../src/adapter/LlmAdapter.js';
+import type { AdapterCapabilitiesType, ChatRequestType, ChatResponseType } from '../../src/adapter/LlmAdapter.js';
 import { ZERO_TOKEN_USAGE } from '../../src/adapter/LlmAdapter.js';
 import { LlmError } from '../../src/adapter/LlmError.js';
 import { OpenAiCompatibleAdapter } from '../../src/adapter/OpenAiCompatibleAdapter.js';
-import type { OpenAiCompatibleConfig } from '../../src/adapter/OpenAiCompatibleAdapter.js';
+import type { OpenAiCompatibleConfigType } from '../../src/adapter/OpenAiCompatibleAdapter.js';
 
-const FULL_CAPS: AdapterCapabilities = { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true };
-const PARTIAL_CAPS: AdapterCapabilities = { 'toolUse': 'partial', 'structuredOutput': false, 'jsonMode': false };
+const FULL_CAPS: AdapterCapabilitiesType = { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true };
+const PARTIAL_CAPS: AdapterCapabilitiesType = { 'toolUse': 'partial', 'structuredOutput': false, 'jsonMode': false };
 
-const FALLBACK_CONFIG: OpenAiCompatibleConfig = {
+const FALLBACK_CONFIG: OpenAiCompatibleConfigType = {
   'id': 'test-adapter',
   'displayName': 'Test',
   'capabilities': PARTIAL_CAPS,
@@ -55,7 +55,7 @@ class InjectableAdapter extends OpenAiCompatibleAdapter {
     this.#rawBody = rawBody;
   }
 
-  protected override async performChat(request: ChatRequest): Promise<ChatResponse> {
+  protected override async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     const body = this.#rawBody;
     const saved = globalThis.fetch;
     globalThis.fetch = async () =>
@@ -71,7 +71,7 @@ class InjectableAdapter extends OpenAiCompatibleAdapter {
   }
 }
 
-function makeRequest(withTools: boolean): ChatRequest {
+function makeRequest(withTools: boolean): ChatRequestType {
   return {
     'messages': [{ 'role': 'user', 'content': 'hi' }],
     'tools': withTools
@@ -348,8 +348,8 @@ void describe('OpenAiCompatibleAdapter shouldFallbackWithoutTools', () => {
     assert.equal(fetchCallCount, 1, 'fallback not triggered with empty tools');
   });
 
-  void it('OpenAiCompatibleConfig carries no toolsFallback property', () => {
-    const config: OpenAiCompatibleConfig = { ...FALLBACK_CONFIG };
+  void it('OpenAiCompatibleConfigType carries no toolsFallback property', () => {
+    const config: OpenAiCompatibleConfigType = { ...FALLBACK_CONFIG };
     assert.ok(!('toolsFallback' in config), 'toolsFallback should not be present on config');
   });
 });

@@ -20,14 +20,14 @@ import { describe, it } from 'node:test';
 
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { ScatterProgress } from '../../src/Dagonizer.js';
+import type { ScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // ─── shared test state ───────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ class StreamState extends NodeStateBase {
   partition_error: number[] = [];
   produced = 0;
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     // items may be an AsyncIterable at runtime (scatter engine reads it via
     // accessor); only array form is JSON-serialisable. Non-array sources are
     // snapshotted as empty — resume callers supply a re-positioned iterator.
@@ -58,7 +58,7 @@ class StreamState extends NodeStateBase {
     };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     const num = (k: string): number[] => {
       const v = snap[k];
       return Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : [];
@@ -77,9 +77,9 @@ class StreamState extends NodeStateBase {
 
 const makeScatterDag = (
   dagName: string,
-  gatherStrategy: GatherConfig,
+  gatherStrategy: GatherConfigType,
   options: { concurrency?: number } = {},
-): DAG => ({
+): DAGType => ({
   '@context': DAG_CONTEXT,
   '@id':      `urn:noocodex:dag:${dagName}`,
   '@type':    'DAG',
@@ -109,7 +109,7 @@ void describe('Scatter: array source backward compatibility', () => {
     class ArrCompatWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { calls++; return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { calls++; return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new ArrCompatWorkerNode());
     dispatcher.registerDAG(makeScatterDag('arr-compat',
@@ -132,7 +132,7 @@ void describe('Scatter: array source backward compatibility', () => {
     class BoundedWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(): Promise<NodeOutputType<'success'>> {
         current++;
         if (current > peakConcurrent) peakConcurrent = current;
         // Yield to allow other workers to start before decrementing.
@@ -162,7 +162,7 @@ void describe('Scatter: AsyncIterable source', () => {
     class AsyncSourceWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new AsyncSourceWorkerNode());
     dispatcher.registerDAG(makeScatterDag('async-source',
@@ -203,7 +203,7 @@ void describe('Scatter: AsyncIterable source', () => {
     class BackpressureWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
         const item = state.getMetadata<number>('item') ?? 0;
         log.push({ 'event': 'process', 'item': item });
         // Yield to the event loop so the pull loop can advance if backpressure
@@ -255,7 +255,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     class ResumeArrWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
         calls++;
         seenItems.push(state.getMetadata<number>('item') ?? -1);
         return { 'errors': [], 'output': 'success' as const };
@@ -305,7 +305,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     class ResumeInboxWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
         processedItems.push(state.getMetadata<number>('item') ?? -1);
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -359,7 +359,7 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
     class ResumeAsyncWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
         calls++;
         processedValues.push(state.getMetadata<number>('item') ?? -1);
         return { 'errors': [], 'output': 'success' as const };
@@ -427,7 +427,7 @@ void describe('Scatter: incremental gather', () => {
     class IncrMapWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
         const item = state.getMetadata<number>('item') ?? 0;
         state.produced = item * 2;
         return { 'errors': [], 'output': 'success' as const };
@@ -436,7 +436,7 @@ void describe('Scatter: incremental gather', () => {
     dispatcher.registerNode(new IncrMapWorkerNode());
 
     const dagName = 'incr-map';
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
       '@type':    'DAG',
@@ -491,7 +491,7 @@ void describe('Scatter: incremental gather', () => {
     class IncrAppendWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new IncrAppendWorkerNode());
     dispatcher.registerDAG(makeScatterDag('incr-append',
@@ -524,7 +524,7 @@ void describe('Scatter: incremental gather', () => {
     class IncrPartitionWorkerNode extends ScalarNode<StreamState, 'success' | 'error'> {
       readonly name = 'worker';
       readonly outputs = ['success', 'error'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success' | 'error'>> {
+      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success' | 'error'>> {
         const item = state.getMetadata<number>('item') ?? 0;
         return { 'errors': [], 'output': item % 2 === 1 ? 'success' as const : 'error' as const };
       }
@@ -532,7 +532,7 @@ void describe('Scatter: incremental gather', () => {
     dispatcher.registerNode(new IncrPartitionWorkerNode());
 
     const dagName = 'incr-partition';
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
       '@type':    'DAG',
@@ -584,13 +584,13 @@ void describe('Scatter: incremental gather', () => {
     class CustomBatchWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     // Custom gather node: reads gatherResults from metadata.
     class CustomGatherNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'customGather';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
         customNodeCalls++;
         const records = state.getMetadata<Array<{ item: unknown }>>('gatherResults') ?? [];
         for (const r of records) {
@@ -603,7 +603,7 @@ void describe('Scatter: incremental gather', () => {
     dispatcher.registerNode(new CustomGatherNode());
 
     const dagName = 'custom-batch';
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
       '@type':    'DAG',
@@ -639,7 +639,7 @@ void describe('Scatter: incremental gather', () => {
 void describe('Scatter: progress shape (inbox model)', () => {
   void it('persists inbox + ackedResults; clears on clean completion', async () => {
     const dispatcher = new Dagonizer<StreamState>();
-    const progressSnapshots: ScatterProgress[] = [];
+    const progressSnapshots: ScatterProgressType[] = [];
 
     const st = new StreamState();
     st.items = [1, 2, 3];
@@ -649,7 +649,7 @@ void describe('Scatter: progress shape (inbox model)', () => {
     st.setMetadata = (key: string, value: unknown): void => {
       origSet(key, value);
       if (key === SCATTER_PROGRESS_KEY) {
-        const stored = value as Record<string, ScatterProgress>;
+        const stored = value as Record<string, ScatterProgressType>;
         if (stored['fan'] !== undefined) {
           progressSnapshots.push({ ...stored['fan'] });
         }
@@ -659,7 +659,7 @@ void describe('Scatter: progress shape (inbox model)', () => {
     class ProgressShapeWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new ProgressShapeWorkerNode());
     dispatcher.registerDAG(makeScatterDag('progress-shape',
@@ -717,7 +717,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     class WorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         // Simulate some async work.
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 2);
@@ -757,7 +757,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
       `cursor should be 'fan' after abort; got '${result.cursor}'`);
 
     // 2. The checkpoint survives — progress entry is still present.
-    const stored = result.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const stored = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     assert.ok(stored !== undefined,
       'checkpoint must be present after abort (ScatterCheckpoint.clear must NOT have run)');
 
@@ -783,7 +783,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     class ResumeWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
         state.processed.push(state.getMetadata<number>('item') ?? -1);
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -796,7 +796,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     // Build resume state: carry over the checkpoint metadata, already-processed
     // items, and a full index-stable array source.
     const resumeState = new StreamState();
-    const abortedCheckpoint = result.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const abortedCheckpoint = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     if (abortedCheckpoint !== undefined) {
       resumeState.setMetadata(SCATTER_PROGRESS_KEY, abortedCheckpoint);
     }
@@ -828,7 +828,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     class PreAbortWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
         state.processed.push(state.getMetadata<number>('item') ?? -1);
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -872,7 +872,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     class ExactlyOnceWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 1);
           context.signal.addEventListener('abort', () => {
@@ -908,7 +908,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     class ExactlyOnceResumeWorkerNode extends ScalarNode<StreamState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
         const item = state.getMetadata<number>('item') ?? -1;
         resumeItems.push(item);
         state.processed.push(item);
@@ -922,7 +922,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
 
     // Restore state for resume.
     const resumeState = new StreamState();
-    const checkpoint = partial.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const checkpoint = partial.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     if (checkpoint !== undefined) {
       resumeState.setMetadata(SCATTER_PROGRESS_KEY, checkpoint);
     }

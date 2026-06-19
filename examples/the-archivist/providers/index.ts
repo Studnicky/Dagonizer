@@ -9,9 +9,9 @@
  *   mistral      →  Mistral AI REST (mistral-small-latest, free tier)
  *   openrouter   →  OpenRouter REST (llama-3.3-70b-instruct:free, free-tier models)
  *
- * Every backend is one `LlmAdapter` (transport + native tool format)
+ * Every backend is one `LlmAdapterInterface` (transport + native tool format)
  * wrapped by `BaseLlmClient` (prompt choreography). The choice between
- * backends is just a choice of adapter; the high-level `LlmClient`
+ * backends is just a choice of adapter; the high-level `LlmClientInterface`
  * surface is identical.
  *
  * `BackendMatrix.detect(inputs)` probes each one and returns rows for all.
@@ -28,7 +28,7 @@
  * `ApiKeyStore.save()` to read/write.
  */
 
-import type { LlmClient } from '../services.ts';
+import type { LlmClientInterface } from '../services.ts';
 
 import {
   CerebrasApiAdapter,
@@ -41,7 +41,7 @@ import {
   WebLlmAdapter,
   OllamaProbe,
   type GeminiNanoAvailabilityType,
-  type WebLlmInitReportInterface,
+  type WebLlmInitReportType,
 } from './adapters/index.ts';
 import { LlmError } from '@studnicky/dagonizer/adapter';
 import { BaseLlmClient } from './BaseLlmClient.ts';
@@ -132,7 +132,7 @@ export interface PickBestOptions {
 export interface InstantiateInputs {
   readonly apiKeys?: Partial<Record<ProviderId, string>>;
   readonly webLlmModel?: string;
-  readonly onWebLlmProgress?: (report: WebLlmInitReportInterface) => void;
+  readonly onWebLlmProgress?: (report: WebLlmInitReportType) => void;
   /**
    * Ollama chat model to use. Defaults to the installed model the detector
    * resolved from the daemon's tag list (e.g. 'llama3.2:3b'); pass a value to
@@ -364,10 +364,10 @@ export class BackendMatrix {
 }
 
 /**
- * ProviderInstantiator: factory for LlmClient instances given a ProviderId.
+ * ProviderInstantiator: factory for LlmClientInterface instances given a ProviderId.
  */
 export class ProviderInstantiator {
-  static instantiate(id: ProviderId, inputs: InstantiateInputs = {}): LlmClient {
+  static instantiate(id: ProviderId, inputs: InstantiateInputs = {}): LlmClientInterface {
     const keys = inputs.apiKeys ?? {};
     switch (id) {
       case 'gemini-nano':
@@ -380,7 +380,7 @@ export class ProviderInstantiator {
         return new BaseLlmClient(new GeminiApiAdapter(key));
       }
       case 'web-llm': {
-        const options: { model?: string; onProgress?: (report: WebLlmInitReportInterface) => void } = {};
+        const options: { model?: string; onProgress?: (report: WebLlmInitReportType) => void } = {};
         if (inputs.webLlmModel !== undefined) options.model = inputs.webLlmModel;
         if (inputs.onWebLlmProgress !== undefined) options.onProgress = inputs.onWebLlmProgress;
         return new BaseLlmClient(new WebLlmAdapter(options));
@@ -444,4 +444,4 @@ export {
   OllamaProbe,
 } from './adapters/index.ts';
 export { MobileDetection } from './MobileDetection.ts';
-export type { GeminiNanoAvailabilityType, WebLlmInitReportInterface };
+export type { GeminiNanoAvailabilityType, WebLlmInitReportType };

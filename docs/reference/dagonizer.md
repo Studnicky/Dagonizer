@@ -5,7 +5,7 @@ seeAlso:
     description: 'what `execute` and `resume` return'
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`NodeInterface`, `ExecuteOptionsInterface`'
+    description: '`NodeInterface`, `ExecuteOptionsType`'
   - text: 'Reference: Core'
     link: './core'
     description: '`GatherStrategies`, `OutcomeReducers`'
@@ -39,28 +39,28 @@ const dispatcher2 = new Dagonizer<MyState, MyServices>({ services: { logger: con
 
 ```ts twoslash
 import { Dagonizer } from '@studnicky/dagonizer';
-import type { DagonizerOptionsInterface, NodeStateInterface } from '@studnicky/dagonizer';
+import type { DagonizerOptionsType, NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-// constructor(options?: DagonizerOptionsInterface<TState, TServices>)
-declare const options: DagonizerOptionsInterface;
+// constructor(options?: DagonizerOptionsType<TState, TServices>)
+declare const options: DagonizerOptionsType;
 const d = new Dagonizer(options);
 ```
 
 `options.accessor` swaps the path resolver for scatter source reads, state-mapping input copies, and gather writes. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
 
-### `DagonizerOptionsInterface`
+### `DagonizerOptionsType`
 
 ```ts twoslash
 import type {
-  DagonizerOptionsInterface,
+  DagonizerOptionsType,
   NodeStateInterface,
   HandoffChannelInterface,
   DagContainerInterface,
 } from '@studnicky/dagonizer';
-import type { StateAccessor } from '@studnicky/dagonizer/types';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/types';
 // ---cut---
-declare const _opts: DagonizerOptionsInterface;
-// accessor?: StateAccessor
+declare const _opts: DagonizerOptionsType;
+// accessor?: StateAccessorInterface
 // services?: TServices
 // containers?: Readonly<Record<string, DagContainerInterface<TState>>>
 // channels?: Readonly<Record<string, HandoffChannelInterface>>
@@ -82,7 +82,7 @@ export {};
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { NodeInterface, OperationContractFragment } from '@studnicky/dagonizer';
+import type { NodeInterface, OperationContractFragmentType } from '@studnicky/dagonizer';
 import { Timeout } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
@@ -101,10 +101,10 @@ Nodes are stored widened to `NodeInterface<TState, string, TServices>`. Narrow `
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { DispatcherBundle } from '@studnicky/dagonizer';
+import type { DispatcherBundleType } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
-declare const bundle: DispatcherBundle<MyState>;
+declare const bundle: DispatcherBundleType<MyState>;
 const d = new Dagonizer<MyState>();
 d.registerBundle(bundle);
 ```
@@ -113,15 +113,15 @@ Register every node, then every DAG, in the supplied bundle. Order is fixed: nod
 
 ```ts twoslash
 import type {
-  DispatcherBundle,
+  DispatcherBundleType,
   NodeStateInterface,
   NodeInterface,
-  DAG,
+  DAGType,
 } from '@studnicky/dagonizer';
 // ---cut---
-declare const _b: DispatcherBundle<NodeStateInterface>;
+declare const _b: DispatcherBundleType<NodeStateInterface>;
 // readonly nodes: readonly NodeInterface<TState, string, TServices>[]
-// readonly dags:  readonly DAG[]
+// readonly dags:  readonly DAGType[]
 export {};
 ```
 
@@ -135,10 +135,10 @@ Both arrays are required. Either may be empty (a node-only bundle uses `dags: []
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
-declare const dag: DAG;
+declare const dag: DAGType;
 const d = new Dagonizer<MyState>();
 d.registerDAG(dag);
 ```
@@ -220,10 +220,10 @@ Validate an already-parsed value. Same boundary semantics as `load` but skips `J
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
-// static serialize(dag: DAG): string
-declare const dag: DAG;
+// static serialize(dag: DAGType): string
+declare const dag: DAGType;
 const json: string = DAGDocument.serialize(dag);
 ```
 
@@ -235,10 +235,10 @@ Serialize a DAG to pretty JSON (2-space indent). Does not re-validate.
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
-// static serializeCompact(dag: DAG): string
-declare const dag: DAG;
+// static serializeCompact(dag: DAGType): string
+declare const dag: DAGType;
 const json: string = DAGDocument.serializeCompact(dag);
 ```
 
@@ -250,7 +250,7 @@ Serialize a DAG to compact JSON (no whitespace).
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { ExecuteOptionsInterface, Execution } from '@studnicky/dagonizer';
+import type { ExecuteOptionsType, Execution } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
@@ -262,7 +262,7 @@ Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution i
 
 <<< @/../examples/the-archivist/runArchivist.ts#linear-run
 
-`ExecuteOptionsInterface` has two fields: `signal?: AbortSignal` and `deadlineMs?: number`.
+`ExecuteOptionsType` has two fields: `signal?: AbortSignal` and `deadlineMs?: number`.
 
 ---
 
@@ -270,7 +270,7 @@ Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution i
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { ExecuteOptionsInterface, Execution } from '@studnicky/dagonizer';
+import type { ExecuteOptionsType, Execution } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
@@ -304,14 +304,14 @@ Five protected no-op methods. Subclass `Dagonizer` and override to attach metric
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 class ObservableDagonizer extends Dagonizer<MyState> {
   protected override onFlowStart(dagName: string, state: MyState): void {
     console.log('start', dagName);
   }
-  protected override onFlowEnd(dagName: string, state: MyState, result: ExecutionResultInterface<MyState>): void {
+  protected override onFlowEnd(dagName: string, state: MyState, result: ExecutionResultType<MyState>): void {
     console.log('end', dagName, result.terminalOutcome);
   }
   protected override onNodeStart(nodeName: string, state: MyState, placementPath: readonly string[]): void {}
@@ -334,22 +334,22 @@ See [Observability](/guide/observability) for usage examples. Contract misalignm
 
 ---
 
-## Interface: `DispatcherBundle`
+## Interface: `DispatcherBundleType`
 
 ```ts twoslash
 import type {
-  DispatcherBundle,
+  DispatcherBundleType,
   NodeStateInterface,
   NodeInterface,
-  DAG,
+  DAGType,
 } from '@studnicky/dagonizer';
 // ---cut---
-declare const bundle: DispatcherBundle<NodeStateInterface>;
+declare const bundle: DispatcherBundleType<NodeStateInterface>;
 const _nodes: readonly NodeInterface<NodeStateInterface, string, undefined>[] = bundle.nodes;
-const _dags: readonly DAG[] = bundle.dags;
+const _dags: readonly DAGType[] = bundle.dags;
 ```
 
-A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundle` so consumers register the whole unit in one call.
+A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundleType` so consumers register the whole unit in one call.
 
 ---
 

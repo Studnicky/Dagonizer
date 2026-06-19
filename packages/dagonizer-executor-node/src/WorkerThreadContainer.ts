@@ -20,38 +20,38 @@
 import { Worker } from 'node:worker_threads';
 
 import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
-import type { PoolEntry } from '@studnicky/dagonizer/container';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
 
 import { MessagePortChannel } from './MessagePortChannel.js';
-import type { MessagePortLike } from './MessagePortChannel.js';
+import type { MessagePortLikeInterface } from './MessagePortChannel.js';
 import { NodeContainerBase } from './NodeContainerBase.js';
-import type { NodeContainerBaseOptions } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptionsType } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
-// WorkerThreadResourceLimits
+// WorkerThreadResourceLimitsType
 // ---------------------------------------------------------------------------
 
-export interface WorkerThreadResourceLimits {
+export type WorkerThreadResourceLimitsType = {
   readonly maxOldGenerationSizeMb?: number;
-}
+};
 
 // ---------------------------------------------------------------------------
-// WorkerThreadContainerOptions
+// WorkerThreadContainerOptionsType
 // ---------------------------------------------------------------------------
 
-export interface WorkerThreadContainerOptions extends NodeContainerBaseOptions {
-  readonly resourceLimits?: WorkerThreadResourceLimits;
-}
+export type WorkerThreadContainerOptionsType = NodeContainerBaseOptionsType & {
+  readonly resourceLimits?: WorkerThreadResourceLimitsType;
+};
 
 // ---------------------------------------------------------------------------
 // WorkerThreadContainer
 // ---------------------------------------------------------------------------
 
 export class WorkerThreadContainer extends NodeContainerBase<Worker> {
-  readonly #resourceLimits: WorkerThreadResourceLimits;
+  readonly #resourceLimits: WorkerThreadResourceLimitsType;
   readonly #entryUrl: URL;
 
-  constructor(options: WorkerThreadContainerOptions) {
+  constructor(options: WorkerThreadContainerOptionsType) {
     super(NodeContainerBase.resolveOptions(options));
     this.#resourceLimits = options.resourceLimits ?? {};
     this.#entryUrl = options.entryUrl ?? new URL('./workerEntry.js', import.meta.url);
@@ -65,7 +65,7 @@ export class WorkerThreadContainer extends NodeContainerBase<Worker> {
    * composeEntry: construct a Worker + MessagePortChannel, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override composeEntry(): PoolEntry<Worker> {
+  protected override composeEntry(): PoolEntryType<Worker> {
     const resourceLimits: { maxOldGenerationSizeMb?: number } = {};
     if (this.#resourceLimits.maxOldGenerationSizeMb !== undefined) {
       resourceLimits.maxOldGenerationSizeMb = this.#resourceLimits.maxOldGenerationSizeMb;
@@ -75,9 +75,9 @@ export class WorkerThreadContainer extends NodeContainerBase<Worker> {
       'resourceLimits': Object.keys(resourceLimits).length > 0 ? resourceLimits : undefined,
     });
 
-    // Worker lacks `close()` (it uses `terminate()`). Wrap in a MessagePortLike
+    // Worker lacks `close()` (it uses `terminate()`). Wrap in a MessagePortLikeInterface
     // adapter; close() is a no-op here — the worker is terminated via destroy().
-    const portLike: MessagePortLike = {
+    const portLike: MessagePortLikeInterface = {
       'postMessage': (value: unknown) => worker.postMessage(value),
       'on': (event: 'message', listener: (value: unknown) => void) => {
         worker.on(event, listener);
@@ -95,7 +95,7 @@ export class WorkerThreadContainer extends NodeContainerBase<Worker> {
    * Called unconditionally; the base's #destroyed guard prevents spurious
    * eviction during intentional teardown.
    */
-  protected override attachDeathListeners(entry: PoolEntry<Worker>): void {
+  protected override attachDeathListeners(entry: PoolEntryType<Worker>): void {
     entry.worker.on('error', (err: Error) => {
       this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, `worker error: ${err.message}`);
     });

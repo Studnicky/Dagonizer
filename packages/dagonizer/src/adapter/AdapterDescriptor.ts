@@ -12,17 +12,17 @@
  * functions.
  */
 
-import type { AdapterCapabilities } from './LlmAdapter.js';
+import type { AdapterCapabilitiesType } from './LlmAdapter.js';
 
 /**
  * Shape of one entry in the adapter registry. `provider` is a stable
  * short name (e.g. `'gemini-api'`, `'ollama'`, `'web-llm'`); `model` is
  * the provider-specific model identifier.
  */
-export interface AdapterDescriptorShape {
+export type AdapterDescriptorShapeType = {
   provider: string;
   model: string;
-  capabilities: AdapterCapabilities;
+  capabilities: AdapterCapabilitiesType;
 }
 
 /**

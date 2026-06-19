@@ -16,6 +16,7 @@
 
 ### Changed
 
+- **Adapter-contract interfaces carry the `Interface` suffix (semver-major).** The framework contracts this package's public surface names are imported under their suffixed names: `ToolInterface` (the exported `GoogleBooksTool` implements it) and `EntityValidatorInterface` (the compiled response validator). The renames are type-only and propagate from `@studnicky/dagonizer`; runtime behavior is unchanged. Consumers typing against the old bare names (`Tool`, `EntityValidator`) update to the suffixed names.
 - The Google Books volumes response is a JSON Schema 2020-12 `*Schema` const (`GoogleBooksResponseSchema`) with a `FromSchema`-derived type and a module-load-compiled `EntityValidator` in `GoogleBooksResponse.ts`. The validator compiles through `Validator.compile` from `@studnicky/dagonizer/validation` against the framework's single shared Ajv; the package carries no Ajv dependency of its own. `GoogleBooksTool.execute` passes the validator to `HttpTransport.getJson`, which narrows the `unknown` body and throws `ToolError('PARSE_ERROR')` on a schema mismatch. The hand-written `isGoogleBooksResponse` predicate and wire-shape interfaces are removed.
 - Convenience re-exports of `Book`, `Candidate`, `Money`, `CanonicalId` removed from the package barrel. Consumers import these directly from `@studnicky/dagonizer-book-entities`.
 - `@studnicky/dagonizer-book-entities` promoted from `peerDependencies` to `dependencies`.

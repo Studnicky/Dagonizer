@@ -20,7 +20,7 @@
  * package never instantiates its own Ajv.
  */
 
-import type { EntityValidator } from '@studnicky/dagonizer/validation';
+import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
@@ -63,16 +63,16 @@ export type LanguageModelSessionBaseType = FromSchema<typeof LanguageModelSessio
  * Options accepted by `LanguageModelSession.prompt`. Built incrementally
  * by the adapter before each prompt, so `responseConstraint` is mutable.
  */
-export interface PromptOptionsInterface {
+export type PromptOptionsType = {
   responseConstraint?: Record<string, unknown>;
-}
+};
 
 /**
  * Entity-narrowing interface for a live LanguageModel session. Adds the
  * callable signatures the schema validates only structurally.
  */
 export interface LanguageModelSessionInterface extends LanguageModelSessionBaseType {
-  prompt(input: string, options?: PromptOptionsInterface): Promise<string>;
+  prompt(input: string, options?: PromptOptionsType): Promise<string>;
   destroy(): void;
 }
 
@@ -93,7 +93,7 @@ export interface LanguageModelStaticInterface extends LanguageModelStaticBaseTyp
  * adapter narrows `globalThis.LanguageModel` through `.is(value)` at the
  * host boundary.
  */
-export const languageModelStaticValidator: EntityValidator<LanguageModelStaticInterface> =
+export const languageModelStaticValidator: EntityValidatorInterface<LanguageModelStaticInterface> =
   Validator.compile<LanguageModelStaticInterface>(LanguageModelStaticSchema);
 
 /**
@@ -101,5 +101,5 @@ export const languageModelStaticValidator: EntityValidator<LanguageModelStaticIn
  * load through the engine's shared Ajv (`Validator.compile`). The adapter
  * narrows the created session through `.validate(value)` before prompting.
  */
-export const languageModelSessionValidator: EntityValidator<LanguageModelSessionInterface> =
+export const languageModelSessionValidator: EntityValidatorInterface<LanguageModelSessionInterface> =
   Validator.compile<LanguageModelSessionInterface>(LanguageModelSessionSchema);

@@ -20,24 +20,24 @@
 
 export { MermaidRenderer } from './MermaidRenderer.js';
 export { JsonLdRenderer, DAGONIZER_VOCAB, DagJsonLdDocumentSchema } from './JsonLdRenderer.js';
-export type { DagJsonLdDocument, JsonLdGraphEntry } from './JsonLdRenderer.js';
+export type { DagJsonLdDocumentType, JsonLdGraphEntryType } from './JsonLdRenderer.js';
 export { CytoscapeRenderer } from './CytoscapeRenderer.js';
 export type {
-  CytoscapeElement,
-  CytoscapeNodeData,
-  CytoscapeNodeElement,
-  CytoscapeEdgeElement,
-  RenderOptions,
+  CytoscapeElementType,
+  CytoscapeNodeDataType,
+  CytoscapeNodeElementType,
+  CytoscapeEdgeElementType,
+  RenderOptionsType,
 } from './CytoscapeRenderer.js';
 export { CompositeLayout } from './CompositeLayout.js';
 export type {
-  NodePosition,
-  LayoutResult,
-  CompositeLayoutOptions,
+  NodePositionType,
+  LayoutResultType,
+  CompositeLayoutOptionsType,
 } from './CompositeLayout.js';
 export { Cytoscape } from './Cytoscape.js';
 export { CytoscapeGraph } from './CytoscapeGraph.js';
 export type {
   CytoscapeGraphInterface,
-  CytoscapeGraphOptions,
+  CytoscapeGraphOptionsType,
 } from './CytoscapeGraph.js';

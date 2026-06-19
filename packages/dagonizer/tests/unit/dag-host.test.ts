@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 import { DagHost } from '../../src/container/DagHost.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
-import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
+import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 
@@ -65,7 +65,7 @@ function buildHostPair(): {
 }
 
 /** Collect the next single message from a channel. */
-function nextMessage(parentSide: MessageChannelInterface): Promise<BridgeMessage> {
+function nextMessage(parentSide: MessageChannelInterface): Promise<BridgeMessageType> {
   return new Promise((resolve) => {
     parentSide.onMessage((msg) => resolve(msg));
   });
@@ -76,7 +76,7 @@ async function sendInit(
   parentSide: MessageChannelInterface,
   registryModule: string = REGISTRY_MODULE_URL,
   registryVersion: string = REGISTRY_VERSION,
-): Promise<BridgeMessage> {
+): Promise<BridgeMessageType> {
   const reply = nextMessage(parentSide);
   parentSide.send({
     'kind': 'init',
@@ -153,7 +153,7 @@ void describe('DagHost — execute returns result', () => {
     assert.strictEqual(ready.kind, 'ready');
 
     // Collect messages until we see a 'result' (intermediates + instrumentation may arrive first).
-    const resultPromise = new Promise<BridgeMessage>((resolve) => {
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
         if (msg.kind === 'result') resolve(msg);
       });
@@ -192,8 +192,8 @@ void describe('DagHost — execute returns result', () => {
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.kind, 'ready');
 
-    const intermediates: BridgeMessage[] = [];
-    const resultPromise = new Promise<BridgeMessage>((resolve) => {
+    const intermediates: BridgeMessageType[] = [];
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
         if (msg.kind === 'intermediate') intermediates.push(msg);
         if (msg.kind === 'result') resolve(msg);
@@ -230,7 +230,7 @@ void describe('DagHost — execute returns result', () => {
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.kind, 'ready');
 
-    const resultPromise = new Promise<BridgeMessage>((resolve) => {
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
         if (msg.kind === 'result') resolve(msg);
       });
@@ -272,7 +272,7 @@ void describe('DagHost — abort', () => {
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.kind, 'ready');
 
-    const resultPromise = new Promise<BridgeMessage>((resolve) => {
+    const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
         if (msg.kind === 'result') resolve(msg);
       });

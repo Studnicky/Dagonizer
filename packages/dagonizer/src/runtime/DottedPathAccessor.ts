@@ -1,5 +1,5 @@
 /**
- * DottedPathAccessor: default `StateAccessor`.
+ * DottedPathAccessor: default `StateAccessorInterface`.
  *
  * Walks `path.split('.')` to read and write nested fields on a state
  * object. Creates intermediate plain objects on write when they are
@@ -7,11 +7,11 @@
  * returning `undefined`.
  *
  * Static class; no instances. The dispatcher consumes it through the
- * `StateAccessor` contract and may be configured with any other
+ * `StateAccessorInterface` contract and may be configured with any other
  * implementation.
  */
 
-import type { StateAccessor } from '../contracts/StateAccessor.js';
+import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 
 /**
  * Path segments that would walk or mutate the prototype chain. Reading or
@@ -20,7 +20,7 @@ import type { StateAccessor } from '../contracts/StateAccessor.js';
  */
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
-export class DottedPathAccessor implements StateAccessor {
+export class DottedPathAccessor implements StateAccessorInterface {
   get<T = unknown>(state: object, path: string): T | null {
     const parts = path.split('.');
     let current: unknown = state;

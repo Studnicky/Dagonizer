@@ -15,7 +15,7 @@
  * further clamped to `Math.floor(availableMemory / memoryPerWorkerBytes)`.
  */
 
-import type { RecommendedWorkerCountConfig } from '../entities/executor/RecommendedWorkerCountConfig.js';
+import type { RecommendedWorkerCountConfigType } from '../entities/executor/RecommendedWorkerCountConfig.js';
 
 export interface SystemInfoInterface {
   /**
@@ -23,5 +23,5 @@ export interface SystemInfoInterface {
    * Implementations probe the host environment; core entities carry the
    * configuration shape and defaults.
    */
-  recommendedWorkerCount(config: RecommendedWorkerCountConfig): number;
+  recommendedWorkerCount(config: RecommendedWorkerCountConfigType): number;
 }

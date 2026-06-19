@@ -9,8 +9,8 @@
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import type { CheckpointRestoreAdapter } from './CheckpointRestoreAdapter.js';
-import type { DispatcherBundle } from './DispatcherBundle.js';
+import type { CheckpointRestoreAdapterInterface } from './CheckpointRestoreAdapterInterface.js';
+import type { DispatcherBundleType } from './DispatcherBundle.js';
 
 /**
  * Returned by `RegistryModuleInterface.instantiate`. Bundles the DAG/node
@@ -19,7 +19,7 @@ import type { DispatcherBundle } from './DispatcherBundle.js';
  */
 export interface RegistryBundleInterface<TServices = unknown> {
   /** Nodes and DAGs to register in the host dispatcher. */
-  bundle: DispatcherBundle<NodeStateInterface, unknown>;
+  bundle: DispatcherBundleType<NodeStateInterface, unknown>;
   /**
    * Locally constructed services bag. Opaque to the protocol; `TServices`
    * defaults to `unknown` so existing call sites stay source-compatible,
@@ -32,7 +32,7 @@ export interface RegistryBundleInterface<TServices = unknown> {
    * Adapter that restores a state instance from a JSON snapshot.
    * Implement `restore(snapshot)` to rehydrate domain state.
    */
-  restoreState: CheckpointRestoreAdapter<NodeStateInterface>;
+  restoreState: CheckpointRestoreAdapterInterface<NodeStateInterface>;
   /**
    * Optional teardown hook. Called by `DagHost` on shutdown before the host
    * process/thread exits, so node resources (DB connections, file handles, etc.)

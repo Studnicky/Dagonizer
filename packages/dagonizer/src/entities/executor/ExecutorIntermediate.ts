@@ -32,4 +32,4 @@ export const ExecutorIntermediateSchema = {
 } as const;
 
 /** TypeScript type derived from `ExecutorIntermediateSchema` via `json-schema-to-ts`. */
-export type ExecutorIntermediate = FromSchema<typeof ExecutorIntermediateSchema>;
+export type ExecutorIntermediateType = FromSchema<typeof ExecutorIntermediateSchema>;

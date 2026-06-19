@@ -17,7 +17,7 @@
  * never instantiates its own Ajv.
  */
 
-import type { EntityValidator } from '@studnicky/dagonizer/validation';
+import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
@@ -97,5 +97,5 @@ export type GeminiResponseBodyType = FromSchema<typeof GeminiResponseBodySchema>
  * `#performChat` narrows the `unknown` HTTP body through `.is(value)` at
  * the network boundary.
  */
-export const geminiResponseBodyValidator: EntityValidator<GeminiResponseBodyType> =
+export const geminiResponseBodyValidator: EntityValidatorInterface<GeminiResponseBodyType> =
   Validator.compile<GeminiResponseBodyType>(GeminiResponseBodySchema);

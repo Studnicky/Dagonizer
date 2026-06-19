@@ -17,7 +17,7 @@ import {
   NodeTypes,
   OutputNames,
   ScatterOutputNames,
-  type MetadataKey,
+  type MetadataKeyType,
 } from '@studnicky/dagonizer/constants';
 import type { CatalogueItem } from './dags/constants-usage.js';
 import { ConstantUsage } from './dags/constants-usage.js';
@@ -47,7 +47,7 @@ for (const c of candidates) {
 
 // MetadataKey
 process.stdout.write('\nMetadataKey.CURRENT_ITEM read:\n');
-const bag: Partial<Record<MetadataKey, CatalogueItem>> = {
+const bag: Partial<Record<MetadataKeyType, CatalogueItem>> = {
   [MetadataKeys.CURRENT_ITEM]: { title: 'The Archivist Compendium' },
 };
 process.stdout.write(`  currentItem=${JSON.stringify(ConstantUsage.readCurrentItem(bag))}\n`);

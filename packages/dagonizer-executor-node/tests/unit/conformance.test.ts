@@ -48,7 +48,7 @@ import assert from 'node:assert/strict';
 import { after, afterEach, describe, it } from 'node:test';
 
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
-import type { DagonizerInterface, DispatcherBundle, NodeStateInterface, ScatterProgress } from '@studnicky/dagonizer';
+import type { DagonizerInterface, DispatcherBundleType, NodeStateInterface, ScatterProgressType } from '@studnicky/dagonizer';
 import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
 import {
   ConformanceRegistry,
@@ -78,7 +78,7 @@ import { WorkerThreadContainer } from '../../src/WorkerThreadContainer.js';
 // reprocesses all un-acked items, proving at-least-once delivery.
 //
 // Why throw instead of returning transport-error-outcome:
-//   If runDag returns a DagOutcomeInterface (even terminalOutput='failed'), the
+//   If runDag returns a DagOutcomeType (even terminalOutput='failed'), the
 //   scatter's ackItem is always called (success path in spawnWorker.then).
 //   Only when runDag() THROWS (the Promise rejects) does spawnWorker take the
 //   rejection path → poolError set → ackItem skipped → inbox preserved.
@@ -182,7 +182,7 @@ function buildHarness(factory: ContainerFactory): DagConformanceHarnessInterface
 
   return {
     createDispatcher(
-      bundle: DispatcherBundle<NodeStateInterface, undefined>,
+      bundle: DispatcherBundleType<NodeStateInterface, undefined>,
       passedContainers: Readonly<Record<string, DagContainerInterface>>,
     ): DagonizerInterface<NodeStateInterface, undefined> {
       // Use the passed container only if it was NOT created by this harness's
@@ -207,7 +207,7 @@ function buildHarness(factory: ContainerFactory): DagConformanceHarnessInterface
     // Law 7: build a dispatcher WITHOUT the container role bound so
     // resolveContainer(CONFORMANCE_CONTAINER_ROLE) returns null → inline path.
     createInProcessDispatcher(
-      bundle: DispatcherBundle<NodeStateInterface, undefined>,
+      bundle: DispatcherBundleType<NodeStateInterface, undefined>,
     ): DagonizerInterface<NodeStateInterface, undefined> {
       const dispatcher = new Dagonizer<NodeStateInterface, undefined>();
       dispatcher.registerBundle(bundle);
@@ -340,7 +340,7 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     });
     allContainers.push(killing);
 
-    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
     const state = new ConformanceState();
     state.scatterItems = [10, 20, 30];
 
@@ -374,7 +374,7 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     assert.ok(elapsed < NO_HANG_BUDGET_MS, `phase 1 must finish within ${NO_HANG_BUDGET_MS}ms, took ${elapsed}ms`);
 
     // The killed item must remain un-acked; the checkpoint must survive.
-    const progress = state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const progress = state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     const fan = (progress ?? {})['fan'];
     assert.ok(fan !== undefined, 'checkpoint must survive the worker death (not cleared)');
     // The map gather is compactable, so its checkpoint is bounded mode: the

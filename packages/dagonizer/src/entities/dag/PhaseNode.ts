@@ -40,5 +40,5 @@ export const PhaseNodeSchema = {
 } as const;
 
 /** TypeScript type derived from `PhaseNodeSchema` via `json-schema-to-ts`. */
-export type PhaseNode = FromSchema<typeof PhaseNodeSchema>;
+export type PhaseNodeType = FromSchema<typeof PhaseNodeSchema>;
 

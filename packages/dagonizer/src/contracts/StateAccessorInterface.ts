@@ -1,9 +1,9 @@
 /**
- * StateAccessor: adapter contract for resolving paths into node state.
+ * StateAccessorInterface: adapter contract for resolving paths into node state.
  *
  * The dispatcher walks dotted paths (`'plan.tasks'`, `'data.items'`)
  * to read scatter source arrays and write gather results. The resolution
- * strategy is pluggable: install a custom `StateAccessor` to swap in
+ * strategy is pluggable: install a custom `StateAccessorInterface` to swap in
  * JSONPath, JSON Pointer, or any other path language.
  *
  * Implementations are stateless and safe to share across executions.
@@ -11,7 +11,7 @@
  * `path.split('.')` and creates intermediate objects on `set` when they
  * don't exist.
  */
-export interface StateAccessor {
+export interface StateAccessorInterface {
   /**
    * Read the value at `path` on `state`. Returns `null` when the
    * path traverses a missing or non-object segment.

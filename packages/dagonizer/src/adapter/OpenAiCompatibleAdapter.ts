@@ -13,14 +13,14 @@
  * `extends OpenAiCompatibleAdapter` and pass the provider-specific
  * fields via the constructor options.
  *
- * Tool-fallback behavior is controlled by overriding
+ * ToolInterface-fallback behavior is controlled by overriding
  * `shouldFallbackWithoutTools(error)` on a concrete subclass (returns
  * false by default). Providers whose models don't uniformly support
  * `tools` (e.g. Cerebras) override to return true on their specific
  * error signal, causing the adapter to retry the request without tools.
  */
 
-import type { OpenAiResponseBody } from '../entities/adapter/OpenAiResponseBody.js';
+import type { OpenAiResponseBodyType } from '../entities/adapter/OpenAiResponseBody.js';
 import { Validator } from '../validation/Validator.js';
 
 import { BaseAdapter } from './BaseAdapter.js';
@@ -30,21 +30,21 @@ import {
   ZERO_TOKEN_USAGE,
 } from './LlmAdapter.js';
 import type {
-  AdapterCapabilities,
-  ChatMessage,
-  ChatRequest,
-  ChatResponse,
-  ToolCall,
-  ToolChoice,
-  ToolDefinition,
+  AdapterCapabilitiesType,
+  ChatMessageType,
+  ChatRequestType,
+  ChatResponseType,
+  ToolCallType,
+  ToolChoiceType,
+  ToolDefinitionType,
 } from './LlmAdapter.js';
 import { Classifications, LlmError } from './LlmError.js';
 
 /** Provider-specific configuration the subclass passes in. */
-export interface OpenAiCompatibleConfig {
+export type OpenAiCompatibleConfigType = {
   id: string;
   displayName: string;
-  capabilities: AdapterCapabilities;
+  capabilities: AdapterCapabilitiesType;
 
   /** Full chat-completions endpoint URL. */
   endpoint: string;
@@ -63,10 +63,10 @@ export interface OpenAiCompatibleConfig {
 export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 /** Config with `timeoutMs` materialised from the default. */
-type ResolvedOpenAiCompatibleConfig = OpenAiCompatibleConfig & { timeoutMs: number };
+type ResolvedOpenAiCompatibleConfig = OpenAiCompatibleConfigType & { timeoutMs: number };
 
 /** Per-consumer options every OpenAI-compatible adapter accepts. */
-export interface OpenAiCompatibleAdapterOptions {
+export type OpenAiCompatibleAdapterOptionsType = {
   readonly model?: string;
   readonly maxAttempts?: number;
   /** First retry delay in ms forwarded to the base retry policy. */
@@ -80,8 +80,8 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
 
   protected constructor(
     apiKey: string,
-    config: OpenAiCompatibleConfig,
-    options: OpenAiCompatibleAdapterOptions = {},
+    config: OpenAiCompatibleConfigType,
+    options: OpenAiCompatibleAdapterOptionsType = {},
   ) {
     super(
       config.id,
@@ -106,7 +106,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     return this.#model;
   }
 
-  protected async performChat(request: ChatRequest): Promise<ChatResponse> {
+  protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     try {
       return await this.#doRequest(request);
     } catch (err) {
@@ -144,15 +144,15 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 
-  async #doRequest(request: ChatRequest): Promise<ChatResponse> {
+  async #doRequest(request: ChatRequestType): Promise<ChatResponseType> {
     return this.#sendRequest(request, this.#composeBody(request, true));
   }
 
-  async #doRequestWithoutTools(request: ChatRequest): Promise<ChatResponse> {
+  async #doRequestWithoutTools(request: ChatRequestType): Promise<ChatResponseType> {
     return this.#sendRequest(request, this.#composeBody(request, false));
   }
 
-  async #sendRequest(request: ChatRequest, body: Record<string, unknown>): Promise<ChatResponse> {
+  async #sendRequest(request: ChatRequestType, body: Record<string, unknown>): Promise<ChatResponseType> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => { controller.abort(new LlmError(`${this.#config.id} request timeout`, Classifications['TIMEOUT'])); }, this.#config.timeoutMs);
     const signal = AbortSignal.any([request.signal, controller.signal]);
@@ -193,7 +193,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     return this.#decodeResponse(rawBody);
   }
 
-  #composeBody(request: ChatRequest, includeTools: boolean): Record<string, unknown> {
+  #composeBody(request: ChatRequestType, includeTools: boolean): Record<string, unknown> {
     const body: Record<string, unknown> = {
       'model': this.#model,
       'messages': request.messages.map((m) => this.#toMessage(m)),
@@ -211,7 +211,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     return body;
   }
 
-  #toMessage(message: ChatMessage): Record<string, unknown> {
+  #toMessage(message: ChatMessageType): Record<string, unknown> {
     if (message.role === 'tool') {
       return {
         'role': 'tool',
@@ -222,7 +222,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     return { 'role': message.role, 'content': message.content };
   }
 
-  #toTool(tool: ToolDefinition): Record<string, unknown> {
+  #toTool(tool: ToolDefinitionType): Record<string, unknown> {
     return {
       'type': 'function',
       'function': {
@@ -234,7 +234,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     };
   }
 
-  #toToolChoice(choice: ToolChoice): unknown {
+  #toToolChoice(choice: ToolChoiceType): unknown {
     const stringChoices: Readonly<Record<string, string>> = {
       'auto':     'auto',
       'required': 'required',
@@ -246,7 +246,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     return stringChoices[choice.type];
   }
 
-  #decodeResponse(payload: OpenAiResponseBody): ChatResponse {
+  #decodeResponse(payload: OpenAiResponseBodyType): ChatResponseType {
     if (payload.choices === undefined || payload.choices.length === 0) {
       throw new LlmError(
         `${this.#config.displayName}: response missing 'choices'`,
@@ -256,7 +256,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     const choice = payload.choices[0];
     const msg = choice?.message;
     const rawToolCalls = msg?.tool_calls ?? [];
-    const toolCalls: ToolCall[] = rawToolCalls.map((tc) => {
+    const toolCalls: ToolCallType[] = rawToolCalls.map((tc) => {
       // `Validator.openAiResponseBody` validates tool_calls items against
       // OpenAiToolCallSchema (id, type, function.name, function.arguments all
       // required strings). Guard here so a provider deviation surfaces as

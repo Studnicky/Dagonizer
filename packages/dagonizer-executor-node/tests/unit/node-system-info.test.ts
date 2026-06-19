@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { RecommendedWorkerCountConfig } from '@studnicky/dagonizer/entities';
+import type { RecommendedWorkerCountConfigType } from '@studnicky/dagonizer/entities';
 
 import { NodeSystemInfo } from '../../src/NodeSystemInfo.js';
 
@@ -27,7 +27,7 @@ function fakeOs(parallelism: number, freemem: number = 4 * 1024 * 1024 * 1024): 
   };
 }
 
-function config(overrides: Partial<RecommendedWorkerCountConfig> = {}): RecommendedWorkerCountConfig {
+function config(overrides: Partial<RecommendedWorkerCountConfigType> = {}): RecommendedWorkerCountConfigType {
   return {
     'maximumWorkers': 8,
     'mainThreadReservation': 1,

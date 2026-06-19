@@ -1,7 +1,7 @@
 /**
  * OpenLibraryResponse: JSON Schema 2020-12 description of the OpenLibrary
  * `search.json` response wire shape, plus its `FromSchema`-derived types and a
- * module-load-compiled `EntityValidator`.
+ * module-load-compiled `EntityValidatorInterface`.
  *
  * The parsed JSON body crosses a foreign boundary (`HttpTransport.getJson`
  * returns it narrowed by `OpenLibraryResponseValidator`). The schema is
@@ -15,7 +15,7 @@
  */
 
 import { Validator } from '@studnicky/dagonizer/validation';
-import type { EntityValidator } from '@studnicky/dagonizer/validation';
+import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const OpenLibraryDocSchema = {
@@ -46,7 +46,7 @@ export const OpenLibraryDocSchema = {
   'additionalProperties': true,
 } as const;
 
-export type OpenLibraryDoc = FromSchema<typeof OpenLibraryDocSchema>;
+export type OpenLibraryDocType = FromSchema<typeof OpenLibraryDocSchema>;
 
 export const OpenLibraryResponseSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer-tool-openlibrary/OpenLibraryResponse',
@@ -60,13 +60,13 @@ export const OpenLibraryResponseSchema = {
 } as const;
 
 /** TypeScript type derived from `OpenLibraryResponseSchema` via `json-schema-to-ts`. */
-export type OpenLibraryResponse = FromSchema<typeof OpenLibraryResponseSchema>;
+export type OpenLibraryResponseType = FromSchema<typeof OpenLibraryResponseSchema>;
 
 /**
  * Module-load-compiled validator for the OpenLibrary search response.
- * Narrows the `unknown` HTTP body to `OpenLibraryResponse` via the framework's
+ * Narrows the `unknown` HTTP body to `OpenLibraryResponseType` via the framework's
  * shared Ajv (`Validator.compile`); `OpenLibraryDocs.narrowResponse` /
  * `HttpTransport.getJson` consume it.
  */
-export const OpenLibraryResponseValidator: EntityValidator<OpenLibraryResponse> =
-  Validator.compile<OpenLibraryResponse>(OpenLibraryResponseSchema);
+export const OpenLibraryResponseValidator: EntityValidatorInterface<OpenLibraryResponseType> =
+  Validator.compile<OpenLibraryResponseType>(OpenLibraryResponseSchema);

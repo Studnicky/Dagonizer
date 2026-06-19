@@ -20,7 +20,7 @@
  */
 
 import type { ScatterPoolDriverInterface } from '../contracts/ScatterPoolDriver.js';
-import type { ScatterInboxItem } from '../entities/scatter/ScatterProgress.js';
+import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { ExecutionError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
@@ -30,11 +30,11 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * All fields are required; defaults must be resolved by the caller before
  * construction (see `ScatterWorkerPool` JSDoc).
  */
-export type ScatterWorkerPoolOptions = {
+export type ScatterWorkerPoolOptionsType = {
   /** Maximum number of items executing concurrently. */
   concurrencyLimit: number;
   /** Inbox items from a prior run (priority source). */
-  inbox: ScatterInboxItem[];
+  inbox: ScatterInboxItemType[];
   /** Fresh items from the scatter source (secondary source, post-pre-scan). */
   freshIter: AsyncIterator<unknown>;
   /**
@@ -60,8 +60,8 @@ export type ScatterWorkerPoolOptions = {
 export class ScatterWorkerPool<TState extends NodeStateInterface> {
   readonly #driver: ScatterPoolDriverInterface<TState>;
   readonly #concurrencyLimit: number;
-  readonly #inbox: ScatterInboxItem[];
-  readonly #inboxIter: AsyncIterator<ScatterInboxItem, undefined>;
+  readonly #inbox: ScatterInboxItemType[];
+  readonly #inboxIter: AsyncIterator<ScatterInboxItemType, undefined>;
   readonly #freshIter: AsyncIterator<unknown>;
   readonly #signal: AbortSignal | null;
   #nextIndex: number;
@@ -71,7 +71,7 @@ export class ScatterWorkerPool<TState extends NodeStateInterface> {
   #slotResolve: (() => void) | null;
   readonly #poolErrors: unknown[];
 
-  constructor(driver: ScatterPoolDriverInterface<TState>, options: ScatterWorkerPoolOptions) {
+  constructor(driver: ScatterPoolDriverInterface<TState>, options: ScatterWorkerPoolOptionsType) {
     this.#driver = driver;
     this.#concurrencyLimit = options.concurrencyLimit;
     this.#inbox = options.inbox;
@@ -91,7 +91,7 @@ export class ScatterWorkerPool<TState extends NodeStateInterface> {
     let inboxPos = 0;
     const inbox = this.#inbox;
     this.#inboxIter = {
-      next(): Promise<IteratorResult<ScatterInboxItem, undefined>> {
+      next(): Promise<IteratorResult<ScatterInboxItemType, undefined>> {
         if (inboxPos >= inbox.length) {
           return Promise.resolve({ 'value': undefined, 'done': true });
         }

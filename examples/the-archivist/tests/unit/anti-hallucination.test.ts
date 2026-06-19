@@ -14,11 +14,11 @@ import { strict as assert } from 'node:assert';
 
 import { ResponseAnalysis } from '../../nodes/composeResponse.ts';
 import { BookBuilder } from '../../entities/Book.ts';
-import type { Candidate } from '../../entities/Book.ts';
+import type { CandidateType } from '../../entities/Book.ts';
 
 /** Candidate factory for anti-hallucination unit tests. */
 class AntiHallucinationFixture {
-  static candidate(title: string, isbn = '0000000000'): Candidate {
+  static candidate(title: string, isbn = '0000000000'): CandidateType {
     return {
       book: BookBuilder.from({ isbn, title, authors: [], price: { amount: 0, currency: 'USD' } }),
       score: 0.5,

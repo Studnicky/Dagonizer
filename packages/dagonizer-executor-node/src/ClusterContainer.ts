@@ -23,17 +23,17 @@ import cluster from 'node:cluster';
 import type { Worker } from 'node:cluster';
 
 import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
-import type { PoolEntry } from '@studnicky/dagonizer/container';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
 
 import { IpcChannel } from './IpcChannel.js';
 import { NodeContainerBase } from './NodeContainerBase.js';
-import type { NodeContainerBaseOptions } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptionsType } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
-// ClusterContainerOptions
+// ClusterContainerOptionsType
 // ---------------------------------------------------------------------------
 
-export type ClusterContainerOptions = NodeContainerBaseOptions;
+export type ClusterContainerOptionsType = NodeContainerBaseOptionsType;
 
 // ---------------------------------------------------------------------------
 // ClusterContainer
@@ -43,7 +43,7 @@ export class ClusterContainer extends NodeContainerBase<Worker> {
   readonly #entryUrl: URL;
   #setupDone: boolean;
 
-  constructor(options: ClusterContainerOptions) {
+  constructor(options: ClusterContainerOptionsType) {
     super(NodeContainerBase.resolveOptions(options));
     this.#entryUrl = options.entryUrl ?? new URL('./forkEntry.js', import.meta.url);
     this.#setupDone = false;
@@ -57,7 +57,7 @@ export class ClusterContainer extends NodeContainerBase<Worker> {
    * composeEntry: configure cluster primary (once) and fork a worker, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override composeEntry(): PoolEntry<Worker> {
+  protected override composeEntry(): PoolEntryType<Worker> {
     if (!this.#setupDone) {
       cluster.setupPrimary({ 'exec': this.#entryUrl.pathname });
       this.#setupDone = true;
@@ -73,7 +73,7 @@ export class ClusterContainer extends NodeContainerBase<Worker> {
    * Called unconditionally; the base's #destroyed guard prevents spurious
    * eviction during intentional teardown.
    */
-  protected override attachDeathListeners(entry: PoolEntry<Worker>): void {
+  protected override attachDeathListeners(entry: PoolEntryType<Worker>): void {
     entry.worker.on('error', (err: Error) => {
       this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, `cluster worker error: ${err.message}`);
     });

@@ -15,7 +15,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import { FieldMappings } from '../../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -24,7 +24,7 @@ export class NormalizeCsvNode extends ScalarNode<CartographerState, 'normalized'
   readonly 'name' = 'normalize-csv-map';
   readonly 'outputs' = ['normalized'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized'>> {
     const map = FieldMappings.forKey(state.currentSource.mappingKey);
     const mapped: Array<Record<string, unknown>> = state.parsedRecords.map((rec) => {
       const out: Record<string, unknown> = {};

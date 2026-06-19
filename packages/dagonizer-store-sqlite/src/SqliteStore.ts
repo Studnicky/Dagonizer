@@ -14,28 +14,28 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { DatabaseSyncOptions } from 'node:sqlite';
 
-import type { StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
-import type { JsonValue } from '@studnicky/dagonizer/entities';
-import { BASE_STORE_DEFAULTS, BaseStore, type BaseStoreOptions } from '@studnicky/dagonizer/store';
+import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
+import type { JsonValueType } from '@studnicky/dagonizer/entities';
+import { BASE_STORE_DEFAULTS, BaseStore, type BaseStoreOptionsType } from '@studnicky/dagonizer/store';
 
-export interface SqliteStoreOptions extends BaseStoreOptions {
+export type SqliteStoreOptionsType = BaseStoreOptionsType & {
   /** SQLite DatabaseSync options (e.g. readOnly). */
   readonly database?: DatabaseSyncOptions;
   /** Table name for the key-value store. Default: 'dagonizer_kv'. */
   readonly tableName?: string;
-}
+};
 
 /** Narrow row shape returned by prepared SELECT statements. */
-interface KvRow {
+type KvRowType = {
   readonly key: string;
   readonly value: string;
-}
+};
 
 export class SqliteStore extends BaseStore {
   readonly #db: DatabaseSync;
   readonly #tableName: string;
 
-  constructor(path: string, options: SqliteStoreOptions = BASE_STORE_DEFAULTS) {
+  constructor(path: string, options: SqliteStoreOptionsType = BASE_STORE_DEFAULTS) {
     super(options);
     this.#db = options.database !== undefined
       ? new DatabaseSync(path, options.database)
@@ -53,7 +53,7 @@ export class SqliteStore extends BaseStore {
   protected get snapshotVersion(): number { return 1; }
 
   /** Atomic RMW via SQLite BEGIN IMMEDIATE transaction. */
-  override async update<T extends JsonValue>(
+  override async update<T extends JsonValueType>(
     key: string,
     fn: (current: T | undefined) => T,
   ): Promise<T> {
@@ -62,7 +62,7 @@ export class SqliteStore extends BaseStore {
     try {
       const row = this.#db
         .prepare(`SELECT value FROM ${this.#tableName} WHERE key = ?`)
-        .get(qualified) as KvRow | undefined;
+        .get(qualified) as KvRowType | undefined;
       const current = (row === undefined) ? undefined : JSON.parse(row.value) as T;
       const next = fn(current);
       this.#db
@@ -79,15 +79,15 @@ export class SqliteStore extends BaseStore {
     }
   }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
     const row = this.#db
       .prepare(`SELECT value FROM ${this.#tableName} WHERE key = ?`)
-      .get(key) as KvRow | undefined;
+      .get(key) as KvRowType | undefined;
     if (row === undefined) return null;
     return JSON.parse(row.value) as T;
   }
 
-  protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
+  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
     this.#db
       .prepare(
         `INSERT INTO ${this.#tableName} (key, value) VALUES (?, ?)` +
@@ -110,23 +110,23 @@ export class SqliteStore extends BaseStore {
     return result.changes > 0;
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
+  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
     // Foreign-data boundary cast: node:sqlite's `.all()` returns
     // `unknown[]` because the driver can't statically know table schemas.
     // The double-cast through `unknown` is the conventional TS narrowing
     // at this boundary; structurally identical to the `JSON.parse(...) as
-    // JsonValue` boundary on the next line. KvRow matches the SELECT
+    // JsonValueType` boundary on the next line. KvRowType matches the SELECT
     // projection exactly, so the cast is sound.
     const rows = this.#db
       .prepare(`SELECT key, value FROM ${this.#tableName} ORDER BY key`)
-      .all() as unknown as KvRow[];
+      .all() as unknown as KvRowType[];
     return rows.map((row) => ({
       'key':   row.key,
-      'value': JSON.parse(row.value) as JsonValue,
+      'value': JSON.parse(row.value) as JsonValueType,
     }));
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void> {
+  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
     this.#db.exec('BEGIN IMMEDIATE');
     try {
       this.#db.exec(`DELETE FROM ${this.#tableName}`);

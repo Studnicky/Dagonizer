@@ -1,4 +1,4 @@
-import type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
+import type { DAGErrorJSONType } from '../entities/errors/DAGErrorJSON.js';
 
 /**
  * Interface for DAGError class.
@@ -17,7 +17,7 @@ export interface DAGErrorInterface extends Error {
   /**
    * Serialize to JSON. Returns the `DAGErrorJSON` wire shape.
    */
-  toJSON(): DAGErrorJSON;
+  toJSON(): DAGErrorJSONType;
 }
 
 /** Module-level defaults for `DAGError` options. `cause` is not defaulted — it is a genuine optional sentinel. */
@@ -50,7 +50,7 @@ export class DAGError extends Error implements DAGErrorInterface {
     Error.captureStackTrace(this, this.constructor);
   }
 
-  toJSON(): DAGErrorJSON {
+  toJSON(): DAGErrorJSONType {
     // Stable shape: all keys always present, `null` when absent.
     // Every serialized DAGError has the same hidden class for V8 stability.
     return {

@@ -19,7 +19,7 @@ A registered `NodeInterface` (the consumer-implemented unit of work) is referenc
 
 | Placement `@type` | Schema | TS type | Purpose |
 |---|---|---|---|
-| `SingleNode` | `SingleNodeSchema` | `SingleNode`, `SingleNodePlacementInterface<TOutput>` | Run one registered node; route per output |
+| `SingleNode` | `SingleNodeSchema` | `SingleNode`, `SingleNodePlacementType<TOutput>` | Run one registered node; route per output |
 | `ScatterNode` | `ScatterNodeSchema` | `ScatterNode` | Isolate one clone per source-array item, run a body, fold clone state back through a required `gather`, route on aggregate outcome |
 | `EmbeddedDAGNode` | `EmbeddedDAGNodeSchema` | `EmbeddedDAGNode` | Invoke a registered sub-DAG exactly once (cardinality 1); route on the child's terminal outcome |
 | `TerminalNode` | `TerminalNodeSchema` | `TerminalNode` | End the flow with an explicit `outcome` |
@@ -33,9 +33,9 @@ Every schema's `$id` is `https://noocodex.dev/schemas/dagonizer/<TypeName>`.
 
 ```ts twoslash
 import { SingleNodeSchema } from '@studnicky/dagonizer/entities';
-import type { SingleNode, SingleNodePlacementInterface } from '@studnicky/dagonizer/entities';
+import type { SingleNodeType, SingleNodePlacementType } from '@studnicky/dagonizer/entities';
 // ---cut---
-declare const placement: SingleNode;
+declare const placement: SingleNodeType;
 const name: string = placement.name;
 const outputs: Record<string, string> = placement.outputs;
 export {};
@@ -59,7 +59,7 @@ export {};
 | `node` | `string` | yes | Registered `NodeInterface.name` to invoke |
 | `outputs` | `Record<string, string>` | yes | Output port to next-placement name. All outputs must route to a named placement. |
 
-`SingleNodePlacementInterface<TOutput extends string>` narrows `outputs` to `Record<TOutput, string>` for compile-time exhaustiveness when `TOutput` is a literal union.
+`SingleNodePlacementType<TOutput extends string>` narrows `outputs` to `Record<TOutput, string>` for compile-time exhaustiveness when `TOutput` is a literal union.
 
 ---
 
@@ -67,9 +67,9 @@ export {};
 
 ```ts twoslash
 import { ScatterNodeSchema } from '@studnicky/dagonizer/entities';
-import type { ScatterNode } from '@studnicky/dagonizer/entities';
+import type { ScatterNodeType } from '@studnicky/dagonizer/entities';
 // ---cut---
-declare const placement: ScatterNode;
+declare const placement: ScatterNodeType;
 const name: string = placement.name;
 const source: string = placement.source;
 export {};
@@ -104,7 +104,7 @@ Generate-collect pattern (one clone per source-array item):
 | `stateMapping` | `{ input?: Record<childKey, parentPath> }` | no | Seeds each clone: `input` copies parent fields into the clone before the body runs. Authored via the `inputs` builder option. |
 | `gather` | `GatherConfig` | **yes** | How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
 | `reducer` | `string` | no | Outcome reducer name. Defaults to `'aggregate'`. Built-in: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
-| `container` | `string` | no | Logical container role name for `{ dag }` bodies only. Bound at construction via `DagonizerOptionsInterface.containers`. On a dispatcher with a non-empty `containers` registry, a role this placement declares but does not bind throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats the role as inert and runs the body in-process. Setting `container` on a `{ node }` body is a validation error. |
+| `container` | `string` | no | Logical container role name for `{ dag }` bodies only. Bound at construction via `DagonizerOptionsType.containers`. On a dispatcher with a non-empty `containers` registry, a role this placement declares but does not bind throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats the role as inert and runs the body in-process. Setting `container` on a `{ node }` body is a validation error. |
 
 `GatherConfig` is documented under [Gather configuration](#gather-configuration) below.
 
@@ -116,9 +116,9 @@ Per-item resume bookkeeping is persisted under the reserved metadata key `SCATTE
 
 ```ts twoslash
 import { EmbeddedDAGNodeSchema } from '@studnicky/dagonizer/entities';
-import type { EmbeddedDAGNode } from '@studnicky/dagonizer/entities';
+import type { EmbeddedDAGNodeType } from '@studnicky/dagonizer/entities';
 // ---cut---
-declare const placement: EmbeddedDAGNode;
+declare const placement: EmbeddedDAGNodeType;
 const name: string = placement.name;
 const dag: string = placement.dag;
 export {};
@@ -155,9 +155,9 @@ export {};
 
 ```ts twoslash
 import { TerminalNodeSchema } from '@studnicky/dagonizer/entities';
-import type { TerminalNode } from '@studnicky/dagonizer/entities';
+import type { TerminalNodeType } from '@studnicky/dagonizer/entities';
 // ---cut---
-declare const placement: TerminalNode;
+declare const placement: TerminalNodeType;
 const name: string = placement.name;
 const outcome: 'completed' | 'failed' = placement.outcome;
 ```
@@ -178,7 +178,7 @@ const outcome: 'completed' | 'failed' = placement.outcome;
 | `name` | `string` | yes | Placement name |
 | `outcome` | `'completed' \| 'failed'` | yes | Lifecycle outcome to mark on exit |
 
-No `outputs` map. Placement-only (no backing `NodeInterface`). On reach, the engine fires `state.markCompleted()` or `state.markFailed(...)` and ends the loop. The placement-level `outcome` surfaces on `ExecutionResultInterface.terminalOutcome`.
+No `outputs` map. Placement-only (no backing `NodeInterface`). On reach, the engine fires `state.markCompleted()` or `state.markFailed(...)` and ends the loop. The placement-level `outcome` surfaces on `ExecutionResultType.terminalOutcome`.
 
 ---
 
@@ -186,9 +186,9 @@ No `outputs` map. Placement-only (no backing `NodeInterface`). On reach, the eng
 
 ```ts twoslash
 import { PhaseNodeSchema } from '@studnicky/dagonizer/entities';
-import type { PhaseNode } from '@studnicky/dagonizer/entities';
+import type { PhaseNodeType } from '@studnicky/dagonizer/entities';
 // ---cut---
-declare const placement: PhaseNode;
+declare const placement: PhaseNodeType;
 const name: string = placement.name;
 const phase: 'pre' | 'post' = placement.phase;
 ```
@@ -221,18 +221,18 @@ No `outputs` map. Pre-phase placements run in DAG declaration order before the e
 
 ```ts twoslash
 import { GatherConfigSchema } from '@studnicky/dagonizer/entities';
-import type { GatherConfig } from '@studnicky/dagonizer/entities';
+import type { GatherConfigType } from '@studnicky/dagonizer/entities';
 // ---cut---
-declare const gc: GatherConfig;
+declare const gc: GatherConfigType;
 const strategy: string = gc.strategy;
 export {};
 ```
 
 ```ts twoslash
-import type { GatherConfig } from '@studnicky/dagonizer/entities';
+import type { GatherConfigType } from '@studnicky/dagonizer/entities';
 // ---cut---
-// GatherConfig shape (all fields beyond `strategy` are optional):
-declare const _: GatherConfig;
+// GatherConfigType shape (all fields beyond `strategy` are optional):
+declare const _: GatherConfigType;
 // strategy: string — any name registered via GatherStrategies.register
 // mapping?: Record<string, string>   — map: clone path → parent path
 // field?:   string                   — append/partition/collect: clone field to read

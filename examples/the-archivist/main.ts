@@ -29,16 +29,16 @@ import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedArchivist } from './ObservedArchivist.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import { OllamaModels, OllamaProbe } from './providers/index.ts';
-import type { ArchivistServices, LlmClient } from './services.ts';
+import type { ArchivistServices, LlmClientInterface } from './services.ts';
 
 import { GeminiApiAdapter }   from '@studnicky/dagonizer-adapter-gemini-api';
 import { GeminiNanoAdapter }  from '@studnicky/dagonizer-adapter-gemini-nano';
 import { OllamaApiAdapter }   from '@studnicky/dagonizer-adapter-ollama';
 import { WebLlmAdapter }      from '@studnicky/dagonizer-adapter-web-llm';
-import type { WebLlmInitReportInterface } from '@studnicky/dagonizer-adapter-web-llm';
+import type { WebLlmInitReportType } from '@studnicky/dagonizer-adapter-web-llm';
 
 import { LlmAdapterCascade, LlmAdapterRegistry } from '@studnicky/dagonizer/adapter';
-import type { AdapterCapabilities } from '@studnicky/dagonizer/adapter';
+import type { AdapterCapabilitiesType } from '@studnicky/dagonizer/adapter';
 
 import { GoogleBooksTool }       from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool, SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
@@ -87,9 +87,9 @@ class ArchivistCli {
 const logger = new DomConsoleLogger({ 'panel': logEl });
 
 // ── Cascade: browser-runnable adapters in preference order. ──────────────
-const CAPS_FULL_TOOLS:    AdapterCapabilities = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
-const CAPS_PARTIAL_TOOLS: AdapterCapabilities = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
-const CAPS_NO_TOOLS:      AdapterCapabilities = { 'toolUse': 'none',    'structuredOutput': true, 'jsonMode': false };
+const CAPS_FULL_TOOLS:    AdapterCapabilitiesType = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
+const CAPS_PARTIAL_TOOLS: AdapterCapabilitiesType = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
+const CAPS_NO_TOOLS:      AdapterCapabilitiesType = { 'toolUse': 'none',    'structuredOutput': true, 'jsonMode': false };
 
 const params = new URLSearchParams(window.location.search);
 const urlApiKey = params.get('apiKey') ?? '';
@@ -113,7 +113,7 @@ registry.register(
 // Progress reporting is an extension seam: subclass and override
 // onInitProgress rather than passing a callback in.
 class LoggingWebLlmAdapter extends WebLlmAdapter {
-  protected override onInitProgress(report: WebLlmInitReportInterface): void {
+  protected override onInitProgress(report: WebLlmInitReportType): void {
     logger.info(`web-llm: ${report.text} (${String(Math.round(report.progress * 100))}%)`);
   }
 }
@@ -151,7 +151,7 @@ const cascade = new LlmAdapterCascade(registry, [
   ...(ollamaModel !== null ? [{ 'provider': 'ollama', 'model': ollamaModel }] : []),
 ]);
 
-let llm: LlmClient;
+let llm: LlmClientInterface;
 try {
   const adapter = await cascade.select();
   // Browser: no native embedder is wired today (the browser built-in

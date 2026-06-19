@@ -1,7 +1,7 @@
 /**
  * Verifies that WorkerObserver routes all five hook overrides
  * (onNodeStart, onNodeEnd, onPhaseEnter, onPhaseExit, onError) as
- * BridgeMessage { kind: 'instrumentation' } messages over its channel. Also
+ * BridgeMessageType { kind: 'instrumentation' } messages over its channel. Also
  * confirms onFlowStart and onFlowEnd are suppressed (no message sent).
  *
  * Coverage target: G6.
@@ -11,14 +11,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { WorkerObserver } from '../../src/container/WorkerObserver.js';
-import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
+import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // Minimal channel that collects sent messages.
 class CollectingChannel {
-  readonly sent: BridgeMessage[] = [];
-  send(msg: BridgeMessage): void { this.sent.push(msg); }
-  onMessage(_handler: (msg: BridgeMessage) => void): void { /* no-op */ }
+  readonly sent: BridgeMessageType[] = [];
+  send(msg: BridgeMessageType): void { this.sent.push(msg); }
+  onMessage(_handler: (msg: BridgeMessageType) => void): void { /* no-op */ }
   close(): void { /* no-op */ }
 }
 
@@ -27,7 +27,7 @@ const BASE = ['parent-embed'];
 const state = new NodeStateBase();
 
 // Subclass exposes WorkerObserver's protected hooks so a test can fire each
-// hook directly and inspect the BridgeMessage the observer sends.
+// hook directly and inspect the BridgeMessageType the observer sends.
 class ExposedObserver extends WorkerObserver<NodeStateBase> {
   callNodeStart(nodeName: string, s: NodeStateBase, path: readonly string[]): void { this.onNodeStart(nodeName, s, path); }
   callNodeEnd(nodeName: string, output: string | null, s: NodeStateBase, path: readonly string[]): void { this.onNodeEnd(nodeName, output, s, path); }
@@ -38,7 +38,7 @@ class ExposedObserver extends WorkerObserver<NodeStateBase> {
 }
 
 void describe('WorkerObserver — all-five-hook routing (G6)', () => {
-  void it('forwards every overridden hook as instrumentation BridgeMessage with correct fields, suppresses onFlowStart, and prepends basePath', () => {
+  void it('forwards every overridden hook as instrumentation BridgeMessageType with correct fields, suppresses onFlowStart, and prepends basePath', () => {
     const ch = new CollectingChannel();
     const exposed = new ExposedObserver(ch, CORR, BASE, {});
 
@@ -102,7 +102,7 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
     }
 
     // flowStart is suppressed — WorkerObserver does not override it; base Dagonizer's
-    // protected onFlowStart is a no-op, so no instrumentation BridgeMessage is sent.
+    // protected onFlowStart is a no-op, so no instrumentation BridgeMessageType is sent.
     ch.sent.length = 0;
     exposed.callFlowStart('dag', state);
     assert.strictEqual(ch.sent.length, 0, 'onFlowStart must not send any message');

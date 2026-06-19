@@ -12,14 +12,14 @@
  *   onPhaseExit       – logs phase exit (pre/post)
  *   onContractWarning – surfaces dead-write warnings from DAG derivation
  *
- * Constructor accepts the same `DagonizerOptionsInterface` as the base, plus
+ * Constructor accepts the same `DagonizerOptionsType` as the base, plus
  * an injected `logger` that matches `ArchivistServices.logger`.
  */
 
 // #region observed-archivist
-import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { Dagonizer } from '@studnicky/dagonizer';
-import type { DagonizerOptionsInterface } from '@studnicky/dagonizer';
+import type { DagonizerOptionsType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from './ArchivistState.ts';
 import type { ArchivistServices } from './services.ts';
@@ -34,7 +34,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
   readonly #logger: ObservabilityLogger;
 
   constructor(
-    options: DagonizerOptionsInterface<ArchivistState, ArchivistServices>,
+    options: DagonizerOptionsType<ArchivistState, ArchivistServices>,
     logger: ObservabilityLogger,
   ) {
     super(options);
@@ -63,7 +63,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
   protected override onFlowEnd(
     dagName: string,
     state: ArchivistState,
-    result: ExecutionResultInterface<ArchivistState>,
+    result: ExecutionResultType<ArchivistState>,
   ): void {
     const executed = result.executedNodes.length;
     const outcome  = result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none';

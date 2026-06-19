@@ -22,7 +22,7 @@
  */
 
 import { Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
-import type { ChatRequest, ChatResponse } from '@studnicky/dagonizer/adapter';
+import type { ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
 // No portable default model: Ollama models are pulled per-host.
@@ -42,19 +42,19 @@ const FALLBACK_MODEL = 'llama3.2:latest';
  * `apiKey` is optional; defaults to the placeholder `'ollama'`. Override
  * only when proxying Ollama behind a gateway that enforces auth.
  */
-export interface OllamaApiAdapterOptions {
+export type OllamaApiAdapterOptionsType = {
   readonly model?: string;
   readonly baseUrl?: string;
   readonly apiKey?: string;
   readonly maxAttempts?: number;
-}
+};
 
 const PROBE_TIMEOUT_MS = 500;
 
 export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
   readonly #baseUrl: string;
 
-  constructor(options: OllamaApiAdapterOptions = {}) {
+  constructor(options: OllamaApiAdapterOptionsType = {}) {
     const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
     const model = options.model ?? FALLBACK_MODEL;
     super(
@@ -85,7 +85,7 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
    * endpoint. A 404 means the model has not been pulled yet. Re-throw
    * with a hint so the error surfaces actionably to the visitor.
    */
-  protected override async performChat(request: ChatRequest): Promise<ChatResponse> {
+  protected override async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     try {
       return await super.performChat(request);
     } catch (err) {

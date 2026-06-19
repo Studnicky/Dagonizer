@@ -56,7 +56,7 @@ import type { SourcePayload } from './entities/SourcePayload.ts';
 import type { EventTypeConfig } from './services.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/types';
+import type { JsonObjectType } from '@studnicky/dagonizer/types';
 
 /** Per-region aggregated insights (fixed-size accumulator). */
 export interface RegionInsights {
@@ -554,7 +554,7 @@ export class CartographerState extends NodeStateBase {
   // #endregion clone
 
   // #region snapshot-restore
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       'eventCount': this.eventCount,
       'eventConfig': this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ 'format': m.format, 'compression': m.compression, 'weight': m.weight })) })),
@@ -574,7 +574,7 @@ export class CartographerState extends NodeStateBase {
     };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     if (typeof snap['eventCount'] === 'number') this.eventCount = snap['eventCount'];
     if (typeof snap['useStreamingSource'] === 'boolean') this.useStreamingSource = snap['useStreamingSource'];
     if (typeof snap['streamCount'] === 'number') this.streamCount = snap['streamCount'];
@@ -726,8 +726,8 @@ export class CartographerState extends NodeStateBase {
   }
 
   /** Serialize a CanonicalEventVariant to a JSON-safe object (switches on eventType for exact body fields). */
-  private static variantToJson(v: CanonicalEventVariant): JsonObject {
-    const envelope: JsonObject = {
+  private static variantToJson(v: CanonicalEventVariant): JsonObjectType {
+    const envelope: JsonObjectType = {
       'shipmentId':        v.shipmentId,
       'eventId':           v.eventId,
       'epochMs':           v.epochMs,
@@ -926,7 +926,7 @@ export class CartographerState extends NodeStateBase {
     return result;
   }
 
-  private static sourceToJson(s: SourcePayload): JsonObject {
+  private static sourceToJson(s: SourcePayload): JsonObjectType {
     return {
       'sourceId':    s.sourceId,
       'format':      s.format,
@@ -1011,7 +1011,7 @@ export class CartographerState extends NodeStateBase {
   }
 
   // ── Entity ↔ JSON reconstruction (field-by-field) ──────────────────────────
-  private static enrichedToJson(e: EnrichedShipment): JsonObject {
+  private static enrichedToJson(e: EnrichedShipment): JsonObjectType {
     return {
       'shipmentId': e.shipmentId, 'scanSeq': e.scanSeq, 'epochMs': e.epochMs,
       'localIso': e.localIso, 'utcOffset': e.utcOffset, 'timezone': e.timezone, 'jurisdiction': e.jurisdiction,
@@ -1063,7 +1063,7 @@ export class CartographerState extends NodeStateBase {
     };
   }
 
-  private static routingToJson(r: EnrichedShipment['routing']): JsonObject {
+  private static routingToJson(r: EnrichedShipment['routing']): JsonObjectType {
     return {
       'path':              r.path,
       'geoLookupRun':      r.geoLookupRun,

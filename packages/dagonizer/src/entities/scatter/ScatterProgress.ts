@@ -40,7 +40,7 @@ export const ScatterInboxItemSchema = {
 } as const;
 
 /** TypeScript type derived from `ScatterInboxItemSchema` via `json-schema-to-ts`. */
-export type ScatterInboxItem = FromSchema<typeof ScatterInboxItemSchema>;
+export type ScatterInboxItemType = FromSchema<typeof ScatterInboxItemSchema>;
 
 // ---------------------------------------------------------------------------
 // ScatterAckedResult
@@ -95,7 +95,7 @@ export const ScatterAckedResultSchema = {
  *   `field`: carries `fieldValue`, the value of `gather.field` read from the clone state.
  *   `plain`: carries only the routing `output`; used by `collect`, `discard`, and `partition` strategies.
  */
-export type ScatterAckedResult = FromSchema<typeof ScatterAckedResultSchema>;
+export type ScatterAckedResultType = FromSchema<typeof ScatterAckedResultSchema>;
 
 // ---------------------------------------------------------------------------
 // ScatterProgress (discriminated union: 'retained' | 'bounded')
@@ -208,7 +208,7 @@ export const ScatterProgressSchema = {
  *               memory-bounded strategies (`collect` with large source arrays,
  *               `partition`, `discard`) where retaining all results is not needed.
  */
-export type ScatterProgress = FromSchema<typeof ScatterProgressSchema>;
+export type ScatterProgressType = FromSchema<typeof ScatterProgressSchema>;
 
 // ---------------------------------------------------------------------------
 // StoredScatterProgress
@@ -222,8 +222,8 @@ export const StoredScatterProgressSchema = {
 } as const;
 
 /**
- * Map of `ScatterProgress` values keyed by placement name.
+ * Map of `ScatterProgressType` values keyed by placement name.
  * Stored in checkpoint metadata under `SCATTER_PROGRESS_KEY` when a
  * scatter run is interrupted; each key is the scatter placement's `name`.
  */
-export type StoredScatterProgress = FromSchema<typeof StoredScatterProgressSchema>;
+export type StoredScatterProgressType = FromSchema<typeof StoredScatterProgressSchema>;

@@ -24,7 +24,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
 import { PROV, ProvIris } from '../provenance/PROV.ts';
@@ -53,7 +53,7 @@ export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded', A
   readonly name = 'record-findings';
   readonly outputs = ['recorded'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory = context.services.memory;
     const embedder = context.services.embedder;
     const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.identity.isbn));

@@ -19,7 +19,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -35,7 +35,7 @@ export class RouteFormatNode extends ScalarNode<CartographerState, 'csv' | 'json
   readonly 'name' = 'route-format';
   readonly 'outputs' = ['csv', 'json', 'ndjson', 'yaml', 'invalid'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'>> {
     const route = FORMAT_ROUTE[state.currentSource.format];
     if (route === undefined) {
       return NodeOutputBuilder.of('invalid');

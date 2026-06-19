@@ -1,5 +1,5 @@
 /**
- * AbortableOptionsInterface: trailing options object for any method that
+ * AbortableOptionsType: trailing options object for any method that
  * accepts an optional cancellation signal.
  *
  * Follows the project convention of required positional arguments followed by
@@ -10,7 +10,7 @@
  * Implementations that do not support cancellation (e.g. in-process
  * `MemoryCheckpointStore`) may accept the parameter and ignore it.
  */
-export interface AbortableOptionsInterface {
+export type AbortableOptionsType = {
   /** Optional `AbortSignal` to cancel the operation. */
   signal?: AbortSignal;
-}
+};

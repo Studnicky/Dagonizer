@@ -8,28 +8,28 @@
  */
 
 export { ClusterContainer } from './ClusterContainer.js';
-export type { ClusterContainerOptions } from './ClusterContainer.js';
+export type { ClusterContainerOptionsType } from './ClusterContainer.js';
 export { ForkContainer } from './ForkContainer.js';
-export type { ForkContainerOptions } from './ForkContainer.js';
+export type { ForkContainerOptionsType } from './ForkContainer.js';
 export { ForkEntry } from './forkEntry.js';
 export { IpcChannel } from './IpcChannel.js';
-export type { IpcEndpoint, IpcProcessLike } from './IpcChannel.js';
+export type { IpcEndpointInterface, IpcProcessLikeInterface } from './IpcChannel.js';
 export { MessagePortChannel } from './MessagePortChannel.js';
-export type { MessagePortLike } from './MessagePortChannel.js';
+export type { MessagePortLikeInterface } from './MessagePortChannel.js';
 export { NdjsonChannel } from './NdjsonChannel.js';
 export { NodeContainerBase } from './NodeContainerBase.js';
 export type {
-  NodeContainerBaseInterface,
-  NodeContainerBaseOptions,
+  NodeContainerBaseType,
+  NodeContainerBaseOptionsType,
 } from './NodeContainerBase.js';
 export { NodeSystemInfo } from './NodeSystemInfo.js';
-export type { NodeSystemInfoServices, OsServices } from './NodeSystemInfo.js';
+export type { NodeSystemInfoServicesType, OsServicesInterface } from './NodeSystemInfo.js';
 export { SpawnContainer } from './SpawnContainer.js';
-export type { SpawnContainerOptions } from './SpawnContainer.js';
+export type { SpawnContainerOptionsType } from './SpawnContainer.js';
 export { SpawnEntry } from './spawnEntry.js';
 export { WorkerEntry } from './workerEntry.js';
 export { WorkerThreadContainer } from './WorkerThreadContainer.js';
 export type {
-  WorkerThreadContainerOptions,
-  WorkerThreadResourceLimits,
+  WorkerThreadContainerOptionsType,
+  WorkerThreadResourceLimitsType,
 } from './WorkerThreadContainer.js';

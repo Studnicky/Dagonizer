@@ -24,4 +24,4 @@ export const NodeSchema = {
 } as const;
 
 /** TypeScript type derived from `NodeSchema` via `json-schema-to-ts`. */
-export type Node = FromSchema<typeof NodeSchema>;
+export type NodeUnionType = FromSchema<typeof NodeSchema>;

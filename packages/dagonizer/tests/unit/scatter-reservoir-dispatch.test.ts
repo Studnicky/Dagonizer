@@ -39,29 +39,29 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
-import type { InitMessageShape } from '../../src/container/ChannelDispatch.js';
+import type { InitMessageShapeType } from '../../src/container/ChannelDispatch.js';
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
-import type { PoolEntry } from '../../src/container/DagContainerBase.js';
+import type { PoolEntryType } from '../../src/container/DagContainerBase.js';
 import { DagHost } from '../../src/container/DagHost.js';
-import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
-import type { CheckpointRestoreAdapter } from '../../src/contracts/CheckpointRestoreAdapter.js';
+import type { CheckpointRestoreAdapterInterface } from '../../src/contracts/CheckpointRestoreAdapterInterface.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { DispatcherBundle } from '../../src/contracts/DispatcherBundle.js';
+import type { DispatcherBundleType } from '../../src/contracts/DispatcherBundle.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
-import type { ObserverRelay } from '../../src/contracts/ObserverRelay.js';
+import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import type { RegistryBundleInterface } from '../../src/contracts/RegistryBundleInterface.js';
 import type { RegistryModuleInterface } from '../../src/contracts/RegistryModuleInterface.js';
-import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
+import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
-import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
+import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -75,15 +75,15 @@ class ReservoirDispatchState extends NodeStateBase {
   /** Per-item output recorded by the recording gather: value → 'success'|'error'. */
   outputByValue: Record<string, string> = {};
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       'counter': this.counter,
-      'items': this.items as unknown as JsonObject,
-      'outputByValue': this.outputByValue as unknown as JsonObject,
+      'items': this.items as unknown as JsonObjectType,
+      'outputByValue': this.outputByValue as unknown as JsonObjectType,
     };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
     const items = snap['items'];
     if (Array.isArray(items)) {
@@ -107,10 +107,10 @@ class ReservoirDispatchGather extends GatherStrategy {
   readonly name = 'counting-test-reservoir';
 
   reduce(
-    _config: GatherConfig,
+    _config: GatherConfigType,
     batch: Parameters<GatherStrategy['reduce']>[1],
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     const current = accessor.get<number>(state, 'counter') ?? 0;
     accessor.set(state, 'counter', current + batch.size);
@@ -128,10 +128,10 @@ class ReservoirRecordingGather extends GatherStrategy {
   readonly name = 'recording-test-reservoir';
 
   reduce(
-    _config: GatherConfig,
+    _config: GatherConfigType,
     batch: Parameters<GatherStrategy['reduce']>[1],
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     const current = accessor.get<number>(state, 'counter') ?? 0;
     accessor.set(state, 'counter', current + batch.size);
@@ -160,7 +160,7 @@ class RouterNode extends ScalarNode<ReservoirDispatchState, 'even' | 'odd'> {
   readonly name = 'router';
   readonly outputs = ['even', 'odd'] as const;
 
-  protected async executeOne(state: ReservoirDispatchState): Promise<NodeOutputInterface<'even' | 'odd'>> {
+  protected async executeOne(state: ReservoirDispatchState): Promise<NodeOutputType<'even' | 'odd'>> {
     const item = state.getMetadata<{ group: string; value: number }>('currentItem');
     const output: 'even' | 'odd' = (item !== undefined && item.value % 2 === 0) ? 'even' : 'odd';
     return { 'errors': [], output };
@@ -170,7 +170,7 @@ class RouterNode extends ScalarNode<ReservoirDispatchState, 'even' | 'odd'> {
 // Sub-DAG: router → (even → done-a, odd → done-b) → TerminalNode
 const ROUTE_BODY_DAG_NAME = 'route-body';
 
-const routeBodyDag: DAG = Validator.dag.validate({
+const routeBodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:noocodex:dag:route-body',
   '@type': 'DAG',
@@ -203,7 +203,7 @@ const routeBodyDag: DAG = Validator.dag.validate({
 // Parent DAG for Suite A (no container)
 const RESERVOIR_DAG_BODY_NAME = 'scatter-reservoir-dag';
 
-const reservoirDagBodyDag: DAG = Validator.dag.validate({
+const reservoirDagBodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:noocodex:dag:scatter-reservoir-dag',
   '@type': 'DAG',
@@ -241,7 +241,7 @@ const reservoirDagBodyDag: DAG = Validator.dag.validate({
 const RESERVOIR_DAG_BODY_CONTAINER_NAME = 'scatter-reservoir-dag-container';
 const CONTAINER_ROLE = 'cpu';
 
-const reservoirDagBodyContainerDag: DAG = Validator.dag.validate({
+const reservoirDagBodyContainerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:noocodex:dag:scatter-reservoir-dag-container',
   '@type': 'DAG',
@@ -282,14 +282,14 @@ class PassThroughNode extends ScalarNode<ReservoirDispatchState, 'done'> {
   readonly name = 'pass-through';
   readonly outputs = ['done'] as const;
 
-  protected async executeOne(): Promise<NodeOutputInterface<'done'>> {
+  protected async executeOne(): Promise<NodeOutputType<'done'>> {
     return { 'errors': [], 'output': 'done' };
   }
 }
 
 const RESERVOIR_NODE_BODY_NAME = 'scatter-reservoir-node-body';
 
-const reservoirNodeBodyDag: DAG = Validator.dag.validate({
+const reservoirNodeBodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:noocodex:dag:scatter-reservoir-node-body',
   '@type': 'DAG',
@@ -324,7 +324,7 @@ const reservoirNodeBodyDag: DAG = Validator.dag.validate({
 
 // ── Suite A ───────────────────────────────────────────────────────────────────
 
-void describe('Scatter reservoir: DAG body in-process (Branch B)', () => {
+void describe('Scatter reservoir: DAGType body in-process (Branch B)', () => {
   void it('processes all 8 items through the sub-DAG; gather counter equals 8', async () => {
     const dispatcher = new Dagonizer<ReservoirDispatchState>();
     dispatcher.registerNode(new RouterNode());
@@ -373,8 +373,8 @@ function buildLoopbackContainer(
   return {
     async runDag(
       task: DagTaskInterface<ReservoirDispatchState, unknown>,
-      _options?: { readonly relay?: ObserverRelay },
-    ): Promise<DagOutcomeInterface> {
+      _options?: { readonly relay?: ObserverRelayInterface },
+    ): Promise<DagOutcomeType> {
       callCounter.count++;
       const cloneState = task.state;
       try {
@@ -410,7 +410,7 @@ function buildLoopbackContainer(
   };
 }
 
-void describe('Scatter reservoir: DAG body with container loopback (Branch C fallback)', () => {
+void describe('Scatter reservoir: DAGType body with container loopback (Branch C fallback)', () => {
   void it('routes each item through container.runDag; runDag called once per item; gather counter equals 8', async () => {
     // Inner dispatcher runs the sub-DAG in-process.
     const innerDispatcher = new Dagonizer<ReservoirDispatchState>();
@@ -504,7 +504,7 @@ void describe('Scatter reservoir: node body regression (Branch A)', () => {
 // transport must carry back per item.
 const ROUTE_BODY_D_DAG_NAME = 'route-body-d';
 
-const routeBodyDDag: DAG = Validator.dag.validate({
+const routeBodyDDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:noocodex:dag:route-body-d',
   '@type': 'DAG',
@@ -538,7 +538,7 @@ const routeBodyDDag: DAG = Validator.dag.validate({
 const RESERVOIR_D_CONTAINER_NAME = 'scatter-reservoir-d-container';
 const RESERVOIR_D_INPROCESS_NAME = 'scatter-reservoir-d-inprocess';
 
-const reservoirDContainerDag: DAG = Validator.dag.validate({
+const reservoirDContainerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:noocodex:dag:scatter-reservoir-d-container',
   '@type': 'DAG',
@@ -574,7 +574,7 @@ const reservoirDContainerDag: DAG = Validator.dag.validate({
 });
 
 // Identical parent DAG, but no container → Branch B (in-process batch-native).
-const reservoirDInProcessDag: DAG = Validator.dag.validate({
+const reservoirDInProcessDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:noocodex:dag:scatter-reservoir-d-inprocess',
   '@type': 'DAG',
@@ -618,24 +618,24 @@ const SUITE_D_REGISTRY_VERSION = '1.0.0';
  * the scatter clone seeding, survives the snapshot round-trip — that is how the
  * router reads `currentItem` on the host side).
  */
-const suiteDRestoreAdapter: CheckpointRestoreAdapter<NodeStateInterface> =
-  CheckpointRestoreAdapterFn.wrap((snap: JsonObject): NodeStateInterface => {
+const suiteDRestoreAdapter: CheckpointRestoreAdapterInterface<NodeStateInterface> =
+  CheckpointRestoreAdapterFn.wrap((snap: JsonObjectType): NodeStateInterface => {
     const state = new ReservoirDispatchState();
     state.applySnapshot(snap);
     return state;
   });
 
-const suiteDBundle: DispatcherBundle<NodeStateInterface, unknown> = {
+const suiteDBundle: DispatcherBundleType<NodeStateInterface, unknown> = {
   // The router node is typed for ReservoirDispatchState; the host bundle is
   // typed for the NodeStateInterface base. NodeInterface is invariant in TState
   // through its method parameters, so the array is widened to the base type —
   // the same pattern ConformanceRegistry's CONFORMANCE_NODES uses.
-  'nodes': [new RouterNode()] as unknown as DispatcherBundle<NodeStateInterface, unknown>['nodes'],
+  'nodes': [new RouterNode()] as unknown as DispatcherBundleType<NodeStateInterface, unknown>['nodes'],
   'dags': [routeBodyDDag],
 };
 
 const suiteDRegistry: RegistryModuleInterface = {
-  instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     return Promise.resolve({
       'bundle': suiteDBundle,
       'services': undefined,
@@ -647,7 +647,7 @@ const suiteDRegistry: RegistryModuleInterface = {
 
 /**
  * Counting wrapper around a channel: delegates everything to the wrapped side
- * but increments `executeCount` for each outbound `execute` BridgeMessage. The
+ * but increments `executeCount` for each outbound `execute` BridgeMessageType. The
  * proof that the batch round-trip ran is `executeCount === number of batches`.
  */
 class ExecuteCountingChannel implements MessageChannelInterface {
@@ -658,12 +658,12 @@ class ExecuteCountingChannel implements MessageChannelInterface {
     this.#inner = inner;
   }
 
-  send(msg: BridgeMessage): void {
+  send(msg: BridgeMessageType): void {
     if (msg.kind === 'execute') this.executeCount += 1;
     this.#inner.send(msg);
   }
 
-  onMessage(handler: (msg: BridgeMessage) => void): void {
+  onMessage(handler: (msg: BridgeMessageType) => void): void {
     this.#inner.onMessage(handler);
   }
 
@@ -678,7 +678,7 @@ class ExecuteCountingChannel implements MessageChannelInterface {
  * LoopbackChannel parent side wired to a real DagHost. The init handshake uses
  * the SAME registryVersion the host's bundle reports.
  */
-const SUITE_D_INIT: InitMessageShape = {
+const SUITE_D_INIT: InitMessageShapeType = {
   'registryModule': 'suite-d',
   'registryVersion': SUITE_D_REGISTRY_VERSION,
   'servicesConfig': {},
@@ -715,11 +715,11 @@ class SingleChannelContainer extends DagContainerBase<ReservoirDispatchState, nu
 
   protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
 
-  protected override composeEntry(): PoolEntry<null> {
+  protected override composeEntry(): PoolEntryType<null> {
     return { 'worker': null, 'channel': this.#channel, 'initialized': false };
   }
 
-  protected override attachDeathListeners(_entry: PoolEntry<null>): void { /* no-op */ }
+  protected override attachDeathListeners(_entry: PoolEntryType<null>): void { /* no-op */ }
   protected override terminateWorker(_worker: null): void { /* no-op */ }
   protected override awaitWorkerExit(_worker: null): Promise<void> {
     return new Promise(() => { /* never */ });
@@ -737,7 +737,7 @@ const SUITE_D_ITEMS: Array<{ group: string; value: number }> = [
   { 'group': 'A', 'value': 7 },
 ];
 
-void describe('Scatter reservoir: DAG body through real DagContainerBase (Branch C runDagBatch)', () => {
+void describe('Scatter reservoir: DAGType body through real DagContainerBase (Branch C runDagBatch)', () => {
   void it('routes 8 items through runDagBatch (2 batches, 2 execute messages); even→success, odd→error; parity with in-process', async () => {
     // ── Real DagHost behind a LoopbackChannel, fronted by DagContainerBase ──
     const [parentSide, hostSide] = LoopbackChannel.pair();

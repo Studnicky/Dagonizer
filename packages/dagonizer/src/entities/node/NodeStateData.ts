@@ -55,4 +55,4 @@ export const NodeStateDataSchema = {
 } as const;
 
 /** TypeScript type derived from `NodeStateDataSchema` via `json-schema-to-ts`. */
-export type NodeStateData = FromSchema<typeof NodeStateDataSchema>;
+export type NodeStateDataType = FromSchema<typeof NodeStateDataSchema>;

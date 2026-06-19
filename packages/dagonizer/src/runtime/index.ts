@@ -13,8 +13,8 @@ export { Timeout } from '../entities/Timeout.js';
 // Adapter contracts live in `contracts/` (single source of truth).
 // They are re-exported through this barrel for ergonomic `runtime/` imports
 // when consumers want both the engine class and its contract together.
-export type { ClockProvider } from '../contracts/ClockProvider.js';
-export type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
+export type { ClockProviderInterface } from '../contracts/ClockProviderInterface.js';
+export type { SchedulerProviderInterface } from '../contracts/SchedulerProviderInterface.js';
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
-export type { RetryPolicyOptionsInterface } from '../contracts/RetryPolicyOptionsInterface.js';
-export type { StateAccessor } from '../contracts/StateAccessor.js';
+export type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
+export type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
