@@ -20,4 +20,4 @@ export const ValidationResultSchema = {
 } as const;
 
 /** TypeScript type derived from `ValidationResultSchema` via `json-schema-to-ts`. */
-export type ValidationResult = FromSchema<typeof ValidationResultSchema>;
+export type ValidationResultType = FromSchema<typeof ValidationResultSchema>;

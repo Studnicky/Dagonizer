@@ -16,10 +16,10 @@ import { normalizeNdjson } from '../nodes/ingest/normalizeNdjson.ts';
 import type { CartographerState }    from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const normalizeNdjsonDAG: DAG = new DAGBuilder('normalize-ndjson', '1.0')
+export const normalizeNdjsonDAG: DAGType = new DAGBuilder('normalize-ndjson', '1.0')
 
   .node('normalize-ndjson-map', normalizeNdjson, {
     'normalized': 'normalized',
@@ -29,7 +29,7 @@ export const normalizeNdjsonDAG: DAG = new DAGBuilder('normalize-ndjson', '1.0')
 
   .build();
 
-export const normalizeNdjsonBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const normalizeNdjsonBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [normalizeNdjson],
   'dags':  [normalizeNdjsonDAG],
 };

@@ -5,17 +5,17 @@
  * Snapshot version: 1
  */
 
-import type { StoreSnapshotEntry } from '../contracts/Snapshottable.js';
-import type { JsonValue } from '../entities/json.js';
+import type { StoreSnapshotEntryType } from '../contracts/SnapshottableInterface.js';
+import type { JsonValueType } from '../entities/json.js';
 
-import { BaseStore, type BaseStoreOptions } from './BaseStore.js';
+import { BaseStore, type BaseStoreOptionsType } from './BaseStore.js';
 
 export class MemoryStore extends BaseStore {
-  readonly #data: Map<string, JsonValue>;
+  readonly #data: Map<string, JsonValueType>;
 
-  constructor(options: BaseStoreOptions = {}) {
+  constructor(options: BaseStoreOptionsType = {}) {
     super(options);
-    this.#data = new Map<string, JsonValue>();
+    this.#data = new Map<string, JsonValueType>();
   }
 
   protected get snapshotType(): string    { return 'memory-store'; }
@@ -27,24 +27,24 @@ export class MemoryStore extends BaseStore {
    * instance. The base-class default uses `performGet` + `performSet`,
    * which has two await points and is not safe under concurrent calls.
    */
-  override async update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
+  override async update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     const qualified = this.qualifyKey(key);
-    // Map<string, JsonValue>.get() returns JsonValue | undefined; the caller's
-    // generic T extends JsonValue so the narrowing cast is safe by contract.
+    // Map<string, JsonValueType>.get() returns JsonValueType | undefined; the caller's
+    // generic T extends JsonValueType so the narrowing cast is safe by contract.
     const raw       = this.#data.get(qualified) as T | undefined;
     const next      = fn(raw);
     this.#data.set(qualified, next);
     return next;
   }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
     const value = this.#data.get(key);
-    // Map<string, JsonValue>.get() returns JsonValue | undefined; the undefined
-    // case is handled by the ternary above; T extends JsonValue so the cast is safe.
+    // Map<string, JsonValueType>.get() returns JsonValueType | undefined; the undefined
+    // case is handled by the ternary above; T extends JsonValueType so the cast is safe.
     return value === undefined ? null : (value as T);
   }
 
-  protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
+  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
     this.#data.set(key, value);
   }
 
@@ -56,14 +56,14 @@ export class MemoryStore extends BaseStore {
     return this.#data.delete(key);
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
+  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
     return [...this.#data.entries()].map(([key, value]) => ({
       'key':   key,
       'value': value,
     }));
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void> {
+  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
     this.#data.clear();
     for (const { key, value } of entries) {
       this.#data.set(key, value);

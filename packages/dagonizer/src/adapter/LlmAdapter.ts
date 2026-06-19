@@ -1,5 +1,5 @@
 /**
- * LlmAdapter: provider-agnostic chat contract for one round-trip per call.
+ * LlmAdapterInterface: provider-agnostic chat contract for one round-trip per call.
  *
  * Entity schemas and TypeScript interfaces live in `src/entities/adapter/`;
  * this module re-exports them ergonomically so `@studnicky/dagonizer/adapter`
@@ -7,10 +7,10 @@
  *
  * `ChatRequestBuilder` and `ChatResponseMessageBuilder` remain here because
  * they have runtime logic (`SignalComposer.never()`, discriminated dispatch).
- * Module-level defaults for `ChatRequest` fields also live here.
+ * Module-level defaults for `ChatRequestType` fields also live here.
  *
  *   ┌──────────────────────────────────────────────────────────────┐
- *   │ Why an adapter and not just LlmClient methods?                │
+ *   │ Why an adapter and not just LlmClientInterface methods?                │
  *   │ Retry, error classification, tool-call extraction, structured │
  *   │ output and schema-violation recovery are the same regardless  │
  *   │ of provider. They live once on this shared base; each         │
@@ -19,10 +19,10 @@
  *   └──────────────────────────────────────────────────────────────┘
  */
 
-import type { ChatRequest, LlmOutputSchema, PartialChatRequest, ToolChoice } from '../entities/adapter/ChatRequest.js';
-import type { ChatResponseMessage } from '../entities/adapter/ChatResponseMessage.js';
-import type { TokenUsage } from '../entities/adapter/TokenUsage.js';
-import type { ToolCall } from '../entities/adapter/ToolCall.js';
+import type { ChatRequestType, LlmOutputSchemaType, PartialChatRequestType, ToolChoiceType } from '../entities/adapter/ChatRequest.js';
+import type { ChatResponseMessageType } from '../entities/adapter/ChatResponseMessage.js';
+import type { TokenUsageType } from '../entities/adapter/TokenUsage.js';
+import type { ToolCallType } from '../entities/adapter/ToolCall.js';
 import { SignalComposer } from '../runtime/SignalComposer.js';
 
 // ── Re-export entity schemas + types from their canonical location ────────────
@@ -31,39 +31,39 @@ import { SignalComposer } from '../runtime/SignalComposer.js';
 // `src/entities/adapter/`. Re-exported here so every consumer of
 // `@studnicky/dagonizer/adapter` sees them at the familiar import path.
 
-export type { AdapterCapabilities } from '../entities/adapter/AdapterCapabilities.js';
+export type { AdapterCapabilitiesType } from '../entities/adapter/AdapterCapabilities.js';
 
 export { ChatMessageSchema } from '../entities/adapter/ChatMessage.js';
-export type { ChatMessage } from '../entities/adapter/ChatMessage.js';
+export type { ChatMessageType } from '../entities/adapter/ChatMessage.js';
 
 export { ToolDefinitionSchema } from '../entities/adapter/ToolDefinition.js';
-export type { ToolDefinition } from '../entities/adapter/ToolDefinition.js';
+export type { ToolDefinitionType } from '../entities/adapter/ToolDefinition.js';
 
 export { ToolCallSchema } from '../entities/adapter/ToolCall.js';
-export type { ToolCall } from '../entities/adapter/ToolCall.js';
+export type { ToolCallType } from '../entities/adapter/ToolCall.js';
 
 export { TokenUsageSchema } from '../entities/adapter/TokenUsage.js';
-export type { TokenUsage } from '../entities/adapter/TokenUsage.js';
+export type { TokenUsageType } from '../entities/adapter/TokenUsage.js';
 
 export { ChatResponseMessageSchema } from '../entities/adapter/ChatResponseMessage.js';
-export type { ChatResponseMessage } from '../entities/adapter/ChatResponseMessage.js';
+export type { ChatResponseMessageType } from '../entities/adapter/ChatResponseMessage.js';
 
 export { ChatResponseSchema } from '../entities/adapter/ChatResponse.js';
-export type { ChatResponse } from '../entities/adapter/ChatResponse.js';
+export type { ChatResponseType } from '../entities/adapter/ChatResponse.js';
 
-export type { ChatRequest, LlmOutputSchema, PartialChatRequest, ToolChoice } from '../entities/adapter/ChatRequest.js';
+export type { ChatRequestType, LlmOutputSchemaType, PartialChatRequestType, ToolChoiceType } from '../entities/adapter/ChatRequest.js';
 
 // ── Defaults ─────────────────────────────────────────────────────────────
 //
 // Module-level constants own the defaults. Producers fill them; consumers
 // see complete values and never have to coalesce `??`.
 
-export const DEFAULT_TOOL_CHOICE: ToolChoice = { 'type': 'auto' };
-export const DEFAULT_OUTPUT_SCHEMA: LlmOutputSchema = { 'kind': 'none' };
+export const DEFAULT_TOOL_CHOICE: ToolChoiceType = { 'type': 'auto' };
+export const DEFAULT_OUTPUT_SCHEMA: LlmOutputSchemaType = { 'kind': 'none' };
 export const DEFAULT_MAX_TOKENS = 512;
 export const DEFAULT_TEMPERATURE = 0.2;
 
-/** Canonical defaults for the four defaultable fields of `PartialChatRequest`. */
+/** Canonical defaults for the four defaultable fields of `PartialChatRequestType`. */
 const CHAT_REQUEST_DEFAULTS = {
   'toolChoice':   DEFAULT_TOOL_CHOICE,
   'outputSchema': DEFAULT_OUTPUT_SCHEMA,
@@ -72,7 +72,7 @@ const CHAT_REQUEST_DEFAULTS = {
 } as const;
 
 /**
- * ChatRequest builder. Fills defaults so callers can pass a partial
+ * ChatRequestType builder. Fills defaults so callers can pass a partial
  * literal and still get a complete, V8-monomorphic value.
  *
  *   const req = ChatRequestBuilder.from({ messages: [...] });
@@ -83,9 +83,9 @@ const CHAT_REQUEST_DEFAULTS = {
 export class ChatRequestBuilder {
   private constructor() { /* static */ }
 
-  /** Materialise a complete `ChatRequest` from a partial input by
+  /** Materialise a complete `ChatRequestType` from a partial input by
    *  filling every absent field with its canonical default. */
-  static from(partial: PartialChatRequest): ChatRequest {
+  static from(partial: PartialChatRequestType): ChatRequestType {
     const defaults = { ...CHAT_REQUEST_DEFAULTS, ...partial };
     return {
       'messages':     partial.messages,
@@ -109,17 +109,17 @@ export class ChatResponseMessageBuilder {
   private constructor() { /* static */ }
 
   /** Build the right discriminated variant from content + tool calls. */
-  static from(content: string, toolCalls: readonly ToolCall[]): ChatResponseMessage {
+  static from(content: string, toolCalls: readonly ToolCallType[]): ChatResponseMessageType {
     if (toolCalls.length === 0) return { 'kind': 'text', content };
     if (content.length === 0) return { 'kind': 'tools', 'toolCalls': [...toolCalls] };
     return { 'kind': 'mixed', content, 'toolCalls': [...toolCalls] };
   }
 }
 
-export const ZERO_TOKEN_USAGE: TokenUsage = { 'promptTokens': 0, 'completionTokens': 0 };
+export const ZERO_TOKEN_USAGE: TokenUsageType = { 'promptTokens': 0, 'completionTokens': 0 };
 
 /**
- * Re-exported from `src/contracts/LlmAdapter.ts` — single source of truth.
- * `./adapter` consumers continue to import `LlmAdapter` from this module.
+ * Re-exported from `src/contracts/LlmAdapterInterface.ts` — single source of truth.
+ * `./adapter` consumers continue to import `LlmAdapterInterface` from this module.
  */
-export type { LlmAdapter } from '../contracts/LlmAdapter.js';
+export type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';

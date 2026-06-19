@@ -12,7 +12,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -110,7 +110,7 @@ export const dag3 = new DAGBuilder('demo-explicit-failed', '1')
 
 // #region embedded-terminals
 // Child DAG literal: routes 'done' to a TerminalNode (well-formed).
-export const childDAG: DAG = {
+export const childDAG: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:child-for-terminals',
   '@type':     'DAG',

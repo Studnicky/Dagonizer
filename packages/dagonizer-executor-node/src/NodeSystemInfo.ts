@@ -15,44 +15,44 @@ import os from 'node:os';
 
 import type { SystemInfoInterface } from '@studnicky/dagonizer/contracts';
 import { SystemInfo } from '@studnicky/dagonizer/entities';
-import type { RecommendedWorkerCountConfig } from '@studnicky/dagonizer/entities';
+import type { RecommendedWorkerCountConfigType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
-// OsServices: injectable os probe surface
+// OsServicesInterface: injectable os probe surface
 // ---------------------------------------------------------------------------
 
-export interface OsServices {
+export interface OsServicesInterface {
   availableParallelism(): number;
   totalmem(): number;
   freemem(): number;
 }
 
 // ---------------------------------------------------------------------------
-// NodeSystemInfoServices: top-level DI bag
+// NodeSystemInfoServicesType: top-level DI bag
 // ---------------------------------------------------------------------------
 
-export interface NodeSystemInfoServices {
-  readonly os?: OsServices;
-}
+export type NodeSystemInfoServicesType = {
+  readonly os?: OsServicesInterface;
+};
 
 // ---------------------------------------------------------------------------
 // NodeSystemInfo
 // ---------------------------------------------------------------------------
 
-const DEFAULT_OS: OsServices = {
+const DEFAULT_OS: OsServicesInterface = {
   'availableParallelism': () => os.availableParallelism(),
   'totalmem': () => os.totalmem(),
   'freemem': () => os.freemem(),
 };
 
 export class NodeSystemInfo implements SystemInfoInterface {
-  readonly #os: OsServices;
+  readonly #os: OsServicesInterface;
 
-  constructor(services: NodeSystemInfoServices = {}) {
+  constructor(services: NodeSystemInfoServicesType = {}) {
     this.#os = services.os ?? DEFAULT_OS;
   }
 
-  recommendedWorkerCount(config: RecommendedWorkerCountConfig): number {
+  recommendedWorkerCount(config: RecommendedWorkerCountConfigType): number {
     return SystemInfo.recommendedWorkerCount(config, {
       'parallelism': this.#os.availableParallelism(),
       'freeMemoryBytes': this.#os.freemem(),

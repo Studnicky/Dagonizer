@@ -19,48 +19,46 @@
  */
 
 import type {
-  ChatRequest,
-  ChatResponse,
-  ErrorClassification,
-  ToolDefinition,
+  ChatRequestType,
+  ChatResponseType,
+  ErrorClassificationType,
+  ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 
-export type GeminiNanoAvailability =
-  | 'available'
-  | 'downloadable'
-  | 'downloading'
-  | 'unavailable';
+import type {
+  GeminiNanoAvailabilityType,
+  LanguageModelStaticInterface,
+  PromptOptionsType,
+} from './LanguageModelHost.js';
+import {
+  languageModelSessionValidator,
+  languageModelStaticValidator,
+} from './LanguageModelHost.js';
 
-export interface GeminiNanoAdapterOptions {
+export type GeminiNanoAdapterOptionsType = {
   readonly maxAttempts?: number;
-}
-
-interface PromptOptions {
-  responseConstraint?: Record<string, unknown>;
-}
-
-interface LanguageModelSession {
-  prompt(input: string, options?: PromptOptions): Promise<string>;
-  destroy(): void;
-}
-
-interface LanguageModelStatic {
-  availability(): Promise<GeminiNanoAvailability>;
-  create(options?: {
-    initialPrompts?: ReadonlyArray<{ role: 'system' | 'user'; content: string }>;
-  }): Promise<LanguageModelSession>;
-}
+};
 
 export class GeminiNanoAdapter extends BaseAdapter {
-  private static getLanguageModel(): LanguageModelStatic | undefined {
+  /**
+   * Read `globalThis.LanguageModel` as `unknown` and validate it against
+   * `LanguageModelStaticSchema` at the host boundary. Returns the narrowed
+   * host object, or `undefined` when the global is absent or fails the
+   * structural check. This is the single foreign-boundary narrowing for
+   * the Nano host object — every other method receives the already-narrowed
+   * `LanguageModelStaticInterface`.
+   */
+  private static languageModel(): LanguageModelStaticInterface | undefined {
     if (typeof globalThis === 'undefined') return undefined;
-    return (globalThis as { LanguageModel?: LanguageModelStatic }).LanguageModel;
+    const candidate: unknown = Reflect.get(globalThis, 'LanguageModel');
+    if (!languageModelStaticValidator.is(candidate)) return undefined;
+    return candidate;
   }
 
   /** Public probe. Used by the provider matrix to pick the best backend. */
-  static async detect(): Promise<GeminiNanoAvailability> {
-    const lm = GeminiNanoAdapter.getLanguageModel();
+  static async detect(): Promise<GeminiNanoAvailabilityType> {
+    const lm = GeminiNanoAdapter.languageModel();
     if (lm === undefined) return 'unavailable';
     try {
       return await lm.availability();
@@ -69,11 +67,11 @@ export class GeminiNanoAdapter extends BaseAdapter {
     }
   }
 
-  constructor(options: GeminiNanoAdapterOptions = {}) {
+  constructor(options: GeminiNanoAdapterOptionsType = {}) {
     super(
       'gemini-nano',
       'Browser built-in LanguageModel (on-device)',
-      // Tool calls are emitted via JSON coercion (responseConstraint +
+      // ToolInterface calls are emitted via JSON coercion (responseConstraint +
       // ToolCallCodec.decode) rather than a native function-calling channel.
       { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': false },
       { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS },
@@ -91,8 +89,8 @@ export class GeminiNanoAdapter extends BaseAdapter {
     return (await GeminiNanoAdapter.detect()) === 'available';
   }
 
-  protected async performChat(request: ChatRequest): Promise<ChatResponse> {
-    const lm = GeminiNanoAdapter.getLanguageModel();
+  protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
+    const lm = GeminiNanoAdapter.languageModel();
     if (lm === undefined) {
       throw new LlmError('window.LanguageModel is not present', Classifications['MODEL_NOT_FOUND']);
     }
@@ -104,9 +102,10 @@ export class GeminiNanoAdapter extends BaseAdapter {
       ? systemMessages.map((m) => ({ 'role': 'system' as const, 'content': m.content }))
       : undefined;
 
-    const session = await lm.create(initialPrompts === undefined ? undefined : { initialPrompts });
+    const rawSession: unknown = await lm.create(initialPrompts === undefined ? undefined : { initialPrompts });
+    const session = languageModelSessionValidator.validate(rawSession);
     try {
-      const options: PromptOptions = {};
+      const options: PromptOptionsType = {};
       if (request.tools.length > 0) {
         options.responseConstraint = this.#toolPlanSchema(request.tools);
       } else if (request.outputSchema.kind === 'schema') {
@@ -132,28 +131,26 @@ export class GeminiNanoAdapter extends BaseAdapter {
     }
   }
 
-  protected override classify(error: unknown): ErrorClassification {
-    if (error instanceof LlmError) return error.classification;
+  protected override classify(error: unknown): ErrorClassificationType {
     const msg = error instanceof Error ? error.message : String(error);
     if (/availability|not present/iu.test(msg)) return Classifications['MODEL_NOT_FOUND'];
-    if (/aborted|timeout/iu.test(msg)) return Classifications['TIMEOUT'];
-    return Classifications['UNKNOWN'];
+    return super.classify(error);
   }
 
-  #collapseUserMessages(request: ChatRequest): string {
-    // Nano sessions take one prompt; concatenate user turns. Tool
+  #collapseUserMessages(request: ChatRequestType): string {
+    // Nano sessions take one prompt; concatenate user turns. ToolInterface
     // results round-tripped from the DAG land as `role: 'tool'`; we
     // surface them as `[tool <name> result] <content>` so the next turn knows.
     return request.messages
       .filter((m) => m.role !== 'system')
       .map((m) => {
-        if (m.role === 'tool') return `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'} result] ${m.content}`;
+        if (m.role === 'tool') return BaseAdapter.formatToolResult(m);
         return m.content;
       })
       .join('\n\n');
   }
 
-  #toolPlanSchema(tools: readonly ToolDefinition[]): Record<string, unknown> {
+  #toolPlanSchema(tools: readonly ToolDefinitionType[]): Record<string, unknown> {
     // Per-tool variants: each enforces the tool's own inputSchema on
     // `arguments`. Without this Nano gets a free `{}` and tends to
     // hallucinate extra fields (e.g. padding the query with prose) that

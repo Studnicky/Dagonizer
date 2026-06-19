@@ -25,15 +25,15 @@ export const GatherStrategySchema = {
 } as const;
 
 /** Union type derived from `GatherStrategySchema` via `json-schema-to-ts`. */
-export type GatherStrategyName = FromSchema<typeof GatherStrategySchema>;
+export type GatherStrategyNameType = FromSchema<typeof GatherStrategySchema>;
 // → 'append' | 'collect' | 'custom' | 'discard' | 'map' | 'partition'
 
 /** Gather strategy names; discriminator values used by `GatherConfig.strategy`. */
-export const GatherStrategyName = {
+export const GatherStrategyNames = {
   'APPEND':    'append',
   'COLLECT':   'collect',
   'CUSTOM':    'custom',
   'DISCARD':   'discard',
   'MAP':       'map',
   'PARTITION': 'partition',
-} as const satisfies Record<string, GatherStrategyName>;
+} as const satisfies Record<string, GatherStrategyNameType>;

@@ -32,15 +32,15 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 
 | Symbol | Role |
 |--------|------|
-| `LlmAdapter` | The contract every adapter implements (`chat(ChatRequest): Promise<ChatResponse>`) |
+| `LlmAdapter` | The contract every adapter implements (`chat(ChatRequestType): Promise<ChatResponse>`) |
 | `BaseAdapter` | Abstract base with retry, error classification, request normalization |
 | `OpenAiCompatibleAdapter` | Concrete base for OpenAI-shaped HTTP backends |
 | `LlmAdapterCascade`, `LlmAdapterRegistry`, `AdapterDescriptor` | Multi-adapter routing |
 | `EmbedderCascade`, `EmbedderRegistry`, `BaseEmbedder` | Embedding model cascade |
-| `ChatRequest`, `ChatResponse`, `ChatRequestBuilder`, `ChatResponseMessageBuilder` | Wire types and value factories |
-| `LlmError`, `Classifications` | Error taxonomy — `LlmError.classifyHttp(status, body)` and `LlmError.fromNetworkError(err)` are static methods on `LlmError` |
+| `ChatRequestType`, `ChatResponse`, `ChatRequestBuilder`, `ChatResponseMessageBuilder` | Wire types and value factories |
+| `LlmError`, `Classifications` | Error taxonomy — `LlmError.classifyHttp(status, body)` and `LlmError.ofNetworkError(err)` are static methods on `LlmError` |
 | `ToolCallCodec` | JSON envelope decoder for models that emit tool calls as text (Gemini Nano, WebLLM) |
-| `AdapterCapabilities`, `ToolCall`, `ToolChoice`, `ToolDefinition`, `TokenUsage` | Capability metadata |
+| `AdapterCapabilitiesType`, `ToolCall`, `ToolChoiceType`, `ToolDefinition`, `TokenUsage` | Capability metadata |
 
 ### Using an adapter
 
@@ -48,28 +48,11 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 
 ### Writing an adapter
 
-Extend `BaseAdapter` and implement `performChat`:
+Extend `BaseAdapter` and implement the one abstract method, `performChat`. The adapter below is complete and runnable — it echoes the last user message instead of calling a provider, so it needs no network:
 
-```ts twoslash
-import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
-import type { ChatRequest, ChatResponse } from '@studnicky/dagonizer/adapter';
+<<< @/../examples/dags/custom-adapter.ts#custom-adapter
 
-export class MyAdapter extends BaseAdapter {
-  constructor() {
-    super('mine', 'My Provider', { toolUse: 'full', structuredOutput: true, jsonMode: true });
-  }
-
-  protected async performChat(request: ChatRequest): Promise<ChatResponse> {
-    // Hit the provider, parse response.
-    void request;
-    return {
-      message: ChatResponseMessageBuilder.from('hello back', []),
-      finishReason: 'stop',
-      usage: ZERO_TOKEN_USAGE,
-    };
-  }
-}
-```
+A production adapter fills `performChat` with a real HTTP call; retry, error classification, and `probe()` come from `BaseAdapter` for free. The `custom-adapter` example drives this adapter through a `chat()` call; run it with `npx tsx examples/custom-adapter.ts`.
 
 ## `@studnicky/dagonizer/tool`
 
@@ -98,7 +81,7 @@ The patterns subpath exposes the abstract `MonadicNode` root plus the service co
 | Symbol | Role |
 |--------|------|
 | `MonadicNode<TState, TOutput, TServices>` | Abstract base class. Owns the dispatch loop; subclasses inject domain pieces via abstract methods |
-| `LlmClient` | Service contract: `chat(ChatRequest): Promise<ChatResponse>` (subset of `LlmAdapter`) |
+| `LlmClient` | Service contract: `chat(ChatRequestType): Promise<ChatResponse>` (subset of `LlmAdapter`) |
 | `TripleStore` | Service contract: `assert`, `ask`, `select`, `count`, `clearGraph`, `triples` |
 | `Binding`, `Quad`, `SlotPattern`, `Term` | RDF value types used by `TripleStore` |
 
@@ -124,38 +107,9 @@ MonadicNode<TState, TOutput, TServices>            (root: main package)
 
 ### Example: classifying intent
 
-```ts twoslash
-import { DecisionNode } from '@studnicky/dagonizer-patterns-rag';
-import { NodeStateBase } from '@studnicky/dagonizer';
+<<< @/../examples/dags/pattern-node.ts#pattern-node
 
-type Intent = 'search' | 'describe' | 'recommend' | 'off-topic';
-
-class MyState extends NodeStateBase {
-  query = '';
-  intent: Intent = 'off-topic';
-}
-
-class IntentClassifier extends DecisionNode<MyState, Intent> {
-  readonly name = 'classify-intent';
-  readonly outputs = ['search', 'describe', 'recommend', 'off-topic'] as const;
-
-  protected buildPrompt(s: MyState): string {
-    return `Classify: "${s.query}" → search | describe | recommend | off-topic. Reply with one word.`;
-  }
-
-  protected parseChoice(content: string): Intent {
-    const t = content.trim().toLowerCase();
-    if (t === 'search' || t === 'describe' || t === 'recommend') return t;
-    return 'off-topic';
-  }
-
-  protected routeFor(intent: Intent): Intent { return intent; }
-  protected applyChoice(s: MyState, intent: Intent): void { s.intent = intent; }
-}
-export {};
-```
-
-The pattern handles LLM dispatch, retry, abort propagation, contract field forwarding. The 15 lines above are everything the consumer writes.
+The pattern handles LLM dispatch, retry, abort propagation, and contract field forwarding. The lines above are everything the consumer writes. The `pattern-node` example runs this `IntentClassifier` inside a DAG against an in-process LLM; run it with `npx tsx examples/pattern-node.ts`.
 
 ## Why three subpaths
 

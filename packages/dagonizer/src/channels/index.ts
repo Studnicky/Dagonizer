@@ -1,2 +1,2 @@
 export { InMemoryChannel } from './InMemoryChannel.js';
-export type { InMemoryChannelOptions } from './InMemoryChannel.js';
+export type { InMemoryChannelOptionsType } from './InMemoryChannel.js';

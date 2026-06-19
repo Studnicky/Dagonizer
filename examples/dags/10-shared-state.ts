@@ -10,9 +10,9 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { NodeContextInterface} from '@studnicky/dagonizer';
+import type { NodeContextType} from '@studnicky/dagonizer';
 import { MemoryStore } from '@studnicky/dagonizer/store';
-import type { Store } from '@studnicky/dagonizer/contracts';
+import type { StoreInterface } from '@studnicky/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // Services bag type
@@ -20,7 +20,7 @@ import type { Store } from '@studnicky/dagonizer/contracts';
 
 // #region services
 export interface Services {
-  log: Store;
+  log: StoreInterface;
 }
 // #endregion services
 
@@ -32,7 +32,7 @@ export class StepANode extends ScalarNode<NodeStateBase, 'done', Services> {
   readonly name = 'step-a';
   readonly outputs = ['done'] as const;
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface<Services>) {
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextType<Services>) {
     await context.services.log.update<string>('entries', (current) => {
       const existing = current?.split(',').filter(Boolean) ?? [];
       return [...existing, 'step-a'].join(',');
@@ -45,7 +45,7 @@ export class StepBNode extends ScalarNode<NodeStateBase, 'done', Services> {
   readonly name = 'step-b';
   readonly outputs = ['done'] as const;
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface<Services>) {
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextType<Services>) {
     await context.services.log.update<string>('entries', (current) => {
       const existing = current?.split(',').filter(Boolean) ?? [];
       return [...existing, 'step-b'].join(',');
@@ -58,7 +58,7 @@ export class ChildStepNode extends ScalarNode<NodeStateBase, 'done', Services> {
   readonly name = 'child-step';
   readonly outputs = ['done'] as const;
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface<Services>) {
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextType<Services>) {
     await context.services.log.update<string>('entries', (current) => {
       const existing = current?.split(',').filter(Boolean) ?? [];
       return [...existing, 'child-step'].join(',');
@@ -124,14 +124,14 @@ export async function typedStoreDemo(): Promise<void> {
   // await typed.set('unknown', 'x');              // TS error: key not in schema
   // await typed.set('tokenBudget', 'not a num');  // TS error: expected number
 
-  const raw: Store = typed.inner;
+  const raw: StoreInterface = typed.inner;
   await raw.set<boolean>('someFlag', true);
   void budget;
 }
 // #endregion typed-store
 
 // ---------------------------------------------------------------------------
-// Store concurrency: lost-update vs atomic update
+// StoreInterface concurrency: lost-update vs atomic update
 // ---------------------------------------------------------------------------
 
 // #region store-concurrency
@@ -154,9 +154,9 @@ export async function storeConcurrencyDemo(): Promise<void> {
 
 // #region store-error-discrimination
 import { StoreError } from '@studnicky/dagonizer/store';
-import type { RemoteStore } from '@studnicky/dagonizer/contracts';
+import type { RemoteStoreInterface } from '@studnicky/dagonizer/contracts';
 
-export async function storeErrorDemo(store: RemoteStore): Promise<void> {
+export async function storeErrorDemo(store: RemoteStoreInterface): Promise<void> {
   try {
     await store.acquireLease('run-abc', 5_000, 1_000);
   } catch (err) {
@@ -183,7 +183,7 @@ export class DbFetchNode extends ScalarNode<NodeStateBase, 'success' | 'error', 
   readonly name    = 'db-fetch';
   readonly outputs = ['success', 'error'] as const;
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface<AppServices>): Promise<ReturnType<typeof NodeOutputBuilder.of<'success' | 'error'>>> {
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextType<AppServices>): Promise<ReturnType<typeof NodeOutputBuilder.of<'success' | 'error'>>> {
     context.services.logger.info('fetch start');
     const cached = await context.services.cache.get('key');
     if (cached !== null) {

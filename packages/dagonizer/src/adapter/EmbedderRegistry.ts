@@ -2,7 +2,7 @@
  * EmbedderRegistry: process-local map of (provider, model) →
  * embedder factory.
  *
- * Consumers register an `AdapterDescriptorShape` plus a zero-arg factory
+ * Consumers register an `AdapterDescriptorShapeType` plus a zero-arg factory
  * that constructs the configured embedder. The registry never stores
  * embedder instances; the factory is invoked on each `resolve()` call so
  * each consumer gets a fresh instance with its own retry state, session
@@ -16,14 +16,14 @@
  * owns the shared Map logic.
  */
 
-import type { Embedder } from '../contracts/Embedder.js';
+import type { EmbedderInterface } from '../contracts/EmbedderInterface.js';
 
 import { BaseRegistry } from './BaseRegistry.js';
 
 /** Zero-arg constructor for an embedder; built fresh per `resolve()`. */
-export type EmbedderFactory = () => Embedder;
+export type EmbedderFactoryType = () => EmbedderInterface;
 
-export class EmbedderRegistry extends BaseRegistry<Embedder> {
+export class EmbedderRegistry extends BaseRegistry<EmbedderInterface> {
   constructor() {
     super('EmbedderRegistry');
   }

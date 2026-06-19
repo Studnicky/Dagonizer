@@ -11,19 +11,19 @@
  * `TerminalNode`, and `PhaseNode` — the placement shapes it narrows.
  */
 
-import type { EmbeddedDAGNode } from './EmbeddedDAGNode.js';
-import type { PhaseNode } from './PhaseNode.js';
-import type { ScatterNode } from './ScatterNode.js';
-import type { SingleNodePlacementInterface } from './SingleNode.js';
-import type { TerminalNode } from './TerminalNode.js';
+import type { EmbeddedDAGNodeType } from './EmbeddedDAGNode.js';
+import type { PhaseNodeType } from './PhaseNode.js';
+import type { ScatterNodeType } from './ScatterNode.js';
+import type { SingleNodePlacementType } from './SingleNode.js';
+import type { TerminalNodeType } from './TerminalNode.js';
 
 /** Canonical union of every node placement shape. Derived from `DAG['nodes'][number]`. */
 export type DAGNodeType =
-  | EmbeddedDAGNode
-  | ScatterNode
-  | SingleNodePlacementInterface
-  | TerminalNode
-  | PhaseNode;
+  | EmbeddedDAGNodeType
+  | ScatterNodeType
+  | SingleNodePlacementType
+  | TerminalNodeType
+  | PhaseNodeType;
 
 /**
  * Static type-guard class for DAG node placement discriminants.
@@ -36,27 +36,27 @@ export class Placement {
   private constructor() { /* static class */ }
 
   /** Narrows `n` to `EmbeddedDAGNode` when `@type === 'EmbeddedDAGNode'`. */
-  static isEmbeddedDAG(n: DAGNodeType): n is EmbeddedDAGNode {
+  static isEmbeddedDAG(n: DAGNodeType): n is EmbeddedDAGNodeType {
     return n['@type'] === 'EmbeddedDAGNode';
   }
 
   /** Narrows `n` to `ScatterNode` when `@type === 'ScatterNode'`. */
-  static isScatter(n: DAGNodeType): n is ScatterNode {
+  static isScatter(n: DAGNodeType): n is ScatterNodeType {
     return n['@type'] === 'ScatterNode';
   }
 
-  /** Narrows `n` to `SingleNodePlacementInterface` when `@type === 'SingleNode'`. */
-  static isSingle(n: DAGNodeType): n is SingleNodePlacementInterface {
+  /** Narrows `n` to `SingleNodePlacementType` when `@type === 'SingleNode'`. */
+  static isSingle(n: DAGNodeType): n is SingleNodePlacementType {
     return n['@type'] === 'SingleNode';
   }
 
   /** Narrows `n` to `TerminalNode` when `@type === 'TerminalNode'`. */
-  static isTerminal(n: DAGNodeType): n is TerminalNode {
+  static isTerminal(n: DAGNodeType): n is TerminalNodeType {
     return n['@type'] === 'TerminalNode';
   }
 
   /** Narrows `n` to `PhaseNode` when `@type === 'PhaseNode'`. */
-  static isPhase(n: DAGNodeType): n is PhaseNode {
+  static isPhase(n: DAGNodeType): n is PhaseNodeType {
     return n['@type'] === 'PhaseNode';
   }
 }

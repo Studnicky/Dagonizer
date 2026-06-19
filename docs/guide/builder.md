@@ -65,19 +65,15 @@ When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive r
 When the underlying `NodeInterface` carries a `contract` field (`hardRequired` plus `produces`), `build()` runs the same dangling-read and dead-write validation that `DAGDeriver` runs at derive time. Drift fails at build time, not run time.
 
 - **Dangling read**. A non-entrypoint node declares `hardRequired: ['foo']` but no upstream node produces `'foo'`. Throws `DAGError`.
-- **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Calls `warningEmitter.warn` (non-fatal).
+- **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Throws `DAGError`, exactly like a dangling read.
 
 <<< @/../examples/dags/02-builder.topology.ts#contract-error
 
-Pass a `warningEmitter` to capture dead writes:
-
-<<< @/../examples/dags/02-builder.topology.ts#contract-warning
-
 Placements added via `.scatter()` with a `{ dag }` body do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
 
-The `warningEmitter` passed to `build()` fires at construction time and is local to the builder call. When the resulting DAG is registered with a `Dagonizer` subclass, the dispatcher's `onContractWarning` hook fires again at `registerDAG` time if the nodes carry co-located contracts. See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
+See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
 
-## `DAGBuilder.fromNodes()`, the linear shortcut
+## `DAGBuilder.derive()`, the linear shortcut
 
 For the common case where the flow is linear and every node carries a contract, skip the fluent chain:
 
@@ -87,7 +83,7 @@ Equivalent fluent form:
 
 <<< @/../examples/dags/02-builder.topology.ts#from-nodes-fluent
 
-`DAGBuilder.fromNodes()` delegates to `DAGDeriver.derive({ nodes })`, the same deriver that powers contract-first topology. Use it when the shape is linear and all nodes carry contracts. Drop into the fluent `.node()` API when you need:
+`DAGBuilder.derive()` delegates to `DAGDeriver.derive({ nodes })`, the same deriver that powers contract-first topology. Use it when the shape is linear and all nodes carry contracts. Drop into the fluent `.node()` API when you need:
 
 - Scatter placements (node body or sub-DAG body)
 - Multiple named terminal placements with distinct outcomes
@@ -122,7 +118,7 @@ The full signature is shown in the scatter placement example:
 
 <<< @/../examples/dags/04-scatter.ts#scatter-placement
 
-`ScatterOptionsInterface<TState>`:
+`ScatterOptionsType<TState>`:
 
 | Field | Type | Description |
 |---|---|---|
@@ -140,7 +136,7 @@ The `inputs` option in a scatter call uses `Path<TState>` to constrain parent do
 
 When `body` is a `NodeInterface`, the impl is registered automatically and the placement emits `body: { node: body.name }`.
 
-When `body` is `{ dag: 'name' }`, the placement runs a full registered sub-DAG per clone. Pair with the `container` key on the raw scatter entity to dispatch each clone to an isolate (worker thread, child process). See [Distribution and cloud](./distribution) for the `DagContainerBase` authoring guide and the `DagonizerOptionsInterface.containers` binding.
+When `body` is `{ dag: 'name' }`, the placement runs a full registered sub-DAG per clone. Pair with the `container` key on the raw scatter entity to dispatch each clone to an isolate (worker thread, child process). See [Distribution and cloud](./distribution) for the `DagContainerBase` authoring guide and the `DagonizerOptionsType.containers` binding.
 
 For patterns where nodes across multiple scatter placements accumulate to shared mutable state (agent memory, audit log), see [Shared state](./shared-state).
 
@@ -154,7 +150,7 @@ The pattern with inputs and outputs field mapping is shown in the embedded DAG p
 
 <<< @/../examples/dags/05-embedded-dags.ts#parent-dag
 
-`TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>`:
+`TypedEmbeddedDAGOptionsType<TChildState, TParentState>`:
 
 | Field | Type | Description |
 |---|---|---|

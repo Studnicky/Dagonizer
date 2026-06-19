@@ -10,7 +10,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -19,7 +19,7 @@ export class CanonicalizeRecipientNode extends ScalarNode<CartographerState, 'do
   readonly 'name' = 'canonicalize-recipient';
   readonly 'outputs' = ['done'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'done'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'done'>> {
     const raw  = state.raw;
     const norm = state.normalized;
 

@@ -68,8 +68,8 @@
  *   searched and offers a concrete next step.
  *
  * Builder output shape:
- *   DAGBuilder.node(placementName, nodeImpl, routes) emits a
- *   { type: 'single', name, node: nodeImpl.name, outputs: routes }
+ *   DAGBuilder.node(name, dagNode, routes) emits a
+ *   { type: 'single', name, node: dagNode.name, outputs: routes }
  *   object. build() returns a plain DAG passed straight to
  *   DAGDocument.load().
  *
@@ -114,7 +114,7 @@ import { declineOffTopic, respondToVisitor, composeEmptyResponse } from './nodes
 import { scoutDispatch } from './nodes/scouts.ts';
 
 import { DAGBuilder } from '@studnicky/dagonizer';
-import type { DispatcherBundle } from '@studnicky/dagonizer';
+import type { DispatcherBundleType } from '@studnicky/dagonizer';
 import type { ArchivistServices } from './services.ts';
 import type { ArchivistState } from './ArchivistState.ts';
 
@@ -357,7 +357,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
  * Register AFTER the embedded-DAG bundles so the validator can resolve the
  * embedded-DAG references the parent placements make by name.
  */
-export const archivistBundle: DispatcherBundle<ArchivistState, ArchivistServices> = {
+export const archivistBundle: DispatcherBundleType<ArchivistState, ArchivistServices> = {
   'nodes': [
     preRunSetup,
     recallContext, classifyIntent, extractQuery, decideTools,

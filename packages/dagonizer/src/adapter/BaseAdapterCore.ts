@@ -15,10 +15,10 @@
  * consume a single canonical name with a single canonical value.
  */
 
-import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
-import { BackoffStrategy } from '../runtime/index.js';
+import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
+import { BackoffStrategyNames } from '../entities/runtime/BackoffStrategy.js';
 
-import { Classifications, LlmError, type ErrorClassification } from './LlmError.js';
+import { Classifications, LlmError, type ErrorClassificationType } from './LlmError.js';
 import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
 
 /** Canonical default: attempts before giving up (adapter + embedder). */
@@ -27,7 +27,7 @@ export const DEFAULT_MAX_ATTEMPTS = 3;
 export const DEFAULT_BASE_DELAY_MS = 400;
 
 /** Fully-resolved options for `BaseAdapterCore` — no optional fields. */
-export interface BaseAdapterCoreOptionsResolved {
+export type BaseAdapterCoreOptionsResolvedType = {
   maxAttempts: number;
   baseDelayMs: number;
 }
@@ -37,7 +37,7 @@ export interface BaseAdapterCoreOptionsResolved {
  * to their own callers; every field falls back to `defaultOptions()`
  * when omitted, so the base materialises a complete value in one place.
  */
-export interface BaseAdapterCoreOptions {
+export type BaseAdapterCoreOptionsType = {
   maxAttempts?: number;
   baseDelayMs?: number;
 }
@@ -52,28 +52,28 @@ export abstract class BaseAdapterCore {
    * themselves — the base constructor folds caller-supplied partials over
    * it — but it is exposed for callers that want the default values.
    */
-  static defaultOptions(): BaseAdapterCoreOptionsResolved {
+  static defaultOptions(): BaseAdapterCoreOptionsResolvedType {
     return { 'maxAttempts': DEFAULT_MAX_ATTEMPTS, 'baseDelayMs': DEFAULT_BASE_DELAY_MS };
   }
 
-  protected constructor(id: string, displayName: string, options: BaseAdapterCoreOptions = {}) {
-    const resolved: BaseAdapterCoreOptionsResolved = { ...BaseAdapterCore.defaultOptions(), ...options };
+  protected constructor(id: string, displayName: string, options: BaseAdapterCoreOptionsType = {}) {
+    const resolved: BaseAdapterCoreOptionsResolvedType = { ...BaseAdapterCore.defaultOptions(), ...options };
     this.id = id;
     this.displayName = displayName;
     this.#retry = RetryableErrorPolicy.from({
       'maxAttempts': resolved.maxAttempts,
-      'strategy':    BackoffStrategy.EXPONENTIAL,
+      'strategy':    BackoffStrategyNames.EXPONENTIAL,
       'baseDelay':   resolved.baseDelayMs,
     });
   }
 
   /** No-op default. Subclasses with a session lifecycle override. */
-  async connect(_options?: AbortableOptionsInterface): Promise<void> {
+  async connect(_options?: AbortableOptionsType): Promise<void> {
     return Promise.resolve();
   }
 
   /** No-op default. Subclasses with a session lifecycle override. */
-  async disconnect(_options?: AbortableOptionsInterface): Promise<void> {
+  async disconnect(_options?: AbortableOptionsType): Promise<void> {
     return Promise.resolve();
   }
 
@@ -82,13 +82,22 @@ export abstract class BaseAdapterCore {
    * can run unless the concrete subclass knows better. Implementations
    * MUST NOT throw; return false instead.
    */
-  async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
+  async probe(_options?: AbortableOptionsType): Promise<boolean> {
     return Promise.resolve(true);
   }
 
-  /** Map a provider-native error into the shared classification. */
-  protected classify(error: unknown): ErrorClassification {
+  /**
+   * Map a provider-native error into the shared classification.
+   *
+   * Handles the two branches every adapter shares: an `LlmError` already
+   * carries its classification, and an abort/timeout `Error` message maps to
+   * `TIMEOUT`. Provider-specific subclasses add only their own branch (e.g.
+   * `MODEL_NOT_FOUND`) and then delegate to `super.classify` for these shared
+   * cases and the `UNKNOWN` fallback.
+   */
+  protected classify(error: unknown): ErrorClassificationType {
     if (error instanceof LlmError) return error.classification;
+    if (error instanceof Error && /aborted|timeout/iu.test(error.message)) return Classifications['TIMEOUT'];
     return Classifications['UNKNOWN'];
   }
 

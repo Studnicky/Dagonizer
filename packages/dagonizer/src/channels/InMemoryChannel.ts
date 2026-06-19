@@ -16,26 +16,26 @@
  */
 
 import type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
-import type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
+import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
 
 /**
  * Constructor options for `InMemoryChannel`. Currently carries no fields; the
  * type exists as the extension point for future channel configuration and to
  * keep the constructor's options-object shape canonical.
  */
-export type InMemoryChannelOptions = Record<string, never>;
+export type InMemoryChannelOptionsType = Record<string, never>;
 
 export class InMemoryChannel implements HandoffChannelInterface {
-  #published: DAGHandoff[];
+  #published: DAGHandoffType[];
   readonly #publishErrors: Error[];
 
-  constructor(_options: InMemoryChannelOptions = {}) {
+  constructor(_options: InMemoryChannelOptionsType = {}) {
     this.#published = [];
     this.#publishErrors = [];
   }
 
   /** All published envelopes in publish order (deep-cloned on entry). */
-  get published(): readonly DAGHandoff[] {
+  get published(): readonly DAGHandoffType[] {
     return this.#published;
   }
 
@@ -50,7 +50,7 @@ export class InMemoryChannel implements HandoffChannelInterface {
     return this.#publishErrors;
   }
 
-  async publish(handoff: DAGHandoff): Promise<void> {
+  async publish(handoff: DAGHandoffType): Promise<void> {
     const clone = structuredClone(handoff);
     this.#published.push(clone);
     try {
@@ -74,5 +74,5 @@ export class InMemoryChannel implements HandoffChannelInterface {
    * fires. Override errors surface through the `publishErrors` getter instead
    * of propagating to the publisher.
    */
-  protected async onPublished(_handoff: DAGHandoff): Promise<void> { /* override */ }
+  protected async onPublished(_handoff: DAGHandoffType): Promise<void> { /* override */ }
 }

@@ -25,18 +25,18 @@ export type {
 export {
   PostMessageChannel,
 } from './PostMessageChannel.js';
-export type { PostMessageEndpoint } from './PostMessageChannel.js';
+export type { PostMessageEndpointType } from './PostMessageChannel.js';
 
 export {
   DEFAULT_WEB_PROBES,
   WebSystemInfo,
 } from './WebSystemInfo.js';
-export type { WebNavigatorProbes, WebSystemInfoProbes } from './WebSystemInfo.js';
+export type { WebNavigatorProbesType, WebSystemInfoProbesType } from './WebSystemInfo.js';
 
 export {
   WebWorkerContainer,
 } from './WebWorkerContainer.js';
-export type { WebWorkerContainerOptions } from './WebWorkerContainer.js';
+export type { WebWorkerContainerOptionsType } from './WebWorkerContainer.js';
 
 export {
   WebWorkerEntry,

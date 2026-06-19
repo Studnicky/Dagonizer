@@ -55,7 +55,7 @@ stack; consumers extend and compose, never patch.
   symbol has one canonical name, used everywhere. Forbidden:
     ⊥ `import { Foo as Bar }`
     ⊥ `export { Foo as Bar }`
-    ⊥ `export type { Tool as SearchTool }` re-aliases
+    ⊥ `export type { ToolInterface as SearchTool }` re-aliases
   When the type and the value would collide on one identifier (a
   pattern that surfaces with `*Builder` static factories), rename the
   value to its real role: type is `ChatResponseMessage`, factory is
@@ -99,9 +99,18 @@ What consumers implement to swap a backend or contribute behavior.
 Live at the root of `src/contracts/`, **single source of truth**, never
 re-exported from sibling modules.
 
-Examples: `ClockProvider`, `SchedulerProvider`, `NodeInterface`,
-`ExecuteOptionsInterface`, `RetryPolicyOptionsInterface`,
-`ErrorConstructorType`.
+Every adapter contract that is an `interface` carries the `Interface`
+suffix; the suffix marks the type as a contract distinct from any
+runtime value or schema-derived type.
+
+Examples: `ClockProviderInterface`, `SchedulerProviderInterface`,
+`NodeInterface`, `StoreInterface`, `RemoteStoreInterface`,
+`SnapshottableInterface`, `StateAccessorInterface`,
+`CheckpointStoreInterface`, `CheckpointRestoreAdapterInterface`,
+`EmbedderInterface`, `LlmAdapterInterface`, `LlmClientInterface`,
+`NodeInvokerInterface`, `ObserverRelayInterface`,
+`TripleStoreInterface`, `ExecuteOptionsType`,
+`RetryPolicyOptionsType`, `ErrorConstructorType`.
 
 A `runtime/` barrel may re-export an adapter contract for ergonomic
 co-import with the engine class; the source of the type stays in
@@ -145,16 +154,16 @@ Every public surface ships through a `package.json` `exports` entry:
 | `./lifecycle` | `DAGLifecycleMachine`, lifecycle types |
 | `./runtime` | `Clock`, `Scheduler`, `RetryPolicy`, `RealTimeScheduler`, `BackoffStrategy` |
 | `./builder` | `DAGBuilder` and its option interfaces |
-| `./validation` | `Validator` and `EntityValidator<T>` |
+| `./validation` | `Validator` and `EntityValidatorInterface<T>` |
 | `./checkpoint` | `Checkpoint`, cursor serialization |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler` (test-only) |
 | `./adapter` | LLM adapter contract surface: `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterRegistry`, chat/tool schemas + `FromSchema` types, capability descriptors |
 | `./patterns` | Pattern-tier base classes consumers extend (`MonadicNode` and pattern node bases) |
-| `./tool` | Tool contract surface: `Tool`, `HttpTransport`, `ToolError` |
+| `./tool` | Tool contract surface: `ToolInterface`, `HttpTransport`, `ToolError` |
 | `./core` | Pluggable execution primitives: `GatherStrategies`, `GatherStrategy`, `OutcomeReducers` |
 | `./derive` | Contract-derived flow generation: `DAGDeriver`, `OperationContract` |
 | `./viz` | DAG visualization: `CytoscapeRenderer`, `MermaidRenderer` |
-| `./store` | Shared key-value store: `Store`, `BaseStore` |
+| `./store` | Shared key-value store: `StoreInterface`, `BaseStore` |
 | `./container` | Embedded-DAG container surface: `DagContainerBase`, channel dispatch, transport contracts |
 | `./channels` | `InMemoryChannel` and its options |
 
@@ -171,9 +180,9 @@ the root barrel.
   `snapshotData()` and `restoreData()` for checkpointable fields.
 ⦿ Consumers implement `NodeInterface<TState, TOutput>` for nodes.
   Nodes never throw; they route to a named output.
-⦿ Consumers implement `SchedulerProvider` / `ClockProvider` to swap
-  time sources (typically only in tests; `RealTimeScheduler` is the
-  production default).
+⦿ Consumers implement `SchedulerProviderInterface` /
+  `ClockProviderInterface` to swap time sources (typically only in
+  tests; `RealTimeScheduler` is the production default).
 
 ## Verification
 

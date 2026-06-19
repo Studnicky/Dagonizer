@@ -8,7 +8,7 @@
 
 import { DAGError } from '../errors/DAGError.js';
 
-export type StoreErrorClassification =
+export type StoreErrorClassificationType =
   | {
       reason:           'INCOMPATIBLE_SNAPSHOT';
       expectedType:     string;
@@ -42,9 +42,9 @@ export type StoreErrorClassification =
     };
 
 export class StoreError extends DAGError {
-  readonly classification: StoreErrorClassification;
+  readonly classification: StoreErrorClassificationType;
 
-  constructor(message: string, classification: StoreErrorClassification, options?: { cause?: Error }) {
+  constructor(message: string, classification: StoreErrorClassificationType, options?: { cause?: Error }) {
     super(message, { 'code': 'STORE_ERROR', ...(options?.cause !== undefined && { 'cause': options.cause }) });
     this.name = 'StoreError';
     this.classification = classification;

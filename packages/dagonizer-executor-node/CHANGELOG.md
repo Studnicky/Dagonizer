@@ -1,5 +1,30 @@
 # @studnicky/dagonizer-executor-node
 
+## [Unreleased]
+
+### Changed
+
+- **Mandatory `Interface` suffix on every contract this package exports (semver-major rename).** The four contract interfaces the package publishes through `src/index.ts` carry the `Interface` suffix: `OsServices` → `OsServicesInterface` (`NodeSystemInfo`), `IpcEndpoint` → `IpcEndpointInterface` and `IpcProcessLike` → `IpcProcessLikeInterface` (`IpcChannel`), `MessagePortLike` → `MessagePortLikeInterface` (`MessagePortChannel`). The renames track the framework-wide adapter-contract convention; the engine contracts these implementations satisfy (`StateAccessorInterface`, `ObserverRelayInterface`, `SchedulerProviderInterface`, …) are imported under their suffixed names from `@studnicky/dagonizer/types`. The renames are type-only; runtime behavior is byte-identical.
+
+- The three message channels (`IpcChannel`, `MessagePortChannel`, `NdjsonChannel`)
+  extend the shared `BaseMessageChannel` from `@studnicky/dagonizer/container`.
+  The duplicated inbound-handler, closed-latch, `onMessage`, and guarded-dispatch
+  members live once in the base; each channel keeps only its transport `send` and
+  endpoint subscription. Runtime behavior is unchanged.
+- The four containers (`ForkContainer`, `ClusterContainer`, `SpawnContainer`,
+  `WorkerThreadContainer`) extend the new `NodeContainerBase`, which owns the
+  recommended-worker-count pool-size resolution and the `DagContainerBase`
+  defaults spread. `NodeSystemInfo` is instantiated once at module load and
+  shared across every container construction.
+- **Naming: domain-class verbs (semver-major).** `IpcChannel.fromChildProcess` → `IpcChannel.ofChildProcess`. The container override seam `createEntry` is renamed `composeEntry` (tracking the `DagContainerBase` base rename), and each registry module's `createBundle` implementation is renamed `instantiate` (tracking the `RegistryModuleInterface` rename). Behavior is unchanged.
+
+### Added
+
+- `NodeContainerBase` abstract base class and its `NodeContainerBaseOptions`
+  shared constructor-input interface, exported from the package root. Each
+  container's options type extends `NodeContainerBaseOptions` with only its
+  transport-specific extras.
+
 ## 0.21.0
 
 ### Patch Changes

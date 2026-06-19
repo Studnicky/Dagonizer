@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`CheckpointStore`, `Snapshottable`, `StoreSnapshot`, `StoreSnapshotEntry`'
+    description: '`CheckpointStore`, `Snapshottable`, `StoreSnapshotType`, `StoreSnapshotEntryType`'
   - text: 'Reference: Entities'
     link: './entities'
     description: '`CheckpointData`'
@@ -40,15 +40,15 @@ import { Checkpoint } from '@studnicky/dagonizer';
 
 ```ts twoslash
 import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
-import type { CaptureOptionsInterface } from '@studnicky/dagonizer/checkpoint';
+import type { CaptureOptionsType } from '@studnicky/dagonizer/checkpoint';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
 // ---cut---
 declare function capture<TState extends NodeStateInterface & NodeStateBase>(
   dagName: string,
-  result: ExecutionResultInterface<TState>,
-  options?: CaptureOptionsInterface,
+  result: ExecutionResultType<TState>,
+  options?: CaptureOptionsType,
 ): Promise<Checkpoint>;
 ```
 
@@ -85,8 +85,8 @@ Parse and validate a raw `CheckpointData` object (e.g. from `JSON.parse`) and wr
 
 ```ts twoslash
 import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
-import type { CheckpointStore } from '@studnicky/dagonizer/contracts';
-declare const store: CheckpointStore;
+import type { CheckpointStoreInterface } from '@studnicky/dagonizer/contracts';
+declare const store: CheckpointStoreInterface;
 declare const key: string;
 // ---cut---
 const checkpoint: Checkpoint | null = await Checkpoint.recall(store, key);
@@ -121,9 +121,9 @@ Serialize this checkpoint's data to a pretty-printed JSON string. Symmetric coun
 
 ```ts twoslash
 import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
-import type { CheckpointStore } from '@studnicky/dagonizer/contracts';
+import type { CheckpointStoreInterface } from '@studnicky/dagonizer/contracts';
 declare const ckpt: Checkpoint;
-declare const store: CheckpointStore;
+declare const store: CheckpointStoreInterface;
 declare const key: string;
 // ---cut---
 await ckpt.persist(store, key);
@@ -141,17 +141,17 @@ Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + 
 
 Rehydrate the state from this checkpoint via the supplied adapter. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
 
-`CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObject): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@studnicky/dagonizer/checkpoint`:
+`CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObjectType): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapter.wrap(fn)` from `@studnicky/dagonizer/checkpoint`:
 
 ```ts twoslash
-import { Checkpoint, CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
+import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 class MyState extends NodeStateBase {}
 declare const ckpt: Checkpoint;
 // ---cut---
 const { dagName, state, cursor } = ckpt.restoreState(
-  CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap as JsonObject)),
+  CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap as JsonObjectType)),
 );
 ```
 
@@ -164,10 +164,10 @@ Throws `ValidationError` when `ckpt.data.cursor === null`.
 `RecalledCheckpoint<TState>` shape:
 
 ```ts twoslash
-import type { RecalledCheckpoint } from '@studnicky/dagonizer/checkpoint';
+import type { RecalledCheckpointType } from '@studnicky/dagonizer/checkpoint';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-declare const recalled: RecalledCheckpoint<NodeStateInterface>;
+declare const recalled: RecalledCheckpointType<NodeStateInterface>;
 const _state: NodeStateInterface = recalled.state;
 const _dagName: string = recalled.dagName;
 const _cursor: string = recalled.cursor;
@@ -181,9 +181,9 @@ const _skippedNodes: string[] = recalled.skippedNodes;
 
 ```ts twoslash
 import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
-import type { Snapshottable } from '@studnicky/dagonizer/contracts';
+import type { SnapshottableInterface } from '@studnicky/dagonizer/contracts';
 declare const ckpt: Checkpoint;
-declare const stores: Readonly<Record<string, Snapshottable>>;
+declare const stores: Readonly<Record<string, SnapshottableInterface>>;
 // ---cut---
 await ckpt.restoreStores(stores);
 ```
@@ -205,10 +205,10 @@ Populate each named store from the snapshots in this checkpoint. The keys in `st
 
 ```ts twoslash
 import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
-import type { CheckpointData } from '@studnicky/dagonizer/entities';
+import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 declare const ckpt: Checkpoint;
 // ---cut---
-const data: CheckpointData = ckpt.data;
+const data: CheckpointDataType = ckpt.data;
 ```
 
 The parsed and validated checkpoint record. Serialize with `ckpt.toJson()`.
@@ -218,25 +218,25 @@ The parsed and validated checkpoint record. Serialize with `ckpt.toJson()`.
 ## Interface: `CheckpointRestoreAdapter<TState>`
 
 ```ts twoslash
-import type { CheckpointRestoreAdapter } from '@studnicky/dagonizer/contracts';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { CheckpointRestoreAdapterInterface } from '@studnicky/dagonizer/contracts';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 // ---cut---
-declare const adapter: CheckpointRestoreAdapter<{ value: number }>;
-const _result: { value: number } = adapter.restore({ key: 1 } as JsonObject);
+declare const adapter: CheckpointRestoreAdapterInterface<{ value: number }>;
+const _result: { value: number } = adapter.restore({ key: 1 } as JsonObjectType);
 ```
 
-Contract for restoring a state instance from a JSON snapshot. Wrap a plain function with `CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap))`. Ships from `@studnicky/dagonizer/checkpoint`.
+Contract for restoring a state instance from a JSON snapshot. Wrap a plain function with `CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap))`. Ships from `@studnicky/dagonizer/checkpoint`.
 
 ---
 
-## Interface: `CaptureOptionsInterface`
+## Interface: `CaptureOptionsType`
 
 ```ts twoslash
-import type { CaptureOptionsInterface } from '@studnicky/dagonizer/checkpoint';
-import type { Snapshottable } from '@studnicky/dagonizer/contracts';
+import type { CaptureOptionsType } from '@studnicky/dagonizer/checkpoint';
+import type { SnapshottableInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
-declare const opts: CaptureOptionsInterface;
-const _stores: Record<string, Snapshottable> | undefined = opts.stores;
+declare const opts: CaptureOptionsType;
+const _stores: Record<string, SnapshottableInterface> | undefined = opts.stores;
 ```
 
 | Field | Description |
@@ -248,10 +248,10 @@ const _stores: Record<string, Snapshottable> | undefined = opts.stores;
 ## Interface: `RecalledCheckpoint<TState>`
 
 ```ts twoslash
-import type { RecalledCheckpoint } from '@studnicky/dagonizer/checkpoint';
+import type { RecalledCheckpointType } from '@studnicky/dagonizer/checkpoint';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-declare const recalled: RecalledCheckpoint<NodeStateInterface>;
+declare const recalled: RecalledCheckpointType<NodeStateInterface>;
 const _state: NodeStateInterface = recalled.state;
 const _dagName: string = recalled.dagName;
 const _cursor: string = recalled.cursor;
@@ -266,19 +266,19 @@ const _skippedNodes: string[] = recalled.skippedNodes;
 Derived from `CheckpointDataSchema` via `json-schema-to-ts`.
 
 ```ts twoslash
-import type { CheckpointData } from '@studnicky/dagonizer/entities';
+import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 // ---cut---
-declare const data: CheckpointData;
+declare const data: CheckpointDataType;
 const _version: string = data.version;
 const _dagName: string = data.dagName;
 const _cursor: string | null = data.cursor;
 const _state: Record<string, unknown> = data.state;
 const _executedNodes: string[] = data.executedNodes;
 const _skippedNodes: string[] = data.skippedNodes;
-const _stores: CheckpointData['stores'] = data.stores;
+const _stores: CheckpointDataType['stores'] = data.stores;
 ```
 
-`stores` is a required field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshot` envelopes when stores are supplied. Any checkpoint payload lacking the field is rejected by `Checkpoint.load`.
+`stores` is a required field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshotType` envelopes when stores are supplied. Any checkpoint payload lacking the field is rejected by `Checkpoint.load`.
 
 `restoreStores` treats an empty `stores` field as a no-op, so state-only checkpoints resume cleanly. Named stores captured at checkpoint time must be supplied by name in the `restoreStores` map; a name present in the checkpoint but absent from the map throws `DAGError`.
 

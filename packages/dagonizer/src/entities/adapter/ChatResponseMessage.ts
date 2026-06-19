@@ -57,4 +57,4 @@ export const ChatResponseMessageSchema = {
  *   tools: model emitted one or more tool calls; no prose with them.
  *   mixed: model emitted both prose and tool calls.
  */
-export type ChatResponseMessage = FromSchema<typeof ChatResponseMessageSchema>;
+export type ChatResponseMessageType = FromSchema<typeof ChatResponseMessageSchema>;

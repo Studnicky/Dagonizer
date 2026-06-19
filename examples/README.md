@@ -50,6 +50,7 @@ Worker examples require a compile step — worker threads cannot import TypeScri
 |------|---------|-----|
 | `12-workers.ts` | `WorkerThreadContainer` pool: scatter clone sub-DAGs run in worker threads | `tsc -p examples/tsconfig.workers.json && node examples/dist/12-workers.js` |
 | `13-multibackend.ts` | Two container roles (`cpu` + `io`) with per-role Mermaid colors | `tsc -p examples/tsconfig.multibackend.json && node examples/dist/13-multibackend.js` |
+| `serverless-handler.ts` | `HandoffChannelInterface` over an in-memory queue: envelope-in / envelope-out handler | `npx tsx examples/serverless-handler.ts` |
 
 Or via npm scripts: `npm run example:12` and `npm run example:13`.
 
@@ -74,6 +75,9 @@ These examples run against a real local model. Install [Ollama](https://ollama.c
 | `derive.ts` | `DAGDeriver`: contract-derived DAG + `embeddedDAGs` annotation | `npx tsx examples/derive.ts` |
 | `22-backoff-strategies.ts` | `RetryPolicy` with all four `BackoffStrategy` values via `VirtualScheduler` | `npx tsx examples/22-backoff-strategies.ts` |
 | `23-checkpoint-store.ts` | `MemoryCheckpointStore` persist / recall round-trip across a restart | `npx tsx examples/23-checkpoint-store.ts` |
+| `custom-checkpoint-store.ts` | `CheckpointStoreInterface` (Map-backed) + `SnapshottableInterface` (FactLog): the contracts behind persistence | `npx tsx examples/custom-checkpoint-store.ts` |
+| `custom-adapter.ts` | `BaseAdapter` subclass: implement `performChat`, inherit retry / classification / probe (offline echo) | `npx tsx examples/custom-adapter.ts` |
+| `pattern-node.ts` | `DecisionNode` subclass (`IntentClassifier`): pattern base owns LLM dispatch, subclass writes domain logic | `npx tsx examples/pattern-node.ts` |
 | `constants-usage.ts` | Every typed constant from `@studnicky/dagonizer/constants` as runtime guards | `npx tsx examples/constants-usage.ts` |
 | `monadic-node.ts` | `MonadicNode` abstract base: subclass, outputs contract, route-not-throw | `npx tsx examples/monadic-node.ts` |
 | `state-accessor.ts` | `DottedPathAccessor` + custom `PrefixAccessor` wired via `accessor` option | `npx tsx examples/state-accessor.ts` |

@@ -7,8 +7,8 @@
  * and removes convention-coupled casts from the base.
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -27,8 +27,8 @@ export abstract class RespondNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextInterface<undefined>,
-  ): Promise<NodeOutputInterface<'success'>> {
+    _context: NodeContextType<undefined>,
+  ): Promise<NodeOutputType<'success'>> {
     this.emit(state, this.extractDraft(state));
     return NodeOutputBuilder.of('success');
   }

@@ -44,4 +44,4 @@ export const ExecutionRequestSchema = {
 } as const;
 
 /** TypeScript type derived from `ExecutionRequestSchema` via `json-schema-to-ts`. */
-export type ExecutionRequest = FromSchema<typeof ExecutionRequestSchema>;
+export type ExecutionRequestType = FromSchema<typeof ExecutionRequestSchema>;

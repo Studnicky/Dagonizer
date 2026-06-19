@@ -19,7 +19,7 @@
  */
 
 import type { ConversationTurn, MemoryDigest } from '../ArchivistState.ts';
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 
 // ── Directive primitives ────────────────────────────────────────────────
@@ -119,7 +119,7 @@ export const directives = {
   ].join('\n'),
   "jsonArrayOnly":    'Return ONLY a JSON array of strings.',
 
-  // ── Tool decision ────────────────────────────────────────────────────
+  // ── ToolInterface decision ────────────────────────────────────────────────────
   "callAllToolsForAuthor": 'For any visitor question that names an author or describes a book to find, call ALL of the available tools; do not omit any source.',
   "shortKeywordQuery":     'Use a short, keyword-only query (no surrounding quotes, no filler phrases).',
 
@@ -152,7 +152,7 @@ export const directives = {
   "visitorReplyLengthLimit":  'Keep it under 30 words.',
   "visitorReplyReturnFormat": 'Return just the visitor message, with no preamble, no quotation marks, and no explanation.',
 
-  // ── Tool explanation ─────────────────────────────────────────────────
+  // ── ToolInterface explanation ─────────────────────────────────────────────────
   "explainToolPersona":      'You are a librarian explaining a backend tool to a curious visitor.',
   "explainToolInstruction":  'Explain in 2-3 plain-English sentences:',
   "explainToolPoint1":       '1. What the tool does',
@@ -283,7 +283,7 @@ export const prompts = {
     available: readonly { name: string; description: string }[],
   ): string {
     // Index-pointer schema: the LLM picks tools by 1-based index into a
-    // numbered list rendered in the prompt. Tool arguments are
+    // numbered list rendered in the prompt. ToolInterface arguments are
     // synthesised deterministically by `BaseLlmClient.decideTools` from
     // `state.query` and `state.userLanguage`; the model never touches
     // arguments. Massive token savings vs the per-call adapter tools
@@ -305,7 +305,7 @@ export const prompts = {
     return PromptFormat.withLanguagePreamble(language, body);
   },
 
-  rankCandidates(language: string, query: string, candidates: readonly Candidate[]): string {
+  rankCandidates(language: string, query: string, candidates: readonly CandidateType[]): string {
     const rows = candidates.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const body = [
       SYSTEM,
@@ -324,7 +324,7 @@ export const prompts = {
   compose(
     language: string,
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
@@ -362,7 +362,7 @@ export const prompts = {
   composeAuthor(
     language: string,
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
@@ -402,7 +402,7 @@ export const prompts = {
   composeReviews(
     language: string,
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
@@ -442,7 +442,7 @@ export const prompts = {
   describeBook(
     language: string,
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
@@ -481,7 +481,7 @@ export const prompts = {
   composeSimilar(
     language: string,
     query: string,
-    shortlist: readonly Candidate[],
+    shortlist: readonly CandidateType[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
@@ -534,7 +534,7 @@ export const prompts = {
     return PromptFormat.withLanguagePreamble(language, body);
   },
 
-  validate(language: string, draft: string, shortlist: readonly Candidate[]): string {
+  validate(language: string, draft: string, shortlist: readonly CandidateType[]): string {
     const titles = shortlist.map((c) => c.book.identity.title).join(' | ');
     const body = [
       SYSTEM,
@@ -671,7 +671,7 @@ export class PromptFormat {
    * shortlist carries `notes.fromPriorMemory: true`. Returns empty string
    * otherwise so callers can splice it directly into the prompt body array.
    */
-  static priorMemoryHintLine(shortlist: readonly Candidate[]): string {
+  static priorMemoryHintLine(shortlist: readonly CandidateType[]): string {
     const hasPriorMemory = shortlist.some((c) => c.notes?.['fromPriorMemory'] === true);
     return hasPriorMemory ? directives.priorMemoryHint : '';
   }
@@ -683,19 +683,19 @@ export class PromptFormat {
     return `\nConversation so far (most recent last):\n${lines}`;
   }
 
-  static formatCandidateRow(n: number, c: Candidate): string {
+  static formatCandidateRow(n: number, c: CandidateType): string {
     const parts: string[] = [];
     parts.push(`${String(n)}. isbn=${c.book.identity.isbn}`);
     parts.push(`"${c.book.identity.title}"`);
     parts.push(`by ${c.book.identity.authors.join(', ') || '<unknown author>'}`);
-    if (c.book.publication.firstPublishYear !== undefined) parts.push(`(${String(c.book.publication.firstPublishYear)})`);
+    if (c.book.publication.firstPublishYear !== null) parts.push(`(${String(c.book.publication.firstPublishYear)})`);
     if (c.book.publication.subjects.length > 0) {
       parts.push(`subjects: ${c.book.publication.subjects.slice(0, 5).join(', ')}`);
     }
     if (c.book.publication.publishers.length > 0) {
       parts.push(`pub: ${c.book.publication.publishers[0]}`);
     }
-    if (c.book.publication.summary !== undefined && c.book.publication.summary.length > 0) {
+    if (c.book.publication.summary !== null && c.book.publication.summary.length > 0) {
       parts.push(`summary: ${c.book.publication.summary}`);
     }
     if (c.reason !== undefined && c.reason.length > 0) {

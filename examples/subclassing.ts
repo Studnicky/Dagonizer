@@ -20,20 +20,20 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import { CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
-import type { DAG } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import { CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // #region full-example
 class CountState extends NodeStateBase {
   count = 0;
   log: string[] = [];
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return { count: this.count, log: [...this.log] };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     const c = snap['count'];
     if (typeof c === 'number') this.count = c;
     const l = snap['log'];
@@ -54,7 +54,7 @@ class TickNode extends ScalarNode<CountState, 'success'> {
 
 const tick = new TickNode();
 
-const dag: DAG = {
+const dag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:count',
   '@type':     'DAG',
@@ -93,7 +93,7 @@ if (partial.cursor === null) {
   const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()) as unknown);
 
   const { state: s2, dagName, cursor } = ckpt2.restoreState(
-    CheckpointRestoreAdapterFn.fromFn((snap) => CountState.restore(snap)),
+    CheckpointRestoreAdapter.wrap((snap) => CountState.restore(snap)),
   );
 
   const final = await dispatcher.resume(dagName, s2, cursor);

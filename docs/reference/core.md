@@ -4,7 +4,7 @@ seeAlso:
   - text: 'Reference: Contracts'
 
     link: './contracts'
-    description: '`StateAccessor`, `NodeInterface`, `ExecuteOptionsInterface`'
+    description: '`StateAccessor`, `NodeInterface`, `ExecuteOptionsType`'
 
   - text: 'Reference: Dagonizer'
 
@@ -28,7 +28,7 @@ import {
   OutcomeReducer,
   OutcomeReducers,
 } from '@studnicky/dagonizer/core';
-import type { GatherExecution, GatherRecord, OutcomeRecord } from '@studnicky/dagonizer/core';
+import type { GatherExecutionType, GatherRecordType, OutcomeRecordType } from '@studnicky/dagonizer/contracts';
 ```
 
 ## GatherStrategy
@@ -37,18 +37,18 @@ Abstract class. Subclass and implement `reduce`; optionally override `initial` a
 
 ```ts twoslash
 import { GatherStrategy, GatherStrategies, Batch } from '@studnicky/dagonizer/core';
-import type { GatherRecord } from '@studnicky/dagonizer/core';
-import type { GatherConfig } from '@studnicky/dagonizer/entities';
+import type { GatherRecordType } from '@studnicky/dagonizer/contracts';
+import type { GatherConfigType } from '@studnicky/dagonizer/entities';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
-import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 class MyGather extends GatherStrategy {
   readonly name = 'my-gather';
   reduce(
-    _config: GatherConfig,
-    _batch: Batch<GatherRecord<NodeStateInterface>>,
+    _config: GatherConfigType,
+    _batch: Batch<GatherRecordType<NodeStateInterface>>,
     _state: NodeStateInterface,
-    _accessor: StateAccessor,
+    _accessor: StateAccessorInterface,
   ): void {
     // fold clone results into state
   }
@@ -68,14 +68,14 @@ The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field)
 | `abstract reduce(config, batch, state, accessor)` | Fold a batch of clone results into state. Called per-batch during streaming or once with all results for bulk strategies. |
 | `finalize(config, execution)` | End-of-gather work after all clones complete. Default: no-op. |
 
-### GatherRecord
+### GatherRecordType
 
 ```ts twoslash
-import type { GatherRecord } from '@studnicky/dagonizer/core';
+import type { GatherRecordType } from '@studnicky/dagonizer/contracts';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-// GatherRecord carries per-clone results from the scatter loop.
-declare const record: GatherRecord<NodeStateInterface>;
+// GatherRecordType carries per-clone results from the scatter loop.
+declare const record: GatherRecordType<NodeStateInterface>;
 ```
 
 | Field | Type | Description |
@@ -88,20 +88,20 @@ declare const record: GatherRecord<NodeStateInterface>;
 
 Per-clone record produced by the scatter loop. Records are ordered by source index (ascending) and strategies must not re-sort.
 
-### GatherExecution
+### GatherExecutionType
 
 ```ts twoslash
-import type { GatherExecution } from '@studnicky/dagonizer/core';
+import type { GatherExecutionType } from '@studnicky/dagonizer/contracts';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-// GatherExecution is the invocation context handed to GatherStrategy.finalize.
-declare const execution: GatherExecution<NodeStateInterface>;
+// GatherExecutionType is the invocation context handed to GatherStrategy.finalize.
+declare const execution: GatherExecutionType<NodeStateInterface>;
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `state` | `TState` | Live parent state object (mutated in place by the strategy). |
-| `records` | `GatherRecord<TState>[]` | Per-clone records in source-index order. |
+| `records` | `GatherRecordType<TState>[]` | Per-clone records in source-index order. |
 | `dagName` | `string` | Name of the enclosing DAG. |
 | `signal` | `AbortSignal \| null` | Active abort signal, or `null` when none. |
 | `accessor` | `StateAccessor` | The dispatcher's configured state accessor. |
@@ -141,11 +141,11 @@ Abstract class. Subclass and implement `reduce`; register the instance with `Out
 
 ```ts twoslash
 import { OutcomeReducer, OutcomeReducers } from '@studnicky/dagonizer/core';
-import type { OutcomeRecord } from '@studnicky/dagonizer/core';
+import type { OutcomeRecordType } from '@studnicky/dagonizer/contracts';
 // ---cut---
 class MyReducer extends OutcomeReducer {
   readonly name = 'my-reducer';
-  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+  reduce(records: ReadonlyArray<OutcomeRecordType>): string {
     return records.every((r) => r.output === 'success') ? 'all-success' : 'partial';
   }
 }
@@ -154,13 +154,13 @@ OutcomeReducers.register(new MyReducer());
 
 The dispatcher resolves a reducer by `name` (the `ScatterNode.reducer` field, defaulting to `'aggregate'` when `source` is present and `'terminal'` when absent) and calls `.reduce(records)` after gather completes. Returns an output token that maps to a key in the scatter placement's `outputs` map.
 
-### OutcomeRecord
+### OutcomeRecordType
 
 ```ts twoslash
-import type { OutcomeRecord } from '@studnicky/dagonizer/core';
+import type { OutcomeRecordType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-// OutcomeRecord carries per-clone summary for routing.
-declare const record: OutcomeRecord;
+// OutcomeRecordType carries per-clone summary for routing.
+declare const record: OutcomeRecordType;
 ```
 
 | Field | Type | Description |

@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import type { Embedder } from '@studnicky/dagonizer/contracts';
+import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
 import type { ClassifiedIntent } from '../../services.ts';
 import {
@@ -29,7 +29,7 @@ const DIM = INTENT_LABELS.length;
  * vector. Queries are routed through a `queryMap` so individual tests
  * can prepare a deterministic input → output for a single call.
  */
-class DeterministicEmbedder implements Embedder {
+class DeterministicEmbedder implements EmbedderInterface {
   readonly id = 'deterministic';
   readonly displayName = 'deterministic';
   readonly dimensions = DIM;

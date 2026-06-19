@@ -12,7 +12,7 @@ seeAlso:
 
 # Example: Constants usage
 
-Every typed constant from `@studnicky/dagonizer/constants` is both a frozen runtime lookup object and a `FromSchema`-derived TypeScript type of the same name. This example exercises each constant as a runtime guard and prints the results — no dispatcher, no DAG execution required.
+Every typed constant from `@studnicky/dagonizer/constants` ships a frozen runtime lookup object (plural name, e.g. `NodeTypes`) and a `FromSchema`-derived TypeScript type (singular name, e.g. `NodeType`). This example exercises each constant as a runtime guard and prints the results — no dispatcher, no DAG execution required.
 
 Constants demonstrated:
 
@@ -30,10 +30,10 @@ Constants demonstrated:
 
 ## What it demonstrates
 
-- **Frozen runtime objects.** `Object.values(GatherStrategyName)` enumerates all valid gather strategy names. Use this for validation or for building a selector that accepts only known strategies.
-- **`MetadataKey.CURRENT_ITEM`.** The key the engine writes per scatter clone so nodes can read `state.getMetadata<T>(MetadataKey.CURRENT_ITEM)` without hardcoding strings.
-- **`NodeType` as a type guard.** `type === NodeType.SCATTER` narrows the node shape to `ScatterNode` in TypeScript.
-- **`ScatterOutput` routing tokens.** `any-success` and other outcome reducers route to one of the `ScatterOutput` values. The constant ensures consuming code references the same string the reducer emits.
+- **Frozen runtime objects.** `Object.values(GatherStrategyNames)` enumerates all valid gather strategy names. Use this for validation or for building a selector that accepts only known strategies.
+- **`MetadataKeys.CURRENT_ITEM`.** The key the engine writes per scatter clone so nodes can read `state.getMetadata<T>(MetadataKeys.CURRENT_ITEM)` without hardcoding strings.
+- **`NodeType` as a type guard.** `type === NodeTypes.SCATTER` narrows the node shape to `ScatterNode` in TypeScript.
+- **`ScatterOutput` routing tokens.** `any-success` and other outcome reducers route to one of the `ScatterOutputNames` values. The constant ensures consuming code references the same string the reducer emits.
 
 ## Run
 

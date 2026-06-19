@@ -3,17 +3,17 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   Checkpoint,
-  CheckpointRestoreAdapterFn,
+  CheckpointRestoreAdapter,
   MemoryCheckpointStore,
 } from '../../src/checkpoint/index.js';
-import type { Snapshottable, StoreSnapshot } from '../../src/contracts/Snapshottable.js';
+import type { SnapshottableInterface, StoreSnapshotType } from '../../src/contracts/SnapshottableInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { CheckpointData, DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { CheckpointDataType, DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
@@ -29,11 +29,11 @@ class CountingState extends NodeStateBase {
   count = 0;
   log: string[] = [];
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return { 'count': this.count, 'log': [...this.log] };
   }
 
-  protected override restoreData(snapshot: JsonObject): void {
+  protected override restoreData(snapshot: JsonObjectType): void {
     const c = snapshot['count'];
     if (typeof c === 'number') this.count = c;
     const l = snapshot['log'];
@@ -63,7 +63,7 @@ class SlowNode extends ScalarNode<NodeStateBase, 'done'> {
   readonly outputs = ['done'] as const;
   readonly #onReady: () => void;
   constructor(onReady: () => void) { super(); this.#onReady = onReady; }
-  protected async executeOne(_state: NodeStateBase, context: NodeContextInterface): Promise<NodeOutputInterface<'done'>> {
+  protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'done'>> {
     this.#onReady();
     await new Promise<void>((_resolve, reject) => {
       context.signal.addEventListener('abort', () => {
@@ -110,17 +110,17 @@ async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototyp
 }
 
 /**
- * A `Snapshottable` that is NOT a `Store`. It holds an append-only list of
+ * A `SnapshottableInterface` that is NOT a `StoreInterface`. It holds an append-only list of
  * facts, exposes no `get`/`set`/`has`/`delete`/`update`/`connect`, and
  * implements only `snapshot()` / `restore()`. Checkpoint depends on the
  * capability, not the key-value surface, so this round-trips.
  */
-class FactLog implements Snapshottable {
+class FactLog implements SnapshottableInterface {
   #facts: string[] = [];
   add(fact: string): void { this.#facts.push(fact); }
   get facts(): readonly string[] { return this.#facts; }
 
-  async snapshot(): Promise<StoreSnapshot> {
+  async snapshot(): Promise<StoreSnapshotType> {
     return {
       'version': 1,
       'type':    'fact-log',
@@ -128,7 +128,7 @@ class FactLog implements Snapshottable {
     };
   }
 
-  async restore(snapshot: StoreSnapshot): Promise<void> {
+  async restore(snapshot: StoreSnapshotType): Promise<void> {
     if (snapshot.type !== 'fact-log') {
       throw new Error(`FactLog.restore: incompatible snapshot type '${snapshot.type}'`);
     }
@@ -136,7 +136,7 @@ class FactLog implements Snapshottable {
   }
 }
 
-const SAMPLE_CHECKPOINT: CheckpointData = {
+const SAMPLE_CHECKPOINT: CheckpointDataType = {
   'version': '2',
   'dagName': 'demo',
   'cursor': 'next-node',
@@ -180,15 +180,15 @@ void describe('NodeStateBase snapshot/restore', () => {
   });
 });
 
-// ── cursor on ExecutionResultInterface ───────────────────────────────────────
+// ── cursor on ExecutionResultType ───────────────────────────────────────
 
-void describe('cursor on ExecutionResultInterface', () => {
+void describe('cursor on ExecutionResultType', () => {
   void it('is null on a clean completion', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new OpNode());
     dispatcher.registerDAG({
@@ -216,7 +216,7 @@ void describe('cursor on ExecutionResultInterface', () => {
     class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-      protected async executeOne(_state: NodeStateBase, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         resolveNodeReady();
         await new Promise<void>((_resolve, reject) => {
           context.signal.addEventListener('abort', () => { reject(context.signal.reason); }, { 'once': true });
@@ -262,14 +262,14 @@ void describe('Checkpoint round-trip', () => {
     class IncNode extends ScalarNode<CountingState, 'success'> {
       readonly name = 'inc';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: CountingState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: CountingState): Promise<NodeOutputType<'success'>> {
         state.count++;
         state.log.push(`tick:${state.count}`);
         return { 'errors': [], 'output': 'success' as const };
       }
     }
     dispatcher.registerNode(new IncNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:count',
       '@type':    'DAG',
@@ -309,7 +309,7 @@ void describe('Checkpoint round-trip', () => {
     const round = ckpt.toJson();
     const parsed = JSON.parse(round) as unknown;
     const ckpt2 = Checkpoint.load(parsed);
-    const { state, dagName, cursor } = ckpt2.restoreState(CheckpointRestoreAdapterFn.fromFn((snap) => CountingState.restore(snap)));
+    const { state, dagName, cursor } = ckpt2.restoreState(CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)));
     assert.equal(state.count, 1);
     assert.equal(cursor, 'b');
     const resumed = await dispatcher.resume(dagName, state, cursor);
@@ -323,7 +323,7 @@ void describe('Checkpoint round-trip', () => {
     class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new OpNode());
     dispatcher.registerDAG({
@@ -368,16 +368,16 @@ void describe('Checkpoint round-trip', () => {
       'state': {}, 'executedNodes': ['a', 'b'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
-    assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapterFn.fromFn((snap) => NodeStateBase.restore(snap))), ValidationError);
+    assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapter.wrap((snap) => NodeStateBase.restore(snap))), ValidationError);
   });
 
-  void it('CheckpointRestoreAdapterFn.fromFn wraps a restore function in the adapter contract', () => {
+  void it('CheckpointRestoreAdapter.wrap wraps a restore function in the adapter contract', () => {
     const data = {
       'version': '2', 'dagName': 'wrap-test', 'cursor': 'node-b',
       'state': { 'count': 5 }, 'executedNodes': ['node-a'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
-    const adapter = CheckpointRestoreAdapterFn.fromFn((snap) => CountingState.restore(snap));
+    const adapter = CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap));
     const { dagName, cursor, state } = ckpt.restoreState(adapter);
     assert.equal(dagName, 'wrap-test');
     assert.equal(cursor, 'node-b');
@@ -411,7 +411,7 @@ void describe('MemoryCheckpointStore', () => {
 // ── ckpt.persist + Checkpoint.recall ──────────────────────────────────────────
 
 void describe('ckpt.persist + Checkpoint.recall', () => {
-  void it('round-trips a checkpoint through a CheckpointStore', async () => {
+  void it('round-trips a checkpoint through a CheckpointStoreInterface', async () => {
     const cpStore = new MemoryCheckpointStore();
     const ckpt = Checkpoint.load(SAMPLE_CHECKPOINT);
     await ckpt.persist(cpStore, 'demo:1');
@@ -420,7 +420,7 @@ void describe('ckpt.persist + Checkpoint.recall', () => {
     assert.ok(recalled !== null);
 
     const { dagName, cursor, state, executedNodes } = recalled.restoreState<StoreState>(
-      CheckpointRestoreAdapterFn.fromFn((snap) => StoreState.restore(snap)),
+      CheckpointRestoreAdapter.wrap((snap) => StoreState.restore(snap)),
     );
     assert.equal(dagName, 'demo');
     assert.equal(cursor, 'next-node');
@@ -462,7 +462,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     assert.ok(ckpt.data.stores !== undefined, 'stores should be present on checkpoint data');
     assert.ok('memory' in (ckpt.data.stores ?? {}), 'stores.memory should be present');
 
-    // Persist via CheckpointStore → load back.
+    // Persist via CheckpointStoreInterface → load back.
     const cpStore = new MemoryCheckpointStore();
     await cpStore.save('run:1', ckpt.toJson());
 
@@ -608,7 +608,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     await assert.doesNotReject(() => ckpt.restoreStores({}));
   });
 
-  void it('round-trips a non-KV Snapshottable that implements no key-value methods', async () => {
+  void it('round-trips a non-KV SnapshottableInterface that implements no key-value methods', async () => {
     const log = new FactLog();
     log.add('born');
     log.add('crawled');

@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`ClockProvider`, `SchedulerProvider`, `StateAccessor`'
+    description: '`ClockProviderInterface`, `SchedulerProviderInterface`, `StateAccessorInterface`'
   - text: 'Reference: Testing'
     link: './testing'
     description: '`VirtualClockProvider`, `VirtualScheduler`'
@@ -16,7 +16,6 @@ Runtime utilities: monotonic clock, scheduler, retry policy, signal composition,
 
 ```ts twoslash
 import {
-  BackoffStrategy,
   Clock,
   DottedPathAccessor,
   RealTimeScheduler,
@@ -25,11 +24,11 @@ import {
   SignalComposer,
 } from '@studnicky/dagonizer/runtime';
 import type {
-  ClockProvider,
+  ClockProviderInterface,
   ErrorConstructorType,
-  RetryPolicyOptionsInterface,
-  SchedulerProvider,
-  StateAccessor,
+  RetryPolicyOptionsType,
+  SchedulerProviderInterface,
+  StateAccessorInterface,
 } from '@studnicky/dagonizer/runtime';
 ```
 
@@ -63,9 +62,9 @@ Raw monotonic high-resolution time in nanoseconds. Available in both Node and br
 
 ```ts twoslash
 import { Clock } from '@studnicky/dagonizer/runtime';
-import type { ClockProvider } from '@studnicky/dagonizer/runtime';
+import type { ClockProviderInterface } from '@studnicky/dagonizer/runtime';
 // ---cut---
-declare const provider: ClockProvider;
+declare const provider: ClockProviderInterface;
 Clock.configure(provider);
 ```
 
@@ -91,9 +90,9 @@ Engine-owned monotonic timer. Static class; never instantiated.
 
 ```ts twoslash
 import { Scheduler } from '@studnicky/dagonizer/runtime';
-import type { SchedulerProvider } from '@studnicky/dagonizer/runtime';
+import type { SchedulerProviderInterface } from '@studnicky/dagonizer/runtime';
 // ---cut---
-const provider: SchedulerProvider = Scheduler.current();
+const provider: SchedulerProviderInterface = Scheduler.current();
 ```
 
 Returns the active scheduler. `RetryPolicy` calls `Scheduler.current().after(ms, signal)` for backoff delays.
@@ -102,9 +101,9 @@ Returns the active scheduler. `RetryPolicy` calls `Scheduler.current().after(ms,
 
 ```ts twoslash
 import { Scheduler } from '@studnicky/dagonizer/runtime';
-import type { SchedulerProvider } from '@studnicky/dagonizer/runtime';
+import type { SchedulerProviderInterface } from '@studnicky/dagonizer/runtime';
 // ---cut---
-declare const provider: SchedulerProvider;
+declare const provider: SchedulerProviderInterface;
 Scheduler.configure(provider);
 ```
 
@@ -124,14 +123,15 @@ Restore the default `RealTimeScheduler`.
 
 ## Class: `RealTimeScheduler`
 
-Default `SchedulerProvider`. Wraps `setTimeout` and `setInterval`. Do not instantiate directly; `Scheduler.current()` uses it automatically.
+Default `SchedulerProviderInterface`. Wraps `setTimeout` and `setInterval`. Do not instantiate directly; `Scheduler.current()` uses it automatically.
 
 ---
 
 ## Class: `RetryPolicy`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
+import { RetryPolicy } from '@studnicky/dagonizer/runtime';
+import { BackoffStrategyNames } from '@studnicky/dagonizer';
 ```
 
 Also re-exported from `@studnicky/dagonizer` root.
@@ -145,9 +145,10 @@ See [Retry](/guide/retry) for detailed usage.
 ### `RetryPolicy.run(task, options?)`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
+import { RetryPolicy } from '@studnicky/dagonizer/runtime';
+import { BackoffStrategyNames } from '@studnicky/dagonizer';
 // ---cut---
-const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.EXPONENTIAL });
+const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategyNames.EXPONENTIAL });
 const result = await policy.run(async (attempt: number) => {
   if (attempt < 3) throw new Error('not yet');
   return 'done';
@@ -159,9 +160,10 @@ Runs `task` under the configured policy. Resolves with the function's return val
 ### `RetryPolicy.getDelay(attempt, error?)`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
+import { RetryPolicy } from '@studnicky/dagonizer/runtime';
+import { BackoffStrategyNames } from '@studnicky/dagonizer';
 // ---cut---
-const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.CONSTANT });
+const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategyNames.CONSTANT });
 const delay: number = policy.getDelay(1);
 ```
 
@@ -170,9 +172,10 @@ Compute the backoff delay (ms) for a 1-based attempt number. Override in subclas
 ### `RetryPolicy.shouldRetry(error, attempt)`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
+import { RetryPolicy } from '@studnicky/dagonizer/runtime';
+import { BackoffStrategyNames } from '@studnicky/dagonizer';
 // ---cut---
-const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.CONSTANT });
+const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategyNames.CONSTANT });
 const shouldRetry: boolean = policy.shouldRetry(new Error('oops'), 1);
 ```
 
@@ -180,32 +183,32 @@ Decision predicate. Override for conditional logic beyond the `retryOn` / `abort
 
 ---
 
-## Const: `BackoffStrategy`
+## Const: `BackoffStrategyNames` and type `BackoffStrategy`
 
 ```ts twoslash
-const BackoffStrategy = {
+const BackoffStrategyNames = {
   CONSTANT:            'constant',
   LINEAR:              'linear',
   EXPONENTIAL:         'exponential',
   DECORRELATED_JITTER: 'decorrelated-jitter',
 } as const;
 
-type BackoffStrategy = (typeof BackoffStrategy)[keyof typeof BackoffStrategy];
+type BackoffStrategy = (typeof BackoffStrategyNames)[keyof typeof BackoffStrategyNames];
 ```
 
-`BackoffStrategy` serves as both the const enum object and the union type of its values. Pass a value as `strategy` in `RetryPolicyOptionsInterface`. See [Retry](/guide/retry) for delay formulas.
+`BackoffStrategyNames` is the frozen lookup object; `BackoffStrategy` is the union type of its values. Both ship from `@studnicky/dagonizer` (and `@studnicky/dagonizer/entities`). Pass a value as `strategy` in `RetryPolicyOptionsType`. See [Retry](/guide/retry) for delay formulas.
 
 ---
 
 ## Class: `SignalComposer`
 
-Fold `signal` and `deadlineMs` from `ExecuteOptionsInterface` into a single `AbortSignal`. Static class.
+Fold `signal` and `deadlineMs` from `ExecuteOptionsType` into a single `AbortSignal`. Static class.
 
 ### `SignalComposer.compose(options)`
 
 ```ts twoslash
 import { SignalComposer } from '@studnicky/dagonizer/runtime';
-import type { ExecuteOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { ExecuteOptionsType } from '@studnicky/dagonizer/contracts';
 // ---cut---
 declare const ctrl: AbortController;
 declare const url: string;
@@ -225,13 +228,13 @@ if (signal !== null) {
 
 ## Class: `DottedPathAccessor`
 
-Default `StateAccessor`. Walks `path.split('.')` to read and write nested fields on a state object. Creates intermediate plain objects on write when they are absent. Treats `null` and `undefined` segments on read as misses (returns `undefined`).
+Default `StateAccessorInterface`. Walks `path.split('.')` to read and write nested fields on a state object. Creates intermediate plain objects on write when they are absent. Treats `null` and `undefined` segments on read as misses (returns `undefined`).
 
 ```ts twoslash
 import { DottedPathAccessor } from '@studnicky/dagonizer/runtime';
-import type { StateAccessor } from '@studnicky/dagonizer/runtime';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/runtime';
 // ---cut---
-const accessor: StateAccessor = new DottedPathAccessor();
+const accessor: StateAccessorInterface = new DottedPathAccessor();
 ```
 
 Used by the dispatcher for scatter source reads, state-mapping input copies, and gather writes. Swap via `new Dagonizer({ accessor: customAccessor })`.

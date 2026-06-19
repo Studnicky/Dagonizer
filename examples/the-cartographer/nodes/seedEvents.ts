@@ -27,7 +27,7 @@ import type { CartographerServices } from '../CartographerServices.ts';
 import { Sources } from '../services.ts';
 import { EventStreamSource } from '../services/EventStreamSource.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -36,7 +36,7 @@ export class SeedEventsNode extends ScalarNode<CartographerState, never, Cartogr
   readonly 'name' = 'seed';
   readonly 'outputs' = [] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<never>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<never>> {
     if (state.useStreamingSource) {
       const count = state.streamCount > 0 ? state.streamCount : undefined;
       state.sources = EventStreamSource.streamTyped(state.eventConfig, count);

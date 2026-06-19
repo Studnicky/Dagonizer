@@ -13,10 +13,10 @@
  */
 
 import type { MessageChannelInterface } from '../dist/contracts/MessageChannelInterface.js';
-import type { BridgeMessage } from '../dist/entities/executor/BridgeMessage.js';
+import type { BridgeMessageType } from '../dist/entities/executor/BridgeMessage.js';
 
 class LoopbackSide implements MessageChannelInterface {
-  #handler: ((message: BridgeMessage) => void) | null;
+  #handler: ((message: BridgeMessageType) => void) | null;
   #peer: LoopbackSide | null;
   #closed: boolean;
 
@@ -31,11 +31,11 @@ class LoopbackSide implements MessageChannelInterface {
     this.#peer = peer;
   }
 
-  send(message: BridgeMessage): void {
+  send(message: BridgeMessageType): void {
     if (this.#closed) return;
     const peer = this.#peer;
     if (peer === null || peer.#closed) return;
-    const cloned = structuredClone(message) as BridgeMessage;
+    const cloned = structuredClone(message) as BridgeMessageType;
     const handler = peer.#handler;
     if (handler !== null) {
       // Schedule delivery asynchronously — preserves async semantics without
@@ -48,7 +48,7 @@ class LoopbackSide implements MessageChannelInterface {
     }
   }
 
-  onMessage(handler: (message: BridgeMessage) => void): void {
+  onMessage(handler: (message: BridgeMessageType) => void): void {
     this.#handler = handler;
   }
 

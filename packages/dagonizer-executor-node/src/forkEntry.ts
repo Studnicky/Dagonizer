@@ -32,13 +32,13 @@ export class ForkEntry {
    * testing or advanced lifecycle management.
    */
   static start(): DagHost {
-    const sendFn = process.send?.bind(process);
-    if (sendFn === undefined) {
+    const send = process.send?.bind(process);
+    if (send === undefined) {
       throw new Error('ForkEntry.start: process.send is undefined — this file must run as a forked child process');
     }
 
     const endpoint = {
-      'send': (message: unknown): void => { sendFn(message); },
+      'send': (message: unknown): void => { send(message); },
       'on': (event: 'message', listener: (message: unknown) => void) => {
         process.on(event, listener);
         return endpoint;

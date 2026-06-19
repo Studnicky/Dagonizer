@@ -16,7 +16,8 @@
 
 ### Changed
 
-- `OpenLibrarySearchTool` and `SubjectSearchTool` both narrow the API response via `narrowOpenLibraryResponse` (typed guard in `openLibraryTypes.ts`) at the `HttpTransport.getJson` boundary; throws `ToolError('PARSE_ERROR')` on shape mismatch.
+- **Adapter-contract interfaces carry the `Interface` suffix (semver-major).** The framework contracts this package's public surface names are imported under their suffixed names: `ToolInterface` (the exported `OpenLibrarySearchTool` and `SubjectSearchTool` implement it) and `EntityValidatorInterface` (the compiled response validator). The renames are type-only and propagate from `@studnicky/dagonizer`; runtime behavior is unchanged. Consumers typing against the old bare names (`Tool`, `EntityValidator`) update to the suffixed names.
+- The OpenLibrary `search.json` response is a JSON Schema 2020-12 `*Schema` const (`OpenLibraryResponseSchema`) with `FromSchema`-derived types and a module-load-compiled `EntityValidator` in `OpenLibraryResponse.ts`. The validator compiles through `Validator.compile` from `@studnicky/dagonizer/validation` against the framework's single shared Ajv; the package carries no Ajv dependency of its own. `OpenLibrarySearchTool` and `SubjectSearchTool` pass the validator to `HttpTransport.getJson`, which narrows the `unknown` body and throws `ToolError('PARSE_ERROR')` on a schema mismatch. The freestanding `narrowOpenLibraryResponse` and `isOpenLibraryResponse` are removed; direct-narrowing callers use the `OpenLibraryDocs.narrowResponse` static.
 - `OpenLibrarySearchTool.inputSchema` drops the empty `'required': []` array (no-op; absence is equivalent under JSON Schema).
 - `SubjectSearchTool` removes `// #region` / `// #endregion` fold markers (no other tool uses them).
 - Convenience re-exports of `Book`, `Candidate`, `Money`, `CanonicalId` removed from the package barrel. Consumers import these directly from `@studnicky/dagonizer-book-entities`.

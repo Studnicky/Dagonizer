@@ -17,7 +17,7 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -26,7 +26,7 @@ export class AggregateEventNode extends ScalarNode<CartographerState, 'done', Ca
   readonly 'name' = 'aggregate-event';
   readonly 'outputs' = ['done'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'done'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'done'>> {
     const norm = state.normalized;
     const geo  = state.geoContext;
     const gdpr = state.gdprResult;

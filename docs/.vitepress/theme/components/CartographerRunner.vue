@@ -44,11 +44,11 @@ import Spinner from './Spinner.vue';
 
 // ── Web-worker container ───────────────────────────────────────────────────────
 // Runs the CPU-heavy stream-event scatter body (decode → route → per-type
-// pipelines) off the main thread. `createWorker` is the consumer seam Vite needs
+// pipelines) off the main thread. `spawnWorker` is the consumer seam Vite needs
 // to chunk the worker entry; the entry statically injects its registry so no
 // dynamic import runs in the worker.
 class CartographerWorkerContainer extends WebWorkerContainer {
-  protected override createWorker(): WebWorkerLikeInterface {
+  protected override spawnWorker(): WebWorkerLikeInterface {
     return new Worker(
       new URL('./cartographerWorkerEntry.ts', import.meta.url),
       { 'type': 'module' },

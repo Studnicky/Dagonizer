@@ -28,11 +28,11 @@ import type { CartographerServices } from '../CartographerServices.ts';
 import { decodePayload } from '../nodes/decodePayload.ts';
 import { routeEventType } from '../nodes/routeEventType.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
 // #region stream-event-dag
-export const streamEventDAG: DAG = new DAGBuilder('stream-event', '1.0')
+export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
 
   // 1. decode-payload: reads 'source-payload' metadata, decodes wire format
   //    (json/csv/ndjson/yaml, optionally gzip), builds CanonicalEventVariant,
@@ -67,6 +67,7 @@ export const streamEventDAG: DAG = new DAGBuilder('stream-event', '1.0')
       'legKm':            'legKm',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -86,6 +87,7 @@ export const streamEventDAG: DAG = new DAGBuilder('stream-event', '1.0')
       'legKm':            'legKm',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -105,6 +107,7 @@ export const streamEventDAG: DAG = new DAGBuilder('stream-event', '1.0')
       'legKm':             'legKm',
       'routing':           'routing',
       'enriched':          'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -128,6 +131,7 @@ export const streamEventDAG: DAG = new DAGBuilder('stream-event', '1.0')
       'gdprResult':        'gdprResult',
       'routing':           'routing',
       'enriched':          'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -148,6 +152,7 @@ export const streamEventDAG: DAG = new DAGBuilder('stream-event', '1.0')
       'gdprResult':       'gdprResult',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -161,7 +166,7 @@ export const streamEventDAG: DAG = new DAGBuilder('stream-event', '1.0')
  * and the stream-event DAG with the dispatcher. routeEventType re-registration is
  * a no-op (same instance; the bundle registrar is idempotent).
  */
-export const streamEventBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const streamEventBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [decodePayload, routeEventType],
   'dags':  [streamEventDAG],
 };

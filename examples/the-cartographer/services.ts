@@ -1125,7 +1125,12 @@ export class ShipmentEvents {
         : (s === scanCount - 2) ? pick(ShipmentEvents.STATUS_OFD)
         : pick(ShipmentEvents.STATUS_TRANSIT);
 
-      const invalid = rand() < 0.06;
+      // The interpolated lat/lng are always valid WGS-84 (REGION/HUB anchors ±2°).
+      // A real GPS feed almost never emits an out-of-range fix; reserve a tiny
+      // fraction (~0.3%) for a genuinely-malformed sensor reading so the error
+      // sink has a realistic trickle to report — but DON'T fabricate out-of-range
+      // coords for 6% of the feed (that was synthetic noise, not real-world data).
+      const invalid = rand() < 0.003;
       const finalLat = invalid ? 95 + rand() * 10  : lat;
       const finalLng = invalid ? 185 + rand() * 10 : lng;
 
@@ -1632,7 +1637,7 @@ export class Sources {
     if (withGeo) {
       // RICH source pre-resolves geo via the offline country-coder (sync, universal).
       // No fixture dependency — country-coder is deterministic across environments.
-      const cand = OfflineGeo.resolve(scan.latitude, scan.longitude);
+      const cand = OfflineGeo.resolve(scan.latitude, scan.longitude).candidate;
       if (cand.resolved && !cand.water && cand.country.length > 0) {
         record['geoCountry']   = cand.country;
         record['geoContinent'] = cand.continent;

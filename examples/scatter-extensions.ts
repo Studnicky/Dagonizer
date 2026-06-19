@@ -28,11 +28,11 @@ import {
   GatherStrategies,
   OutcomeReducers,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 
 // ── DAG: scatter over items, gather with 'top-n', reduce with 'threshold-75' ─
 
-const dag: DAG = {
+const dag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:top-n-ranking',
   '@type':     'DAG',

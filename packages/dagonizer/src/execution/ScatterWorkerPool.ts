@@ -19,47 +19,10 @@
  *   The first error is thrown after draining; the rest remain available on `errors`.
  */
 
-import type { ScatterInboxItem } from '../entities/scatter/ScatterProgress.js';
+import type { ScatterPoolDriverInterface } from '../contracts/ScatterPoolDriver.js';
+import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { ExecutionError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
-
-/**
- * The result envelope that `ScatterPoolDriverInterface.executeItem` must return.
- * Shape is stable (all fields initialised, required): V8 sees one hidden class
- * across all item executions.
- */
-export type ScatterItemResult<TState extends NodeStateInterface> = {
-  index: number;
-  item: unknown;
-  output: string;
-  terminalOutcome: 'completed' | 'failed' | null;
-  cloneState: TState;
-};
-
-/**
- * Adapter contract for scatter item body execution and acknowledgment.
- *
- * Implementors are instantiated inside `Dagonizer.executeScatter` and injected
- * into `ScatterWorkerPool`. The pool calls these two methods for every item;
- * all DAG/state mutation logic lives in the implementor, not the pool.
- */
-export interface ScatterPoolDriverInterface<TState extends NodeStateInterface> {
-  /**
-   * Execute one scatter item body and return its result.
-   *
-   * Must not mutate shared state — callers handle ack and gather after this
-   * resolves. Must throw on infrastructure failure (container crash, transport
-   * loss) so the pool correctly routes it to `poolErrors` rather than acking.
-   */
-  executeItem(index: number, item: unknown): Promise<ScatterItemResult<TState>>;
-
-  /**
-   * Acknowledge a completed item: remove it from the inbox, record the acked
-   * result, apply incremental gather to fold into parent state, and persist
-   * the checkpoint.
-   */
-  ackItem(result: ScatterItemResult<TState>): Promise<void>;
-}
 
 /**
  * Options for constructing a `ScatterWorkerPool`.
@@ -67,11 +30,11 @@ export interface ScatterPoolDriverInterface<TState extends NodeStateInterface> {
  * All fields are required; defaults must be resolved by the caller before
  * construction (see `ScatterWorkerPool` JSDoc).
  */
-export type ScatterWorkerPoolOptions = {
+export type ScatterWorkerPoolOptionsType = {
   /** Maximum number of items executing concurrently. */
   concurrencyLimit: number;
   /** Inbox items from a prior run (priority source). */
-  inbox: ScatterInboxItem[];
+  inbox: ScatterInboxItemType[];
   /** Fresh items from the scatter source (secondary source, post-pre-scan). */
   freshIter: AsyncIterator<unknown>;
   /**
@@ -97,8 +60,8 @@ export type ScatterWorkerPoolOptions = {
 export class ScatterWorkerPool<TState extends NodeStateInterface> {
   readonly #driver: ScatterPoolDriverInterface<TState>;
   readonly #concurrencyLimit: number;
-  readonly #inbox: ScatterInboxItem[];
-  readonly #inboxIter: AsyncIterator<ScatterInboxItem, undefined>;
+  readonly #inbox: ScatterInboxItemType[];
+  readonly #inboxIter: AsyncIterator<ScatterInboxItemType, undefined>;
   readonly #freshIter: AsyncIterator<unknown>;
   readonly #signal: AbortSignal | null;
   #nextIndex: number;
@@ -108,7 +71,7 @@ export class ScatterWorkerPool<TState extends NodeStateInterface> {
   #slotResolve: (() => void) | null;
   readonly #poolErrors: unknown[];
 
-  constructor(driver: ScatterPoolDriverInterface<TState>, options: ScatterWorkerPoolOptions) {
+  constructor(driver: ScatterPoolDriverInterface<TState>, options: ScatterWorkerPoolOptionsType) {
     this.#driver = driver;
     this.#concurrencyLimit = options.concurrencyLimit;
     this.#inbox = options.inbox;
@@ -128,7 +91,7 @@ export class ScatterWorkerPool<TState extends NodeStateInterface> {
     let inboxPos = 0;
     const inbox = this.#inbox;
     this.#inboxIter = {
-      next(): Promise<IteratorResult<ScatterInboxItem, undefined>> {
+      next(): Promise<IteratorResult<ScatterInboxItemType, undefined>> {
         if (inboxPos >= inbox.length) {
           return Promise.resolve({ 'value': undefined, 'done': true });
         }
@@ -256,7 +219,7 @@ export class ScatterWorkerPool<TState extends NodeStateInterface> {
     // throw BEFORE the caller calls ScatterCheckpoint.clear() so the
     // checkpoint is preserved on state for resume.
     if (this.#signal?.aborted === true && this.#poolErrors.length === 0) {
-      throw ExecutionError.fromSignal(this.#signal);
+      throw ExecutionError.ofSignal(this.#signal);
     }
 
     if (this.#poolErrors.length > 0) {

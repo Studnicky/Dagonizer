@@ -2,7 +2,7 @@
  * CheckpointData: persistable snapshot of an in-flight flow execution.
  *
  * Contains the flow name, the next-node cursor (`null` if the flow has
- * completed), the state snapshot as a JsonObject, and the executed /
+ * completed), the state snapshot as a JsonObjectType, and the executed /
  * skipped node history.
  *
  * The schema's `version` field tracks the wire format itself, not the
@@ -65,4 +65,4 @@ export const CheckpointDataSchema = {
 } as const;
 
 /** TypeScript type derived from `CheckpointDataSchema` via `json-schema-to-ts`. */
-export type CheckpointData = FromSchema<typeof CheckpointDataSchema>;
+export type CheckpointDataType = FromSchema<typeof CheckpointDataSchema>;

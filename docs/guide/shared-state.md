@@ -71,7 +71,7 @@ Two mechanisms cross the scatter boundary in Dagonizer. The choice depends on th
 | `MemoryStore` | `@studnicky/dagonizer/store` | In-memory reference implementation |
 | `TypedStore<Schema>` | `@studnicky/dagonizer/store` | Wrapper that narrows keys and value types |
 | `StoreError` | `@studnicky/dagonizer/store` | Discriminated error with `classification.reason` |
-| `RemoteStore`, `RemoteStoreEndpoint`, `RemoteStoreLease` | `@studnicky/dagonizer/contracts` | Distributed coordination primitives |
+| `RemoteStore`, `RemoteStoreEndpointType`, `RemoteStoreLeaseType` | `@studnicky/dagonizer/contracts` | Distributed coordination primitives |
 
 ## DAG that exercises shared state
 
@@ -147,7 +147,7 @@ Extend `BaseStore` and implement six `protected abstract` methods plus two `prot
 
 <<< @/../examples/dags/custom-store.ts#custom-store
 
-`MapStore` is backed by a real `Map<string, JsonValue>`. Its `update` override reads and writes `#data` synchronously — no `await` between the read and the write — so no concurrent microtask can interleave. In production, swap the `Map` operations for calls to a Redis, Postgres, or any other storage client; the six `perform*` hooks stay identical regardless of backing.
+`MapStore` is backed by a real `Map<string, JsonValueType>`. Its `update` override reads and writes `#data` synchronously — no `await` between the read and the write — so no concurrent microtask can interleave. In production, swap the `Map` operations for calls to a Redis, Postgres, or any other storage client; the six `perform*` hooks stay identical regardless of backing.
 
 All six `perform*` hooks receive the qualified key (namespace prefix already applied by `BaseStore`). Call `this.qualifyKey(key)` in the `update` override to ensure namespace consistency.
 
@@ -179,7 +179,7 @@ The engine consumes a `RemoteStore` through the `Store` surface. The extra metho
 
 | Method or Property | Description |
 |-------------------|-------------|
-| `endpoint` | `RemoteStoreEndpoint` with `url` (stable target identifier) and `region` (placement hint; `''` when no region applies). |
+| `endpoint` | `RemoteStoreEndpointType` with `url` (stable target identifier) and `region` (placement hint; `''` when no region applies). |
 | `acquireLease(subject, ttlMs, maxWaitMs)` | Acquire exclusive write authority for `subject` scoped to `ttlMs` ms. Waits up to `maxWaitMs` for an existing holder before throwing `StoreError(LEASE_DENIED)`. |
 | `releaseLease(lease)` | Release a previously-acquired lease. Idempotent: releasing an expired lease is a no-op. |
 | `health(timeoutMs)` | Health probe. Returns `true` when reachable within `timeoutMs`. Returns `false`, never throws, on transport failure, so the dispatcher can route around an unhealthy store. |

@@ -3,7 +3,7 @@
  * of embedded-DAG execution inside scatter bodies.
  *
  * Prior to the fix, `executeEmbeddedDAG` accumulated a local
- * `intermediateResults` array — one `NodeResultInterface` per inner node fired
+ * `intermediateResults` array — one `NodeResultType` per inner node fired
  * inside the embedded DAG. When the embedded DAG itself was a scatter body
  * (N items × M inner nodes per embedded level × L nesting levels), this
  * produced O(N * M * L) retained objects, causing OOM on large N.
@@ -14,7 +14,7 @@
  *
  * Structural assertions (the proof):
  *   1. A direct `execute()` through a 3-level nested embedded DAG yields
- *      a representative `NodeResultInterface` with `intermediateResults: []`
+ *      a representative `NodeResultType` with `intermediateResults: []`
  *      for the outermost embedded placement.
  *   2. A scatter over N=2000 items where each body DAG contains two nested
  *      embedded DAGs (mid → inner) completes correctly and the scatter result
@@ -24,17 +24,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
-import type { GatherExecution } from '../../src/core/GatherStrategies.js';
+import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
+import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
-import type { NodeResultInterface } from '../../src/entities/node/NodeResult.js';
+import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
+import type { NodeResultType } from '../../src/entities/node/NodeResult.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -46,7 +46,7 @@ class EmbedMemState extends NodeStateBase {
   items: number[] = [];
   counter: number = 0;
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       'value':   this.value,
       'items':   [...this.items],
@@ -54,7 +54,7 @@ class EmbedMemState extends NodeStateBase {
     };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     if (typeof snap['value'] === 'number')   this.value   = snap['value'];
     if (Array.isArray(snap['items']))        this.items   = snap['items'] as number[];
     if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
@@ -74,7 +74,7 @@ class IncValueNode extends ScalarNode<EmbedMemState, 'done'> {
     this.delta = delta;
   }
 
-  protected async executeOne(state: EmbedMemState): Promise<NodeOutputInterface<'done'>> {
+  protected async executeOne(state: EmbedMemState): Promise<NodeOutputType<'done'>> {
     state.value += this.delta;
     return { 'errors': [], 'output': 'done' };
   }
@@ -84,7 +84,7 @@ class IncCounterNode extends ScalarNode<EmbedMemState, 'done'> {
   readonly name = 'inc-counter';
   readonly outputs = ['done'] as const;
 
-  protected async executeOne(state: EmbedMemState): Promise<NodeOutputInterface<'done'>> {
+  protected async executeOne(state: EmbedMemState): Promise<NodeOutputType<'done'>> {
     state.counter += 1;
     return { 'errors': [], 'output': 'done' };
   }
@@ -104,7 +104,7 @@ const COUNTER_MAPPING = {
 
 // ── DAG builders ──────────────────────────────────────────────────────────────
 
-function singlePlacement(dag: string, name: string, outputs: Record<string, string>): DAG['nodes'][number] {
+function singlePlacement(dag: string, name: string, outputs: Record<string, string>): DAGType['nodes'][number] {
   return {
     '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
     '@type': 'SingleNode',
@@ -119,7 +119,7 @@ function embedPlacement(
   name: string,
   childDag: string,
   stateMapping: { input: Record<string, string>; output: Record<string, string> },
-): DAG['nodes'][number] {
+): DAGType['nodes'][number] {
   return {
     '@id':          `urn:noocodex:dag:${dag}/node/${name}`,
     '@type':        'EmbeddedDAGNode',
@@ -130,11 +130,11 @@ function embedPlacement(
   };
 }
 
-function terminalPlacement(dag: string): DAG['nodes'][number] {
+function terminalPlacement(dag: string): DAGType['nodes'][number] {
   return { '@id': `urn:noocodex:dag:${dag}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' };
 }
 
-function makeDAG(name: string, entrypoint: string, nodes: DAG['nodes']): DAG {
+function makeDAG(name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType {
   return Validator.dag.validate({
     '@context': DAG_CONTEXT,
     '@id':      `urn:noocodex:dag:${name}`,
@@ -175,18 +175,18 @@ class EmbedCounterGather extends GatherStrategy {
   readonly name = 'embed-counter-gather';
 
   reduce(
-    _config: GatherConfig,
+    _config: GatherConfigType,
     batch: Parameters<GatherStrategy['reduce']>[1],
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     const current = accessor.get<number>(state, 'counter') ?? 0;
     accessor.set(state, 'counter', current + batch.size);
   }
 
   override async finalize(
-    _config: GatherConfig,
-    _execution: GatherExecution<NodeStateBase>,
+    _config: GatherConfigType,
+    _execution: GatherExecutionType<NodeStateBase>,
   ): Promise<void> {
     // no-op: counter is folded via reduce
   }
@@ -205,7 +205,7 @@ const scatterBodyDAG = makeDAG('emb-scatter-body', 'inc-counter', [
   terminalPlacement('emb-scatter-body'),
 ]);
 
-function makeScatterOverEmbedDAG(name: string, concurrency: number): DAG {
+function makeScatterOverEmbedDAG(name: string, concurrency: number): DAGType {
   return Validator.dag.validate({
     '@context': DAG_CONTEXT,
     '@id':      `urn:noocodex:dag:${name}`,
@@ -271,8 +271,8 @@ void describe('EmbeddedDAG: bounded-memory invariant (no inner-node buffering in
     const execution = d.execute('emb3-outer', state);
     let lastState: EmbedMemState = state;
     for await (const stage of execution) {
-      seen.push((stage as NodeResultInterface<EmbedMemState>).nodeName);
-      lastState = (stage as NodeResultInterface<EmbedMemState>).state;
+      seen.push((stage as NodeResultType<EmbedMemState>).nodeName);
+      lastState = (stage as NodeResultType<EmbedMemState>).state;
     }
 
     // Correctness: all three inc nodes fired in order (+1000 +100 +1 = 1101)
@@ -298,10 +298,10 @@ void describe('EmbeddedDAG: bounded-memory invariant (no inner-node buffering in
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
     const execution = d.execute('emb-scatter-n2000', state);
-    let scatterResult: NodeResultInterface<EmbedMemState> | null = null;
+    let scatterResult: NodeResultType<EmbedMemState> | null = null;
     for await (const stage of execution) {
-      if ((stage as NodeResultInterface<EmbedMemState>).nodeName === 'fan') {
-        scatterResult = stage as NodeResultInterface<EmbedMemState>;
+      if ((stage as NodeResultType<EmbedMemState>).nodeName === 'fan') {
+        scatterResult = stage as NodeResultType<EmbedMemState>;
       }
     }
 

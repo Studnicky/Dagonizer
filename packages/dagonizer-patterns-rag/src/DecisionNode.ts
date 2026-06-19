@@ -7,14 +7,14 @@
  *   - ClassifyIntentNode: TChoice = TIntent ∈ token union
  *   - DecideToolsNode:    TChoice = readonly ToolCall[]
  *   - ValidateResponseNode: TChoice = 'yes' | 'no'
- *   - RankCandidatesNode: TChoice = readonly Score[]
+ *   - RankCandidatesNode: TChoice = readonly ScoreType[]
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { LlmDispatchNode } from './LlmDispatchNode.js';
-import type { RagServices } from './LlmDispatchNode.js';
+import type { RagServicesType } from './LlmDispatchNode.js';
 
 export abstract class DecisionNode<
   TState extends NodeStateInterface,
@@ -22,7 +22,7 @@ export abstract class DecisionNode<
   TOutput extends string = string,
 > extends LlmDispatchNode<TState, TOutput> {
   /** Parse the model's text response into a structured choice. */
-  protected abstract parseChoice(content: string): TChoice;
+  protected abstract decodeChoice(content: string): TChoice;
 
   /** Route the choice to one of the declared output ports. */
   protected abstract routeFor(choice: TChoice): TOutput;
@@ -32,11 +32,11 @@ export abstract class DecisionNode<
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextInterface<RagServices>,
-  ): Promise<NodeOutputInterface<TOutput>> {
+    context: NodeContextType<RagServicesType>,
+  ): Promise<NodeOutputType<TOutput>> {
     const response = await this.dispatch(state, context);
-    const content = response.message.kind === 'tools' ? '' : response.message.content;
-    const choice = this.parseChoice(content);
+    const content = this.extractContent(response);
+    const choice = this.decodeChoice(content);
     this.applyChoice(state, choice);
     return NodeOutputBuilder.of(this.routeFor(choice));
   }

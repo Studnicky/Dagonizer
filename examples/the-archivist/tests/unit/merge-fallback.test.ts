@@ -6,7 +6,8 @@
  *   • live > 0 + prior > 0 (1 overlap) → merged with live preferred, deduplicated
  *   • both empty → routes 'empty'
  *
- * Uses a minimal fixture for context.services (only logger + CanonicalId.dedupe path needed).
+ * Uses a minimal fixture for context.services (only the CanonicalId.dedupe path
+ * is needed). Nodes are pure: they emit no logs, so the tests assert on output.
  */
 
 import { test } from 'node:test';
@@ -14,28 +15,21 @@ import { strict as assert } from 'node:assert';
 
 import { ArchivistState } from '../../ArchivistState.ts';
 import { mergeCandidates } from '../../nodes/mergeCandidates.ts';
-import type { Candidate } from '../../entities/Book.ts';
+import type { CandidateType } from '../../entities/Book.ts';
 import { BookBuilder } from '../../entities/Book.ts';
 
 // ── Minimal context fixture ───────────────────────────────────────────────────
-
-const logs: string[] = [];
 
 /** Context and candidate factories for merge-fallback unit tests. */
 class MergeFallbackFixture {
   static makeContext() {
     return {
       signal: new AbortController().signal,
-      services: {
-        logger: {
-          info(msg: string) { logs.push(msg); },
-          warn(msg: string) { logs.push(`WARN: ${msg}`); },
-        },
-      },
+      services: {},
     } as unknown as Parameters<typeof mergeCandidates.runItem>[1];
   }
 
-  static liveCandidate(isbn: string, score: number): Candidate {
+  static liveCandidate(isbn: string, score: number): CandidateType {
     return {
       'book':   BookBuilder.from({ isbn, 'title': `Title ${isbn}`, 'authors': ['Author'] }),
       score,
@@ -43,7 +37,7 @@ class MergeFallbackFixture {
     };
   }
 
-  static priorCandidate(isbn: string): Candidate {
+  static priorCandidate(isbn: string): CandidateType {
     return {
       'book':   BookBuilder.from({ isbn, 'title': `Prior ${isbn}`, 'authors': ['Prior Author'] }),
       'score':  0.5,
@@ -56,7 +50,6 @@ class MergeFallbackFixture {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 void test('mergeCandidates: live=0 + prior=3 → shortlist=3, all fromPriorMemory, routes ranked', async () => {
-  logs.length = 0;
   const state = new ArchivistState();
   state.query          = 'some query';
   state.userLanguage   = 'en';
@@ -79,7 +72,6 @@ void test('mergeCandidates: live=0 + prior=3 → shortlist=3, all fromPriorMemor
 });
 
 void test('mergeCandidates: live=2 + prior=3 (1 overlap isbn B001) → dedupe → 4 after merge', async () => {
-  logs.length = 0;
   const state = new ArchivistState();
   state.query          = 'some query';
   state.userLanguage   = 'en';
@@ -107,7 +99,6 @@ void test('mergeCandidates: live=2 + prior=3 (1 overlap isbn B001) → dedupe �
 });
 
 void test('mergeCandidates: both empty → routes empty', async () => {
-  logs.length = 0;
   const state = new ArchivistState();
   state.query          = 'some query';
   state.userLanguage   = 'en';
@@ -121,7 +112,6 @@ void test('mergeCandidates: both empty → routes empty', async () => {
 });
 
 void test('mergeCandidates: live=3 + prior=0 → original path, no regression', async () => {
-  logs.length = 0;
   const state = new ArchivistState();
   state.query          = 'some query';
   state.userLanguage   = 'en';
@@ -141,7 +131,6 @@ void test('mergeCandidates: live=3 + prior=0 → original path, no regression', 
 void test('mergeCandidates: prior-only fallback sets failureCause when still empty after language filter', async () => {
   // Edge case: prior candidates have a language that doesn't match → filtered → empty.
   // This ensures the failureCause is set properly even in the prior-only path.
-  logs.length = 0;
   const state = new ArchivistState();
   state.query          = 'some query';
   state.userLanguage   = 'ja'; // Japanese

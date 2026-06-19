@@ -30,7 +30,8 @@
     "registry": "https://npm.pkg.github.com"
   },
   "devDependencies": {
-    "@types/node": "^25.2.0"
+    "@types/node": "^25.2.0",
+    "json-schema-to-ts": "^3.1.1"
   },
   "peerDependencies": {
     "@studnicky/dagonizer": "workspace:>=0.14.0 <1.0.0"

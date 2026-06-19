@@ -14,7 +14,9 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
+
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -23,13 +25,16 @@ export class ParseJsonNode extends ScalarNode<CartographerState, 'normalized' | 
   readonly 'name' = 'parse-json';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'invalid'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized' | 'invalid'>> {
     // Use decompressed text when available (gzip path), else the raw payload.
     const text = state.decodedText.length > 0 ? state.decodedText : state.currentSource.payload;
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
-    } catch {
+    } catch (caught) {
+      // Capture the parse failure as data rather than swallowing it. The node
+      // still routes 'invalid' (graceful); the error rides on state.capturedErrors.
+      state.capturedErrors = [...state.capturedErrors, GeoErrorRecord.capture('parse-json', caught, `source=${state.currentSource.sourceId}`)];
       return NodeOutputBuilder.of('invalid');
     }
     if (!Array.isArray(parsed)) {

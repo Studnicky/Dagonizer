@@ -8,7 +8,7 @@
  *   1. Recurse into the deepest embedded-DAG first (bottom-up).
  *   2. Lay each sub-DAG flat via dagre; record child positions + bounding box.
  *   3. At the parent level, treat each embedded-DAG as a macro-node sized to
- *      its sub-LayoutResult's bounding box and lay the parent flat via dagre.
+ *      its sub-LayoutResultType's bounding box and lay the parent flat via dagre.
  *   4. Composite: offset all child positions to the macro-node's dagre position.
  *
  * Final positions are applied by the caller via cytoscape's built-in preset
@@ -23,7 +23,7 @@ import type DagreDefault from '@dagrejs/dagre';
 
 type DagreModule = typeof DagreDefault;
 
-import type { DAG } from '../entities/dag/DAG.js';
+import type { DAGType } from '../entities/dag/DAG.js';
 
 import { PlacementUtils } from './internal.js';
 
@@ -32,15 +32,15 @@ import { PlacementUtils } from './internal.js';
 // ---------------------------------------------------------------------------
 
 /** A 2-D position for a node in the Cytoscape canvas. */
-export interface NodePosition {
+export type NodePositionType = {
   x: number;
   y: number;
 }
 
 /** Result of laying out one DAG (or sub-DAG). */
-export interface LayoutResult {
+export type LayoutResultType = {
   /** Positions keyed by fully-prefixed cytoscape node id. */
-  positions: ReadonlyMap<string, NodePosition>;
+  positions: ReadonlyMap<string, NodePositionType>;
   /** Total bounding-box width after layout. */
   width: number;
   /** Total bounding-box height after layout. */
@@ -48,7 +48,7 @@ export interface LayoutResult {
 }
 
 /** Layout tuning knobs (all optional; sensible defaults apply). */
-export interface CompositeLayoutOptions {
+export type CompositeLayoutOptionsType = {
   /** Vertical gap between ranks (dagre ranksep). Default 80. */
   rankSep?: number;
   /** Horizontal gap between sibling nodes (dagre nodesep). Default 60. */
@@ -63,7 +63,7 @@ export interface CompositeLayoutOptions {
 // Internal types
 // ---------------------------------------------------------------------------
 
-interface BoundingBox {
+type BoundingBox = {
   minX: number;
   minY: number;
   maxX: number;
@@ -74,8 +74,8 @@ interface BoundingBox {
   height: number;
 }
 
-interface Resolved {
-  positions: Map<string, NodePosition>;
+type Resolved = {
+  positions: Map<string, NodePositionType>;
   bb: BoundingBox;
 }
 
@@ -118,17 +118,17 @@ export class CompositeLayout {
    * Compute positions for every node in `dag`, expanding embedded-DAGs
    * from `embeddedDAGs` recursively.
    *
-   * Returns a `LayoutResult` where every key is the fully-prefixed cytoscape
+   * Returns a `LayoutResultType` where every key is the fully-prefixed cytoscape
    * node id (matching the ids produced by `CytoscapeRenderer`).
    *
    * @dagrejs/dagre is loaded lazily on first call; the package must be
    * installed as an optional peer dependency by the consumer.
    */
   static async compute(
-    dag: DAG,
-    embeddedDAGs: ReadonlyMap<string, DAG> = new Map(),
-    options: CompositeLayoutOptions = {},
-  ): Promise<LayoutResult> {
+    dag: DAGType,
+    embeddedDAGs: ReadonlyMap<string, DAGType> = new Map(),
+    options: CompositeLayoutOptionsType = {},
+  ): Promise<LayoutResultType> {
     const dagreModule = (await import('@dagrejs/dagre')).default;
     const resolved = CompositeLayout.layoutFlat(
       dagreModule,
@@ -159,11 +159,11 @@ export class CompositeLayout {
    */
   private static layoutFlat(
     dagreLib: DagreModule,
-    dag: DAG,
-    embeddedDAGs: ReadonlyMap<string, DAG>,
+    dag: DAGType,
+    embeddedDAGs: ReadonlyMap<string, DAGType>,
     prefix: string,
     visited: ReadonlySet<string>,
-    opts: CompositeLayoutOptions,
+    opts: CompositeLayoutOptionsType,
   ): Resolved {
     const rankSep    = opts.rankSep    ?? CompositeLayout.DEFAULT_RANK_SEP;
     const nodeSep    = opts.nodeSep    ?? CompositeLayout.DEFAULT_NODE_SEP;
@@ -257,7 +257,7 @@ export class CompositeLayout {
 
     // ── Step 3: collect final positions ──────────────────────────────────
 
-    const positions = new Map<string, NodePosition>();
+    const positions = new Map<string, NodePositionType>();
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
       const nodeId = PlacementUtils.idIn(prefix, placement.name);
@@ -301,7 +301,7 @@ export class CompositeLayout {
    * Node half-dimensions are added so the BB encloses the visual node area.
    */
   private static boundingBox(
-    positions: ReadonlyMap<string, NodePosition>,
+    positions: ReadonlyMap<string, NodePositionType>,
     nodeSizes: ReadonlyMap<string, { width: number; height: number }>,
     defaultW: number,
     defaultH: number,

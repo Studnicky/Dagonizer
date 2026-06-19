@@ -13,9 +13,9 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
@@ -23,31 +23,24 @@ export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered', Archi
   readonly name = 'group-by-year';
   readonly outputs = ['ordered'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {
-      context.services.logger.info('group-by-year: nothing to reorder');
       return NodeOutputBuilder.of('ordered');
     }
     const indexed = state.candidates.map((candidate, position) => ({ candidate, position }));
     indexed.sort((a, b) => {
       const ya = a.candidate.book.publication.firstPublishYear;
       const yb = b.candidate.book.publication.firstPublishYear;
-      if (ya === undefined && yb === undefined) return a.position - b.position;
-      if (ya === undefined) return 1;
-      if (yb === undefined) return -1;
+      // Unknown publication year (null) sorts last; ties keep original position.
+      if (ya === null && yb === null) return a.position - b.position;
+      if (ya === null) return 1;
+      if (yb === null) return -1;
       if (ya !== yb) return ya - yb;
       return a.position - b.position;
     });
-    const ordered: Candidate[] = indexed.map((entry) => entry.candidate);
+    const ordered: CandidateType[] = indexed.map((entry) => entry.candidate);
     state.candidates = ordered;
     state.shortlist  = ordered;
-    const first = ordered[0];
-    const last  = ordered[ordered.length - 1];
-    if (first !== undefined && last !== undefined) {
-      const firstYear = first.book.publication.firstPublishYear !== undefined ? String(first.book.publication.firstPublishYear) : '?';
-      const lastYear  = last.book.publication.firstPublishYear  !== undefined ? String(last.book.publication.firstPublishYear)  : '?';
-      context.services.logger.info(`group-by-year: ${String(ordered.length)} works (${firstYear} → ${lastYear})`);
-    }
     return NodeOutputBuilder.of('ordered');
   }
 }

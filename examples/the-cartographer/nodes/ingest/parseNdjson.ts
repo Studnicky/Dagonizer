@@ -13,7 +13,10 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
+import type { GeoErrorRecordType } from '../../errors/GeoErrorRecord.ts';
+
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -22,20 +25,25 @@ export class ParseNdjsonNode extends ScalarNode<CartographerState, 'normalized' 
   readonly 'name' = 'parse-ndjson';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'invalid'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized' | 'invalid'>> {
     // Use decompressed text when available (gzip path), else the raw payload.
     const text = state.decodedText.length > 0 ? state.decodedText : state.currentSource.payload;
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
     const records: Array<Record<string, unknown>> = [];
+    const lineErrors: GeoErrorRecordType[] = [];
     for (const line of lines) {
       try {
         const parsed: unknown = JSON.parse(line);
         if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
           records.push(parsed as Record<string, unknown>);
         }
-      } catch {
-        // Skip a malformed line; the rest of the source still ingests.
+      } catch (caught) {
+        // Capture the malformed line as data; the rest of the source still ingests.
+        lineErrors.push(GeoErrorRecord.capture('parse-ndjson', caught, `source=${state.currentSource.sourceId}`));
       }
+    }
+    if (lineErrors.length > 0) {
+      state.capturedErrors = [...state.capturedErrors, ...lineErrors];
     }
     if (records.length === 0) {
       return NodeOutputBuilder.of('invalid');

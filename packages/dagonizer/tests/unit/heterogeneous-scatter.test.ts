@@ -14,14 +14,14 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
-import type { GatherRecord } from '../../src/core/GatherStrategies.js';
+import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
+import type { GatherRecordType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 
@@ -41,7 +41,7 @@ class HeterogeneousState extends NodeStateBase {
   /** Per-provider failure messages (parent state). Distinct from base `errors`. */
   failMessages: string[] = [];
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       'providers':      [...this.providers],
       'providerResult': this.providerResult,
@@ -50,7 +50,7 @@ class HeterogeneousState extends NodeStateBase {
     };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     if (Array.isArray(snap['providers']))              this.providers     = snap['providers'] as string[];
     if (typeof snap['providerResult'] === 'string')    this.providerResult = snap['providerResult'];
     if (Array.isArray(snap['results']))                this.results        = snap['results'] as string[];
@@ -65,7 +65,7 @@ class HeterogeneousState extends NodeStateBase {
 class DispatchNode extends ScalarNode<HeterogeneousState, 'success' | 'empty'> {
   readonly name = 'dispatch';
   readonly outputs = ['success', 'empty'] as const;
-  protected async executeOne(state: HeterogeneousState): Promise<NodeOutputInterface<'success' | 'empty'>> {
+  protected async executeOne(state: HeterogeneousState): Promise<NodeOutputType<'success' | 'empty'>> {
     const provider = state.getMetadata<string>('currentItem') ?? 'unknown';
     switch (provider) {
       case 'alpha': {
@@ -102,13 +102,13 @@ class FlatMergeGather extends GatherStrategy {
   readonly name = 'flat-merge-test';
 
   override reduce(
-    _config: GatherConfig,
+    _config: GatherConfigType,
     batch: Parameters<GatherStrategy['reduce']>[1],
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     for (const item of batch) {
-      const record: GatherRecord<NodeStateInterface> = item.state;
+      const record: GatherRecordType<NodeStateInterface> = item.state;
       const existingResults = accessor.get<string[]>(state, 'results')      ?? [];
       const existingFails   = accessor.get<string[]>(state, 'failMessages') ?? [];
 
@@ -178,7 +178,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
     class EmptyDispatchNode extends ScalarNode<HeterogeneousState, 'success' | 'empty'> {
       readonly name = 'empty-dispatch';
       readonly outputs = ['success', 'empty'] as const;
-      protected async executeOne(_state: HeterogeneousState): Promise<NodeOutputInterface<'success' | 'empty'>> {
+      protected async executeOne(_state: HeterogeneousState): Promise<NodeOutputType<'success' | 'empty'>> {
         return { 'errors': [], 'output': 'empty' };
       }
     }

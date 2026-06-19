@@ -17,7 +17,7 @@ seeAlso:
   - text: 'Contract-derived flows'
 
     link: '../guide/derive'
-    description: 'generate the Archivist DAG from `OperationContract`s'
+    description: 'generate the Archivist DAG from `OperationContractType`s'
 
   - text: 'Visualization'
 

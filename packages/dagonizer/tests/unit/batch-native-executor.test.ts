@@ -16,21 +16,21 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
+import type { ItemType } from '../../src/entities/batch/Item.js';
+import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/dag/DAG.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { DAGType } from '../../src/entities/dag/DAG.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // ===========================================================================
 // DAG builder helpers
 // ===========================================================================
 
-function makeDAG(name: string, entrypoint: string, nodes: DAG['nodes']): DAG {
+function makeDAG(name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType {
   return {
     '@context': DAG_CONTEXT,
     '@id': `urn:noocodex:dag:${name}`,
@@ -42,7 +42,7 @@ function makeDAG(name: string, entrypoint: string, nodes: DAG['nodes']): DAG {
   };
 }
 
-function singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAG['nodes'][number] {
+function singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
   return {
     '@id': `urn:noocodex:dag:${dag}/node/${name}`,
     '@type': 'SingleNode',
@@ -52,7 +52,7 @@ function singleNode(dag: string, name: string, node: string, outputs: Record<str
   };
 }
 
-function terminalNode(dag: string, name: string, outcome: 'completed' | 'failed'): DAG['nodes'][number] {
+function terminalNode(dag: string, name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
   return {
     '@id': `urn:noocodex:dag:${dag}/node/${name}`,
     '@type': 'TerminalNode',
@@ -67,7 +67,7 @@ function embedNode(
   childDag: string,
   outputs: Record<string, string>,
   stateMapping: { input: Record<string, string>; output: Record<string, string> },
-): DAG['nodes'][number] {
+): DAGType['nodes'][number] {
   return {
     '@id': `urn:noocodex:dag:${dag}/node/${name}`,
     '@type': 'EmbeddedDAGNode',
@@ -129,9 +129,9 @@ function makeFanOutNode(name: string, values: number[]): MonadicNode<ValueState,
       this.name = nodeName;
     }
 
-    override async execute(batch: Batch<ValueState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'out', ValueState>> {
+    override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', ValueState>> {
       const source = batch.row(0).state;
-      const items: Array<Item<ValueState>> = [];
+      const items: Array<ItemType<ValueState>> = [];
       for (let i = 0; i < this.values.length; i++) {
         const clone = source.clone();
         const v = this.values[i] as number;
@@ -161,7 +161,7 @@ function makeAccumulatorNode(name: string, collected: ValueState[]): MonadicNode
       this.name = nodeName;
     }
 
-    override async execute(batch: Batch<ValueState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', ValueState>> {
+    override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
       for (const item of batch) {
         this.collected.push(item.state);
       }
@@ -193,9 +193,9 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
       readonly name = 'dispatch';
       readonly outputs = ['high', 'low'] as const;
 
-      override async execute(batch: Batch<ValueState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'high' | 'low', ValueState>> {
-        const high: Array<Item<ValueState>> = [];
-        const low: Array<Item<ValueState>> = [];
+      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'high' | 'low', ValueState>> {
+        const high: Array<ItemType<ValueState>> = [];
+        const low: Array<ItemType<ValueState>> = [];
         for (const item of batch) {
           if (item.state.value > 0) {
             high.push(item);
@@ -215,7 +215,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
       readonly name = 'high-branch';
       readonly outputs = ['done'] as const;
 
-      override async execute(batch: Batch<ValueState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', ValueState>> {
+      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
         for (const item of batch) {
           item.state.value += 100;
           item.state.log.push('high');
@@ -231,7 +231,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
       readonly name = 'low-branch';
       readonly outputs = ['done'] as const;
 
-      override async execute(batch: Batch<ValueState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', ValueState>> {
+      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
         for (const item of batch) {
           item.state.value -= 100;
           item.state.log.push('low');
@@ -248,7 +248,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
       readonly name = 'converge';
       readonly outputs = ['done'] as const;
 
-      override async execute(batch: Batch<ValueState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', ValueState>> {
+      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
         convergeFirings.push(batch.size);
         for (const item of batch) {
           item.state.value *= 2;
@@ -325,9 +325,9 @@ void describe('Batch-native executor — Fix 1: multi-item batch reaches differe
       readonly name = 'router';
       readonly outputs = ['success-path', 'failure-path'] as const;
 
-      override async execute(batch: Batch<ValueState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'success-path' | 'failure-path', ValueState>> {
-        const success: Array<Item<ValueState>> = [];
-        const failure: Array<Item<ValueState>> = [];
+      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'success-path' | 'failure-path', ValueState>> {
+        const success: Array<ItemType<ValueState>> = [];
+        const failure: Array<ItemType<ValueState>> = [];
         for (const item of batch) {
           if (item.state.value > 0) {
             success.push(item);
@@ -398,7 +398,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
         super();
       }
 
-      override async execute(batch: Batch<ValueState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', ValueState>> {
+      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
         for (const item of batch) {
           this.seen.push(item.state.value);
           item.state.value += 10;
@@ -463,7 +463,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
       readonly name = 'inc42';
       readonly outputs = ['done'] as const;
 
-      override async execute(batch: Batch<ValueState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', ValueState>> {
+      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
         for (const item of batch) {
           item.state.value += 10;
         }
@@ -497,7 +497,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
       readonly name = 'entry-node';
       readonly outputs = ['ok'] as const;
 
-      override async execute(batch: Batch<ValueState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'ok', ValueState>> {
+      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'ok', ValueState>> {
         const result = new Map<'ok', Batch<ValueState>>();
         result.set('ok', batch);
         return result;

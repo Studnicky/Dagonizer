@@ -5,8 +5,8 @@
  * exercised by the existing suite:
  *
  *   TST-16: NodeStateBase.restoreData with a malformed snapshot — silent-skip.
- *   TST-17: DAGHandoff stateSnapshotRef (by-reference) publishing path.
- *   TST-18: registerBundle unbound-role warning idempotency.
+ *   TST-17: DAGHandoffType stateSnapshotRef (by-reference) publishing path.
+ *   TST-18: registerBundle/registerDAG unbound container role → throws DAGError.
  *   TST-19: Checkpoint.restoreStores with a store type/version mismatch.
  *   TST-20: SignalComposer.compose with a pre-aborted signal.
  *   TST-15: Abort mid-scatter dag-body (contained): checkpoint survives abort.
@@ -16,15 +16,21 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
+import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
+import type { DagTaskInterface } from '../../src/container/DagTask.js';
+import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
+import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
-import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
-import type { ScatterProgress } from '../../src/Dagonizer.js';
+import { Dagonizer } from '../../src/Dagonizer.js';
+import type { ScatterProgressType } from '../../src/Dagonizer.js';
+import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAGHandoff } from '../../src/entities/handoff/DAGHandoff.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGHandoffType } from '../../src/entities/handoff/DAGHandoff.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
+import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { SignalComposer } from '../../src/runtime/SignalComposer.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
@@ -37,11 +43,11 @@ class TypedState extends NodeStateBase {
   count: number = 0;
   label: string = '';
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return { 'count': this.count, 'label': this.label };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     // Contract: silently skip fields whose types don't match. Do not throw.
     const c = snap['count'];
     if (typeof c === 'number') this.count = c;
@@ -53,7 +59,7 @@ class TypedState extends NodeStateBase {
 void describe('TST-16: NodeStateBase.restoreData — malformed snapshot silent-skip contract', () => {
   void it('silently skips a field with wrong type (string where number expected)', () => {
     // Build a snapshot where count is a string instead of number.
-    const malformed: JsonObject = {
+    const malformed: JsonObjectType = {
       'metadata': {},
       'retries': {},
       'warnings': [],
@@ -69,7 +75,7 @@ void describe('TST-16: NodeStateBase.restoreData — malformed snapshot silent-s
 
   void it('silently skips a missing field — default value is preserved', () => {
     // Build a snapshot with no count field at all.
-    const missing: JsonObject = {
+    const missing: JsonObjectType = {
       'metadata': {},
       'retries': {},
       'warnings': [],
@@ -92,7 +98,7 @@ void describe('TST-16: NodeStateBase.restoreData — malformed snapshot silent-s
   });
 });
 
-// ── TST-17: DAGHandoff stateSnapshotRef (by-reference) publishing path ────────
+// ── TST-17: DAGHandoffType stateSnapshotRef (by-reference) publishing path ────────
 //
 // The dispatcher always publishes by-value. The by-ref envelope variant is
 // defined in the schema for size-limited transports where state is written
@@ -101,26 +107,26 @@ void describe('TST-16: NodeStateBase.restoreData — malformed snapshot silent-s
 //   (b) The resulting by-reference envelope satisfies Validator.dagHandoff.is().
 //   (c) The envelope carries `stateSnapshotRef`, not inline `stateSnapshot`.
 
-void describe('TST-17: DAGHandoff stateSnapshotRef publishing path', () => {
-  void it('a channel that rewrites to by-ref envelope produces a valid DAGHandoff', async () => {
+void describe('TST-17: DAGHandoffType stateSnapshotRef publishing path', () => {
+  void it('a channel that rewrites to by-ref envelope produces a valid DAGHandoffType', async () => {
     // Simulate an external state store that assigns a ref URI when state is
     // written. The channel receives the by-value envelope, writes state to the
     // mock store, and re-publishes a by-ref envelope.
-    const stored: Map<string, JsonObject> = new Map();
+    const stored: Map<string, JsonObjectType> = new Map();
     let refCounter = 0;
 
-    const receivedEnvelopes: DAGHandoff[] = [];
+    const receivedEnvelopes: DAGHandoffType[] = [];
 
     class ByRefChannel {
-      async publish(handoff: DAGHandoff): Promise<void> {
+      async publish(handoff: DAGHandoffType): Promise<void> {
         // Write the state to the mock external store.
         const ref = `urn:test:snapshot:${++refCounter}`;
         if ('stateSnapshot' in handoff) {
-          const byValue = handoff as { stateSnapshot: JsonObject };
+          const byValue = handoff as { stateSnapshot: JsonObjectType };
           stored.set(ref, byValue.stateSnapshot);
         }
         // Build a by-ref envelope (no stateSnapshot field).
-        const byRefEnvelope: DAGHandoff = {
+        const byRefEnvelope: DAGHandoffType = {
           'dagName':          handoff.dagName,
           'terminalName':     handoff.terminalName,
           'terminalOutput':   handoff.terminalOutput,
@@ -136,10 +142,10 @@ void describe('TST-17: DAGHandoff stateSnapshotRef publishing path', () => {
     class NoopNode extends ScalarNode<NodeStateBase, 'done'> {
       readonly name = 'noop';
       readonly outputs = ['done'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
     }
 
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:ref-handoff',
       '@type': 'DAG',
@@ -187,9 +193,9 @@ void describe('TST-17: DAGHandoff stateSnapshotRef publishing path', () => {
       'stateSnapshotRef must be the URI assigned by the channel',
     );
 
-    // The by-ref envelope must satisfy the DAGHandoff schema.
+    // The by-ref envelope must satisfy the DAGHandoffType schema.
     assert.ok(Validator.dagHandoff.is(envelope),
-      `by-ref envelope must satisfy DAGHandoff schema; errors: ${JSON.stringify(Validator.dagHandoff.errors(envelope))}`);
+      `by-ref envelope must satisfy DAGHandoffType schema; errors: ${JSON.stringify(Validator.dagHandoff.errors(envelope))}`);
 
     // The state was actually stored at the ref.
     const ref = (envelope as { stateSnapshotRef: string }).stateSnapshotRef;
@@ -197,29 +203,21 @@ void describe('TST-17: DAGHandoff stateSnapshotRef publishing path', () => {
   });
 });
 
-// ── TST-18: registerBundle unbound-role warning idempotency ──────────────────
+// ── TST-18: registerBundle node-body scatter without container role ──────────
 
-void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
-  void it('registers once → exactly one warning per unbound container role per registration', () => {
-    const warnings: string[] = [];
-
-    class WarningCapture extends Dagonizer<NodeStateBase> {
-      protected override onContractWarning(message: string): void {
-        warnings.push(message);
-      }
-    }
-
-    const dispatcher = new WarningCapture();
+void describe('TST-18: registerBundle node-body scatter without container role', () => {
+  void it('registers a node-body scatter (no container declared) without throwing', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
 
     class NoopBundleNode extends ScalarNode<NodeStateBase, 'done'> {
       readonly name = 'noop-bundle';
       readonly outputs = ['done'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
     }
     const noop = new NoopBundleNode();
 
     // DAG with a scatter placement declaring an unbound container role.
-    const dag: DAG = Validator.dag.validate({
+    const dag: DAGType = Validator.dag.validate({
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:warn-test',
       '@type': 'DAG',
@@ -242,40 +240,32 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
       ],
     });
 
-    // Register the bundle once — 0 unbound-role warnings (node-body scatter
-    // does not emit a container warning because container is not declared).
-    dispatcher.registerBundle({ 'nodes': [noop], 'dags': [dag] });
-    const afterFirst = warnings.length;
-
-    // Registering a duplicate DAG should throw (already registered), so we
-    // register a second bundle that references the same pattern but a fresh DAG.
-    // The test pinned behaviour: warnings.length is deterministic per call.
-    assert.ok(
-      afterFirst === 0,
-      `node-body scatter without container= field must emit 0 warnings; got ${afterFirst}`,
-    );
+    // A node-body scatter declares no container role, so it never trips the
+    // unbound-role check: registration succeeds without throwing.
+    assert.doesNotThrow(() => dispatcher.registerBundle({ 'nodes': [noop], 'dags': [dag] }));
   });
 
-  void it('DAG with explicit unbound container role emits one warning on registerDAG', () => {
-    const warnings: string[] = [];
-
-    class CapturingDispatcher extends Dagonizer<NodeStateBase> {
-      protected override onContractWarning(message: string): void {
-        warnings.push(message);
-      }
-    }
-
-    const dispatcher = new CapturingDispatcher();
+  void it('DAG with explicit unbound container role throws DAGError on registerDAG', () => {
+    // Bind one role so the dispatcher is in container-dispatch mode; the DAG
+    // below declares a DIFFERENT, unbound role, which is the misalignment.
+    const fakeContainer: DagContainerInterface<NodeStateBase> = {
+      async runDag(_task: DagTaskInterface<NodeStateBase, unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+        return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
+      },
+    };
+    const dispatcher = new Dagonizer<NodeStateBase>({
+      'containers': { 'bound-worker-role': fakeContainer },
+    });
 
     class NoopUnboundNode extends ScalarNode<NodeStateBase, 'done'> {
       readonly name = 'noop-unbound';
       readonly outputs = ['done'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
     }
     dispatcher.registerNode(new NoopUnboundNode());
 
     // Register a minimal inner DAG so the semantic validator accepts the dag-body reference.
-    const innerDag: DAG = {
+    const innerDag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:inner-worker',
       '@type': 'DAG',
@@ -296,7 +286,7 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
     dispatcher.registerDAG(innerDag);
 
     // DAG with a dag-body scatter declaring an explicit container role that is NOT bound.
-    const dag: DAG = Validator.dag.validate({
+    const dag: DAGType = Validator.dag.validate({
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:unbound-role-test',
       '@type': 'DAG',
@@ -320,16 +310,17 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
       ],
     });
 
-    dispatcher.registerDAG(dag);
-
-    // Exactly one warning for the one unbound-role placement.
-    assert.equal(warnings.length, 1,
-      `expected 1 unbound-role warning; got ${warnings.length}`);
-    assert.ok(warnings[0]?.includes('unbound-worker-role'),
-      `warning must name the unbound role; got: "${warnings[0]}"`);
-
-    // Warning count must remain at 1 (no double-warn on the same registration).
-    assert.equal(warnings.length, 1, 'warning count must remain 1 after registration');
+    // The placement declares container role 'unbound-worker-role' which is not
+    // bound in this dispatcher's containers → fatal misalignment (D2 = throw).
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      (err: unknown) => {
+        assert.ok(err instanceof DAGError);
+        assert.ok(err.message.includes('unbound-worker-role'),
+          `error must name the unbound role; got: "${err.message}"`);
+        return true;
+      },
+    );
   });
 });
 
@@ -456,7 +447,7 @@ void describe('TST-20: SignalComposer.compose — pre-aborted signal', () => {
 // container (same pattern as scatter-containment.test.ts). Verifies:
 //   (a) cursor lands on the scatter placement name after abort.
 //   (b) SCATTER_PROGRESS_KEY is preserved in state (not cleared).
-//   (c) The partial ScatterProgress has fewer acked items than total items.
+//   (c) The partial ScatterProgressType has fewer acked items than total items.
 
 void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survives', () => {
   void it('aborted scatter with dag-body: cursor on scatter node, checkpoint preserved', async () => {
@@ -466,11 +457,11 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
       items: number[] = [];
       value: number = 0;
 
-      protected override snapshotData(): JsonObject {
+      protected override snapshotData(): JsonObjectType {
         return { 'items': [...this.items], 'value': this.value };
       }
 
-      protected override restoreData(snap: JsonObject): void {
+      protected override restoreData(snap: JsonObjectType): void {
         const items = snap['items'];
         if (Array.isArray(items)) this.items = items.filter((x): x is number => typeof x === 'number');
         const v = snap['value'];
@@ -487,7 +478,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     class CounterNode extends ScalarNode<ScatterAbortState, 'done'> {
       readonly name = 'counter';
       readonly outputs = ['done'] as const;
-      protected async executeOne(state: ScatterAbortState, context: NodeContextInterface): Promise<NodeOutputInterface<'done'>> {
+      protected async executeOne(state: ScatterAbortState, context: NodeContextType): Promise<NodeOutputType<'done'>> {
         callCount++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.value = item;
@@ -505,7 +496,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     }
 
     const bodyDagName = 'abort-body-dag';
-    const bodyDag: DAG = Validator.dag.validate({
+    const bodyDag: DAGType = Validator.dag.validate({
       '@context': DAG_CONTEXT,
       '@id': 'urn:test:abort-body-dag',
       '@type': 'DAG',
@@ -525,7 +516,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     });
 
     // Parent scatter DAG: concurrency=1, dag-body scatter, no container (in-process).
-    const parentDag: DAG = Validator.dag.validate({
+    const parentDag: DAGType = Validator.dag.validate({
       '@context': DAG_CONTEXT,
       '@id': 'urn:test:abort-parent-dag',
       '@type': 'DAG',
@@ -578,7 +569,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
       'SCATTER_PROGRESS_KEY must be preserved after abort (checkpoint must survive)');
 
     // (c) Fewer than all items were acked.
-    const entry = progress['fan'] as ScatterProgress | undefined;
+    const entry = progress['fan'] as ScatterProgressType | undefined;
     assert.ok(entry !== undefined, 'progress must have an entry for placement "fan"');
     const ackedCount = entry.mode === 'bounded'
       ? entry.watermark + entry.aheadAcked.length

@@ -41,10 +41,10 @@ import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const pipelineDeliveryConfirmationDAG: DAG = new DAGBuilder('pipeline-delivery-confirmation', '1.0')
+export const pipelineDeliveryConfirmationDAG: DAGType = new DAGBuilder('pipeline-delivery-confirmation', '1.0')
 
   // 1. parse-variant: decode the event union into a typed delivery-confirmation shape.
   .node('parse-variant', parseVariant, {
@@ -59,14 +59,16 @@ export const pipelineDeliveryConfirmationDAG: DAG = new DAGBuilder('pipeline-del
     'error':   'rejected',
   }, {
     'inputs': {
-      'raw':       'raw',
-      'canonical': 'canonical',
-      'routing':   'routing',
+      'raw':            'raw',
+      'canonical':      'canonical',
+      'routing':        'routing',
+      'capturedErrors': 'capturedErrors',
     },
     'outputs': {
-      'geoContext':  'geoContext',
-      'resolvedGeo': 'resolvedGeo',
-      'routing':     'routing',
+      'geoContext':     'geoContext',
+      'resolvedGeo':    'resolvedGeo',
+      'routing':        'routing',
+      'capturedErrors': 'capturedErrors',
     },
   })
 
@@ -121,7 +123,7 @@ export const pipelineDeliveryConfirmationDAG: DAG = new DAGBuilder('pipeline-del
 
   .build();
 
-export const pipelineDeliveryConfirmationBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const pipelineDeliveryConfirmationBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [parseVariant, canonicalizeCore, canonicalizeRecipient, confirmDelivery, enrichLeg, routeRedaction, aggregateEvent],
   'dags':  [pipelineDeliveryConfirmationDAG],
 };

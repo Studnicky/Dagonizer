@@ -12,18 +12,23 @@ export {
   GatherStrategies,
   GatherStrategy,
 } from './GatherStrategies.js';
-export type { GatherExecution, GatherRecord } from './GatherStrategies.js';
 
 export {
   OutcomeReducer,
   OutcomeReducers,
 } from './OutcomeReducers.js';
-export type { OutcomeRecord } from './OutcomeReducers.js';
 
-export { Batch } from './batch/Batch.js';
-export type { Item, ItemId } from './batch/Item.js';
-export { RoutedBatchBuilder } from './batch/RoutedBatch.js';
-export type { RoutedBatch } from './batch/RoutedBatch.js';
+// `GatherExecutionType`/`GatherRecordType`/`OutcomeRecordType` are adapter contracts.
+// They have a single authoritative subpath — `@studnicky/dagonizer/contracts`.
+// `./core` no longer re-exports them.
+
+// `Batch`/`Item`/`ItemIdType`/`RoutedBatchType` are entities. They live at
+// `entities/batch/` so `contracts/` can import them inward without reaching up
+// into `core/`; re-exported here to preserve the `./core` public subpath.
+export { Batch } from '../entities/batch/Batch.js';
+export type { ItemType, ItemIdType } from '../entities/batch/Item.js';
+export { RoutedBatchBuilder } from '../entities/batch/RoutedBatchType.js';
+export type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 export { MonadicNode } from './MonadicNode.js';
 export { ScalarNode } from './ScalarNode.js';
 export { NodeRunner } from './NodeRunner.js';

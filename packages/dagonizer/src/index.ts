@@ -9,10 +9,17 @@ export { NodeStateBase } from './NodeStateBase.js';
 // =============================================================================
 
 export {
-  GatherStrategyName,
-  ScatterOutput,
-  MetadataKey,
-  Output,
+  GatherStrategyNames,
+  ScatterOutputNames,
+  MetadataKeys,
+  OutputNames,
+  NodeTypes,
+} from './entities/index.js';
+export type {
+  GatherStrategyNameType,
+  ScatterOutputType,
+  MetadataKeyType,
+  OutputType,
   NodeType,
 } from './entities/index.js';
 
@@ -35,8 +42,8 @@ export {
 
 export { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 export type {
-  DAGLifecycleEvent,
-  DAGLifecycleState,
+  DAGLifecycleEventType,
+  DAGLifecycleStateType,
 } from './lifecycle/DAGLifecycleState.js';
 
 // =============================================================================
@@ -45,9 +52,9 @@ export type {
 
 export { DAGBuilder } from './builder/index.js';
 export type {
-  Path,
-  ScatterOptionsInterface,
-  TypedEmbeddedDAGOptionsInterface,
+  PathType,
+  ScatterOptionsType,
+  TypedEmbeddedDAGOptionsType,
 } from './builder/index.js';
 
 // =============================================================================
@@ -57,14 +64,18 @@ export type {
 export {
   Validator,
 } from './validation/index.js';
-export type { EntityValidator } from './validation/index.js';
+export type { EntityValidatorInterface } from './validation/index.js';
 
 // =============================================================================
 // ENTITIES (schemas + derived types)
 // =============================================================================
 
+// `DAGDocument` is engine-coupled (it validates against the compiled
+// `Validator`), so it lives at `src/dag/` and ships through `./dag`. It is
+// re-exported on the root barrel so the existing root-barrel `DAGDocument`
+// export resolves unchanged.
+export { DAGDocument } from './dag/index.js';
 export {
-  DAGDocument,
   Placement,
   NodeErrorBuilder,
   NodeOutputBuilder,
@@ -92,6 +103,7 @@ export {
   OutputSchema,
   NodeTypeSchema,
   BackoffStrategySchema,
+  BackoffStrategyNames,
   DAG_CONTEXT,
   ExecutorIntermediateSchema,
   ExecutionRequestSchema,
@@ -99,32 +111,38 @@ export {
   DAGHandoffSchema,
 } from './entities/index.js';
 export type {
+  BackoffStrategyType,
   DAGNodeType,
-  ScatterNode,
-  EmbeddedDAGNode,
-  GatherConfig,
-  DAG,
-  DAGLifecycleStateData,
-  SingleNode,
-  TerminalNode,
-  PhaseNode,
-  Node,
-  NodeContext,
-  NodeError,
-  NodeWarning,
-  NodeOutput,
-  NodeResult,
-  NodeStateData,
-  ExecutionResult,
-  InterruptionInfo,
-  ValidationResult,
-  DAGErrorJSON,
-  JsonSchema,
-  JsonSchemaObject,
-  JsonSchemaTypeName,
-  ExecutorIntermediate,
-  ExecutionRequest,
-  ExecutionResponse,
+  ScatterNodeType,
+  EmbeddedDAGNodeType,
+  GatherConfigType,
+  DAGType,
+  DAGLifecycleStateDataType,
+  SingleNodeType,
+  TerminalNodeType,
+  PhaseNodeType,
+  NodeUnionType,
+  NodeContextWireType,
+  NodeContextType,
+  NodeErrorWireType,
+  NodeErrorType,
+  NodeWarningType,
+  NodeOutputWireType,
+  NodeOutputType,
+  NodeResultWireType,
+  NodeResultType,
+  NodeStateDataType,
+  ExecutionResultWireType,
+  ExecutionResultType,
+  InterruptionInfoType,
+  ValidationResultType,
+  DAGErrorJSONType,
+  JsonSchemaType,
+  JsonSchemaObjectType,
+  JsonSchemaTypeNameType,
+  ExecutorIntermediateType,
+  ExecutionRequestType,
+  ExecutionResponseType,
 } from './entities/index.js';
 export {
   BridgeMessageSchema,
@@ -136,10 +154,10 @@ export {
   SystemInfo,
 } from './entities/index.js';
 export type {
-  BridgeMessage,
-  RecommendedWorkerCountConfig,
-  DAGHandoff,
-  SystemInfoProbes,
+  BridgeMessageType,
+  RecommendedWorkerCountConfigType,
+  DAGHandoffType,
+  SystemInfoProbesType,
 } from './entities/index.js';
 
 // =============================================================================
@@ -147,7 +165,6 @@ export type {
 // =============================================================================
 
 export {
-  BackoffStrategy,
   Clock,
   RealTimeScheduler,
   RetryPolicy,
@@ -155,10 +172,10 @@ export {
   Timeout,
 } from './runtime/index.js';
 export type {
-  ClockProvider,
+  ClockProviderInterface,
   ErrorConstructorType,
-  RetryPolicyOptionsInterface,
-  SchedulerProvider,
+  RetryPolicyOptionsType,
+  SchedulerProviderInterface,
 } from './runtime/index.js';
 
 // =============================================================================
@@ -166,7 +183,7 @@ export type {
 // =============================================================================
 
 export { InMemoryChannel } from './channels/index.js';
-export type { InMemoryChannelOptions } from './channels/index.js';
+export type { InMemoryChannelOptionsType } from './channels/index.js';
 
 // =============================================================================
 // CONTAINER
@@ -174,16 +191,17 @@ export type { InMemoryChannelOptions } from './channels/index.js';
 
 export { DagTask } from './container/DagTask.js';
 export { DagHost } from './container/DagHost.js';
-export type { DagHostOptions } from './container/DagHost.js';
+export type { DagHostOptionsType } from './container/DagHost.js';
 export { DagContainerBase, DAG_CONTAINER_DEFAULTS } from './container/DagContainerBase.js';
-export type { DagContainerOptions } from './container/DagContainerBase.js';
+export type { DagContainerOptionsType } from './container/DagContainerBase.js';
 
 // =============================================================================
 // FUNCTIONS
 // =============================================================================
 
-export { Dagonizer, SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './Dagonizer.js';
-export type { DagonizerOptionsInterface, ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from './Dagonizer.js';
+export { Dagonizer } from './Dagonizer.js';
+export { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './entities/constants/ProgressKey.js';
+export type { DagonizerOptionsType, ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './Dagonizer.js';
 export { Execution } from './Execution.js';
 
 // =============================================================================
@@ -194,16 +212,16 @@ export {
   GatherStrategies,
   GatherStrategy,
 } from './core/GatherStrategies.js';
-export type { GatherExecution, GatherRecord } from './core/GatherStrategies.js';
+export type { GatherExecutionType, GatherRecordType } from './contracts/GatherExecution.js';
 export {
   OutcomeReducers,
   OutcomeReducer,
 } from './core/OutcomeReducers.js';
-export type { OutcomeRecord } from './core/OutcomeReducers.js';
-export { Batch } from './core/batch/Batch.js';
-export type { Item, ItemId } from './core/batch/Item.js';
-export { RoutedBatchBuilder } from './core/batch/RoutedBatch.js';
-export type { RoutedBatch } from './core/batch/RoutedBatch.js';
+export type { OutcomeRecordType } from './contracts/OutcomeRecord.js';
+export { Batch } from './entities/batch/Batch.js';
+export type { ItemType, ItemIdType } from './entities/batch/Item.js';
+export { RoutedBatchBuilder } from './entities/batch/RoutedBatchType.js';
+export type { RoutedBatchType } from './entities/batch/RoutedBatchType.js';
 export { MonadicNode } from './core/MonadicNode.js';
 export { ScalarNode } from './core/ScalarNode.js';
 export { NodeRunner } from './core/NodeRunner.js';
@@ -212,21 +230,22 @@ export { NodeRunner } from './core/NodeRunner.js';
 // CHECKPOINT
 // =============================================================================
 
-export { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from './checkpoint/index.js';
-export type { CaptureOptionsInterface, RecalledCheckpoint } from './checkpoint/index.js';
+export { Checkpoint, CheckpointRestoreAdapter, MemoryCheckpointStore } from './checkpoint/index.js';
+export type { CaptureOptionsType, RecalledCheckpointType } from './checkpoint/index.js';
 
 // =============================================================================
 // STORE
 // =============================================================================
 
 export { BaseStore, MemoryStore, StoreError, TypedStore } from './store/index.js';
-export type { BaseStoreOptions, StoreErrorClassification } from './store/index.js';
+export type { BaseStoreOptionsType, StoreErrorClassificationType } from './store/index.js';
 
 // =============================================================================
 // CLASS-SHAPE INTERFACES (colocated with their class)
 // =============================================================================
 
-export type { DagonizerInterface, DispatcherBundle } from './Dagonizer.js';
+export type { DagonizerInterface } from './Dagonizer.js';
+export type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 export type { NodeStateInterface } from './NodeStateBase.js';
 export type { DAGErrorInterface } from './errors/DAGError.js';
 
@@ -236,16 +255,18 @@ export type { DAGErrorInterface } from './errors/DAGError.js';
 
 export type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
-export type { DagOutcomeInterface } from './contracts/DagOutcomeInterface.js';
+export type { DagOutcomeType } from './contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
-export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
-export type { Chainable } from './contracts/Chainable.js';
+export type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
+export type { ChainableType } from './contracts/ChainableType.js';
 export type { NodeInterface } from './contracts/NodeInterface.js';
-export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
+export type { OperationContractFragmentType } from './contracts/OperationContractFragment.js';
 export { EMPTY_CONTRACT_FRAGMENT } from './contracts/OperationContractFragment.js';
-export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contracts/RemoteStore.js';
-export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './contracts/Snapshottable.js';
-export type { Store } from './contracts/Store.js';
+export type { RemoteStoreInterface } from './contracts/RemoteStoreInterface.js';
+export type { RemoteStoreEndpointType } from './contracts/RemoteStoreEndpoint.js';
+export type { RemoteStoreLeaseType } from './contracts/RemoteStoreLease.js';
+export type { SnapshottableInterface, StoreSnapshotType, StoreSnapshotEntryType } from './contracts/SnapshottableInterface.js';
+export type { StoreInterface } from './contracts/StoreInterface.js';
 
 // Adapter infrastructure ships exclusively via @studnicky/dagonizer/adapter.
 // See: AdapterDescriptor, BaseAdapter, BaseEmbedder, Classifications,
@@ -257,9 +278,4 @@ export type { Store } from './contracts/Store.js';
 // ENTITY-NARROWING INTERFACES (colocated with entity)
 // =============================================================================
 
-export type { NodeContextInterface } from './entities/node/NodeContext.js';
-export type { NodeErrorInterface } from './entities/node/NodeError.js';
-export type { NodeOutputInterface } from './entities/node/NodeOutput.js';
-export type { NodeResultInterface } from './entities/node/NodeResult.js';
-export type { ExecutionResultInterface } from './entities/execution/ExecutionResult.js';
-export type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
+export type { SingleNodePlacementType } from './entities/dag/SingleNode.js';

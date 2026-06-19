@@ -68,14 +68,14 @@ import {
 } from '../nodes/scouts.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
 /**
  * The `book-search-scatter` DAG: one packaged unit that any parent DAG
  * can reference via `.embeddedDAG('placement-name', 'book-search-scatter', routes)`.
  */
-export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '1.0')
+export const BookSearchScatterDAG: DAGType = new DAGBuilder('book-search-scatter', '1.0')
 
   // ── 1. extract-query ─────────────────────────────────────────────────────
   // LLM parses the raw visitor question into structured search terms.
@@ -193,7 +193,7 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
  * Register with `dispatcher.registerBundle(bookSearchScatterBundle)`; nodes
  * register before the DAG so the validator resolves all node references.
  */
-export const bookSearchScatterBundle: DispatcherBundle<ArchivistState, ArchivistServices> = {
+export const bookSearchScatterBundle: DispatcherBundleType<ArchivistState, ArchivistServices> = {
   'nodes': [
     extractQuery, decideTools, recallCandidates, scoutDispatch,
     rankCandidates, mergeCandidates, recordFindings, hasCitationsGate,

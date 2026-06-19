@@ -30,23 +30,24 @@
  *     (e.g. `lang`, `first_publish_year`) without a schema change.
  */
 
-import type { ToolDefinition } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { ToolDefinitionType } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 import { HttpTransport } from '@studnicky/dagonizer/tool';
-import type { Tool } from '@studnicky/dagonizer/tool';
-import type { Candidate } from '@studnicky/dagonizer-book-entities';
+import type { ToolInterface } from '@studnicky/dagonizer/tool';
+import type { CandidateType } from '@studnicky/dagonizer-book-entities';
 
 
-import { OPENLIBRARY_ENDPOINT, narrowOpenLibraryResponse, OpenLibraryDocs } from './openLibraryTypes.js';
+import { OpenLibraryResponseValidator } from './OpenLibraryResponse.js';
+import { OPENLIBRARY_ENDPOINT, OpenLibraryDocs } from './openLibraryTypes.js';
 
-interface SubjectSearchInput extends Record<string, unknown> {
+type SubjectSearchInputType = Record<string, unknown> & {
   readonly subject: string;
   readonly limit?: number;
   readonly lang?: string;
-}
+};
 
-export class SubjectSearchTool implements Tool<SubjectSearchInput, readonly Candidate[]> {
-  readonly definition: ToolDefinition = {
+export class SubjectSearchTool implements ToolInterface<SubjectSearchInputType, readonly CandidateType[]> {
+  readonly definition: ToolDefinitionType = {
     'name': 'subject_search',
     'description':
       'Search OpenLibrary by subject or theme. Use when the visitor describes a book by what it is *about* (themes, mood, plot motifs, setting) rather than by title, author, or ISBN. For example: "labyrinth", "haunted house", "minotaur", "cosmic horror", "unreliable narrator". Do NOT use for title or author keyword searches; use web_search_books for those.',
@@ -79,7 +80,7 @@ export class SubjectSearchTool implements Tool<SubjectSearchInput, readonly Cand
     'strict': true,
   };
 
-  async execute(input: SubjectSearchInput, options?: AbortableOptionsInterface): Promise<readonly Candidate[]> {
+  async execute(input: SubjectSearchInputType, options?: AbortableOptionsType): Promise<readonly CandidateType[]> {
     const signal = options?.signal;
     const limit = Math.max(1, Math.min(20, input.limit ?? 8));
     const params = new URLSearchParams({
@@ -90,11 +91,11 @@ export class SubjectSearchTool implements Tool<SubjectSearchInput, readonly Cand
       params.set('lang', input.lang);
     }
 
-    const raw = await HttpTransport.getJson<unknown>(
+    const payload = await HttpTransport.getJson(
       `${OPENLIBRARY_ENDPOINT}?${params.toString()}`,
+      OpenLibraryResponseValidator,
       { ...(signal !== undefined && { signal }) },
     );
-    const payload = narrowOpenLibraryResponse(raw);
     return OpenLibraryDocs.candidates(payload.docs ?? [], 'subject-search', 'openlibrary-subject');
   }
 }

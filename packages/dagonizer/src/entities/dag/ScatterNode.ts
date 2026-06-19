@@ -19,8 +19,8 @@
  * body is a `dag` body (a `{dag: string}` body). A node body with `container`
  * set is a validation error — a node body is one node, not a DAG, and cannot be
  * contained. Bound at dispatcher construction via
- * `DagonizerOptionsInterface.containers`. When declared but unbound, the scatter
- * dag-body resolves to in-process and fires a `contractWarning`.
+ * `DagonizerOptionsType.containers`. A declared-but-unbound role throws a
+ * `DAGError` at `registerDAG` time.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -71,7 +71,7 @@ export const ScatterNodeSchema = {
     },
     // Logical container role. Honored only for dag-body scatter.
     // A node-body scatter with container set is a validation error.
-    // Bound at dispatcher construction via DagonizerOptionsInterface.containers.
+    // Bound at dispatcher construction via DagonizerOptionsType.containers.
     'container': { 'type': 'string', 'minLength': 1 },
     // Input-batching policy. When present, the scatter buffers items by keyField
     // and releases a batch per key when capacity is reached or idleMs elapses.
@@ -94,7 +94,7 @@ export const ScatterNodeSchema = {
 } as const;
 
 /** TypeScript type derived from `ScatterNodeSchema` via `json-schema-to-ts`. */
-export type ScatterNode = FromSchema<typeof ScatterNodeSchema>;
+export type ScatterNodeType = FromSchema<typeof ScatterNodeSchema>;
 
 /** Empty state-mapping input: the default when `stateMapping` is absent on a `ScatterNode`. */
 const SCATTER_EMPTY_INPUT: Readonly<Record<string, string>> = Object.freeze({});
@@ -112,7 +112,7 @@ export class ScatterNodeDefaults {
    * Return the `stateMapping.input` map, defaulting to an empty mapping when
    * `stateMapping` is absent.
    */
-  static inputMapping(node: ScatterNode): Readonly<Record<string, string>> {
+  static inputMapping(node: ScatterNodeType): Readonly<Record<string, string>> {
     return node.stateMapping?.input ?? SCATTER_EMPTY_INPUT;
   }
 }

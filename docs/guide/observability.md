@@ -28,13 +28,12 @@ Protected `on*` hooks on `Dagonizer` fire at every execution boundary. Subclass 
 | `Dagonizer.onError` | `@studnicky/dagonizer` | Fires when a signal fires or a node throws |
 | `Dagonizer.onPhaseEnter` | `@studnicky/dagonizer` | Fires before a `pre`/`post` phase placement runs |
 | `Dagonizer.onPhaseExit` | `@studnicky/dagonizer` | Fires after a `pre`/`post` phase placement completes |
-| `Dagonizer.onContractWarning` | `@studnicky/dagonizer` | Fires for non-fatal contract-registry warnings at `registerDAG` |
 
 ## Subclass hooks
 
 <<< @/../examples/the-archivist/ObservedArchivist.ts#observed-archivist
 
-All eight default to no-ops. Override only the hooks you need. Multi-observer composition (logger plus tracer plus metrics) is a subclass concern: write it into the subclass body.
+All seven default to no-ops. Override only the hooks you need. Multi-observer composition (logger plus tracer plus metrics) is a subclass concern: write it into the subclass body.
 
 ## Hook contracts
 
@@ -47,7 +46,6 @@ All eight default to no-ops. Override only the hooks you need. Multi-observer co
 | `onError` | When a signal fires or a node throws | `nodeName`, `error`, `state`, `placementPath` |
 | `onPhaseEnter` | Before a `pre`/`post` phase placement runs | `dagName`, `phase`, `placementName`, `state`, `placementPath` |
 | `onPhaseExit` | After a `pre`/`post` phase placement completes | `dagName`, `phase`, `placementName`, `state`, `placementPath` |
-| `onContractWarning` | When `registerDAG` produces a non-fatal warning | `message: string` |
 
 `onFlowEnd` is always called, even when the flow fails or is cancelled. `onError` may fire before `onFlowEnd` in the same execution.
 

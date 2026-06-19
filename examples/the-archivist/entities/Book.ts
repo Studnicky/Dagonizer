@@ -8,12 +8,12 @@
  */
 
 export type {
-  Book,
-  BookAvailability,
-  BookIdentity,
-  BookInput,
-  BookPublication,
-  Candidate,
-  Money,
+  BookAvailabilityType,
+  BookIdentityType,
+  BookInputType,
+  BookPublicationType,
+  BookType,
+  CandidateType,
+  MoneyType,
 } from '@studnicky/dagonizer-book-entities';
 export { BookBuilder } from '@studnicky/dagonizer-book-entities';

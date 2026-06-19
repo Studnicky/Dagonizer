@@ -8,7 +8,7 @@
  *
  * The example uses a flaky operation that fails on the first two attempts and
  * succeeds on the third. Exponential backoff delays are 100ms → 200ms (300ms
- * total virtual time). Both ClockProvider and Scheduler are restored to real
+ * total virtual time). Both ClockProviderInterface and Scheduler are restored to real
  * time after the demonstration.
  *
  * DAG definition (re-exported providers): examples/dags/virtual-clock.ts
@@ -16,7 +16,8 @@
  * Run: npx tsx examples/virtual-clock.ts
  */
 
-import { BackoffStrategy, Clock, RetryPolicy, Scheduler } from '@studnicky/dagonizer/runtime';
+import { BackoffStrategyNames } from '@studnicky/dagonizer';
+import { Clock, RetryPolicy, Scheduler } from '@studnicky/dagonizer/runtime';
 import { VirtualClockProvider, VirtualScheduler } from '@studnicky/dagonizer/testing';
 
 process.stdout.write('\n=== VirtualClock: deterministic retry under programmatic time ===\n\n');
@@ -39,7 +40,7 @@ let attempts = 0;
 
 const policy = RetryPolicy.from({
   maxAttempts:  5,
-  strategy:     BackoffStrategy.EXPONENTIAL,
+  strategy:     BackoffStrategyNames.EXPONENTIAL,
   baseDelay:    100,    // 100ms → 200ms → 400ms …
   jitterFactor: 0,      // no jitter: delays are exact, enabling deterministic advance
 });

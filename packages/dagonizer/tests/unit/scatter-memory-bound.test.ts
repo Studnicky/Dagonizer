@@ -3,11 +3,11 @@
  * scatter body inner-node stages were buffered into `intermediateResults` and
  * streamed to the top-level consumer.
  *
- * Root cause (fixed): `_ScatterPoolDriverImpl.executeItem` (in-process DAG body
+ * Root cause (fixed): `ScatterPoolDriver.executeItem` (in-process DAG body
  * path) was pushing every yield from the body `runNodes` generator into
  * `scatterCtx.intermediateResults`, annotating each with the scatter name prefix
  * (`${scatter.name}.${nr.nodeName}`). The scatter's returned
- * `NodeResultInterface.intermediateResults` then contained all N×M inner-node
+ * `NodeResultType.intermediateResults` then contained all N×M inner-node
  * stages. The top-level `runNodes` loop yielded every element of
  * `intermediateResults` before yielding the scatter's own result, producing
  * O(N×M) stages to the consumer.
@@ -28,17 +28,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
-import type { GatherExecution } from '../../src/core/GatherStrategies.js';
+import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
+import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
-import type { NodeResultInterface } from '../../src/entities/node/NodeResult.js';
+import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
+import type { NodeResultType } from '../../src/entities/node/NodeResult.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -49,11 +49,11 @@ class BoundState extends NodeStateBase {
   items: number[] = [];
   counter: number = 0;
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return { 'items': [...this.items], 'counter': this.counter };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     if (Array.isArray(snap['items'])) this.items = snap['items'] as number[];
     if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
   }
@@ -64,7 +64,7 @@ class BoundState extends NodeStateBase {
 class BodyNodeA extends ScalarNode<BoundState, 'next'> {
   readonly name = 'body-a';
   readonly outputs = ['next'] as const;
-  protected async executeOne(state: BoundState): Promise<NodeOutputInterface<'next'>> {
+  protected async executeOne(state: BoundState): Promise<NodeOutputType<'next'>> {
     state.counter += 1;
     return { 'errors': [], 'output': 'next' };
   }
@@ -73,7 +73,7 @@ class BodyNodeA extends ScalarNode<BoundState, 'next'> {
 class BodyNodeB extends ScalarNode<BoundState, 'next'> {
   readonly name = 'body-b';
   readonly outputs = ['next'] as const;
-  protected async executeOne(): Promise<NodeOutputInterface<'next'>> {
+  protected async executeOne(): Promise<NodeOutputType<'next'>> {
     return { 'errors': [], 'output': 'next' };
   }
 }
@@ -81,7 +81,7 @@ class BodyNodeB extends ScalarNode<BoundState, 'next'> {
 class BodyNodeC extends ScalarNode<BoundState, 'done'> {
   readonly name = 'body-c';
   readonly outputs = ['done'] as const;
-  protected async executeOne(): Promise<NodeOutputInterface<'done'>> {
+  protected async executeOne(): Promise<NodeOutputType<'done'>> {
     return { 'errors': [], 'output': 'done' };
   }
 }
@@ -92,18 +92,18 @@ class BoundGather extends GatherStrategy {
   readonly name = 'bound-memory-gather';
 
   reduce(
-    _config: GatherConfig,
+    _config: GatherConfigType,
     batch: Parameters<GatherStrategy['reduce']>[1],
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     const current = accessor.get<number>(state, 'counter') ?? 0;
     accessor.set(state, 'counter', current + batch.size);
   }
 
   override async finalize(
-    _config: GatherConfig,
-    _execution: GatherExecution<NodeStateBase>,
+    _config: GatherConfigType,
+    _execution: GatherExecutionType<NodeStateBase>,
   ): Promise<void> {
     // no-op: compactable gather; state already populated via reduce
   }
@@ -115,7 +115,7 @@ GatherStrategies.register(new BoundGather());
 
 const BODY_DAG_NAME = 'bound-memory-body';
 
-const bodyDag: DAG = Validator.dag.validate({
+const bodyDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id':      `urn:noocodex:dag:${BODY_DAG_NAME}`,
   '@type':    'DAG',
@@ -155,7 +155,7 @@ const bodyDag: DAG = Validator.dag.validate({
 
 // ── Parent DAG: scatter with DAG body ─────────────────────────────────────────
 
-function makeBoundDag(name: string, concurrency: number): DAG {
+function makeBoundDag(name: string, concurrency: number): DAGType {
   return Validator.dag.validate({
     '@context': DAG_CONTEXT,
     '@id':      `urn:noocodex:dag:${name}`,
@@ -326,7 +326,7 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
     const execution = dispatcher.execute('bound-intermediates-N200', state);
-    let scatterResult: NodeResultInterface<BoundState> | null = null;
+    let scatterResult: NodeResultType<BoundState> | null = null;
 
     for await (const stage of execution) {
       if (stage.nodeName === 'fan') {
@@ -385,7 +385,7 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     const live = process.memoryUsage().heapUsed;
 
     // Peak during scatter must be < 50 MB above baseline.
-    // Before the fix, N=3000 / M=3 would produce 9,000 NodeResultInterface objects
+    // Before the fix, N=3000 / M=3 would produce 9,000 NodeResultType objects
     // in-flight, each carrying state references — easily 100+ MB above baseline.
     // After the fix, peak should be <50 MB above baseline (a generous margin that
     // covers the N clone states concurrently in-flight with concurrency=4).

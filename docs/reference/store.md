@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`Store`, `StoreSnapshot`, `StoreSnapshotEntry`'
+    description: '`StoreInterface`, `StoreSnapshotType`, `StoreSnapshotEntryType`'
   - text: 'Reference: Checkpoint'
     link: './checkpoint'
     description: '`Checkpoint.capture` and `restoreStores` for store snapshots'
@@ -22,68 +22,69 @@ alongside parent state for deterministic resume.
 
 ```ts twoslash
 import { BaseStore, MemoryStore, StoreError } from '@studnicky/dagonizer/store';
-import type { Snapshottable, Store, StoreSnapshot, StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
+import type { SnapshottableInterface, StoreInterface, StoreSnapshotType, StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
 ```
 
 ---
 
-## Interface: `Snapshottable`
+## Interface: `SnapshottableInterface`
 
 `@studnicky/dagonizer/contracts`
 
 The capability checkpointing depends on: a named container that serializes
-itself to a `StoreSnapshot` and rehydrates from one. It declares only two
+itself to a `StoreSnapshotType` and rehydrates from one. It declares only two
 methods.
 
 ```ts twoslash
-import type { StoreSnapshot } from '@studnicky/dagonizer/contracts';
+import type { StoreSnapshotType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-interface Snapshottable {
-  snapshot(): Promise<StoreSnapshot>;
-  restore(snapshot: StoreSnapshot): Promise<void>;
+interface SnapshottableInterface {
+  snapshot(): Promise<StoreSnapshotType>;
+  restore(snapshot: StoreSnapshotType): Promise<void>;
 }
 ```
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `snapshot()` | `Promise<StoreSnapshot>` | Capture the entire state as a typed envelope. |
+| `snapshot()` | `Promise<StoreSnapshotType>` | Capture the entire state as a typed envelope. |
 | `restore(snapshot)` | `Promise<void>` | Repopulate from a snapshot. Implementations validate `type` and `version` before applying entries. |
 
-`Snapshottable` is decoupled from the key-value surface on purpose.
+`SnapshottableInterface` is decoupled from the key-value surface on purpose.
 `Checkpoint.capture(dag, result, { stores })` and `Checkpoint.restoreStores(map)`
-take `Record<string, Snapshottable>`, so a non-KV backing (an RDF triple
+take `Record<string, SnapshottableInterface>`, so a non-KV backing (an RDF triple
 store, a vector index, an append-only projection) can ride along in a
-checkpoint without implementing `get`/`set`/`has`/`delete`/`update`. `Store
-extends Snapshottable`, so every `Store` is also `Snapshottable`. The
-`StoreSnapshot` / `StoreSnapshotEntry` envelopes live with this capability.
+checkpoint without implementing `get`/`set`/`has`/`delete`/`update`. `StoreInterface
+extends SnapshottableInterface`, so every `StoreInterface` is also `SnapshottableInterface`. The
+`StoreSnapshotType` / `StoreSnapshotEntryType` envelopes live with this capability.
 
 ---
 
-## Interface: `Store`
+## Interface: `StoreInterface`
 
 `@studnicky/dagonizer/contracts`
 
-Shared key-value store contract, extending `Snapshottable`. Every method returns
+Shared key-value store contract, extending `SnapshottableInterface`. Every method returns
 a `Promise`. There is no sync variant; always `await` store calls.
 
 Values are typed per-call via the method's `<T>` parameter. There is no
-class-level value generic. A `Store` instance can hold heterogeneous values
+class-level value generic. A `StoreInterface` instance can hold heterogeneous values
 under different keys; type narrowing happens at the call site.
 
 ```ts twoslash
-import type { JsonValue, StoreSnapshot, StoreSnapshotEntry } from '@studnicky/dagonizer/entities';
+import type { JsonValueType } from '@studnicky/dagonizer/entities';
+import type { StoreSnapshotType, StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-interface Snapshottable {
-  snapshot(): Promise<StoreSnapshot>;
-  restore(snapshot: StoreSnapshot): Promise<void>;
+interface SnapshottableInterface {
+  snapshot(): Promise<StoreSnapshotType>;
+  restore(snapshot: StoreSnapshotType): Promise<void>;
 }
-interface Store extends Snapshottable {
-  get<T extends JsonValue>(key: string): Promise<T | null>;
-  set<T extends JsonValue>(key: string, value: T): Promise<void>;
+interface StoreInterface extends SnapshottableInterface {
+  get<T extends JsonValueType>(key: string): Promise<T | null>;
+  set<T extends JsonValueType>(key: string, value: T): Promise<void>;
   has(key: string): Promise<boolean>;
   delete(key: string): Promise<boolean>;
-  update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T>;
-  // snapshot() / restore() inherited from Snapshottable.
+  update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T>;
+  // snapshot() / restore() inherited from SnapshottableInterface.
   connect?(): Promise<void>;
   disconnect?(): Promise<void>;
 }
@@ -96,7 +97,7 @@ interface Store extends Snapshottable {
 | `has(key)` | `Promise<boolean>` | Return `true` when the key exists. |
 | `delete(key)` | `Promise<boolean>` | Remove the key. Returns `true` when the key existed. |
 | `update(key, fn)` | `Promise<T>` | Atomic read-modify-write. `fn` receives the current value (or `undefined` when absent) and returns the new value. Implementations are responsible for atomicity. |
-| `snapshot()` / `restore(snapshot)` | inherited | From `Snapshottable`: capture / repopulate the whole store. |
+| `snapshot()` / `restore(snapshot)` | inherited | From `SnapshottableInterface`: capture / repopulate the whole store. |
 | `connect?()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
 | `disconnect?()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
 
@@ -106,20 +107,20 @@ Implementations are responsible for delivering this. See the `update` note on
 
 ---
 
-## Interface: `StoreSnapshot`
+## Interface: `StoreSnapshotType`
 
 `@studnicky/dagonizer/contracts`
 
-Versioned snapshot envelope returned by `Snapshottable.snapshot()` and consumed
-by `Snapshottable.restore()`.
+Versioned snapshot envelope returned by `SnapshottableInterface.snapshot()` and consumed
+by `SnapshottableInterface.restore()`.
 
 ```ts twoslash
-import type { StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
+import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-interface StoreSnapshot {
+interface StoreSnapshotType {
   readonly version: number;
   readonly type:    string;
-  readonly entries: readonly StoreSnapshotEntry[];
+  readonly entries: readonly StoreSnapshotEntryType[];
 }
 ```
 
@@ -131,18 +132,18 @@ interface StoreSnapshot {
 
 ---
 
-## Interface: `StoreSnapshotEntry`
+## Interface: `StoreSnapshotEntryType`
 
 `@studnicky/dagonizer/contracts`
 
-A single entry in a `StoreSnapshot`.
+A single entry in a `StoreSnapshotType`.
 
 ```ts twoslash
-import type { JsonValue } from '@studnicky/dagonizer/entities';
+import type { JsonValueType } from '@studnicky/dagonizer/entities';
 // ---cut---
-interface StoreSnapshotEntry {
+interface StoreSnapshotEntryType {
   readonly key:   string;
-  readonly value: JsonValue;
+  readonly value: JsonValueType;
 }
 ```
 
@@ -163,18 +164,18 @@ Concrete stores implement the `protected abstract` hooks listed below.
 
 ```ts twoslash
 import { BaseStore } from '@studnicky/dagonizer/store';
-import type { BaseStoreOptions } from '@studnicky/dagonizer/store';
+import type { BaseStoreOptionsType } from '@studnicky/dagonizer/store';
 // ---cut---
 // BaseStore is an abstract class — extend it:
 abstract class MyStore extends BaseStore {
-  protected constructor(options?: BaseStoreOptions) { super(options); }
+  protected constructor(options?: BaseStoreOptionsType) { super(options); }
 }
 ```
 
-### `BaseStoreOptions`
+### `BaseStoreOptionsType`
 
 ```ts twoslash
-interface BaseStoreOptions {
+interface BaseStoreOptionsType {
   readonly namespace?: string;
 }
 ```
@@ -213,8 +214,8 @@ arguments receive the qualified key (namespace prefix already applied).
 | `performSet` | `(qualifiedKey: string, value: T) → Promise<void>` | Write a single value. |
 | `performHas` | `(qualifiedKey: string) → Promise<boolean>` | Check existence. |
 | `performDelete` | `(qualifiedKey: string) → Promise<boolean>` | Remove key; return `true` when it existed. |
-| `performSnapshotEntries` | `() → Promise<readonly StoreSnapshotEntry[]>` | Return all entries for the snapshot. |
-| `performRestoreEntries` | `(entries: readonly StoreSnapshotEntry[]) → Promise<void>` | Repopulate from entries (clear first, then apply). |
+| `performSnapshotEntries` | `() → Promise<readonly StoreSnapshotEntryType[]>` | Return all entries for the snapshot. |
+| `performRestoreEntries` | `(entries: readonly StoreSnapshotEntryType[]) → Promise<void>` | Repopulate from entries (clear first, then apply). |
 
 ### Protected utility
 
@@ -242,13 +243,13 @@ const v = await store.get<string>('greeting'); // 'hello'
 
 ```ts twoslash
 import { MemoryStore } from '@studnicky/dagonizer/store';
-import type { BaseStoreOptions } from '@studnicky/dagonizer/store';
+import type { BaseStoreOptionsType } from '@studnicky/dagonizer/store';
 // ---cut---
-const opts: BaseStoreOptions = { namespace: 'my-ns' };
+const opts: BaseStoreOptionsType = { namespace: 'my-ns' };
 const store = new MemoryStore(opts);
 ```
 
-Accepts the same `BaseStoreOptions` as `BaseStore` (namespace prefix).
+Accepts the same `BaseStoreOptionsType` as `BaseStore` (namespace prefix).
 
 ### Snapshot type and version
 
@@ -287,9 +288,9 @@ object so callers discriminate by `reason` without `instanceof` chains.
 
 ```ts twoslash
 import { StoreError, MemoryStore } from '@studnicky/dagonizer/store';
-import type { StoreSnapshot } from '@studnicky/dagonizer/contracts';
+import type { StoreSnapshotType } from '@studnicky/dagonizer/contracts';
 declare const store: MemoryStore;
-declare const incompatibleSnapshot: StoreSnapshot;
+declare const incompatibleSnapshot: StoreSnapshotType;
 // ---cut---
 try {
   await store.restore(incompatibleSnapshot);
@@ -348,42 +349,42 @@ type StoreErrorClassification =
 `BaseStore` throws `INCOMPATIBLE_SNAPSHOT` automatically on type/version
 mismatch. `KEY_NOT_FOUND` and `BACKING_ERROR` are available for plugin authors
 to classify errors from their backing stores. `LEASE_DENIED`, `LEASE_EXPIRED`,
-and `UNREACHABLE` are for `RemoteStore` implementations.
+and `UNREACHABLE` are for `RemoteStoreInterface` implementations.
 
 ---
 
-## Interface: `RemoteStore`
+## Interface: `RemoteStoreInterface`
 
 `@studnicky/dagonizer/contracts`
 
-Extension of `Store` for distributed or network-backed implementations.
+Extension of `StoreInterface` for distributed or network-backed implementations.
 Plugins that talk over HTTP, gRPC, or WebSocket, or that replicate state
-across processes, implement `RemoteStore` rather than `Store` directly.
-Single-process and single-node-durable stores implement `Store` directly.
+across processes, implement `RemoteStoreInterface` rather than `StoreInterface` directly.
+Single-process and single-node-durable stores implement `StoreInterface` directly.
 
 ```ts twoslash
-import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@studnicky/dagonizer/contracts';
+import type { RemoteStoreInterface, RemoteStoreEndpointType, RemoteStoreLeaseType } from '@studnicky/dagonizer/contracts';
 ```
 
 ```ts twoslash
-import type { Store, RemoteStoreEndpoint, RemoteStoreLease } from '@studnicky/dagonizer/contracts';
+import type { StoreInterface, RemoteStoreEndpointType, RemoteStoreLeaseType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-interface RemoteStore extends Store {
-  readonly endpoint: RemoteStoreEndpoint;
-  acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLease>;
-  releaseLease(lease: RemoteStoreLease): Promise<void>;
+interface RemoteStoreInterface extends StoreInterface {
+  readonly endpoint: RemoteStoreEndpointType;
+  acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLeaseType>;
+  releaseLease(lease: RemoteStoreLeaseType): Promise<void>;
   health(timeoutMs: number): Promise<boolean>;
 }
 ```
 
-The engine consumes a `RemoteStore` through the `Store` surface. The extra
+The engine consumes a `RemoteStoreInterface` through the `StoreInterface` surface. The extra
 methods are observability and coordination primitives the dispatcher uses when
 distributed execution is wired in.
 
-### Interface: `RemoteStoreEndpoint`
+### Interface: `RemoteStoreEndpointType`
 
 ```ts twoslash
-interface RemoteStoreEndpoint {
+interface RemoteStoreEndpointType {
   readonly url:    string;
   readonly region: string;
 }
@@ -396,10 +397,10 @@ interface RemoteStoreEndpoint {
 
 `region` is required. Implementations that have no region concept supply `''`.
 
-### Interface: `RemoteStoreLease`
+### Interface: `RemoteStoreLeaseType`
 
 ```ts twoslash
-interface RemoteStoreLease {
+interface RemoteStoreLeaseType {
   readonly token:     string;
   readonly expiresAt: number;
   readonly subject:   string;
@@ -420,12 +421,12 @@ leasing is enforced.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `endpoint` | `RemoteStoreEndpoint` | Endpoint descriptor; surfaces in observability and placement decisions. |
-| `acquireLease(subject, ttlMs, maxWaitMs)` | `Promise<RemoteStoreLease>` | Acquire exclusive write authority for `subject` with a lifetime of `ttlMs` ms. Waits up to `maxWaitMs` for an active holder to release before throwing `StoreError(LEASE_DENIED)`. |
+| `endpoint` | `RemoteStoreEndpointType` | Endpoint descriptor; surfaces in observability and placement decisions. |
+| `acquireLease(subject, ttlMs, maxWaitMs)` | `Promise<RemoteStoreLeaseType>` | Acquire exclusive write authority for `subject` with a lifetime of `ttlMs` ms. Waits up to `maxWaitMs` for an active holder to release before throwing `StoreError(LEASE_DENIED)`. |
 | `releaseLease(lease)` | `Promise<void>` | Release a previously-acquired lease. Idempotent: releasing an already-expired lease is a no-op. |
 | `health(timeoutMs)` | `Promise<boolean>` | Health probe. Returns `true` when the endpoint is reachable and the backing responds within `timeoutMs`. Implementations must not throw on transport failure: return `false` so the dispatcher can route around an unhealthy store. |
 
-### Implementing `RemoteStore`
+### Implementing `RemoteStoreInterface`
 
 Extend `BaseStore` and implement the three additional methods plus the
 `endpoint` property:
@@ -440,12 +441,12 @@ Extend `BaseStore` and implement the three additional methods plus the
 
 `@studnicky/dagonizer/store`
 
-Schema-narrowed wrapper over any `Store`. Constrains keys to the declared
+Schema-narrowed wrapper over any `StoreInterface`. Constrains keys to the declared
 `Schema` and infers the value type from `Schema[K]`. Callers never specify
 `<T>` at the call site.
 
-`TypedStore` does not implement the `Store` contract (its `set` signature is
-narrower). Use `.inner` to access the underlying `Store` when you need the
+`TypedStore` does not implement the `StoreInterface` contract (its `set` signature is
+narrower). Use `.inner` to access the underlying `StoreInterface` when you need the
 wider, heterogeneous contract.
 
 ```ts
@@ -456,13 +457,13 @@ wider, heterogeneous contract.
 
 ```ts twoslash
 import { TypedStore, MemoryStore } from '@studnicky/dagonizer/store';
-import type { JsonValue } from '@studnicky/dagonizer/entities';
+import type { JsonValueType } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface MySchema { count: number; label: string; }
 const store = new TypedStore<MySchema>(new MemoryStore());
 ```
 
-`Schema` must be a `Record<string, JsonValue>`: every value type must be JSON-serializable.
+`Schema` must be a `Record<string, JsonValueType>`: every value type must be JSON-serializable.
 
 ### Methods
 
@@ -473,11 +474,11 @@ const store = new TypedStore<MySchema>(new MemoryStore());
 | `has(key)` | `Promise<boolean>` | Return `true` when the key exists. |
 | `delete(key)` | `Promise<boolean>` | Remove the key. Returns `true` when the key existed. |
 | `update(key, fn)` | `Promise<Schema[K]>` | Atomic read-modify-write. `fn` receives `Schema[K] \| undefined`, returns `Schema[K]`. |
-| `snapshot()` | `Promise<StoreSnapshot>` | Pass-through to the underlying Store. |
-| `restore(snapshot)` | `Promise<void>` | Pass-through to the underlying Store. |
-| `connect()` | `Promise<void>` | Pass-through to the underlying Store. |
-| `disconnect()` | `Promise<void>` | Pass-through to the underlying Store. |
-| `.inner` | `Store` | The underlying Store instance for un-narrowed operations. |
+| `snapshot()` | `Promise<StoreSnapshotType>` | Pass-through to the underlying `StoreInterface`. |
+| `restore(snapshot)` | `Promise<void>` | Pass-through to the underlying `StoreInterface`. |
+| `connect()` | `Promise<void>` | Pass-through to the underlying `StoreInterface`. |
+| `disconnect()` | `Promise<void>` | Pass-through to the underlying `StoreInterface`. |
+| `.inner` | `StoreInterface` | The underlying `StoreInterface` instance for un-narrowed operations. |
 
 All key parameters are constrained to `keyof Schema & string`. TypeScript
 rejects keys absent from the schema and values of the wrong type at compile

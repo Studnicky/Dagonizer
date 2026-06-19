@@ -40,7 +40,7 @@ The complete `BookSearchScatterDAG`, the sub-DAG the Archivist places three time
 - **`any-success` outcome reducer.** Routes `'success'` when at least one clone succeeded; routes `'error'` when every clone errored; routes `'empty'` when there were no source items.
 - **Scout gating via `state.toolPlan`.** Each scout checks `state.toolPlan` before making a network call. `decideTools` (an LLM call) populates the plan; scouts that find no matching plan entry return `'empty'` immediately. `wikipediaScout` is the exception; it runs on terms alone, always.
 - **`scoutRetry` pass-through.** Every scout calls `scoutRetry.run(() => tool.execute(..., context.signal), context.signal)`. The signal propagates from the dispatcher through the retry policy: if the parent flow is cancelled, retries abort mid-backoff.
-- **`bookSearchScatterBundle`.** The sub-DAG module exports a `DispatcherBundle` packaging the exact node set plus the sub-DAG; `dispatcher.registerBundle(bookSearchScatterBundle)` installs the nodes before the DAG, ahead of the parent.
+- **`bookSearchScatterBundle`.** The sub-DAG module exports a `DispatcherBundleType` packaging the exact node set plus the sub-DAG; `dispatcher.registerBundle(bookSearchScatterBundle)` installs the nodes before the DAG, ahead of the parent.
 
 See this in action in the [Archivist live demo](./the-archivist).
 

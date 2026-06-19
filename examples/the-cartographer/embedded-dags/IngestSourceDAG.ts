@@ -40,10 +40,10 @@ import { normalizeYamlDAG }  from './NormalizeYamlDAG.ts';
 import type { CartographerState }    from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const ingestSourceDAG: DAG = new DAGBuilder('ingest-source', '1.0')
+export const ingestSourceDAG: DAGType = new DAGBuilder('ingest-source', '1.0')
 
   // 1. select-source: read source from scatter metadata; route by compression.
   .node('select-source', selectSource, {
@@ -157,7 +157,7 @@ export const ingestSourceDAG: DAG = new DAGBuilder('ingest-source', '1.0')
 
   .build();
 
-export const ingestSourceBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const ingestSourceBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   // Normalize DAGs registered FIRST so the embeddedDAG placements above resolve.
   'nodes': [
     selectSource, decompress, routeFormat,

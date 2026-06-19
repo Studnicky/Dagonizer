@@ -20,7 +20,7 @@ export type NodeType = FromSchema<typeof NodeTypeSchema>;
 // → 'embedded' | 'scatter' | 'single'
 
 /** Node type identifiers. */
-export const NodeType = {
+export const NodeTypes = {
   'EMBEDDED': 'embedded',
   'SCATTER': 'scatter',
   'SINGLE': 'single',

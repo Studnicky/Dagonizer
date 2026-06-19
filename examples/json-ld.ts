@@ -6,11 +6,11 @@
  *   2. Serialize to pretty JSON (DAGDocument.serialize)
  *   3. Serialize to compact JSON (DAGDocument.serializeCompact)
  *   4. Load back from a JSON string (DAGDocument.load)
- *   5. Validate an already-parsed value (DAGDocument.fromValue)
+ *   5. Validate an already-parsed value (DAGDocument.ofValue)
  *   6. Persistence: file on disk, simulated database row, HTTP compact wire
  *
  * The serialized document is a JSON-LD 1.1 document with @context, @id,
- * and @type. DAGDocument.load / DAGDocument.fromValue are the only valid
+ * and @type. DAGDocument.load / DAGDocument.ofValue are the only valid
  * ingest boundaries; both validate against DAGSchema via Ajv 2020-12.
  *
  * Run: npx tsx examples/json-ld.ts
@@ -63,16 +63,16 @@ process.stdout.write(`nodes[0] @type:     ${reloaded.nodes[0]?.['@type']}\n`); /
 // #endregion round-trip
 
 // ---------------------------------------------------------------------------
-// fromValue: validate an already-parsed object (skips JSON.parse)
+// ofValue: validate an already-parsed object (skips JSON.parse)
 // ---------------------------------------------------------------------------
 
 // #region from-value-round-trip
-// DAGDocument.fromValue() is for callers that already decoded their input —
+// DAGDocument.ofValue() is for callers that already decoded their input —
 // a Postgres jsonb column, a YAML parser output, a decoded message envelope.
 // It skips JSON.parse and runs only the schema validation.
 const parsed: unknown = JSON.parse(json);
-const fromValue = DAGDocument.fromValue(parsed);
-process.stdout.write(`fromValue name: ${fromValue.name}\n`); // 'demo'
+const validated = DAGDocument.ofValue(parsed);
+process.stdout.write(`ofValue name: ${validated.name}\n`); // 'demo'
 // #endregion from-value-round-trip
 
 // ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ process.stdout.write(`loaded from file: ${loadedFromFile.name}\n`); // 'demo'
 // #region persistence-db
 // A database column (text or JSON) stores the serialized DAG body.
 // On read, pass the column value through DAGDocument.load (text) or
-// DAGDocument.fromValue (pre-parsed jsonb) to validate at the ingest boundary.
+// DAGDocument.ofValue (pre-parsed jsonb) to validate at the ingest boundary.
 const store = new Map<string, string>();
 store.set(original['@id'], DAGDocument.serialize(original));
 
@@ -135,4 +135,4 @@ process.stdout.write(`transformed: ${String(state.getMetadata('transformed'))}\n
 
 process.stdout.write('\nLesson: DAGDocument.serialize() + DAGDocument.load() is a lossless round-trip.\n');
 process.stdout.write('        The serialized document is a JSON-LD 1.1 doc: @context, @id, @type.\n');
-process.stdout.write('        DAGDocument.load / fromValue are the only valid ingest boundaries.\n');
+process.stdout.write('        DAGDocument.load / ofValue are the only valid ingest boundaries.\n');

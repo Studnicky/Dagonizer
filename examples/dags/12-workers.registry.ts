@@ -3,7 +3,7 @@
  *
  * The WorkerThreadContainer dynamic-imports this compiled file (the .js
  * build output under examples/dist/) inside each worker thread. DagHost
- * calls `registry.createBundle(servicesConfig)` to reconstruct the same
+ * calls `registry.instantiate(servicesConfig)` to reconstruct the same
  * bundle of nodes and DAGs that the parent dispatcher uses, ensuring the
  * worker runs an identical execution graph.
  *
@@ -18,13 +18,13 @@
 
 // #region registry
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
-import { CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import { CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import { dag, SquareWorkerNode, workerDag, WorkState } from './12-workers.js';
 
 const registry: RegistryModuleInterface = {
-  async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     return {
       "bundle": {
         "nodes": [new SquareWorkerNode()],
@@ -32,7 +32,7 @@ const registry: RegistryModuleInterface = {
       },
       "services":        undefined,
       "registryVersion": '1.0.0',
-      "restoreState":    CheckpointRestoreAdapterFn.fromFn((snapshot: JsonObject) => WorkState.restore(snapshot)),
+      "restoreState":    CheckpointRestoreAdapter.wrap((snapshot: JsonObjectType) => WorkState.restore(snapshot)),
     };
   },
 };

@@ -15,11 +15,11 @@ export const OutputSchema = {
 } as const;
 
 /** Union type derived from `OutputSchema` via `json-schema-to-ts`. */
-export type Output = FromSchema<typeof OutputSchema>;
+export type OutputType = FromSchema<typeof OutputSchema>;
 // → 'error' | 'success'
 
 /** Common operation output names. */
-export const Output = {
+export const OutputNames = {
   'ERROR': 'error',
   'SUCCESS': 'success',
-} as const satisfies Record<string, Output>;
+} as const satisfies Record<string, OutputType>;

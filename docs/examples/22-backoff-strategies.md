@@ -32,7 +32,7 @@ Each strategy run uses `VirtualScheduler` (from `@studnicky/dagonizer/testing`) 
 
 ## What it demonstrates
 
-- **`BackoffStrategy` enum.** Import from `@studnicky/dagonizer`. Pass to `RetryPolicy.from({ strategy: BackoffStrategy.EXPONENTIAL, ... })`.
+- **`BackoffStrategyNames` enum.** Import from `@studnicky/dagonizer`. Pass to `RetryPolicy.from({ strategy: BackoffStrategyNames.EXPONENTIAL, ... })`.
 - **`RetryPolicy.from(options)`.** Factory that builds a `RetryPolicy` from a plain options object. `jitterFactor: 0` makes the delay sequence exact and predictable for testing.
 - **`VirtualScheduler`.** Import from `@studnicky/dagonizer/testing`. Replace the real scheduler at dispatcher construction time; call `scheduler.advance(ms)` to drain pending timers without real waits. See [Example: Virtual clock](./virtual-clock) for the full setup.
 - **`RecordingPolicy`.** A `RetryPolicy` subclass that overrides `getDelay()` to capture the sequence. Real retries sleep these durations; the virtual scheduler drains them instantly.

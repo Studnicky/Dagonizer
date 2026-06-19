@@ -13,13 +13,13 @@
  *               outstanding send calls are silently dropped.
  */
 
-import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
+import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 
 export interface MessageChannelInterface {
   /** Send a message to the peer. Fire-and-forget; does not throw. */
-  send(message: BridgeMessage): void;
+  send(message: BridgeMessageType): void;
   /** Register the inbound message handler. Replaces any previous handler. */
-  onMessage(handler: (message: BridgeMessage) => void): void;
+  onMessage(handler: (message: BridgeMessageType) => void): void;
   /** Close the channel; severs both send and receive. */
   close(): void;
 }

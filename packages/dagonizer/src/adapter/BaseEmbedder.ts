@@ -6,7 +6,7 @@
  * unique to the embedding surface: `dimensions` and the `embed()` /
  * `embedBatch()` envelope that calls the abstract `performEmbed()`.
  *
- *   Embedder contract → BaseEmbedder ┐
+ *   EmbedderInterface contract → BaseEmbedder ┐
  *                                    ├─ embed() → retry-wrapped performEmbed()
  *                                    └─ classify(err) returns retryable/non-retryable
  *
@@ -19,27 +19,44 @@
  * the error taxonomy stay shared across the two surfaces.
  */
 
-import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
-import type { Embedder } from '../contracts/Embedder.js';
+import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
+import type { EmbedderInterface } from '../contracts/EmbedderInterface.js';
 import { SignalComposer } from '../runtime/SignalComposer.js';
 
-import { BaseAdapterCore, type BaseAdapterCoreOptions } from './BaseAdapterCore.js';
+import { BaseAdapterCore, type BaseAdapterCoreOptionsType } from './BaseAdapterCore.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 
-export abstract class BaseEmbedder extends BaseAdapterCore implements Embedder {
+/**
+ * Caller-facing options shared by every concrete embedder.
+ *
+ * Extends `BaseAdapterCoreOptionsType` (retry tuning) with the two fields every
+ * embedder exposes: `model` and `dimensions`. Both are caller overrides — the
+ * concrete embedder owns the provider-specific default and materialises a
+ * complete value by spreading its own `DEFAULTS` over the caller partial, so
+ * the base never needs a default for either. A concrete embedder extends this
+ * interface and adds only its own extras.
+ */
+export type BaseEmbedderOptionsType = BaseAdapterCoreOptionsType & {
+  /** Override the embedding model. The concrete embedder supplies the default. */
+  readonly model?: string;
+  /** Override the output dimensionality. The concrete embedder supplies the default. */
+  readonly dimensions?: number;
+}
+
+export abstract class BaseEmbedder extends BaseAdapterCore implements EmbedderInterface {
   readonly dimensions: number;
 
   protected constructor(
     id: string,
     displayName: string,
     dimensions: number,
-    options: BaseAdapterCoreOptions = {},
+    options: BaseAdapterCoreOptionsType = {},
   ) {
     super(id, displayName, options);
     this.dimensions = dimensions;
   }
 
-  async embed(text: string, options?: AbortableOptionsInterface): Promise<readonly number[]> {
+  async embed(text: string, options?: AbortableOptionsType): Promise<readonly number[]> {
     const signal = options?.signal ?? SignalComposer.never();
     return this.retryPolicy.run(async () => {
       try {
@@ -68,12 +85,36 @@ export abstract class BaseEmbedder extends BaseAdapterCore implements Embedder {
    * provider exposes a native batch endpoint override and post one
    * request for the whole batch.
    */
-  async embedBatch(texts: readonly string[], options?: AbortableOptionsInterface): Promise<readonly (readonly number[])[]> {
+  async embedBatch(texts: readonly string[], options?: AbortableOptionsType): Promise<readonly (readonly number[])[]> {
     const results: (readonly number[])[] = [];
     for (const t of texts) {
       results.push(await this.embed(t, options));
     }
     return results;
+  }
+
+  /**
+   * Fetch a JSON body at the embedder's HTTP boundary. Wraps `fetch`,
+   * re-throwing a `fetch()` rejection as a NETWORK-classified `LlmError`,
+   * classifying a non-ok response via `LlmError.classifyHttp`, and
+   * returning the parsed body typed `unknown`. The caller validates the
+   * `unknown` against its own provider schema before typed access — this
+   * method never casts the body to a wire type. `signal` is threaded
+   * explicitly into `fetch` so caller aborts propagate.
+   */
+  protected async fetchJson(url: string, init: RequestInit, signal: AbortSignal): Promise<unknown> {
+    let res: Response;
+    try {
+      res = await fetch(url, { ...init, signal });
+    } catch (err) {
+      throw LlmError.ofNetworkError(err);
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new LlmError(`${this.displayName} ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, { 'body': text }));
+    }
+    const body: unknown = await res.json();
+    return body;
   }
 
   /** Concrete embedder: perform the actual API call. `signal` is always a valid AbortSignal. */

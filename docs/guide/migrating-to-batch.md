@@ -1,7 +1,7 @@
 # Migrating to the batch contract
 
 Dagonizer's node contract is **batch-native**: a node consumes a `Batch<TState>`
-and returns a `RoutedBatch<TOutput>`. This page is the upgrade checklist from the
+and returns a `RoutedBatchType<TOutput>`. This page is the upgrade checklist from the
 older single-item (`execute(state) → NodeOutput`) contract. Most leaf nodes change
 a base class and a method name.
 

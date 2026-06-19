@@ -149,7 +149,7 @@ Timestamps are monotonic milliseconds from `Clock.monotonicMs()`. Use them for d
 6. Stops when routing produces `null` (normal completion) or when the signal fires (abort or timeout).
 7. Marks state `completed`, `cancelled`, or `timed_out` accordingly.
 8. For non-embedded runs: if the terminal placement name is bound in `channels`, builds a `DAGHandoff` envelope (by-value `stateSnapshot`, `correlationId`, `registryVersion`, `placementPath`) and publishes it to the bound `HandoffChannelInterface`. A publish failure is collected as a `HANDOFF_PUBLISH_FAILED` error; it does not change the returned `ExecutionResult` or the terminal outcome.
-9. Returns `ExecutionResultInterface` with `cursor` (next node name or `null`), `executedNodes`, `skippedNodes`, and final `state`.
+9. Returns `ExecutionResultType` with `cursor` (next node name or `null`), `executedNodes`, `skippedNodes`, and final `state`.
 
 `Execution` is both `PromiseLike` (awaitable) and `AsyncIterable` (iterable per node). Both modes share a single internal generator. The flow body runs exactly once.
 
@@ -242,7 +242,7 @@ Consumers extend these classes; the interface is what their subclasses implement
 
 What consumers implement to swap a backend or contribute behavior. Live at the root of `src/contracts/`. **Single source of truth**; never re-exported from sibling modules.
 
-Examples: `ClockProvider`, `SchedulerProvider`, `NodeInterface`, `ExecuteOptionsInterface`, `RetryPolicyOptionsInterface`, `ErrorConstructorType`, `DagContainerInterface`, `HandoffChannelInterface`, `RegistryModuleInterface`.
+Examples: `ClockProvider`, `SchedulerProvider`, `NodeInterface`, `ExecuteOptionsType`, `RetryPolicyOptionsType`, `ErrorConstructorType`, `DagContainerInterface`, `HandoffChannelInterface`, `RegistryModuleInterface`.
 
 A `runtime/` barrel re-exports an adapter contract for ergonomic co-import with the engine class. The source of the type stays in `contracts/`.
 
@@ -252,12 +252,12 @@ Pair with a JSON Schema-derived entity. Narrow the wire shape with runtime-only 
 
 | Interface | Entity | File |
 |-----------|--------|------|
-| `NodeContextInterface` | `NodeContext` | `src/entities/node/NodeContext.ts` |
-| `NodeOutputInterface<TOutput>` | `NodeOutput` | `src/entities/node/NodeOutput.ts` |
-| `NodeResultInterface<TState>` | `NodeResult` | `src/entities/node/NodeResult.ts` |
-| `NodeErrorInterface` | `NodeError` | `src/entities/node/NodeError.ts` |
-| `ExecutionResultInterface<TState>` | `ExecutionResult` | `src/entities/execution/ExecutionResult.ts` |
-| `SingleNodePlacementInterface<TOutput>` | `SingleNode` | `src/entities/dag/SingleNode.ts` |
+| `NodeContextType` | `NodeContext` | `src/entities/node/NodeContext.ts` |
+| `NodeOutputType<TOutput>` | `NodeOutput` | `src/entities/node/NodeOutput.ts` |
+| `NodeResultType<TState>` | `NodeResult` | `src/entities/node/NodeResult.ts` |
+| `NodeErrorType` | `NodeError` | `src/entities/node/NodeError.ts` |
+| `ExecutionResultType<TState>` | `ExecutionResult` | `src/entities/execution/ExecutionResult.ts` |
+| `SingleNodePlacementType<TOutput>` | `SingleNode` | `src/entities/dag/SingleNode.ts` |
 
 The schema, the `FromSchema`-derived type, and the narrowing interface live together in the same file. All three re-export through `entities/index.ts`.
 
@@ -272,18 +272,18 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./contracts` | Every adapter contract |
 | `./entities` | Every JSON Schema and derived type |
 | `./errors` | `DAGError` and subclasses, `DAGErrorInterface` |
-| `./constants` | Constant value plus type pairs (`GatherStrategyName`, `MetadataKey`, `NodeType`, `Output`, `ScatterOutput`) |
+| `./constants` | Constant value plus type pairs (values `GatherStrategyNames`, `MetadataKeys`, `NodeTypes`, `OutputNames`, `ScatterOutputNames`; types `GatherStrategyName`, `MetadataKey`, `NodeType`, `Output`, `ScatterOutput`) |
 | `./lifecycle` | `DAGLifecycleMachine`, lifecycle types |
 | `./runtime` | `Clock`, `Scheduler`, `RetryPolicy`, `RealTimeScheduler`, `BackoffStrategy` |
 | `./builder` | `DAGBuilder` and its option interfaces |
 | `./validation` | `Validator` and `EntityValidator<T>` |
-| `./checkpoint` | `Checkpoint`, `CheckpointRestoreAdapterFn` |
+| `./checkpoint` | `Checkpoint`, `CheckpointRestoreAdapter` |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler` (test-only) |
 | `./adapter` | `LlmAdapter`, `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterCascade`, `LlmAdapterRegistry`, `BaseEmbedder`, `EmbedderCascade`, `EmbedderRegistry`, related types |
 | `./patterns` | `MonadicNode` base class, `LlmClient` and `TripleStore` service contracts for pattern plugins |
 | `./tool` | `Tool` interface, `ToolError`, `HttpTransport` shared fetch wrapper |
 | `./core` | `GatherStrategies`, `OutcomeReducers` extension registries |
-| `./derive` | `DAGDeriver.derive`, `OperationContract`, `DAGDeriverAnnotations`, `ContractRegistryValidator` |
+| `./derive` | `DAGDeriver.derive`, `OperationContractType`, `DAGDeriverAnnotationsType`, `ContractRegistryValidator` |
 | `./viz` | `MermaidRenderer`, `JsonLdRenderer`, `CytoscapeRenderer`, `CytoscapeGraph`, `CompositeLayout` |
 | `./store` | `Store` contract, `BaseStore`, `MemoryStore`, `TypedStore`, `StoreError` |
 | `./container` | `DagContainerBase`, `DagContainerOptions`, `PoolEntry`, `DagContainerError`, `DEFAULT_SHUTDOWN_GRACE_MS`, `DagHost`, `DagTask`, `DagOutcome`, `DAG_CONTAINER_TRANSPORT`, `DAG_CONTAINER_WORKER_DIED`, `TransportErrorCode` |

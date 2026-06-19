@@ -1,11 +1,11 @@
 /**
  * GeminiApiAdapter: Google AI Studio REST adapter.
  *
- * Maps the shared `ChatRequest` to Gemini's `generateContent` body:
+ * Maps the shared `ChatRequestType` to Gemini's `generateContent` body:
  *
  *   { contents:           ChatMessage[] → contents[]
  *   , tools:              ToolDefinition[] → tools.functionDeclarations[]
- *   , toolConfig:         ToolChoice → toolConfig.functionCallingConfig
+ *   , toolConfig:         ToolChoiceType → toolConfig.functionCallingConfig
  *   , generationConfig:   { responseMimeType, responseSchema, … }
  *   }
  *
@@ -20,69 +20,36 @@
  */
 
 import type {
-  ChatMessage,
-  ChatRequest,
-  ChatResponse,
-  ErrorClassification,
-  ToolCall,
-  ToolChoice,
-  ToolDefinition,
+  ChatMessageType,
+  ChatRequestType,
+  ChatResponseType,
+  ToolCallType,
+  ToolChoiceType,
+  ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+
+import type { GeminiResponseBodyType } from './GeminiResponseBody.js';
+import { geminiResponseBodyValidator } from './GeminiResponseBody.js';
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 /** Per-request timeout in ms before the adapter aborts and surfaces TIMEOUT. */
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
-// ── Gemini response body JSON Schema + validator ──────────────────────────
-
-/**
- * Structural type for the Gemini `generateContent` response body.
- * Defined explicitly (not via json-schema-to-ts) because the gemini-api
- * package does not carry a json-schema-to-ts dependency.
- */
-interface GeminiResponseBody {
-  candidates?: ReadonlyArray<{
-    content?:      { parts?: readonly GeminiPart[] };
-    finishReason?: string;
-  }>;
-  usageMetadata?: {
-    promptTokenCount?:     number;
-    candidatesTokenCount?: number;
-  };
-}
-
-interface GeminiPart {
-  readonly text?: string;
-  readonly functionCall?: { readonly name: string; readonly args?: Record<string, unknown> };
-}
-
-/**
- * Validate that an unknown value has the minimum shape required to call
- * `#parseResponse` without a raw cast. We only assert structural presence;
- * optional fields remain optional.
- */
-function isGeminiResponseBody(value: unknown): value is GeminiResponseBody {
-  if (value === null || typeof value !== 'object') return false;
-  const v = value as Record<string, unknown>;
-  if ('candidates' in v && !Array.isArray(v['candidates'])) return false;
-  return true;
-}
-
-export interface GeminiApiAdapterOptions {
+export type GeminiApiAdapterOptionsType = {
   readonly model?: string;
   readonly maxAttempts?: number;
   /** Per-request timeout in ms. Defaults to 60 000 ms. */
   readonly timeoutMs?: number;
-}
+};
 
 export class GeminiApiAdapter extends BaseAdapter {
   readonly #apiKey:    string;
   readonly #model:     string;
   readonly #timeoutMs: number;
 
-  constructor(apiKey: string, options: GeminiApiAdapterOptions = {}) {
+  constructor(apiKey: string, options: GeminiApiAdapterOptionsType = {}) {
     super(
       'gemini-api',
       'Gemini API (your AI Studio key)',
@@ -105,9 +72,9 @@ export class GeminiApiAdapter extends BaseAdapter {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 
-  protected async performChat(request: ChatRequest): Promise<ChatResponse> {
+  protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     const url = `${ENDPOINT}/${encodeURIComponent(this.#model)}:generateContent?key=${encodeURIComponent(this.#apiKey)}`;
-    const body = this.#buildBody(request);
+    const body = this.#composeBody(request);
 
     // Compose a per-request timeout with the caller's signal so either
     // can abort the fetch independently.
@@ -127,7 +94,7 @@ export class GeminiApiAdapter extends BaseAdapter {
         signal,
       });
     } catch (err) {
-      throw LlmError.fromNetworkError(err);
+      throw LlmError.ofNetworkError(err);
     } finally {
       clearTimeout(timeoutId);
     }
@@ -138,22 +105,16 @@ export class GeminiApiAdapter extends BaseAdapter {
     }
 
     const rawBody: unknown = await res.json();
-    if (!isGeminiResponseBody(rawBody)) {
+    if (!geminiResponseBodyValidator.is(rawBody)) {
       throw new LlmError(
         'Gemini API: response body schema violation — unexpected structure',
         Classifications['SCHEMA_VIOLATION'],
       );
     }
-    return this.#parseResponse(rawBody);
+    return this.#decodeResponse(rawBody);
   }
 
-  protected override classify(error: unknown): ErrorClassification {
-    if (error instanceof LlmError) return error.classification;
-    if (error instanceof Error && /aborted|timeout/iu.test(error.message)) return Classifications['TIMEOUT'];
-    return Classifications['UNKNOWN'];
-  }
-
-  #buildBody(request: ChatRequest): Record<string, unknown> {
+  #composeBody(request: ChatRequestType): Record<string, unknown> {
     const generationConfig: Record<string, unknown> = {
       'temperature': request.temperature,
       'maxOutputTokens': request.maxTokens,
@@ -182,10 +143,10 @@ export class GeminiApiAdapter extends BaseAdapter {
     return body;
   }
 
-  #parseResponse(payload: GeminiResponseBody): ChatResponse {
+  #decodeResponse(payload: GeminiResponseBodyType): ChatResponseType {
     const candidate = payload.candidates?.[0];
     const parts = candidate?.content?.parts ?? [];
-    const toolCalls: ToolCall[] = [];
+    const toolCalls: ToolCallType[] = [];
     let text = '';
     for (const part of parts) {
       if (part.functionCall !== undefined) {
@@ -213,7 +174,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     };
   }
 
-  #toGeminiContent(message: ChatMessage): Record<string, unknown> {
+  #toGeminiContent(message: ChatMessageType): Record<string, unknown> {
     // Gemini uses `model` instead of `assistant`; `tool` becomes `function`.
     const role = message.role === 'assistant' ? 'model'
       : message.role === 'tool' ? 'function'
@@ -232,7 +193,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     return { role, parts };
   }
 
-  #toFunctionDeclaration(tool: ToolDefinition): Record<string, unknown> {
+  #toFunctionDeclaration(tool: ToolDefinitionType): Record<string, unknown> {
     return {
       'name':        tool.name,
       'description': tool.description,
@@ -240,7 +201,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     };
   }
 
-  #toGeminiToolConfig(choice: ToolChoice): Record<string, unknown> {
+  #toGeminiToolConfig(choice: ToolChoiceType): Record<string, unknown> {
     switch (choice.type) {
       case 'auto':     return { 'mode': 'AUTO' };
       case 'required': return { 'mode': 'ANY' };

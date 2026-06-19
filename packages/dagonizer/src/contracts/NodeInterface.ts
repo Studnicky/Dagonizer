@@ -1,13 +1,13 @@
-import type { Batch } from '../core/batch/Batch.js';
-import type { RoutedBatch } from '../core/batch/RoutedBatch.js';
-import type { Node } from '../entities/node/Node.js';
-import type { NodeContextInterface } from '../entities/node/NodeContext.js';
-import type { ValidationResult } from '../entities/validation/ValidationResult.js';
+import type { Batch } from '../entities/batch/Batch.js';
+import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
+import type { NodeUnionType } from '../entities/node/Node.js';
+import type { NodeContextType } from '../entities/node/NodeContext.js';
+import type { Timeout } from '../entities/Timeout.js';
+import type { ValidationResultType } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
-import type { Timeout } from '../runtime/Timeout.js';
 
 
-import type { OperationContractFragment } from './OperationContractFragment.js';
+import type { OperationContractFragmentType } from './OperationContractFragment.js';
 
 /**
  * A discrete unit of work in a flow.
@@ -21,14 +21,14 @@ import type { OperationContractFragment } from './OperationContractFragment.js';
  * node configurations can be exhaustiveness-checked at compile time.
  *
  * The `TServices` generic carries the dispatcher's services bag through
- * `NodeContextInterface`. When a node only depends on `state`, leave
+ * `NodeContextType`. When a node only depends on `state`, leave
  * `TServices` at the default `undefined`.
  */
 export interface NodeInterface<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = string,
   TServices = undefined,
-> extends Omit<Node, 'outputs'> {
+> extends Omit<NodeUnionType, 'outputs'> {
   /**
    * Clean up resources when dispatcher is destroyed.
    */
@@ -45,7 +45,7 @@ export interface NodeInterface<
    * throws a `NodeTimeoutError`, fires `onError`, and marks the run failed.
    *
    * `Timeout.none()` means no per-node budget; the node is subject only to the
-   * run-level `deadlineMs` / `signal` from `ExecuteOptionsInterface`.
+   * run-level `deadlineMs` / `signal` from `ExecuteOptionsType`.
    *
    * `MonadicNode` declares `readonly timeout: Timeout = Timeout.none()` as the
    * V8-stable required-with-default. Nodes that do not extend `MonadicNode` must
@@ -55,15 +55,16 @@ export interface NodeInterface<
 
   /**
    * Execute the node over a batch of states.
-   * Returns a `RoutedBatch` mapping each output port to the items that routed there.
+   * Returns a `RoutedBatchType` mapping each output port to the items that routed there.
    * Never throws; catches all errors internally and routes to error output.
    *
    * `context` carries the abort signal, the names of the flow/stage being
    * executed, and the dispatcher's services bag. Long-running nodes should
    * propagate `context.signal` to any awaitable IO.
    */
-  execute(batch: Batch<TState>, context: NodeContextInterface<TServices>): Promise<RoutedBatch<TOutput, TState>>;
+  execute(batch: Batch<TState>, context: NodeContextType<TServices>): Promise<RoutedBatchType<TOutput, TState>>;
 
+  /** Unique registration name; the dispatcher key and the contract identity. */
   readonly 'name': string;
 
   /**
@@ -81,21 +82,21 @@ export interface NodeInterface<
    * contribute no derived edges.
    *
    * The node's own `name` and `outputs` fields complete the full
-   * `OperationContract` surface; the fragment carries only the fields
+   * `OperationContractType` surface; the fragment carries only the fields
    * the deriver uses to wire edges.
    *
    * Concrete base class `MonadicNode` declares
-   * `readonly contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT`
+   * `readonly contract: OperationContractFragmentType = EMPTY_CONTRACT_FRAGMENT`
    * as the V8-stable required-with-default. Implementors that do not extend
    * `MonadicNode` must declare `contract` explicitly; import
-   * `EMPTY_CONTRACT_FRAGMENT` from `contracts/OperationContractFragment.js`
+   * `EMPTY_CONTRACT_FRAGMENT` from `contracts/OperationContractFragmentType.js`
    * for the no-derivation case.
    */
-  readonly 'contract': OperationContractFragment;
+  readonly 'contract': OperationContractFragmentType;
 
   /**
    * Validate node configuration.
    * Called during flow registration to catch errors early.
    */
-  validate?(): ValidationResult;
+  validate?(): ValidationResultType;
 }

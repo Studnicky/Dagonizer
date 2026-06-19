@@ -9,13 +9,14 @@
  *     • current run is skipped (no self-match)
  *     • books seen in multiple runs are deduplicated
  *     • corrupted memory entry never throws (salvage path)
- *     • embedder=null falls back to Jaccard with a logged reason
+ *     • embedder=null falls back to Jaccard (no cosineSimilarity note)
  *   Cosine path (embedder present, prior runs carry dag:queryEmbedding):
  *     • similar query (cosine >= 0.70)   → priorCandidates populated, cosineSimilarity note set
  *     • orthogonal query (cosine < 0.70) → priorCandidates stays empty
  *     • embedder throws → falls back to Jaccard path
  *
- * Uses a minimal fixture for `context.services` (memory + embedder + logger).
+ * Uses a minimal fixture for `context.services` (memory + embedder). Nodes are
+ * pure: they emit no logs, so the tests assert on state, not log lines.
  */
 
 import { test } from 'node:test';
@@ -25,11 +26,11 @@ import { ArchivistState } from '../../ArchivistState.ts';
 import { recallCandidates } from '../../nodes/recallCandidates.ts';
 import { GRAPH_MEMORY, MemoryStore } from '../../memory/MemoryStore.ts';
 
-import type { Embedder } from '@studnicky/dagonizer/contracts';
+import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
 // ── Deterministic embedder ───────────────────────────────────────────────────
 
-class DeterministicEmbedder implements Embedder {
+class DeterministicEmbedder implements EmbedderInterface {
   readonly id = 'deterministic';
   readonly displayName = 'deterministic-embedder';
   readonly dimensions = 4;
@@ -56,20 +57,14 @@ class DeterministicEmbedder implements Embedder {
 
 // ── Minimal fixture context ─────────────────────────────────────────────────
 
-const logs: string[] = [];
-
 /** Context and seed helpers for recallCandidates unit tests. */
 class RecallCandidatesFixture {
-  static makeContext(memory: MemoryStore, embedder: Embedder | null = null) {
+  static makeContext(memory: MemoryStore, embedder: EmbedderInterface | null = null) {
     return {
       signal: new AbortController().signal,
       services: {
         memory,
         embedder,
-        logger: {
-          info(msg: string) { logs.push(msg); },
-          warn(msg: string) { logs.push(`WARN: ${msg}`); },
-        },
       },
     } as unknown as Parameters<typeof recallCandidates.runItem>[1];
   }
@@ -104,7 +99,6 @@ class RecallCandidatesFixture {
 // ── Jaccard path ──────────────────────────────────────────────────────────────
 
 void test('recallCandidates: high-overlap query loads prior shortlisted books', async () => {
-  logs.length = 0;
   const memory = new MemoryStore();
 
   // Prior run: query "X Y Z" shortlisted 3 books.
@@ -135,7 +129,6 @@ void test('recallCandidates: high-overlap query loads prior shortlisted books', 
 });
 
 void test('recallCandidates: unrelated query yields no prior candidates', async () => {
-  logs.length = 0;
   const memory = new MemoryStore();
 
   // Prior run: query about existentialism.
@@ -156,7 +149,6 @@ void test('recallCandidates: unrelated query yields no prior candidates', async 
 });
 
 void test('recallCandidates: skips the current run', async () => {
-  logs.length = 0;
   const memory = new MemoryStore();
 
   // Seed the current run itself; must be skipped.
@@ -175,7 +167,6 @@ void test('recallCandidates: skips the current run', async () => {
 });
 
 void test('recallCandidates: deduplicates books seen in multiple runs', async () => {
-  logs.length = 0;
   const memory = new MemoryStore();
 
   // Two prior runs, both shortlist the same ISBN.
@@ -200,7 +191,6 @@ void test('recallCandidates: deduplicates books seen in multiple runs', async ()
 });
 
 void test('recallCandidates: salvage path, never throws on corrupted memory entry', async () => {
-  logs.length = 0;
   const memory = new MemoryStore();
 
   // Seed a run whose book IRI has no title/source; should not throw.
@@ -223,8 +213,7 @@ void test('recallCandidates: salvage path, never throws on corrupted memory entr
   assert.equal(state.priorCandidates[0]?.book.identity.title, '0000000099'); // fallback = isbn
 });
 
-void test('recallCandidates: embedder=null uses Jaccard path with logged reason', async () => {
-  logs.length = 0;
+void test('recallCandidates: embedder=null recalls via the Jaccard path', async () => {
   const memory = new MemoryStore();
   RecallCandidatesFixture.seedPriorRun(memory, 'prior-null-1', 'sci-fi space adventure', [
     { isbn: '1110000004', title: 'Dune' },
@@ -236,23 +225,21 @@ void test('recallCandidates: embedder=null uses Jaccard path with logged reason'
 
   await recallCandidates.runItem(state, RecallCandidatesFixture.makeContext(memory, null));
 
+  // With no embedder, recall runs the Jaccard path: the prior candidate is
+  // loaded but carries no `cosineSimilarity` note (the cosine-path marker).
   assert.equal(state.priorCandidates.length, 1);
-  assert.ok(
-    logs.some((l) => l.includes('Jaccard >= 0.35')),
-    'expected Jaccard-path log marker',
-  );
+  assert.equal(state.priorCandidates[0]?.notes?.['cosineSimilarity'], undefined);
 });
 
 // ── Cosine path ──────────────────────────────────────────────────────────────
 
 void test('recallCandidates cosine: similar query (cos >= 0.70) loads prior books with cosineSimilarity note', async () => {
-  logs.length = 0;
   const memory = new MemoryStore();
   // Prior run query embedding pointed along axis 0.
   RecallCandidatesFixture.seedPriorRun(memory, 'prior-cos-1', 'existentialism', [
     { isbn: '1110000001', title: 'Being and Nothingness' },
   ], [1, 0, 0, 0]);
-  // Embedder returns a query vector close to axis 0 → cosine ~ 1.0
+  // EmbedderInterface returns a query vector close to axis 0 → cosine ~ 1.0
   const embedder = new DeterministicEmbedder([0.95, 0.05, 0, 0]);
   const state = new ArchivistState();
   state.runId = 'cur-cos-1';
@@ -268,7 +255,6 @@ void test('recallCandidates cosine: similar query (cos >= 0.70) loads prior book
 });
 
 void test('recallCandidates cosine: orthogonal query (cos < 0.70) yields no prior candidates', async () => {
-  logs.length = 0;
   const memory = new MemoryStore();
   RecallCandidatesFixture.seedPriorRun(memory, 'prior-cos-2', 'romance', [
     { isbn: '1110000002', title: 'Pride and Prejudice' },
@@ -286,7 +272,6 @@ void test('recallCandidates cosine: orthogonal query (cos < 0.70) yields no prio
 });
 
 void test('recallCandidates cosine: embedder throws → falls back to Jaccard path', async () => {
-  logs.length = 0;
   const memory = new MemoryStore();
   // Prior run with a query that overlaps the current one (Jaccard).
   RecallCandidatesFixture.seedPriorRun(memory, 'prior-fb-1', 'existentialism science fiction philosophy', [

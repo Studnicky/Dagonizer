@@ -8,20 +8,20 @@
  */
 
 import { OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
-import type { OpenAiCompatibleAdapterOptions } from '@studnicky/dagonizer/adapter';
+import type { OpenAiCompatibleAdapterOptionsType } from '@studnicky/dagonizer/adapter';
 
 const DEFAULT_REFERER = 'https://studnicky.github.io/Dagonizer/';
 const DEFAULT_TITLE   = 'Dagonizer Archivist';
 
-export interface OpenRouterApiAdapterOptions extends OpenAiCompatibleAdapterOptions {
+export type OpenRouterApiAdapterOptionsType = OpenAiCompatibleAdapterOptionsType & {
   /** `HTTP-Referer` header sent to OpenRouter. Defaults to the Dagonizer project URL. */
   readonly referer?: string;
   /** `X-Title` header sent to OpenRouter. Defaults to the Dagonizer project name. */
   readonly title?: string;
-}
+};
 
 export class OpenRouterApiAdapter extends OpenAiCompatibleAdapter {
-  constructor(apiKey: string, options: OpenRouterApiAdapterOptions = {}) {
+  constructor(apiKey: string, options: OpenRouterApiAdapterOptionsType = {}) {
     super(
       apiKey,
       {

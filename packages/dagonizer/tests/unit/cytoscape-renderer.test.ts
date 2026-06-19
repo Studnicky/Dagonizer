@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { TerminalNode } from '../../src/entities/dag/TerminalNode.js';
-import type { DAG } from '../../src/entities/index.js';
+import type { TerminalNodeType } from '../../src/entities/dag/TerminalNode.js';
+import type { DAGType } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { CytoscapeRenderer } from '../../src/viz/CytoscapeRenderer.js';
-import type { CytoscapeNodeElement, CytoscapeEdgeElement } from '../../src/viz/CytoscapeRenderer.js';
+import type { CytoscapeNodeElementType, CytoscapeEdgeElementType } from '../../src/viz/CytoscapeRenderer.js';
 import { RoleColorUtils } from '../../src/viz/internal.js';
 
-const isNode = (element: { group: 'nodes' | 'edges' }): element is CytoscapeNodeElement =>
+const isNode = (element: { group: 'nodes' | 'edges' }): element is CytoscapeNodeElementType =>
   element.group === 'nodes';
 
 void describe('CytoscapeRenderer.render', () => {
-  void it('emits one node + edge-to-terminal for a single-node DAG with explicit TerminalNode', () => {
-    const dag: DAG = {
+  void it('emits one node + edge-to-terminal for a single-node DAG with explicit TerminalNodeType', () => {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:mini',
       '@type':    'DAG',
@@ -38,7 +38,7 @@ void describe('CytoscapeRenderer.render', () => {
     };
     const elements = CytoscapeRenderer.render(dag, {});
     const nodes = elements.filter((entry) => entry.group === 'nodes');
-    const edges = elements.filter((entry): entry is CytoscapeEdgeElement => entry.group === 'edges');
+    const edges = elements.filter((entry): entry is CytoscapeEdgeElementType => entry.group === 'edges');
     assert.equal(nodes.length, 2);                          // greet + done
     assert.equal(edges.length, 1);
     assert.equal(edges[0]?.data.label, 'success');
@@ -46,7 +46,7 @@ void describe('CytoscapeRenderer.render', () => {
   });
 
   void it('marks ScatterNode placements with type=scatter and class dag-scatter', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:fan',
       '@type':    'DAG',
@@ -67,13 +67,13 @@ void describe('CytoscapeRenderer.render', () => {
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const fan = elements.find((entry): entry is CytoscapeNodeElement => isNode(entry) && entry.data.id === 'fan');
+    const fan = elements.find((entry): entry is CytoscapeNodeElementType => isNode(entry) && entry.data.id === 'fan');
     assert.equal(fan?.data.type, 'scatter');
     assert.equal(fan?.classes, 'dag-scatter');
   });
 
   void it('routes targeting named placements produce edges to those placements', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:chain',
       '@type':    'DAG',
@@ -87,9 +87,9 @@ void describe('CytoscapeRenderer.render', () => {
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const edgeAtoB = elements.find((entry): entry is CytoscapeEdgeElement => entry.group === 'edges' && entry.data.source === 'a');
+    const edgeAtoB = elements.find((entry): entry is CytoscapeEdgeElementType => entry.group === 'edges' && entry.data.source === 'a');
     assert.equal(edgeAtoB?.data.target, 'b');
-    const edgeBtoEnd = elements.find((entry): entry is CytoscapeEdgeElement => entry.group === 'edges' && entry.data.source === 'b');
+    const edgeBtoEnd = elements.find((entry): entry is CytoscapeEdgeElementType => entry.group === 'edges' && entry.data.source === 'b');
     assert.equal(edgeBtoEnd?.data.target, 'end');
     // no synthetic END (there are no null routes)
     const endNodes = elements.filter((el) => isNode(el) && el.data.id === 'END');
@@ -97,7 +97,7 @@ void describe('CytoscapeRenderer.render', () => {
   });
 
   void it('every edge has a stable id derived from source/output/target', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:ids',
       '@type':    'DAG',
@@ -123,7 +123,7 @@ void describe('CytoscapeRenderer.render', () => {
   });
 
   void it('EmbeddedDAGNode expands inline when the DAG is registered', () => {
-    const innerDAG: DAG = {
+    const innerDAG: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:inner',
       '@type':    'DAG',
@@ -141,7 +141,7 @@ void describe('CytoscapeRenderer.render', () => {
         { '@id': 'urn:noocodex:dag:inner/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     };
-    const outerDAG: DAG = {
+    const outerDAG: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:outer',
       '@type':    'DAG',
@@ -159,23 +159,23 @@ void describe('CytoscapeRenderer.render', () => {
         { '@id': 'urn:noocodex:dag:outer/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     };
-    const embeddedDAGs = new Map<string, DAG>([['inner', innerDAG]]);
+    const embeddedDAGs = new Map<string, DAGType>([['inner', innerDAG]]);
     const elements = CytoscapeRenderer.render(outerDAG, { embeddedDAGs });
 
     // The compound parent node is emitted for the EmbeddedDAGNode placement
-    const embedNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'embed');
+    const embedNode = elements.find((el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'embed');
     assert.ok(embedNode !== undefined, 'embed compound node must be present');
     assert.equal(embedNode.data.type, 'embedded-dag');
     assert.equal(embedNode.classes, 'dag-embedded-dag');
 
     // The inner step node is emitted as a child with parent=embed
-    const stepNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'embed/step');
+    const stepNode = elements.find((el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'embed/step');
     assert.ok(stepNode !== undefined, 'embed/step inner node must be present');
     assert.equal(stepNode.data['parent'], 'embed');
   });
 
   void it('ScatterNode with body.node does not expand inline', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-node',
       '@type':    'DAG',
@@ -195,18 +195,18 @@ void describe('CytoscapeRenderer.render', () => {
         { '@id': 'urn:noocodex:dag:scatter-node/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     };
-    const embeddedDAGs = new Map<string, DAG>();
+    const embeddedDAGs = new Map<string, DAGType>();
     const elements = CytoscapeRenderer.render(dag, { embeddedDAGs });
 
     // No inner children emitted; node-body scatters are opaque
     const childNodes = elements.filter(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id.startsWith('scatter/'),
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id.startsWith('scatter/'),
     );
     assert.equal(childNodes.length, 0, 'node-body ScatterNode must not expand inline');
 
     // The scatter node itself is still emitted as type=scatter
     const scatterNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'scatter',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'scatter',
     );
     assert.ok(scatterNode !== undefined);
     assert.equal(scatterNode.data.type, 'scatter');
@@ -215,7 +215,7 @@ void describe('CytoscapeRenderer.render', () => {
 
 void describe('CytoscapeRenderer.render: containment coloring', () => {
   void it('contained EmbeddedDAGNode carries data.container, color data, and dag-contained class; in-process does not', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:cy-worker',
       '@type':    'DAG',
@@ -245,7 +245,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     const cpuColors = RoleColorUtils.forRole('cpu');
 
     const workerNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'worker',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'worker',
     );
     assert.ok(workerNode !== undefined, 'worker node must be present');
     assert.equal(workerNode.data['container'], 'cpu', 'data.container must equal the role');
@@ -263,7 +263,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     );
 
     const plainNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'plain',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'plain',
     );
     assert.ok(plainNode !== undefined, 'plain node must be present');
     assert.equal(plainNode.data['container'],       undefined, 'in-process node must not have data.container');
@@ -277,7 +277,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
   });
 
   void it('contained dag-body ScatterNode carries data.container, color data, and dag-contained class', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:cy-scatter-worker',
       '@type':    'DAG',
@@ -302,7 +302,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     const gpuColors = RoleColorUtils.forRole('gpu');
 
     const fanNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'fan',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'fan',
     );
     assert.ok(fanNode !== undefined, 'fan node must be present');
     assert.equal(fanNode.data.type, 'scatter');
@@ -323,7 +323,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     // must not crash and must still emit the containment fields faithfully when
     // the JSON has the field (schema validation is a separate concern).
     // Here we test the normal case: a node-body scatter WITHOUT container.
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:cy-scatter-node',
       '@type':    'DAG',
@@ -345,7 +345,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     };
     const elements = CytoscapeRenderer.render(dag, {});
     const fanNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'fan',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'fan',
     );
     assert.ok(fanNode !== undefined);
     assert.equal(fanNode.data['container'],       undefined);
@@ -358,7 +358,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
   });
 
   void it('two placements with DIFFERENT roles get DIFFERENT containerColor values', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:cy-multi-role',
       '@type':    'DAG',
@@ -392,10 +392,10 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     const ioColors  = RoleColorUtils.forRole('io');
 
     const cpuNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'cpu-step',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'cpu-step',
     );
     const ioNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'io-step',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'io-step',
     );
 
     assert.ok(cpuNode !== undefined, 'cpu-step node must be present');
@@ -408,7 +408,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
   });
 
   void it('two placements with the SAME role get the SAME containerColor value (grouping)', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:cy-same-role',
       '@type':    'DAG',
@@ -439,10 +439,10 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     const cpuColors = RoleColorUtils.forRole('cpu');
 
     const nodeA = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'a',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'a',
     );
     const nodeB = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'b',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'b',
     );
 
     assert.ok(nodeA !== undefined);
@@ -454,15 +454,15 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
   });
 });
 
-void describe('CytoscapeRenderer.render: TerminalNode', () => {
-  void it('renders a completed TerminalNode with type=terminal and outcome=completed', () => {
-    const terminal: TerminalNode = {
+void describe('CytoscapeRenderer.render: TerminalNodeType', () => {
+  void it('renders a completed TerminalNodeType with type=terminal and outcome=completed', () => {
+    const terminal: TerminalNodeType = {
       '@id':     'urn:noocodex:dag:ct/node/done',
       '@type':   'TerminalNode',
       'name':    'done',
       'outcome': 'completed',
     };
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:ct',
       '@type':    'DAG',
@@ -481,7 +481,7 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const doneNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'done');
+    const doneNode = elements.find((el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'done');
     assert.ok(doneNode !== undefined, 'done node should exist');
     assert.equal(doneNode.data.type, 'terminal');
     assert.equal(doneNode.data['outcome'], 'completed');
@@ -493,14 +493,14 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
     assert.ok(endNode === undefined, 'no synthetic END node — null routes are gone');
   });
 
-  void it('renders a failed TerminalNode with outcome=failed', () => {
-    const terminal: TerminalNode = {
+  void it('renders a failed TerminalNodeType with outcome=failed', () => {
+    const terminal: TerminalNodeType = {
       '@id':     'urn:noocodex:dag:ct2/node/abort',
       '@type':   'TerminalNode',
       'name':    'abort',
       'outcome': 'failed',
     };
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:ct2',
       '@type':    'DAG',
@@ -519,14 +519,14 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const abortNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'abort');
+    const abortNode = elements.find((el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'abort');
     assert.ok(abortNode !== undefined);
     assert.equal(abortNode.data.type, 'terminal');
     assert.equal(abortNode.data['outcome'], 'failed');
   });
 
   void it('renders multiple TerminalNodes in the same DAG — both completed and failed', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:ct-multi',
       '@type':    'DAG',
@@ -546,8 +546,8 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const doneNode  = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'done');
-    const abortNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'abort');
+    const doneNode  = elements.find((el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'done');
+    const abortNode = elements.find((el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'abort');
     assert.ok(doneNode !== undefined, 'done node must be present');
     assert.ok(abortNode !== undefined, 'abort node must be present');
     assert.equal(doneNode.data['outcome'], 'completed');
@@ -562,7 +562,7 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
 
 void describe('CytoscapeRenderer.render: PhaseNode', () => {
   void it('renders a pre-phase PhaseNode with data.type===phase and data.phase/node populated', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:ph',
       '@type':    'DAG',
@@ -589,7 +589,7 @@ void describe('CytoscapeRenderer.render: PhaseNode', () => {
     };
     const elements = CytoscapeRenderer.render(dag, {});
     const setupNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'setup',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'setup',
     );
     assert.ok(setupNode !== undefined, 'PhaseNode element must be present');
     assert.equal(setupNode.data.type, 'phase');
@@ -604,7 +604,7 @@ void describe('CytoscapeRenderer.render: PhaseNode', () => {
   });
 
   void it('renders a post-phase PhaseNode with data.phase===post', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:ph2',
       '@type':    'DAG',
@@ -631,7 +631,7 @@ void describe('CytoscapeRenderer.render: PhaseNode', () => {
     };
     const elements = CytoscapeRenderer.render(dag, {});
     const teardownNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'teardown',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'teardown',
     );
     assert.ok(teardownNode !== undefined, 'post-phase PhaseNode element must be present');
     assert.equal(teardownNode.data.type, 'phase');
@@ -667,7 +667,7 @@ void describe('CytoscapeRenderer.titleCase', () => {
 // ── Reservoir-glyph fixtures ────────────────────────────────────────────────
 
 /** ScatterNode with a reservoir config (keyField + capacity + idleMs). */
-const RESERVOIR_DAG: DAG = {
+const RESERVOIR_DAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:reservoir',
   '@type':    'DAG',
@@ -690,7 +690,7 @@ const RESERVOIR_DAG: DAG = {
 };
 
 /** ScatterNode with reservoir but no idleMs (capacity-only flush). */
-const RESERVOIR_NO_IDLEMS_DAG: DAG = {
+const RESERVOIR_NO_IDLEMS_DAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:reservoir-no-idle',
   '@type':    'DAG',
@@ -713,7 +713,7 @@ const RESERVOIR_NO_IDLEMS_DAG: DAG = {
 };
 
 /** Plain ScatterNode — no reservoir field. Parity guard fixture. */
-const PLAIN_SCATTER_DAG: DAG = {
+const PLAIN_SCATTER_DAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:plain-scatter',
   '@type':    'DAG',
@@ -738,7 +738,7 @@ void describe('CytoscapeRenderer.render: reservoir glyph', () => {
   void it('reservoir-configured scatter carries dag-reservoir + dag-scatter classes, type=scatter, and a reservoir data field with exact keyField/capacity/idleMs', () => {
     const elements = CytoscapeRenderer.render(RESERVOIR_DAG, {});
     const bufferNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'buffer',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'buffer',
     );
     assert.ok(bufferNode !== undefined, 'buffer node must be present');
     assert.ok(
@@ -760,7 +760,7 @@ void describe('CytoscapeRenderer.render: reservoir glyph', () => {
   void it('reservoir data field without idleMs has idleMs undefined', () => {
     const elements = CytoscapeRenderer.render(RESERVOIR_NO_IDLEMS_DAG, {});
     const batchNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'batch',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'batch',
     );
     assert.ok(batchNode !== undefined, 'batch node must be present');
     const res = batchNode.data['reservoir'];
@@ -775,7 +775,7 @@ void describe('CytoscapeRenderer.render: reservoir glyph', () => {
   void it('plain (non-reservoir) scatter has no dag-reservoir class, no reservoir data field, classes exactly dag-scatter, and type=scatter', () => {
     const elements = CytoscapeRenderer.render(PLAIN_SCATTER_DAG, {});
     const fanNode = elements.find(
-      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'fan',
+      (el): el is CytoscapeNodeElementType => isNode(el) && el.data.id === 'fan',
     );
     assert.ok(fanNode !== undefined, 'fan node must be present');
     assert.ok(

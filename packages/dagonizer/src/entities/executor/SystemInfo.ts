@@ -19,10 +19,10 @@
  * The floor at 1 ensures a pool never starts with zero workers.
  */
 
-import type { RecommendedWorkerCountConfig } from './RecommendedWorkerCountConfig.js';
+import type { RecommendedWorkerCountConfigType } from './RecommendedWorkerCountConfig.js';
 
 // ---------------------------------------------------------------------------
-// SystemInfoProbes
+// SystemInfoProbesType
 // ---------------------------------------------------------------------------
 
 /**
@@ -37,7 +37,7 @@ import type { RecommendedWorkerCountConfig } from './RecommendedWorkerCountConfi
  *   environment cannot supply a memory reading (browser, Worker, etc.); the
  *   memory clamp is then skipped regardless of `memoryPerWorkerBytes`.
  */
-export interface SystemInfoProbes {
+export type SystemInfoProbesType = {
   /** Number of logical processors available to the host. Must be >= 1. */
   readonly parallelism: number;
   /**
@@ -84,8 +84,8 @@ export class SystemInfo {
    * });
    */
   static recommendedWorkerCount(
-    config: RecommendedWorkerCountConfig,
-    probes: SystemInfoProbes,
+    config: RecommendedWorkerCountConfigType,
+    probes: SystemInfoProbesType,
   ): number {
     const {
       maximumWorkers,

@@ -1,5 +1,5 @@
 /**
- * DagOutcome: factory for `DagOutcomeInterface` values.
+ * DagOutcome: factory for `DagOutcomeType` values.
  *
  * A static class (`noun.verb()`) so outcome construction has one canonical
  * call site. `DagOutcome.transportError(correlationId, options?)` builds the
@@ -13,25 +13,25 @@
  * the placement to its `error` output (embedded-DAG) or leaves the scatter item
  * un-acked for resume (the `TransportErrorCode.isInfrastructureFailure` path).
  *
- * `BatchRunResult` is the per-item result returned by `DagContainerBase.runDagBatch`.
- * Each entry carries the item `id` alongside the full `DagOutcomeInterface` for
+ * `BatchRunResultType` is the per-item result returned by `DagContainerBase.runDagBatch`.
+ * Each entry carries the item `id` alongside the full `DagOutcomeType` for
  * that item, including its `terminalOutput`, `errors`, `stateSnapshot`, and
  * `intermediates`.
  */
 
-import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
+import type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
 import { NodeErrorBuilder } from '../entities/node/NodeError.js';
-import type { NodeError } from '../entities/node/NodeError.js';
+import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 
 import { DAG_CONTAINER_TRANSPORT } from './TransportErrorCode.js';
 
-export type { DagOutcomeInterface };
+export type { DagOutcomeType };
 
 /**
  * Per-item result from a batch DAG execution (`runDagBatch`).
  * Carries the item `id` so callers can correlate results back to input items.
  */
-export interface BatchRunResult extends DagOutcomeInterface {
+export type BatchRunResultType = DagOutcomeType & {
   readonly id: string;
 }
 
@@ -39,7 +39,7 @@ export class DagOutcome {
   private constructor() { /* static class */ }
 
   /**
-   * Build a transport-error `DagOutcomeInterface`: `terminalOutput: 'failed'`
+   * Build a transport-error `DagOutcomeType`: `terminalOutput: 'failed'`
    * with a single unrecoverable `NodeError` carrying `code` and `message`.
    *
    * SC-12: required positional `correlationId`; optional trailing options bag
@@ -48,10 +48,10 @@ export class DagOutcome {
   static transportError(
     correlationId: string,
     options: { code?: string; message?: string } = {},
-  ): DagOutcomeInterface {
+  ): DagOutcomeType {
     const code = options.code ?? DAG_CONTAINER_TRANSPORT;
     const message = options.message ?? `Transport failure for request ${correlationId}`;
-    const error: NodeError = NodeErrorBuilder.from(
+    const error: NodeErrorWireType = NodeErrorBuilder.from(
       code,
       message,
       'runDag',
@@ -67,14 +67,14 @@ export class DagOutcome {
   }
 
   /**
-   * Build a transport-error `BatchRunResult` for a single item. Used when the
+   * Build a transport-error `BatchRunResultType` for a single item. Used when the
    * batch transport fails before the host can process the item.
    */
   static batchItemTransportError(
     id: string,
     correlationId: string,
     options: { code?: string; message?: string } = {},
-  ): BatchRunResult {
+  ): BatchRunResultType {
     const outcome = DagOutcome.transportError(correlationId, options);
     return {
       'id': id,
