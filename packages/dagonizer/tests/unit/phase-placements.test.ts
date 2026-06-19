@@ -21,7 +21,7 @@ class TrackingState extends NodeStateBase {
   trace: string[] = [];
 }
 
-class PhaseMakeNodeImpl extends ScalarNode<TrackingState, string> {
+class PhaseMakeNode extends ScalarNode<TrackingState, string> {
   readonly name: string;
   readonly outputs: readonly string[];
   private readonly side: ((state: TrackingState) => void | Promise<void>) | undefined;
@@ -43,7 +43,7 @@ class PhaseMakeNodeImpl extends ScalarNode<TrackingState, string> {
   }
 }
 
-class PhaseThrowingNodeImpl extends ScalarNode<TrackingState, string> {
+class PhaseThrowingNode extends ScalarNode<TrackingState, string> {
   readonly name: string;
   readonly outputs: readonly ['success'] = ['success'];
   private readonly message: string;
@@ -63,10 +63,10 @@ const makeNode = (
   name: string,
   outputs: readonly string[] = ['success'],
   side?: (state: TrackingState) => void | Promise<void>,
-): PhaseMakeNodeImpl => new PhaseMakeNodeImpl(name, outputs, side);
+): PhaseMakeNode => new PhaseMakeNode(name, outputs, side);
 
-const makeThrowingNode = (name: string, message: string): PhaseThrowingNodeImpl =>
-  new PhaseThrowingNodeImpl(name, message);
+const makeThrowingNode = (name: string, message: string): PhaseThrowingNode =>
+  new PhaseThrowingNode(name, message);
 
 // Recording Dagonizer subclass captures phase hook invocations in order.
 type Call = {

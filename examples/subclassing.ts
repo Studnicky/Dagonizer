@@ -20,7 +20,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import { CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
+import { CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { DAGType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
@@ -93,7 +93,7 @@ if (partial.cursor === null) {
   const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()) as unknown);
 
   const { state: s2, dagName, cursor } = ckpt2.restoreState(
-    CheckpointRestoreAdapterFn.wrap((snap) => CountState.restore(snap)),
+    CheckpointRestoreAdapter.wrap((snap) => CountState.restore(snap)),
   );
 
   const final = await dispatcher.resume(dagName, s2, cursor);

@@ -18,7 +18,7 @@
 
 import { computed, onMounted, ref, watch } from 'vue';
 
-import { Checkpoint, CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
+import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
@@ -209,7 +209,7 @@ async function resumeFromCheckpoint(): Promise<void> {
     const ckpt = Checkpoint.load(parsed);
     await ckpt.restoreStores({ 'memory': memoryStore });
     restored = ckpt.restoreState(
-      CheckpointRestoreAdapterFn.wrap((snap) => ArchivistState.restore(snap)),
+      CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
     );
   } catch (err) {
     logger.warn(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`);

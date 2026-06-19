@@ -17,7 +17,7 @@
  *    NOT buffered into the array. `ExecutionResponse.intermediates` is empty
  *    (`[]`) for batch requests.
  *
- * 2. `_ScatterPoolDriverImpl.ackBatch` inbox removal: per-item
+ * 2. `ScatterPoolDriver.ackBatch` inbox removal: per-item
  *    `findIndex+splice` was O(inbox_size × batch_size). Replaced with a single
  *    O(inbox_size) in-place filter pass using a `Set<number>` of indexes to
  *    remove.

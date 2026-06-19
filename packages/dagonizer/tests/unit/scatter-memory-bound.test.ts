@@ -3,7 +3,7 @@
  * scatter body inner-node stages were buffered into `intermediateResults` and
  * streamed to the top-level consumer.
  *
- * Root cause (fixed): `_ScatterPoolDriverImpl.executeItem` (in-process DAG body
+ * Root cause (fixed): `ScatterPoolDriver.executeItem` (in-process DAG body
  * path) was pushing every yield from the body `runNodes` generator into
  * `scatterCtx.intermediateResults`, annotating each with the scatter name prefix
  * (`${scatter.name}.${nr.nodeName}`). The scatter's returned

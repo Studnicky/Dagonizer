@@ -1,36 +1,27 @@
 import { ScatterCheckpoint } from './checkpoint/ScatterCheckpoint.js';
 import { WorkSetCheckpoint } from './checkpoint/WorkSetCheckpoint.js';
-import { DagContainerBase } from './container/DagContainerBase.js';
-import type { BatchRunResultType } from './container/DagOutcome.js';
 import { DagTask } from './container/DagTask.js';
-import { TransportErrorCode } from './container/TransportErrorCode.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 import type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
 import type { GatherExecutionType, GatherRecordType } from './contracts/GatherExecution.js';
 import type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 import type { NodeInterface } from './contracts/NodeInterface.js';
-import type { NodeInvokerInterface } from './contracts/NodeInvokerInterface.js';
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
 import type { OutcomeRecordType } from './contracts/OutcomeRecord.js';
-import type { ReservoirDriverInterface, ScatterItemBatchResultType } from './contracts/ReservoirDriver.js';
-import type { ScatterItemResultType, ScatterPoolDriverInterface } from './contracts/ScatterPoolDriver.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
 import { GatherStrategies } from './core/GatherStrategies.js';
-import type { GatherStrategy } from './core/GatherStrategies.js';
 import { OutcomeReducers } from './core/OutcomeReducers.js';
 import { PlacementRank } from './core/PlacementRank.js';
 import { WorkSet } from './core/WorkSet.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
 import { Batch } from './entities/batch/Batch.js';
-import { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './entities/constants/ProgressKey.js';
 import type { DAGType } from './entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from './entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNodeType } from './entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodeType } from './entities/dag/PhaseNode.js';
 import { Placement } from './entities/dag/Placement.js';
 import type { DAGNodeType } from './entities/dag/Placement.js';
-import { ScatterNodeDefaults } from './entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from './entities/dag/ScatterNode.js';
 import type { SingleNodePlacementType } from './entities/dag/SingleNode.js';
 import type { ExecutionResultType, InterruptionInfoType } from './entities/execution/ExecutionResult.js';
@@ -39,15 +30,25 @@ import type { JsonObjectType } from './entities/json.js';
 import { NodeContextBuilder } from './entities/node/NodeContext.js';
 import type { NodeContextType } from './entities/node/NodeContext.js';
 import type { NodeResultType } from './entities/node/NodeResult.js';
-import type { ScatterAckedResultType, ScatterInboxItemType } from './entities/scatter/ScatterProgress.js';
 import { Timeout } from './entities/Timeout.js';
 import type { WorkSetProgressType } from './entities/workset/WorkSetProgress.js';
 import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
+import { NodeInvoker } from './execution/NodeInvoker.js';
+import type { NodeInvokerSourceInterface } from './execution/NodeInvoker.js';
+import { PlacementDispatch } from './execution/PlacementDispatch.js';
+import type { PlacementExecutorInterface } from './execution/PlacementDispatch.js';
 import { ReservoirBuffer } from './execution/ReservoirBuffer.js';
+import { ScatterDispatchAdapter, ScatterPoolDriver } from './execution/ScatterDispatch.js';
+import type { RunNodeResultType, RunNodesBatchType, RunOptionsType, ScatterDispatchAdapterInterface, ScatterDispatchSourceInterface, ScatterRunContextType } from './execution/ScatterDispatch.js';
+import { ScatterSource } from './execution/ScatterSource.js';
 import { ScatterWorkerPool } from './execution/ScatterWorkerPool.js';
 import { Execution } from './Execution.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
+import { DispatcherHooks } from './observer/DispatcherHooks.js';
+import type { DispatcherRelaySourceInterface } from './observer/DispatcherHooks.js';
+import { ObserverRelay } from './observer/ObserverRelay.js';
+import type { DispatcherHooksInterface } from './observer/ObserverRelay.js';
 import { DottedPathAccessor } from './runtime/DottedPathAccessor.js';
 import { Scheduler } from './runtime/Scheduler.js';
 import { SignalComposer } from './runtime/SignalComposer.js';
@@ -82,65 +83,6 @@ const DAGONIZER_OPTION_DEFAULTS = {
 // Scatter progress types originate in entities/scatter/ScatterProgress.ts;
 // re-exported here for public consumers.
 export type { ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './entities/scatter/ScatterProgress.js';
-
-// ── Module-private adapter classes ───────────────────────────────────────────
-
-/**
- * Hook-forwarding interface that `ObserverRelayImpl` uses to call back into
- * the dispatcher without depending on `Dagonizer` itself (which is declared
- * below). All six observer hooks have the same signatures as the protected
- * hooks on `Dagonizer`; `Dagonizer.relayFor` passes `this` bound
- * to this interface.
- */
-interface DispatcherHooksInterface<TState extends NodeStateInterface> {
-  onNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void;
-  onNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void;
-  onError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void;
-  onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
-  onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
-}
-
-/**
- * Stable-class implementation of `ObserverRelayInterface`.
- *
- * A fresh object-literal with 6 arrow-function fields would produce a new
- * anonymous hidden class on every call. `ObserverRelayImpl` is a named class
- * whose shape is fixed at declaration time: V8 sees the same hidden class for
- * every relay instance, keeping inline-caches hot on the container dispatch path.
- *
- * Private fields are initialised in constructor-declaration order so the hidden
- * class is consistent across all instances. Only `relayFor` constructs
- * this; it is not exported.
- */
-class ObserverRelayImpl<TState extends NodeStateInterface> implements ObserverRelayInterface {
-  readonly #hooks: DispatcherHooksInterface<TState>;
-  readonly #state: TState;
-
-  constructor(hooks: DispatcherHooksInterface<TState>, state: TState) {
-    this.#hooks = hooks;
-    this.#state = state;
-  }
-
-  onNodeStart(nodeName: string, placementPath: readonly string[]): void {
-    this.#hooks.onNodeStart(nodeName, this.#state, placementPath);
-  }
-
-  onNodeEnd(nodeName: string, output: string | null, placementPath: readonly string[]): void {
-    this.#hooks.onNodeEnd(nodeName, output, this.#state, placementPath);
-  }
-
-  onError(nodeName: string, error: Error, placementPath: readonly string[]): void {
-    this.#hooks.onError(nodeName, error, this.#state, placementPath);
-  }
-
-  onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void {
-    this.#hooks.onPhaseEnter(dagName, phase, placementName, this.#state, placementPath);
-  }
-
-  onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void {
-    this.#hooks.onPhaseExit(dagName, phase, placementName, this.#state, placementPath);
-  }
-}
 
 /**
  * Constructor options for `Dagonizer`.
@@ -199,8 +141,6 @@ export type DagonizerOptionsType<TState extends NodeStateInterface = NodeStateIn
 // Dagonizer.ts find them alongside the dispatcher class.
 export type { DAGNodeType } from './entities/dag/Placement.js';
 export { Placement } from './entities/dag/Placement.js';
-
-type DAGNodeAtType = DAGNodeType['@type'];
 
 /**
  * Interface for Dagonizer. Both `execute()` and `resume()` return an
@@ -279,641 +219,6 @@ export interface DagonizerInterface<
   registerBundle(bundle: DispatcherBundleType<TState, TServices>): void;
 }
 
-/** Engine-private result envelope returned by every node executor method. */
-type RunNodeResultType<TState extends NodeStateInterface> = {
-  'nextStage': null | string;
-  'result': NodeResultType<TState>;
-};
-
-/** Engine-private execution context for `runNodes` and `runPostPhasesAndFinalize`. */
-type RunOptionsType = { embedded: boolean };
-
-/**
- * Trailing config object for the batch-native embedded-DAG re-entry path of
- * `runNodes`. Consolidates the two formerly-optional positional tail params so
- * there is no optional positional tail: `runNodes(..., placementPath, batch?)`.
- *
- * `inputBatch` seeds the per-item batch the embedded sub-DAG runs over;
- * `terminalByItemId` is populated by the child run with each item's terminal
- * outcome. Both are absent on the ordinary (non-batch) execution path, so the
- * whole object defaults to `{}`.
- */
-type RunNodesBatchType<TState extends NodeStateInterface> = {
-  inputBatch?: Batch<TState>;
-  terminalByItemId?: Map<string, 'completed' | 'failed'>;
-};
-
-/**
- * Module-private adapter interface that `ScatterPoolDriverImpl` uses to
- * call dispatcher methods without requiring access to private class members.
- *
- * The adapter is constructed within `Dagonizer.executeScatter` (where private
- * members are in scope) and passed to `ScatterPoolDriverImpl`. This is the
- * same pattern used by `#relayHooks` for observer relay construction.
- *
- * Each field is bound at construction time so the adapter object itself has a
- * stable hidden class (same shape every construction).
- */
-interface ScatterDispatchAdapterInterface<TState extends NodeStateInterface, TServices> {
-  readonly stateMapper: StateMapper<TState>;
-  readonly nodes: ReadonlyMap<string, NodeInterface<TState, string, TServices>>;
-  readonly accessor: StateAccessorInterface;
-  withNodeTimeout<TResult>(
-    node: NodeInterface<TState, string, TServices>,
-    signal: AbortSignal | null,
-    fn: (sig: AbortSignal) => Promise<TResult>,
-  ): Promise<TResult>;
-  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
-  runNodes(
-    dagName: string,
-    state: TState,
-    fromStage: string | null,
-    options: ExecuteOptionsType,
-    runOptions: RunOptionsType,
-    placementPath: readonly string[],
-    batch?: RunNodesBatchType<TState>,
-  ): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void>;
-  resolveContainer(role: string | undefined): DagContainerInterface<TState> | null;
-  nextCorrelationId(dagName: string): string;
-  relayFor(state: TState): ObserverRelayInterface;
-}
-
-/**
- * Context bundle for a single `executeScatter` invocation.
- *
- * Captures the scatter placement config plus the mutable accumulators that
- * `ScatterPoolDriverImpl.ackItem` writes to. All fields are initialised
- * before the driver is constructed; the driver never creates its own
- * accumulators.
- */
-type ScatterRunContextType<TState extends NodeStateInterface> = {
-  readonly scatter: ScatterNodeType;
-  readonly state: TState;
-  readonly dagName: string;
-  readonly signal: AbortSignal | null;
-  readonly placementPath: readonly string[];
-  readonly itemKey: string;
-  readonly inbox: ScatterInboxItemType[];
-  readonly ackedResults: ScatterAckedResultType[];
-  readonly ackedByIndex: Map<number, ScatterAckedResultType>;
-  readonly itemOutputs: Map<number, string>;
-  readonly allFreshRecords: GatherRecordType<TState>[];
-  readonly intermediateResults: Array<NodeResultType<TState>>;
-  readonly gatherStrategy: GatherStrategy | null;
-  readonly compactable: boolean;
-  readonly watermarkRef: { value: number };
-  readonly aheadAcked: Map<number, string>;
-  readonly outcomeTally: Map<string, number>;
-}
-
-/**
- * Records the item in `outcomeTally` and `aheadAcked`, then drains
- * consecutive indices from `aheadAcked` into the watermark so that
- * the watermark always equals the highest contiguous completed prefix.
- */
-function advanceWatermark(
-  watermarkRef: { value: number },
-  aheadAcked: Map<number, string>,
-  outcomeTally: Map<string, number>,
-  index: number,
-  output: string,
-): void {
-  // Always fold output into tally for every acked item.
-  outcomeTally.set(output, (outcomeTally.get(output) ?? 0) + 1);
-  // Place acked index into the ahead window (handles any index >= watermark).
-  aheadAcked.set(index, output);
-  // Greedily advance watermark while contiguous indices exist.
-  while (aheadAcked.has(watermarkRef.value)) {
-    aheadAcked.delete(watermarkRef.value);
-    watermarkRef.value++;
-  }
-}
-
-/**
- * Module-private driver: bridges `ScatterWorkerPool` to `Dagonizer` internals.
- *
- * Constructed once per `executeScatter` call with a stable adapter + context.
- * Implements `ScatterPoolDriverInterface<TState>` without accessing private
- * members on `Dagonizer` directly.
- */
-class ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
-  implements ScatterPoolDriverInterface<TState>, ReservoirDriverInterface<TState>
-{
-  readonly #adapter: ScatterDispatchAdapterInterface<TState, TServices>;
-  readonly #ctx: ScatterRunContextType<TState>;
-
-  constructor(
-    adapter: ScatterDispatchAdapterInterface<TState, TServices>,
-    ctx: ScatterRunContextType<TState>,
-  ) {
-    this.#adapter = adapter;
-    this.#ctx = ctx;
-  }
-
-  async executeItem(itemIndex: number, item: unknown): Promise<ScatterItemResultType<TState>> {
-    const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
-    const cloneState = this.#adapter.stateMapper.cloneChild(
-      state,
-      ScatterNodeDefaults.inputMapping(scatter),
-    );
-    // Strip engine-internal metadata keys from the clone. The parent state's
-    // scatter-progress and work-set-progress metadata are engine bookkeeping for
-    // the PARENT scatter/workset loop — the child body DAG must not inherit them.
-    // Without this, each clone carries the full parent inbox (O(N) payload), and
-    // serializing the clone for the container transport sends that inbox N times,
-    // producing O(N²) heap growth across concurrent batches.
-    cloneState.deleteMetadata(SCATTER_PROGRESS_KEY);
-    cloneState.deleteMetadata(WORKSET_PROGRESS_KEY);
-    // item must be JSON-serialisable: scatter sources are checkpointed to
-    // metadata (SCATTER_PROGRESS_KEY) and require JSON-safe values at snapshot
-    // time. The engine contract requires callers to provide JSON-safe scatter
-    // sources for checkpointing to succeed.
-    cloneState.setMetadata(itemKey, item);
-    cloneState.setMetadata('itemIndex', itemIndex);
-
-    if ('node' in scatter.body) {
-      // Node body: build a size-1 Batch and execute.
-      const dagNode = this.#adapter.nodes.get(scatter.body.node);
-      if (!dagNode) {
-        throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
-      }
-
-      // Build a size-1 Batch with item-index as id.
-      const batch = Batch.from([{ 'id': String(itemIndex), 'state': cloneState }]);
-
-      // Execute the node over the batch.
-      const routed = await this.#adapter.withNodeTimeout(dagNode, signal, async (nodeSignal) => {
-        const context = this.#adapter.context(dagName, scatter.name, nodeSignal);
-        return dagNode.execute(batch, context);
-      });
-
-      // Derive output from the single routed entry.
-      let output = 'error';
-      for (const [routeKey, routeBatch] of routed.entries()) {
-        for (const batchEntry of routeBatch) {
-          if (batchEntry.id === String(itemIndex)) {
-            output = routeKey;
-          }
-        }
-      }
-
-      for (const err of cloneState.errors) state.collectError(err);
-      for (const warn of cloneState.warnings) state.collectWarning(warn);
-      return { 'index': itemIndex, item, output, 'terminalOutcome': null, 'cloneState': cloneState };
-    } else {
-      // DAG body path.
-      let output: string;
-      let terminalOutcome: 'completed' | 'failed' | null;
-
-      // DAG body — may run in-process or through a bound container.
-      const innerPath: readonly string[] = [...placementPath, scatter.name];
-      const container = this.#adapter.resolveContainer(scatter.container);
-
-      if (container === null) {
-        // ── In-process path (byte-identical to the original) ───────────────
-        const childOptions: ExecuteOptionsType = { ...(signal !== null && { 'signal': signal }) };
-        const iter = this.#adapter.runNodes(scatter.body.dag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
-
-        // Drain the iterator to drive execution; each inner node fires its
-        // onNodeStart/onNodeEnd observers live inside runNodes. Buffering each
-        // inner result into intermediateResults is intentionally omitted: at
-        // scatter scale (N items × M inner nodes) that accumulation is O(N*M)
-        // and causes unbounded heap growth. The scatter's own representative
-        // result is returned below; inner-node observability is delivered
-        // through the observer relay, not through buffered intermediates.
-        while (true) {
-          const step = await iter.next();
-          if (step.done) {
-            terminalOutcome = step.value.terminalOutcome;
-            break;
-          }
-        }
-      } else {
-        // ── Contained path ─────────────────────────────────────────────────
-        const correlationId = this.#adapter.nextCorrelationId(scatter.body.dag);
-        const context = this.#adapter.context(scatter.body.dag, scatter.name, signal);
-        const task = new DagTask<TState, TServices>(
-          scatter.body.dag,
-          innerPath,
-          correlationId,
-          Timeout.none(),
-          cloneState,
-          context,
-        );
-
-        const scatterRelay = this.#adapter.relayFor(state);
-        const outcome = await container.runDag(task, { 'relay': scatterRelay });
-
-        // Infrastructure/transport failure (worker died, channel lost): the
-        // child DAG never ran to a terminal. Throw so the pool takes the
-        // reject branch → poolError set → item is NOT acked → it stays in
-        // the inbox → resume reprocesses it. This matches the in-process path
-        // (a body crash throws) and preserves at-least-once. A legitimate
-        // body that ran and routed to 'error' (terminalOutput 'failed' from a
-        // TerminalNode) is NOT an infrastructure failure and acks normally.
-        if (outcome.errors.some((e) => TransportErrorCode.isInfrastructureFailure(e.code))) {
-          const infra = outcome.errors.find((e) => TransportErrorCode.isInfrastructureFailure(e.code));
-          throw new ExecutionError(
-            `ScatterNode '${scatter.name}': container infrastructure failure — ${infra?.message ?? 'transport lost'}`,
-          );
-        }
-
-        // Apply terminal state snapshot back to clone for domain state.
-        // outcome.errors is the single authoritative error channel — always
-        // collect it regardless of whether a snapshot is present. Errors are
-        // intentionally not serialized into the snapshot; the snapshot carries
-        // domain state only (metadata, retries, warnings, subclass fields).
-        // Infrastructure failures throw above; the null case here handles any
-        // non-infrastructure container that cannot produce a snapshot.
-        if (outcome.stateSnapshot !== null) {
-          cloneState.applySnapshot(outcome.stateSnapshot);
-        }
-        for (const err of outcome.errors) cloneState.collectError(err);
-
-        // Contained inner-node intermediates are not buffered into
-        // intermediateResults: the contained body's observer relay delivers
-        // per-node observability live, and buffering at scatter scale is O(N*M).
-
-        // Derive terminalOutcome from the container's terminal output.
-        terminalOutcome = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
-      }
-
-      const hasUnrecoverable = cloneState.errors.some((e) => e.recoverable === false);
-      output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
-
-      for (const err of cloneState.errors) state.collectError(err);
-      for (const warn of cloneState.warnings) state.collectWarning(warn);
-
-      return { 'index': itemIndex, item, output, terminalOutcome, 'cloneState': cloneState };
-    }
-  }
-
-  async ackItem(res: ScatterItemResultType<TState>): Promise<void> {
-    const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy, compactable, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
-    const { 'index': itemIndex, 'item': item, 'output': output, 'terminalOutcome': terminalOutcome, 'cloneState': cloneState } = res;
-
-    // Remove from inbox.
-    const inboxIdx = inbox.findIndex((e) => e.index === itemIndex);
-    if (inboxIdx !== -1) inbox.splice(inboxIdx, 1);
-
-    const freshRecord: GatherRecordType<TState> = {
-      'index': itemIndex,
-      item,
-      output,
-      terminalOutcome,
-      cloneState,
-    };
-
-    // Fold this record into state via reduce (exactly-once per item).
-    if (scatter.gather !== undefined && gatherStrategy !== null) {
-      const batchItems = [{ 'id': String(itemIndex), 'state': freshRecord }];
-      await gatherStrategy.reduce(scatter.gather, Batch.from(batchItems), state, this.#adapter.accessor);
-    }
-
-    // Accumulate for the finalize pass and outcome-reducer.
-    // Compactable gathers fold all state into parent via reduce; finalize builds
-    // derived state from its own private accumulators and does not read records.
-    // Skip the push in compactable mode so each cloneState is GC-eligible
-    // immediately after reduce returns — preserving the bounded-memory guarantee.
-    if (!compactable) allFreshRecords.push(freshRecord);
-
-    if (compactable) {
-      // Bounded mode: advance watermark bookkeeping; skip full ackedResult storage.
-      // shape changed for compactable gathers; result assertion unchanged.
-      advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
-      ScatterCheckpoint.writeBounded(
-        state, scatter.name, [...inbox], watermarkRef.value,
-        [...aheadAcked.entries()].map(([i, o]) => ({ 'index': i, 'output': o })),
-        Object.fromEntries(outcomeTally),
-      );
-    } else {
-      // Retained mode: persist full acked result for reconstruct on resume.
-      const ackedResult: ScatterAckedResultType = (() => {
-        if (scatter.gather?.strategy === 'map' && scatter.gather.mapping !== undefined) {
-          const snapshot: Record<string, unknown> = {};
-          for (const clonePath of Object.keys(scatter.gather.mapping)) {
-            snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
-          }
-          return { 'kind': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot };
-        }
-        if (
-          (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
-          scatter.gather.field !== undefined
-        ) {
-          return { 'kind': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field) };
-        }
-        return { 'kind': 'plain' as const, 'index': itemIndex, 'item': item, output };
-      })();
-      ackedResults.push(ackedResult);
-      ackedByIndex.set(itemIndex, ackedResult);
-      itemOutputs.set(itemIndex, output);
-      ScatterCheckpoint.writeRetained(state, scatter.name, [...inbox], [...ackedResults]);
-    }
-  }
-
-  /**
-   * Execute a batch of buffered reservoir items.
-   *
-   * Dispatches to one of three branches depending on the scatter body:
-   *
-   * - **Branch A (node body):** builds a size-N Batch, calls `node.execute(batch)`
-   *   once, and derives each item's output from the routed entries.
-   * - **Branch B (DAG body, in-process):** runs the released batch through the
-   *   sub-DAG in a single batch-native `runNodes` call (the `inputBatch` +
-   *   `terminalByItemId` seam), deriving each item's `terminalOutcome` from the map.
-   * - **Branch C (DAG body, container):** routes to `DagContainerBase.runDagBatch`
-   *   when the container is a `DagContainerBase` instance (one transport round-trip
-   *   for all items); falls back to per-item `container.runDag` for plain
-   *   `DagContainerInterface` implementations.
-   *
-   * Errors and warnings from each clone are collected into the parent state.
-   */
-  async executeBatch(items: { index: number; item: unknown; bufferKey: string }[]): Promise<ScatterItemBatchResultType<TState>> {
-    const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
-
-    if ('node' in scatter.body) {
-      // ── Branch A: node body ─────────────────────────────────────────────────
-      const dagNode = this.#adapter.nodes.get(scatter.body.node);
-      if (!dagNode) {
-        throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
-      }
-
-      // Build N child clones and a size-N Batch.
-      const clones: TState[] = [];
-      const batchItems: { id: string; state: TState }[] = [];
-      for (const buffered of items) {
-        const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
-        // Strip engine-internal metadata keys — the child body must not inherit
-        // the parent scatter/workset progress (O(N) payload, see executeItem).
-        clone.deleteMetadata(SCATTER_PROGRESS_KEY);
-        clone.deleteMetadata(WORKSET_PROGRESS_KEY);
-        clone.setMetadata(itemKey, buffered.item);
-        clone.setMetadata('itemIndex', buffered.index);
-        clones.push(clone);
-        batchItems.push({ 'id': String(buffered.index), 'state': clone });
-      }
-
-      const batch = Batch.from(batchItems);
-      const routed = await this.#adapter.withNodeTimeout(dagNode, signal, async (nodeSignal) => {
-        const context = this.#adapter.context(dagName, scatter.name, nodeSignal);
-        return dagNode.execute(batch, context);
-      });
-
-      // Map item id → route key.
-      const outputById = new Map<string, string>();
-      for (const [routeKey, routeBatch] of routed.entries()) {
-        for (const batchEntry of routeBatch) {
-          outputById.set(batchEntry.id, routeKey);
-        }
-      }
-
-      // Collect errors/warnings from each clone and build results.
-      const results: ScatterItemResultType<TState>[] = items.map((buffered, i) => {
-        const clone = clones[i] as TState;
-        for (const err of clone.errors) state.collectError(err);
-        for (const warn of clone.warnings) state.collectWarning(warn);
-        return {
-          'index': buffered.index,
-          'item': buffered.item,
-          'output': outputById.get(String(buffered.index)) ?? 'error',
-          'terminalOutcome': null,
-          'cloneState': clone,
-        };
-      });
-
-      return { results };
-    }
-
-    // ── Branch B / C: DAG body ────────────────────────────────────────────────
-    const innerPath: readonly string[] = [...placementPath, scatter.name];
-    const container = this.#adapter.resolveContainer(scatter.container);
-
-    // Build N child clones (same seeding as per-item executeItem dag path).
-    const clones: TState[] = [];
-    const batchItems: { id: string; state: TState }[] = [];
-    for (const buffered of items) {
-      const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
-      // Strip engine-internal metadata keys — the child body must not inherit
-      // the parent scatter/workset progress (O(N) payload, see executeItem).
-      clone.deleteMetadata(SCATTER_PROGRESS_KEY);
-      clone.deleteMetadata(WORKSET_PROGRESS_KEY);
-      clone.setMetadata(itemKey, buffered.item);
-      clone.setMetadata('itemIndex', buffered.index);
-      clones.push(clone);
-      batchItems.push({ 'id': String(buffered.index), 'state': clone });
-    }
-    const batch = Batch.from(batchItems);
-
-    if (container === null) {
-      // ── Branch B: DAG body, in-process (batch-native) ───────────────────────
-      // Run the child DAG once over all N items as a single batch via the wave-1
-      // seam (inputBatch + terminalByItemId), mirroring the batch-native embedded
-      // -DAG firing in runNodes. The per-item items live in `batch`; `repClone`
-      // is a standalone clone supplied only to satisfy the `state` argument.
-      const childOptions: ExecuteOptionsType = { ...(signal !== null && { 'signal': signal }) };
-      const terminalByItemId = new Map<string, 'completed' | 'failed'>();
-      const repClone = state.clone();
-      const iter = this.#adapter.runNodes(scatter.body.dag, repClone, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': batch, terminalByItemId });
-
-      // Drain the generator fully; per-item terminal outcomes land in the map.
-      let step = await iter.next();
-      while (!step.done) {
-        step = await iter.next();
-      }
-
-      const results: ScatterItemResultType<TState>[] = items.map((buffered, i) => {
-        const clone = clones[i] as TState;
-        const terminalOutcome = terminalByItemId.get(String(buffered.index)) ?? null;
-        const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
-        const output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
-        for (const err of clone.errors) state.collectError(err);
-        for (const warn of clone.warnings) state.collectWarning(warn);
-        return {
-          'index': buffered.index,
-          'item': buffered.item,
-          output,
-          terminalOutcome,
-          'cloneState': clone,
-        };
-      });
-
-      return { results };
-    }
-
-    // ── Branch C: DAG body with container ─────────────────────────────────────
-    const correlationId = this.#adapter.nextCorrelationId(scatter.body.dag);
-    const context = this.#adapter.context(scatter.body.dag, scatter.name, signal);
-    const scatterRelay = this.#adapter.relayFor(state);
-
-    let outcomes: BatchRunResultType[];
-
-    if (container instanceof DagContainerBase) {
-      // runDagBatch: one transport round-trip for all items.
-      // Build a representative task for signal/context/timeout; per-item states come from the batch.
-      const task = new DagTask<TState, TServices>(
-        scatter.body.dag,
-        innerPath,
-        correlationId,
-        Timeout.none(),
-        clones[0] as TState,
-        context,
-      );
-      outcomes = await (container as DagContainerBase<TState, TServices>).runDagBatch(task, batch, { 'relay': scatterRelay });
-    } else {
-      // Fallback: per-item sequential runDag for custom DagContainerInterface implementations.
-      outcomes = [];
-      for (let i = 0; i < items.length; i++) {
-        const clone = clones[i] as TState;
-        const buffered = items[i] as { index: number; item: unknown; bufferKey: string };
-        const itemCorrelationId = this.#adapter.nextCorrelationId(scatter.body.dag);
-        const itemContext = this.#adapter.context(scatter.body.dag, scatter.name, signal);
-        const task = new DagTask<TState, TServices>(
-          scatter.body.dag,
-          innerPath,
-          itemCorrelationId,
-          Timeout.none(),
-          clone,
-          itemContext,
-        );
-        const outcome = await container.runDag(task, { 'relay': scatterRelay });
-        outcomes.push({ 'id': String(buffered.index), ...outcome });
-      }
-    }
-
-    // Infrastructure failure check: any item with an infrastructure error → throw (at-least-once).
-    for (const outcome of outcomes) {
-      if (outcome.errors.some((e) => TransportErrorCode.isInfrastructureFailure(e.code))) {
-        const infra = outcome.errors.find((e) => TransportErrorCode.isInfrastructureFailure(e.code));
-        throw new ExecutionError(
-          `ScatterNode '${scatter.name}': container infrastructure failure — ${infra?.message ?? 'transport lost'}`,
-        );
-      }
-    }
-
-    // Build results from outcomes.
-    const results: ScatterItemResultType<TState>[] = items.map((buffered, i) => {
-      const clone = clones[i] as TState;
-      const outcome = outcomes.find((o) => o.id === String(buffered.index));
-
-      if (outcome === undefined) {
-        // No outcome for this item — treat as infrastructure failure path (should not happen).
-        for (const err of clone.errors) state.collectError(err);
-        for (const warn of clone.warnings) state.collectWarning(warn);
-        return {
-          'index': buffered.index,
-          'item': buffered.item,
-          'output': 'error',
-          'terminalOutcome': 'failed' as const,
-          'cloneState': clone,
-        };
-      }
-
-      // Apply terminal state snapshot back to clone for domain state.
-      if (outcome.stateSnapshot !== null) {
-        clone.applySnapshot(outcome.stateSnapshot);
-      }
-      for (const err of outcome.errors) clone.collectError(err);
-
-      const terminalOutcome: 'completed' | 'failed' = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
-      const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
-      const output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
-
-      for (const err of clone.errors) state.collectError(err);
-      for (const warn of clone.warnings) state.collectWarning(warn);
-
-      return {
-        'index': buffered.index,
-        'item': buffered.item,
-        output,
-        terminalOutcome,
-        'cloneState': clone,
-      };
-    });
-
-    return { results };
-  }
-
-  /**
-   * Acknowledge a batch of items: remove all from inbox, build acked results,
-   * fold them into parent state via a SINGLE `gatherStrategy.reduce` call, and
-   * write the checkpoint ONCE for the entire batch.
-   */
-  async ackBatch(batchResult: ScatterItemBatchResultType<TState>): Promise<void> {
-    const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy, compactable, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
-
-    const freshRecordsForBatch: GatherRecordType<TState>[] = [];
-
-    // Collect all item indexes to remove up-front so the inbox scan is O(inbox)
-    // total rather than O(inbox × batch) from per-item findIndex+splice.
-    const toRemove = new Set<number>(batchResult.results.map((r) => r.index));
-
-    for (const res of batchResult.results) {
-      const { 'index': itemIndex, 'item': item, 'output': output, 'terminalOutcome': terminalOutcome, 'cloneState': cloneState } = res;
-
-      const freshRecord: GatherRecordType<TState> = { 'index': itemIndex, item, output, terminalOutcome, cloneState };
-      freshRecordsForBatch.push(freshRecord);
-      // Compactable mode: skip accumulation so each cloneState is GC-eligible
-      // after the batch reduce below — same bounded-memory invariant as ackItem.
-      if (!compactable) allFreshRecords.push(freshRecord);
-
-      if (compactable) {
-        // Bounded mode: advance watermark per item.
-        advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
-      } else {
-        // Retained mode: build full acked result.
-        const ackedResult: ScatterAckedResultType = (() => {
-          if (scatter.gather?.strategy === 'map' && scatter.gather.mapping !== undefined) {
-            const snapshot: Record<string, unknown> = {};
-            for (const clonePath of Object.keys(scatter.gather.mapping)) {
-              snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
-            }
-            return { 'kind': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot };
-          }
-          if (
-            (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
-            scatter.gather.field !== undefined
-          ) {
-            return { 'kind': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field) };
-          }
-          return { 'kind': 'plain' as const, 'index': itemIndex, 'item': item, output };
-        })();
-        ackedResults.push(ackedResult);
-        ackedByIndex.set(itemIndex, ackedResult);
-        itemOutputs.set(itemIndex, output);
-      }
-    }
-
-    // Bulk-remove all batch items from inbox in a single O(inbox) pass.
-    // Per-item findIndex+splice would be O(inbox × batch); this is O(inbox) total.
-    let writeIdx = 0;
-    for (let readIdx = 0; readIdx < inbox.length; readIdx++) {
-      const entry = inbox[readIdx] as ScatterInboxItemType;
-      if (!toRemove.has(entry.index)) {
-        inbox[writeIdx++] = entry;
-      }
-    }
-    inbox.length = writeIdx;
-
-    // Single reduce call for the whole batch.
-    if (scatter.gather !== undefined && gatherStrategy !== null) {
-      const batchItems = freshRecordsForBatch.map((r) => ({ 'id': String(r.index), 'state': r }));
-      await gatherStrategy.reduce(scatter.gather, Batch.from(batchItems), state, this.#adapter.accessor);
-    }
-
-    // Single checkpoint write for the entire batch.
-    if (compactable) {
-      // shape changed for compactable gathers; result assertion unchanged.
-      ScatterCheckpoint.writeBounded(
-        state, scatter.name, [...inbox], watermarkRef.value,
-        [...aheadAcked.entries()].map(([i, o]) => ({ 'index': i, 'output': o })),
-        Object.fromEntries(outcomeTally),
-      );
-    } else {
-      ScatterCheckpoint.writeRetained(state, scatter.name, [...inbox], [...ackedResults]);
-    }
-  }
-}
-
 /**
  * Graph-based DAG dispatcher for state-machine-style multi-step
  * node execution.
@@ -957,44 +262,45 @@ class ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
  * ```
  */
 export class Dagonizer<TState extends NodeStateInterface, TServices = undefined>
-implements DagonizerInterface<TState, TServices> {
+implements
+  DagonizerInterface<TState, TServices>,
+  DispatcherRelaySourceInterface<TState>,
+  PlacementExecutorInterface<TState>,
+  NodeInvokerSourceInterface<TState>,
+  ScatterDispatchSourceInterface<TState, TServices> {
   private readonly dags = new Map<string, DAGType>();
-  private readonly nodes = new Map<string, NodeInterface<TState, string, TServices>>();
+  // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
+  readonly nodes = new Map<string, NodeInterface<TState, string, TServices>>();
   private readonly nodeIndex = new Map<string, DAGNodeType>();
-  private readonly accessor: StateAccessorInterface;
+  // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
+  readonly accessor: StateAccessorInterface;
   // Declared as TServices so NodeContextType<TServices>.services is
   // satisfied. When TServices = undefined (the default), the field is undefined.
   // The cast in the constructor is required because options.services is optional
   // (TServices | undefined); when the caller passes undefined for a non-undefined
   // TServices the error surfaces at the call site, not here.
   private readonly services: TServices;
-  private readonly stateMapper: StateMapper<TState>;
+  // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
+  readonly stateMapper: StateMapper<TState>;
   private readonly containers: Readonly<Record<string, DagContainerInterface<TState>>>;
   private readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
   private readonly registryVersion: string;
   /**
-   * Stable `DispatcherHooksInterface` adapter bound to this instance's protected hooks.
-   * Created once in the constructor and reused by every `relayFor`
-   * call so that relay construction allocates only the `ObserverRelayImpl`
-   * instance (stable hidden class) without a fresh closure-bearing adapter on
-   * each invocation.
+   * Stable `DispatcherHooksInterface` adapter bound to this instance's protected
+   * hooks. Created once in the constructor and reused by every `relayFor` call
+   * so relay construction allocates only the `ObserverRelay` instance (stable
+   * hidden class) without a fresh closure-bearing adapter on each invocation.
    */
   readonly #relayHooks: DispatcherHooksInterface<TState>;
   #correlationSeq = 0;
 
   /**
    * Per-`@type` execution dispatch. Built once per dispatcher instance (not per
-   * node call) so node execution is a single keyed lookup with no per-call
-   * closure/object allocation in the hot loop.
+   * node call) so node execution is a single keyed branch with no per-call
+   * closure/object allocation in the hot loop. The `PlacementDispatch` class
+   * holds a stable shape; routing lives in its `dispatch` method.
    */
-  private readonly dispatch: Readonly<Record<DAGNodeAtType, (
-    entry: DAGNodeType,
-    state: TState,
-    dagName: string,
-    signal: AbortSignal | null,
-    placementPath: readonly string[],
-    bufferIntermediates: boolean,
-  ) => Promise<RunNodeResultType<TState>>>>;
+  private readonly placementDispatch: PlacementDispatch<TState>;
 
   /**
    * Construct a dispatcher. Subclass and override the protected hooks
@@ -1016,51 +322,12 @@ implements DagonizerInterface<TState, TServices> {
     this.containers = resolved.containers;
     this.channels = resolved.channels;
     this.registryVersion = resolved.registryVersion;
-    // Build the relay hooks adapter once per instance; bound to `this` here
-    // (within the class body, so protected hooks are accessible).
-    this.#relayHooks = {
-      'onNodeStart': (n, s, p) => this.onNodeStart(n, s, p),
-      'onNodeEnd':   (n, o, s, p) => this.onNodeEnd(n, o, s, p),
-      'onError':     (n, e, s, p) => this.onError(n, e, s, p),
-      'onPhaseEnter': (d, ph, pl, s, p) => this.onPhaseEnter(d, ph, pl, s, p),
-      'onPhaseExit':  (d, ph, pl, s, p) => this.onPhaseExit(d, ph, pl, s, p),
-    };
-    this.dispatch = {
-      'EmbeddedDAGNode': (entry, state, _dagName, signal, placementPath, bufferIntermediates) => {
-        // Placement.isEmbeddedDAG guard: @type === 'EmbeddedDAGNode' confirmed by
-        // the dispatch table key; guard makes the narrowing explicit.
-        if (!Placement.isEmbeddedDAG(entry)) throw new DAGError(`Dispatch type mismatch: expected EmbeddedDAGNode`);
-        return this.executeEmbeddedDAG(entry, state, signal, placementPath, bufferIntermediates);
-      },
-      'ScatterNode': (entry, state, dagName, signal, placementPath) => {
-        if (!Placement.isScatter(entry)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);
-        return this.executeScatter(entry, state, dagName, signal, placementPath);
-      },
-      // SingleNode is handled structurally by the work-set scheduler (via
-      // #fireSinglePlacement) before executeDAGNode is called; this entry is
-      // unreachable in normal operation but keeps the dispatch table exhaustive
-      // over the DAGNodeAtType union. executeSingleNode is preserved here so
-      // the method is not flagged as unused by static analysis.
-      'SingleNode': (entry, state, dagName, signal) => {
-        if (!Placement.isSingle(entry)) throw new DAGError(`Dispatch type mismatch: expected SingleNode`);
-        return this.executeSingleNode(entry, state, dagName, signal);
-      },
-      // TerminalNode / PhaseNode are handled before executeDAGNode in runNodes;
-      // these branches are unreachable in normal operation but keep the dispatch
-      // table exhaustive over the node `@type` union.
-      'TerminalNode': (entry, state) => {
-        if (!Placement.isTerminal(entry)) throw new DAGError(`Dispatch type mismatch: expected TerminalNode`);
-        return Promise.resolve({ 'nextStage': null, 'result': {
-          'output': entry.outcome, 'skipped': false, 'nodeName': entry.name, state, 'intermediateResults': [],
-        } });
-      },
-      'PhaseNode': (entry, state) => {
-        if (!Placement.isPhase(entry)) throw new DAGError(`Dispatch type mismatch: expected PhaseNode`);
-        return Promise.resolve({ 'nextStage': null, 'result': {
-          'output': entry.phase, 'skipped': true, 'nodeName': entry.name, state, 'intermediateResults': [],
-        } });
-      },
-    };
+    // Build the relay hooks adapter and placement dispatcher once per instance,
+    // bound to `this` here (within the class body, so protected hooks and
+    // engine-internal executors are accessible). Each is a named class with a
+    // stable hidden class, not an object-literal of arrow closures.
+    this.#relayHooks = new DispatcherHooks<TState>(this);
+    this.placementDispatch = new PlacementDispatch<TState>(this);
   }
 
   // ---------------------------------------------------------------------------
@@ -1105,6 +372,39 @@ implements DagonizerInterface<TState, TServices> {
   protected onPhaseExit(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: TState, _placementPath: readonly string[]): void { /* override */ }
 
   // ---------------------------------------------------------------------------
+  // Relay seam: public entries the container path (WorkerObserver/ChannelDispatch)
+  // and the `DispatcherHooks` adapter drive so worker-side events surface through
+  // the same protected observability hooks the in-process path fires. Each relay
+  // entry forwards into the matching protected hook, the one place that
+  // protected access is in scope. They satisfy `DispatcherRelaySourceInterface`.
+  // ---------------------------------------------------------------------------
+
+  /** Relay a node-start event from a worker/contained sub-DAG into `onNodeStart`. */
+  relayNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
+    this.onNodeStart(nodeName, state, placementPath);
+  }
+
+  /** Relay a node-end event from a worker/contained sub-DAG into `onNodeEnd`. */
+  relayNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void {
+    this.onNodeEnd(nodeName, output, state, placementPath);
+  }
+
+  /** Relay an error event from a worker/contained sub-DAG into `onError`. */
+  relayError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void {
+    this.onError(nodeName, error, state, placementPath);
+  }
+
+  /** Relay a phase-enter event from a worker/contained sub-DAG into `onPhaseEnter`. */
+  relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void {
+    this.onPhaseEnter(dagName, phase, placementName, state, placementPath);
+  }
+
+  /** Relay a phase-exit event from a worker/contained sub-DAG into `onPhaseExit`. */
+  relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void {
+    this.onPhaseExit(dagName, phase, placementName, state, placementPath);
+  }
+
+  // ---------------------------------------------------------------------------
   // Container support
   // ---------------------------------------------------------------------------
 
@@ -1112,7 +412,7 @@ implements DagonizerInterface<TState, TServices> {
    * Resolve a logical container role to its bound `DagContainerInterface`, or
    * return `null` when the role is undefined or not bound (null = in-process path).
    */
-  private resolveContainer(role: string | undefined): DagContainerInterface<TState> | null {
+  resolveContainer(role: string | undefined): DagContainerInterface<TState> | null {
     if (role === undefined) return null;
     const bound = this.containers[role];
     return bound !== undefined ? bound : null;
@@ -1131,7 +431,7 @@ implements DagonizerInterface<TState, TServices> {
    * Generate a monotonic correlation id for container requests and hand-off
    * envelopes. Uses a private `#correlationSeq` counter. No randomness; no Date.now.
    */
-  private nextCorrelationId(dagName: string): string {
+  nextCorrelationId(dagName: string): string {
     return `${dagName}:${++this.#correlationSeq}`;
   }
 
@@ -1143,15 +443,40 @@ implements DagonizerInterface<TState, TServices> {
    * `onFlowStart`/`onFlowEnd` are deliberately excluded from the relay:
    * those are top-level concerns owned by the parent's own `execute()` call.
    *
-   * Returns an `ObserverRelayImpl` instance (stable hidden class) rather than
-   * a fresh anonymous object-literal, so V8 inline-caches stay monomorphic
-   * on the container dispatch path.
-   *
-   * A `DispatcherHooksInterface` adapter is constructed here (within the class body so
-   * `protected` members are accessible) and passed to `ObserverRelayImpl`.
+   * Returns an `ObserverRelay` instance (stable hidden class) rather than a
+   * fresh anonymous object-literal, so V8 inline-caches stay monomorphic on the
+   * container dispatch path. The stable `#relayHooks` adapter (a `DispatcherHooks`
+   * bound to this dispatcher) supplies the protected-hook forwarding.
    */
-  private relayFor(state: TState): ObserverRelayInterface {
-    return new ObserverRelayImpl<TState>(this.#relayHooks, state);
+  relayFor(state: TState): ObserverRelayInterface {
+    return new ObserverRelay<TState>(this.#relayHooks, state);
+  }
+
+  /**
+   * Build a node context for a scatter body invocation. Forwards to
+   * `NodeContextBuilder.of`, substituting a never-firing signal when the run
+   * has none. Part of `ScatterDispatchSourceInterface`; the scatter adapter
+   * calls it where the dispatcher's `services` field is otherwise out of scope.
+   */
+  scatterContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices> {
+    return NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.services);
+  }
+
+  /**
+   * Run a scatter body sub-DAG through the canonical `runNodes` generator. Part
+   * of `ScatterDispatchSourceInterface`; the scatter adapter drives this
+   * generator to execute each item's DAG body in-process.
+   */
+  runScatterNodes(
+    dagName: string,
+    state: TState,
+    fromStage: string | null,
+    options: ExecuteOptionsType,
+    runOptions: RunOptionsType,
+    placementPath: readonly string[],
+    batch?: RunNodesBatchType<TState>,
+  ): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
+    return this.runNodes(dagName, state, fromStage, options, runOptions, placementPath, batch ?? {});
   }
 
   // ---------------------------------------------------------------------------
@@ -2106,34 +1431,6 @@ implements DagonizerInterface<TState, TServices> {
     };
   }
 
-  /**
-   * Normalize any scatter source value — array, sync iterable, or async
-   * iterable — to an `AsyncIterator<unknown>`. Arrays and sync iterables are
-   * wrapped so the scatter loop has a single unified pull interface.
-   */
-  private static toAsyncIterator(source: unknown): AsyncIterator<unknown> {
-    if (source !== null && typeof source === 'object') {
-      // AsyncIterable first (duck-type Symbol.asyncIterator).
-      if (Symbol.asyncIterator in (source as object)) {
-        return (source as AsyncIterable<unknown>)[Symbol.asyncIterator]();
-      }
-      // Sync iterable (duck-type Symbol.iterator), including arrays.
-      if (Symbol.iterator in (source as object)) {
-        const syncIter = (source as Iterable<unknown>)[Symbol.iterator]();
-        return {
-          next(): Promise<IteratorResult<unknown>> {
-            return Promise.resolve(syncIter.next());
-          },
-        };
-      }
-    }
-    // Scalar or null/undefined: treat as empty.
-    return {
-      next(): Promise<IteratorResult<unknown>> {
-        return Promise.resolve({ 'value': undefined, 'done': true });
-      },
-    };
-  }
 
   /**
    * Execute an embedded-DAG placement: run the referenced sub-DAG in an
@@ -2154,7 +1451,7 @@ implements DagonizerInterface<TState, TServices> {
    * - `placementPath`: extended with the placement name so inner node hooks
    *   receive accurate nesting context.
    */
-  private async executeEmbeddedDAG(
+  async executeEmbeddedDAG(
     placement: EmbeddedDAGNodeType,
     state: TState,
     signal: AbortSignal | null,
@@ -2288,7 +1585,7 @@ implements DagonizerInterface<TState, TServices> {
    * Execute a scatter placement with a unified streaming executor.
    *
    * The scatter source (array, `Iterable`, or `AsyncIterable`) is normalised
-   * to an `AsyncIterator` via `Dagonizer.toAsyncIterator`. A bounded worker
+   * to an `AsyncIterator` via `ScatterSource.toAsyncIterator`. A bounded worker
    * pool (max in-flight = `scatter.concurrency`) pulls items lazily — a new
    * item is only pulled once a worker slot frees up (true backpressure). Array
    * sources are treated as finite producers and behave identically to streaming
@@ -2309,7 +1606,7 @@ implements DagonizerInterface<TState, TServices> {
    *
    * Resume bookkeeping is persisted under {@link SCATTER_PROGRESS_KEY}.
    */
-  private async executeScatter(
+  async executeScatter(
     scatter: ScatterNodeType,
     state: TState,
     dagName: string,
@@ -2355,76 +1652,14 @@ implements DagonizerInterface<TState, TServices> {
     // Compactable: all built-in strategies except custom (retainsRecordsForFinalize=true).
     const compactable = gatherStrategy === null || !gatherStrategy.retainsRecordsForFinalize;
 
-    // Mutable inbox: items pulled but not yet acked; seed from checkpoint on resume.
-    const inbox: ScatterInboxItemType[] = [...(storedProgress?.inbox ?? [])];
-
-    // V8 shape stability: all accumulators initialised in declaration order
-    // regardless of branch. Compactable path uses watermarkRef/aheadAcked/outcomeTally;
-    // retained path uses ackedResults/ackedByIndex/itemOutputs.
-    const ackedResults: ScatterAckedResultType[] = [];
-    const ackedByIndex = new Map<number, ScatterAckedResultType>();
-    const itemOutputs = new Map<number, string>();
-    const watermarkRef: { value: number } = { 'value': 0 };
-    const aheadAcked = new Map<number, string>();
-    const outcomeTally = new Map<string, number>();
-
-    // All indices already accounted for (acked + inbox from prior run).
-    const seenIndices = new Set<number>();
-    let nextIndex = 0;
-
-    if (compactable) {
-      if (storedProgress?.mode === 'bounded') {
-        // Restore bounded checkpoint.
-        watermarkRef.value = storedProgress.watermark;
-        for (const entry of storedProgress.aheadAcked) aheadAcked.set(entry.index, entry.output);
-        for (const [output, count] of Object.entries(storedProgress.outcomeTally)) outcomeTally.set(output, count);
-        // seenIndices = {0..watermark-1} ∪ aheadAcked.keys() ∪ inbox.indices
-        for (let i = 0; i < watermarkRef.value; i++) seenIndices.add(i);
-        for (const k of aheadAcked.keys()) seenIndices.add(k);
-        for (const entry of inbox) seenIndices.add(entry.index);
-        // nextIndex = max(watermark, max(aheadAcked.keys)+1, max(inbox.index)+1, 0)
-        nextIndex = watermarkRef.value;
-        if (aheadAcked.size > 0) {
-          const maxAhead = Math.max(...aheadAcked.keys());
-          if (maxAhead + 1 > nextIndex) nextIndex = maxAhead + 1;
-        }
-        if (inbox.length > 0) {
-          const maxInbox = Math.max(...inbox.map((e) => e.index));
-          if (maxInbox + 1 > nextIndex) nextIndex = maxInbox + 1;
-        }
-      } else if (storedProgress?.mode === 'retained') {
-        // Defensive: translate retained checkpoint into bounded in-memory form.
-        for (const r of storedProgress.ackedResults) {
-          advanceWatermark(watermarkRef, aheadAcked, outcomeTally, r.index, r.output);
-        }
-        for (let i = 0; i < watermarkRef.value; i++) seenIndices.add(i);
-        for (const k of aheadAcked.keys()) seenIndices.add(k);
-        for (const entry of inbox) seenIndices.add(entry.index);
-        nextIndex = watermarkRef.value;
-        if (aheadAcked.size > 0) {
-          const maxAhead = Math.max(...aheadAcked.keys());
-          if (maxAhead + 1 > nextIndex) nextIndex = maxAhead + 1;
-        }
-        if (inbox.length > 0) {
-          const maxInbox = Math.max(...inbox.map((e) => e.index));
-          if (maxInbox + 1 > nextIndex) nextIndex = maxInbox + 1;
-        }
-      }
-    } else {
-      // Non-compactable (retained mode): restore full ackedResults.
-      if (storedProgress?.mode === 'retained') {
-        for (const r of storedProgress.ackedResults) {
-          ackedResults.push(r);
-          ackedByIndex.set(r.index, r);
-          itemOutputs.set(r.index, r.output);
-          seenIndices.add(r.index);
-        }
-      }
-      for (const entry of inbox) seenIndices.add(entry.index);
-      for (const item of [...inbox, ...ackedResults]) {
-        if (item.index >= nextIndex) nextIndex = item.index + 1;
-      }
-    }
+    // Materialise the scatter run accumulators from the stored checkpoint. The
+    // inbox seeds from the checkpoint; the mode-specific accumulators, seen-index
+    // set, and next-index cursor are reconstructed so resume reprocesses inbox
+    // gaps and continues sequential index assignment. `nextIndex` advances as
+    // fresh items are pulled, so it is read off the mutable bundle.
+    const runState = ScatterCheckpoint.restoreRunState(storedProgress, compactable);
+    const { inbox, ackedResults, ackedByIndex, itemOutputs, watermarkRef, aheadAcked, outcomeTally, seenIndices } = runState;
+    let nextIndex = runState.nextIndex;
 
     // ── 3. Gather strategy: prepare accumulators ────────────────────────────
     // Accumulate fresh records for the finalize pass and outcome-reducer.
@@ -2453,7 +1688,7 @@ implements DagonizerInterface<TState, TServices> {
       Symbol.iterator in (raw as object) &&
       !(Symbol.asyncIterator in (raw as object));
 
-    const rawIter = Dagonizer.toAsyncIterator(raw);
+    const rawIter = ScatterSource.toAsyncIterator(raw);
 
     // For index-stable sources on resume: consume items from positions 0 to
     // (nextIndex-1) from the raw source. Items whose position is in seenIndices
@@ -2480,23 +1715,14 @@ implements DagonizerInterface<TState, TServices> {
     // ── 5. Bounded worker pool with lazy pull ────────────────────────────────
     // `ScatterWorkerPool` owns the slot semaphore, active-worker counter,
     // error accumulation, and the drain loop. Item body execution and
-    // acknowledgment are delegated to `ScatterPoolDriverImpl` which is
+    // acknowledgment are delegated to `ScatterPoolDriver` which is
     // constructed with:
     //   - a `ScatterDispatchAdapterInterface` built here (within the class body so
     //     private members are accessible), and
     //   - a `ScatterRunContextType` holding the scatter-local mutable accumulators.
 
-    const scatterAdapter: ScatterDispatchAdapterInterface<TState, TServices> = {
-      'stateMapper':        this.stateMapper,
-      'nodes':              this.nodes,
-      'accessor':           this.accessor,
-      'withNodeTimeout':    (n, s, fn) => this.withNodeTimeout(n, s, fn),
-      'context':            (d, n, s) => NodeContextBuilder.of(d, n, s ?? SignalComposer.never(), this.services),
-      'runNodes':           (d, st, f, o, ro, pp, b) => this.runNodes(d, st, f, o, ro, pp, b),
-      'resolveContainer':   (role) => this.resolveContainer(role),
-      'nextCorrelationId':  (d) => this.nextCorrelationId(d),
-      'relayFor':           (st) => this.relayFor(st),
-    };
+    const scatterAdapter: ScatterDispatchAdapterInterface<TState, TServices> =
+      new ScatterDispatchAdapter<TState, TServices>(this);
 
     const scatterCtx: ScatterRunContextType<TState> = {
       scatter,
@@ -2519,7 +1745,7 @@ implements DagonizerInterface<TState, TServices> {
     };
 
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
-    const driver = new ScatterPoolDriverImpl<TState, TServices>(scatterAdapter, scatterCtx);
+    const driver = new ScatterPoolDriver<TState, TServices>(scatterAdapter, scatterCtx);
 
     if (scatter.reservoir !== undefined) {
       // Reservoir path: buffer-then-release loop keyed by item field.
@@ -2626,9 +1852,31 @@ implements DagonizerInterface<TState, TServices> {
   }
 
   /**
+   * Run a registered node over `state` as a size-1 batch during a `custom`
+   * gather's finalize pass. Throws `DAGError` when the node is not registered;
+   * no-ops if the lookup races to `undefined` after the existence check. The
+   * `NodeInvoker` handed to the `GatherStrategy` forwards here, where the
+   * private registry and node-on-state machinery are in scope.
+   */
+  async invokeRegisteredNode(
+    nodeName: string,
+    state: TState,
+    dagName: string,
+    signal: AbortSignal | null,
+  ): Promise<void> {
+    if (!this.nodes.has(nodeName)) {
+      throw new DAGError(`Unknown custom node: ${nodeName}`);
+    }
+    const dagNode = this.nodes.get(nodeName);
+    if (dagNode === undefined) return;
+    const context = NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.services);
+    await this.#runNodeOnState(dagNode, state, context);
+  }
+
+  /**
    * Compose the per-gather execution context handed to a `GatherStrategy`.
    *
-   * The `invoker` satisfies `NodeInvokerInterface` using an inline object that holds
+   * The `invoker` is a `NodeInvoker` (a named class with a stable shape) holding
    * direct references to this dispatcher and the enclosing execution context.
    * No injected function callbacks — the dispatcher instance (`this`) and the
    * entity references are the only captured values.
@@ -2639,19 +1887,7 @@ implements DagonizerInterface<TState, TServices> {
     dagName: string,
     signal: AbortSignal | null,
   ): GatherExecutionType<TState> {
-    // Capture stable entity references — no behavior closures injected.
-    const dispatcher = this;
-    const invoker: NodeInvokerInterface = {
-      async invokeNode(nodeName: string): Promise<void> {
-        if (!dispatcher.nodes.has(nodeName)) {
-          throw new DAGError(`Unknown custom node: ${nodeName}`);
-        }
-        const dagNode = dispatcher.nodes.get(nodeName);
-        if (dagNode === undefined) return;
-        const context = NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), dispatcher.services);
-        await dispatcher.#runNodeOnState(dagNode, state, context);
-      },
-    };
+    const invoker = new NodeInvoker<TState>(this, state, dagName, signal);
     return {
       state,
       'records': [...records],
@@ -2676,7 +1912,7 @@ implements DagonizerInterface<TState, TServices> {
    *
    * Timer and parent-abort listener are cleaned up in `finally`.
    */
-  private async withNodeTimeout<TResult>(
+  async withNodeTimeout<TResult>(
     dagNode: NodeInterface<TState, string, TServices>,
     parentSignal: AbortSignal | null,
     fn: (signal: AbortSignal) => Promise<TResult>,
@@ -2743,7 +1979,7 @@ implements DagonizerInterface<TState, TServices> {
     }
   }
 
-  private async executeSingleNode(
+  async executeSingleNode(
     nodeConfig: SingleNodePlacementType,
     state: TState,
     dagName: string,
@@ -2789,11 +2025,7 @@ implements DagonizerInterface<TState, TServices> {
     placementPath: readonly string[],
     bufferIntermediates: boolean = true,
   ): Promise<RunNodeResultType<TState>> {
-    const handler = this.dispatch[entry['@type']];
-    if (handler === undefined) {
-      throw new DAGError(`Unknown node type: ${entry['@type']}`);
-    }
-    return handler(entry, state, dagName, signal, placementPath, bufferIntermediates);
+    return this.placementDispatch.dispatch(entry, state, dagName, signal, placementPath, bufferIntermediates);
   }
 
 

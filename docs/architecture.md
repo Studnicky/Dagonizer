@@ -277,7 +277,7 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./runtime` | `Clock`, `Scheduler`, `RetryPolicy`, `RealTimeScheduler`, `BackoffStrategy` |
 | `./builder` | `DAGBuilder` and its option interfaces |
 | `./validation` | `Validator` and `EntityValidator<T>` |
-| `./checkpoint` | `Checkpoint`, `CheckpointRestoreAdapterFn` |
+| `./checkpoint` | `Checkpoint`, `CheckpointRestoreAdapter` |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler` (test-only) |
 | `./adapter` | `LlmAdapter`, `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterCascade`, `LlmAdapterRegistry`, `BaseEmbedder`, `EmbedderCascade`, `EmbedderRegistry`, related types |
 | `./patterns` | `MonadicNode` base class, `LlmClient` and `TripleStore` service contracts for pattern plugins |

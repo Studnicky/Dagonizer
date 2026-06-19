@@ -68,8 +68,8 @@
  *   searched and offers a concrete next step.
  *
  * Builder output shape:
- *   DAGBuilder.node(placementName, nodeImpl, routes) emits a
- *   { type: 'single', name, node: nodeImpl.name, outputs: routes }
+ *   DAGBuilder.node(name, dagNode, routes) emits a
+ *   { type: 'single', name, node: dagNode.name, outputs: routes }
  *   object. build() returns a plain DAG passed straight to
  *   DAGDocument.load().
  *
