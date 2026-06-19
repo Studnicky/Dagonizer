@@ -1,6 +1,5 @@
 import { ScatterCheckpoint } from './checkpoint/ScatterCheckpoint.js';
 import { WorkSetCheckpoint } from './checkpoint/WorkSetCheckpoint.js';
-import { DagTask } from './container/DagTask.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 import type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
@@ -30,13 +29,15 @@ import type { JsonObjectType } from './entities/json.js';
 import { NodeContextBuilder } from './entities/node/NodeContext.js';
 import type { NodeContextType } from './entities/node/NodeContext.js';
 import type { NodeResultType } from './entities/node/NodeResult.js';
-import { Timeout } from './entities/Timeout.js';
 import type { WorkSetProgressType } from './entities/workset/WorkSetProgress.js';
 import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
+import { BodyExecutor } from './execution/BodyExecutor.js';
+import type { BodyRunPortInterface } from './execution/BodyExecutor.js';
 import { NodeInvoker } from './execution/NodeInvoker.js';
 import type { NodeInvokerSourceInterface } from './execution/NodeInvoker.js';
 import { PlacementDispatch } from './execution/PlacementDispatch.js';
 import type { PlacementExecutorInterface } from './execution/PlacementDispatch.js';
+import { PlacementRouter } from './execution/PlacementRouter.js';
 import { ReservoirBuffer } from './execution/ReservoirBuffer.js';
 import { ScatterDispatchAdapter, ScatterPoolDriver } from './execution/ScatterDispatch.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType, ScatterDispatchAdapterInterface, ScatterDispatchSourceInterface, ScatterRunContextType } from './execution/ScatterDispatch.js';
@@ -267,6 +268,7 @@ implements
   DispatcherRelaySourceInterface<TState>,
   PlacementExecutorInterface<TState>,
   NodeInvokerSourceInterface<TState>,
+  BodyRunPortInterface<TState, TServices>,
   ScatterDispatchSourceInterface<TState, TServices> {
   private readonly dags = new Map<string, DAGType>();
   // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
@@ -303,6 +305,15 @@ implements
   private readonly placementDispatch: PlacementDispatch<TState>;
 
   /**
+   * Shared body-run + transport-branch primitive. Built once per dispatcher
+   * instance, bound to this instance via the narrow `BodyRunPortInterface`.
+   * Both `executeEmbeddedDAG` and the scatter per-item DAG-body path run their
+   * sub-DAG body through it, so the in-process-vs-container branch and the
+   * bufferIntermediates guard live in one place.
+   */
+  private readonly bodyExecutor: BodyExecutor<TState, TServices>;
+
+  /**
    * Construct a dispatcher. Subclass and override the protected hooks
    * (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`)
    * for observability; no factory indirection, no callbacks.
@@ -328,6 +339,7 @@ implements
     // stable hidden class, not an object-literal of arrow closures.
     this.#relayHooks = new DispatcherHooks<TState>(this);
     this.placementDispatch = new PlacementDispatch<TState>(this);
+    this.bodyExecutor = new BodyExecutor<TState, TServices>(this);
   }
 
   // ---------------------------------------------------------------------------
@@ -453,13 +465,32 @@ implements
   }
 
   /**
-   * Build a node context for a scatter body invocation. Forwards to
+   * Build a node context for a sub-DAG body invocation. Forwards to
    * `NodeContextBuilder.of`, substituting a never-firing signal when the run
-   * has none. Part of `ScatterDispatchSourceInterface`; the scatter adapter
-   * calls it where the dispatcher's `services` field is otherwise out of scope.
+   * has none. Satisfies both `BodyRunPortInterface` (the embedded/scatter DAG
+   * body run) and `ScatterDispatchSourceInterface` (the scatter node body),
+   * where the dispatcher's `services` field is otherwise out of scope.
    */
-  scatterContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices> {
+  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices> {
     return NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.services);
+  }
+
+  /**
+   * Run a sub-DAG body in-process through the canonical `runNodes` generator.
+   * Satisfies `BodyRunPortInterface`; `BodyExecutor` drives this generator to
+   * execute an embedded-DAG or scatter DAG body in-process. Forwards to the
+   * private `runNodes`, defaulting the batch tail to `{}`.
+   */
+  runBodyNodes(
+    dagName: string,
+    state: TState,
+    fromStage: string | null,
+    options: ExecuteOptionsType,
+    runOptions: RunOptionsType,
+    placementPath: readonly string[],
+    batch?: RunNodesBatchType<TState>,
+  ): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
+    return this.runNodes(dagName, state, fromStage, options, runOptions, placementPath, batch ?? {});
   }
 
   /**
@@ -1460,125 +1491,42 @@ implements
   ): Promise<RunNodeResultType<TState>> {
     const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
     const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
-    const innerPath: readonly string[] = [...placementPath, placement.name];
-
     const cloneState = this.stateMapper.cloneChild(state, inputMapping);
-    const intermediateResults: Array<NodeResultType<TState>> = [];
-    let terminalOutcome: 'completed' | 'failed' | null;
 
-    const container = this.resolveContainer(placement.container);
-
-    if (container === null) {
-      // ── In-process path ────────────────────────────────────────────────────
-      const childOptions: ExecuteOptionsType = { ...(signal !== null && { 'signal': signal }) };
-      const iter = this.runNodes(placement.dag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
-
-      // When bufferIntermediates is true (top-level streaming context), collect
-      // each inner stage so the parent runNodes loop can yield them to the
-      // consumer before the embedding placement's own result. When false (inside
-      // a scatter body or another embedded DAG), skip buffering: at scatter scale
-      // (N items × M inner nodes × L nesting levels) the accumulation is
-      // O(N*M*L) and causes unbounded heap growth. Inner-node observability is
-      // delivered live through onNodeStart/onNodeEnd regardless of this flag.
-      if (bufferIntermediates) {
-        let step = await iter.next();
-        while (!step.done) {
-          const nr = step.value;
-          intermediateResults.push({
-            'output': nr.output,
-            'skipped': nr.skipped,
-            'nodeName': `${placement.name}.${nr.nodeName}`,
-            state,
-            'intermediateResults': [],
-          });
-          step = await iter.next();
-        }
-        terminalOutcome = step.value.terminalOutcome;
-      } else {
-        // Drain without buffering.
-        while (true) {
-          const step = await iter.next();
-          if (step.done) {
-            terminalOutcome = step.value.terminalOutcome;
-            break;
-          }
-        }
-      }
-    } else {
-      // ── Contained path ─────────────────────────────────────────────────────
-      const correlationId = this.nextCorrelationId(placement.dag);
-      const context = NodeContextBuilder.of(placement.dag, placement.name, signal ?? SignalComposer.never(), this.services);
-      const task = new DagTask<TState, TServices>(
-        placement.dag,
-        innerPath,
-        correlationId,
-        Timeout.none(),
-        cloneState,
-        context,
-      );
-
-      const relay = this.relayFor(state);
-      const outcome = await container.runDag(task, { relay });
-
-      // Embedded DAG is cardinality-1 (not inbox-backed), so an infrastructure
-      // failure does NOT throw — Law 3 requires host crash / transport loss to
-      // surface as a collected error routed like any node failure, never an
-      // unhandled throw. The transport-error outcome carries an unrecoverable
-      // NodeError; collecting it below makes hasUnrecoverable true and routes
-      // this placement to its 'error' output. No silent success.
-
-      // Apply terminal state snapshot back to clone for domain state (in-place;
-      // parent state identity is preserved: result.state === initialState
-      // invariant holds). outcome.errors is the single authoritative error
-      // channel — always collect it regardless of whether a snapshot is present.
-      // Errors are intentionally not serialized into the snapshot; the snapshot
-      // carries domain state only (metadata, retries, warnings, subclass fields).
-      if (outcome.stateSnapshot !== null) {
-        cloneState.applySnapshot(outcome.stateSnapshot);
-      }
-      for (const err of outcome.errors) cloneState.collectError(err);
-
-      // Re-yield each intermediate as a NodeResultType only when buffering
-      // is requested (top-level streaming). Inside a scatter body the observer
-      // relay delivers per-node observability live; buffering at scatter scale
-      // is O(N*M*L).
-      if (bufferIntermediates) {
-        for (const wi of outcome.intermediates) {
-          intermediateResults.push({
-            'output': wi.output,
-            'skipped': wi.skipped,
-            'nodeName': `${placement.name}.${wi.nodeName}`,
-            state,
-            'intermediateResults': [],
-          });
-        }
-      }
-
-      // Derive terminalOutcome from terminalOutput.
-      terminalOutcome = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
-    }
-
-    // ── Common tail (shared between both branches) ──────────────────────────
-    // Propagate errors and warnings from child to parent.
-    for (const err of cloneState.errors) state.collectError(err);
-    for (const warn of cloneState.warnings) state.collectWarning(warn);
-
-    // Apply output state mapping: child → parent.
-    this.stateMapper.mapOutput(cloneState, state, outputMapping);
-
-    const hasUnrecoverable = cloneState.errors.some((e) => e.recoverable === false);
-    const routeOutput = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
-    const nextStage = placement.outputs[routeOutput] ?? null;
-
-    const result: NodeResultType<TState> = {
-      'output': routeOutput,
-      'skipped': false,
-      'nodeName': placement.name,
+    // Run the sub-DAG body in-process or through a bound container. The
+    // in-process-vs-container branch, the bufferIntermediates O(N*M*L) guard,
+    // and the container error/snapshot collection all live in BodyExecutor.
+    //
+    // Embedded DAG is cardinality-1 (not inbox-backed), so an infrastructure
+    // failure does NOT throw — Law 3 requires host crash / transport loss to
+    // surface as a collected error routed like any node failure, never an
+    // unhandled throw. BodyExecutor collects the transport error into
+    // `cloneState`; the unrecoverable error then makes hasUnrecoverable true in
+    // PlacementRouter and routes this placement to its 'error' output. So
+    // `body.infrastructureError` is intentionally ignored here (no re-queue).
+    const body = await this.bodyExecutor.run(
+      placement.dag,
+      placement.name,
+      cloneState,
       state,
-      intermediateResults,
-    };
+      placement.container,
+      signal,
+      placementPath,
+      bufferIntermediates,
+    );
 
-    return { nextStage, result };
+    // Propagate child→parent errors/warnings, apply output-state mapping, derive
+    // the route token, resolve the next stage, and assemble the envelope.
+    return PlacementRouter.assemble(
+      placement.name,
+      placement.outputs,
+      body.terminalOutcome,
+      cloneState,
+      state,
+      outputMapping,
+      body.intermediates,
+      this.stateMapper,
+    );
   }
 
   /**
@@ -1745,7 +1693,7 @@ implements
     };
 
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
-    const driver = new ScatterPoolDriver<TState, TServices>(scatterAdapter, scatterCtx);
+    const driver = new ScatterPoolDriver<TState, TServices>(scatterAdapter, scatterCtx, this.bodyExecutor);
 
     if (scatter.reservoir !== undefined) {
       // Reservoir path: buffer-then-release loop keyed by item field.
@@ -2003,18 +1951,9 @@ implements
         + `Available outputs: ${Object.keys(nodeConfig.outputs).join(', ')}`);
     }
 
-    const result: NodeResultType<TState> = {
-      'output': output,
-      'skipped': false,
-      'nodeName': nodeConfig.name,
-      state,
-      'intermediateResults': [],
-    };
-
-    return {
-      nextStage,
-      result
-    };
+    // A leaf node routes on its own returned output token (validated above) and
+    // produces no inner intermediates. Assemble the shared result envelope.
+    return PlacementRouter.envelope(nodeConfig.name, output, nextStage, state, []);
   }
 
   private async executeDAGNode(
