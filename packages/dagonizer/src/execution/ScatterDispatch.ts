@@ -25,6 +25,9 @@ import { DAGError, ExecutionError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
 
+import type { BodyExecutor } from './BodyExecutor.js';
+import { PlacementRouter } from './PlacementRouter.js';
+
 /** Engine-private result envelope returned by every node executor method. */
 export type RunNodeResultType<TState extends NodeStateInterface> = {
   'nextStage': null | string;
@@ -96,7 +99,7 @@ export interface ScatterDispatchSourceInterface<TState extends NodeStateInterfac
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
-  scatterContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
+  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
   runScatterNodes(
     dagName: string,
     state: TState,
@@ -143,7 +146,7 @@ export class ScatterDispatchAdapter<TState extends NodeStateInterface, TServices
   }
 
   context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices> {
-    return this.#source.scatterContext(dagName, nodeName, signal);
+    return this.#source.bodyContext(dagName, nodeName, signal);
   }
 
   runNodes(
@@ -210,13 +213,16 @@ export class ScatterPoolDriver<TState extends NodeStateInterface, TServices>
 {
   readonly #adapter: ScatterDispatchAdapterInterface<TState, TServices>;
   readonly #ctx: ScatterRunContextType<TState>;
+  readonly #bodyExecutor: BodyExecutor<TState, TServices>;
 
   constructor(
     adapter: ScatterDispatchAdapterInterface<TState, TServices>,
     ctx: ScatterRunContextType<TState>,
+    bodyExecutor: BodyExecutor<TState, TServices>,
   ) {
     this.#adapter = adapter;
     this.#ctx = ctx;
+    this.#bodyExecutor = bodyExecutor;
   }
 
   async executeItem(itemIndex: number, item: unknown): Promise<ScatterItemResultType<TState>> {
@@ -270,90 +276,45 @@ export class ScatterPoolDriver<TState extends NodeStateInterface, TServices>
       for (const warn of cloneState.warnings) state.collectWarning(warn);
       return { 'index': itemIndex, item, output, 'terminalOutcome': null, 'cloneState': cloneState };
     } else {
-      // DAG body path.
-      let output: string;
-      let terminalOutcome: 'completed' | 'failed' | null;
+      // DAG body — runs in-process or through a bound container via the shared
+      // BodyExecutor. The in-process drain and the container snapshot/error
+      // collection live there; the scatter path never buffers intermediates
+      // (bufferIntermediates: false) — at scatter scale (N items × M inner
+      // nodes) that accumulation is O(N*M) and inner-node observability is
+      // delivered live through the observer relay regardless.
+      const body = await this.#bodyExecutor.run(
+        scatter.body.dag,
+        scatter.name,
+        cloneState,
+        state,
+        scatter.container,
+        signal,
+        placementPath,
+        false,
+      );
 
-      // DAG body — may run in-process or through a bound container.
-      const innerPath: readonly string[] = [...placementPath, scatter.name];
-      const container = this.#adapter.resolveContainer(scatter.container);
-
-      if (container === null) {
-        // ── In-process path (byte-identical to the original) ───────────────
-        const childOptions: ExecuteOptionsType = { ...(signal !== null && { 'signal': signal }) };
-        const iter = this.#adapter.runNodes(scatter.body.dag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
-
-        // Drain the iterator to drive execution; each inner node fires its
-        // onNodeStart/onNodeEnd observers live inside runNodes. Buffering each
-        // inner result into intermediateResults is intentionally omitted: at
-        // scatter scale (N items × M inner nodes) that accumulation is O(N*M)
-        // and causes unbounded heap growth. The scatter's own representative
-        // result is returned below; inner-node observability is delivered
-        // through the observer relay, not through buffered intermediates.
-        while (true) {
-          const step = await iter.next();
-          if (step.done) {
-            terminalOutcome = step.value.terminalOutcome;
-            break;
-          }
-        }
-      } else {
-        // ── Contained path ─────────────────────────────────────────────────
-        const correlationId = this.#adapter.nextCorrelationId(scatter.body.dag);
-        const context = this.#adapter.context(scatter.body.dag, scatter.name, signal);
-        const task = new DagTask<TState, TServices>(
-          scatter.body.dag,
-          innerPath,
-          correlationId,
-          Timeout.none(),
-          cloneState,
-          context,
+      // Infrastructure/transport failure (worker died, channel lost): the child
+      // DAG never ran to a terminal. Throw so the pool takes the reject branch →
+      // poolError set → item is NOT acked → it stays in the inbox → resume
+      // reprocesses it. This matches the in-process path (a body crash throws)
+      // and preserves at-least-once. A legitimate body that ran and routed to
+      // 'error' (terminalOutput 'failed' from a TerminalNode) is NOT an
+      // infrastructure failure and acks normally. BodyExecutor has already
+      // collected the error into cloneState; the throw is the scatter-only
+      // re-queue policy (embedded routes the collected error instead).
+      if (body.infrastructureError !== null) {
+        throw new ExecutionError(
+          `ScatterNode '${scatter.name}': container infrastructure failure — ${body.infrastructureError.message ?? 'transport lost'}`,
         );
-
-        const scatterRelay = this.#adapter.relayFor(state);
-        const outcome = await container.runDag(task, { 'relay': scatterRelay });
-
-        // Infrastructure/transport failure (worker died, channel lost): the
-        // child DAG never ran to a terminal. Throw so the pool takes the
-        // reject branch → poolError set → item is NOT acked → it stays in
-        // the inbox → resume reprocesses it. This matches the in-process path
-        // (a body crash throws) and preserves at-least-once. A legitimate
-        // body that ran and routed to 'error' (terminalOutput 'failed' from a
-        // TerminalNode) is NOT an infrastructure failure and acks normally.
-        if (outcome.errors.some((e) => TransportErrorCode.isInfrastructureFailure(e.code))) {
-          const infra = outcome.errors.find((e) => TransportErrorCode.isInfrastructureFailure(e.code));
-          throw new ExecutionError(
-            `ScatterNode '${scatter.name}': container infrastructure failure — ${infra?.message ?? 'transport lost'}`,
-          );
-        }
-
-        // Apply terminal state snapshot back to clone for domain state.
-        // outcome.errors is the single authoritative error channel — always
-        // collect it regardless of whether a snapshot is present. Errors are
-        // intentionally not serialized into the snapshot; the snapshot carries
-        // domain state only (metadata, retries, warnings, subclass fields).
-        // Infrastructure failures throw above; the null case here handles any
-        // non-infrastructure container that cannot produce a snapshot.
-        if (outcome.stateSnapshot !== null) {
-          cloneState.applySnapshot(outcome.stateSnapshot);
-        }
-        for (const err of outcome.errors) cloneState.collectError(err);
-
-        // Contained inner-node intermediates are not buffered into
-        // intermediateResults: the contained body's observer relay delivers
-        // per-node observability live, and buffering at scatter scale is O(N*M).
-
-        // Derive terminalOutcome from the container's terminal output.
-        terminalOutcome = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
       }
 
       const hasUnrecoverable = cloneState.errors.some((e) => e.recoverable === false);
-      output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+      const output = PlacementRouter.route(body.terminalOutcome, hasUnrecoverable);
 
       for (const err of cloneState.errors) state.collectError(err);
       for (const warn of cloneState.warnings) state.collectWarning(warn);
 
-      return { 'index': itemIndex, item, output, terminalOutcome, 'cloneState': cloneState };
+      return { 'index': itemIndex, item, output, 'terminalOutcome': body.terminalOutcome, 'cloneState': cloneState };
     }
   }
 
@@ -534,7 +495,7 @@ export class ScatterPoolDriver<TState extends NodeStateInterface, TServices>
         const clone = clones[i] as TState;
         const terminalOutcome = terminalByItemId.get(String(buffered.index)) ?? null;
         const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
-        const output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+        const output = PlacementRouter.route(terminalOutcome, hasUnrecoverable);
         for (const err of clone.errors) state.collectError(err);
         for (const warn of clone.warnings) state.collectWarning(warn);
         return {
@@ -625,7 +586,7 @@ export class ScatterPoolDriver<TState extends NodeStateInterface, TServices>
 
       const terminalOutcome: 'completed' | 'failed' = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
       const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
-      const output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+      const output = PlacementRouter.route(terminalOutcome, hasUnrecoverable);
 
       for (const err of clone.errors) state.collectError(err);
       for (const warn of clone.warnings) state.collectWarning(warn);
