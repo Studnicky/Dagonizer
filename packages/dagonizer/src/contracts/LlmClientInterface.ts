@@ -15,5 +15,6 @@ import type { ChatRequestType } from '../entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../entities/adapter/ChatResponse.js';
 
 export interface LlmClientInterface {
+  /** Send a chat request and resolve its response. */
   chat(request: ChatRequestType): Promise<ChatResponseType>;
 }

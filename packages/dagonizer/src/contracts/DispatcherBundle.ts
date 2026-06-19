@@ -20,6 +20,8 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 import type { NodeInterface } from './NodeInterface.js';
 
 export type DispatcherBundleType<TState extends NodeStateInterface, TServices = undefined> = {
+  /** Nodes to register; registered before `dags` so DAG references resolve. */
   nodes: NodeInterface<TState, string, TServices>[];
+  /** DAGs to register; their node references must resolve against `nodes`. */
   dags:  DAGType[];
 }

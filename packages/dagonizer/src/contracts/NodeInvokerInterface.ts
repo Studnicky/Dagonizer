@@ -8,5 +8,6 @@
  * to the dispatcher.
  */
 export interface NodeInvokerInterface {
+  /** Dispatch the registered node `nodeName` back through the engine. */
   invokeNode(nodeName: string): Promise<void>;
 }

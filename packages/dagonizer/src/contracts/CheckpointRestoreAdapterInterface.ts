@@ -11,5 +11,6 @@
 import type { JsonObjectType } from '../entities/json.js';
 
 export interface CheckpointRestoreAdapterInterface<TState> {
+  /** Rehydrate a `TState` instance from a JSON snapshot produced by `NodeStateBase.snapshot()`. */
   restore(snapshot: JsonObjectType): TState;
 }

@@ -64,6 +64,7 @@ export interface NodeInterface<
    */
   execute(batch: Batch<TState>, context: NodeContextType<TServices>): Promise<RoutedBatchType<TOutput, TState>>;
 
+  /** Unique registration name; the dispatcher key and the contract identity. */
   readonly 'name': string;
 
   /**
