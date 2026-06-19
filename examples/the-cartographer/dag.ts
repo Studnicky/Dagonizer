@@ -188,6 +188,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
       'legKm':            'legKm',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -207,6 +208,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
       'legKm':            'legKm',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -226,6 +228,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
       'legKm':             'legKm',
       'routing':           'routing',
       'enriched':          'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -249,6 +252,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
       'gdprResult':        'gdprResult',
       'routing':           'routing',
       'enriched':          'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -269,6 +273,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
       'gdprResult':       'gdprResult',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 

@@ -26,10 +26,15 @@ export class IpGeolocateNode extends ScalarNode<CartographerState, 'geolocated',
   readonly 'outputs' = ['geolocated'] as const;
 
   protected override async executeOne(state: CartographerState, context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'geolocated'>> {
-    state.ipCandidate = await context.services.ipGeolocator.lookup(
+    const outcome = await context.services.ipGeolocator.lookup(
       state.canonical.body.ipAddress,
       context.signal,
     );
+    state.ipCandidate = outcome.candidate;
+    // A captured transport exception rides as data: append it to state.capturedErrors.
+    if (outcome.error !== null) {
+      state.capturedErrors = [...state.capturedErrors, outcome.error];
+    }
     state.routing = { ...state.routing, 'ipGeolocateRun': true };
     return NodeOutputBuilder.of('geolocated');
   }

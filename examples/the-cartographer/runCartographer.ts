@@ -44,6 +44,7 @@ import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
 import type { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { ObservedCartographer } from './ObservedCartographer.ts';
 import { GeoResolvers } from './services/GeoResolvers.ts';
+import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
 
 import { ExecutionError } from '@studnicky/dagonizer/errors';
 
@@ -115,6 +116,41 @@ class CartographerCli {
     const jurisLabel = j.jurisdictions.length > 1 ? `${j.jurisdictions.join('→')}` : j.jurisdictions[0] ?? 'baseline';
     const otLabel = j.delivered ? (j.onTime ? 'on-time' : `late ${j.delayHours}h`) : `in transit (${j.lastStatus})`;
     logger.result(`  journey: ${km} km · ${elapsedH}h${String(elapsedM).padStart(2, '0')}m elapsed · ${tzCrossings} tz crossing(s) · jurisdiction ${jurisLabel} · ${otLabel}`);
+  }
+
+  /**
+   * Error-analysis section: total captured-exception count and a table of
+   * `source · kind · count · sample-message`, ordered by descending count so the
+   * dominant error source is first. This is the DAG-flow error collection made
+   * visible — every captured exception folded by the gather is reported here.
+   */
+  static printErrorAnalysis(logger: ConsoleLogger, rollup: ErrorRollupType): void {
+    logger.result('=== (e) Error Analysis — captured exceptions folded through the DAG ===\n');
+    if (rollup.total === 0) {
+      logger.result('  No exceptions captured this run. (A clean run — zero swallowed faults.)\n');
+      return;
+    }
+    logger.result(`  Total captured exceptions: ${rollup.total.toLocaleString('en-US')}\n`);
+
+    const COL_SOURCE = 18;
+    const COL_KIND   = 14;
+    const COL_COUNT  = 8;
+    const hdr =
+      'Source'.padEnd(COL_SOURCE) +
+      'Kind'.padEnd(COL_KIND) +
+      'Count'.padStart(COL_COUNT) +
+      '  Sample message';
+    logger.result(`  ${hdr}`);
+    logger.result(`  ${'-'.repeat(hdr.length + 24)}`);
+    for (const group of ErrorRollup.ranked(rollup)) {
+      const sample = group.samples[0] ?? '';
+      logger.result(
+        `  ${group.source.slice(0, COL_SOURCE - 1).padEnd(COL_SOURCE)}` +
+        `${group.kind.slice(0, COL_KIND - 1).padEnd(COL_KIND)}` +
+        `${String(group.count).padStart(COL_COUNT)}  ${sample}`,
+      );
+    }
+    logger.result('');
   }
 
   static printRedaction(logger: ConsoleLogger, label: string, rec: EnrichedShipment): void {
@@ -299,6 +335,12 @@ for (const lane of [...byEventType.keys()].sort()) {
   logger.result(`    ${lane.padEnd(28)} ${String(byEventType.get(lane) ?? 0).padStart(5)}`);
 }
 logger.result('');
+
+// ── (e) Error analysis — the DAG-flow error collection made visible ───────────
+// The geo transports and ingest parsers capture every caught exception into a
+// GeoErrorRecord on state.errors; the insights-fold gather folds them into
+// state.errorRollup (bounded, grouped by source+kind). Print the distribution.
+CartographerCli.printErrorAnalysis(logger, state.errorRollup);
 
 // ── (a) Normalization sample — a multi-zone, multi-scan journey ───────────────
 // Prefer a journey that crosses >=2 timezones to show differing local offsets.

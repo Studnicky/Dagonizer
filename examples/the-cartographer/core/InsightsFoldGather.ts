@@ -25,6 +25,8 @@ import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 
 import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { JourneyInsights, JourneyScan, RegionInsights } from '../CartographerState.ts';
+import type { GeoErrorRecordType } from '../errors/GeoErrorRecord.ts';
+import { ErrorRollup, type ErrorRollupType } from '../errors/ErrorRollup.ts';
 
 // ── Module constants ───────────────────────────────────────────────────────────
 
@@ -73,6 +75,7 @@ export class InsightsFoldGather extends GatherStrategy {
   private regionMap:    Map<string, RegionInsights>      = new Map();
   private journeyMap:   Map<string, JourneyAccumulator>  = new Map();
   private sampleRing:   EnrichedShipment[]               = [];
+  private errorRollup:  ErrorRollupType                  = ErrorRollup.empty();
 
   // ── initial: reset accumulators and parent state targets ─────────────────
 
@@ -81,13 +84,15 @@ export class InsightsFoldGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
-    this.regionMap  = new Map();
-    this.journeyMap = new Map();
-    this.sampleRing = [];
+    this.regionMap   = new Map();
+    this.journeyMap  = new Map();
+    this.sampleRing  = [];
+    this.errorRollup = ErrorRollup.empty();
 
     accessor.set(state, 'insights',      new Map());
     accessor.set(state, 'journeys',      new Map());
     accessor.set(state, 'sampleRecords', []);
+    accessor.set(state, 'errorRollup',   ErrorRollup.empty());
   }
 
   // ── reduce: per-clone fold (batch.size === 1) ─────────────────────────────
@@ -100,6 +105,13 @@ export class InsightsFoldGather extends GatherStrategy {
   ): void {
     for (const item of batch) {
       const record: GatherRecordType<NodeStateInterface> = item.state;
+
+      // Fold this clone's captured errors into the parent rollup FIRST — errors
+      // flow scatter→gather as data, independent of whether the clone produced a
+      // usable enriched record. A clone whose coords were out of range still
+      // carries its captured RangeError even if enrichment degraded.
+      this.foldErrors(record.cloneState, state, accessor);
+
       const enriched = accessor.get<EnrichedShipment>(record.cloneState, 'enriched');
       if (enriched === null || !enriched.shipmentId) continue;
 
@@ -173,6 +185,22 @@ export class InsightsFoldGather extends GatherStrategy {
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
+
+  /** Fold one clone's captured errors into the bounded parent rollup. */
+  private foldErrors(
+    cloneState: NodeStateInterface,
+    state: NodeStateInterface,
+    accessor: StateAccessorInterface,
+  ): void {
+    const errors = accessor.get<readonly GeoErrorRecordType[]>(cloneState, 'capturedErrors');
+    if (errors === null || errors.length === 0) return;
+    for (const error of errors) {
+      ErrorRollup.fold(this.errorRollup, error);
+    }
+    // Write the rollup back to parent state after folding. The rollup is bounded
+    // to O(distinct source+kind groups) regardless of event count.
+    accessor.set(state, 'errorRollup', this.errorRollup);
+  }
 
   /** Fold one enriched scan into the per-region accumulator and update parent state. */
   private foldRegion(
