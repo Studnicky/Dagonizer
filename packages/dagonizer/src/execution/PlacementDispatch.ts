@@ -9,30 +9,10 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 import type { RunNodeResultType } from './ScatterDispatch.js';
 
 /**
- * Per-`@type` placement executor surface the `Dagonizer` exposes to
- * `PlacementDispatch`. Each method runs one node-`@type`'s execution path over
- * its narrowed placement type; `PlacementDispatch.dispatch` narrows the
- * placement from its `@type` discriminant before selecting the matching method.
- *
- * `Dagonizer` implements this interface so the dispatch routing lives in a
- * dedicated class with a stable shape, rather than an object-literal of arrow
- * closures rebuilt per construction.
+ * Leaf (`SingleNode`) placement executor surface. `LeafExecutor` implements
+ * this interface; `PlacementDispatch` holds a reference via the field `#leaf`.
  */
-export interface PlacementExecutorInterface<TState extends NodeStateInterface> {
-  executeEmbeddedDAG(
-    placement: EmbeddedDAGNodeType,
-    state: TState,
-    signal: AbortSignal | null,
-    placementPath: readonly string[],
-    bufferIntermediates: boolean,
-  ): Promise<RunNodeResultType<TState>>;
-  executeScatter(
-    placement: ScatterNodeType,
-    state: TState,
-    dagName: string,
-    signal: AbortSignal | null,
-    placementPath: readonly string[],
-  ): Promise<RunNodeResultType<TState>>;
+export interface LeafPlacementExecutorInterface<TState extends NodeStateInterface> {
   executeSingleNode(
     placement: SingleNodePlacementType,
     state: TState,
@@ -42,12 +22,41 @@ export interface PlacementExecutorInterface<TState extends NodeStateInterface> {
 }
 
 /**
+ * Embedded-DAG placement executor surface. `EmbeddedDagExecutor` implements
+ * this interface; `PlacementDispatch` holds a reference via the field `#embedded`.
+ */
+export interface EmbeddedPlacementExecutorInterface<TState extends NodeStateInterface> {
+  executeEmbeddedDAG(
+    placement: EmbeddedDAGNodeType,
+    state: TState,
+    signal: AbortSignal | null,
+    placementPath: readonly string[],
+    bufferIntermediates: boolean,
+  ): Promise<RunNodeResultType<TState>>;
+}
+
+/**
+ * Scatter placement executor surface. `ScatterExecutor` implements this
+ * interface; `PlacementDispatch` holds a reference via the field `#scatter`.
+ */
+export interface ScatterPlacementExecutorInterface<TState extends NodeStateInterface> {
+  executeScatter(
+    placement: ScatterNodeType,
+    state: TState,
+    dagName: string,
+    signal: AbortSignal | null,
+    placementPath: readonly string[],
+  ): Promise<RunNodeResultType<TState>>;
+}
+
+/**
  * Per-`@type` execution dispatch for composite placements.
  *
  * Built once per dispatcher instance (not per node call) so node execution is a
  * single keyed branch with no per-call closure/object allocation in the hot
- * loop. The single `#executor` field holds the dispatcher; `dispatch` routes on
- * the placement's `@type` discriminant.
+ * loop. Three focused executor fields (`#leaf`, `#embedded`, `#scatter`)
+ * replace the prior single `#executor` reference; `dispatch` routes on the
+ * placement's `@type` discriminant.
  *
  * `SingleNode` is handled structurally by the work-set scheduler (via
  * `#fireSinglePlacement`) before `executeDAGNode` is called; its branch keeps
@@ -56,10 +65,18 @@ export interface PlacementExecutorInterface<TState extends NodeStateInterface> {
  * their branches synthesise the no-op result the union requires.
  */
 export class PlacementDispatch<TState extends NodeStateInterface> {
-  readonly #executor: PlacementExecutorInterface<TState>;
+  readonly #leaf: LeafPlacementExecutorInterface<TState>;
+  readonly #embedded: EmbeddedPlacementExecutorInterface<TState>;
+  readonly #scatter: ScatterPlacementExecutorInterface<TState>;
 
-  constructor(executor: PlacementExecutorInterface<TState>) {
-    this.#executor = executor;
+  constructor(
+    leaf: LeafPlacementExecutorInterface<TState>,
+    embedded: EmbeddedPlacementExecutorInterface<TState>,
+    scatter: ScatterPlacementExecutorInterface<TState>,
+  ) {
+    this.#leaf = leaf;
+    this.#embedded = embedded;
+    this.#scatter = scatter;
   }
 
   dispatch(
@@ -75,11 +92,11 @@ export class PlacementDispatch<TState extends NodeStateInterface> {
         // Placement.isEmbeddedDAG guard: @type === 'EmbeddedDAGNode' confirmed by
         // the dispatch branch; guard makes the narrowing explicit.
         if (!Placement.isEmbeddedDAG(entry)) throw new DAGError(`Dispatch type mismatch: expected EmbeddedDAGNode`);
-        return this.#executor.executeEmbeddedDAG(entry, state, signal, placementPath, bufferIntermediates);
+        return this.#embedded.executeEmbeddedDAG(entry, state, signal, placementPath, bufferIntermediates);
       }
       case 'ScatterNode': {
         if (!Placement.isScatter(entry)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);
-        return this.#executor.executeScatter(entry, state, dagName, signal, placementPath);
+        return this.#scatter.executeScatter(entry, state, dagName, signal, placementPath);
       }
       // SingleNode is handled structurally by the work-set scheduler (via
       // #fireSinglePlacement) before executeDAGNode is called; this branch is
@@ -88,7 +105,7 @@ export class PlacementDispatch<TState extends NodeStateInterface> {
       // the method is not flagged as unused by static analysis.
       case 'SingleNode': {
         if (!Placement.isSingle(entry)) throw new DAGError(`Dispatch type mismatch: expected SingleNode`);
-        return this.#executor.executeSingleNode(entry, state, dagName, signal);
+        return this.#leaf.executeSingleNode(entry, state, dagName, signal);
       }
       // TerminalNode / PhaseNode are handled before executeDAGNode in runNodes;
       // these branches are unreachable in normal operation but keep the dispatch

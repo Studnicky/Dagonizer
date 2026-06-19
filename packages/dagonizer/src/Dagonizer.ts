@@ -1,27 +1,20 @@
-import { ScatterCheckpoint } from './checkpoint/ScatterCheckpoint.js';
 import { WorkSetCheckpoint } from './checkpoint/WorkSetCheckpoint.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 import type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
-import type { GatherExecutionType, GatherRecordType } from './contracts/GatherExecution.js';
 import type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
-import type { OutcomeRecordType } from './contracts/OutcomeRecord.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
-import { GatherStrategies } from './core/GatherStrategies.js';
-import { OutcomeReducers } from './core/OutcomeReducers.js';
 import { PlacementRank } from './core/PlacementRank.js';
 import { WorkSet } from './core/WorkSet.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
 import { Batch } from './entities/batch/Batch.js';
 import type { DAGType } from './entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from './entities/dag/EmbeddedDAGNode.js';
-import type { EmbeddedDAGNodeType } from './entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodeType } from './entities/dag/PhaseNode.js';
 import { Placement } from './entities/dag/Placement.js';
 import type { DAGNodeType } from './entities/dag/Placement.js';
-import type { ScatterNodeType } from './entities/dag/ScatterNode.js';
 import type { SingleNodePlacementType } from './entities/dag/SingleNode.js';
 import type { ExecutionResultType, InterruptionInfoType } from './entities/execution/ExecutionResult.js';
 import type { DAGHandoffType } from './entities/handoff/DAGHandoff.js';
@@ -33,16 +26,15 @@ import type { WorkSetProgressType } from './entities/workset/WorkSetProgress.js'
 import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
 import { BodyExecutor } from './execution/BodyExecutor.js';
 import type { BodyRunPortInterface } from './execution/BodyExecutor.js';
-import { NodeInvoker } from './execution/NodeInvoker.js';
-import type { NodeInvokerSourceInterface } from './execution/NodeInvoker.js';
+import { EmbeddedDagExecutor } from './execution/EmbeddedDagExecutor.js';
+import type { EmbeddedDagExecutorSourceType } from './execution/EmbeddedDagExecutor.js';
+import { Gather } from './execution/Gather.js';
+import type { GatherSourceInterface } from './execution/Gather.js';
+import { LeafExecutor } from './execution/LeafExecutor.js';
+import type { LeafExecutorSourceInterface } from './execution/LeafExecutor.js';
 import { PlacementDispatch } from './execution/PlacementDispatch.js';
-import type { PlacementExecutorInterface } from './execution/PlacementDispatch.js';
-import { PlacementRouter } from './execution/PlacementRouter.js';
-import { ReservoirBuffer } from './execution/ReservoirBuffer.js';
-import { ScatterDispatchAdapter, ScatterPoolDriver } from './execution/ScatterDispatch.js';
-import type { RunNodeResultType, RunNodesBatchType, RunOptionsType, ScatterDispatchAdapterInterface, ScatterDispatchSourceInterface, ScatterRunContextType } from './execution/ScatterDispatch.js';
-import { ScatterSource } from './execution/ScatterSource.js';
-import { ScatterWorkerPool } from './execution/ScatterWorkerPool.js';
+import type { RunNodeResultType, RunNodesBatchType, RunOptionsType, ScatterDispatchSourceInterface } from './execution/ScatterDispatch.js';
+import { ScatterExecutor } from './execution/ScatterExecutor.js';
 import { Execution } from './Execution.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
@@ -62,9 +54,6 @@ const DEFAULT_STATE_ACCESSOR: StateAccessorInterface = new DottedPathAccessor();
 
 /** Registry version used when the dispatcher is constructed without one. */
 const DEFAULT_REGISTRY_VERSION = '0';
-
-/** Default scatter concurrency when `scatter.concurrency` is not specified. */
-const DEFAULT_SCATTER_CONCURRENCY = 1;
 
 /**
  * Canonical defaults for `DagonizerOptionsType`.
@@ -266,8 +255,9 @@ export class Dagonizer<TState extends NodeStateInterface, TServices = undefined>
 implements
   DagonizerInterface<TState, TServices>,
   DispatcherRelaySourceInterface<TState>,
-  PlacementExecutorInterface<TState>,
-  NodeInvokerSourceInterface<TState>,
+  GatherSourceInterface<TState, TServices>,
+  LeafExecutorSourceInterface<TState, TServices>,
+  EmbeddedDagExecutorSourceType<TState>,
   BodyRunPortInterface<TState, TServices>,
   ScatterDispatchSourceInterface<TState, TServices> {
   private readonly dags = new Map<string, DAGType>();
@@ -297,21 +287,33 @@ implements
   #correlationSeq = 0;
 
   /**
+   * Shared body-run + transport-branch primitive. Built once per dispatcher
+   * instance, bound to this instance via the narrow `BodyRunPortInterface`.
+   * Both `EmbeddedDagExecutor` and the scatter per-item DAG-body path run their
+   * sub-DAG body through it, so the in-process-vs-container branch and the
+   * bufferIntermediates guard live in one place.
+   */
+  private readonly bodyExecutor: BodyExecutor<TState, TServices>;
+
+  /** Gather execution composer and registered-node invoker for custom gather strategies. */
+  private readonly gather: Gather<TState, TServices>;
+
+  /** `SingleNode` placement executor. */
+  private readonly leafExecutor: LeafExecutor<TState, TServices>;
+
+  /** `EmbeddedDAGNode` placement executor. */
+  private readonly embeddedDagExecutor: EmbeddedDagExecutor<TState, TServices>;
+
+  /** `ScatterNode` placement executor. */
+  private readonly scatterExecutor: ScatterExecutor<TState, TServices>;
+
+  /**
    * Per-`@type` execution dispatch. Built once per dispatcher instance (not per
    * node call) so node execution is a single keyed branch with no per-call
    * closure/object allocation in the hot loop. The `PlacementDispatch` class
    * holds a stable shape; routing lives in its `dispatch` method.
    */
   private readonly placementDispatch: PlacementDispatch<TState>;
-
-  /**
-   * Shared body-run + transport-branch primitive. Built once per dispatcher
-   * instance, bound to this instance via the narrow `BodyRunPortInterface`.
-   * Both `executeEmbeddedDAG` and the scatter per-item DAG-body path run their
-   * sub-DAG body through it, so the in-process-vs-container branch and the
-   * bufferIntermediates guard live in one place.
-   */
-  private readonly bodyExecutor: BodyExecutor<TState, TServices>;
 
   /**
    * Construct a dispatcher. Subclass and override the protected hooks
@@ -338,8 +340,12 @@ implements
     // engine-internal executors are accessible). Each is a named class with a
     // stable hidden class, not an object-literal of arrow closures.
     this.#relayHooks = new DispatcherHooks<TState>(this);
-    this.placementDispatch = new PlacementDispatch<TState>(this);
     this.bodyExecutor = new BodyExecutor<TState, TServices>(this);
+    this.gather = new Gather<TState, TServices>(this);
+    this.leafExecutor = new LeafExecutor<TState, TServices>(this);
+    this.embeddedDagExecutor = new EmbeddedDagExecutor<TState, TServices>(this, this.bodyExecutor);
+    this.scatterExecutor = new ScatterExecutor<TState, TServices>(this, this.bodyExecutor, this.gather);
+    this.placementDispatch = new PlacementDispatch<TState>(this.leafExecutor, this.embeddedDagExecutor, this.scatterExecutor);
   }
 
   // ---------------------------------------------------------------------------
@@ -473,6 +479,29 @@ implements
    */
   bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices> {
     return NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.services);
+  }
+
+  /**
+   * Build a node context for a placement execution. Substitutes a never-firing
+   * signal when the run has none. Satisfies `GatherSourceInterface` and
+   * `LeafExecutorSourceInterface` so `Gather` and `LeafExecutor` can build
+   * contexts without importing `SignalComposer` directly.
+   */
+  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType<TServices> {
+    return NodeContextBuilder.of(dagName, placementName, signal ?? SignalComposer.never(), this.services);
+  }
+
+  /**
+   * Run a node over a single `state` as a size-1 batch. Satisfies
+   * `GatherSourceInterface` and `LeafExecutorSourceInterface`, exposing the
+   * private `#runNodeOnState` primitive to the focused executor modules.
+   */
+  async runNodeOnState(
+    node: NodeInterface<TState, string, TServices>,
+    state: TState,
+    context: NodeContextType<TServices>,
+  ): Promise<string> {
+    return this.#runNodeOnState(node, state, context);
   }
 
   /**
@@ -1463,389 +1492,6 @@ implements
   }
 
 
-  /**
-   * Execute an embedded-DAG placement: run the referenced sub-DAG in an
-   * isolated child state clone (cardinality 1), propagate errors/warnings
-   * to the parent, apply `stateMapping.output` back to the parent, and
-   * route via the terminal-propagating reducer.
-   *
-   * State bridging mirrors the scatter seed (`stateMapping.input`) but adds a
-   * copy-back the fork has no use for:
-   * - `stateMapping.input` (child key → parent path) seeds the child clone
-   *   before the sub-DAG runs (the same field scatter uses to seed each clone).
-   * - `stateMapping.output` (parent path → child key) merges child state
-   *   back into the parent after completion (via `mapOutputState`).
-   * - Terminal propagation: if the child run's `terminalOutcome` is `'failed'`
-   *   or any unrecoverable error exists, route `'error'`; otherwise `'success'`.
-   * - Lifecycle scoping: `runOptions.embedded: true` suppresses lifecycle transitions
-   *   and flow hooks on the child run (those are top-level concerns).
-   * - `placementPath`: extended with the placement name so inner node hooks
-   *   receive accurate nesting context.
-   */
-  async executeEmbeddedDAG(
-    placement: EmbeddedDAGNodeType,
-    state: TState,
-    signal: AbortSignal | null,
-    placementPath: readonly string[],
-    bufferIntermediates: boolean = true,
-  ): Promise<RunNodeResultType<TState>> {
-    const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
-    const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
-    const cloneState = this.stateMapper.cloneChild(state, inputMapping);
-
-    // Run the sub-DAG body in-process or through a bound container. The
-    // in-process-vs-container branch, the bufferIntermediates O(N*M*L) guard,
-    // and the container error/snapshot collection all live in BodyExecutor.
-    //
-    // Embedded DAG is cardinality-1 (not inbox-backed), so an infrastructure
-    // failure does NOT throw — Law 3 requires host crash / transport loss to
-    // surface as a collected error routed like any node failure, never an
-    // unhandled throw. BodyExecutor collects the transport error into
-    // `cloneState`; the unrecoverable error then makes hasUnrecoverable true in
-    // PlacementRouter and routes this placement to its 'error' output. So
-    // `body.infrastructureError` is intentionally ignored here (no re-queue).
-    const body = await this.bodyExecutor.run(
-      placement.dag,
-      placement.name,
-      cloneState,
-      state,
-      placement.container,
-      signal,
-      placementPath,
-      bufferIntermediates,
-    );
-
-    // Propagate child→parent errors/warnings, apply output-state mapping, derive
-    // the route token, resolve the next stage, and assemble the envelope.
-    return PlacementRouter.assemble(
-      placement.name,
-      placement.outputs,
-      body.terminalOutcome,
-      cloneState,
-      state,
-      outputMapping,
-      body.intermediates,
-      this.stateMapper,
-    );
-  }
-
-  /**
-   * Execute a scatter placement with a unified streaming executor.
-   *
-   * The scatter source (array, `Iterable`, or `AsyncIterable`) is normalised
-   * to an `AsyncIterator` via `ScatterSource.toAsyncIterator`. A bounded worker
-   * pool (max in-flight = `scatter.concurrency`) pulls items lazily — a new
-   * item is only pulled once a worker slot frees up (true backpressure). Array
-   * sources are treated as finite producers and behave identically to streaming
-   * producers; there is no separate batch loop.
-   *
-   * **Durable-inbox checkpoint model.** As each item is pulled it enters a
-   * persisted inbox (`ScatterInboxItem[]`). The inbox carries the actual item
-   * payload so that a streaming source does not need to be rewound on resume.
-   * When a body completes successfully the item is removed from the inbox and
-   * its result is added to `ackedResults`. On crash/resume the inbox items are
-   * reprocessed first (as the priority source), then any remaining source
-   * items continue normally.
-   *
-   * **Unified gather fold.** `initial` initialises accumulator state before any
-   * clones run; `reduce` folds each completed record into parent state as it
-   * arrives (batch of 1 per clone); `finalize` runs end-of-gather work (e.g.
-   * node invocation for `custom`) once all clones have reported.
-   *
-   * Resume bookkeeping is persisted under {@link SCATTER_PROGRESS_KEY}.
-   */
-  async executeScatter(
-    scatter: ScatterNodeType,
-    state: TState,
-    dagName: string,
-    signal: AbortSignal | null,
-    placementPath: readonly string[],
-  ): Promise<RunNodeResultType<TState>> {
-    // ── 1. Resolve source and scatter defaults ───────────────────────────────
-    // Resolve once here; used at the early-exit, in the worker pool, and at
-    // the outcome-reducer step — no repeated `?? default` at each site.
-    const reducerName = scatter.reducer ?? 'aggregate';
-    const itemKey = scatter.itemKey ?? 'currentItem';
-    const concurrencyLimit = scatter.concurrency ?? DEFAULT_SCATTER_CONCURRENCY;
-
-    const raw = this.accessor.get(state, scatter.source);
-
-    // Empty / absent source: skip immediately.
-    const isEmpty = raw === null || raw === undefined ||
-      (Array.isArray(raw) && raw.length === 0);
-    if (isEmpty) {
-      const routeOutput = OutcomeReducers.resolve(reducerName).reduce([]);
-      const nextStage = scatter.outputs[routeOutput] ?? null;
-      const result: NodeResultType<TState> = {
-        'output': routeOutput,
-        'skipped': true,
-        'nodeName': scatter.name,
-        state,
-        'intermediateResults': [],
-      };
-      return { nextStage, result };
-    }
-
-    // ── 2. Restore checkpoint (inbox model) ─────────────────────────────────
-    // ScatterCheckpoint.read validates the raw metadata value at the boundary
-    // so corrupt or migrated checkpoints throw ValidationError here rather
-    // than causing silent type mismatches deep in the scatter loop.
-    const storedProgress = ScatterCheckpoint.read(state, scatter.name);
-
-    // Determine gather strategy (needed before compactable check).
-    const gatherStrategy = scatter.gather !== undefined
-      ? GatherStrategies.resolve(scatter.gather.strategy)
-      : null;
-
-    // Compactable: all built-in strategies except custom (retainsRecordsForFinalize=true).
-    const compactable = gatherStrategy === null || !gatherStrategy.retainsRecordsForFinalize;
-
-    // Materialise the scatter run accumulators from the stored checkpoint. The
-    // inbox seeds from the checkpoint; the mode-specific accumulators, seen-index
-    // set, and next-index cursor are reconstructed so resume reprocesses inbox
-    // gaps and continues sequential index assignment. `nextIndex` advances as
-    // fresh items are pulled, so it is read off the mutable bundle.
-    const runState = ScatterCheckpoint.restoreRunState(storedProgress, compactable);
-    const { inbox, ackedResults, ackedByIndex, itemOutputs, watermarkRef, aheadAcked, outcomeTally, seenIndices } = runState;
-    let nextIndex = runState.nextIndex;
-
-    // ── 3. Gather strategy: prepare accumulators ────────────────────────────
-    // Accumulate fresh records for the finalize pass and outcome-reducer.
-    const allFreshRecords: GatherRecordType<TState>[] = [];
-    const intermediateResults: Array<NodeResultType<TState>> = [];
-
-    // NOTE: Gather contributions from acked items in a prior run are already
-    // present in the state snapshot (they were folded per-ack via reduce).
-    // No replay is needed here; the finalize pass at step 7 handles any
-    // end-of-gather work that needs the full record set.
-
-    // ── 4. Build the source async iterator ──────────────────────────────────
-    // Fresh source: new items from the actual source value.
-    //
-    // For index-stable sources (arrays, sync iterables) items are pulled
-    // sequentially and assigned indices 0, 1, 2, … by position.
-    // On resume, items whose position-index is already in seenIndices
-    // (acked or inbox) must be consumed from the iterator without spawning
-    // a worker; their work is already tracked.
-    //
-    // For async-iterable sources the consumer provides an iterator already
-    // positioned at the correct continuation point (it should yield only
-    // the remaining, un-processed items). No positional skip is applied;
-    // items are indexed starting from nextIndex as they arrive.
-    const isIndexStableSource = raw !== null && typeof raw === 'object' &&
-      Symbol.iterator in (raw as object) &&
-      !(Symbol.asyncIterator in (raw as object));
-
-    const rawIter = ScatterSource.toAsyncIterator(raw);
-
-    // For index-stable sources on resume: consume items from positions 0 to
-    // (nextIndex-1) from the raw source. Items whose position is in seenIndices
-    // are silently dropped (already handled). Items NOT in seenIndices were not
-    // processed in the prior run (gap in the acked set); add them to the inbox
-    // with their canonical index so the pool re-processes them.
-    // After this pre-scan, the raw iterator is positioned at nextIndex and ready
-    // for normal sequential assignment. The pool's inbox iterator starts at
-    // position 0 and traverses the full (possibly extended) inbox array.
-    if (isIndexStableSource && seenIndices.size > 0) {
-      for (let pos = 0; pos < nextIndex; pos++) {
-        const step = await rawIter.next();
-        if (step.done) { break; }
-        if (!seenIndices.has(pos)) {
-          // Gap: this position was never processed. Add to inbox for reprocessing.
-          inbox.push({ 'index': pos, 'item': step.value });
-        }
-      }
-    }
-
-    // freshIter: the pre-scanned (or fresh) raw iterator handed to the pool.
-    const freshIter = rawIter;
-
-    // ── 5. Bounded worker pool with lazy pull ────────────────────────────────
-    // `ScatterWorkerPool` owns the slot semaphore, active-worker counter,
-    // error accumulation, and the drain loop. Item body execution and
-    // acknowledgment are delegated to `ScatterPoolDriver` which is
-    // constructed with:
-    //   - a `ScatterDispatchAdapterInterface` built here (within the class body so
-    //     private members are accessible), and
-    //   - a `ScatterRunContextType` holding the scatter-local mutable accumulators.
-
-    const scatterAdapter: ScatterDispatchAdapterInterface<TState, TServices> =
-      new ScatterDispatchAdapter<TState, TServices>(this);
-
-    const scatterCtx: ScatterRunContextType<TState> = {
-      scatter,
-      state,
-      dagName,
-      signal,
-      placementPath,
-      itemKey,
-      inbox,
-      ackedResults,
-      ackedByIndex,
-      itemOutputs,
-      allFreshRecords,
-      intermediateResults,
-      gatherStrategy,
-      compactable,
-      watermarkRef,
-      aheadAcked,
-      outcomeTally,
-    };
-
-    // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
-    const driver = new ScatterPoolDriver<TState, TServices>(scatterAdapter, scatterCtx, this.bodyExecutor);
-
-    if (scatter.reservoir !== undefined) {
-      // Reservoir path: buffer-then-release loop keyed by item field.
-      const reservoirBuf = new ReservoirBuffer<TState>(driver, {
-        'concurrencyLimit': concurrencyLimit,
-        'inbox': inbox,
-        'freshIter': freshIter,
-        'nextIndex': nextIndex,
-        'signal': signal,
-        'reservoir': scatter.reservoir,
-        'accessor': this.accessor,
-      });
-      // drain() throws on abort or batch error; checkpoint is preserved on throw.
-      await reservoirBuf.drain();
-    } else {
-      // Non-reservoir path: original per-item worker pool (byte-identical).
-      const pool = new ScatterWorkerPool<TState>(driver, {
-        'concurrencyLimit': concurrencyLimit,
-        'inbox': inbox,
-        'freshIter': freshIter,
-        'nextIndex': nextIndex,
-        'signal': signal,
-      });
-      // drain() throws on abort or worker error; checkpoint is preserved on throw.
-      await pool.drain();
-    }
-
-    // ── 7. Finalize ──────────────────────────────────────────────────────────
-    // `reduce` already folded every clone into state per-ack. `finalize` runs
-    // once for EVERY gather (compactable and non-compactable) for end-of-gather
-    // work such as building derived state or invoking a registered node.
-    if (gatherStrategy !== null && scatter.gather !== undefined) {
-      if (compactable) {
-        // Compactable: the gather's result is fully in state via per-clone
-        // `reduce`. Compactable finalize (e.g. InsightsFoldGather) builds derived
-        // state from its own private accumulators and does NOT read the records
-        // arg — so `allFreshRecords` is intentionally empty here (ackItem and
-        // ackBatch skip the push in compactable mode to allow per-clone GC).
-        // Pass an empty list; `finalize` must not depend on it.
-        const gatherExecution = this.composeGatherExecution(state, [], dagName, signal);
-        await gatherStrategy.finalize(scatter.gather, gatherExecution);
-      } else {
-        // Non-compactable finalize: synthesise records for prior acked items too,
-        // reconstructing each prior-run clone from its persisted gather values so
-        // the strategy sees the full record set.
-        const freshIndices = new Set<number>(allFreshRecords.map((r) => r.index));
-        const syntheticRecords: GatherRecordType<TState>[] = [];
-        for (const acked of ackedResults) {
-          if (freshIndices.has(acked.index)) continue;
-          const syntheticClone = state.clone();
-          if (acked.kind === 'map') {
-            for (const [clonePath, val] of Object.entries(acked.mappingValues)) {
-              this.accessor.set(syntheticClone, clonePath, val);
-            }
-          } else if (acked.kind === 'field' && scatter.gather.field !== undefined) {
-            this.accessor.set(syntheticClone, scatter.gather.field, acked.fieldValue);
-          }
-          syntheticRecords.push({
-            'index': acked.index,
-            'item': acked.item,
-            'output': acked.output,
-            'terminalOutcome': null,
-            'cloneState': syntheticClone,
-          });
-        }
-        const merged = [...syntheticRecords, ...allFreshRecords]
-          .sort((a, b) => a.index - b.index);
-        if (merged.length > 0) {
-          const gatherExecution = this.composeGatherExecution(state, merged, dagName, signal);
-          await gatherStrategy.finalize(scatter.gather, gatherExecution);
-        }
-      }
-    }
-
-    // ── 8. Clear checkpoint after clean completion ───────────────────────────
-    ScatterCheckpoint.clear(state, scatter.name);
-
-    // ── 9. Reduce to route ───────────────────────────────────────────────────
-    const outcomeRecords: OutcomeRecordType[] = [];
-    if (compactable) {
-      // Expand outcomeTally to OutcomeRecordType array (count per output string).
-      for (const [output, count] of outcomeTally) {
-        for (let c = 0; c < count; c++) {
-          outcomeRecords.push({ 'index': -1, output, 'terminalOutcome': null });
-        }
-      }
-    } else {
-      for (const [index, output] of itemOutputs) {
-        outcomeRecords.push({ index, output, 'terminalOutcome': null });
-      }
-    }
-    const routeOutput = OutcomeReducers.resolve(reducerName).reduce(outcomeRecords);
-    const nextStage = scatter.outputs[routeOutput] ?? null;
-
-    const result: NodeResultType<TState> = {
-      'output': routeOutput,
-      'skipped': false,
-      'nodeName': scatter.name,
-      state,
-      intermediateResults,
-    };
-
-    return { nextStage, result };
-  }
-
-  /**
-   * Run a registered node over `state` as a size-1 batch during a `custom`
-   * gather's finalize pass. Throws `DAGError` when the node is not registered;
-   * no-ops if the lookup races to `undefined` after the existence check. The
-   * `NodeInvoker` handed to the `GatherStrategy` forwards here, where the
-   * private registry and node-on-state machinery are in scope.
-   */
-  async invokeRegisteredNode(
-    nodeName: string,
-    state: TState,
-    dagName: string,
-    signal: AbortSignal | null,
-  ): Promise<void> {
-    if (!this.nodes.has(nodeName)) {
-      throw new DAGError(`Unknown custom node: ${nodeName}`);
-    }
-    const dagNode = this.nodes.get(nodeName);
-    if (dagNode === undefined) return;
-    const context = NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.services);
-    await this.#runNodeOnState(dagNode, state, context);
-  }
-
-  /**
-   * Compose the per-gather execution context handed to a `GatherStrategy`.
-   *
-   * The `invoker` is a `NodeInvoker` (a named class with a stable shape) holding
-   * direct references to this dispatcher and the enclosing execution context.
-   * No injected function callbacks — the dispatcher instance (`this`) and the
-   * entity references are the only captured values.
-   */
-  private composeGatherExecution(
-    state: TState,
-    records: ReadonlyArray<GatherRecordType<TState>>,
-    dagName: string,
-    signal: AbortSignal | null,
-  ): GatherExecutionType<TState> {
-    const invoker = new NodeInvoker<TState>(this, state, dagName, signal);
-    return {
-      state,
-      'records': [...records],
-      dagName,
-      signal,
-      'accessor': this.accessor,
-      invoker,
-    };
-  }
-
 
   /**
    * Wrap a node execute call with a per-node timeout when `dagNode.timeout`
@@ -1925,35 +1571,6 @@ implements
       }
       await schedulerPromise;
     }
-  }
-
-  async executeSingleNode(
-    nodeConfig: SingleNodePlacementType,
-    state: TState,
-    dagName: string,
-    signal: AbortSignal | null,
-  ): Promise<RunNodeResultType<TState>> {
-    const dagNode = this.nodes.get(nodeConfig.node);
-
-    if (!dagNode) {
-      throw new DAGError(`Unknown node: ${nodeConfig.node}`);
-    }
-
-    const output = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
-      const context = NodeContextBuilder.of(dagName, nodeConfig.name, nodeSignal, this.services);
-      return this.#runNodeOnState(dagNode, state, context);
-    });
-
-    const nextStage = nodeConfig.outputs[output];
-
-    if (nextStage === undefined) {
-      throw new DAGError(`Node ${dagNode.name} returned output '${output}' but node ${nodeConfig.name} has no routing for it. `
-        + `Available outputs: ${Object.keys(nodeConfig.outputs).join(', ')}`);
-    }
-
-    // A leaf node routes on its own returned output token (validated above) and
-    // produces no inner intermediates. Assemble the shared result envelope.
-    return PlacementRouter.envelope(nodeConfig.name, output, nextStage, state, []);
   }
 
   private async executeDAGNode(
