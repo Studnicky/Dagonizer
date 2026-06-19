@@ -48,7 +48,7 @@ Worker threads load a separate Node.js module — the main process's in-memory r
 | `DagContainerInterface` | `@studnicky/dagonizer/contracts` | Adapter contract: `runDag(task)` |
 | `RegistryModuleInterface` | `@studnicky/dagonizer/contracts` | Default export shape loaded by `DagHost` inside each worker |
 | `RegistryBundleInterface` | `@studnicky/dagonizer/contracts` | Return type of `instantiate`: bundle, services, version, restoreState |
-| `DagonizerOptionsInterface.containers` | `@studnicky/dagonizer` | Binds logical role strings to backend instances |
+| `DagonizerOptionsType.containers` | `@studnicky/dagonizer` | Binds logical role strings to backend instances |
 
 ## What it demonstrates
 

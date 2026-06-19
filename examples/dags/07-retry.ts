@@ -12,8 +12,8 @@ import {
   RetryPolicy,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { NodeContextInterface, RetryPolicyOptionsInterface } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { NodeContextType, RetryPolicyOptionsType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Simulated flaky downstream: class encapsulates mutable attempt counter
@@ -52,7 +52,7 @@ export class FetchNode extends ScalarNode<FetchState, 'success' | 'error'> {
   readonly name = 'fetch';
   readonly outputs = ['success', 'error'] as const;
 
-  protected override async executeOne(state: FetchState, context: NodeContextInterface) {
+  protected override async executeOne(state: FetchState, context: NodeContextType) {
     // #region policy-config
     const policy = RetryPolicy.from({
       'maxAttempts':  5,
@@ -120,7 +120,7 @@ export async function runWithAbort(
 // #region custom-backoff
 /** RetryPolicy subclass that spaces retries on the Fibonacci sequence (× 100 ms). */
 export class FibonacciRetry extends RetryPolicy {
-  constructor(options: RetryPolicyOptionsInterface = {}) {
+  constructor(options: RetryPolicyOptionsType = {}) {
     super(options);
   }
 
@@ -135,7 +135,7 @@ export class FibonacciRetry extends RetryPolicy {
 // DAG
 // ---------------------------------------------------------------------------
 
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':   DAG_CONTEXT,
   '@id':        'urn:noocodex:dag:retry-dag',
   '@type':      'DAG',

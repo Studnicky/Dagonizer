@@ -16,7 +16,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -25,7 +25,7 @@ export class IpGeolocateNode extends ScalarNode<CartographerState, 'geolocated',
   readonly 'name' = 'ip-geolocate';
   readonly 'outputs' = ['geolocated'] as const;
 
-  protected override async executeOne(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'geolocated'>> {
+  protected override async executeOne(state: CartographerState, context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'geolocated'>> {
     state.ipCandidate = await context.services.ipGeolocator.lookup(
       state.canonical.body.ipAddress,
       context.signal,

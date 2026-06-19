@@ -30,7 +30,7 @@ import {
   RetryPolicy,
   Scheduler,
 } from '@studnicky/dagonizer';
-import type { BackoffStrategy, RetryPolicyOptionsInterface } from '@studnicky/dagonizer';
+import type { BackoffStrategyType, RetryPolicyOptionsType } from '@studnicky/dagonizer';
 
 import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 
@@ -45,7 +45,7 @@ import { FlakyStub } from './dags/22-backoff-strategies.js';
 class RecordingPolicy extends RetryPolicy {
   readonly #delays: number[] = [];
 
-  constructor(options?: RetryPolicyOptionsInterface) {
+  constructor(options?: RetryPolicyOptionsType) {
     super(options);
   }
 
@@ -67,7 +67,7 @@ class RecordingPolicy extends RetryPolicy {
 class StrategyRunner {
   static async run(
     strategyName: string,
-    strategy: BackoffStrategy,
+    strategy: BackoffStrategyType,
     baseDelay: number,
     maxAttempts: number,
     jitterFactor: number,

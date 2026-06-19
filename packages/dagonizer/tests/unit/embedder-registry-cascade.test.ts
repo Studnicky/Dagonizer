@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { AdapterDescriptor, type AdapterDescriptorShape } from '../../src/adapter/AdapterDescriptor.js';
+import { AdapterDescriptor, type AdapterDescriptorShapeType } from '../../src/adapter/AdapterDescriptor.js';
 import { BaseEmbedder } from '../../src/adapter/BaseEmbedder.js';
 import { EmbedderCascade } from '../../src/adapter/EmbedderCascade.js';
 import { EmbedderRegistry } from '../../src/adapter/EmbedderRegistry.js';
-import type { AdapterCapabilities } from '../../src/adapter/LlmAdapter.js';
+import type { AdapterCapabilitiesType } from '../../src/adapter/LlmAdapter.js';
 import { LlmError } from '../../src/adapter/LlmError.js';
 
-const FULL_CAPABILITIES: AdapterCapabilities = {
+const FULL_CAPABILITIES: AdapterCapabilitiesType = {
   'toolUse': 'full',
   'structuredOutput': true,
   'jsonMode': true,
@@ -37,7 +37,7 @@ class TestEmbedder extends BaseEmbedder {
   }
 }
 
-/** Embedder that does NOT override probe; inherits BaseEmbedder default. */
+/** EmbedderInterface that does NOT override probe; inherits BaseEmbedder default. */
 class DefaultProbeEmbedder extends BaseEmbedder {
   constructor() {
     super('default-probe', 'default-probe', 4);
@@ -77,7 +77,7 @@ class AbortingEmbedder extends BaseEmbedder {
   }
 }
 
-function descriptorOf(provider: string, model: string): AdapterDescriptorShape {
+function descriptorOf(provider: string, model: string): AdapterDescriptorShapeType {
   return {
     'provider':     provider,
     'model':        model,

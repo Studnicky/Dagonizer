@@ -91,8 +91,7 @@ Subclass `InMemoryChannel` and override the protected `onPublished` hook to chai
 ```ts twoslash
 import { NodeStateBase, Dagonizer } from '@studnicky/dagonizer';
 import { InMemoryChannel } from '@studnicky/dagonizer/channels';
-import type { DAGHandoff } from '@studnicky/dagonizer/entities';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
 
 class AppState extends NodeStateBase {}
 interface AppServices { db: unknown }
@@ -104,13 +103,13 @@ declare const downstreamDispatcher: Dagonizer<AppState>;
 declare const dlqChannel: InMemoryChannel;
 
 class HandoffChannel extends InMemoryChannel {
-  protected override async onPublished(handoff: DAGHandoff): Promise<void> {
+  protected override async onPublished(handoff: DAGHandoffType): Promise<void> {
     // DAGHandoff is a oneOf discriminated union: either stateSnapshot (by-value
-    // JsonObject) or stateSnapshotRef (by-reference URI string). Narrow before
+    // JsonObjectType) or stateSnapshotRef (by-reference URI string). Narrow before
     // accessing stateSnapshot — the field is absent on the ref branch.
     if (!('stateSnapshot' in handoff)) return;
     // Restore state on the receiving side and run the continuation DAG.
-    const state = AppState.restore(handoff.stateSnapshot as JsonObject);
+    const state = AppState.restore(handoff.stateSnapshot as JsonObjectType);
     await downstreamDispatcher.execute('continuation-dag', state);
   }
 }
@@ -137,9 +136,9 @@ A serverless function receives a `DAGHandoff` envelope, restores state, runs the
 
 ```ts twoslash
 import { NodeStateBase, Dagonizer } from '@studnicky/dagonizer';
-import type { DispatcherBundle } from '@studnicky/dagonizer';
+import type { DispatcherBundleType } from '@studnicky/dagonizer';
 import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
-import type { DAGHandoff, JsonObject } from '@studnicky/dagonizer/entities';
+import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
 
 class AppState extends NodeStateBase {}
 interface AppServices { db: unknown }
@@ -147,20 +146,20 @@ interface AppServices { db: unknown }
 // buildServices and myBundle are deployment-specific; they construct the
 // service bag and the compiled DAG+node bundle for this function.
 declare function buildServices(): AppServices;
-declare const myBundle: DispatcherBundle<AppState, AppServices>;
+declare const myBundle: DispatcherBundleType<AppState, AppServices>;
 const REGISTRY_VERSION = '1.0.0';
 
 // A transport-specific channel — implement `publish` with your SDK call.
 // Core never imports a cloud SDK; `SqsChannel` is your deployment code.
 class SqsChannel implements HandoffChannelInterface {
-  async publish(handoff: DAGHandoff): Promise<void> {
+  async publish(handoff: DAGHandoffType): Promise<void> {
     // await sqsClient.send(new SendMessageCommand({ ... }));
     void handoff;
   }
 }
 
 // Function handler (e.g. AWS Lambda, Cloud Run, Cloudflare Worker):
-export async function handler(envelope: DAGHandoff): Promise<void> {
+export async function handler(envelope: DAGHandoffType): Promise<void> {
   // 1. Verify version before executing.
   if (envelope.registryVersion !== REGISTRY_VERSION) {
     throw new Error(`Version mismatch: expected ${REGISTRY_VERSION}, got ${envelope.registryVersion}`);
@@ -172,7 +171,7 @@ export async function handler(envelope: DAGHandoff): Promise<void> {
   if (!('stateSnapshot' in envelope)) {
     throw new Error('stateSnapshotRef envelopes require fetching the snapshot URI before restore');
   }
-  const state = AppState.restore(envelope.stateSnapshot as JsonObject);
+  const state = AppState.restore(envelope.stateSnapshot as JsonObjectType);
 
   // 3. Construct the dispatcher with egress channels bound to terminal names.
   const services = buildServices();
@@ -230,7 +229,7 @@ Dagonizer guarantees envelope fidelity (a `stateSnapshot` round-trip is a fixed 
 
 **`stateSnapshotRef` URI dereference.** When an envelope carries `stateSnapshotRef` instead of `stateSnapshot`, the receiver must fetch the snapshot from the referenced URI. The receiver owns SSRF and allowlist responsibility: validate that the URI resolves to an operator-controlled storage backend (S3 bucket, GCS object, internal blob store) before fetching. Dagonizer does not fetch `stateSnapshotRef` values; the fetch and the allowlist check are deployment code.
 
-**Incoming state from workers.** State-snapshot keys that arrive from a worker or a remote host are untrusted-shaped. If your `restoreData` override reads state keys from a snapshot, treat incoming keys defensively — validate schema, coerce types, and apply defaults before trusting the values. The engine does not validate the shape of individual state fields; the `JsonObject` constraint only guarantees the top-level is an object.
+**Incoming state from workers.** State-snapshot keys that arrive from a worker or a remote host are untrusted-shaped. If your `restoreData` override reads state keys from a snapshot, treat incoming keys defensively — validate schema, coerce types, and apply defaults before trusting the values. The engine does not validate the shape of individual state fields; the `JsonObjectType` constraint only guarantees the top-level is an object.
 
 ---
 

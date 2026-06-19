@@ -12,8 +12,8 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // State: snapshotData/restoreData persist domain fields across the
@@ -26,11 +26,11 @@ export class PipelineState extends NodeStateBase {
   tally  = 0;
   trail: string[] = [];
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return { stage: this.stage, tally: this.tally, trail: [...this.trail] };
   }
 
-  protected override restoreData(snapshot: JsonObject): void {
+  protected override restoreData(snapshot: JsonObjectType): void {
     const s = snapshot['stage'];
     if (typeof s === 'string') this.stage = s;
     const n = snapshot['tally'];
@@ -82,7 +82,7 @@ export class ExportNode extends ScalarNode<PipelineState, 'success'> {
 // DAG: three sequential stages: ingest -> process -> export -> end
 // ---------------------------------------------------------------------------
 
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:pipeline',
   '@type':     'DAG',

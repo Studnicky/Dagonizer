@@ -7,14 +7,14 @@
  */
 
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
 import { eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
 
 const registry: RegistryModuleInterface = {
-  async instantiate(servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     const useRecorded = servicesConfig['useRecordedIp'] !== false;
     const services = useRecorded ? GeoResolvers.recorded() : GeoResolvers.live();
     return {
@@ -25,7 +25,7 @@ const registry: RegistryModuleInterface = {
       'services':        services,
       'registryVersion': '1.0.0',
       'restoreState': {
-        restore(snapshot: JsonObject) {
+        restore(snapshot: JsonObjectType) {
           return CartographerState.restore(snapshot);
         },
       },

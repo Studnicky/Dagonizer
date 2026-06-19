@@ -13,25 +13,25 @@
  * no instance state.
  *
  * The parsed JSON body crosses a foreign boundary as `unknown` and is
- * narrowed by a caller-supplied schema-backed `EntityValidator` before it
+ * narrowed by a caller-supplied schema-backed `EntityValidatorInterface` before it
  * is returned. Because the framework uses forced tool-calling, every
  * caller's expected shape is known at the call site, so the validator is
  * required — there is no unchecked-cast path. A shape mismatch throws a
  * non-retryable `ToolError(PARSE_ERROR)`.
  */
 
-import type { EntityValidator } from '../validation/Validator.js';
+import type { EntityValidatorInterface } from '../validation/Validator.js';
 
 import { OpenApiGuard } from './OpenApiGuard.js';
-import { ToolError, type ToolErrorReason } from './ToolError.js';
+import { ToolError, type ToolErrorReasonType } from './ToolError.js';
 
 /** Named return type for HTTP status classification. */
-export interface HttpStatusClassification {
-  reason: ToolErrorReason;
+export type HttpStatusClassificationType = {
+  reason: ToolErrorReasonType;
   retryable: boolean;
 }
 
-export interface HttpRequestOptions {
+export type HttpRequestOptionsType = {
   signal?: AbortSignal;
   headers?: Record<string, string>;
   /** Per-request deadline in ms. */
@@ -44,7 +44,7 @@ const DEFAULT_TIMEOUT_MS  = 30_000;
 const DEFAULT_MAX_RETRIES = 2;
 const BASE_BACKOFF_MS     = 400;
 
-/** Canonical defaults for the two defaultable fields of `HttpRequestOptions`. */
+/** Canonical defaults for the two defaultable fields of `HttpRequestOptionsType`. */
 const HTTP_REQUEST_DEFAULTS = {
   'timeoutMs':  DEFAULT_TIMEOUT_MS,
   'maxRetries': DEFAULT_MAX_RETRIES,
@@ -59,8 +59,8 @@ export class HttpTransport {
    */
   static async getJson<TResponse>(
     url: string,
-    validator: EntityValidator<TResponse>,
-    options: Partial<HttpRequestOptions> = {},
+    validator: EntityValidatorInterface<TResponse>,
+    options: Partial<HttpRequestOptionsType> = {},
   ): Promise<TResponse> {
     const resolved = HttpTransport.resolveOptions(options);
     const response = await HttpTransport.request(url, { 'method': 'GET' }, resolved);
@@ -74,8 +74,8 @@ export class HttpTransport {
   static async postJson<TResponse>(
     url: string,
     body: unknown,
-    validator: EntityValidator<TResponse>,
-    options: Partial<HttpRequestOptions> = {},
+    validator: EntityValidatorInterface<TResponse>,
+    options: Partial<HttpRequestOptionsType> = {},
   ): Promise<TResponse> {
     const resolved = HttpTransport.resolveOptions(options);
     const response = await HttpTransport.request(
@@ -91,7 +91,7 @@ export class HttpTransport {
   }
 
   /** Merge caller-supplied partial options with the module defaults. */
-  private static resolveOptions(options: Partial<HttpRequestOptions>): HttpRequestOptions {
+  private static resolveOptions(options: Partial<HttpRequestOptionsType>): HttpRequestOptionsType {
     const merged = { ...HTTP_REQUEST_DEFAULTS, ...options };
     return {
       'timeoutMs':  merged.timeoutMs,
@@ -106,7 +106,7 @@ export class HttpTransport {
    * transient failures with exponential backoff. Returns the raw
    * `Response` for callers that need the body unparsed.
    */
-  static async request(url: string, init: RequestInit, options: Partial<HttpRequestOptions> = {}): Promise<Response> {
+  static async request(url: string, init: RequestInit, options: Partial<HttpRequestOptionsType> = {}): Promise<Response> {
     const resolved = HttpTransport.resolveOptions(options);
     const timeoutMs  = resolved.timeoutMs;
     const maxRetries = resolved.maxRetries;
@@ -148,7 +148,7 @@ export class HttpTransport {
           const isAbort  = (err instanceof DOMException && err.name === 'AbortError')
             || (err instanceof Error && err.name === 'AbortError');
           const callerAbort = resolved.signal?.aborted === true;
-          const reason: ToolErrorReason = callerAbort ? 'ABORTED' : isAbort ? 'TIMEOUT' : 'NETWORK';
+          const reason: ToolErrorReasonType = callerAbort ? 'ABORTED' : isAbort ? 'TIMEOUT' : 'NETWORK';
           const retryable = !callerAbort && reason !== 'ABORTED';
           lastError = new ToolError(`${reason.toLowerCase()} fetching ${url}`, { reason, retryable, 'status': null, 'cause': err });
           if (!retryable || attempt === maxRetries) throw lastError;
@@ -168,7 +168,7 @@ export class HttpTransport {
 
   private static async decodeJson<TResponse>(
     response: Response,
-    validator: EntityValidator<TResponse>,
+    validator: EntityValidatorInterface<TResponse>,
   ): Promise<TResponse> {
     let body: unknown;
     try {
@@ -179,7 +179,7 @@ export class HttpTransport {
     return OpenApiGuard.assertShape(body, validator, `HTTP body from ${response.url}`);
   }
 
-  private static classifyStatus(status: number): HttpStatusClassification {
+  private static classifyStatus(status: number): HttpStatusClassificationType {
     if (status === 429) return { 'reason': 'RATE_LIMIT', 'retryable': true };
     if (status >= 500)  return { 'reason': 'HTTP_5XX',   'retryable': true };
     if (status >= 400)  return { 'reason': 'HTTP_4XX',   'retryable': false };

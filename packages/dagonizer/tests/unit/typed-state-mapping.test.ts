@@ -1,5 +1,5 @@
 /**
- * Tests for TypedEmbeddedDAGOptionsInterface typed path narrowing and the
+ * Tests for TypedEmbeddedDAGOptionsType typed path narrowing and the
  * generic embeddedDAG() builder method.
  *
  * Covers:
@@ -7,7 +7,7 @@
  *     flat and nested paths are accepted, invalid paths fail to typecheck
  *     (@ts-expect-error guards).
  *   - Runtime wire shape: inputs/outputs (and their flat or nested combinations)
- *     build the correct EmbeddedDAGNode stateMapping; absent or empty options
+ *     build the correct EmbeddedDAGNodeType stateMapping; absent or empty options
  *     produce no stateMapping.
  *   - Runtime execute: typed and untyped inputs/outputs mappings propagate state
  *     correctly across the embedded-DAG boundary.
@@ -17,12 +17,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import type { TypedEmbeddedDAGOptionsInterface } from '../../src/builder/DAGBuilder.js';
+import type { TypedEmbeddedDAGOptionsType } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { EmbeddedDAGNode } from '../../src/entities/dag/EmbeddedDAGNode.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { EmbeddedDAGNodeType } from '../../src/entities/dag/EmbeddedDAGNode.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // ── Domain child state ────────────────────────────────────────────────────────
@@ -44,17 +44,17 @@ class ParentState extends NodeStateBase {
 class TerminalNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'terminal';
   readonly outputs = ['success'] as const;
-  protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 const terminal = new TerminalNode();
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-void describe('TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>: compile-time path narrowing', () => {
+void describe('TypedEmbeddedDAGOptionsType<TChildState, TParentState>: compile-time path narrowing', () => {
   void it('accepts valid flat TState paths in input/output values', () => {
     // Values are parent paths narrowed to Path<TParentState> when TParentState
     // is concrete. 'payload' and 'result' are valid flat paths on ChildState.
-    const opts: TypedEmbeddedDAGOptionsInterface<ChildState, ChildState> = {
+    const opts: TypedEmbeddedDAGOptionsType<ChildState, ChildState> = {
       'inputs':  { 'payload': 'payload' },
       'outputs': { 'result': 'result' },
     };
@@ -64,13 +64,13 @@ void describe('TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>: comp
 
   void it('rejects invalid flat TState paths in input values (@ts-expect-error guard)', () => {
     // @ts-expect-error: 'unknownParentPath' is not a Path<ChildState>; TypeScript must reject this
-    const _bad: TypedEmbeddedDAGOptionsInterface<ChildState, ChildState> = { 'inputs': { 'payload': 'unknownParentPath' } };
+    const _bad: TypedEmbeddedDAGOptionsType<ChildState, ChildState> = { 'inputs': { 'payload': 'unknownParentPath' } };
     void _bad;
   });
 
   void it('accepts valid nested parent paths in input values', () => {
     // ParentState has user.name, user.age, count; all valid Path<ParentState> values.
-    const opts: TypedEmbeddedDAGOptionsInterface<ChildState, ParentState> = {
+    const opts: TypedEmbeddedDAGOptionsType<ChildState, ParentState> = {
       'inputs': { 'payload': 'user.age' },
     };
     assert.deepEqual(opts.inputs, { 'payload': 'user.age' });
@@ -79,13 +79,13 @@ void describe('TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>: comp
   void it('rejects invalid nested parent paths in input values (@ts-expect-error guard)', () => {
     // 'user.notReal' is not a valid Path<ParentState>; TypeScript must reject this.
     // @ts-expect-error: 'user.notReal' does not exist on Path<ParentState>
-    const _bad: TypedEmbeddedDAGOptionsInterface<ChildState, ParentState> = { 'inputs': { 'payload': 'user.notReal' } };
+    const _bad: TypedEmbeddedDAGOptionsType<ChildState, ParentState> = { 'inputs': { 'payload': 'user.notReal' } };
     void _bad;
   });
 });
 
 void describe('DAGBuilder.embeddedDAG: wire shape', () => {
-  void it('inputs + outputs build the correct EmbeddedDAGNode wire shape', () => {
+  void it('inputs + outputs build the correct EmbeddedDAGNodeType wire shape', () => {
     const dag = new DAGBuilder('test', '1')
       .embeddedDAG<ChildState, ChildState>('invoke', 'child-dag',
         { 'success': 'end', 'error': 'end' },
@@ -97,13 +97,13 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       .node('end', terminal, { 'success': 'end' })
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNode;
+    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.deepEqual(embeddedPlacement.stateMapping?.input,  { 'payload': 'payload' });
     assert.deepEqual(embeddedPlacement.stateMapping?.output, { 'result': 'result' });
   });
 
-  void it('nested parent paths build the correct EmbeddedDAGNode wire shape', () => {
+  void it('nested parent paths build the correct EmbeddedDAGNodeType wire shape', () => {
     const dag = new DAGBuilder('path-test', '1')
       .embeddedDAG<ChildState, ParentState>('invoke', 'child-dag',
         { 'success': 'end', 'error': 'end' },
@@ -114,13 +114,13 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       )
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNode;
+    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.deepEqual(embeddedPlacement.stateMapping?.input,  { 'payload': 'user.age' });
     assert.deepEqual(embeddedPlacement.stateMapping?.output, { 'user.age': 'result' });
   });
 
-  void it('inputs-only produces EmbeddedDAGNode with stateMapping.input and no output', () => {
+  void it('inputs-only produces EmbeddedDAGNodeType with stateMapping.input and no output', () => {
     const dag = new DAGBuilder('test-inputs', '1')
       .embeddedDAG<ChildState, ChildState>('invoke', 'child-dag',
         { 'success': 'end', 'error': 'end' },
@@ -128,13 +128,13 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       )
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNode;
+    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.deepEqual(embeddedPlacement.stateMapping?.input, { 'result': 'result' });
     assert.equal(embeddedPlacement.stateMapping?.output, undefined);
   });
 
-  void it('outputs-only produces EmbeddedDAGNode with stateMapping.output and no input', () => {
+  void it('outputs-only produces EmbeddedDAGNodeType with stateMapping.output and no input', () => {
     const dag = new DAGBuilder('test-outputs', '1')
       .embeddedDAG<ChildState, ChildState>('invoke', 'child-dag',
         { 'success': 'end', 'error': 'end' },
@@ -142,7 +142,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       )
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNode;
+    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.equal(embeddedPlacement.stateMapping?.input, undefined);
     assert.deepEqual(embeddedPlacement.stateMapping?.output, { 'result': 'result' });
@@ -153,7 +153,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       .embeddedDAG('invoke', 'child-dag', { 'success': 'end', 'error': 'end' })
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNode;
+    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.equal(embeddedPlacement.stateMapping, undefined);
   });
@@ -166,7 +166,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       )
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNode;
+    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.equal(embeddedPlacement.stateMapping, undefined);
   });
@@ -178,7 +178,7 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
     class ChildNodeImpl extends ScalarNode<ChildState, 'success'> {
       readonly name = 'child-node';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: ChildState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: ChildState): Promise<NodeOutputType<'success'>> {
         // result = length of payload (deterministic, easy to assert)
         state.result = state.payload.length;
         return { 'errors': [], 'output': 'success' as const };

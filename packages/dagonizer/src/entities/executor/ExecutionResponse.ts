@@ -72,4 +72,4 @@ export const ExecutionResponseSchema = {
 } as const;
 
 /** TypeScript type derived from `ExecutionResponseSchema` via `json-schema-to-ts`. */
-export type ExecutionResponse = FromSchema<typeof ExecutionResponseSchema>;
+export type ExecutionResponseType = FromSchema<typeof ExecutionResponseSchema>;

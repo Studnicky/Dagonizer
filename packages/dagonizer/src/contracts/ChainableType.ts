@@ -1,8 +1,8 @@
 import type { NodeInterface } from './NodeInterface.js';
-import type { OperationContractFragment } from './OperationContractFragment.js';
+import type { OperationContractFragmentType } from './OperationContractFragment.js';
 
 /**
- * Chainable<A, B>: compile-time proof that B's hardRequired set is
+ * ChainableType<A, B>: compile-time proof that B's hardRequired set is
  * satisfied by A's produces set. Resolves to `true` when chainable,
  * `never` otherwise. Use in test helpers and contract authoring to
  * surface drift at the type layer.
@@ -24,12 +24,12 @@ import type { OperationContractFragment } from './OperationContractFragment.js';
  *   async execute(state, ctx) { return { output: 'success' }; },
  * } satisfies NodeInterface;
  *
- * type Check = Chainable<typeof fetchNode, typeof parseNode>; // true
+ * type Check = ChainableType<typeof fetchNode, typeof parseNode>; // true
  * ```
  */
-export type Chainable<
-  A extends NodeInterface & { readonly contract: OperationContractFragment },
-  B extends NodeInterface & { readonly contract: OperationContractFragment },
+export type ChainableType<
+  A extends NodeInterface & { readonly contract: OperationContractFragmentType },
+  B extends NodeInterface & { readonly contract: OperationContractFragmentType },
 > = B['contract']['hardRequired'][number] extends A['contract']['produces'][number]
   ? true
   : never;

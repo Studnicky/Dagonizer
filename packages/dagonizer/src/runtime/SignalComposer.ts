@@ -11,7 +11,7 @@
  * detects to mark the lifecycle as `timed_out` rather than `cancelled`.
  */
 
-import type { ExecuteOptionsInterface } from '../contracts/ExecuteOptionsInterface.js';
+import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 
 /**
  * Cached never-aborting signal. Lazily initialised by `SignalComposer.never()`.
@@ -56,7 +56,7 @@ export class SignalComposer {
    * - one input  → that input is returned directly
    * - two inputs → composed via `AbortSignal.any([…])`
    */
-  static compose(options: ExecuteOptionsInterface): AbortSignal | null {
+  static compose(options: ExecuteOptionsType): AbortSignal | null {
     const callerSignal  = options.signal;
     const deadlineMs    = options.deadlineMs;
     const timeoutSignal = deadlineMs !== undefined ? AbortSignal.timeout(deadlineMs) : undefined;

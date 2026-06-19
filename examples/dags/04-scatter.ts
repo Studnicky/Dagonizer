@@ -12,10 +12,10 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { Batch, GatherExecution, GatherRecord, NodeStateInterface } from '@studnicky/dagonizer';
-import type { GatherConfig } from '@studnicky/dagonizer/entities';
-import type { DAG } from '@studnicky/dagonizer';
-import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import type { Batch, GatherExecutionType, GatherRecordType, NodeStateInterface } from '@studnicky/dagonizer';
+import type { GatherConfigType } from '@studnicky/dagonizer/entities';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // #region state
@@ -91,15 +91,15 @@ export const gatherPartition = { strategy: 'partition', partitions: { success: '
 // 'finalize' does any end-of-gather work (sort, trim, dispatch a custom node).
 class TopNGather extends GatherStrategy {
   readonly name = 'top-n';
-  override initial(_config: GatherConfig, _state: NodeStateInterface, _accessor: StateAccessor): void { /* seed */ }
-  override reduce(_config: GatherConfig, _batch: Batch<GatherRecord<NodeStateInterface>>, _state: NodeStateInterface, _accessor: StateAccessor): void { /* fold */ }
-  override async finalize(_config: GatherConfig, _execution: GatherExecution<NodeStateInterface>): Promise<void> { /* trim to top-N */ }
+  override initial(_config: GatherConfigType, _state: NodeStateInterface, _accessor: StateAccessorInterface): void { /* seed */ }
+  override reduce(_config: GatherConfigType, _batch: Batch<GatherRecordType<NodeStateInterface>>, _state: NodeStateInterface, _accessor: StateAccessorInterface): void { /* fold */ }
+  override async finalize(_config: GatherConfigType, _execution: GatherExecutionType<NodeStateInterface>): Promise<void> { /* trim to top-N */ }
 }
 GatherStrategies.register(new TopNGather());
 // #endregion custom-gather-strategy
 
 // #region scatter-placement
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':   DAG_CONTEXT,
   '@id':        'urn:noocodex:dag:scrape',
   '@type':      'DAG',

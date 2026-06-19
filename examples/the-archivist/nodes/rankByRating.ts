@@ -18,9 +18,9 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
@@ -28,7 +28,7 @@ export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked', Archi
   readonly name = 'rank-by-rating';
   readonly outputs = ['ranked'] as const;
 
-  protected override executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {
       context.services.logger.info('rank-by-rating: no candidates');
       return Promise.resolve(NodeOutputBuilder.of('ranked'));
@@ -43,7 +43,7 @@ export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked', Archi
 
     const maxWeight = Math.max(...weighted.map((w) => w.weight), 0);
 
-    const ranked: Candidate[] = weighted
+    const ranked: CandidateType[] = weighted
       .sort((a, b) => b.weight - a.weight)
       .map(({ candidate, weight }) => ({
         ...candidate,

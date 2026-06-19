@@ -28,7 +28,7 @@ Use this as a template for implementing a real gRPC (or REST/Redis/S3) remote st
 - **`BaseStore` extension.** `BaseStore` provides the `get`/`set`/`delete`/`has`/`update` API and the `snapshot`/`restore` round-trip. Subclasses implement the three protected abstract methods: `performGet`, `performSet`, `performDelete`.
 - **`RemoteStore` interface.** Adds `connect`, `disconnect`, `health`, `acquireLease`, and `releaseLease` to the base contract. These hooks are called by connection-aware consumers (service containers, long-lived workers) to manage the store's network lifecycle.
 - **`acquireLease` / `releaseLease`.** Distributed-lock primitives. `acquireLease(key, ttlMs, waitMs)` returns a `Lease` token; `releaseLease(lease)` releases it. The stub implements optimistic single-process locking — replace with a real distributed lock in production.
-- **`snapshot` / `restore` round-trip.** `BaseStore.snapshot()` returns a serialisable `StoreSnapshot`; `BaseStore.restore(snapshot)` rehydrates the in-memory map. Used by `Checkpoint.capture` to include store contents in the checkpoint.
+- **`snapshot` / `restore` round-trip.** `BaseStore.snapshot()` returns a serialisable `StoreSnapshotType`; `BaseStore.restore(snapshot)` rehydrates the in-memory map. Used by `Checkpoint.capture` to include store contents in the checkpoint.
 
 ## Run
 

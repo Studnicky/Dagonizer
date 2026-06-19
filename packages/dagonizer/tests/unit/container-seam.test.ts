@@ -30,16 +30,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { ObserverRelay } from '../../src/contracts/ObserverRelay.js';
+import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
@@ -73,14 +73,14 @@ class CounterState extends NodeStateBase {
 class NoopNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'noop';
   readonly outputs = ['success'] as const;
-  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 const noop = new NoopNode();
 
 class IncrementNode extends ScalarNode<CounterState, 'success'> {
   readonly name = 'increment';
   readonly outputs = ['success'] as const;
-  protected async executeOne(state: CounterState): Promise<NodeOutputInterface<'success'>> {
+  protected async executeOne(state: CounterState): Promise<NodeOutputType<'success'>> {
     state.value += 10;
     return { 'errors': [], 'output': 'success' as const };
   }
@@ -90,14 +90,14 @@ const incrementNode = new IncrementNode();
 class TerminalNode extends ScalarNode<CounterState, 'completed'> {
   readonly name = 'done-node';
   readonly outputs = ['completed'] as const;
-  protected async executeOne(): Promise<NodeOutputInterface<'completed'>> { return { 'errors': [], 'output': 'completed' as const }; }
+  protected async executeOne(): Promise<NodeOutputType<'completed'>> { return { 'errors': [], 'output': 'completed' as const }; }
 }
 const terminalNode = new TerminalNode();
 
 class BodyNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'body-node';
   readonly outputs = ['success'] as const;
-  protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 const bodyNode = new BodyNode();
 
@@ -105,7 +105,7 @@ const bodyNode = new BodyNode();
 // DAGs
 // ---------------------------------------------------------------------------
 
-const childDAG: DAG = {
+const childDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:child',
   '@type':    'DAG',
@@ -129,7 +129,7 @@ const childDAG: DAG = {
   ],
 };
 
-const parentDAG: DAG = {
+const parentDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:parent',
   '@type':    'DAG',
@@ -153,7 +153,7 @@ const parentDAG: DAG = {
 };
 
 // Parent DAG with a container role declared.
-const parentContainerDAG: DAG = {
+const parentContainerDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:parent-c',
   '@type':    'DAG',
@@ -180,13 +180,13 @@ const parentContainerDAG: DAG = {
 // Minimal CounterState container test double used only to put a dispatcher in
 // container-dispatch mode (its runDag is never invoked by the registration tests).
 const fakeCounterContainer: DagContainerInterface<CounterState> = {
-  async runDag(_task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
+  async runDag(_task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
   },
 };
 
 // A ScatterNode with a node body AND a container key — this is a validation error.
-const invalidScatterDAG: DAG = {
+const invalidScatterDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:invalid',
   '@type':    'DAG',
@@ -214,7 +214,7 @@ const invalidScatterDAG: DAG = {
 };
 
 // A ScatterNode with a dag body AND a container key — this is valid.
-const validDagBodyScatterDAG: DAG = {
+const validDagBodyScatterDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:valid-dag-body',
   '@type':    'DAG',
@@ -245,13 +245,13 @@ const validDagBodyScatterDAG: DAG = {
 // declares that role registers without tripping the unbound-role throw. Its
 // runDag is never invoked by the registration-only test below.
 const fakeDagContainer: DagContainerInterface<NodeStateBase> = {
-  async runDag(_task: DagTaskInterface<NodeStateBase, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
+  async runDag(_task: DagTaskInterface<NodeStateBase, unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
   },
 };
 
 // Child DAG referenced by the valid dag-body scatter.
-const bodyChildDAG: DAG = {
+const bodyChildDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:body-child',
   '@type':    'DAG',
@@ -374,13 +374,13 @@ void describe('Container seam — W1', () => {
   void it('bound container receives runDag call and outcome is applied to parent state', async () => {
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
     const fakeContainer: DagContainerInterface<CounterState> = {
-      async runDag(task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
+      async runDag(task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
         // Restore child clone from the snapshot in the task.
-        // items[0].snapshot is JsonObject at the wire boundary; cast is safe here.
+        // items[0].snapshot is JsonObjectType at the wire boundary; cast is safe here.
         const request = task.toRequest();
         const firstItem = request.items[0];
         if (firstItem === undefined) throw new Error('No items in request');
-        const childState = CounterState.restore(firstItem.snapshot as JsonObject);
+        const childState = CounterState.restore(firstItem.snapshot as JsonObjectType);
 
         // Run the child DAG in-process (in an inner dispatcher)
         const inner = new Dagonizer<CounterState>();

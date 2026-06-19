@@ -3,44 +3,44 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
+import type { OperationContractFragmentType } from '../../src/contracts/OperationContractFragment.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 
 class GreetNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'greet';
   readonly outputs = ['success'] as const;
-  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 
 class PlanNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
   readonly name = 'plan';
   readonly outputs = ['success', 'error'] as const;
-  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success' | 'error'>> { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success' | 'error'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 
 const greet = new GreetNode();
 const plan = new PlanNode();
 
-// ContractTestNode: a node carrying a configurable OperationContractFragment,
+// ContractTestNode: a node carrying a configurable OperationContractFragmentType,
 // used to exercise build()-time contract validation and derive() derivation.
 class ContractTestNode extends ScalarNode<NodeStateBase, string> {
   readonly name: string;
   readonly outputs: readonly string[];
-  override readonly contract: OperationContractFragment;
+  override readonly contract: OperationContractFragmentType;
 
-  constructor(name: string, outputs: readonly string[], contract: OperationContractFragment = { 'hardRequired': [], 'produces': [] }) {
+  constructor(name: string, outputs: readonly string[], contract: OperationContractFragmentType = { 'hardRequired': [], 'produces': [] }) {
     super();
     this.name = name;
     this.outputs = outputs;
     this.contract = contract;
   }
 
-  protected async executeOne(): Promise<NodeOutputInterface<string>> {
+  protected async executeOne(): Promise<NodeOutputType<string>> {
     return { 'errors': [], 'output': this.outputs[0] ?? 'success' };
   }
 }
@@ -48,7 +48,7 @@ class ContractTestNode extends ScalarNode<NodeStateBase, string> {
 function makeNode(
   name: string,
   outputs: readonly string[],
-  contract?: OperationContractFragment,
+  contract?: OperationContractFragmentType,
 ): NodeInterface<NodeStateBase, string> {
   return new ContractTestNode(name, outputs, contract);
 }

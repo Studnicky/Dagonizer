@@ -14,14 +14,14 @@
 
 import { BaseMessageChannel } from '@studnicky/dagonizer/container';
 import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
-import type { BridgeMessage } from '@studnicky/dagonizer/entities';
+import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 
 // ---------------------------------------------------------------------------
-// MessagePortLike: structural shape for injectable port (enables testing)
+// MessagePortLikeInterface: structural shape for injectable port (enables testing)
 // ---------------------------------------------------------------------------
 
-export interface MessagePortLike {
+export interface MessagePortLikeInterface {
   postMessage(value: unknown): void;
   on(event: 'message', listener: (value: unknown) => void): this;
   close(): void;
@@ -32,9 +32,9 @@ export interface MessagePortLike {
 // ---------------------------------------------------------------------------
 
 export class MessagePortChannel extends BaseMessageChannel {
-  readonly #port: MessagePortLike;
+  readonly #port: MessagePortLikeInterface;
 
-  constructor(port: MessagePortLike) {
+  constructor(port: MessagePortLikeInterface) {
     super();
     this.#port = port;
 
@@ -56,7 +56,7 @@ export class MessagePortChannel extends BaseMessageChannel {
     });
   }
 
-  override send(message: BridgeMessage): void {
+  override send(message: BridgeMessageType): void {
     if (this.closed) return;
     this.#port.postMessage(message);
   }

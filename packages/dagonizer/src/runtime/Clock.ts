@@ -14,11 +14,11 @@
  * Static class; no instances, no free helpers.
  */
 
-import type { ClockProvider } from '../contracts/ClockProvider.js';
+import type { ClockProviderInterface } from '../contracts/ClockProviderInterface.js';
 
 const PERF: { now(): number } = (globalThis as { performance: { now(): number } }).performance;
 
-class RealTimeClockProvider implements ClockProvider {
+class RealTimeClockProvider implements ClockProviderInterface {
   hrtime(): bigint {
     // `performance.now()` returns fractional milliseconds; multiply to
     // nanoseconds and floor via BigInt construction.
@@ -28,7 +28,7 @@ class RealTimeClockProvider implements ClockProvider {
 
 const NS_PER_MS = 1_000_000n;
 
-let activeProvider: ClockProvider = new RealTimeClockProvider();
+let activeProvider: ClockProviderInterface = new RealTimeClockProvider();
 
 /**
  * Engine-owned monotonic clock. All time reads go through `Clock.hrtime()` or
@@ -53,7 +53,7 @@ export class Clock {
   }
 
   /** Install a custom clock provider. Engine-only; called at boot or in tests. */
-  static configure(provider: ClockProvider): void {
+  static configure(provider: ClockProviderInterface): void {
     activeProvider = provider;
   }
 

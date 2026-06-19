@@ -1,8 +1,8 @@
 /**
- * RdfStore: in-process triple store that implements both Store
- * (key-value via reification) and TripleStore (native quads).
+ * RdfStore: in-process triple store that implements both StoreInterface
+ * (key-value via reification) and TripleStoreInterface (native quads).
  *
- * The Store-side `set(key, value)` reifies as a triple:
+ * The StoreInterface-side `set(key, value)` reifies as a triple:
  *
  *   <urn:dagonizer:store:{key}> dag:value "{json-encoded-value}" .
  *
@@ -10,10 +10,10 @@
  * provenance, etc.) subclass and override the `keyToSubject` helper.
  *
  * Snapshot contract:
- *   `snapshot()` captures only the Store-reified quads (subject under the
+ *   `snapshot()` captures only the StoreInterface-reified quads (subject under the
  *   configured prefix, predicate matching valuePredicate). User-asserted
  *   quads on other predicates are NOT included in the snapshot; they are
- *   considered ephemeral graph data, not durable Store state. After
+ *   considered ephemeral graph data, not durable StoreInterface state. After
  *   `restore()`, user-asserted quads that were present before the restore
  *   are cleared alongside the reified ones; the backing array is fully
  *   replaced by the snapshot entries. This is the simplest safe default;
@@ -21,44 +21,44 @@
  *   should subclass and override `performRestoreEntries`.
  */
 
-import type { StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
-import type { JsonValue } from '@studnicky/dagonizer/entities';
-import type { Binding, Quad, SlotPattern, Term, TripleStore } from '@studnicky/dagonizer/patterns';
-import { BaseStore, type BaseStoreOptions } from '@studnicky/dagonizer/store';
+import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
+import type { JsonValueType } from '@studnicky/dagonizer/entities';
+import type { BindingType, QuadType, SlotPatternType, TermType, TripleStoreInterface } from '@studnicky/dagonizer/patterns';
+import { BaseStore, type BaseStoreOptionsType } from '@studnicky/dagonizer/store';
 
 /** Sentinel for the default RDF graph. */
-const DEFAULT_GRAPH: Term = { "termType": 'DefaultGraph', "value": '' };
+const DEFAULT_GRAPH: TermType = { "termType": 'DefaultGraph', "value": '' };
 
-export interface RdfStoreOptions extends BaseStoreOptions {
+export type RdfStoreOptionsType = BaseStoreOptionsType & {
   /**
-   * Subject IRI prefix for reified Store keys.
+   * Subject IRI prefix for reified StoreInterface keys.
    * Default: `'urn:dagonizer:store:'` (see `RDF_STORE_DEFAULTS`).
    */
   readonly subjectPrefix?: string;
   /**
-   * Predicate IRI used for the reified Store value triple.
+   * Predicate IRI used for the reified StoreInterface value triple.
    * Default: `'urn:dagonizer:store:value'` (see `RDF_STORE_DEFAULTS`).
    */
   readonly valuePredicate?: string;
-}
+};
 
 /**
  * Default options. Spread into custom options to fill unset fields, so the
  * resolved internal value always carries a real `subjectPrefix` and
  * `valuePredicate`; the public input may stay partial.
  */
-export const RDF_STORE_DEFAULTS: Required<RdfStoreOptions> = {
+export const RDF_STORE_DEFAULTS: Required<RdfStoreOptionsType> = {
   'namespace':       '',
   'subjectPrefix':   'urn:dagonizer:store:',
   'valuePredicate':  'urn:dagonizer:store:value',
 };
 
-export class RdfStore extends BaseStore implements TripleStore {
-  readonly #quads: Quad[];
+export class RdfStore extends BaseStore implements TripleStoreInterface {
+  readonly #quads: QuadType[];
   readonly #subjectPrefix:  string;
   readonly #valuePredicate: string;
 
-  constructor(options: RdfStoreOptions = {}) {
+  constructor(options: RdfStoreOptionsType = {}) {
     const resolved = { ...RDF_STORE_DEFAULTS, ...options };
     super({ "namespace": resolved.namespace });
     this.#quads          = [];
@@ -69,13 +69,13 @@ export class RdfStore extends BaseStore implements TripleStore {
   protected get snapshotType(): string    { return 'rdf-store'; }
   protected get snapshotVersion(): number { return 1; }
 
-  // ── Store contract (reified key-value over the quad graph) ──────────────────
+  // ── StoreInterface contract (reified key-value over the quad graph) ──────────────────
 
   /**
    * Atomic RMW: reads directly from `#quads` without any intermediate
    * `await`, so no microtask can interleave between the read and the write.
    */
-  override async update<T extends JsonValue>(
+  override async update<T extends JsonValueType>(
     key: string,
     fn: (current: T | undefined) => T,
   ): Promise<T> {
@@ -87,11 +87,11 @@ export class RdfStore extends BaseStore implements TripleStore {
     return next;
   }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
     return this.#readValue<T>(this.#keyToSubject(key)) ?? null;
   }
 
-  protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
+  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
     this.#writeValue(this.#keyToSubject(key), value);
   }
 
@@ -109,21 +109,21 @@ export class RdfStore extends BaseStore implements TripleStore {
     return this.#quads.length < before;
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
-    const entries: StoreSnapshotEntry[] = [];
+  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
+    const entries: StoreSnapshotEntryType[] = [];
     for (const quad of this.#quads) {
       if (quad.predicate.value !== this.#valuePredicate)      continue;
       if (!quad.subject.value.startsWith(this.#subjectPrefix)) continue;
       const rawKey = quad.subject.value.slice(this.#subjectPrefix.length);
       entries.push({
         "key":   rawKey,
-        "value": JSON.parse(quad.object.value) as JsonValue,
+        "value": JSON.parse(quad.object.value) as JsonValueType,
       });
     }
     return entries;
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void> {
+  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
     // Clear ALL quads (reified and user-asserted) then reseed from snapshot.
     // See module-level JSDoc for the trade-off rationale.
     this.#quads.length = 0;
@@ -132,18 +132,18 @@ export class RdfStore extends BaseStore implements TripleStore {
     }
   }
 
-  // ── TripleStore contract (native quad operations) ────────────────────────────
+  // ── TripleStoreInterface contract (native quad operations) ────────────────────────────
 
-  assert(subject: Term, predicate: Term, object: Term, graph?: Term): void {
+  assert(subject: TermType, predicate: TermType, object: TermType, graph?: TermType): void {
     this.#quads.push({ subject, predicate, object, "graph": graph ?? DEFAULT_GRAPH });
   }
 
-  ask(pattern: SlotPattern): boolean {
+  ask(pattern: SlotPatternType): boolean {
     return this.select(pattern).length > 0;
   }
 
-  select(pattern: SlotPattern): readonly Binding[] {
-    const bindings: Binding[] = [];
+  select(pattern: SlotPatternType): readonly BindingType[] {
+    const bindings: BindingType[] = [];
     for (const quad of this.#quads) {
       const binding = RdfStore.#matchQuad(quad, pattern);
       if (binding !== null) bindings.push(binding);
@@ -151,11 +151,11 @@ export class RdfStore extends BaseStore implements TripleStore {
     return bindings;
   }
 
-  count(pattern: SlotPattern): number {
+  count(pattern: SlotPatternType): number {
     return this.select(pattern).length;
   }
 
-  clearGraph(graph: Term): void {
+  clearGraph(graph: TermType): void {
     for (let i = this.#quads.length - 1; i >= 0; i -= 1) {
       const quad = this.#quads[i];
       if (quad !== undefined && quad.graph.value === graph.value) {
@@ -164,7 +164,7 @@ export class RdfStore extends BaseStore implements TripleStore {
     }
   }
 
-  *triples(): IterableIterator<Quad> {
+  *triples(): IterableIterator<QuadType> {
     for (const quad of this.#quads) yield quad;
   }
 
@@ -174,7 +174,7 @@ export class RdfStore extends BaseStore implements TripleStore {
     return `${this.#subjectPrefix}${key}`;
   }
 
-  #readValue<T extends JsonValue>(subject: string): T | undefined {
+  #readValue<T extends JsonValueType>(subject: string): T | undefined {
     // Iterate backwards: the latest write wins.
     for (let i = this.#quads.length - 1; i >= 0; i -= 1) {
       const quad = this.#quads[i];
@@ -186,7 +186,7 @@ export class RdfStore extends BaseStore implements TripleStore {
     return undefined;
   }
 
-  #writeValue(subject: string, value: JsonValue): void {
+  #writeValue(subject: string, value: JsonValueType): void {
     this.#removeQuadsMatching(subject, this.#valuePredicate);
     this.#quads.push({
       "subject":   { "termType": 'NamedNode', "value": subject },
@@ -217,8 +217,8 @@ export class RdfStore extends BaseStore implements TripleStore {
    * The `graph` slot is matched when present in the pattern; when omitted the
    * quad's graph is unconstrained (it matches regardless of graph).
    */
-  static #matchQuad(quad: Quad, pattern: SlotPattern): Binding | null {
-    const binding: Record<string, Term> = {};
+  static #matchQuad(quad: QuadType, pattern: SlotPatternType): BindingType | null {
+    const binding: Record<string, TermType> = {};
 
     for (const slot of ['subject', 'predicate', 'object', 'graph'] as const) {
       const patternSlot = pattern[slot];
@@ -227,7 +227,7 @@ export class RdfStore extends BaseStore implements TripleStore {
       const quadTerm = quad[slot];
 
       if (typeof patternSlot === 'string') {
-        // Variable slot: strip leading `?` to match the TripleStore.Binding convention
+        // Variable slot: strip leading `?` to match the TripleStoreInterface.Binding convention
         // ("Keys are pattern-variable names without the leading `?`").
         const varName = patternSlot.startsWith('?') ? patternSlot.slice(1) : patternSlot;
         binding[varName] = quadTerm;

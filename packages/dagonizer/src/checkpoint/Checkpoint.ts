@@ -42,13 +42,13 @@
  * ```
  */
 
-import type { CheckpointRestoreAdapter } from '../contracts/CheckpointRestoreAdapter.js';
-import type { CheckpointStore } from '../contracts/CheckpointStore.js';
-import type { Snapshottable, StoreSnapshot } from '../contracts/Snapshottable.js';
+import type { CheckpointRestoreAdapterInterface } from '../contracts/CheckpointRestoreAdapterInterface.js';
+import type { CheckpointStoreInterface } from '../contracts/CheckpointStoreInterface.js';
+import type { SnapshottableInterface, StoreSnapshotType } from '../contracts/SnapshottableInterface.js';
 import { CHECKPOINT_DATA_VERSION } from '../entities/checkpoint/CheckpointData.js';
-import type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
-import type { ExecutionResultInterface } from '../entities/execution/ExecutionResult.js';
-import type { JsonObject } from '../entities/json.js';
+import type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
+import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
+import type { JsonObjectType } from '../entities/json.js';
 import { DAGError, ValidationError } from '../errors/DAGError.js';
 import type { NodeStateBase, NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
@@ -57,13 +57,13 @@ import { Validator } from '../validation/Validator.js';
  * Bare function signature for restoring state from a JSON snapshot.
  * Used internally by `CheckpointRestoreAdapterFn`. Pass a function of this
  * shape to `CheckpointRestoreAdapterFn.wrap(fn)` to obtain an adapter
- * that satisfies `CheckpointRestoreAdapter`.
+ * that satisfies `CheckpointRestoreAdapterInterface`.
  */
 type StateRestoreFn<TState extends NodeStateInterface>
-  = (snapshot: JsonObject) => TState;
+  = (snapshot: JsonObjectType) => TState;
 
 /**
- * Concrete `CheckpointRestoreAdapter` backed by a plain function.
+ * Concrete `CheckpointRestoreAdapterInterface` backed by a plain function.
  *
  * Use `CheckpointRestoreAdapterFn.wrap((snap) => MyState.restore(snap))` to
  * wrap an inline lambda for `Checkpoint.restoreState()` without giving up the
@@ -77,20 +77,20 @@ type StateRestoreFn<TState extends NodeStateInterface>
  * ```
  */
 export class CheckpointRestoreAdapterFn<TState extends NodeStateInterface>
-  implements CheckpointRestoreAdapter<TState> {
+  implements CheckpointRestoreAdapterInterface<TState> {
   readonly #fn: StateRestoreFn<TState>;
 
   private constructor(fn: StateRestoreFn<TState>) {
     this.#fn = fn;
   }
 
-  restore(snapshot: JsonObject): TState {
+  restore(snapshot: JsonObjectType): TState {
     return this.#fn(snapshot);
   }
 
   /**
-   * Wrap a plain restore function in a `CheckpointRestoreAdapter`.
-   * The function receives a `JsonObject` snapshot and must return a `TState`
+   * Wrap a plain restore function in a `CheckpointRestoreAdapterInterface`.
+   * The function receives a `JsonObjectType` snapshot and must return a `TState`
    * instance; the typical pattern is `(snap) => MyState.restore(snap)`.
    */
   static wrap<TState extends NodeStateInterface>(
@@ -101,7 +101,7 @@ export class CheckpointRestoreAdapterFn<TState extends NodeStateInterface>
 }
 
 /** Result of a successful `restoreState` call. */
-export interface RecalledCheckpoint<TState extends NodeStateInterface> {
+export type RecalledCheckpointType<TState extends NodeStateInterface> = {
   state: TState;
   dagName: string;
   cursor: string;
@@ -110,14 +110,14 @@ export interface RecalledCheckpoint<TState extends NodeStateInterface> {
 }
 
 /** Options for `Checkpoint.capture`. */
-export interface CaptureOptionsInterface {
+export type CaptureOptionsType = {
   /**
    * Named stores to snapshot alongside the state. Keys become the
    * names in `CheckpointData.stores`; the same names must be passed to
    * `restoreStores()` on resume. Omit or leave empty to capture state
    * only.
    */
-  stores?: Record<string, Snapshottable>;
+  stores?: Record<string, SnapshottableInterface>;
 }
 
 /**
@@ -130,9 +130,9 @@ export interface CaptureOptionsInterface {
  */
 export class Checkpoint {
   /** Parsed + validated checkpoint payload. Serializable. */
-  readonly data: CheckpointData;
+  readonly data: CheckpointDataType;
 
-  private constructor(data: CheckpointData) {
+  private constructor(data: CheckpointDataType) {
     this.data = data;
   }
 
@@ -147,14 +147,14 @@ export class Checkpoint {
    */
   static async capture<TState extends NodeStateInterface & NodeStateBase>(
     dagName: string,
-    result: ExecutionResultInterface<TState>,
-    options: CaptureOptionsInterface = {},
+    result: ExecutionResultType<TState>,
+    options: CaptureOptionsType = {},
   ): Promise<Checkpoint> {
     if (result.cursor === null) {
       throw new DAGError(`Cannot checkpoint a completed DAG '${dagName}': no cursor to resume from`);
     }
 
-    const base: CheckpointData = {
+    const base: CheckpointDataType = {
       'version': CHECKPOINT_DATA_VERSION,
       'dagName': dagName,
       'cursor': result.cursor,
@@ -174,26 +174,26 @@ export class Checkpoint {
     const snapshots = await Promise.all(
       entries.map(async ([name, store]) => {
         const snap = await store.snapshot();
-        // Post-validation boundary: `store.snapshot()` returns `StoreSnapshot`
+        // Post-validation boundary: `store.snapshot()` returns `StoreSnapshotType`
         // (the contract return type). The tuple cast preserves the pair for
         // later insertion into `StoreRecord` without losing the key.
-        return [name, snap] as [string, StoreSnapshot];
+        return [name, snap] as [string, StoreSnapshotType];
       }),
     );
 
     // Build the stores record in the schema-derived shape.
-    // `StoreSnapshot` is the contract type; `CheckpointData['stores'][string]`
+    // `StoreSnapshotType` is the contract type; `CheckpointData['stores'][string]`
     // is the schema-derived type. Both have readonly fields; the cast bridges
     // the nominal type gap between the json-schema-to-ts derivation and the
     // hand-written contract without a structural difference at runtime.
-    type StoreRecord = NonNullable<CheckpointData['stores']>;
+    type StoreRecord = NonNullable<CheckpointDataType['stores']>;
     type StoreEntry  = StoreRecord[string];
     const stores: StoreRecord = {};
     for (const [name, snap] of snapshots) {
       stores[name] = snap as StoreEntry;
     }
 
-    const data: CheckpointData = { ...base, stores };
+    const data: CheckpointDataType = { ...base, stores };
     return new Checkpoint(data);
   }
 
@@ -208,12 +208,12 @@ export class Checkpoint {
   }
 
   /**
-   * Load a checkpoint from a `CheckpointStore` by key. Returns `null` when
+   * Load a checkpoint from a `CheckpointStoreInterface` by key. Returns `null` when
    * the store has no entry for the key. Composes `store.load` + `JSON.parse`
    * + `Checkpoint.load`. Throws `ValidationError` when the stored JSON fails
    * schema validation.
    */
-  static async recall(store: CheckpointStore, key: string): Promise<Checkpoint | null> {
+  static async recall(store: CheckpointStoreInterface, key: string): Promise<Checkpoint | null> {
     const json = await store.load(key);
     if (json === null) return null;
     let parsed: unknown;
@@ -236,10 +236,10 @@ export class Checkpoint {
   }
 
   /**
-   * Persist this checkpoint to a `CheckpointStore` under `key`. Composes
+   * Persist this checkpoint to a `CheckpointStoreInterface` under `key`. Composes
    * `toJson` + `store.save`. Throws when the underlying store throws.
    */
-  async persist(store: CheckpointStore, key: string): Promise<void> {
+  async persist(store: CheckpointStoreInterface, key: string): Promise<void> {
     await store.save(key, this.toJson());
   }
 
@@ -253,18 +253,18 @@ export class Checkpoint {
    * Throws `ValidationError` when `this.data.cursor === null`.
    */
   restoreState<TState extends NodeStateInterface>(
-    adapter: CheckpointRestoreAdapter<TState>,
-  ): RecalledCheckpoint<TState> {
+    adapter: CheckpointRestoreAdapterInterface<TState>,
+  ): RecalledCheckpointType<TState> {
     if (this.data.cursor === null) {
       throw new ValidationError(`Cannot restore from a CheckpointData with null cursor: the DAG had no resumable position`);
     }
     return {
       // Post-validation boundary: `this.data` passed `Validator.checkpoint`
-      // at construction time, so `data.state` satisfies `JsonObject`. The
-      // schema-derived type carries `JsonObject` but TypeScript infers
+      // at construction time, so `data.state` satisfies `JsonObjectType`. The
+      // schema-derived type carries `JsonObjectType` but TypeScript infers
       // `CheckpointData['state']` as `Record<string, unknown>`; the cast is a
-      // safe narrowing to the structurally identical `JsonObject` alias.
-      'state': adapter.restore(this.data.state as JsonObject),
+      // safe narrowing to the structurally identical `JsonObjectType` alias.
+      'state': adapter.restore(this.data.state as JsonObjectType),
       'dagName': this.data.dagName,
       'cursor': this.data.cursor,
       'executedNodes': [...this.data.executedNodes],
@@ -284,7 +284,7 @@ export class Checkpoint {
    *   `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` on
    *   type/version mismatch; this method propagates that unchanged.
    */
-  async restoreStores(stores: Readonly<Record<string, Snapshottable>>): Promise<void> {
+  async restoreStores(stores: Readonly<Record<string, SnapshottableInterface>>): Promise<void> {
     const checkpointStores = this.data.stores;
     if (Object.keys(checkpointStores).length === 0) {
       return;
@@ -308,12 +308,12 @@ export class Checkpoint {
         // `store` is guaranteed present: the `missingNames` check above throws
         // for any checkpoint key absent from the `stores` map, so every key
         // that reaches here has a matching entry.
-        const store = stores[name] as Snapshottable;
+        const store = stores[name] as SnapshottableInterface;
         // Post-validation boundary: `snapshot` comes from `CheckpointData.stores`
         // which is validated by `Validator.checkpoint` at load time. The
-        // schema-derived type is structurally identical to `StoreSnapshot`; the
+        // schema-derived type is structurally identical to `StoreSnapshotType`; the
         // cast bridges the readonly/mutable gap in the generated types.
-        await store.restore(snapshot as StoreSnapshot);
+        await store.restore(snapshot as StoreSnapshotType);
       }),
     );
   }

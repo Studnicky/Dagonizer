@@ -1,28 +1,28 @@
 /**
- * LlmAdapter: consumer-implemented contract for LLM transport plugins.
+ * LlmAdapterInterface: consumer-implemented contract for LLM transport plugins.
  *
  * Single source of truth for the interface declaration. Entity types
- * (`ChatRequest`, `ChatResponse`, `AdapterCapabilities`) live in
+ * (`ChatRequestType`, `ChatResponse`, `AdapterCapabilitiesType`) live in
  * `src/entities/adapter/`; this file imports them directly — no dependency
- * on `src/adapter/`. `src/adapter/LlmAdapter.ts` re-exports `LlmAdapter`
+ * on `src/adapter/`. `src/adapter/LlmAdapter.ts` re-exports `LlmAdapterInterface`
  * from here so `./adapter` consumers continue to see a single import path.
  */
 
-import type { AdapterCapabilities } from '../entities/adapter/AdapterCapabilities.js';
-import type { ChatRequest } from '../entities/adapter/ChatRequest.js';
-import type { ChatResponse } from '../entities/adapter/ChatResponse.js';
+import type { AdapterCapabilitiesType } from '../entities/adapter/AdapterCapabilities.js';
+import type { ChatRequestType } from '../entities/adapter/ChatRequest.js';
+import type { ChatResponseType } from '../entities/adapter/ChatResponse.js';
 
-import type { AbortableOptionsInterface } from './AbortableOptionsInterface.js';
+import type { AbortableOptionsType } from './AbortableOptionsType.js';
 
 /** Implemented by every LLM provider adapter. */
-export interface LlmAdapter {
+export interface LlmAdapterInterface {
   /** Stable provider identifier (e.g. `'openai'`, `'anthropic'`, `'ollama'`). */
   readonly id: string;
   /** Human-readable label for logs and UI. */
   readonly displayName: string;
   /** Declared capabilities; the dispatcher consults these to route tool-call and structured-output paths. */
-  readonly capabilities: AdapterCapabilities;
-  chat(request: ChatRequest): Promise<ChatResponse>;
+  readonly capabilities: AdapterCapabilitiesType;
+  chat(request: ChatRequestType): Promise<ChatResponseType>;
   /**
    * Bring up any per-session state (model download, websocket handshake).
    * Adapters that don't need a session implement a no-op; `BaseAdapter`
@@ -30,13 +30,13 @@ export interface LlmAdapter {
    * on `connect` vs `undefined`.
    * `options.signal` cancels a long-running connect (e.g. model download).
    */
-  connect(options?: AbortableOptionsInterface): Promise<void>;
+  connect(options?: AbortableOptionsType): Promise<void>;
   /**
    * Tear down any per-session state. No-op default on `BaseAdapter`.
    * `options.signal` can interrupt teardown when the caller needs
    * a time-bounded shutdown.
    */
-  disconnect(options?: AbortableOptionsInterface): Promise<void>;
+  disconnect(options?: AbortableOptionsType): Promise<void>;
   /**
    * Quick availability check. Returns true when this adapter can plausibly
    * serve a chat call right now (credentials present, runtime backend
@@ -49,5 +49,5 @@ export interface LlmAdapter {
    * `navigator.ml` feature detect).
    * `options.signal` aborts a long-running probe (e.g. HEAD request).
    */
-  probe(options?: AbortableOptionsInterface): Promise<boolean>;
+  probe(options?: AbortableOptionsType): Promise<boolean>;
 }

@@ -15,73 +15,73 @@
 
 import type { ErrorObject, ValidateFunction } from 'ajv';
 
-import type { OpenAiResponseBody } from '../entities/adapter/OpenAiResponseBody.js';
+import type { OpenAiResponseBodyType } from '../entities/adapter/OpenAiResponseBody.js';
 import { OpenAiResponseBodySchema } from '../entities/adapter/OpenAiResponseBody.js';
 import { TextChannelToolCallEnvelopeSchema } from '../entities/adapter/TextChannelToolCallEnvelope.js';
-import type { TextChannelToolCallEnvelope } from '../entities/adapter/TextChannelToolCallEnvelope.js';
+import type { TextChannelToolCallEnvelopeType } from '../entities/adapter/TextChannelToolCallEnvelope.js';
 import { CheckpointDataSchema } from '../entities/checkpoint/CheckpointData.js';
-import type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
+import type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
 import { GatherStrategySchema } from '../entities/constants/GatherStrategy.js';
-import type { GatherStrategyName } from '../entities/constants/GatherStrategy.js';
+import type { GatherStrategyNameType } from '../entities/constants/GatherStrategy.js';
 import { MetadataKeySchema } from '../entities/constants/MetadataKey.js';
-import type { MetadataKey } from '../entities/constants/MetadataKey.js';
+import type { MetadataKeyType } from '../entities/constants/MetadataKey.js';
 import { NodeTypeSchema } from '../entities/constants/NodeType.js';
 import type { NodeType } from '../entities/constants/NodeType.js';
 import { OutputSchema } from '../entities/constants/Output.js';
-import type { Output } from '../entities/constants/Output.js';
+import type { OutputType } from '../entities/constants/Output.js';
 import { ScatterOutputSchema } from '../entities/constants/ScatterOutput.js';
-import type { ScatterOutput } from '../entities/constants/ScatterOutput.js';
-import type { DAG } from '../entities/dag/DAG.js';
+import type { ScatterOutputType } from '../entities/constants/ScatterOutput.js';
+import type { DAGType } from '../entities/dag/DAG.js';
 import { DAGSchema } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeSchema } from '../entities/dag/EmbeddedDAGNode.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
+import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import { GatherConfigSchema } from '../entities/dag/GatherConfig.js';
-import type { GatherConfig } from '../entities/dag/GatherConfig.js';
-import type { PhaseNode } from '../entities/dag/PhaseNode.js';
+import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
+import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import { PhaseNodeSchema } from '../entities/dag/PhaseNode.js';
 import { ScatterNodeSchema } from '../entities/dag/ScatterNode.js';
-import type { ScatterNode } from '../entities/dag/ScatterNode.js';
-import type { SingleNode } from '../entities/dag/SingleNode.js';
+import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
+import type { SingleNodeType } from '../entities/dag/SingleNode.js';
 import { SingleNodeSchema } from '../entities/dag/SingleNode.js';
-import type { TerminalNode } from '../entities/dag/TerminalNode.js';
+import type { TerminalNodeType } from '../entities/dag/TerminalNode.js';
 import { TerminalNodeSchema } from '../entities/dag/TerminalNode.js';
 import { DAGErrorJSONSchema } from '../entities/errors/DAGErrorJSON.js';
-import type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
+import type { DAGErrorJSONType } from '../entities/errors/DAGErrorJSON.js';
 import { ExecutionResultSchema, InterruptionInfoSchema } from '../entities/execution/ExecutionResult.js';
-import type { ExecutionResult, InterruptionInfo } from '../entities/execution/ExecutionResult.js';
-import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
+import type { ExecutionResultWireType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
+import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 import { BridgeMessageSchema } from '../entities/executor/BridgeMessage.js';
 import { ExecutionRequestSchema } from '../entities/executor/ExecutionRequest.js';
-import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
+import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 import { ExecutionResponseSchema } from '../entities/executor/ExecutionResponse.js';
-import type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
+import type { ExecutionResponseType } from '../entities/executor/ExecutionResponse.js';
 import { ExecutorIntermediateSchema } from '../entities/executor/ExecutorIntermediate.js';
-import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
+import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
 import { RecommendedWorkerCountConfigSchema } from '../entities/executor/RecommendedWorkerCountConfig.js';
-import type { RecommendedWorkerCountConfig } from '../entities/executor/RecommendedWorkerCountConfig.js';
-import type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
+import type { RecommendedWorkerCountConfigType } from '../entities/executor/RecommendedWorkerCountConfig.js';
+import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
 import { DAGHandoffSchema } from '../entities/handoff/DAGHandoff.js';
 import { NodeSchema } from '../entities/node/Node.js';
-import type { Node } from '../entities/node/Node.js';
+import type { NodeUnionType } from '../entities/node/Node.js';
 import { NodeContextSchema } from '../entities/node/NodeContext.js';
-import type { NodeContext } from '../entities/node/NodeContext.js';
+import type { NodeContextWireType } from '../entities/node/NodeContext.js';
 import { NodeErrorSchema } from '../entities/node/NodeError.js';
-import type { NodeError } from '../entities/node/NodeError.js';
+import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 import { NodeOutputSchema } from '../entities/node/NodeOutput.js';
-import type { NodeOutput } from '../entities/node/NodeOutput.js';
+import type { NodeOutputWireType } from '../entities/node/NodeOutput.js';
 import { NodeResultSchema } from '../entities/node/NodeResult.js';
-import type { NodeResult } from '../entities/node/NodeResult.js';
+import type { NodeResultWireType } from '../entities/node/NodeResult.js';
 import { NodeStateDataSchema } from '../entities/node/NodeStateData.js';
-import type { NodeStateData } from '../entities/node/NodeStateData.js';
+import type { NodeStateDataType } from '../entities/node/NodeStateData.js';
 import { NodeWarningSchema } from '../entities/node/NodeWarning.js';
-import type { NodeWarning } from '../entities/node/NodeWarning.js';
-import type { BackoffStrategy } from '../entities/runtime/BackoffStrategy.js';
+import type { NodeWarningType } from '../entities/node/NodeWarning.js';
+import type { BackoffStrategyType } from '../entities/runtime/BackoffStrategy.js';
 import { BackoffStrategySchema } from '../entities/runtime/BackoffStrategy.js';
 import type {
-  ScatterAckedResult,
-  ScatterInboxItem,
-  ScatterProgress,
-  StoredScatterProgress,
+  ScatterAckedResultType,
+  ScatterInboxItemType,
+  ScatterProgressType,
+  StoredScatterProgressType,
 } from '../entities/scatter/ScatterProgress.js';
 import {
   ScatterAckedResultSchema,
@@ -90,13 +90,13 @@ import {
   StoredScatterProgressSchema,
 } from '../entities/scatter/ScatterProgress.js';
 import { DAGLifecycleStateSchema } from '../entities/state-machines/DAGLifecycleState.js';
-import type { DAGLifecycleStateData } from '../entities/state-machines/DAGLifecycleState.js';
+import type { DAGLifecycleStateDataType } from '../entities/state-machines/DAGLifecycleState.js';
 import { ValidationResultSchema } from '../entities/validation/ValidationResult.js';
-import type { ValidationResult } from '../entities/validation/ValidationResult.js';
+import type { ValidationResultType } from '../entities/validation/ValidationResult.js';
 import type {
-  WorkSetEntry,
-  WorkSetItem,
-  WorkSetProgress,
+  WorkSetEntryType,
+  WorkSetItemType,
+  WorkSetProgressType,
 } from '../entities/workset/WorkSetProgress.js';
 import {
   WorkSetEntrySchema,
@@ -108,7 +108,7 @@ import { ValidationError } from '../errors/DAGError.js';
 import { sharedAjv } from './sharedAjv.js';
 
 /** Per-entity validator interface returned by every `Validator.<entity>` field. */
-export interface EntityValidator<T> {
+export interface EntityValidatorInterface<T> {
   /** Type predicate. Returns true when value satisfies the schema. */
   is(value: unknown): value is T;
   /** Throws ValidationError if invalid; returns value narrowed to T on success. */
@@ -138,7 +138,7 @@ export class Validator {
   }
 
   /**
-   * Compile a consumer-supplied schema into a typed `EntityValidator<T>`
+   * Compile a consumer-supplied schema into a typed `EntityValidatorInterface<T>`
    * against the package's single shared Ajv instance. Satellite packages
    * (adapters, embedders, tools) validate their own external wire/host
    * shapes through this method; they never instantiate their own Ajv.
@@ -152,12 +152,12 @@ export class Validator {
    * const isWidget = Validator.compile<Widget>(WidgetSchema);
    * const widget = isWidget.validate(externalJson);
    */
-  static compile<T>(schema: { readonly $id?: string }): EntityValidator<T> {
+  static compile<T>(schema: { readonly $id?: string }): EntityValidatorInterface<T> {
     return Validator.compileNamed<T>(schema.$id ?? '<schema>', schema);
   }
 
   /**
-   * Compile a schema into a typed `EntityValidator<T>` under an explicit
+   * Compile a schema into a typed `EntityValidatorInterface<T>` under an explicit
    * name used in error messages. Backs both the public single-arg
    * `compile(schema)` and every internal per-entity field initializer.
    * Schemas embedded in others (e.g. `GatherConfigSchema` inlined in
@@ -165,7 +165,7 @@ export class Validator {
    * this method looks the already-registered validator up before
    * compiling fresh.
    */
-  private static compileNamed<T>(name: string, schema: { readonly $id?: string }): EntityValidator<T> {
+  private static compileNamed<T>(name: string, schema: { readonly $id?: string }): EntityValidatorInterface<T> {
     const id = schema.$id;
     let compiled: ValidateFunction | undefined;
     if (id !== undefined) {
@@ -198,67 +198,67 @@ export class Validator {
   }
 
   // Bridge protocol
-  static readonly bridgeMessage: EntityValidator<BridgeMessage> = Validator.compileNamed('BridgeMessage', BridgeMessageSchema);
+  static readonly bridgeMessage: EntityValidatorInterface<BridgeMessageType> = Validator.compileNamed('BridgeMessage', BridgeMessageSchema);
 
   // DAG: top-level definition
-  static readonly dag:             EntityValidator<DAG>             = Validator.compileNamed('DAG',             DAGSchema);
-  static readonly singleNode:      EntityValidator<SingleNode>      = Validator.compileNamed('SingleNode',      SingleNodeSchema);
-  static readonly scatterNode:     EntityValidator<ScatterNode>     = Validator.compileNamed('ScatterNode',     ScatterNodeSchema);
-  static readonly embeddedDAGNode: EntityValidator<EmbeddedDAGNode> = Validator.compileNamed('EmbeddedDAGNode', EmbeddedDAGNodeSchema);
-  static readonly terminalNode: EntityValidator<TerminalNode>  = Validator.compileNamed('TerminalNode', TerminalNodeSchema);
-  static readonly phaseNode:    EntityValidator<PhaseNode>     = Validator.compileNamed('PhaseNode',    PhaseNodeSchema);
+  static readonly dag:             EntityValidatorInterface<DAGType>             = Validator.compileNamed('DAG',             DAGSchema);
+  static readonly singleNode:      EntityValidatorInterface<SingleNodeType>      = Validator.compileNamed('SingleNode',      SingleNodeSchema);
+  static readonly scatterNode:     EntityValidatorInterface<ScatterNodeType>     = Validator.compileNamed('ScatterNode',     ScatterNodeSchema);
+  static readonly embeddedDAGNode: EntityValidatorInterface<EmbeddedDAGNodeType> = Validator.compileNamed('EmbeddedDAGNode', EmbeddedDAGNodeSchema);
+  static readonly terminalNode: EntityValidatorInterface<TerminalNodeType>  = Validator.compileNamed('TerminalNode', TerminalNodeSchema);
+  static readonly phaseNode:    EntityValidatorInterface<PhaseNodeType>     = Validator.compileNamed('PhaseNode',    PhaseNodeSchema);
 
   // Node runtime shapes
-  static readonly node:          EntityValidator<Node>          = Validator.compileNamed('Node',          NodeSchema);
-  static readonly nodeContext:   EntityValidator<NodeContext>   = Validator.compileNamed('NodeContext',   NodeContextSchema);
-  static readonly nodeOutput:    EntityValidator<NodeOutput>    = Validator.compileNamed('NodeOutput',    NodeOutputSchema);
-  static readonly nodeError:     EntityValidator<NodeError>     = Validator.compileNamed('NodeError',     NodeErrorSchema);
-  static readonly nodeWarning:   EntityValidator<NodeWarning>   = Validator.compileNamed('NodeWarning',   NodeWarningSchema);
-  static readonly nodeResult:    EntityValidator<NodeResult>    = Validator.compileNamed('NodeResult',    NodeResultSchema);
-  static readonly nodeStateData: EntityValidator<NodeStateData> = Validator.compileNamed('NodeStateData', NodeStateDataSchema);
+  static readonly node:          EntityValidatorInterface<NodeUnionType>      = Validator.compileNamed('Node',          NodeSchema);
+  static readonly nodeContext:   EntityValidatorInterface<NodeContextWireType>    = Validator.compileNamed('NodeContext',   NodeContextSchema);
+  static readonly nodeOutput:    EntityValidatorInterface<NodeOutputWireType>     = Validator.compileNamed('NodeOutput',    NodeOutputSchema);
+  static readonly nodeError:     EntityValidatorInterface<NodeErrorWireType>      = Validator.compileNamed('NodeError',     NodeErrorSchema);
+  static readonly nodeWarning:   EntityValidatorInterface<NodeWarningType>    = Validator.compileNamed('NodeWarning',   NodeWarningSchema);
+  static readonly nodeResult:    EntityValidatorInterface<NodeResultWireType>     = Validator.compileNamed('NodeResult',    NodeResultSchema);
+  static readonly nodeStateData: EntityValidatorInterface<NodeStateDataType>  = Validator.compileNamed('NodeStateData', NodeStateDataSchema);
 
   // Execution + lifecycle wire shapes
-  static readonly executionResult:   EntityValidator<ExecutionResult>      = Validator.compileNamed('ExecutionResult',   ExecutionResultSchema);
-  static readonly interruptionInfo:  EntityValidator<InterruptionInfo>     = Validator.compileNamed('InterruptionInfo',  InterruptionInfoSchema);
-  static readonly dagLifecycleState: EntityValidator<DAGLifecycleStateData> = Validator.compileNamed('DAGLifecycleState', DAGLifecycleStateSchema);
+  static readonly executionResult:   EntityValidatorInterface<ExecutionResultWireType>      = Validator.compileNamed('ExecutionResult',   ExecutionResultSchema);
+  static readonly interruptionInfo:  EntityValidatorInterface<InterruptionInfoType>     = Validator.compileNamed('InterruptionInfo',  InterruptionInfoSchema);
+  static readonly dagLifecycleState: EntityValidatorInterface<DAGLifecycleStateDataType> = Validator.compileNamed('DAGLifecycleStateType', DAGLifecycleStateSchema);
 
   // Persistence + reporting
-  static readonly checkpoint:       EntityValidator<CheckpointData>    = Validator.compileNamed('CheckpointData',    CheckpointDataSchema);
-  static readonly validationResult: EntityValidator<ValidationResult>  = Validator.compileNamed('ValidationResult',  ValidationResultSchema);
-  static readonly dagErrorJson:     EntityValidator<DAGErrorJSON>      = Validator.compileNamed('DAGErrorJSON',      DAGErrorJSONSchema);
+  static readonly checkpoint:       EntityValidatorInterface<CheckpointDataType>    = Validator.compileNamed('CheckpointData',    CheckpointDataSchema);
+  static readonly validationResult: EntityValidatorInterface<ValidationResultType>  = Validator.compileNamed('ValidationResult',  ValidationResultSchema);
+  static readonly dagErrorJson:     EntityValidatorInterface<DAGErrorJSONType>      = Validator.compileNamed('DAGErrorJSON',      DAGErrorJSONSchema);
 
   // Hand-off channels
-  static readonly dagHandoff: EntityValidator<DAGHandoff> = Validator.compileNamed('DAGHandoff', DAGHandoffSchema);
+  static readonly dagHandoff: EntityValidatorInterface<DAGHandoffType> = Validator.compileNamed('DAGHandoff', DAGHandoffSchema);
 
   // Executor container wire shapes
-  static readonly executionRequest:       EntityValidator<ExecutionRequest>        = Validator.compileNamed('ExecutionRequest',        ExecutionRequestSchema);
-  static readonly executionResponse:      EntityValidator<ExecutionResponse>       = Validator.compileNamed('ExecutionResponse',       ExecutionResponseSchema);
-  static readonly executorIntermediate:   EntityValidator<ExecutorIntermediate>    = Validator.compileNamed('ExecutorIntermediate',    ExecutorIntermediateSchema);
-  static readonly recommendedWorkerCount: EntityValidator<RecommendedWorkerCountConfig> = Validator.compileNamed('RecommendedWorkerCountConfig', RecommendedWorkerCountConfigSchema);
+  static readonly executionRequest:       EntityValidatorInterface<ExecutionRequestType>        = Validator.compileNamed('ExecutionRequest',        ExecutionRequestSchema);
+  static readonly executionResponse:      EntityValidatorInterface<ExecutionResponseType>       = Validator.compileNamed('ExecutionResponse',       ExecutionResponseSchema);
+  static readonly executorIntermediate:   EntityValidatorInterface<ExecutorIntermediateType>    = Validator.compileNamed('ExecutorIntermediate',    ExecutorIntermediateSchema);
+  static readonly recommendedWorkerCount: EntityValidatorInterface<RecommendedWorkerCountConfigType> = Validator.compileNamed('RecommendedWorkerCountConfig', RecommendedWorkerCountConfigSchema);
 
   // DAG sub-entities
-  static readonly gatherConfig: EntityValidator<GatherConfig> = Validator.compileNamed('GatherConfig', GatherConfigSchema);
+  static readonly gatherConfig: EntityValidatorInterface<GatherConfigType> = Validator.compileNamed('GatherConfig', GatherConfigSchema);
 
   // Adapter wire shapes
-  static readonly openAiResponseBody: EntityValidator<OpenAiResponseBody> = Validator.compileNamed('OpenAiResponseBody', OpenAiResponseBodySchema);
-  static readonly textChannelToolCallEnvelope: EntityValidator<TextChannelToolCallEnvelope> = Validator.compileNamed('TextChannelToolCallEnvelope', TextChannelToolCallEnvelopeSchema);
+  static readonly openAiResponseBody: EntityValidatorInterface<OpenAiResponseBodyType> = Validator.compileNamed('OpenAiResponseBody', OpenAiResponseBodySchema);
+  static readonly textChannelToolCallEnvelope: EntityValidatorInterface<TextChannelToolCallEnvelopeType> = Validator.compileNamed('TextChannelToolCallEnvelope', TextChannelToolCallEnvelopeSchema);
 
   // Constant enum schemas
-  static readonly gatherStrategy: EntityValidator<GatherStrategyName> = Validator.compileNamed('GatherStrategy', GatherStrategySchema);
-  static readonly scatterOutput:  EntityValidator<ScatterOutput>      = Validator.compileNamed('ScatterOutput',  ScatterOutputSchema);
-  static readonly metadataKey:    EntityValidator<MetadataKey>        = Validator.compileNamed('MetadataKey',    MetadataKeySchema);
-  static readonly output:         EntityValidator<Output>             = Validator.compileNamed('Output',         OutputSchema);
-  static readonly nodeType:       EntityValidator<NodeType>           = Validator.compileNamed('NodeType',       NodeTypeSchema);
-  static readonly backoffStrategy: EntityValidator<BackoffStrategy> = Validator.compileNamed('BackoffStrategy', BackoffStrategySchema);
+  static readonly gatherStrategy: EntityValidatorInterface<GatherStrategyNameType> = Validator.compileNamed('GatherStrategy', GatherStrategySchema);
+  static readonly scatterOutput:  EntityValidatorInterface<ScatterOutputType>      = Validator.compileNamed('ScatterOutput',  ScatterOutputSchema);
+  static readonly metadataKey:    EntityValidatorInterface<MetadataKeyType>        = Validator.compileNamed('MetadataKey',    MetadataKeySchema);
+  static readonly output:         EntityValidatorInterface<OutputType>             = Validator.compileNamed('Output',         OutputSchema);
+  static readonly nodeType:       EntityValidatorInterface<NodeType>               = Validator.compileNamed('NodeType',       NodeTypeSchema);
+  static readonly backoffStrategy: EntityValidatorInterface<BackoffStrategyType> = Validator.compileNamed('BackoffStrategy', BackoffStrategySchema);
 
   // Scatter progress checkpoint wire shapes
-  static readonly scatterInboxItem:       EntityValidator<ScatterInboxItem>       = Validator.compileNamed('ScatterInboxItem',       ScatterInboxItemSchema);
-  static readonly scatterAckedResult:     EntityValidator<ScatterAckedResult>     = Validator.compileNamed('ScatterAckedResult',     ScatterAckedResultSchema);
-  static readonly scatterProgress:        EntityValidator<ScatterProgress>        = Validator.compileNamed('ScatterProgress',        ScatterProgressSchema);
-  static readonly storedScatterProgress:  EntityValidator<StoredScatterProgress>  = Validator.compileNamed('StoredScatterProgress',  StoredScatterProgressSchema);
+  static readonly scatterInboxItem:       EntityValidatorInterface<ScatterInboxItemType>       = Validator.compileNamed('ScatterInboxItem',       ScatterInboxItemSchema);
+  static readonly scatterAckedResult:     EntityValidatorInterface<ScatterAckedResultType>     = Validator.compileNamed('ScatterAckedResult',     ScatterAckedResultSchema);
+  static readonly scatterProgress:        EntityValidatorInterface<ScatterProgressType>        = Validator.compileNamed('ScatterProgress',        ScatterProgressSchema);
+  static readonly storedScatterProgress:  EntityValidatorInterface<StoredScatterProgressType>  = Validator.compileNamed('StoredScatterProgress',  StoredScatterProgressSchema);
 
   // WorkSet progress checkpoint wire shapes
-  static readonly workSetItem:     EntityValidator<WorkSetItem>     = Validator.compileNamed('WorkSetItem',     WorkSetItemSchema);
-  static readonly workSetEntry:    EntityValidator<WorkSetEntry>    = Validator.compileNamed('WorkSetEntry',    WorkSetEntrySchema);
-  static readonly workSetProgress: EntityValidator<WorkSetProgress> = Validator.compileNamed('WorkSetProgress', WorkSetProgressSchema);
+  static readonly workSetItem:     EntityValidatorInterface<WorkSetItemType>     = Validator.compileNamed('WorkSetItem',     WorkSetItemSchema);
+  static readonly workSetEntry:    EntityValidatorInterface<WorkSetEntryType>    = Validator.compileNamed('WorkSetEntry',    WorkSetEntrySchema);
+  static readonly workSetProgress: EntityValidatorInterface<WorkSetProgressType> = Validator.compileNamed('WorkSetProgress', WorkSetProgressSchema);
 }

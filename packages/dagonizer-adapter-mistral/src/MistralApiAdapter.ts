@@ -6,10 +6,10 @@
  */
 
 import { OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
-import type { OpenAiCompatibleAdapterOptions } from '@studnicky/dagonizer/adapter';
+import type { OpenAiCompatibleAdapterOptionsType } from '@studnicky/dagonizer/adapter';
 
 export class MistralApiAdapter extends OpenAiCompatibleAdapter {
-  constructor(apiKey: string, options: OpenAiCompatibleAdapterOptions = {}) {
+  constructor(apiKey: string, options: OpenAiCompatibleAdapterOptionsType = {}) {
     super(
       apiKey,
       {

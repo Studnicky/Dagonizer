@@ -1,8 +1,8 @@
 /**
  * ScatterOptions: static factory that materialises build-time defaults for
- * `ScatterOptionsInterface`.
+ * `ScatterOptionsType`.
  *
- * Two of the five optional fields on `ScatterOptionsInterface` have static
+ * Two of the five optional fields on `ScatterOptionsType` have static
  * defaults that are known at build time and belong on the produced `ScatterNode`
  * wire shape immediately:
  *
@@ -31,7 +31,7 @@
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import type { ScatterOptionsInterface } from './DAGBuilder.js';
+import type { ScatterOptionsType } from './DAGBuilder.js';
 
 /** Default metadata key written to each clone before its body runs. */
 export const SCATTER_ITEM_KEY_DEFAULT = 'currentItem' as const;
@@ -46,11 +46,11 @@ const SCATTER_OPTION_DEFAULTS = {
 } as const;
 
 /**
- * Resolved `ScatterOptionsInterface` with `itemKey` and `reducer` guaranteed
+ * Resolved `ScatterOptionsType` with `itemKey` and `reducer` guaranteed
  * present. All other optional fields retain their optionality.
  */
-export type ResolvedScatterOptions<TState extends NodeStateInterface> =
-  ScatterOptionsInterface<TState> & {
+export type ResolvedScatterOptionsType<TState extends NodeStateInterface> =
+  ScatterOptionsType<TState> & {
     itemKey: string;
     reducer: string;
   };
@@ -60,7 +60,7 @@ export type ResolvedScatterOptions<TState extends NodeStateInterface> =
  *
  * `ScatterOptions.resolve(partial)` fills `itemKey` and `reducer` with their
  * static defaults when the caller omits them, returning a
- * `ResolvedScatterOptions<TState>` that is safe to spread onto a `ScatterNode`
+ * `ResolvedScatterOptionsType<TState>` that is safe to spread onto a `ScatterNode`
  * without a downstream `?? 'default'` guard.
  */
 export class ScatterOptions {
@@ -73,8 +73,8 @@ export class ScatterOptions {
    * @returns Options with `itemKey` and `reducer` always present.
    */
   static resolve<TState extends NodeStateInterface>(
-    partial: ScatterOptionsInterface<TState>,
-  ): ResolvedScatterOptions<TState> {
+    partial: ScatterOptionsType<TState>,
+  ): ResolvedScatterOptionsType<TState> {
     // Resolve only the two statically-defaultable fields via spread; all other
     // fields (concurrency, inputs, container, gather) pass through from partial.
     const { itemKey, reducer } = {

@@ -15,7 +15,7 @@
 
 import { DAGError } from '../errors/DAGError.js';
 
-export type ToolErrorReason =
+export type ToolErrorReasonType =
   | 'NETWORK'
   | 'HTTP_4XX'
   | 'HTTP_5XX'
@@ -26,8 +26,8 @@ export type ToolErrorReason =
   | 'ABORTED'
   | 'UNKNOWN';
 
-export interface ToolErrorOptions {
-  reason: ToolErrorReason;
+export type ToolErrorOptionsType = {
+  reason: ToolErrorReasonType;
   retryable: boolean;
   /** HTTP status code. Omit (or null) when no HTTP status applies; defaults to null. */
   status?: number | null;
@@ -36,13 +36,13 @@ export interface ToolErrorOptions {
 }
 
 export class ToolError extends DAGError {
-  readonly reason: ToolErrorReason;
+  readonly reason: ToolErrorReasonType;
   readonly retryable: boolean;
   // Always initialised (null = no HTTP status) so every ToolError instance
   // shares one stable V8 hidden class; declaration order matches assignment.
   readonly status: number | null;
 
-  constructor(message: string, options: ToolErrorOptions) {
+  constructor(message: string, options: ToolErrorOptionsType) {
     super(message, {
       'code': 'TOOL_ERROR',
       ...(options.cause instanceof Error && { 'cause': options.cause }),

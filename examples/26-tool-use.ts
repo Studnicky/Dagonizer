@@ -1,8 +1,8 @@
 /**
- * 26-tool-use: tool-use surface — Tool definition, ToolCallCodec, and adapter dispatch.
+ * 26-tool-use: tool-use surface — ToolInterface definition, ToolCallCodec, and adapter dispatch.
  *
  * Shows how to:
- *   1. Define a Tool<TInput, TOutput> with a JSON-Schema ToolDefinition that
+ *   1. Define a ToolInterface<TInput, TOutput> with a JSON-Schema ToolDefinition that
  *      the adapter surface forwards to the model's tool channel.
  *   2. Drive it with a real OllamaApiAdapter (llama3.2). When the model
  *      supports tool calling it emits a typed ToolCall[] via the native
@@ -46,7 +46,7 @@ import {
 const OLLAMA_MODEL = 'llama3.2';
 
 // ---------------------------------------------------------------------------
-// Tool registry
+// ToolInterface registry
 // ---------------------------------------------------------------------------
 
 const calculatorTool = new CalculatorTool();
@@ -54,7 +54,7 @@ const registry = new ToolRegistry();
 registry.register(calculatorTool);
 
 process.stdout.write(`\nTool registered: "${calculatorTool.definition.name}" — ${calculatorTool.definition.description}\n`);
-process.stdout.write(`Tool input schema required fields: ${JSON.stringify(calculatorTool.definition.inputSchema['required'])}\n\n`);
+process.stdout.write(`ToolInterface input schema required fields: ${JSON.stringify(calculatorTool.definition.inputSchema['required'])}\n\n`);
 
 // ---------------------------------------------------------------------------
 // DAG setup
@@ -121,7 +121,7 @@ if (decodedCalls.length > 0 && decodedCalls[0] !== undefined) {
   const tool = registry.resolve(call.name);
   if (tool !== null) {
     const result = await tool.execute(call.arguments);
-    process.stdout.write(`  Tool "${call.name}" result: ${JSON.stringify(result)}\n`);
+    process.stdout.write(`  ToolInterface "${call.name}" result: ${JSON.stringify(result)}\n`);
   }
 }
 process.stdout.write(`\n`);
@@ -159,5 +159,5 @@ await dispatchNode.execute(Batch.of(stateC), {
 process.stdout.write(`  finalAnswer:   "${stateC.finalAnswer}"\n\n`);
 
 process.stdout.write('Lesson: ToolCallCodec.decode extracts tool calls from arbitrary prose.\n');
-process.stdout.write('        Tool<TInput,TOutput>.execute() dispatches the call; the DAG routes on success/error.\n');
+process.stdout.write('        ToolInterface<TInput,TOutput>.execute() dispatches the call; the DAG routes on success/error.\n');
 process.stdout.write('        OllamaApiAdapter with a tool-capable model emits ToolCall[] via the native channel.\n');

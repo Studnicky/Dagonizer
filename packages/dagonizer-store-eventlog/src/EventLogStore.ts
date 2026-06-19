@@ -19,10 +19,10 @@
 
 import { open, type FileHandle } from 'node:fs/promises';
 
-import type { StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
-import type { JsonValue } from '@studnicky/dagonizer/entities';
-import { BASE_STORE_DEFAULTS, BaseStore, StoreError, type BaseStoreOptions } from '@studnicky/dagonizer/store';
-import type { EntityValidator } from '@studnicky/dagonizer/validation';
+import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
+import type { JsonValueType } from '@studnicky/dagonizer/entities';
+import { BASE_STORE_DEFAULTS, BaseStore, StoreError, type BaseStoreOptionsType } from '@studnicky/dagonizer/store';
+import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -67,14 +67,14 @@ export const EventLogEntrySchema = {
  * `kind: 'delete'`: a tombstone; the key is logically absent after this entry.
  *
  * The compile-time type is hand-written rather than derived from
- * `EventLogEntrySchema` via `FromSchema` because `JsonValue` is a recursive
+ * `EventLogEntrySchema` via `FromSchema` because `JsonValueType` is a recursive
  * union that JSON Schema's `{}` (any value) maps to `unknown` in
  * `json-schema-to-ts`. `EventLogEntrySchema` governs runtime validation;
  * this type governs compile-time usage — both are required to be structurally
  * consistent and are kept co-located.
  */
-export type EventLogEntry =
-  | { readonly kind: 'set';    readonly at: number; readonly key: string; readonly value: JsonValue }
+export type EventLogEntryType =
+  | { readonly kind: 'set';    readonly at: number; readonly key: string; readonly value: JsonValueType }
   | { readonly kind: 'delete'; readonly at: number; readonly key: string };
 
 // ── Local validator ───────────────────────────────────────────────────────────
@@ -91,8 +91,8 @@ export type EventLogEntry =
  * `additionalProperties` on the stored objects are NOT rejected — the schema
  * allows forward-compat reads. Malformed/missing required fields throw.
  */
-const EventLogEntryValidator: EntityValidator<EventLogEntry> = {
-  is(value): value is EventLogEntry {
+const EventLogEntryValidator: EntityValidatorInterface<EventLogEntryType> = {
+  is(value): value is EventLogEntryType {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
     const obj = value as Record<string, unknown>;
     if (typeof obj['at'] !== 'number') return false;
@@ -101,7 +101,7 @@ const EventLogEntryValidator: EntityValidator<EventLogEntry> = {
     if (obj['kind'] === 'delete') return true;
     return false;
   },
-  validate(value): EventLogEntry {
+  validate(value): EventLogEntryType {
     if (EventLogEntryValidator.is(value)) return value;
     throw new StoreError(
       `invalid EventLogEntry: ${JSON.stringify(value)}`,
@@ -122,7 +122,7 @@ const EventLogEntryValidator: EntityValidator<EventLogEntry> = {
 
 // ── Options ───────────────────────────────────────────────────────────────────
 
-export interface EventLogStoreOptions extends BaseStoreOptions {
+export type EventLogStoreOptionsType = BaseStoreOptionsType & {
   /** Optional file path for log persistence. When omitted, the log is in-memory only. */
   readonly filePath?: string;
   /**
@@ -130,17 +130,17 @@ export interface EventLogStoreOptions extends BaseStoreOptions {
    * Set to false for higher throughput where durability is not critical.
    */
   readonly syncOnAppend?: boolean;
-}
+};
 
 // ── Implementation ────────────────────────────────────────────────────────────
 
 export class EventLogStore extends BaseStore {
-  readonly #log: EventLogEntry[];
+  readonly #log: EventLogEntryType[];
   readonly #filePath: string;
   readonly #syncOnAppend: boolean;
   #handle: FileHandle | null;
 
-  constructor(options: EventLogStoreOptions = BASE_STORE_DEFAULTS) {
+  constructor(options: EventLogStoreOptionsType = BASE_STORE_DEFAULTS) {
     super(options);
     this.#log = [];
     this.#filePath = options.filePath ?? '';
@@ -190,7 +190,7 @@ export class EventLogStore extends BaseStore {
    * Under JS single-threaded execution the body cannot interleave with another
    * `update()` on the same instance, satisfying the atomicity contract.
    */
-  override async update<T extends JsonValue>(
+  override async update<T extends JsonValueType>(
     key: string,
     fn: (current: T | undefined) => T,
   ): Promise<T> {
@@ -203,11 +203,11 @@ export class EventLogStore extends BaseStore {
 
   // ── Protected perform* hooks ──────────────────────────────────────────────
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
     return this.#latestAs<T>(key) ?? null;
   }
 
-  protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
+  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
     await this.#append({ 'kind': 'set', 'at': Date.now(), 'key': key, 'value': value });
   }
 
@@ -221,9 +221,9 @@ export class EventLogStore extends BaseStore {
     return true;
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
+  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
     // Compact: project log forward to a last-write-wins map.
-    const latest = new Map<string, JsonValue>();
+    const latest = new Map<string, JsonValueType>();
     for (const entry of this.#log) {
       if (entry.kind === 'set') latest.set(entry.key, entry.value);
       else                      latest.delete(entry.key);
@@ -231,7 +231,7 @@ export class EventLogStore extends BaseStore {
     return [...latest.entries()].map(([key, value]) => ({ key, value }));
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void> {
+  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
     this.#log.length = 0;
     const at = Date.now();
     for (const { key, value } of entries) {
@@ -248,7 +248,7 @@ export class EventLogStore extends BaseStore {
    * Includes every set event and every tombstone since construction (or last restore).
    * Useful for auditing, debugging, and deriving metrics from write history.
    */
-  log(): readonly EventLogEntry[] {
+  log(): readonly EventLogEntryType[] {
     return this.#log;
   }
 
@@ -256,12 +256,12 @@ export class EventLogStore extends BaseStore {
 
   /**
    * Scan the log in reverse; return the most-recent value for `key`, or
-   * `undefined`. Returns the honest stored type (`JsonValue | undefined`);
+   * `undefined`. Returns the honest stored type (`JsonValueType | undefined`);
    * callers that expect a narrower `T` apply the boundary cast at their own
    * seam (see `performGet`). `undefined` is the "key absent / tombstoned"
    * sentinel and is part of the contract.
    */
-  #latest(key: string): JsonValue | undefined {
+  #latest(key: string): JsonValueType | undefined {
     for (let i = this.#log.length - 1; i >= 0; i -= 1) {
       const entry = this.#log[i];
       if (entry === undefined || entry.key !== key) continue;
@@ -273,23 +273,23 @@ export class EventLogStore extends BaseStore {
 
   /**
    * Caller-expectation boundary cast. `#latest` returns the honest stored type
-   * (`JsonValue | undefined`); a caller that declared a narrower `T extends
-   * JsonValue` (via `get<T>` / `update<T>`) narrows the stored value to that
+   * (`JsonValueType | undefined`); a caller that declared a narrower `T extends
+   * JsonValueType` (via `get<T>` / `update<T>`) narrows the stored value to that
    * shape here. The store neither knows nor re-validates `T` at runtime, so
    * this single seam is where the caller's type expectation enters —
-   * structurally identical to the sanctioned `JsonValue` boundary cast in
+   * structurally identical to the sanctioned `JsonValueType` boundary cast in
    * `dagonizer-store-sqlite`'s `performSnapshotEntries`. `undefined` (key
    * absent / tombstoned) is passed through unchanged. This is the one and only
    * unchecked cast in the store; both `performGet` and the atomic `update`
    * override read through it.
    */
-  #latestAs<T extends JsonValue>(key: string): T | undefined {
+  #latestAs<T extends JsonValueType>(key: string): T | undefined {
     const value = this.#latest(key);
     return value === undefined ? undefined : (value as T);
   }
 
   /** Append an event to the in-memory log and, if a file handle is open, persist it. */
-  async #append(entry: EventLogEntry): Promise<void> {
+  async #append(entry: EventLogEntryType): Promise<void> {
     this.#log.push(entry);
     if (this.#handle !== null) {
       await this.#handle.appendFile(JSON.stringify(entry) + '\n');

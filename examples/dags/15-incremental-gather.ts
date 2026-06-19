@@ -24,10 +24,10 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { GatherExecution, GatherRecord } from '@studnicky/dagonizer';
-import type { GatherConfig } from '@studnicky/dagonizer';
-import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { GatherExecutionType, GatherRecordType } from '@studnicky/dagonizer';
+import type { GatherConfigType } from '@studnicky/dagonizer';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
@@ -88,14 +88,14 @@ export class LoggingMapStrategy extends GatherStrategy {
 
   // Called after EACH clone body completes (or per micro-batch).
   override reduce(
-    config: GatherConfig,
+    config: GatherConfigType,
     batch: Parameters<GatherStrategy['reduce']>[1],
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     const mapping = config.mapping ?? {};
     for (const item of batch) {
-      const record = item.state as GatherRecord<NodeStateInterface>;
+      const record = item.state as GatherRecordType<NodeStateInterface>;
       for (const [clonePath, parentPath] of Object.entries(mapping)) {
         const value = accessor.get(record.cloneState, clonePath);
         const existing = accessor.get<readonly unknown[]>(state, parentPath) ?? [];
@@ -126,17 +126,17 @@ export class BatchOnlyStrategy extends GatherStrategy {
 
   // accumulate nothing per-clone — finalize handles all records
   override reduce(
-    _config: GatherConfig,
+    _config: GatherConfigType,
     _batch: Parameters<GatherStrategy['reduce']>[1],
     _state: NodeStateInterface,
-    _accessor: StateAccessor,
+    _accessor: StateAccessorInterface,
   ): void {
     // no-op
   }
 
   override async finalize(
-    _config: GatherConfig,
-    execution: GatherExecution<NodeStateInterface>,
+    _config: GatherConfigType,
+    execution: GatherExecutionType<NodeStateInterface>,
   ): Promise<void> {
     const values = execution.records.map((r) =>
       execution.accessor.get(r.cloneState, 'processed'),
@@ -178,7 +178,7 @@ export class ObservableStrategies {
 // ---------------------------------------------------------------------------
 
 // #region incremental-dag
-export const incrementalDag: DAG = {
+export const incrementalDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:gather-demo:incremental',
   '@type':     'DAG',
@@ -220,7 +220,7 @@ export const incrementalDag: DAG = {
 // ---------------------------------------------------------------------------
 
 // #region batch-dag
-export const batchDag: DAG = {
+export const batchDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:gather-demo:batch',
   '@type':     'DAG',

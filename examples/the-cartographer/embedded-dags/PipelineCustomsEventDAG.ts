@@ -30,10 +30,10 @@ import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
-export const pipelineCustomsEventDAG: DAG = new DAGBuilder('pipeline-customs-event', '1.0')
+export const pipelineCustomsEventDAG: DAGType = new DAGBuilder('pipeline-customs-event', '1.0')
 
   // 1. parse-variant: decode the event union into a typed customs-event shape.
   .node('parse-variant', parseVariant, {
@@ -87,7 +87,7 @@ export const pipelineCustomsEventDAG: DAG = new DAGBuilder('pipeline-customs-eve
 
   .build();
 
-export const pipelineCustomsEventBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const pipelineCustomsEventBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [parseVariant, canonicalizeCore, customsDwell, enrichLeg, aggregateEvent],
   'dags':  [pipelineCustomsEventDAG],
 };

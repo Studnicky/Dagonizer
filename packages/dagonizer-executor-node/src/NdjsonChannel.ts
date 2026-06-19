@@ -29,7 +29,7 @@ import type { Readable, Writable } from 'node:stream';
 
 import { BaseMessageChannel } from '@studnicky/dagonizer/container';
 import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
-import type { BridgeMessage } from '@studnicky/dagonizer/entities';
+import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 
 // ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ export class NdjsonChannel extends BaseMessageChannel {
     });
   }
 
-  override send(message: BridgeMessage): void {
+  override send(message: BridgeMessageType): void {
     if (this.closed) return;
     try {
       this.#writable.write(JSON.stringify(message) + '\n');
@@ -143,7 +143,7 @@ export class NdjsonChannel extends BaseMessageChannel {
       return;
     }
 
-    let validated: BridgeMessage;
+    let validated: BridgeMessageType;
     try {
       validated = Validator.bridgeMessage.validate(parsed);
     } catch (err) {

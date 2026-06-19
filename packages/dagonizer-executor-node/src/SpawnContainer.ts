@@ -22,20 +22,20 @@ import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 
 import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
-import type { PoolEntry } from '@studnicky/dagonizer/container';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
 
 import { NdjsonChannel } from './NdjsonChannel.js';
 import { NodeContainerBase } from './NodeContainerBase.js';
-import type { NodeContainerBaseOptions } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptionsType } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
-// SpawnContainerOptions
+// SpawnContainerOptionsType
 // ---------------------------------------------------------------------------
 
-export interface SpawnContainerOptions extends NodeContainerBaseOptions {
+export type SpawnContainerOptionsType = NodeContainerBaseOptionsType & {
   readonly command?: string;
   readonly args?: readonly string[];
-}
+};
 
 // ---------------------------------------------------------------------------
 // SpawnContainer
@@ -46,7 +46,7 @@ export class SpawnContainer extends NodeContainerBase<ChildProcess> {
   readonly #args: readonly string[];
   readonly #entryUrl: URL;
 
-  constructor(options: SpawnContainerOptions) {
+  constructor(options: SpawnContainerOptionsType) {
     super(NodeContainerBase.resolveOptions(options));
     this.#entryUrl = options.entryUrl ?? new URL('./spawnEntry.js', import.meta.url);
     this.#command = options.command ?? process.execPath;
@@ -61,7 +61,7 @@ export class SpawnContainer extends NodeContainerBase<ChildProcess> {
    * composeEntry: spawn a child process + construct an NdjsonChannel, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override composeEntry(): PoolEntry<ChildProcess> {
+  protected override composeEntry(): PoolEntryType<ChildProcess> {
     const child = spawn(this.#command, [...this.#args], {
       'stdio': ['pipe', 'pipe', 'inherit'],
     });
@@ -81,7 +81,7 @@ export class SpawnContainer extends NodeContainerBase<ChildProcess> {
    * Called unconditionally; the base's #destroyed guard prevents spurious
    * eviction during intentional teardown.
    */
-  protected override attachDeathListeners(entry: PoolEntry<ChildProcess>): void {
+  protected override attachDeathListeners(entry: PoolEntryType<ChildProcess>): void {
     const { stdin, stdout } = entry.worker;
 
     entry.worker.on('error', (err: Error) => {

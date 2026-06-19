@@ -9,7 +9,7 @@
  *
  * `container` (optional): logical container role name. The dispatcher binds
  * role names to `DagContainerInterface` instances at construction via
- * `DagonizerOptionsInterface.containers`. A declared-but-unbound role throws a
+ * `DagonizerOptionsType.containers`. A declared-but-unbound role throws a
  * `DAGError` at `registerDAG` time. When absent, the embedded DAG always runs
  * in-process.
  */
@@ -41,14 +41,14 @@ export const EmbeddedDAGNodeSchema = {
       'additionalProperties': false,
     },
     // Logical container role. Bound at dispatcher construction via
-    // DagonizerOptionsInterface.containers. Absent = always in-process.
+    // DagonizerOptionsType.containers. Absent = always in-process.
     'container': { 'type': 'string', 'minLength': 1 },
   },
   'additionalProperties': false,
 } as const;
 
 /** TypeScript type derived from `EmbeddedDAGNodeSchema` via `json-schema-to-ts`. */
-export type EmbeddedDAGNode = FromSchema<typeof EmbeddedDAGNodeSchema>;
+export type EmbeddedDAGNodeType = FromSchema<typeof EmbeddedDAGNodeSchema>;
 
 /** Empty state-mapping: the default when `stateMapping` is absent on an `EmbeddedDAGNode`. */
 const EMBEDDED_EMPTY_MAPPING: Readonly<Record<string, string>> = Object.freeze({});
@@ -66,7 +66,7 @@ export class EmbeddedDAGNodeDefaults {
    * Return the `stateMapping.input` map, defaulting to an empty mapping when
    * `stateMapping` is absent.
    */
-  static inputMapping(node: EmbeddedDAGNode): Readonly<Record<string, string>> {
+  static inputMapping(node: EmbeddedDAGNodeType): Readonly<Record<string, string>> {
     return node.stateMapping?.input ?? EMBEDDED_EMPTY_MAPPING;
   }
 
@@ -74,7 +74,7 @@ export class EmbeddedDAGNodeDefaults {
    * Return the `stateMapping.output` map, defaulting to an empty mapping when
    * `stateMapping` is absent.
    */
-  static outputMapping(node: EmbeddedDAGNode): Readonly<Record<string, string>> {
+  static outputMapping(node: EmbeddedDAGNodeType): Readonly<Record<string, string>> {
     return node.stateMapping?.output ?? EMBEDDED_EMPTY_MAPPING;
   }
 }

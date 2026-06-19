@@ -19,9 +19,9 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 import { TextSimilarity } from './textUtils.ts';
@@ -32,7 +32,7 @@ export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked', Arch
   readonly name = 'pick-best-match';
   readonly outputs = ['picked'] as const;
 
-  protected override executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {
       context.services.logger.info('pick-best-match: no candidates');
       return Promise.resolve(NodeOutputBuilder.of('picked'));
@@ -51,7 +51,7 @@ export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked', Arch
     const topK   = scored.slice(0, TOP_K);
     const rest   = scored.slice(TOP_K);
 
-    const picked: Candidate[] = [
+    const picked: CandidateType[] = [
       ...topK.map(({ candidate, sim }) => ({ ...candidate, 'score': sim })),
       ...rest.map(({ candidate }) => ({ ...candidate })),
     ];

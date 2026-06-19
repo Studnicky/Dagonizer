@@ -31,7 +31,7 @@ import type {
   RegistryBundleInterface,
   RegistryModuleInterface,
 } from '@studnicky/dagonizer/contracts';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import { eventPipelineBundle } from '../dag.js';
 
@@ -40,7 +40,7 @@ import { CartographerState } from '../CartographerState.js';
 import { GeoResolvers }      from '../services/GeoResolvers.js';
 
 const registry: RegistryModuleInterface = {
-  async instantiate(servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     // Reconstruct the services bag in this worker thread.
     // useRecordedIp: true  → deterministic fixture replay (no network)
     // useRecordedIp: false → live freeipapi.com IP geolocation
@@ -55,7 +55,7 @@ const registry: RegistryModuleInterface = {
       'services':        services,
       'registryVersion': '1.0.0',
       'restoreState': {
-        restore(snapshot: JsonObject) {
+        restore(snapshot: JsonObjectType) {
           return CartographerState.restore(snapshot);
         },
       },

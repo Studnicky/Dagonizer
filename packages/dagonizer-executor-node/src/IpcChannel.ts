@@ -16,24 +16,24 @@
 
 import { BaseMessageChannel } from '@studnicky/dagonizer/container';
 import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
-import type { BridgeMessage } from '@studnicky/dagonizer/entities';
+import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 
 // ---------------------------------------------------------------------------
-// IpcEndpoint: structural shape injectable from parent or child side
+// IpcEndpointInterface: structural shape injectable from parent or child side
 // ---------------------------------------------------------------------------
 
-export interface IpcEndpoint {
+export interface IpcEndpointInterface {
   send(message: unknown): void;
   on(event: 'message', listener: (message: unknown) => void): this;
 }
 
 // ---------------------------------------------------------------------------
-// IpcProcessLike: minimal structural type satisfied by ChildProcess and
+// IpcProcessLikeInterface: minimal structural type satisfied by ChildProcess and
 // cluster.Worker — allows IpcChannel.ofChildProcess to serve both.
 // ---------------------------------------------------------------------------
 
-export interface IpcProcessLike {
+export interface IpcProcessLikeInterface {
   send(message: object): unknown;
   on(event: 'message', listener: (message: unknown) => void): this;
 }
@@ -43,24 +43,24 @@ export interface IpcProcessLike {
 // ---------------------------------------------------------------------------
 
 export class IpcChannel extends BaseMessageChannel {
-  readonly #endpoint: IpcEndpoint;
+  readonly #endpoint: IpcEndpointInterface;
 
   /**
-   * Construct an IpcChannel from any IpcProcessLike (ChildProcess or
+   * Construct an IpcChannel from any IpcProcessLikeInterface (ChildProcess or
    * cluster.Worker). Adapts the process's `.send(Serializable)` signature
-   * to the IpcEndpoint contract with the Serializable→object cast isolated here.
+   * to the IpcEndpointInterface contract with the Serializable→object cast isolated here.
    * Both ForkContainer and ClusterContainer use this factory.
    */
-  static ofChildProcess(process: IpcProcessLike): IpcChannel {
+  static ofChildProcess(process: IpcProcessLikeInterface): IpcChannel {
     const sendFn = (message: unknown): void => { process.send(message as object); };
-    const onFn = (event: 'message', listener: (message: unknown) => void): IpcEndpoint => {
+    const onFn = (event: 'message', listener: (message: unknown) => void): IpcEndpointInterface => {
       process.on(event, listener);
       return { 'send': sendFn, 'on': onFn };
     };
     return new IpcChannel({ 'send': sendFn, 'on': onFn });
   }
 
-  constructor(endpoint: IpcEndpoint) {
+  constructor(endpoint: IpcEndpointInterface) {
     super();
     this.#endpoint = endpoint;
 
@@ -82,7 +82,7 @@ export class IpcChannel extends BaseMessageChannel {
     });
   }
 
-  override send(message: BridgeMessage): void {
+  override send(message: BridgeMessageType): void {
     if (this.closed) return;
     this.#endpoint.send(message);
   }

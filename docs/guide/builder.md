@@ -118,7 +118,7 @@ The full signature is shown in the scatter placement example:
 
 <<< @/../examples/dags/04-scatter.ts#scatter-placement
 
-`ScatterOptionsInterface<TState>`:
+`ScatterOptionsType<TState>`:
 
 | Field | Type | Description |
 |---|---|---|
@@ -136,7 +136,7 @@ The `inputs` option in a scatter call uses `Path<TState>` to constrain parent do
 
 When `body` is a `NodeInterface`, the impl is registered automatically and the placement emits `body: { node: body.name }`.
 
-When `body` is `{ dag: 'name' }`, the placement runs a full registered sub-DAG per clone. Pair with the `container` key on the raw scatter entity to dispatch each clone to an isolate (worker thread, child process). See [Distribution and cloud](./distribution) for the `DagContainerBase` authoring guide and the `DagonizerOptionsInterface.containers` binding.
+When `body` is `{ dag: 'name' }`, the placement runs a full registered sub-DAG per clone. Pair with the `container` key on the raw scatter entity to dispatch each clone to an isolate (worker thread, child process). See [Distribution and cloud](./distribution) for the `DagContainerBase` authoring guide and the `DagonizerOptionsType.containers` binding.
 
 For patterns where nodes across multiple scatter placements accumulate to shared mutable state (agent memory, audit log), see [Shared state](./shared-state).
 
@@ -150,7 +150,7 @@ The pattern with inputs and outputs field mapping is shown in the embedded DAG p
 
 <<< @/../examples/dags/05-embedded-dags.ts#parent-dag
 
-`TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>`:
+`TypedEmbeddedDAGOptionsType<TChildState, TParentState>`:
 
 | Field | Type | Description |
 |---|---|---|

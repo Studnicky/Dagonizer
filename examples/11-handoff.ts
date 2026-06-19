@@ -22,7 +22,7 @@
  */
 
 import { Dagonizer, InMemoryChannel } from '@studnicky/dagonizer';
-import type { DAGHandoff, JsonObject } from '@studnicky/dagonizer/entities';
+import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import {
   PipelineState,
@@ -57,15 +57,15 @@ class HandoffChannel extends InMemoryChannel {
   // The most recent DAG B result, written by the override after each publish.
   lastResultState: PipelineState | null = null;
 
-  protected override async onPublished(handoff: DAGHandoff): Promise<void> {
+  protected override async onPublished(handoff: DAGHandoffType): Promise<void> {
     // Restore the state snapshot carried by the envelope.
     // DAGHandoff is a discriminated union (stateSnapshot vs stateSnapshotRef);
     // narrow to the by-value branch before calling restore.
     if (!('stateSnapshot' in handoff)) return;
     // The schema types stateSnapshot as { [x: string]: unknown } because JSON
-    // Schema 2020-12 cannot express recursive JsonValue. The dispatcher always
-    // produces a JsonObject snapshot; cast to satisfy NodeStateBase.restore.
-    const continuationState = PipelineState.restore(handoff.stateSnapshot as JsonObject);
+    // Schema 2020-12 cannot express recursive JsonValueType. The dispatcher always
+    // produces a JsonObjectType snapshot; cast to satisfy NodeStateBase.restore.
+    const continuationState = PipelineState.restore(handoff.stateSnapshot as JsonObjectType);
 
     // Execute DAG B on the restored state.
     const result = await dispatcherB.execute('pipeline-b', continuationState);

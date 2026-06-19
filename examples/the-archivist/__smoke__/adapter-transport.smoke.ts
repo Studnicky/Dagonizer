@@ -20,7 +20,7 @@ import { GroqApiAdapter }      from '@studnicky/dagonizer-adapter-groq';
 import { MistralApiAdapter }   from '@studnicky/dagonizer-adapter-mistral';
 import { OpenRouterApiAdapter } from '@studnicky/dagonizer-adapter-openrouter';
 import { ChatRequestBuilder }  from '@studnicky/dagonizer/adapter';
-import type { ChatRequest }    from '@studnicky/dagonizer/adapter';
+import type { ChatRequestType }    from '@studnicky/dagonizer/adapter';
 
 interface CapturedRequest {
   readonly url: string;
@@ -66,7 +66,7 @@ class SmokeRunner {
   }
 }
 
-const sampleRequest: ChatRequest = ChatRequestBuilder.from({
+const sampleRequest: ChatRequestType = ChatRequestBuilder.from({
   'messages': [{ 'role': 'user', 'content': 'find me a book about labyrinths' }],
   'tools': [{
     'name': 'web_search_books',

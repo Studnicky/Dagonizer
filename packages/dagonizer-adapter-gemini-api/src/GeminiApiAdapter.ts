@@ -1,11 +1,11 @@
 /**
  * GeminiApiAdapter: Google AI Studio REST adapter.
  *
- * Maps the shared `ChatRequest` to Gemini's `generateContent` body:
+ * Maps the shared `ChatRequestType` to Gemini's `generateContent` body:
  *
  *   { contents:           ChatMessage[] → contents[]
  *   , tools:              ToolDefinition[] → tools.functionDeclarations[]
- *   , toolConfig:         ToolChoice → toolConfig.functionCallingConfig
+ *   , toolConfig:         ToolChoiceType → toolConfig.functionCallingConfig
  *   , generationConfig:   { responseMimeType, responseSchema, … }
  *   }
  *
@@ -20,12 +20,12 @@
  */
 
 import type {
-  ChatMessage,
-  ChatRequest,
-  ChatResponse,
-  ToolCall,
-  ToolChoice,
-  ToolDefinition,
+  ChatMessageType,
+  ChatRequestType,
+  ChatResponseType,
+  ToolCallType,
+  ToolChoiceType,
+  ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 
@@ -37,19 +37,19 @@ const DEFAULT_MODEL = 'gemini-2.0-flash';
 /** Per-request timeout in ms before the adapter aborts and surfaces TIMEOUT. */
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
-export interface GeminiApiAdapterOptions {
+export type GeminiApiAdapterOptionsType = {
   readonly model?: string;
   readonly maxAttempts?: number;
   /** Per-request timeout in ms. Defaults to 60 000 ms. */
   readonly timeoutMs?: number;
-}
+};
 
 export class GeminiApiAdapter extends BaseAdapter {
   readonly #apiKey:    string;
   readonly #model:     string;
   readonly #timeoutMs: number;
 
-  constructor(apiKey: string, options: GeminiApiAdapterOptions = {}) {
+  constructor(apiKey: string, options: GeminiApiAdapterOptionsType = {}) {
     super(
       'gemini-api',
       'Gemini API (your AI Studio key)',
@@ -72,7 +72,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 
-  protected async performChat(request: ChatRequest): Promise<ChatResponse> {
+  protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     const url = `${ENDPOINT}/${encodeURIComponent(this.#model)}:generateContent?key=${encodeURIComponent(this.#apiKey)}`;
     const body = this.#composeBody(request);
 
@@ -114,7 +114,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     return this.#decodeResponse(rawBody);
   }
 
-  #composeBody(request: ChatRequest): Record<string, unknown> {
+  #composeBody(request: ChatRequestType): Record<string, unknown> {
     const generationConfig: Record<string, unknown> = {
       'temperature': request.temperature,
       'maxOutputTokens': request.maxTokens,
@@ -143,10 +143,10 @@ export class GeminiApiAdapter extends BaseAdapter {
     return body;
   }
 
-  #decodeResponse(payload: GeminiResponseBodyType): ChatResponse {
+  #decodeResponse(payload: GeminiResponseBodyType): ChatResponseType {
     const candidate = payload.candidates?.[0];
     const parts = candidate?.content?.parts ?? [];
-    const toolCalls: ToolCall[] = [];
+    const toolCalls: ToolCallType[] = [];
     let text = '';
     for (const part of parts) {
       if (part.functionCall !== undefined) {
@@ -174,7 +174,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     };
   }
 
-  #toGeminiContent(message: ChatMessage): Record<string, unknown> {
+  #toGeminiContent(message: ChatMessageType): Record<string, unknown> {
     // Gemini uses `model` instead of `assistant`; `tool` becomes `function`.
     const role = message.role === 'assistant' ? 'model'
       : message.role === 'tool' ? 'function'
@@ -193,7 +193,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     return { role, parts };
   }
 
-  #toFunctionDeclaration(tool: ToolDefinition): Record<string, unknown> {
+  #toFunctionDeclaration(tool: ToolDefinitionType): Record<string, unknown> {
     return {
       'name':        tool.name,
       'description': tool.description,
@@ -201,7 +201,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     };
   }
 
-  #toGeminiToolConfig(choice: ToolChoice): Record<string, unknown> {
+  #toGeminiToolConfig(choice: ToolChoiceType): Record<string, unknown> {
     switch (choice.type) {
       case 'auto':     return { 'mode': 'AUTO' };
       case 'required': return { 'mode': 'ANY' };

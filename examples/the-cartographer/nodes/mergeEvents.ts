@@ -15,7 +15,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -24,7 +24,7 @@ export class MergeEventsNode extends ScalarNode<CartographerState, 'merged', Car
   readonly 'name' = 'merge-events';
   readonly 'outputs' = ['merged'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'merged'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'merged'>> {
     const merged: CanonicalEventVariant[] = [];
     for (const bucket of state.ingestBuckets) {
       for (const event of bucket) {

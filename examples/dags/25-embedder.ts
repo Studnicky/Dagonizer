@@ -11,8 +11,8 @@
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { Embedder } from '@studnicky/dagonizer/adapter';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { EmbedderInterface } from '@studnicky/dagonizer/adapter';
 
 // ---------------------------------------------------------------------------
 // State
@@ -21,7 +21,7 @@ import type { Embedder } from '@studnicky/dagonizer/adapter';
 export class EmbedderState extends NodeStateBase {
   textA: string = '';
   textB: string = '';
-  embedder: Embedder | null = null;
+  embedder: EmbedderInterface | null = null;
   vectorA: readonly number[] = [];
   vectorB: readonly number[] = [];
   similarity: number = 0;
@@ -82,7 +82,7 @@ export class ReportNode extends ScalarNode<EmbedderState, 'done'> {
 // DAG
 // ---------------------------------------------------------------------------
 
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:embedder-demo',
   '@type':    'DAG',

@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { Chainable } from '../../src/contracts/Chainable.js';
+import type { ChainableType } from '../../src/contracts/ChainableType.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
-import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
+import type { OperationContractFragmentType } from '../../src/contracts/OperationContractFragment.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { ContractRegistryValidator } from '../../src/derive/ContractRegistryValidator.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.js';
 
@@ -20,20 +20,20 @@ import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.
 class MakeNode extends ScalarNode<NodeStateBase, string> {
   readonly name: string;
   readonly outputs: readonly string[];
-  override readonly contract: OperationContractFragment;
-  constructor(name: string, outputs: readonly string[], contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT) {
+  override readonly contract: OperationContractFragmentType;
+  constructor(name: string, outputs: readonly string[], contract: OperationContractFragmentType = EMPTY_CONTRACT_FRAGMENT) {
     super();
     this.name = name;
     this.outputs = outputs;
     this.contract = contract;
   }
-  protected async executeOne(): Promise<NodeOutputInterface<string>> { return { 'errors': [], 'output': this.outputs[0] ?? 'success' }; }
+  protected async executeOne(): Promise<NodeOutputType<string>> { return { 'errors': [], 'output': this.outputs[0] ?? 'success' }; }
 }
 
 function makeNode(
   name: string,
   outputs: readonly string[],
-  contract?: OperationContractFragment,
+  contract?: OperationContractFragmentType,
 ): MakeNode {
   return new MakeNode(name, outputs, contract);
 }
@@ -273,11 +273,11 @@ void describe('Dagonizer dead-write contract misalignment', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Type-level Chainable<A, B> test
+// Type-level ChainableType<A, B> test
 // ---------------------------------------------------------------------------
 
-void describe('Chainable<A, B> type helper', () => {
-  void it('compiles: Chainable resolves to true for compatible node pair', () => {
+void describe('ChainableType<A, B> type helper', () => {
+  void it('compiles: ChainableType resolves to true for compatible node pair', () => {
     // Declare nodes with literal-typed contracts so the type system
     // can see the exact string literals in hardRequired / produces.
     class FetchNode extends ScalarNode<NodeStateInterface, 'success'> {
@@ -287,7 +287,7 @@ void describe('Chainable<A, B> type helper', () => {
         'hardRequired': ['url'],
         'produces': ['raw'],
       };
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
 
     class ParseNode extends ScalarNode<NodeStateInterface, 'success'> {
@@ -297,16 +297,16 @@ void describe('Chainable<A, B> type helper', () => {
         'hardRequired': ['raw'],
         'produces': ['record'],
       };
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
 
     const _fetchNode = new FetchNode();
     const _parseNode = new ParseNode();
 
-    // This type assertion compiles only when Chainable<_fetchNode, _parseNode> = true.
-    type _CheckChainable = Chainable<typeof _fetchNode, typeof _parseNode>;
+    // This type assertion compiles only when ChainableType<_fetchNode, _parseNode> = true.
+    type _CheckChainable = ChainableType<typeof _fetchNode, typeof _parseNode>;
     const _assert: _CheckChainable = true;
-    assert.ok(_assert, 'Chainable resolves to true at runtime for compatible node pair');
+    assert.ok(_assert, 'ChainableType resolves to true at runtime for compatible node pair');
   });
 });
 

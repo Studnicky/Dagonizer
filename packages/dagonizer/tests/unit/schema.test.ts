@@ -5,14 +5,14 @@ import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { DAGDocument } from '../../src/dag/DAGDocument.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/dag/DAG.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/dag/DAG.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // validDAG: a minimal well-formed DAG — SingleNode routes to an explicit TerminalNode.
-const validDAG: DAG = {
+const validDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:demo',
   '@type':    'DAG',
@@ -35,7 +35,7 @@ void describe('Validator.dag', () => {
 
   void it('rejects DAG with missing entrypoint field', () => {
     const bad = { ...validDAG };
-    delete (bad as Partial<DAG>).entrypoint;
+    delete (bad as Partial<DAGType>).entrypoint;
     assert.equal(Validator.dag.is(bad), false);
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
   });
@@ -70,7 +70,7 @@ void describe('Validator.dag', () => {
         '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op',
         'outputs': { 'success': null },
       }],
-    } as unknown as DAG;
+    } as unknown as DAGType;
     assert.equal(Validator.dag.is(bad), false, 'null route must fail schema validation');
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
 
@@ -90,7 +90,7 @@ void describe('Validator.dag', () => {
         'node':  'start',
         'outputs': { 'done': null },
       }],
-    } as unknown as DAG;
+    } as unknown as DAGType;
     assert.equal(Validator.dag.is(oneNull), false, 'null output must not satisfy the schema');
 
     const multiNull = {
@@ -107,7 +107,7 @@ void describe('Validator.dag', () => {
         'node':  'start',
         'outputs': { 'ok': null, 'fail': null },
       }],
-    } as unknown as DAG;
+    } as unknown as DAGType;
     assert.equal(Validator.dag.is(multiNull), false, 'null outputs must not satisfy the schema');
   });
 
@@ -189,7 +189,7 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new OpNode());
 
@@ -199,7 +199,7 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     const bad = { 'name': 'x', 'entrypoint': 's', 'nodes': [
       { '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': { 'success': 'done' } },
       { '@id': 'urn:x/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' },
-    ] } as unknown as DAG;
+    ] } as unknown as DAGType;
 
     assert.throws(() => dispatcher.registerDAG(bad), ValidationError);
   });
@@ -209,13 +209,13 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new OpNode());
 
     // Schema-valid but references unknown node; semantic tier rejects.
     // Uses a TerminalNode so the schema passes; DAGValidator catches the unknown node reference.
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',

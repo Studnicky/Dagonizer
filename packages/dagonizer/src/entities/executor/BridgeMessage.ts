@@ -225,7 +225,7 @@ export const BridgeMessageSchema = {
 } as const;
 
 /** TypeScript type derived from `BridgeMessageSchema` via `json-schema-to-ts`. */
-export type BridgeMessage = FromSchema<typeof BridgeMessageSchema>;
+export type BridgeMessageType = FromSchema<typeof BridgeMessageSchema>;
 
 // ---------------------------------------------------------------------------
 // BridgeMessageBuilder
@@ -245,7 +245,7 @@ export class BridgeMessageBuilder {
    * Use when no specific request is in flight (e.g. init failures, transport
    * setup errors, invalid message receipts).
    */
-  static invalid(code: string, message: string): BridgeMessage & { kind: 'error' } {
+  static invalid(code: string, message: string): BridgeMessageType & { kind: 'error' } {
     return {
       'kind': 'error',
       'correlationId': null,

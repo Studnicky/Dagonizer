@@ -20,17 +20,17 @@ import { fork } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 
 import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
-import type { PoolEntry } from '@studnicky/dagonizer/container';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
 
 import { IpcChannel } from './IpcChannel.js';
 import { NodeContainerBase } from './NodeContainerBase.js';
-import type { NodeContainerBaseOptions } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptionsType } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
-// ForkContainerOptions
+// ForkContainerOptionsType
 // ---------------------------------------------------------------------------
 
-export type ForkContainerOptions = NodeContainerBaseOptions;
+export type ForkContainerOptionsType = NodeContainerBaseOptionsType;
 
 // ---------------------------------------------------------------------------
 // ForkContainer
@@ -39,7 +39,7 @@ export type ForkContainerOptions = NodeContainerBaseOptions;
 export class ForkContainer extends NodeContainerBase<ChildProcess> {
   readonly #entryUrl: URL;
 
-  constructor(options: ForkContainerOptions) {
+  constructor(options: ForkContainerOptionsType) {
     super(NodeContainerBase.resolveOptions(options));
     this.#entryUrl = options.entryUrl ?? new URL('./forkEntry.js', import.meta.url);
   }
@@ -52,7 +52,7 @@ export class ForkContainer extends NodeContainerBase<ChildProcess> {
    * composeEntry: fork a child process + construct an IpcChannel, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override composeEntry(): PoolEntry<ChildProcess> {
+  protected override composeEntry(): PoolEntryType<ChildProcess> {
     // Fork the entry module. IPC is enabled by default for fork().
     // No execArgv override needed: package.json "type": "module" makes
     // the compiled .js output ESM.
@@ -66,7 +66,7 @@ export class ForkContainer extends NodeContainerBase<ChildProcess> {
    * Called unconditionally; the base's #destroyed guard prevents spurious
    * eviction during intentional teardown.
    */
-  protected override attachDeathListeners(entry: PoolEntry<ChildProcess>): void {
+  protected override attachDeathListeners(entry: PoolEntryType<ChildProcess>): void {
     entry.worker.on('error', (err: Error) => {
       this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, `child error: ${err.message}`);
     });

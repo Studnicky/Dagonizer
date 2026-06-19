@@ -1,5 +1,5 @@
 import { WORKSET_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
-import type { WorkSetProgress } from '../entities/workset/WorkSetProgress.js';
+import type { WorkSetProgressType } from '../entities/workset/WorkSetProgress.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
 
@@ -29,7 +29,7 @@ export class WorkSetCheckpoint {
    * Throws `ValidationError` when the stored value is present but does not
    * satisfy `WorkSetProgressSchema`.
    */
-  static read(state: NodeStateInterface): WorkSetProgress | undefined {
+  static read(state: NodeStateInterface): WorkSetProgressType | undefined {
     const raw = state.getMetadata<unknown>(WORKSET_PROGRESS_KEY);
     if (raw === undefined) return undefined;
     return Validator.workSetProgress.validate(raw);
@@ -40,7 +40,7 @@ export class WorkSetCheckpoint {
    * boundary so the captured `state.snapshot()` includes the blob and
    * `Checkpoint.capture` picks it up automatically.
    */
-  static write(state: NodeStateInterface, progress: WorkSetProgress): void {
+  static write(state: NodeStateInterface, progress: WorkSetProgressType): void {
     state.setMetadata(WORKSET_PROGRESS_KEY, progress);
   }
 

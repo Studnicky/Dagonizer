@@ -4,6 +4,7 @@
 
 ### Changed
 
+- **Adapter-contract interfaces carry the `Interface` suffix (semver-major).** The framework contracts this package's public surface names are imported under their suffixed names: `EntityValidatorInterface` (the compiled host/response validator). The rename is type-only and propagates from `@studnicky/dagonizer`; runtime behavior is unchanged. Consumers typing against the old bare name (`EntityValidator`) update to the suffixed name.
 - The Gemini `generateContent` response body is now schema-backed. `GeminiResponseBodySchema` (JSON Schema 2020-12) is the source of truth and `GeminiResponseBodyType` derives from it via `FromSchema`. The `geminiResponseBodyValidator`, compiled once at module load through the engine's shared `Validator.compile` (`@studnicky/dagonizer/validation`), narrows the `unknown` HTTP body at the network boundary. The hand-written `GeminiResponseBody`/`GeminiPart` interfaces and the `isGeminiResponseBody` predicate are removed.
 - The `classify` override is removed. The `LlmError` passthrough and the `aborted|timeout` → `TIMEOUT` mapping live in `BaseAdapterCore.classify`; gemini-api carries no provider-specific branch, so it inherits the base classifier directly.
 

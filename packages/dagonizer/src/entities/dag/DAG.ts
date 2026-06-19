@@ -223,7 +223,7 @@ export const DAGSchema = {
 } as const;
 
 /** TypeScript type derived from `DAGSchema` via `json-schema-to-ts`. */
-export type DAG = FromSchema<typeof DAGSchema>;
+export type DAGType = FromSchema<typeof DAGSchema>;
 
 /**
  * Identity helpers for DAG documents.

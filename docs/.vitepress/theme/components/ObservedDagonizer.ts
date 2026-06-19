@@ -15,20 +15,20 @@
 
 import { Dagonizer } from '@studnicky/dagonizer';
 import type {
-  DagonizerOptionsInterface,
-  ExecutionResultInterface,
+  DagonizerOptionsType,
+  ExecutionResultType,
   NodeStateInterface,
 } from '@studnicky/dagonizer';
 
 export interface DispatcherObserver<TState extends NodeStateInterface> {
   readonly onFlowStart?:  (dagName: string, state: TState) => void;
-  readonly onFlowEnd?:    (dagName: string, state: TState, result: ExecutionResultInterface<TState>) => void;
+  readonly onFlowEnd?:    (dagName: string, state: TState, result: ExecutionResultType<TState>) => void;
   readonly onNodeStart?:  (nodeName: string, state: TState, placementPath: readonly string[]) => void;
   readonly onNodeEnd?:    (nodeName: string, output: string | null, state: TState, placementPath: readonly string[]) => void;
   readonly onError?:      (nodeName: string, error: Error, state: TState, placementPath: readonly string[]) => void;
 }
 
-export interface ObservedDagonizerOptions<TState extends NodeStateInterface, TServices> extends DagonizerOptionsInterface<TState, TServices> {
+export interface ObservedDagonizerOptions<TState extends NodeStateInterface, TServices> extends DagonizerOptionsType<TState, TServices> {
   readonly observer?: DispatcherObserver<TState>;
 }
 
@@ -53,7 +53,7 @@ export class ObservedDagonizer<
     this.#observer.onFlowStart?.(dagName, state);
   }
 
-  protected override onFlowEnd(dagName: string, state: TState, result: ExecutionResultInterface<TState>): void {
+  protected override onFlowEnd(dagName: string, state: TState, result: ExecutionResultType<TState>): void {
     this.#observer.onFlowEnd?.(dagName, state, result);
   }
 

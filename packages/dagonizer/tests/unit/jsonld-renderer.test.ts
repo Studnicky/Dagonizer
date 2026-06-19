@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { TerminalNode } from '../../src/entities/dag/TerminalNode.js';
-import type { DAG } from '../../src/entities/index.js';
+import type { TerminalNodeType } from '../../src/entities/dag/TerminalNode.js';
+import type { DAGType } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { DAGONIZER_VOCAB, JsonLdRenderer } from '../../src/viz/JsonLdRenderer.js';
 
 void describe('JsonLdRenderer.render', () => {
   void it('emits a stable @context + @graph for a single-node DAG', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:mini',
       '@type':    'DAG',
@@ -35,7 +35,7 @@ void describe('JsonLdRenderer.render', () => {
   });
 
   void it('renders ScatterNode (body.node) with source, itemKey, concurrency, gather config', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scrape',
       '@type':    'DAG',
@@ -68,7 +68,7 @@ void describe('JsonLdRenderer.render', () => {
   });
 
   void it('routes serialize as IRI targets', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:one',
       '@type':    'DAG',
@@ -92,7 +92,7 @@ void describe('JsonLdRenderer.render', () => {
   });
 
   void it('renders EmbeddedDAGNode with cross-DAG IRI reference', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:parent',
       '@type':    'DAG',
@@ -121,7 +121,7 @@ void describe('JsonLdRenderer.render', () => {
 
 void describe('JsonLdRenderer.render: containment', () => {
   void it('EmbeddedDAGNode with container emits dag:container in the @graph entry', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:jld-worker',
       '@type':    'DAG',
@@ -146,7 +146,7 @@ void describe('JsonLdRenderer.render: containment', () => {
   });
 
   void it('EmbeddedDAGNode without container omits dag:container from the @graph entry', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:jld-inprocess',
       '@type':    'DAG',
@@ -170,7 +170,7 @@ void describe('JsonLdRenderer.render: containment', () => {
   });
 
   void it('ScatterNode with dag body and container emits dag:container', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:jld-scatter-worker',
       '@type':    'DAG',
@@ -197,15 +197,15 @@ void describe('JsonLdRenderer.render: containment', () => {
   });
 });
 
-void describe('JsonLdRenderer.render: TerminalNode', () => {
-  void it('renders a completed TerminalNode with @type dag:TerminalNode and dag:outcome', () => {
-    const terminalDone: TerminalNode = {
+void describe('JsonLdRenderer.render: TerminalNodeType', () => {
+  void it('renders a completed TerminalNodeType with @type dag:TerminalNodeType and dag:outcome', () => {
+    const terminalDone: TerminalNodeType = {
       '@id':     'urn:noocodex:dag:jt/node/done',
       '@type':   'TerminalNode',
       'name':    'done',
       'outcome': 'completed',
     };
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:jt',
       '@type':    'DAG',
@@ -225,21 +225,21 @@ void describe('JsonLdRenderer.render: TerminalNode', () => {
     };
     const doc = JsonLdRenderer.render(dag);
     const entry = doc['@graph'].find((e) => e['@type'] === 'dag:TerminalNode');
-    assert.ok(entry !== undefined, 'TerminalNode entry should be in @graph');
+    assert.ok(entry !== undefined, 'TerminalNodeType entry should be in @graph');
     assert.equal(entry['@id'], 'urn:dagonizer:jt#done');
     assert.equal(entry['dag:outcome'], 'completed');
     // no dag:routes field on terminal placements
     assert.equal(entry['dag:routes'], undefined);
   });
 
-  void it('renders a failed TerminalNode with dag:outcome=failed', () => {
-    const terminalAbort: TerminalNode = {
+  void it('renders a failed TerminalNodeType with dag:outcome=failed', () => {
+    const terminalAbort: TerminalNodeType = {
       '@id':     'urn:noocodex:dag:jt2/node/abort',
       '@type':   'TerminalNode',
       'name':    'abort',
       'outcome': 'failed',
     };
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:jt2',
       '@type':    'DAG',
@@ -265,7 +265,7 @@ void describe('JsonLdRenderer.render: TerminalNode', () => {
   });
 
   void it('two TerminalNodes in the same DAG both appear in @graph with no dag:routes', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:jt3',
       '@type':    'DAG',
@@ -285,7 +285,7 @@ void describe('JsonLdRenderer.render: TerminalNode', () => {
       ],
     };
     const doc = JsonLdRenderer.render(dag);
-    // Both TerminalNode entries appear in @graph
+    // Both TerminalNodeType entries appear in @graph
     const termEntries = doc['@graph'].filter((e) => e['@type'] === 'dag:TerminalNode');
     assert.equal(termEntries.length, 2, 'both TerminalNodes must be in @graph');
     // Neither emits dag:routes

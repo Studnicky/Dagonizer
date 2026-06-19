@@ -20,13 +20,13 @@ import { describe, it } from 'node:test';
 
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { ScatterProgress } from '../../src/Dagonizer.js';
+import type { ScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // ── state ────────────────────────────────────────────────────────────────────
@@ -35,11 +35,11 @@ class BoundedState extends NodeStateBase {
   items: number[] = [];
   processed: number[] = [];
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return { 'items': [...this.items], 'processed': [...this.processed] };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     if (Array.isArray(snap['items'])) this.items = snap['items'] as number[];
     if (Array.isArray(snap['processed'])) this.processed = snap['processed'] as number[];
   }
@@ -50,14 +50,14 @@ class BoundedState extends NodeStateBase {
 class BoundedWorkerNode extends ScalarNode<BoundedState, 'success'> {
   readonly name = 'worker';
   readonly outputs = ['success'] as const;
-  protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
+  protected async executeOne(): Promise<NodeOutputType<'success'>> {
     return { 'errors': [], 'output': 'success' };
   }
 }
 
 // ── minimal scatter DAG ──────────────────────────────────────────────────────
 
-function makeScatterDag(name: string, concurrency: number): DAG {
+function makeScatterDag(name: string, concurrency: number): DAGType {
   return {
     '@context': DAG_CONTEXT,
     '@id':      `urn:noocodex:dag:${name}`,
@@ -94,16 +94,16 @@ function makeScatterDag(name: string, concurrency: number): DAG {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/** Extract all bounded-mode ScatterProgress snapshots from metadata writes. */
+/** Extract all bounded-mode ScatterProgressType snapshots from metadata writes. */
 function captureProgressSnapshots(
   state: BoundedState,
-): Array<Extract<ScatterProgress, { mode: 'bounded' }>> {
-  const snapshots: Array<Extract<ScatterProgress, { mode: 'bounded' }>> = [];
+): Array<Extract<ScatterProgressType, { mode: 'bounded' }>> {
+  const snapshots: Array<Extract<ScatterProgressType, { mode: 'bounded' }>> = [];
   const orig = state.setMetadata.bind(state);
   state.setMetadata = (key: string, value: unknown): void => {
     orig(key, value);
     if (key === SCATTER_PROGRESS_KEY) {
-      const stored = value as Record<string, ScatterProgress> | undefined;
+      const stored = value as Record<string, ScatterProgressType> | undefined;
       const entry = stored?.['fan'];
       if (entry?.mode === 'bounded') {
         snapshots.push({ ...entry });
@@ -182,7 +182,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     for (let i = 0; i < snapshots.length; i++) {
       const snap = snapshots[i];
       assert.ok(snap !== undefined);
-      const tallyTotal = Object.values(snap.outcomeTally).reduce((s, n) => s + n, 0);
+      const tallyTotal = Object.values(snap.outcomeTally as Record<string, number>).reduce((s: number, n: number) => s + n, 0);
       const expectedTotal = snap.watermark + snap.aheadAcked.length;
       assert.equal(
         tallyTotal,
@@ -200,7 +200,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     class ResumeTrackingNode extends ScalarNode<BoundedState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: BoundedState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: BoundedState): Promise<NodeOutputType<'success'>> {
         const item = state.getMetadata<number>('item') ?? -1;
         processedItems.push(item);
         return { 'errors': [], 'output': 'success' };
@@ -272,7 +272,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     class BaselineTrackingNode extends ScalarNode<BoundedState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: BoundedState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: BoundedState): Promise<NodeOutputType<'success'>> {
         const item = state.getMetadata<number>('item') ?? -1;
         state.processed.push(item);
         return { 'errors': [], 'output': 'success' };
@@ -298,7 +298,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     class InterruptedWorkerNode extends ScalarNode<BoundedState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: BoundedState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: BoundedState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 1);
           context.signal.addEventListener('abort', () => {
@@ -335,7 +335,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     class ResumeTrackingNode extends ScalarNode<BoundedState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: BoundedState): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: BoundedState): Promise<NodeOutputType<'success'>> {
         const item = state.getMetadata<number>('item') ?? -1;
         state.processed.push(item);
         return { 'errors': [], 'output': 'success' };
@@ -346,7 +346,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const resumeState = new BoundedState();
     // Carry the bounded checkpoint metadata from the partial run.
-    const checkpoint = partial.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const checkpoint = partial.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     if (checkpoint !== undefined) {
       resumeState.setMetadata(SCATTER_PROGRESS_KEY, checkpoint);
     }
@@ -393,7 +393,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
       class SizeWorkerNode extends ScalarNode<BoundedState, 'success'> {
         readonly name = 'worker';
         readonly outputs = ['success'] as const;
-        protected async executeOne(state: BoundedState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+        protected async executeOne(state: BoundedState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
           await new Promise<void>((resolve, reject) => {
             const handle = setTimeout(resolve, 1);
             context.signal.addEventListener('abort', () => {
@@ -419,7 +419,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
       const result = await dispatcher.execute(dagName, st, { 'signal': ctl.signal });
 
-      const stored = result.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+      const stored = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
       assert.ok(stored !== undefined, `checkpoint must be present after abort (n=${n})`);
       const entry = stored['fan'];
       assert.ok(entry !== undefined, `expected progress entry for "fan" (n=${n})`);
@@ -460,7 +460,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     assert.equal(last.mode, 'bounded');
     assert.equal(last.watermark, TOTAL, `final watermark must equal total items (${TOTAL})`);
     assert.equal(last.aheadAcked.length, 0, 'aheadAcked must be empty after all contiguous acks');
-    const tallyTotal = Object.values(last.outcomeTally).reduce((s, n) => s + n, 0);
+    const tallyTotal = Object.values(last.outcomeTally as Record<string, number>).reduce((s: number, n: number) => s + n, 0);
     assert.equal(tallyTotal, TOTAL, `outcomeTally total must equal ${TOTAL}`);
   });
 });

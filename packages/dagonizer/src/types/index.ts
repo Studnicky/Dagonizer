@@ -9,13 +9,13 @@
  *      public face of a single class (`DagonizerInterface`,
  *      `NodeStateInterface`, `DAGErrorInterface`).
  *   2. Adapter contracts: live in `src/contracts/`, single source of truth.
- *      What consumers implement to swap a backend (`ClockProvider`,
- *      `SchedulerProvider`, `NodeInterface`).
+ *      What consumers implement to swap a backend (`ClockProviderInterface`,
+ *      `SchedulerProviderInterface`, `NodeInterface`).
  *   3. Entity-narrowing interfaces: colocated with the entity in
  *      `src/entities/<group>/`. Pair with a JSON Schema and its derived
- *      `FromSchema` type (`NodeContextInterface`, `NodeOutputInterface`,
- *      `NodeResultInterface`, `ExecutionResultInterface`,
- *      `SingleNodePlacementInterface`, `NodeErrorInterface`).
+ *      `FromSchema` type (`NodeContextType`, `NodeOutputType`,
+ *      `NodeResultType`, `ExecutionResultType`,
+ *      `SingleNodePlacementType`, `NodeErrorType`).
  */
 
 // ---------------------------------------------------------------------------
@@ -30,142 +30,142 @@ export type { DAGErrorInterface } from '../errors/DAGError.js';
 // Adapter contracts
 // ---------------------------------------------------------------------------
 
-export type { CheckpointRestoreAdapter } from '../contracts/CheckpointRestoreAdapter.js';
-export type { CheckpointStore } from '../contracts/CheckpointStore.js';
-export type { ClockProvider } from '../contracts/ClockProvider.js';
+export type { CheckpointRestoreAdapterInterface } from '../contracts/CheckpointRestoreAdapterInterface.js';
+export type { CheckpointStoreInterface } from '../contracts/CheckpointStoreInterface.js';
+export type { ClockProviderInterface } from '../contracts/ClockProviderInterface.js';
 export type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
-export type { Embedder } from '../contracts/Embedder.js';
+export type { EmbedderInterface } from '../contracts/EmbedderInterface.js';
 export type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
-export type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
+export type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
-export type { ExecuteOptionsInterface } from '../contracts/ExecuteOptionsInterface.js';
+export type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 export type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
-export type { Chainable } from '../contracts/Chainable.js';
+export type { ChainableType } from '../contracts/ChainableType.js';
 export type { NodeInterface } from '../contracts/NodeInterface.js';
-export type { OperationContract } from '../contracts/OperationContract.js';
-export type { OperationContractFragment } from '../contracts/OperationContractFragment.js';
+export type { OperationContractType } from '../contracts/OperationContract.js';
+export type { OperationContractFragmentType } from '../contracts/OperationContractFragment.js';
 export type { RegistryBundleInterface } from '../contracts/RegistryBundleInterface.js';
 export type { RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
-export type { RetryPolicyOptionsInterface } from '../contracts/RetryPolicyOptionsInterface.js';
-export type { LlmAdapter } from '../contracts/LlmAdapter.js';
-export type { LlmClient } from '../contracts/LlmClient.js';
-export type { NodeInvoker } from '../contracts/NodeInvoker.js';
-export type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
-export type { StateAccessor } from '../contracts/StateAccessor.js';
+export type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
+export type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
+export type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
+export type { NodeInvokerInterface } from '../contracts/NodeInvokerInterface.js';
+export type { SchedulerProviderInterface } from '../contracts/SchedulerProviderInterface.js';
+export type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 export type { SystemInfoInterface } from '../contracts/SystemInfoInterface.js';
-export type { RemoteStore } from '../contracts/RemoteStore.js';
-export type { RemoteStoreEndpoint } from '../contracts/RemoteStoreEndpoint.js';
-export type { RemoteStoreLease } from '../contracts/RemoteStoreLease.js';
-export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';
-export type { Store } from '../contracts/Store.js';
-export type { Binding, Quad, SlotPattern, Term, TripleStore } from '../contracts/TripleStore.js';
+export type { RemoteStoreInterface } from '../contracts/RemoteStoreInterface.js';
+export type { RemoteStoreEndpointType } from '../contracts/RemoteStoreEndpoint.js';
+export type { RemoteStoreLeaseType } from '../contracts/RemoteStoreLease.js';
+export type { SnapshottableInterface, StoreSnapshotType, StoreSnapshotEntryType } from '../contracts/SnapshottableInterface.js';
+export type { StoreInterface } from '../contracts/StoreInterface.js';
+export type { BindingType, QuadType, SlotPatternType, TermType, TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 
 // ---------------------------------------------------------------------------
 // Entity-narrowing interfaces
 // ---------------------------------------------------------------------------
 
-export type { NodeContextInterface } from '../entities/node/NodeContext.js';
-export type { NodeErrorInterface } from '../entities/node/NodeError.js';
-export type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
-export type { NodeResultInterface } from '../entities/node/NodeResult.js';
-export type { ExecutionResultInterface, InterruptionInfo } from '../entities/execution/ExecutionResult.js';
-export type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
+export type { NodeContextType } from '../entities/node/NodeContext.js';
+export type { NodeErrorType } from '../entities/node/NodeError.js';
+export type { NodeOutputType } from '../entities/node/NodeOutput.js';
+export type { NodeResultType } from '../entities/node/NodeResult.js';
+export type { ExecutionResultType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
+export type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 
 // ---------------------------------------------------------------------------
 // Entity-derived types (FromSchema-derived TypeScript shapes)
 // ---------------------------------------------------------------------------
 
-export type { DAG } from '../entities/dag/DAG.js';
-export type { GatherConfig } from '../entities/dag/GatherConfig.js';
+export type { DAGType } from '../entities/dag/DAG.js';
+export type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 export type { DAGNodeType } from '../entities/dag/Placement.js';
-export type { ScatterNode } from '../entities/dag/ScatterNode.js';
-export type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-export type { SingleNode } from '../entities/dag/SingleNode.js';
+export type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
+export type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+export type { SingleNodeType } from '../entities/dag/SingleNode.js';
 
 
-export type { Node } from '../entities/node/Node.js';
-export type { NodeContext } from '../entities/node/NodeContext.js';
-export type { NodeError } from '../entities/node/NodeError.js';
-export type { NodeOutput } from '../entities/node/NodeOutput.js';
-export type { NodeResult } from '../entities/node/NodeResult.js';
-export type { NodeStateData } from '../entities/node/NodeStateData.js';
-export type { NodeWarning } from '../entities/node/NodeWarning.js';
+export type { NodeUnionType } from '../entities/node/Node.js';
+export type { NodeContextWireType } from '../entities/node/NodeContext.js';
+export type { NodeErrorWireType } from '../entities/node/NodeError.js';
+export type { NodeOutputWireType } from '../entities/node/NodeOutput.js';
+export type { NodeResultWireType } from '../entities/node/NodeResult.js';
+export type { NodeStateDataType } from '../entities/node/NodeStateData.js';
+export type { NodeWarningType } from '../entities/node/NodeWarning.js';
 
-export type { ExecutionResult } from '../entities/execution/ExecutionResult.js';
-export type { ValidationResult } from '../entities/validation/ValidationResult.js';
-export type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
-export type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
-export type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
-export type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
-export type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
-export type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
-export type { RecommendedWorkerCountConfig } from '../entities/executor/RecommendedWorkerCountConfig.js';
-export type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
-export type { DAGLifecycleStateData } from '../entities/state-machines/DAGLifecycleState.js';
-export type { BackoffStrategy } from '../entities/runtime/BackoffStrategy.js';
+export type { ExecutionResultWireType } from '../entities/execution/ExecutionResult.js';
+export type { ValidationResultType } from '../entities/validation/ValidationResult.js';
+export type { DAGErrorJSONType } from '../entities/errors/DAGErrorJSON.js';
+export type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
+export type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
+export type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
+export type { ExecutionResponseType } from '../entities/executor/ExecutionResponse.js';
+export type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
+export type { RecommendedWorkerCountConfigType } from '../entities/executor/RecommendedWorkerCountConfig.js';
+export type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
+export type { DAGLifecycleStateDataType } from '../entities/state-machines/DAGLifecycleState.js';
+export type { BackoffStrategyType } from '../entities/runtime/BackoffStrategy.js';
 
 // ---------------------------------------------------------------------------
 // Lifecycle FSM types
 // ---------------------------------------------------------------------------
 
 export type {
-  DAGLifecycleEvent,
-  DAGLifecycleState,
+  DAGLifecycleEventType,
+  DAGLifecycleStateType,
 } from '../lifecycle/DAGLifecycleState.js';
 
 // ---------------------------------------------------------------------------
 // Builder option interfaces
 // ---------------------------------------------------------------------------
 
-export type { ScatterOptionsInterface, TypedEmbeddedDAGOptionsInterface } from '../builder/DAGBuilder.js';
+export type { ScatterOptionsType, TypedEmbeddedDAGOptionsType } from '../builder/DAGBuilder.js';
 
 // ---------------------------------------------------------------------------
 // Core dispatcher option types
 // ---------------------------------------------------------------------------
 
 export type { Execution } from '../Execution.js';
-export type { DagonizerOptionsInterface } from '../Dagonizer.js';
-export type { GatherExecution, GatherRecord } from '../contracts/GatherExecution.js';
+export type { DagonizerOptionsType } from '../Dagonizer.js';
+export type { GatherExecutionType, GatherRecordType } from '../contracts/GatherExecution.js';
 export type { GatherStrategy } from '../core/GatherStrategies.js';
-export type { OutcomeRecord } from '../contracts/OutcomeRecord.js';
+export type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
 export type { OutcomeReducer } from '../core/OutcomeReducers.js';
-export type { DAGDeriverOptions } from '../derive/DAGDeriver.js';
-export type { DAGDeriverAnnotations, DAGDeriverEmitTerminal, DAGDeriverEmbeddedDAG, DAGDeriverScatter, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
-export type { DagJsonLdDocument, JsonLdGraphEntry } from '../viz/JsonLdRenderer.js';
+export type { DAGDeriverOptionsType } from '../derive/DAGDeriver.js';
+export type { DAGDeriverAnnotationsType, DAGDeriverEmitTerminalType, DAGDeriverEmbeddedDAGType, DAGDeriverScatterType, DAGDeriverTerminalType } from '../derive/DAGDeriverAnnotations.js';
+export type { DagJsonLdDocumentType, JsonLdGraphEntryType } from '../viz/JsonLdRenderer.js';
 export type {
-  CytoscapeElement,
-  CytoscapeNodeElement,
-  CytoscapeEdgeElement,
+  CytoscapeElementType,
+  CytoscapeNodeElementType,
+  CytoscapeEdgeElementType,
 } from '../viz/CytoscapeRenderer.js';
 
 // ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
 
-export type { EntityValidator } from '../validation/Validator.js';
+export type { EntityValidatorInterface } from '../validation/Validator.js';
 
 // ---------------------------------------------------------------------------
 // Checkpoint
 // ---------------------------------------------------------------------------
 
-export type { RecalledCheckpoint } from '../checkpoint/Checkpoint.js';
+export type { RecalledCheckpointType } from '../checkpoint/Checkpoint.js';
 
 // ---------------------------------------------------------------------------
 // JSON primitives
 // ---------------------------------------------------------------------------
 
 export type {
-  JsonArray,
-  JsonObject,
-  JsonPrimitive,
-  JsonValue,
+  JsonArrayType,
+  JsonObjectType,
+  JsonPrimitiveType,
+  JsonValueType,
 } from '../entities/json.js';
 
 export type {
-  JsonSchema,
-  JsonSchemaObject,
-  JsonSchemaTypeName,
+  JsonSchemaType,
+  JsonSchemaObjectType,
+  JsonSchemaTypeNameType,
 } from '../entities/primitives/JsonSchema.js';
 
 // ---------------------------------------------------------------------------
@@ -173,44 +173,44 @@ export type {
 // ---------------------------------------------------------------------------
 
 export type {
-  ScatterAckedResult,
-  ScatterInboxItem,
-  ScatterProgress,
-  StoredScatterProgress,
+  ScatterAckedResultType,
+  ScatterInboxItemType,
+  ScatterProgressType,
+  StoredScatterProgressType,
 } from '../entities/scatter/ScatterProgress.js';
 
-export type { DispatcherBundle } from '../contracts/DispatcherBundle.js';
-export type { ObserverRelay } from '../contracts/ObserverRelay.js';
+export type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
+export type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 
 // ---------------------------------------------------------------------------
 // Checkpoint
 // ---------------------------------------------------------------------------
 
-export type { CaptureOptionsInterface } from '../checkpoint/Checkpoint.js';
+export type { CaptureOptionsType } from '../checkpoint/Checkpoint.js';
 
 // ---------------------------------------------------------------------------
 // Container options
 // ---------------------------------------------------------------------------
 
-export type { DagContainerOptions } from '../container/DagContainerBase.js';
-export type { DagHostOptions } from '../container/DagHost.js';
+export type { DagContainerOptionsType } from '../container/DagContainerBase.js';
+export type { DagHostOptionsType } from '../container/DagHost.js';
 
 // ---------------------------------------------------------------------------
 // Channel options
 // ---------------------------------------------------------------------------
 
-export type { InMemoryChannelOptions } from '../channels/InMemoryChannel.js';
+export type { InMemoryChannelOptionsType } from '../channels/InMemoryChannel.js';
 
 // ---------------------------------------------------------------------------
-// Store options + contracts
+// StoreInterface options + contracts
 // ---------------------------------------------------------------------------
 
-export type { BaseStoreOptions } from '../store/BaseStore.js';
-export type { StoreErrorClassification } from '../store/StoreError.js';
+export type { BaseStoreOptionsType } from '../store/BaseStore.js';
+export type { StoreErrorClassificationType } from '../store/StoreError.js';
 
 // ---------------------------------------------------------------------------
 // Plural-native batch types + contracts
 // ---------------------------------------------------------------------------
 
-export type { Item, ItemId } from '../entities/batch/Item.js';
-export type { RoutedBatch } from '../entities/batch/RoutedBatch.js';
+export type { ItemType, ItemIdType } from '../entities/batch/Item.js';
+export type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';

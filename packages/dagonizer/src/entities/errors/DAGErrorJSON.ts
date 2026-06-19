@@ -44,4 +44,4 @@ export const DAGErrorJSONSchema = {
 } as const;
 
 /** TypeScript type derived from `DAGErrorJSONSchema` via `json-schema-to-ts`. */
-export type DAGErrorJSON = FromSchema<typeof DAGErrorJSONSchema>;
+export type DAGErrorJSONType = FromSchema<typeof DAGErrorJSONSchema>;

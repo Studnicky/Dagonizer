@@ -22,12 +22,12 @@ import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
-import type { RoutedBatch } from '../../src/entities/batch/RoutedBatch.js';
+import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import { WORKSET_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/dag/DAG.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/dag/DAG.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
@@ -56,11 +56,11 @@ class WalkState extends NodeStateBase {
     return copy;
   }
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return { 'value': this.value, 'log': [...this.log] };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     const v = snap['value'];
     if (typeof v === 'number') this.value = v;
     const l = snap['log'];
@@ -69,7 +69,7 @@ class WalkState extends NodeStateBase {
 }
 
 /** Factory: restore a `WalkState` from a JSON snapshot. */
-function restoreWalkState(snap: JsonObject): WalkState {
+function restoreWalkState(snap: JsonObjectType): WalkState {
   return WalkState.restore(snap);
 }
 
@@ -98,7 +98,7 @@ class FanNode extends MonadicNode<WalkState, 'out'> {
 
   constructor(name: string, n: number) { super(); this.name = name; this.n = n; }
 
-  override async execute(batch: Batch<WalkState>): Promise<RoutedBatch<'out', WalkState>> {
+  override async execute(batch: Batch<WalkState>): Promise<RoutedBatchType<'out', WalkState>> {
     const src = batch.row(0).state;
     const items: Array<{ 'id': string; 'state': WalkState }> = [];
     for (let i = 0; i < this.n; i++) {
@@ -121,7 +121,7 @@ class ProcNodeImpl extends ScalarNode<WalkState, 'done'> {
 
   constructor(name: string) { super(); this.name = name; }
 
-  protected async executeOne(state: WalkState): Promise<NodeOutputInterface<'done'>> {
+  protected async executeOne(state: WalkState): Promise<NodeOutputType<'done'>> {
     state.log.push(`proc:${state.value}`);
     return { 'errors': [], 'output': 'done' };
   }
@@ -136,7 +136,7 @@ class CollectNode extends MonadicNode<WalkState, 'done'> {
 
   constructor(name: string, collected: WalkState[]) { super(); this.name = name; this.collected = collected; }
 
-  override async execute(batch: Batch<WalkState>): Promise<RoutedBatch<'done', WalkState>> {
+  override async execute(batch: Batch<WalkState>): Promise<RoutedBatchType<'done', WalkState>> {
     for (const item of batch) {
       this.collected.push(item.state);
     }
@@ -153,12 +153,12 @@ function makeCollectNode(name: string, collected: WalkState[]): CollectNode {
 function buildFanDAG(
   dispatcher: Dagonizer<WalkState>,
   collected: WalkState[],
-): DAG {
+): DAGType {
   dispatcher.registerNode(makeFanNode('fan', FAN_N));
   dispatcher.registerNode(makeProcNode('proc'));
   dispatcher.registerNode(makeCollectNode('collect', collected));
 
-  const dag: DAG = {
+  const dag: DAGType = {
     '@context': DAG_CONTEXT,
     '@id': 'urn:noocodex:dag:fan-proc-collect',
     '@type': 'DAG',
@@ -408,11 +408,11 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
           return copy;
         }
 
-        protected override snapshotData(): JsonObject {
+        protected override snapshotData(): JsonObjectType {
           return { 'count': this.count };
         }
 
-        protected override restoreData(snap: JsonObject): void {
+        protected override restoreData(snap: JsonObjectType): void {
           const c = snap['count'];
           if (typeof c === 'number') this.count = c;
         }
@@ -427,7 +427,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
 
         constructor(name: string) { super(); this.name = name; }
 
-        protected async executeOne(state: CountState): Promise<NodeOutputInterface<'next'>> {
+        protected async executeOne(state: CountState): Promise<NodeOutputType<'next'>> {
           state.count++;
           return { 'errors': [], 'output': 'next' };
         }
@@ -436,7 +436,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
 
       dispatcher.registerNode(makeIncNode('inc'));
 
-      const dag: DAG = {
+      const dag: DAGType = {
         '@context': DAG_CONTEXT,
         '@id': 'urn:noocodex:dag:size1-ckpt',
         '@type': 'DAG',

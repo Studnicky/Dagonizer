@@ -32,15 +32,15 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 
 | Symbol | Role |
 |--------|------|
-| `LlmAdapter` | The contract every adapter implements (`chat(ChatRequest): Promise<ChatResponse>`) |
+| `LlmAdapter` | The contract every adapter implements (`chat(ChatRequestType): Promise<ChatResponse>`) |
 | `BaseAdapter` | Abstract base with retry, error classification, request normalization |
 | `OpenAiCompatibleAdapter` | Concrete base for OpenAI-shaped HTTP backends |
 | `LlmAdapterCascade`, `LlmAdapterRegistry`, `AdapterDescriptor` | Multi-adapter routing |
 | `EmbedderCascade`, `EmbedderRegistry`, `BaseEmbedder` | Embedding model cascade |
-| `ChatRequest`, `ChatResponse`, `ChatRequestBuilder`, `ChatResponseMessageBuilder` | Wire types and value factories |
+| `ChatRequestType`, `ChatResponse`, `ChatRequestBuilder`, `ChatResponseMessageBuilder` | Wire types and value factories |
 | `LlmError`, `Classifications` | Error taxonomy — `LlmError.classifyHttp(status, body)` and `LlmError.ofNetworkError(err)` are static methods on `LlmError` |
 | `ToolCallCodec` | JSON envelope decoder for models that emit tool calls as text (Gemini Nano, WebLLM) |
-| `AdapterCapabilities`, `ToolCall`, `ToolChoice`, `ToolDefinition`, `TokenUsage` | Capability metadata |
+| `AdapterCapabilitiesType`, `ToolCall`, `ToolChoiceType`, `ToolDefinition`, `TokenUsage` | Capability metadata |
 
 ### Using an adapter
 
@@ -52,14 +52,14 @@ Extend `BaseAdapter` and implement `performChat`:
 
 ```ts twoslash
 import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
-import type { ChatRequest, ChatResponse } from '@studnicky/dagonizer/adapter';
+import type { ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
 
 export class MyAdapter extends BaseAdapter {
   constructor() {
     super('mine', 'My Provider', { toolUse: 'full', structuredOutput: true, jsonMode: true });
   }
 
-  protected async performChat(request: ChatRequest): Promise<ChatResponse> {
+  protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     // Hit the provider, parse response.
     void request;
     return {
@@ -98,7 +98,7 @@ The patterns subpath exposes the abstract `MonadicNode` root plus the service co
 | Symbol | Role |
 |--------|------|
 | `MonadicNode<TState, TOutput, TServices>` | Abstract base class. Owns the dispatch loop; subclasses inject domain pieces via abstract methods |
-| `LlmClient` | Service contract: `chat(ChatRequest): Promise<ChatResponse>` (subset of `LlmAdapter`) |
+| `LlmClient` | Service contract: `chat(ChatRequestType): Promise<ChatResponse>` (subset of `LlmAdapter`) |
 | `TripleStore` | Service contract: `assert`, `ask`, `select`, `count`, `clearGraph`, `triples` |
 | `Binding`, `Quad`, `SlotPattern`, `Term` | RDF value types used by `TripleStore` |
 

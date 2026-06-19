@@ -5,7 +5,7 @@
  * One instance is constructed per-execute with the correlationId and basePath
  * from the ExecutionRequest. Override of every protected hook forwards the
  * event over the channel; the parent's ChannelDispatch routes the message to
- * the ObserverRelay bound to the parent Dagonizer's hooks.
+ * the ObserverRelayInterface bound to the parent Dagonizer's hooks.
  *
  * flowStart / flowEnd are intentionally not forwarded — the parent dispatcher
  * owns flow-level hooks. The per-execute construction pattern is correct: a

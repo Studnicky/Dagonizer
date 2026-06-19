@@ -21,14 +21,14 @@ import {
   ScatterOptions,
 } from '../../src/builder/ScatterOptions.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 class NoopNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'noop';
   readonly outputs = ['success'] as const;
-  protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 const noop = new NoopNode();
 

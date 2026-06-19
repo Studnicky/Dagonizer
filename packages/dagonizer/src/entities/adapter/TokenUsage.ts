@@ -19,4 +19,4 @@ export const TokenUsageSchema = {
 } as const;
 
 /** Token usage. Always present; zero when the provider doesn't report. */
-export type TokenUsage = FromSchema<typeof TokenUsageSchema>;
+export type TokenUsageType = FromSchema<typeof TokenUsageSchema>;

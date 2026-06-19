@@ -6,7 +6,7 @@
  * optional namespace prefix, and lifecycle no-ops. Concrete stores implement
  * the `protected abstract perform*` hooks.
  *
- *   Store contract → BaseStore ┐
+ *   StoreInterface contract → BaseStore ┐
  *                              ├─ get/set/has/delete  → qualify key → perform* hook
  *                              ├─ update(key, fn)     → default RMW; override for native CAS
  *                              └─ snapshot / restore  → envelope + StoreError on mismatch
@@ -14,14 +14,14 @@
  * Modeled directly on `BaseAdapter` in `src/adapter/BaseAdapter.ts`.
  */
 
-import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
-import type { StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';
-import type { Store } from '../contracts/Store.js';
-import type { JsonValue } from '../entities/json.js';
+import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
+import type { StoreSnapshotType, StoreSnapshotEntryType } from '../contracts/SnapshottableInterface.js';
+import type { StoreInterface } from '../contracts/StoreInterface.js';
+import type { JsonValueType } from '../entities/json.js';
 
 import { StoreError } from './StoreError.js';
 
-export interface BaseStoreOptions {
+export type BaseStoreOptionsType = {
   /**
    * Key prefix applied to every public-API key before it reaches the
    * `perform*` hooks. Use `''` (the default) for no prefix. Two stores
@@ -32,14 +32,14 @@ export interface BaseStoreOptions {
 }
 
 /** Default options. Spread into custom options to fill unset fields. */
-export const BASE_STORE_DEFAULTS: Required<BaseStoreOptions> = {
+export const BASE_STORE_DEFAULTS: Required<BaseStoreOptionsType> = {
   'namespace': '',
 };
 
-export abstract class BaseStore implements Store {
+export abstract class BaseStore implements StoreInterface {
   readonly #namespace: string;
 
-  protected constructor(options: BaseStoreOptions = {}) {
+  protected constructor(options: BaseStoreOptionsType = {}) {
     const resolved = { ...BASE_STORE_DEFAULTS, ...options };
     this.#namespace = resolved.namespace;
   }
@@ -50,13 +50,13 @@ export abstract class BaseStore implements Store {
   /** Subclass snapshot schema version; increment when storage shape changes. */
   protected abstract get snapshotVersion(): number;
 
-  // ── Public Store contract (delegates to protected hooks) ─────────────
+  // ── Public StoreInterface contract (delegates to protected hooks) ─────────────
 
-  async get<T extends JsonValue>(key: string): Promise<T | null> {
+  async get<T extends JsonValueType>(key: string): Promise<T | null> {
     return this.performGet<T>(this.qualifyKey(key));
   }
 
-  async set<T extends JsonValue>(key: string, value: T): Promise<void> {
+  async set<T extends JsonValueType>(key: string, value: T): Promise<void> {
     await this.performSet<T>(this.qualifyKey(key), value);
   }
 
@@ -78,7 +78,7 @@ export abstract class BaseStore implements Store {
    * `performUpdateRmw(key, fn)` to delegate to the sequential, non-atomic
    * helper — but they MUST document that their `update` is not concurrency-safe.
    */
-  abstract update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T>;
+  abstract update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T>;
 
   /**
    * Sequential read-modify-write helper for subclasses that have no native
@@ -89,7 +89,7 @@ export abstract class BaseStore implements Store {
    * and document it on your class. Always prefer a native transaction when the
    * backing layer supports one.
    */
-  protected async performUpdateRmw<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
+  protected async performUpdateRmw<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     const qualified = this.qualifyKey(key);
     const raw       = await this.performGet<T>(qualified);
     const current   = raw === null ? undefined : raw;
@@ -98,7 +98,7 @@ export abstract class BaseStore implements Store {
     return next;
   }
 
-  async snapshot(_options?: AbortableOptionsInterface): Promise<StoreSnapshot> {
+  async snapshot(_options?: AbortableOptionsType): Promise<StoreSnapshotType> {
     const entries = [...await this.performSnapshotEntries()];
     return {
       'version': this.snapshotVersion,
@@ -107,7 +107,7 @@ export abstract class BaseStore implements Store {
     };
   }
 
-  async restore(incoming: StoreSnapshot, _options?: AbortableOptionsInterface): Promise<void> {
+  async restore(incoming: StoreSnapshotType, _options?: AbortableOptionsType): Promise<void> {
     if (incoming.type !== this.snapshotType || incoming.version !== this.snapshotVersion) {
       throw new StoreError(
         `incompatible snapshot: expected ${this.snapshotType} v${String(this.snapshotVersion)}, ` +
@@ -136,12 +136,12 @@ export abstract class BaseStore implements Store {
 
   // ── Plugin author hooks ─────────────────────────────────────────────
 
-  protected abstract performGet<T extends JsonValue>(qualifiedKey: string): Promise<T | null>;
-  protected abstract performSet<T extends JsonValue>(qualifiedKey: string, value: T): Promise<void>;
+  protected abstract performGet<T extends JsonValueType>(qualifiedKey: string): Promise<T | null>;
+  protected abstract performSet<T extends JsonValueType>(qualifiedKey: string, value: T): Promise<void>;
   protected abstract performHas(qualifiedKey: string): Promise<boolean>;
   protected abstract performDelete(qualifiedKey: string): Promise<boolean>;
-  protected abstract performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]>;
-  protected abstract performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void>;
+  protected abstract performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]>;
+  protected abstract performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void>;
 
   // ── Internal ────────────────────────────────────────────────────────
 

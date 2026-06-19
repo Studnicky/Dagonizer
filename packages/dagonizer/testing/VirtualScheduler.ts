@@ -9,7 +9,7 @@
  * Test-only. Install via `Scheduler.configure(new VirtualScheduler())`.
  */
 
-import type { SchedulerProvider } from '../dist/contracts/SchedulerProvider.js';
+import type { SchedulerProviderInterface } from '../dist/contracts/SchedulerProviderInterface.js';
 
 class SchedulerAbortError extends Error {
   constructor(message: string) {
@@ -18,14 +18,14 @@ class SchedulerAbortError extends Error {
   }
 }
 
-interface PendingType {
+type PendingType = {
   readonly atMs: number;
   readonly resolve: () => void;
   readonly reject: (reason: Error) => void;
   readonly signal: AbortSignal | undefined;
 }
 
-export class VirtualScheduler implements SchedulerProvider {
+export class VirtualScheduler implements SchedulerProviderInterface {
   #virtualNow: number;
   readonly #pending: PendingType[] = [];   // sorted by atMs ascending
 

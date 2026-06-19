@@ -49,13 +49,13 @@
 
 import type cytoscape from 'cytoscape';
 
-import type { DAG } from '../entities/dag/DAG.js';
+import type { DAGType } from '../entities/dag/DAG.js';
 
 import { CompositeLayout } from './CompositeLayout.js';
-import type { CompositeLayoutOptions } from './CompositeLayout.js';
+import type { CompositeLayoutOptionsType } from './CompositeLayout.js';
 import { Cytoscape } from './Cytoscape.js';
 import { CytoscapeRenderer } from './CytoscapeRenderer.js';
-import type { CytoscapeElement } from './CytoscapeRenderer.js';
+import type { CytoscapeElementType } from './CytoscapeRenderer.js';
 
 // ---------------------------------------------------------------------------
 // Container type
@@ -76,13 +76,13 @@ type CytoscapeContainer = NonNullable<cytoscape.CytoscapeOptions['container']>;
 // ---------------------------------------------------------------------------
 
 /** Default empty embedded-DAGs registry. */
-const DEFAULT_EMBEDDED_DAGS: ReadonlyMap<string, DAG> = new Map();
+const DEFAULT_EMBEDDED_DAGS: ReadonlyMap<string, DAGType> = new Map();
 
 /** Default CompositeLayout options (all fields delegated to CompositeLayout defaults). */
-const DEFAULT_LAYOUT_OPTIONS: CompositeLayoutOptions = {};
+const DEFAULT_LAYOUT_OPTIONS: CompositeLayoutOptionsType = {};
 
 /**
- * Canonical defaults for `CytoscapeGraphOptions`.
+ * Canonical defaults for `CytoscapeGraphOptionsType`.
  *
  * Every field that has a default is present here. The constructor resolves
  * all options in one spread: `{ ...CYTOSCAPE_GRAPH_DEFAULTS, ...options }`.
@@ -129,17 +129,17 @@ export interface CytoscapeGraphInterface {
  * above. The constructor accepts this shape directly (no `Partial<>` wrapper)
  * so the type is honest about what callers may omit.
  */
-export interface CytoscapeGraphOptions {
+export type CytoscapeGraphOptionsType = {
   /**
    * Registry of embedded-DAGs by name, passed to `CytoscapeRenderer` and
    * `CompositeLayout` for recursive expansion. Default: empty `Map`.
    */
-  embeddedDAGs?: ReadonlyMap<string, DAG>;
+  embeddedDAGs?: ReadonlyMap<string, DAGType>;
   /**
    * Layout tuning options forwarded to `CompositeLayout.compute`.
    * Default: `{}` (all tuning delegated to CompositeLayout's own defaults).
    */
-  layoutOptions?: CompositeLayoutOptions;
+  layoutOptions?: CompositeLayoutOptionsType;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,11 +170,11 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    */
   protected readonly container: CytoscapeContainer;
   /** The DAG to visualise. */
-  protected readonly dag: DAG;
+  protected readonly dag: DAGType;
   /** Registry of embedded-DAGs for recursive expansion. */
-  protected readonly embeddedDAGs: ReadonlyMap<string, DAG>;
+  protected readonly embeddedDAGs: ReadonlyMap<string, DAGType>;
   /** Layout tuning options forwarded to CompositeLayout. */
-  protected readonly layoutOptions: CompositeLayoutOptions;
+  protected readonly layoutOptions: CompositeLayoutOptionsType;
   /** The live cytoscape Core after `mount()`. Only `mount()` writes this. */
   #cyInstance: cytoscape.Core | null;
 
@@ -187,8 +187,8 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    */
   constructor(
     container: CytoscapeContainer,
-    dag: DAG,
-    options: CytoscapeGraphOptions = {},
+    dag: DAGType,
+    options: CytoscapeGraphOptionsType = {},
   ) {
     const resolved = { ...CYTOSCAPE_GRAPH_DEFAULTS, ...options };
     this.container        = container;
@@ -237,7 +237,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
     const cy = await this.construct({
       "container": this.container,
       // Cast to cytoscape.ElementDefinition[] at the boundary where cytoscape
-      // consumes the elements. CytoscapeElement is structurally compatible with
+      // consumes the elements. CytoscapeElementType is structurally compatible with
       // ElementDefinition; the cast is isolated to this single call site.
       "elements":  positioned as cytoscape.ElementDefinition[],
       "style":     this.stylesheet(),
@@ -275,7 +275,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * Compute layout for `elements` via `CompositeLayout` and return a new array
    * with a `position` attached to every node element.
    *
-   * Accepts `ReadonlyArray<CytoscapeElement>` so the internal typed elements from
+   * Accepts `ReadonlyArray<CytoscapeElementType>` so the internal typed elements from
    * `composeElements()` flow through without an intermediate cast. The cast to
    * `cytoscape.ElementDefinition[]` is deferred to the `Cytoscape.create` call
    * in `mount()`.
@@ -289,8 +289,8 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * subclass can lay out against the same embedded-DAG subset it renders.
    */
   protected async applyLayout(
-    elements: ReadonlyArray<CytoscapeElement>,
-  ): Promise<CytoscapeElement[]> {
+    elements: ReadonlyArray<CytoscapeElementType>,
+  ): Promise<CytoscapeElementType[]> {
     const layout = await CompositeLayout.compute(
       this.dag,
       this.layoutRegistry(),
@@ -325,7 +325,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * return the SAME subset they emit from `composeElements()`, so layout and
    * rendering agree on which compounds are expanded.
    */
-  protected layoutRegistry(): ReadonlyMap<string, DAG> {
+  protected layoutRegistry(): ReadonlyMap<string, DAGType> {
     return this.embeddedDAGs;
   }
 
@@ -338,12 +338,12 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * may override to enrich elements (e.g. add `data.kind` from a node registry)
    * or replace them entirely.
    *
-   * Returns `ReadonlyArray<CytoscapeElement>` so the internal typed elements
+   * Returns `ReadonlyArray<CytoscapeElementType>` so the internal typed elements
    * flow through `applyLayout()` without a cast; the cast to
    * `cytoscape.ElementDefinition[]` is deferred to the `Cytoscape.create` call
    * in `mount()`.
    */
-  protected composeElements(): ReadonlyArray<CytoscapeElement> {
+  protected composeElements(): ReadonlyArray<CytoscapeElementType> {
     return CytoscapeRenderer.render(this.dag, {
       "embeddedDAGs": this.embeddedDAGs,
     });

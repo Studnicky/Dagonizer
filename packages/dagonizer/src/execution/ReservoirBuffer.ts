@@ -17,8 +17,8 @@
  */
 
 import type { ReservoirDriverInterface } from '../contracts/ReservoirDriver.js';
-import type { StateAccessor } from '../contracts/StateAccessor.js';
-import type { ScatterInboxItem } from '../entities/scatter/ScatterProgress.js';
+import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { ExecutionError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Scheduler } from '../runtime/Scheduler.js';
@@ -33,14 +33,14 @@ type BufferedItem = {
 /**
  * Options for constructing a `ReservoirBuffer`.
  */
-export type ReservoirBufferOptions = {
+export type ReservoirBufferOptionsType = {
   concurrencyLimit: number;
-  inbox: ScatterInboxItem[];
+  inbox: ScatterInboxItemType[];
   freshIter: AsyncIterator<unknown>;
   nextIndex: number;
   signal: AbortSignal | null;
   reservoir: { keyField: string; capacity: number; idleMs?: number };
-  accessor: StateAccessor;
+  accessor: StateAccessorInterface;
 };
 
 /**
@@ -55,11 +55,11 @@ export type ReservoirBufferOptions = {
 export class ReservoirBuffer<TState extends NodeStateInterface> {
   readonly #driver: ReservoirDriverInterface<TState>;
   readonly #concurrencyLimit: number;
-  readonly #inbox: ScatterInboxItem[];
+  readonly #inbox: ScatterInboxItemType[];
   readonly #freshIter: AsyncIterator<unknown>;
   readonly #signal: AbortSignal | null;
   readonly #reservoir: { keyField: string; capacity: number; idleMs?: number };
-  readonly #accessor: StateAccessor;
+  readonly #accessor: StateAccessorInterface;
   readonly #activeBuffers: Map<string, BufferedItem[]>;
   readonly #poolErrors: unknown[];
   readonly #keyGeneration: Map<string, number>;
@@ -69,7 +69,7 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
   #activeWorkers: number;
   #slotResolve: (() => void) | null;
 
-  constructor(driver: ReservoirDriverInterface<TState>, options: ReservoirBufferOptions) {
+  constructor(driver: ReservoirDriverInterface<TState>, options: ReservoirBufferOptionsType) {
     this.#driver = driver;
     this.#concurrencyLimit = options.concurrencyLimit;
     this.#inbox = options.inbox;
@@ -89,7 +89,7 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
 
   /**
    * Resolve the reservoir buffer key from a scatter item via the canonical
-   * `StateAccessor`. Scatter items are `unknown` at the buffer boundary; the
+   * `StateAccessorInterface`. Scatter items are `unknown` at the buffer boundary; the
    * accessor reads paths only on objects, so a non-object item yields `null`
    * (an empty buffer key, grouped under the `''` partition).
    */

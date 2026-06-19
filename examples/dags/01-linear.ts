@@ -11,7 +11,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 // #endregion imports
 
 // #region state
@@ -51,7 +51,7 @@ export class RespondNode extends ScalarNode<ChatState, 'success'> {
 // #endregion node
 
 // #region dag
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':   DAG_CONTEXT,                         // JSON-LD 1.1 ontology context
   '@id':        'urn:noocodex:dag:chat',             // globally unique URN for this DAG
   '@type':      'DAG',                               // RDF class: top-level DAG document

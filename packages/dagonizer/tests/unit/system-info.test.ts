@@ -17,12 +17,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { RecommendedWorkerCountConfig } from '../../src/entities/executor/RecommendedWorkerCountConfig.js';
+import type { RecommendedWorkerCountConfigType } from '../../src/entities/executor/RecommendedWorkerCountConfig.js';
 import { SystemInfo } from '../../src/entities/executor/SystemInfo.js';
-import type { SystemInfoProbes } from '../../src/entities/executor/SystemInfo.js';
+import type { SystemInfoProbesType } from '../../src/entities/executor/SystemInfo.js';
 
 // Helper: build a config with sensible defaults, override as needed.
-function cfg(overrides: Partial<RecommendedWorkerCountConfig> = {}): RecommendedWorkerCountConfig {
+function cfg(overrides: Partial<RecommendedWorkerCountConfigType> = {}): RecommendedWorkerCountConfigType {
   return {
     'maximumWorkers': 16,
     'mainThreadReservation': 1,
@@ -33,7 +33,7 @@ function cfg(overrides: Partial<RecommendedWorkerCountConfig> = {}): Recommended
 }
 
 // Helper: build probes.
-function probes(parallelism: number, freeMemoryBytes: number | null = null): SystemInfoProbes {
+function probes(parallelism: number, freeMemoryBytes: number | null = null): SystemInfoProbesType {
   return { parallelism, freeMemoryBytes };
 }
 

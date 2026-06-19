@@ -1,5 +1,5 @@
 import { SCATTER_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
-import type { ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from '../entities/scatter/ScatterProgress.js';
+import type { ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from '../entities/scatter/ScatterProgress.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
 
@@ -21,7 +21,7 @@ export class ScatterCheckpoint {
   static read(
     state: NodeStateInterface,
     placementName: string,
-  ): ScatterProgress | undefined {
+  ): ScatterProgressType | undefined {
     const raw = state.getMetadata<unknown>(SCATTER_PROGRESS_KEY);
     if (raw === undefined) return undefined;
     // Validate at the read boundary so corrupt/migrated checkpoints surface
@@ -37,11 +37,11 @@ export class ScatterCheckpoint {
   static writeRetained(
     state: NodeStateInterface,
     placementName: string,
-    inbox: readonly ScatterInboxItem[],
-    ackedResults: readonly ScatterAckedResult[],
+    inbox: readonly ScatterInboxItemType[],
+    ackedResults: readonly ScatterAckedResultType[],
   ): void {
-    const raw = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {};
-    const next: Record<string, ScatterProgress> = { ...raw };
+    const raw = state.getMetadata<StoredScatterProgressType>(SCATTER_PROGRESS_KEY) ?? {};
+    const next: Record<string, ScatterProgressType> = { ...raw };
     next[placementName] = { 'mode': 'retained', placementName, 'inbox': [...inbox], 'ackedResults': [...ackedResults] };
     state.setMetadata(SCATTER_PROGRESS_KEY, next);
   }
@@ -53,13 +53,13 @@ export class ScatterCheckpoint {
   static writeBounded(
     state: NodeStateInterface,
     placementName: string,
-    inbox: readonly ScatterInboxItem[],
+    inbox: readonly ScatterInboxItemType[],
     watermark: number,
     aheadAcked: readonly { index: number; output: string }[],
     outcomeTally: Readonly<Record<string, number>>,
   ): void {
-    const raw = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {};
-    const next: Record<string, ScatterProgress> = { ...raw };
+    const raw = state.getMetadata<StoredScatterProgressType>(SCATTER_PROGRESS_KEY) ?? {};
+    const next: Record<string, ScatterProgressType> = { ...raw };
     next[placementName] = { 'mode': 'bounded', placementName, 'inbox': [...inbox], watermark, 'aheadAcked': [...aheadAcked], 'outcomeTally': { ...outcomeTally } };
     state.setMetadata(SCATTER_PROGRESS_KEY, next);
   }
@@ -71,10 +71,10 @@ export class ScatterCheckpoint {
    * omits it.
    */
   static clear(state: NodeStateInterface, placementName: string): void {
-    const stored = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY);
+    const stored = state.getMetadata<StoredScatterProgressType>(SCATTER_PROGRESS_KEY);
     if (stored === undefined) return;
     if (!(placementName in stored)) return;
-    const next: Record<string, ScatterProgress> = { ...stored };
+    const next: Record<string, ScatterProgressType> = { ...stored };
     delete next[placementName];
     if (Object.keys(next).length === 0) {
       state.deleteMetadata(SCATTER_PROGRESS_KEY);

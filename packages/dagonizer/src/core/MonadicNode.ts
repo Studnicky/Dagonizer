@@ -2,7 +2,7 @@
  * MonadicNode: the root of every node — the minimum viable node.
  *
  * A node is the monad of the engine: it consumes a `Batch<TState>` and returns
- * a `RoutedBatch<TOutput, TState>`, partitioning the batch's items across its
+ * a `RoutedBatchType<TOutput, TState>`, partitioning the batch's items across its
  * declared output ports. That single operation is the one node contract
  * (`NodeInterface.execute`); `MonadicNode` is the abstract base that supplies
  * the boilerplate every node needs and leaves `execute` for the author to
@@ -35,12 +35,12 @@
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../contracts/OperationContractFragment.js';
-import type { OperationContractFragment } from '../contracts/OperationContractFragment.js';
+import type { OperationContractFragmentType } from '../contracts/OperationContractFragment.js';
 import type { Batch } from '../entities/batch/Batch.js';
-import type { RoutedBatch } from '../entities/batch/RoutedBatch.js';
-import type { NodeContextInterface } from '../entities/node/NodeContext.js';
+import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
+import type { NodeContextType } from '../entities/node/NodeContext.js';
 import { Timeout } from '../entities/Timeout.js';
-import type { ValidationResult } from '../entities/validation/ValidationResult.js';
+import type { ValidationResultType } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 
@@ -61,7 +61,7 @@ export abstract class MonadicNode<
    * Subclasses that participate in contract-derived flow generation override this
    * with a populated fragment.
    */
-  readonly contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT;
+  readonly contract: OperationContractFragmentType = EMPTY_CONTRACT_FRAGMENT;
 
   /**
    * Per-node wall-clock budget. `Timeout.none()` means no time limit.
@@ -77,8 +77,8 @@ export abstract class MonadicNode<
    */
   abstract execute(
     batch: Batch<TState>,
-    context: NodeContextInterface<TServices>,
-  ): Promise<RoutedBatch<TOutput, TState>>;
+    context: NodeContextType<TServices>,
+  ): Promise<RoutedBatchType<TOutput, TState>>;
 
   /**
    * Validate node configuration at flow registration time. Default
@@ -89,7 +89,7 @@ export abstract class MonadicNode<
    * boundary; `MonadicNode` supplies a concrete required-with-default so every
    * subclass always has a validation method without needing a presence check.
    */
-  validate(): ValidationResult {
+  validate(): ValidationResultType {
     return { 'valid': true, 'errors': [] };
   }
 

@@ -10,8 +10,8 @@
  */
 
 import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
-import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
-import type { NodeContextInterface } from '../entities/node/NodeContext.js';
+import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
+import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { Timeout } from '../entities/Timeout.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
@@ -26,7 +26,7 @@ export class DagTask<
   readonly correlationId: string;
   readonly timeout: Timeout;
   readonly state: TState;
-  readonly context: NodeContextInterface<TServices>;
+  readonly context: NodeContextType<TServices>;
 
   constructor(
     dagName: string,
@@ -34,7 +34,7 @@ export class DagTask<
     correlationId: string,
     timeout: Timeout,
     state: TState,
-    context: NodeContextInterface<TServices>,
+    context: NodeContextType<TServices>,
   ) {
     this.dagName = dagName;
     this.placementPath = [...placementPath];
@@ -50,7 +50,7 @@ export class DagTask<
    * Produces a single-item request (N=1); multi-item batch requests are
    * built by `DagContainerBase.runDagBatch` directly.
    */
-  toRequest(): ExecutionRequest {
+  toRequest(): ExecutionRequestType {
     return {
       'dagName':       this.dagName,
       'placementPath': [...this.placementPath],

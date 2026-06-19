@@ -29,11 +29,11 @@
  */
 
 import { NodeErrorBuilder, NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
-import type { Embedder } from '@studnicky/dagonizer/contracts';
+import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 import { TextSimilarity } from './textUtils.ts';
@@ -95,8 +95,8 @@ export class CandidateScorer {
    * whole weight via the redistribution branch above).
    */
   static async embedTitles(
-    embedder: Embedder,
-    candidates: readonly Candidate[],
+    embedder: EmbedderInterface,
+    candidates: readonly CandidateType[],
   ): Promise<readonly (readonly number[] | null)[]> {
     const out: (readonly number[] | null)[] = [];
     for (const c of candidates) {
@@ -115,7 +115,7 @@ export class CandidateScorer {
    * is deterministic and unit-testable.
    */
   static compositeScore(
-    candidate: Candidate,
+    candidate: CandidateType,
     queryVec: readonly number[] | null,
     titleVec: readonly number[] | null,
     termTokens: Set<string>,
@@ -152,7 +152,7 @@ export class CandidateScorer {
 }
 
 interface ScoredEntry {
-  readonly candidate: Candidate;
+  readonly candidate: CandidateType;
   readonly score: number;
   readonly titleEmbedding: readonly number[] | null;
 }
@@ -161,7 +161,7 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
   readonly name = 'rank-candidates';
   readonly outputs = ['ranked', 'retry', 'salvage'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {
       state.clearAttempts(context.nodeName);
       context.services.logger.info('rank-candidates: no candidates to rank');
@@ -235,7 +235,7 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
       }
 
       // ── Emit ranked candidates with composite scores + cached embeddings ─
-      const ranked: Candidate[] = scored.map((entry) => {
+      const ranked: CandidateType[] = scored.map((entry) => {
         const baseNotes: Record<string, unknown> = entry.candidate.notes !== undefined
           ? { ...entry.candidate.notes }
           : {};

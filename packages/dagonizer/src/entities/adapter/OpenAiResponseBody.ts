@@ -86,4 +86,4 @@ export const OpenAiResponseBodySchema = {
 } as const;
 
 /** TypeScript type derived from `OpenAiResponseBodySchema` via `json-schema-to-ts`. */
-export type OpenAiResponseBody = FromSchema<typeof OpenAiResponseBodySchema>;
+export type OpenAiResponseBodyType = FromSchema<typeof OpenAiResponseBodySchema>;

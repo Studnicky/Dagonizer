@@ -6,7 +6,7 @@
  * unique to the LLM surface: `capabilities` and the `chat()` envelope
  * that calls the abstract `performChat()`.
  *
- *   LlmAdapter contract → BaseAdapter ┐
+ *   LlmAdapterInterface contract → BaseAdapter ┐
  *                                     ├─ chat() → retry-wrapped performChat()
  *                                     └─ classify(err) returns retryable/non-retryable
  *
@@ -19,15 +19,15 @@
  * past that cap the adapter gives up immediately rather than blocking the caller.
  */
 
-import type { LlmAdapter } from '../contracts/LlmAdapter.js';
-import type { ChatMessage } from '../entities/adapter/ChatMessage.js';
+import type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
+import type { ChatMessageType } from '../entities/adapter/ChatMessage.js';
 
-import { BaseAdapterCore, type BaseAdapterCoreOptions } from './BaseAdapterCore.js';
-import type { AdapterCapabilities, ChatRequest, ChatResponse } from './LlmAdapter.js';
+import { BaseAdapterCore, type BaseAdapterCoreOptionsType } from './BaseAdapterCore.js';
+import type { AdapterCapabilitiesType, ChatRequestType, ChatResponseType } from './LlmAdapter.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 
-export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapter {
-  readonly capabilities: AdapterCapabilities;
+export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterInterface {
+  readonly capabilities: AdapterCapabilitiesType;
 
   /**
    * Format a `tool`-role message as the conversational line every text-only
@@ -38,7 +38,7 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapter 
    * source of that string so the format never drifts between them. A blank
    * `toolName` falls back to `unknown`.
    */
-  static formatToolResult(message: Extract<ChatMessage, { 'role': 'tool' }>): string {
+  static formatToolResult(message: Extract<ChatMessageType, { 'role': 'tool' }>): string {
     const toolName = message.toolName.length > 0 ? message.toolName : 'unknown';
     return `[tool ${toolName} result] ${message.content}`;
   }
@@ -46,14 +46,14 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapter 
   protected constructor(
     id: string,
     displayName: string,
-    capabilities: AdapterCapabilities,
-    options: BaseAdapterCoreOptions = {},
+    capabilities: AdapterCapabilitiesType,
+    options: BaseAdapterCoreOptionsType = {},
   ) {
     super(id, displayName, options);
     this.capabilities = capabilities;
   }
 
-  async chat(request: ChatRequest): Promise<ChatResponse> {
+  async chat(request: ChatRequestType): Promise<ChatResponseType> {
     return this.retryPolicy.run(async () => {
       try {
         return await this.performChat(request);
@@ -81,5 +81,5 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapter 
   }
 
   /** Concrete adapter: perform the actual API call. */
-  protected abstract performChat(request: ChatRequest): Promise<ChatResponse>;
+  protected abstract performChat(request: ChatRequestType): Promise<ChatResponseType>;
 }

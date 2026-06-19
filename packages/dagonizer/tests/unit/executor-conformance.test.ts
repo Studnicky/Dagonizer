@@ -22,20 +22,20 @@ import { describe, it, afterEach } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
-import type { DagContainerOptions, PoolEntry } from '../../src/container/DagContainerBase.js';
+import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
 import { DagHost } from '../../src/container/DagHost.js';
-import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import { DAG_CONTAINER_TRANSPORT } from '../../src/container/TransportErrorCode.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { DispatcherBundle } from '../../src/contracts/DispatcherBundle.js';
+import type { DispatcherBundleType } from '../../src/contracts/DispatcherBundle.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
-import type { ObserverRelay } from '../../src/contracts/ObserverRelay.js';
+import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { ScatterProgress } from '../../src/Dagonizer.js';
+import type { ScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeError } from '../../src/entities/node/NodeError.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
+import type { NodeErrorWireType } from '../../src/entities/node/NodeError.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import {
   ConformanceRegistry,
@@ -59,11 +59,11 @@ const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '
 const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRegistry.js');
 
 // ---------------------------------------------------------------------------
-// LoopbackWorker: the "worker" value held in PoolEntry for test containers.
+// LoopbackWorker: the "worker" value held in PoolEntryType for test containers.
 // Carries the host-side channel so terminateWorker can close it.
 // ---------------------------------------------------------------------------
 
-interface LoopbackWorker {
+type LoopbackWorker = {
   hostSide: MessageChannelInterface;
 }
 
@@ -73,27 +73,27 @@ interface LoopbackWorker {
 // ---------------------------------------------------------------------------
 
 class LoopbackContainer extends DagContainerBase<NodeStateInterface, LoopbackWorker> {
-  constructor(registryModuleUrl: string, options: Partial<DagContainerOptions> = {}) {
+  constructor(registryModuleUrl: string, options: Partial<DagContainerOptionsType> = {}) {
     super({
       ...DagContainerBase.defaultOptions,
       'poolSize': 1,
       'init': {
         'registryModule': registryModuleUrl,
         'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-        'servicesConfig': {} as JsonObject,
+        'servicesConfig': {} as JsonObjectType,
       },
       ...(options.shutdownGraceMs !== undefined ? { 'shutdownGraceMs': options.shutdownGraceMs } : {}),
     });
   }
 
-  protected override composeEntry(): PoolEntry<LoopbackWorker> {
+  protected override composeEntry(): PoolEntryType<LoopbackWorker> {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const host = new DagHost(hostSide);
     host.start();
     return { 'worker': { hostSide }, 'channel': parentSide, 'initialized': false };
   }
 
-  protected override attachDeathListeners(_entry: PoolEntry<LoopbackWorker>): void {
+  protected override attachDeathListeners(_entry: PoolEntryType<LoopbackWorker>): void {
     // In-process DagHost — no death events to attach.
   }
 
@@ -112,7 +112,7 @@ class LoopbackContainer extends DagContainerBase<NodeStateInterface, LoopbackWor
 // are tracked here and destroyed in afterEach.
 // ---------------------------------------------------------------------------
 
-interface Destroyable { destroy(): Promise<void>; }
+type Destroyable = { destroy(): Promise<void>; }
 
 const perLawContainers: Destroyable[] = [];
 
@@ -134,7 +134,7 @@ async function teardownPerLawContainers(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function createDispatcherForLaw(
-  bundle: DispatcherBundle<NodeStateInterface, undefined>,
+  bundle: DispatcherBundleType<NodeStateInterface, undefined>,
   _containers: Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>,
 ): Dagonizer<NodeStateInterface, undefined> {
   // LoopbackContainer demand-grows its pool on first runDag(); no async init
@@ -189,7 +189,7 @@ const harnessRaw = {
   // Law 7: build a dispatcher WITHOUT the container role bound so
   // resolveContainer(CONFORMANCE_CONTAINER_ROLE) returns null → inline path.
   createInProcessDispatcher(
-    bundle: DispatcherBundle<NodeStateInterface, undefined>,
+    bundle: DispatcherBundleType<NodeStateInterface, undefined>,
   ): Dagonizer<NodeStateInterface, undefined> {
     const dispatcher = new Dagonizer<NodeStateInterface, undefined>();
     dispatcher.registerBundle(bundle);
@@ -233,7 +233,7 @@ describe('LoopbackContainer — state round-trip fixed point (Law 9 direct)', ()
     const container = new LoopbackContainer(REGISTRY_MODULE_URL);
 
     try {
-      const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundle<NodeStateInterface, undefined>;
+      const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundleType<NodeStateInterface, undefined>;
       const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>;
       const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ containers });
       dispatcher.registerBundle(bundle);
@@ -259,7 +259,7 @@ describe('LoopbackContainer — state round-trip fixed point (Law 9 direct)', ()
 //
 // The existing executor-node Law 8 uses a wrapper that THROWS on the 2nd
 // runDag (in-process-style reject path). It never exercised the path where
-// container.runDag RETURNS a transport-error DagOutcomeInterface (the real
+// container.runDag RETURNS a transport-error DagOutcomeType (the real
 // behavior of DagContainerBase: runDag never throws). This test closes that
 // gap directly at the core level.
 //
@@ -280,14 +280,14 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface<Nod
     this.#callCount = 0;
   }
 
-  async runDag(task: DagTaskInterface<NodeStateInterface, unknown>, options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
+  async runDag(task: DagTaskInterface<NodeStateInterface, unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     this.#callCount += 1;
     if (this.#callCount === 1) {
       // First item: run for real so it acks.
       return this.#inner.runDag(task, options);
     }
     // Subsequent items: RETURN a transport-error outcome (do NOT throw).
-    const error: NodeError = {
+    const error: NodeErrorWireType = {
       'code': DAG_CONTAINER_TRANSPORT,
       'context': {},
       'message': `simulated transport loss for request ${task.correlationId}`,
@@ -318,7 +318,7 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     const failing = new ReturnTransportErrorAfterOneContainer(inner);
     perLawContainers.push(failing);
 
-    const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundle<NodeStateInterface, undefined>;
+    const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundleType<NodeStateInterface, undefined>;
 
     // Phase 1: scatter through the failing container. Item 0 acks; item 1
     // returns a transport error → scatter throws (poolError) → item 1 stays
@@ -349,7 +349,7 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     // source they live in the persisted inbox. Either way the un-acked item is
     // recoverable: the discriminator threw before clear, preserving the
     // checkpoint with fewer than all items acked.
-    const progress = state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const progress = state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     const fan = (progress ?? {})['fan'];
     assert.ok(fan !== undefined, 'checkpoint must survive — ScatterCheckpoint.clear must NOT run on infra failure');
     const ackedCount = fan.mode === 'bounded'

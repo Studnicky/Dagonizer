@@ -7,7 +7,7 @@
  *  - Retries still work when no signal is provided.
  *
  * Schema-backed shape validation:
- *  - getJson/postJson require an `EntityValidator` and narrow the parsed JSON
+ *  - getJson/postJson require an `EntityValidatorInterface` and narrow the parsed JSON
  *    body to its derived type before returning.
  *  - A wrong-shaped body throws a non-retryable `ToolError(PARSE_ERROR)`.
  */
@@ -17,7 +17,7 @@ import { describe, it } from 'node:test';
 
 import { HttpTransport } from '../../src/tool/HttpTransport.js';
 import { ToolError } from '../../src/tool/ToolError.js';
-import type { EntityValidator } from '../../src/validation/Validator.js';
+import type { EntityValidatorInterface } from '../../src/validation/Validator.js';
 
 /** Patch globalThis.fetch for one test, restore after. */
 async function withFetchPatch<T>(
@@ -34,12 +34,12 @@ async function withFetchPatch<T>(
 }
 
 /**
- * Minimal structural `EntityValidator<T>` for tests: narrows a body that
+ * Minimal structural `EntityValidatorInterface<T>` for tests: narrows a body that
  * contains every key of `keys`. Mirrors the shape predicate a compiled
  * `Validator.<entity>` exposes without pulling a full Ajv schema into the
  * test fixture.
  */
-function keyValidator<T>(keys: readonly string[]): EntityValidator<T> {
+function keyValidator<T>(keys: readonly string[]): EntityValidatorInterface<T> {
   const matches = (value: unknown): value is T =>
     typeof value === 'object' && value !== null && keys.every((k) => k in value);
   return {

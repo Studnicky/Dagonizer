@@ -21,7 +21,7 @@
 
 // #region pre-phase-setup
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -30,7 +30,7 @@ export class PreRunSetupNode extends ScalarNode<ArchivistState, 'ready', Archivi
   readonly name = 'pre-run-setup';
   readonly outputs = ['ready'] as const;
 
-  protected override executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     // Stamp a per-run identifier that downstream memory-write nodes key their
     // named graph on.  Format: ISO timestamp with milliseconds, URL-safe.
     // crypto.randomUUID() would be stronger but wall-clock is deterministic

@@ -15,7 +15,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -24,7 +24,7 @@ export class ReverseGeocodeNode extends ScalarNode<CartographerState, 'geocoded'
   readonly 'name' = 'reverse-geocode';
   readonly 'outputs' = ['geocoded'] as const;
 
-  protected override async executeOne(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'geocoded'>> {
+  protected override async executeOne(state: CartographerState, context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'geocoded'>> {
     state.gpsCandidate = await context.services.reverseGeocoder.lookup(
       state.raw.latitude,
       state.raw.longitude,

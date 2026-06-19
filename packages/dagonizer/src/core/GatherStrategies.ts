@@ -18,10 +18,10 @@
  * class TopNGather extends GatherStrategy {
  *   readonly name = 'top-n';
  *   reduce(
- *     config: GatherConfig,
- *     batch: Batch<GatherRecord<NodeStateInterface>>,
+ *     config: GatherConfigType,
+ *     batch: Batch<GatherRecordType<NodeStateInterface>>,
  *     state: NodeStateInterface,
- *     accessor: StateAccessor,
+ *     accessor: StateAccessorInterface,
  *   ): void {
  *     for (const item of batch) {
  *       const record = item.state;
@@ -34,15 +34,15 @@
  * ```
  */
 
-import type { GatherExecution, GatherRecord } from '../contracts/GatherExecution.js';
-import type { StateAccessor } from '../contracts/StateAccessor.js';
+import type { GatherExecutionType, GatherRecordType } from '../contracts/GatherExecution.js';
+import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { Batch } from '../entities/batch/Batch.js';
-import type { GatherConfig } from '../entities/dag/GatherConfig.js';
+import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 
-export type { GatherExecution, GatherRecord };
+export type { GatherExecutionType, GatherRecordType };
 
 /**
  * Extension point for gather strategies.
@@ -73,9 +73,9 @@ export abstract class GatherStrategy {
    * Called once per scatter, before the first `reduce`. Default: no-op.
    */
   initial(
-    _config: GatherConfig,
+    _config: GatherConfigType,
     _state: NodeStateInterface,
-    _accessor: StateAccessor,
+    _accessor: StateAccessorInterface,
   ): void { /* no-op */ }
 
   /**
@@ -85,10 +85,10 @@ export abstract class GatherStrategy {
    * per clone as it completes. Implementations mutate `state` in place.
    */
   abstract reduce(
-    config: GatherConfig,
-    batch: Batch<GatherRecord<NodeStateInterface>>,
+    config: GatherConfigType,
+    batch: Batch<GatherRecordType<NodeStateInterface>>,
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void | Promise<void>;
 
   /**
@@ -96,8 +96,8 @@ export abstract class GatherStrategy {
    * Called once after all clones complete. Default: no-op.
    */
   async finalize(
-    _config: GatherConfig,
-    _execution: GatherExecution<NodeStateInterface>,
+    _config: GatherConfigType,
+    _execution: GatherExecutionType<NodeStateInterface>,
   ): Promise<void> { /* no-op */ }
 }
 
@@ -105,10 +105,10 @@ class MapGatherStrategy extends GatherStrategy {
   readonly name = 'map';
 
   reduce(
-    config: GatherConfig,
-    batch: Batch<GatherRecord<NodeStateInterface>>,
+    config: GatherConfigType,
+    batch: Batch<GatherRecordType<NodeStateInterface>>,
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     const mapping = config.mapping ?? {};
     for (const item of batch) {
@@ -126,10 +126,10 @@ class AppendGatherStrategy extends GatherStrategy {
   readonly name = 'append';
 
   reduce(
-    config: GatherConfig,
-    batch: Batch<GatherRecord<NodeStateInterface>>,
+    config: GatherConfigType,
+    batch: Batch<GatherRecordType<NodeStateInterface>>,
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     if (config.target === undefined) {
       throw new DAGError('Gather append strategy requires target path');
@@ -149,10 +149,10 @@ class PartitionGatherStrategy extends GatherStrategy {
   readonly name = 'partition';
 
   reduce(
-    config: GatherConfig,
-    batch: Batch<GatherRecord<NodeStateInterface>>,
+    config: GatherConfigType,
+    batch: Batch<GatherRecordType<NodeStateInterface>>,
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     const partitions = config.partitions ?? {};
     for (const item of batch) {
@@ -179,8 +179,8 @@ class CustomGatherStrategy extends GatherStrategy {
   reduce(): void { /* no-op */ }
 
   override async finalize(
-    config: GatherConfig,
-    execution: GatherExecution<NodeStateInterface>,
+    config: GatherConfigType,
+    execution: GatherExecutionType<NodeStateInterface>,
   ): Promise<void> {
     if (config.customNode === undefined) return;
     // Expose a plain projection of records for the custom gather node to read.
@@ -232,10 +232,10 @@ class CollectGatherStrategy extends GatherStrategy {
   readonly name = 'collect';
 
   reduce(
-    config: GatherConfig,
-    batch: Batch<GatherRecord<NodeStateInterface>>,
+    config: GatherConfigType,
+    batch: Batch<GatherRecordType<NodeStateInterface>>,
     state: NodeStateInterface,
-    accessor: StateAccessor,
+    accessor: StateAccessorInterface,
   ): void {
     if (config.target === undefined) return;
     for (const item of batch) {

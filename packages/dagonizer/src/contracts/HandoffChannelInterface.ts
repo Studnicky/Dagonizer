@@ -16,7 +16,7 @@
  * connections, worker threads, etc.) when the dispatcher shuts down.
  */
 
-import type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
+import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
 
 export interface HandoffChannelInterface {
   /**
@@ -25,7 +25,7 @@ export interface HandoffChannelInterface {
    * the implementation's responsibility. The dispatcher wraps every
    * `publish` call in a try/catch regardless.
    */
-  publish(handoff: DAGHandoff): Promise<void>;
+  publish(handoff: DAGHandoffType): Promise<void>;
 
   /**
    * Release transport resources. Called by consumers on shutdown. Optional:

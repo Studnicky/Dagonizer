@@ -29,11 +29,11 @@
 import type cytoscape from 'cytoscape';
 import type { Core, EdgeCollection, NodeSingular } from 'cytoscape';
 
-import type { DAG } from '../../../../../packages/dagonizer/src/entities/dag/DAG.js';
+import type { DAGType } from '../../../../../packages/dagonizer/src/entities/dag/DAG.js';
 import { CytoscapeGraph } from '../../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
-import type { CytoscapeGraphOptions } from '../../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
+import type { CytoscapeGraphOptionsType } from '../../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
 import { CytoscapeRenderer } from '../../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
-import type { CytoscapeElement, CytoscapeNodeData } from '../../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
+import type { CytoscapeElementType, CytoscapeNodeDataType } from '../../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
 
 import { DagVizMachine } from './DagVizMachine.ts';
 import type { DagVizEvent } from './DagVizMachine.ts';
@@ -66,10 +66,10 @@ const MAX_ABSOLUTE_ZOOM = 4;
 /**
  * Construction options for `AnimatedDagGraph`.
  *
- * Superset of `CytoscapeGraphOptions`: the `embeddedDAGs` and `layoutOptions`
+ * Superset of `CytoscapeGraphOptionsType`: the `embeddedDAGs` and `layoutOptions`
  * fields are forwarded to the base class; the remaining fields are docs-specific.
  */
-export interface AnimatedDagGraphOptions extends Partial<CytoscapeGraphOptions> {
+export interface AnimatedDagGraphOptions extends Partial<CytoscapeGraphOptionsType> {
   /**
    * Per-node kind registry: maps node name → kind string ('deterministic' |
    * 'non-deterministic'). Used to enrich each rendered node's `data.kind`.
@@ -140,7 +140,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
   constructor(
     container: ConstructorParameters<typeof CytoscapeGraph>[0],
-    dag: DAG,
+    dag: DAGType,
     options: AnimatedDagGraphOptions = {},
   ) {
     super(container, dag, {
@@ -168,8 +168,8 @@ export class AnimatedDagGraph extends CytoscapeGraph {
    * Build a registry containing only the embedded-DAGs currently in
    * `#expandedDags`. Used by both `composeElements()` and `layoutRegistry()`.
    */
-  #filteredRegistry(): ReadonlyMap<string, DAG> {
-    const out = new Map<string, DAG>();
+  #filteredRegistry(): ReadonlyMap<string, DAGType> {
+    const out = new Map<string, DAGType>();
     for (const [name, dag] of this.embeddedDAGs) {
       if (this.#expandedDags.has(name)) out.set(name, dag);
     }
@@ -178,7 +178,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
   // ── CytoscapeGraph hook overrides ─────────────────────────────────────────
 
-  protected override composeElements(): ReadonlyArray<CytoscapeElement> {
+  protected override composeElements(): ReadonlyArray<CytoscapeElementType> {
     const filtered = this.#filteredRegistry();
     const raw = CytoscapeRenderer.render(this.dag, { embeddedDAGs: filtered });
 
@@ -189,17 +189,17 @@ export class AnimatedDagGraph extends CytoscapeGraph {
       const nodeName = (nodeData as { node?: string }).node ?? nodeData.id;
       const rawKind = nodeName !== undefined ? this.#nodeKinds[nodeName] : undefined;
       if (rawKind === undefined) return el;
-      // Narrow the raw string to the CytoscapeNodeData kind union; unknown
+      // Narrow the raw string to the CytoscapeNodeDataType kind union; unknown
       // values are dropped so the stylesheet never receives an invalid kind.
       const kind = (rawKind === 'deterministic' || rawKind === 'non-deterministic')
-        ? rawKind as CytoscapeNodeData['kind']
+        ? rawKind as CytoscapeNodeDataType['kind']
         : undefined;
       if (kind === undefined) return el;
       return { ...el, 'data': { ...el.data, 'kind': kind } };
     });
   }
 
-  protected override layoutRegistry(): ReadonlyMap<string, DAG> {
+  protected override layoutRegistry(): ReadonlyMap<string, DAGType> {
     return this.#filteredRegistry();
   }
 

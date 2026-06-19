@@ -14,7 +14,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -23,7 +23,7 @@ export class RouteModalitiesNode extends ScalarNode<CartographerState, 'ip' | 'g
   readonly 'name' = 'route-modalities';
   readonly 'outputs' = ['ip', 'gps-only'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'ip' | 'gps-only'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'ip' | 'gps-only'>> {
     const hasIp = state.canonical.body.ipAddress.length > 0;
     if (hasIp) {
       return NodeOutputBuilder.of('ip');

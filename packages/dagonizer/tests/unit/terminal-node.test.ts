@@ -5,9 +5,9 @@ import { DAGBuilder } from '../../src/builder/index.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -24,7 +24,7 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
     this.flowStartCount++;
   }
 
-  protected override onFlowEnd(_dagName: string, _state: TState, _result: ExecutionResultInterface<TState>): void {
+  protected override onFlowEnd(_dagName: string, _state: TState, _result: ExecutionResultType<TState>): void {
     this.flowEndCount++;
   }
 
@@ -47,7 +47,7 @@ const makeErrorNode = (nodeName: string) => {
   class ErrorNode extends ScalarNode<NodeStateBase, 'done'> {
     readonly name = nodeName;
     readonly outputs = ['done'] as const;
-    protected async executeOne(state: NodeStateBase): Promise<NodeOutputInterface<'done'>> {
+    protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'done'>> {
       state.collectError({
         'code':        'ERR',
         'context':     {},
@@ -223,7 +223,7 @@ void describe('TerminalNode: execution with outcome=failed', () => {
 // ── 5. Embedded-DAG routing to explicit TerminalNode ─────────────────────────
 
 void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () => {
-  const childDAG: DAG = {
+  const childDAG: DAGType = {
     '@context': DAG_CONTEXT,
     '@id':      'urn:noocodex:dag:child-tn',
     '@type':    'DAG',
@@ -253,7 +253,7 @@ void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () 
     dispatcher.registerNode(makeNode('child-step', ['done']));
     dispatcher.registerDAG(childDAG);
 
-    const parentDAG: DAG = {
+    const parentDAG: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:parent-tn',
       '@type':    'DAG',
@@ -298,7 +298,7 @@ void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () 
 // ── 6. Embedded-DAG routing to a TerminalNode ─────────────────────────────────
 
 void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placements', () => {
-  const buildParentWithTerminals = (): DAG => ({
+  const buildParentWithTerminals = (): DAGType => ({
     '@context': DAG_CONTEXT,
     '@id':      'urn:noocodex:dag:parent-explicit',
     '@type':    'DAG',
@@ -333,7 +333,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
     dispatcher.registerNode(makeNode('child-work-ok', ['done']));
 
     // Register child DAG with ok-node
-    const childOk: DAG = {
+    const childOk: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:child-explicit',
       '@type':    'DAG',
@@ -365,7 +365,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
     const dispatcher2 = new CountingDagonizer<NodeStateBase>();
     dispatcher2.registerNode(makeErrorNode('child-work-err'));
 
-    const childErr: DAG = {
+    const childErr: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:child-explicit',
       '@type':    'DAG',

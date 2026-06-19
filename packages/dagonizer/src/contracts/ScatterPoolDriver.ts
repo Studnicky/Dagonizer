@@ -7,9 +7,9 @@
  * `ScatterPoolDriverInterface` implementation. The pool has no knowledge of DAG
  * internals; all DAG/state mutation logic lives in the implementor.
  *
- * The companion `ScatterItemResult` envelope is the driver's return shape. It is
+ * The companion `ScatterItemResultType` envelope is the driver's return shape. It is
  * part of the contract surface: every `executeItem` result and every `ackItem`
- * argument is a `ScatterItemResult`, so it lives here beside the contract.
+ * argument is a `ScatterItemResultType`, so it lives here beside the contract.
  */
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -20,7 +20,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * Shape is stable (all fields initialised, required): V8 sees one hidden class
  * across all item executions.
  */
-export type ScatterItemResult<TState extends NodeStateInterface> = {
+export type ScatterItemResultType<TState extends NodeStateInterface> = {
   index: number;
   item: unknown;
   output: string;
@@ -43,12 +43,12 @@ export interface ScatterPoolDriverInterface<TState extends NodeStateInterface> {
    * resolves. Must throw on infrastructure failure (container crash, transport
    * loss) so the pool correctly routes it to `poolErrors` rather than acking.
    */
-  executeItem(index: number, item: unknown): Promise<ScatterItemResult<TState>>;
+  executeItem(index: number, item: unknown): Promise<ScatterItemResultType<TState>>;
 
   /**
    * Acknowledge a completed item: remove it from the inbox, record the acked
    * result, apply incremental gather to fold into parent state, and persist
    * the checkpoint.
    */
-  ackItem(result: ScatterItemResult<TState>): Promise<void>;
+  ackItem(result: ScatterItemResultType<TState>): Promise<void>;
 }

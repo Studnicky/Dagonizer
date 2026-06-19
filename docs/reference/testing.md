@@ -5,7 +5,7 @@ seeAlso:
     description: '`Clock`, `Scheduler`'
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`ClockProvider`, `SchedulerProvider`'
+    description: '`ClockProviderInterface`, `SchedulerProviderInterface`'
 ---
 
 # Testing
@@ -156,19 +156,19 @@ Number of active (non-cancelled) pending tasks.
 <<< @/../examples/dags/virtual-clock.ts#virtual-time
 ```
 
-### `SchedulerProvider` interface
+### `SchedulerProviderInterface` interface
 
-Both `VirtualScheduler` and `RealTimeScheduler` implement `SchedulerProvider`:
+Both `VirtualScheduler` and `RealTimeScheduler` implement `SchedulerProviderInterface`:
 
 ```ts twoslash
-import type { SchedulerProvider } from '@studnicky/dagonizer/runtime';
+import type { SchedulerProviderInterface } from '@studnicky/dagonizer/runtime';
 // ---cut---
-// SchedulerProvider (from @studnicky/dagonizer/runtime):
+// SchedulerProviderInterface (from @studnicky/dagonizer/runtime):
 //   after(delayMs, options?: { signal? }): Promise<void>
 //   at(atMs, options?: { signal? }): Promise<void>
 //   every(intervalMs, options?: { signal? }): AsyncIterable<void>
 //   cancelAll(): void
-const _scheduler: SchedulerProvider = {} as SchedulerProvider;
+const _scheduler: SchedulerProviderInterface = {} as SchedulerProviderInterface;
 ```
 
 Implement this interface to create a custom test scheduler (e.g. one that records fired tasks for assertions).

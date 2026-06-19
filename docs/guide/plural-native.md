@@ -7,12 +7,12 @@ into place.
 
 ## The batch contract
 
-A node consumes a `Batch<TState>` and returns a `RoutedBatch<TOutput>`:
+A node consumes a `Batch<TState>` and returns a `RoutedBatchType<TOutput>`:
 
 <<< @/../examples/dags/plural-native.ts#execute-contract
 
 A `Batch<TState>` is an ordered collection of items, each carrying a stable id
-and a per-item `TState`. A `RoutedBatch<TOutput>` is a `Map<output, Batch>` — the
+and a per-item `TState`. A `RoutedBatchType<TOutput>` is a `Map<output, Batch>` — the
 node's items **partitioned** across its output ports.
 
 **Routing is partitioning.** Three things that look separate are one mechanism:

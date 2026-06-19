@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`ClockProvider`, `SchedulerProvider`, `StateAccessor`'
+    description: '`ClockProviderInterface`, `SchedulerProviderInterface`, `StateAccessorInterface`'
   - text: 'Reference: Testing'
     link: './testing'
     description: '`VirtualClockProvider`, `VirtualScheduler`'
@@ -24,11 +24,11 @@ import {
   SignalComposer,
 } from '@studnicky/dagonizer/runtime';
 import type {
-  ClockProvider,
+  ClockProviderInterface,
   ErrorConstructorType,
-  RetryPolicyOptionsInterface,
-  SchedulerProvider,
-  StateAccessor,
+  RetryPolicyOptionsType,
+  SchedulerProviderInterface,
+  StateAccessorInterface,
 } from '@studnicky/dagonizer/runtime';
 ```
 
@@ -62,9 +62,9 @@ Raw monotonic high-resolution time in nanoseconds. Available in both Node and br
 
 ```ts twoslash
 import { Clock } from '@studnicky/dagonizer/runtime';
-import type { ClockProvider } from '@studnicky/dagonizer/runtime';
+import type { ClockProviderInterface } from '@studnicky/dagonizer/runtime';
 // ---cut---
-declare const provider: ClockProvider;
+declare const provider: ClockProviderInterface;
 Clock.configure(provider);
 ```
 
@@ -90,9 +90,9 @@ Engine-owned monotonic timer. Static class; never instantiated.
 
 ```ts twoslash
 import { Scheduler } from '@studnicky/dagonizer/runtime';
-import type { SchedulerProvider } from '@studnicky/dagonizer/runtime';
+import type { SchedulerProviderInterface } from '@studnicky/dagonizer/runtime';
 // ---cut---
-const provider: SchedulerProvider = Scheduler.current();
+const provider: SchedulerProviderInterface = Scheduler.current();
 ```
 
 Returns the active scheduler. `RetryPolicy` calls `Scheduler.current().after(ms, signal)` for backoff delays.
@@ -101,9 +101,9 @@ Returns the active scheduler. `RetryPolicy` calls `Scheduler.current().after(ms,
 
 ```ts twoslash
 import { Scheduler } from '@studnicky/dagonizer/runtime';
-import type { SchedulerProvider } from '@studnicky/dagonizer/runtime';
+import type { SchedulerProviderInterface } from '@studnicky/dagonizer/runtime';
 // ---cut---
-declare const provider: SchedulerProvider;
+declare const provider: SchedulerProviderInterface;
 Scheduler.configure(provider);
 ```
 
@@ -123,7 +123,7 @@ Restore the default `RealTimeScheduler`.
 
 ## Class: `RealTimeScheduler`
 
-Default `SchedulerProvider`. Wraps `setTimeout` and `setInterval`. Do not instantiate directly; `Scheduler.current()` uses it automatically.
+Default `SchedulerProviderInterface`. Wraps `setTimeout` and `setInterval`. Do not instantiate directly; `Scheduler.current()` uses it automatically.
 
 ---
 
@@ -196,19 +196,19 @@ const BackoffStrategyNames = {
 type BackoffStrategy = (typeof BackoffStrategyNames)[keyof typeof BackoffStrategyNames];
 ```
 
-`BackoffStrategyNames` is the frozen lookup object; `BackoffStrategy` is the union type of its values. Both ship from `@studnicky/dagonizer` (and `@studnicky/dagonizer/entities`). Pass a value as `strategy` in `RetryPolicyOptionsInterface`. See [Retry](/guide/retry) for delay formulas.
+`BackoffStrategyNames` is the frozen lookup object; `BackoffStrategy` is the union type of its values. Both ship from `@studnicky/dagonizer` (and `@studnicky/dagonizer/entities`). Pass a value as `strategy` in `RetryPolicyOptionsType`. See [Retry](/guide/retry) for delay formulas.
 
 ---
 
 ## Class: `SignalComposer`
 
-Fold `signal` and `deadlineMs` from `ExecuteOptionsInterface` into a single `AbortSignal`. Static class.
+Fold `signal` and `deadlineMs` from `ExecuteOptionsType` into a single `AbortSignal`. Static class.
 
 ### `SignalComposer.compose(options)`
 
 ```ts twoslash
 import { SignalComposer } from '@studnicky/dagonizer/runtime';
-import type { ExecuteOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { ExecuteOptionsType } from '@studnicky/dagonizer/contracts';
 // ---cut---
 declare const ctrl: AbortController;
 declare const url: string;
@@ -228,13 +228,13 @@ if (signal !== null) {
 
 ## Class: `DottedPathAccessor`
 
-Default `StateAccessor`. Walks `path.split('.')` to read and write nested fields on a state object. Creates intermediate plain objects on write when they are absent. Treats `null` and `undefined` segments on read as misses (returns `undefined`).
+Default `StateAccessorInterface`. Walks `path.split('.')` to read and write nested fields on a state object. Creates intermediate plain objects on write when they are absent. Treats `null` and `undefined` segments on read as misses (returns `undefined`).
 
 ```ts twoslash
 import { DottedPathAccessor } from '@studnicky/dagonizer/runtime';
-import type { StateAccessor } from '@studnicky/dagonizer/runtime';
+import type { StateAccessorInterface } from '@studnicky/dagonizer/runtime';
 // ---cut---
-const accessor: StateAccessor = new DottedPathAccessor();
+const accessor: StateAccessorInterface = new DottedPathAccessor();
 ```
 
 Used by the dispatcher for scatter source reads, state-mapping input copies, and gather writes. Swap via `new Dagonizer({ accessor: customAccessor })`.

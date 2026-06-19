@@ -4,13 +4,13 @@ import { describe, it } from 'node:test';
 import type cytoscape from 'cytoscape';
 
 import { DAG_CONTEXT } from '../../src/entities/index.js';
-import type { DAG } from '../../src/entities/index.js';
+import type { DAGType } from '../../src/entities/index.js';
 import { CompositeLayout } from '../../src/viz/CompositeLayout.js';
 import { CytoscapeGraph } from '../../src/viz/CytoscapeGraph.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function singleNode(name: string, outputs: Record<string, string>): DAG['nodes'][0] {
+function singleNode(name: string, outputs: Record<string, string>): DAGType['nodes'][0] {
   return {
     '@id':    `urn:noocodex:dag:test/node/${name}`,
     '@type':  'SingleNode',
@@ -20,7 +20,7 @@ function singleNode(name: string, outputs: Record<string, string>): DAG['nodes']
   };
 }
 
-function makeDAG(name: string, entrypoint: string, nodes: DAG['nodes']): DAG {
+function makeDAG(name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType {
   return {
     '@context':   DAG_CONTEXT,
     '@id':        `urn:noocodex:dag:${name}`,
@@ -33,7 +33,7 @@ function makeDAG(name: string, entrypoint: string, nodes: DAG['nodes']): DAG {
 }
 
 /** A captured cytoscape config plus a record of fake-Core method calls. */
-interface Capture {
+type Capture = {
   config: cytoscape.CytoscapeOptions | null;
   batchCalls: number;
 }
@@ -52,7 +52,7 @@ class StubCytoscapeGraph extends CytoscapeGraph {
   constructor(
     capture: Capture,
     container: NonNullable<cytoscape.CytoscapeOptions['container']>,
-    dag: DAG,
+    dag: DAGType,
   ) {
     super(container, dag);
     this.#capture = capture;
@@ -96,7 +96,7 @@ void describe('CytoscapeGraph.mount', () => {
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
       singleNode('C', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };
@@ -120,7 +120,7 @@ void describe('CytoscapeGraph.mount', () => {
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
       singleNode('C', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };
@@ -139,7 +139,7 @@ void describe('CytoscapeGraph.mount', () => {
   void it('stylesheet uses explicit numeric node sizing — never the string "label"', async () => {
     const dag = makeDAG('mini', 'A', [
       singleNode('A', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
     const capture: Capture = { "config": null, "batchCalls": 0 };
     const graph = new StubCytoscapeGraph(capture, fakeContainer, dag);
@@ -163,7 +163,7 @@ void describe('CytoscapeGraph.mount', () => {
     // 'retry' route targets the node itself → a cytoscape self-loop edge.
     const dag = makeDAG('retry', 'work', [
       singleNode('work', { "success": 'end', "retry": 'work' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };
@@ -186,7 +186,7 @@ void describe('CompositeLayout.compute', () => {
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
       singleNode('C', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
 
     const { positions } = await CompositeLayout.compute(dag);
@@ -208,16 +208,16 @@ void describe('CompositeLayout.compute', () => {
     const innerA = makeDAG('innerA', 'a1', [
       singleNode('a1', { "go": 'a2' }),
       singleNode('a2', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
     const innerB = makeDAG('innerB', 'b1', [
       singleNode('b1', { "go": 'b2' }),
       singleNode('b2', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
 
     // outer DAG: embedA then embedB in sequence
-    const outerDAG: DAG = makeDAG('outer2', 'embedA', [
+    const outerDAG: DAGType = makeDAG('outer2', 'embedA', [
       {
         '@id':    'urn:noocodex:dag:outer2/node/embedA',
         '@type':  'EmbeddedDAGNode',
@@ -232,10 +232,10 @@ void describe('CompositeLayout.compute', () => {
         'dag':    'innerB',
         'outputs': { "done": 'end', "error": 'end' },
       },
-      { '@id': 'urn:noocodex:dag:outer2/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+      { '@id': 'urn:noocodex:dag:outer2/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
 
-    const embeddedDAGs = new Map<string, DAG>([['innerA', innerA], ['innerB', innerB]]);
+    const embeddedDAGs = new Map<string, DAGType>([['innerA', innerA], ['innerB', innerB]]);
     const { positions } = await CompositeLayout.compute(outerDAG, embeddedDAGs);
 
     // embedA compound center
@@ -277,11 +277,11 @@ void describe('CompositeLayout.compute', () => {
       singleNode('entry-node',  { "go": 'middle-node' }),
       singleNode('middle-node', { "go": 'exit-node' }),
       singleNode('exit-node',   { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
 
     // outer DAG: before → ScatterNode(body.dag=inner) → after
-    const outerDAG: DAG = makeDAG('outer', 'before', [
+    const outerDAG: DAGType = makeDAG('outer', 'before', [
       singleNode('before', { "go": 'embed' }),
       {
         '@id':    'urn:noocodex:dag:outer/node/embed',
@@ -291,10 +291,10 @@ void describe('CompositeLayout.compute', () => {
         'outputs': { "done": 'after' },
       },
       singleNode('after', { "done": 'end' }),
-      { '@id': 'urn:noocodex:dag:outer/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+      { '@id': 'urn:noocodex:dag:outer/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
 
-    const embeddedDAGs = new Map<string, DAG>([['inner', innerDAG]]);
+    const embeddedDAGs = new Map<string, DAGType>([['inner', innerDAG]]);
     const { positions } = await CompositeLayout.compute(outerDAG, embeddedDAGs);
 
     const posBefore  = positions.get('before');

@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { TerminalNode } from '../../src/entities/dag/TerminalNode.js';
-import type { DAG } from '../../src/entities/index.js';
+import type { TerminalNodeType } from '../../src/entities/dag/TerminalNode.js';
+import type { DAGType } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { RoleColorUtils } from '../../src/viz/internal.js';
 import { MermaidRenderer } from '../../src/viz/MermaidRenderer.js';
 
 void describe('MermaidRenderer.render', () => {
   void it('renders a single-node DAG with terminal', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:mini',
       '@type':    'DAG',
@@ -34,7 +34,7 @@ void describe('MermaidRenderer.render', () => {
   });
 
   void it('renders a ScatterNode as a trapezoid', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:fan',
       '@type':    'DAG',
@@ -60,7 +60,7 @@ void describe('MermaidRenderer.render', () => {
   });
 
   void it('renders an EmbeddedDAGNode as a subroutine', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:deep',
       '@type':    'DAG',
@@ -85,7 +85,7 @@ void describe('MermaidRenderer.render', () => {
 
 void describe('MermaidRenderer.render: PhaseNode', () => {
   void it('renders a pre-phase PhaseNode as a stadium shape and emits no outgoing edges', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:ph',
       '@type':    'DAG',
@@ -121,7 +121,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
   });
 
   void it('renders a post-phase PhaseNode with phase suffix in label', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:ph2',
       '@type':    'DAG',
@@ -153,7 +153,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
 
 void describe('MermaidRenderer.render: containment coloring', () => {
   void it('emits per-role classDef and class assignment for a contained EmbeddedDAGNode', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:worker-test',
       '@type':    'DAG',
@@ -194,7 +194,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
   });
 
   void it('emits per-role classDef and class assignment for a contained dag-body ScatterNode', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-worker',
       '@type':    'DAG',
@@ -232,7 +232,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
   });
 
   void it('emits NO classDef when no placement has a container role', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:no-container',
       '@type':    'DAG',
@@ -255,7 +255,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
   });
 
   void it('emits TWO distinct classDefs for a DAG with two distinct container roles', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:multi-role',
       '@type':    'DAG',
@@ -306,7 +306,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
   });
 
   void it('assigns the SAME class to two placements with the SAME role (grouping)', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:same-role',
       '@type':    'DAG',
@@ -364,9 +364,9 @@ void describe('RoleColorUtils.forRole', () => {
   });
 });
 
-void describe('MermaidRenderer.render: TerminalNode', () => {
-  void it('renders a completed TerminalNode as a double-circle with outcome suffix', () => {
-    const dag: DAG = {
+void describe('MermaidRenderer.render: TerminalNodeType', () => {
+  void it('renders a completed TerminalNodeType as a double-circle with outcome suffix', () => {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:t',
       '@type':    'DAG',
@@ -389,12 +389,12 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
     assert.match(out, /done\(\(\(.*\)\)\)/u);
     // outcome suffix present in label
     assert.match(out, /completed/u);
-    // edge connects to the TerminalNode
+    // edge connects to the TerminalNodeType
     assert.match(out, /step -->\|success\| done/u);
   });
 
-  void it('renders a failed TerminalNode as an asymmetric flag with outcome suffix', () => {
-    const dag: DAG = {
+  void it('renders a failed TerminalNodeType as an asymmetric flag with outcome suffix', () => {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:t2',
       '@type':    'DAG',
@@ -416,18 +416,18 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
     // asymmetric flag shape: name>label]
     assert.match(out, /abort>/u);
     assert.match(out, /\(failed\)/u);
-    // edge connects to the TerminalNode
+    // edge connects to the TerminalNodeType
     assert.match(out, /step -->\|error\| abort/u);
   });
 
-  void it('TerminalNode emits no outbound edges', () => {
-    const terminalDone: TerminalNode = {
+  void it('TerminalNodeType emits no outbound edges', () => {
+    const terminalDone: TerminalNodeType = {
       '@id':     'urn:noocodex:dag:t3/node/done',
       '@type':   'TerminalNode',
       'name':    'done',
       'outcome': 'completed',
     };
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:t3',
       '@type':    'DAG',
@@ -454,7 +454,7 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
   });
 
   void it('two TerminalNodes in the same DAG both render with correct shapes', () => {
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:t4',
       '@type':    'DAG',
@@ -474,9 +474,9 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
       ],
     };
     const out = MermaidRenderer.render(dag);
-    // completed TerminalNode renders as double-circle
+    // completed TerminalNodeType renders as double-circle
     assert.match(out, /done\(\(\(.*\)\)\)/u);
-    // failed TerminalNode renders as asymmetric flag
+    // failed TerminalNodeType renders as asymmetric flag
     assert.match(out, /abort>/u);
     // both edges are present
     assert.match(out, /step -->\|success\| done/u);
@@ -489,7 +489,7 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
 // ── Reservoir-glyph fixtures (shared with CytoscapeRenderer reservoir tests) ──
 
 /** ScatterNode with a reservoir config (keyField + capacity + idleMs). */
-const RESERVOIR_DAG: DAG = {
+const RESERVOIR_DAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:reservoir',
   '@type':    'DAG',
@@ -512,7 +512,7 @@ const RESERVOIR_DAG: DAG = {
 };
 
 /** ScatterNode with reservoir but no idleMs (capacity-only flush). */
-const RESERVOIR_NO_IDLEMS_DAG: DAG = {
+const RESERVOIR_NO_IDLEMS_DAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:reservoir-no-idle',
   '@type':    'DAG',
@@ -535,7 +535,7 @@ const RESERVOIR_NO_IDLEMS_DAG: DAG = {
 };
 
 /** Plain ScatterNode — no reservoir field. Parity guard fixture. */
-const PLAIN_SCATTER_DAG: DAG = {
+const PLAIN_SCATTER_DAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:plain-scatter',
   '@type':    'DAG',

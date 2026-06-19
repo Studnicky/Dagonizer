@@ -46,7 +46,7 @@ import assert from 'node:assert/strict';
 // Runtime value imported from the package entry (resolves via package exports).
 
 import type { DagContainerInterface } from '../dist/contracts/DagContainerInterface.js';
-import type { DispatcherBundle } from '../dist/contracts/DispatcherBundle.js';
+import type { DispatcherBundleType } from '../dist/contracts/DispatcherBundle.js';
 import type { DagonizerInterface } from '../dist/Dagonizer.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
@@ -57,7 +57,7 @@ import {
   CONFORMANCE_DAG,
 } from './ConformanceRegistry.js';
 
-import type { ScatterProgress } from '@studnicky/dagonizer';
+import type { ScatterProgressType } from '@studnicky/dagonizer';
 import { SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ export interface DagConformanceHarnessInterface {
    * registering the supplied conformance bundle parent-side.
    */
   createDispatcher(
-    bundle: DispatcherBundle<NodeStateInterface, undefined>,
+    bundle: DispatcherBundleType<NodeStateInterface, undefined>,
     containers: Readonly<Record<string, DagContainerInterface>>,
   ): DagonizerInterface<NodeStateInterface, undefined>;
   /** Create a fresh ConformanceState. */
@@ -91,7 +91,7 @@ export interface DagConformanceHarnessInterface {
    * When absent, Law 7 compares two contained runs (weaker but still valid).
    */
   createInProcessDispatcher?(
-    bundle: DispatcherBundle<NodeStateInterface, undefined>,
+    bundle: DispatcherBundleType<NodeStateInterface, undefined>,
   ): DagonizerInterface<NodeStateInterface, undefined>;
 
   /**
@@ -125,7 +125,7 @@ export interface DagConformanceLawInterface {
 function dispatcherFor(
   harness: DagConformanceHarnessInterface,
 ): DagonizerInterface<NodeStateInterface, undefined> {
-  const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+  const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
   const containers = { [harness.containerRole]: harness.container } as Readonly<Record<string, DagContainerInterface>>;
   return harness.createDispatcher(bundle, containers);
 }
@@ -300,7 +300,7 @@ export class DagConformance {
           }
         }
 
-        const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+        const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
         const container = harness.container;
         const containers = { [harness.containerRole]: container } as Readonly<Record<string, DagContainerInterface>>;
         const dispatcher = new RecordingDispatcher({ containers });
@@ -340,7 +340,7 @@ export class DagConformance {
       'name': 'Law 7: scatter checkpoint/resume bookkeeping byte-identical across backends',
       async run(): Promise<void> {
         const bundleResult = ConformanceRegistry.bundle();
-        const bundle = bundleResult.bundle as DispatcherBundle<NodeStateInterface, undefined>;
+        const bundle = bundleResult.bundle as DispatcherBundleType<NodeStateInterface, undefined>;
 
         // Helper: run the scatter DAG and capture every per-ack checkpoint write.
         // `dispatcher` accepts the pre-built dispatcher so callers control
@@ -438,7 +438,7 @@ export class DagConformance {
         }
 
         const { failingContainer, freshContainer } = harness.interruptMidScatter();
-        const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+        const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
 
         // Phase 1: start the scatter through the failing container.
         // The failingContainer kills its isolate after >=1 item acks.
@@ -467,7 +467,7 @@ export class DagConformance {
         }
 
         // At least one item must have been acked before the kill.
-        const progress = state1.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+        const progress = state1.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
         const progressEntry = (progress ?? {})['fan'];
         const ackedBefore = progressEntry === undefined ? 0
           : progressEntry.mode === 'bounded'

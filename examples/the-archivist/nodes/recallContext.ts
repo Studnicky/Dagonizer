@@ -35,12 +35,12 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import type { RecalledContext } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import { BookBuilder } from '../entities/Book.ts';
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import { BOOK_NS, GRAPH_MEMORY, MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
 import type { ArchivistServices } from '../services.ts';
 import { TextSimilarity } from './textUtils.ts';
@@ -63,7 +63,7 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled', Ar
   readonly name = 'recall-context';
   readonly outputs = ['recalled'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory = context.services.memory;
     const currentGraphIri = MemoryStore.stateGraphIri(state.runId).value;
     const currentTokens   = TextSimilarity.tokenise(state.query);
@@ -134,7 +134,7 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled', Ar
     // ── Query 2: recent candidates (shortlisted books) ────────────────────
     // Walk the same state graphs and collect books where dag:inShortlist = true.
     const seenIsbns   = new Set<string>();
-    const recentCandidates: Candidate[] = [];
+    const recentCandidates: CandidateType[] = [];
 
     for (const graphIri of stateGraphs) {
       if (recentCandidates.length >= MAX_RECENT_CANDIDATES) break;
@@ -251,7 +251,7 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled', Ar
       .filter((p) => p.jaccard >= JACCARD_THRESHOLD_CONTEXT)
       .map((p) => p.graphIri);
 
-    const priorCandidatesFromContext: import('../entities/Book.ts').Candidate[] = [];
+    const priorCandidatesFromContext: import('../entities/Book.ts').CandidateType[] = [];
     const seenContextIsbns = new Set<string>();
 
     const dagShortlisted = MemoryStore.dagIri('shortlisted');

@@ -13,12 +13,12 @@
 
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
 import { CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import { dag, squareItemDag, SquareNode, SumNode, sumResultsDag, MultiBackendState } from './13-multibackend.js';
 
 const registry: RegistryModuleInterface = {
-  async instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     return {
       "bundle": {
         "nodes": [new SquareNode(), new SumNode()],
@@ -26,7 +26,7 @@ const registry: RegistryModuleInterface = {
       },
       "services":        undefined,
       "registryVersion": '1.0.0',
-      "restoreState":    CheckpointRestoreAdapterFn.wrap((snapshot: JsonObject) => MultiBackendState.restore(snapshot)),
+      "restoreState":    CheckpointRestoreAdapterFn.wrap((snapshot: JsonObjectType) => MultiBackendState.restore(snapshot)),
     };
   },
 };

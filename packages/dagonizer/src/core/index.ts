@@ -18,17 +18,17 @@ export {
   OutcomeReducers,
 } from './OutcomeReducers.js';
 
-// `GatherExecution`/`GatherRecord`/`OutcomeRecord` are adapter contracts.
+// `GatherExecutionType`/`GatherRecordType`/`OutcomeRecordType` are adapter contracts.
 // They have a single authoritative subpath — `@studnicky/dagonizer/contracts`.
 // `./core` no longer re-exports them.
 
-// `Batch`/`Item`/`ItemId`/`RoutedBatch` are entities. They live at
+// `Batch`/`Item`/`ItemIdType`/`RoutedBatchType` are entities. They live at
 // `entities/batch/` so `contracts/` can import them inward without reaching up
 // into `core/`; re-exported here to preserve the `./core` public subpath.
 export { Batch } from '../entities/batch/Batch.js';
-export type { Item, ItemId } from '../entities/batch/Item.js';
-export { RoutedBatchBuilder } from '../entities/batch/RoutedBatch.js';
-export type { RoutedBatch } from '../entities/batch/RoutedBatch.js';
+export type { ItemType, ItemIdType } from '../entities/batch/Item.js';
+export { RoutedBatchBuilder } from '../entities/batch/RoutedBatchType.js';
+export type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 export { MonadicNode } from './MonadicNode.js';
 export { ScalarNode } from './ScalarNode.js';
 export { NodeRunner } from './NodeRunner.js';

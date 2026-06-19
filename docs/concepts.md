@@ -26,7 +26,7 @@ Vocabulary that the rest of the docs assume. The engine is domain-agnostic: agen
 
 ## Node
 
-The fundamental unit of work is a **batch**. A **node** consumes a `Batch<TState>` and returns a `RoutedBatch<TOutput>` — it **partitions** the batch's items across its named output ports. That single operation is the one node contract:
+The fundamental unit of work is a **batch**. A **node** consumes a `Batch<TState>` and returns a `RoutedBatchType<TOutput>` — it **partitions** the batch's items across its named output ports. That single operation is the one node contract:
 
 <<< @/../examples/dags/plural-native.ts#execute-contract
 
@@ -35,7 +35,7 @@ A single item is a batch of one; the engine never processes a scalar specially. 
 You almost never write `execute` by hand. Nodes descend from the **taxonomy**:
 
 - **`MonadicNode<TState, TOutput, TServices>`** — the root node base (the *monad*). Implements `NodeInterface` and supplies `name` / `outputs` / `contract` / `timeout` / `validate` / `destroy`, leaving `execute(batch)` abstract. Extend it directly to author a **batch-native** node — the hot path where one call processes the whole batch and hits shared caches across it.
-- **`ScalarNode<TState, TOutput, TServices>`** — extends `MonadicNode` and is the **per-item** specialization. You implement `protected executeOne(state, context): Promise<NodeOutputInterface<TOutput>>`; the base loops it over the batch and groups items by the returned port. This is the common case.
+- **`ScalarNode<TState, TOutput, TServices>`** — extends `MonadicNode` and is the **per-item** specialization. You implement `protected executeOne(state, context): Promise<NodeOutputType<TOutput>>`; the base loops it over the batch and groups items by the returned port. This is the common case.
 
 The classify-intent node in the Archivist is a typical `ScalarNode`: its `executeOne` reads the user query, writes a classification to state, and returns one of `'discover' | 'identify' | 'recall' | 'rejected'`.
 
@@ -116,7 +116,7 @@ Production code instantiates one dispatcher per process. Tests instantiate per c
 
 An **execution** is one run of a DAG. `dispatcher.execute(dagName, state, options)` returns an `Execution<TState>` that is both `PromiseLike` (await it for the final result) and `AsyncIterable` (iterate it for one event per node). Both modes share a single internal generator; the flow body runs once.
 
-`ExecutionResultInterface` carries:
+`ExecutionResultType` carries:
 
 - `state`: the final state (same reference as the input)
 - `cursor`: the next node that would have run, or `null` if the flow completed
@@ -207,8 +207,8 @@ Authored via the `inputs` option on `.scatter()` (or `.embeddedDAG()` for embedd
 
 A **checkpoint** records the position and state of an in-flight flow so it can resume later.
 
-- **Cursor**: the name of the next node to run. Set on `ExecutionResultInterface.cursor` when execution stops early. `null` means the flow ran to completion.
-- **State snapshot**: `NodeStateBase.snapshot()` returns a `JsonObject` containing metadata, warnings, and the retry budget. Engine errors are excluded from snapshots; they flow via `outcome.errors`. Domain-specific fields are captured by overriding `snapshotData()`.
+- **Cursor**: the name of the next node to run. Set on `ExecutionResultType.cursor` when execution stops early. `null` means the flow ran to completion.
+- **State snapshot**: `NodeStateBase.snapshot()` returns a `JsonObjectType` containing metadata, warnings, and the retry budget. Engine errors are excluded from snapshots; they flow via `outcome.errors`. Domain-specific fields are captured by overriding `snapshotData()`.
 
 Resume is a new execution. `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from the `RecalledCheckpoint` returned by `ckpt.restoreState(adapter)` for inspection; they are not replayed.
 

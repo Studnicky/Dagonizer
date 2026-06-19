@@ -48,7 +48,7 @@ const dag: DAG = {
 | `ckpt.persist(store, key)` | instance method | Writes via a `CheckpointStore` |
 | `ckpt.restoreState(adapter)` | instance method | Rehydrates `{ dagName, state, cursor }` |
 | `ckpt.restoreStores(map)` | instance method | Restores named stores (any `Snapshottable`) from the envelope |
-| `dispatcher.resume(dagName, state, fromStage, options?)` | `@studnicky/dagonizer` | Resumes the flow at `fromStage`; `options` accepts the same `ExecuteOptionsInterface` as `execute` |
+| `dispatcher.resume(dagName, state, fromStage, options?)` | `@studnicky/dagonizer` | Resumes the flow at `fromStage`; `options` accepts the same `ExecuteOptionsType` as `execute` |
 
 ## DAG that drives the example
 
@@ -100,7 +100,7 @@ Both take `Record<string, Snapshottable>`: the capability, not the key-value `St
 
 ## `snapshotData` and `restoreData` contract
 
-- `snapshotData()` returns a JSON-serializable `JsonObject`. No `undefined` values, no circular references.
+- `snapshotData()` returns a JSON-serializable `JsonObjectType`. No `undefined` values, no circular references.
 - `restoreData(snap)` receives the full merged snapshot (base fields plus domain fields). Call `super.applySnapshot(snap)` when overriding `applySnapshot` directly.
 - Lifecycle is intentionally not captured. `resume()` starts a fresh lifecycle run from `pending`.
 - Engine errors are intentionally not captured. `applySnapshot` leaves `_errors` untouched; the caller populates errors from `outcome.errors` after applying the snapshot.
@@ -126,12 +126,12 @@ Consumer nodes must not write to this key. It is engine-internal and may be over
 The stored shape is a record keyed by the scatter placement's `name`, so multiple `ScatterNode` placements in one DAG keep independent progress entries:
 
 ```ts twoslash
-import type { ScatterProgress, StoredScatterProgress } from '@studnicky/dagonizer/entities';
+import type { ScatterProgressType, StoredScatterProgressType } from '@studnicky/dagonizer/entities';
 // ---cut---
 // ScatterProgress is a discriminated union on `mode`.
 // `retained` mode stores full per-item results; `bounded` stores a watermark.
-declare const stored: StoredScatterProgress;
-declare const progress: ScatterProgress;
+declare const stored: StoredScatterProgressType;
+declare const progress: ScatterProgressType;
 
 // Fields common to both branches:
 const name: string = progress.placementName;

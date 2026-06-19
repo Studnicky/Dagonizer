@@ -11,12 +11,12 @@ import { describe, it } from 'node:test';
 
 import { OpenApiGuard } from '../../src/tool/OpenApiGuard.js';
 import { ToolError } from '../../src/tool/ToolError.js';
-import type { EntityValidator } from '../../src/validation/Validator.js';
+import type { EntityValidatorInterface } from '../../src/validation/Validator.js';
 
-interface Book { title: string }
+type Book = { title: string }
 
 /** Structural validator: a body is a Book when it carries a string `title`. */
-const bookValidator: EntityValidator<Book> = {
+const bookValidator: EntityValidatorInterface<Book> = {
   'is'(value): value is Book {
     return typeof value === 'object' && value !== null
       && 'title' in value && typeof (value as { title: unknown }).title === 'string';

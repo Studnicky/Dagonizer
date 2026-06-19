@@ -4,7 +4,7 @@
  *
  * The dispatcher binds logical container roles (strings declared on a placement's
  * `container` key) to concrete `DagContainerInterface` instances at construction
- * time via `DagonizerOptionsInterface.containers`. A placement that declares an
+ * time via `DagonizerOptionsType.containers`. A placement that declares an
  * unbound role throws a `DAGError` at `registerDAG` time.
  *
  * Implementations are free to pool resources internally. `destroy()` releases
@@ -13,9 +13,9 @@
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import type { DagOutcomeInterface } from './DagOutcomeInterface.js';
+import type { DagOutcomeType } from './DagOutcomeType.js';
 import type { DagTaskInterface } from './DagTaskInterface.js';
-import type { ObserverRelay } from './ObserverRelay.js';
+import type { ObserverRelayInterface } from './ObserverRelayInterface.js';
 
 export interface DagContainerInterface<
   TState extends NodeStateInterface = NodeStateInterface,
@@ -39,10 +39,10 @@ export interface DagContainerInterface<
    * The container must forward this relay to its channel routing layer.
    *
    * Must never throw. Transport failures, host crashes, and serialization
-   * errors are returned as collected errors in `DagOutcomeInterface.errors`
+   * errors are returned as collected errors in `DagOutcomeType.errors`
    * with `recoverable: false`.
    */
-  runDag(task: DagTaskInterface<TState, unknown>, options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface>;
+  runDag(task: DagTaskInterface<TState, unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
 
   /**
    * Release pool resources. Called by the dispatcher's `destroy()`. Optional:

@@ -16,7 +16,7 @@
 
 import { BaseMessageChannel } from '@studnicky/dagonizer/container';
 import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
-import type { BridgeMessage } from '@studnicky/dagonizer/entities';
+import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 
 import type { WebWorkerLikeInterface, WorkerScopeLikeInterface } from './WebWorkerLike.js';
@@ -26,7 +26,7 @@ import type { WebWorkerLikeInterface, WorkerScopeLikeInterface } from './WebWork
 // ---------------------------------------------------------------------------
 
 /** Endpoints this channel can wrap: a main-thread worker or an inside-worker scope. */
-export type PostMessageEndpoint = WebWorkerLikeInterface | WorkerScopeLikeInterface;
+export type PostMessageEndpointType = WebWorkerLikeInterface | WorkerScopeLikeInterface;
 
 // ---------------------------------------------------------------------------
 // PostMessageChannel
@@ -39,9 +39,9 @@ export type PostMessageEndpoint = WebWorkerLikeInterface | WorkerScopeLikeInterf
  * a Worker or accesses `self` / global references.
  */
 export class PostMessageChannel extends BaseMessageChannel {
-  readonly #endpoint: PostMessageEndpoint;
+  readonly #endpoint: PostMessageEndpointType;
 
-  constructor(endpoint: PostMessageEndpoint) {
+  constructor(endpoint: PostMessageEndpointType) {
     super();
     this.#endpoint = endpoint;
 
@@ -54,7 +54,7 @@ export class PostMessageChannel extends BaseMessageChannel {
     });
   }
 
-  override send(message: BridgeMessage): void {
+  override send(message: BridgeMessageType): void {
     if (this.closed) return;
     this.#endpoint.postMessage(message);
   }
@@ -66,7 +66,7 @@ export class PostMessageChannel extends BaseMessageChannel {
   #handleInbound(data: unknown): void {
     if (this.closed) return;
 
-    let message: BridgeMessage;
+    let message: BridgeMessageType;
     try {
       message = Validator.bridgeMessage.validate(data);
     } catch {

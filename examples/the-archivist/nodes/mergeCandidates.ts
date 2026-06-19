@@ -24,9 +24,9 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface, NodeOutputInterface } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer';
 
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -39,11 +39,11 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
   readonly outputs = ['ranked', 'empty'] as const;
 
   /** Public per-item entry point for tests and dispatch delegation. */
-  public async runItem(state: ArchivistState, context: NodeContextInterface<ArchivistServices>): Promise<NodeOutputInterface<'ranked' | 'empty'>> {
+  public async runItem(state: ArchivistState, context: NodeContextType<ArchivistServices>): Promise<NodeOutputType<'ranked' | 'empty'>> {
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const targetIso2 = UserLanguage.toIso6392(state.userLanguage);
 
     // ── Both pools empty → soft gate ──────────────────────────────────────
@@ -57,7 +57,7 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
     }
 
     // ── Build the combined pool ────────────────────────────────────────────
-    let pool: readonly Candidate[];
+    let pool: readonly CandidateType[];
 
     if (state.candidates.length === 0) {
       // Case 1: live empty, fall back to prior memory exclusively.

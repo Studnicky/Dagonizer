@@ -31,8 +31,8 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
-import type { BaseEmbedderOptions } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 
 import { OllamaEmbedResponseValidator } from './OllamaEmbedResponse.js';
 
@@ -82,7 +82,7 @@ const KNOWN_DIMENSIONS: Readonly<Record<string, number>> = {
  * needs no key at all. `apiKey` therefore lives in the options bag and is
  * omitted for local usage.
  */
-export interface OllamaEmbedderOptions extends BaseEmbedderOptions {
+export type OllamaEmbedderOptionsType = BaseEmbedderOptionsType & {
   /**
    * Base URL of the Ollama server.
    * Local default: `'http://127.0.0.1:11434'`.
@@ -95,7 +95,7 @@ export interface OllamaEmbedderOptions extends BaseEmbedderOptions {
    * Omit entirely for local Ollama daemon usage (no auth header is sent).
    */
   readonly apiKey?: string;
-}
+};
 
 export class OllamaEmbedder extends BaseEmbedder {
   readonly #baseUrl: string;
@@ -116,7 +116,7 @@ export class OllamaEmbedder extends BaseEmbedder {
    * local Ollama needs no key. Compare `GeminiApiEmbedder(apiKey, options?)` and
    * `MistralEmbedder(apiKey, options?)` where a key is always required.
    */
-  constructor(options: OllamaEmbedderOptions = {}) {
+  constructor(options: OllamaEmbedderOptionsType = {}) {
     const resolved = { ...OLLAMA_EMBEDDER_DEFAULTS, ...options };
     // Resolve dimensions: explicit override → known-model table → DEFAULT_DIMENSIONS (768).
     // DEFAULT_DIMENSIONS mirrors KNOWN_DIMENSIONS['nomic-embed-text'] and is a concrete constant,
@@ -160,7 +160,7 @@ export class OllamaEmbedder extends BaseEmbedder {
    * cascade routes around the embedder. Symmetric with
    * `OllamaApiAdapter.probe`.
    */
-  override async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
+  override async probe(_options?: AbortableOptionsType): Promise<boolean> {
     const controller = new AbortController();
     const timer = setTimeout(() => { controller.abort(); }, PROBE_TIMEOUT_MS);
     const headers: Record<string, string> = {};

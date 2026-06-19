@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import type { OperationContract } from '../../src/contracts/OperationContract.js';
-import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
+import type { OperationContractType } from '../../src/contracts/OperationContract.js';
+import type { OperationContractFragmentType } from '../../src/contracts/OperationContractFragment.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
-import type { DAGDeriverEmbeddedDAG } from '../../src/derive/DAGDeriverAnnotations.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGDeriverEmbeddedDAGType } from '../../src/derive/DAGDeriverAnnotations.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 
@@ -18,10 +18,10 @@ import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 class ContractNode<TState extends NodeStateInterface> extends ScalarNode<TState, string> {
   readonly name: string;
   readonly outputs: readonly string[];
-  override readonly contract: OperationContractFragment;
+  override readonly contract: OperationContractFragmentType;
   readonly #defaultOutput: string;
 
-  constructor(c: OperationContract, defaultOutput?: string) {
+  constructor(c: OperationContractType, defaultOutput?: string) {
     super();
     this.name = c.name;
     this.outputs = c.outputs;
@@ -29,16 +29,16 @@ class ContractNode<TState extends NodeStateInterface> extends ScalarNode<TState,
     this.#defaultOutput = defaultOutput ?? (c.outputs[0] as string);
   }
 
-  protected override async executeOne(): Promise<NodeOutputInterface<string>> {
+  protected override async executeOne(): Promise<NodeOutputType<string>> {
     return { 'errors': [], 'output': this.#defaultOutput };
   }
 }
 
-const contractNode = <TState extends NodeStateInterface = NodeStateBase>(c: OperationContract): NodeInterface<TState> => new ContractNode<TState>(c);
+const contractNode = <TState extends NodeStateInterface = NodeStateBase>(c: OperationContractType): NodeInterface<TState> => new ContractNode<TState>(c);
 
 void describe('DAGDeriver.derive', () => {
   void it('produces a linear DAG from a chain of contracts', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
       { 'name': 'b', 'hardRequired': ['x'],     'produces': ['y'], 'outputs': ['success'] },
       { 'name': 'c', 'hardRequired': ['y'],     'produces': [], 'outputs': ['success'] },
@@ -71,7 +71,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('emits scatter placement when annotation is supplied', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'plan',  'hardRequired': ['input'],        'produces': ['tasks'],        'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'],        'produces': ['scoutResults'], 'outputs': ['success'] },
       { 'name': 'merge', 'hardRequired': ['scoutResults'], 'produces': [],       'outputs': ['success'] },
@@ -124,7 +124,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('renders scatter with partition strategy', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'plan',  'hardRequired': ['input'],  'produces': ['tasks'],   'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'],  'produces': [], 'outputs': ['success'] },
     ];
@@ -168,7 +168,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('renders scatter with append strategy', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],   'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': [], 'outputs': ['success'] },
     ];
@@ -211,7 +211,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('throws when partitions map references an outcome not in outcomes', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],   'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': [], 'outputs': ['success'] },
     ];
@@ -240,7 +240,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('terminal annotation routes an alternate outcome to an emitted terminal', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'classify', 'hardRequired': ['input'],          'produces': ['classification'], 'outputs': ['success', 'off-topic'] },
       { 'name': 'plan',     'hardRequired': ['classification'], 'produces': [],           'outputs': ['success'] },
     ];
@@ -269,7 +269,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('auto-wires every declared output port to the next derived stage', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'fetch',     'hardRequired': ['url'],     'produces': ['raw'],    'outputs': ['success', 'cached', 'skipped', 'error', 'unknown'] },
       { 'name': 'normalize', 'hardRequired': ['raw'],     'produces': [], 'outputs': ['success'] },
     ];
@@ -297,7 +297,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('terminal overrides individual ports without disturbing others', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'fetch',     'hardRequired': ['url'], 'produces': ['raw'],    'outputs': ['success', 'cached', 'error'] },
       { 'name': 'normalize', 'hardRequired': ['raw'], 'produces': [], 'outputs': ['success'] },
     ];
@@ -322,7 +322,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('throws when a terminal references a port not in the contract outputs', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'fetch', 'hardRequired': ['url'], 'produces': [], 'outputs': ['success', 'error'] },
     ];
     assert.throws(
@@ -342,7 +342,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('embeddedDAGs annotation renders an EmbeddedDAGNode placement', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'prepare', 'hardRequired': ['input'],   'produces': ['payload'], 'outputs': ['success'] },
       { 'name': 'invoke',  'hardRequired': ['payload'], 'produces': [],  'outputs': ['success', 'error'] },
     ];
@@ -385,7 +385,7 @@ void describe('DAGDeriver.derive', () => {
       childResult = '';
     }
 
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': [], 'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
@@ -402,7 +402,7 @@ void describe('DAGDeriver.derive', () => {
               'input':  { 'childInput':  'parent.input' },
               'output': { 'parent.result': 'childResult' },
             },
-          } satisfies DAGDeriverEmbeddedDAG<EmbeddedDAGChildState>,
+          } satisfies DAGDeriverEmbeddedDAGType<EmbeddedDAGChildState>,
         },
         'terminals': {
           'invoke': [{ 'outcome': 'success', 'emit': { 'name': 'mapping-end', 'outcome': 'completed' } }],
@@ -420,7 +420,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('embeddedDAGs auto-wires every declared port and honors terminal overrides', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'invoke', 'hardRequired': ['input'],  'produces': ['result'], 'outputs': ['success', 'cached', 'error'] },
       { 'name': 'finish', 'hardRequired': ['result'], 'produces': [],   'outputs': ['success'] },
     ];
@@ -453,7 +453,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('throws when a terminal references a port not in the embeddedDAG outputs', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': [], 'outputs': ['success', 'error'] },
     ];
     assert.throws(
@@ -479,7 +479,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('throws when an operation appears in both scatters and embeddedDAGs', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],       'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['scoutResult'], 'outputs': ['success'] },
       { 'name': 'merge', 'hardRequired': ['scoutResult'], 'produces': [], 'outputs': ['success'] },
@@ -519,7 +519,7 @@ void describe('DAGDeriver.derive', () => {
     // Embedded-DAG placements cannot terminate the run; the parent DAG
     // owns END, so the embedded-DAG step must be followed by another
     // parent placement that routes to null.
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'prepare',      'hardRequired': ['input'],        'produces': ['intermediate'], 'outputs': ['success'] },
       { 'name': 'invoke-child', 'hardRequired': ['intermediate'], 'produces': ['childResult'],  'outputs': ['success'] },
       { 'name': 'finalize',     'hardRequired': ['childResult'],  'produces': [],        'outputs': ['success'] },
@@ -543,7 +543,7 @@ void describe('DAGDeriver.derive', () => {
       },
     });
 
-    const childContracts: OperationContract[] = [
+    const childContracts: OperationContractType[] = [
       { 'name': 'child-step', 'hardRequired': ['input'], 'produces': [], 'outputs': ['success'] },
     ];
     const childNodes = childContracts.map(contractNode);
@@ -572,7 +572,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('produces a DAG that registers cleanly on a Dagonizer', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'first',  'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
       { 'name': 'second', 'hardRequired': ['x'],     'produces': [], 'outputs': ['success'] },
     ];
@@ -597,7 +597,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('throws DAGError when an output port has no successor and no terminal annotation', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'fetch', 'hardRequired': ['url'], 'produces': [], 'outputs': ['success', 'error'] },
     ];
     assert.throws(
@@ -624,7 +624,7 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('throws DAGError when a scatter outcome has no successor and no terminal annotation', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],   'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': [], 'outputs': ['success'] },
     ];
@@ -680,7 +680,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
     new ContractNode<NodeStateBase>({ name, 'outputs': [...outputs], 'hardRequired': [], 'produces': [] }, output);
 
   void it('basic emit: synthesizes a TerminalNode placement and routes the output port to it', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail'] },
       { 'name': 'plan',     'hardRequired': ['classification'], 'produces': [],   'outputs': ['success'] },
     ];
@@ -718,7 +718,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   });
 
   void it('shared terminal: two operations with same emit name produce exactly one TerminalNode', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'step-a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success', 'fail'] },
       { 'name': 'step-b', 'hardRequired': ['x'],     'produces': [], 'outputs': ['success', 'fail'] },
     ];
@@ -754,7 +754,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   });
 
   void it('outcome conflict: two emit entries with same name but different outcomes throw DAGError', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'step-a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success', 'fail'] },
       { 'name': 'step-b', 'hardRequired': ['x'],     'produces': [], 'outputs': ['success', 'fail'] },
     ];
@@ -784,7 +784,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   });
 
   void it('name collision with operation: emit name matching an existing operation throws DAGError', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'classify', 'hardRequired': ['input'],          'produces': ['classification'], 'outputs': ['success', 'fail'] },
       { 'name': 'cleanup',  'hardRequired': ['classification'], 'produces': [],           'outputs': ['success'] },
     ];
@@ -810,7 +810,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   });
 
   void it('execution: triggering the failing path marks state.lifecycle.kind as failed', async () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail'] },
       { 'name': 'plan',     'hardRequired': ['classification'], 'produces': [],  'outputs': ['success'] },
     ];
@@ -841,7 +841,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   });
 
   void it('multiple emit terminals (completed and failed) coexist on one operation', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail', 'retry'] },
       { 'name': 'plan',     'hardRequired': ['classification'], 'produces': [],  'outputs': ['success'] },
     ];
@@ -880,7 +880,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   });
 });
 
-void describe('DAGDeriverEmbeddedDAG<TChildState>: typed stateMapping', () => {
+void describe('DAGDeriverEmbeddedDAGType<TChildState>: typed stateMapping', () => {
   /** Concrete child state with known domain fields. */
   class MyChildState extends NodeStateBase {
     payload: string = '';
@@ -888,12 +888,12 @@ void describe('DAGDeriverEmbeddedDAG<TChildState>: typed stateMapping', () => {
   }
 
   void it('positive: typed embeddedDAG annotation compiles and produces correct EmbeddedDAGNode stateMapping', () => {
-    const contracts: OperationContract[] = [
+    const contracts: OperationContractType[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': [], 'outputs': ['success', 'error'] },
     ];
 
     // Typed annotation: 'payload' and 'result' must be keys of MyChildState.
-    const typedEmbeddedDAG: DAGDeriverEmbeddedDAG<MyChildState> = {
+    const typedEmbeddedDAG: DAGDeriverEmbeddedDAGType<MyChildState> = {
       'dag':     'child-dag',
       'outputs': ['success', 'error'],
       'stateMapping': {
@@ -929,12 +929,12 @@ void describe('DAGDeriverEmbeddedDAG<TChildState>: typed stateMapping', () => {
   });
 
   void it('untyped: omitting the generic defaults to NodeStateInterface (loose string paths)', () => {
-    // DAGDeriverEmbeddedDAG without a generic; same as the pre-existing usage.
-    const contracts: OperationContract[] = [
+    // DAGDeriverEmbeddedDAGType without a generic; same as the pre-existing usage.
+    const contracts: OperationContractType[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': [], 'outputs': ['success'] },
     ];
 
-    const annotation: DAGDeriverEmbeddedDAG = {
+    const annotation: DAGDeriverEmbeddedDAGType = {
       'dag':     'any-child-dag',
       'outputs': ['success'],
       'stateMapping': {
@@ -970,7 +970,7 @@ void describe('DAGDeriverEmbeddedDAG<TChildState>: typed stateMapping', () => {
     // The typed annotation catches unknown child-state keys at compile time.
     // Assign to the stateMapping type directly so @ts-expect-error targets the erroring line.
     // @ts-expect-error: 'nonExistentKey' is not a key of MyChildState
-    const _bad: DAGDeriverEmbeddedDAG<MyChildState>['stateMapping'] = { 'input': { 'nonExistentKey': 'parent.seed' } };
+    const _bad: DAGDeriverEmbeddedDAGType<MyChildState>['stateMapping'] = { 'input': { 'nonExistentKey': 'parent.seed' } };
     void _bad;
   });
 });

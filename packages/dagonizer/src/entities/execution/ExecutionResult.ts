@@ -13,7 +13,7 @@
  * surfaces as `error` on the parent.
  *
  * `state` is opaque (`{ type: 'object' }`) at the JSON boundary.
- * `ExecutionResultInterface<TState>` extends this via `Omit<ExecutionResult, 'state'>`
+ * `ExecutionResultType<TState>` extends this via `Omit<ExecutionResult, 'state'>`
  * and narrows `state` to the concrete `TState` generic.
  */
 
@@ -41,7 +41,7 @@ export const InterruptionInfoSchema = {
 } as const;
 
 /** TypeScript type derived from `InterruptionInfoSchema` via `json-schema-to-ts`. */
-export type InterruptionInfo = FromSchema<typeof InterruptionInfoSchema>;
+export type InterruptionInfoType = FromSchema<typeof InterruptionInfoSchema>;
 
 export const ExecutionResultSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ExecutionResult',
@@ -70,12 +70,12 @@ export const ExecutionResultSchema = {
 } as const;
 
 /** TypeScript type derived from `ExecutionResultSchema` via `json-schema-to-ts`. */
-export type ExecutionResult = FromSchema<typeof ExecutionResultSchema>;
+export type ExecutionResultWireType = FromSchema<typeof ExecutionResultSchema>;
 
 /**
  * Result of flow execution.
  *
- * Extends `ExecutionResult` entity via `Omit<ExecutionResult, 'state' | 'terminalOutcome'>`:
+ * Extends `ExecutionResultWireType` entity via `Omit<ExecutionResultWireType, 'state' | 'terminalOutcome'>`:
  *   - `state` is narrowed from `object` to the concrete `TState` generic
  *   - `terminalOutcome` is widened from optional to required (always set by the engine; null when no terminal hit)
  *
@@ -88,9 +88,8 @@ export type ExecutionResult = FromSchema<typeof ExecutionResultSchema>;
  * the flow exited through, or `null` when no terminal was hit (null route,
  * error, or abort path).
  */
-export interface ExecutionResultInterface<TState extends NodeStateInterface>
-  extends Omit<ExecutionResult, 'state' | 'terminalOutcome' | 'interruptedAt'> {
+export type ExecutionResultType<TState extends NodeStateInterface> = Omit<ExecutionResultWireType, 'state' | 'terminalOutcome' | 'interruptedAt'> & {
   'state': TState;
   'terminalOutcome': 'completed' | 'failed' | null;
-  'interruptedAt':   InterruptionInfo | null;
-}
+  'interruptedAt':   InterruptionInfoType | null;
+};

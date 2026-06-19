@@ -14,7 +14,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -31,7 +31,7 @@ export class ExtractQuerySalvageNode extends ScalarNode<ArchivistState, 'done', 
   readonly name = 'extract-query-salvage';
   readonly outputs = ['done'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.terms = state.query
       .toLowerCase()
       .split(/\s+/u)
@@ -51,7 +51,7 @@ export class DecideToolsSalvageNode extends ScalarNode<ArchivistState, 'done', A
   readonly name = 'decide-tools-salvage';
   readonly outputs = ['done'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
     context.services.logger.info('decide-tools-salvage: minimal tool plan (web_search_books)');
     return NodeOutputBuilder.of('done');
@@ -67,7 +67,7 @@ export class ClassifyIntentSalvageNode extends ScalarNode<ArchivistState, 'done'
   readonly name = 'classify-intent-salvage';
   readonly outputs = ['done'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.intent = 'search';
     context.services.logger.info('classify-intent-salvage: defaulting intent → search');
     return NodeOutputBuilder.of('done');
@@ -83,7 +83,7 @@ export class RankCandidatesSalvageNode extends ScalarNode<ArchivistState, 'done'
   readonly name = 'rank-candidates-salvage';
   readonly outputs = ['done'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     context.services.logger.info(
       `rank-candidates-salvage: passing ${String(state.candidates.length)} candidates through unranked`,
     );
@@ -104,7 +104,7 @@ export class ComposeResponseSalvageNode extends ScalarNode<ArchivistState, 'done
   readonly name = 'compose-salvage';
   readonly outputs = ['done'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.draft = COMPOSE_SALVAGE_DRAFT;
     context.services.logger.warn('compose-salvage: emitting canned acknowledgement after retry budget exhausted');
     return NodeOutputBuilder.of('done');
@@ -124,7 +124,7 @@ export class ComposeEmptyResponseSalvageNode extends ScalarNode<ArchivistState, 
   readonly name = 'compose-empty-salvage';
   readonly outputs = ['done'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.draft = EMPTY_SALVAGE_DRAFT;
     context.services.logger.warn('compose-empty-salvage: emitting canned empty-result acknowledgement after retry budget exhausted');
     return NodeOutputBuilder.of('done');
@@ -143,7 +143,7 @@ export class ComposeMemoryResponseSalvageNode extends ScalarNode<ArchivistState,
   readonly name = 'compose-memory-salvage';
   readonly outputs = ['done'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.draft = MEMORY_SALVAGE_DRAFT;
     context.services.logger.warn('compose-memory-salvage: emitting canned acknowledgement after retry budget exhausted');
     return NodeOutputBuilder.of('done');

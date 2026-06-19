@@ -14,7 +14,7 @@ import { strict as assert } from 'node:assert';
 
 import { ArchivistState } from '../../ArchivistState.ts';
 import { mergeCandidates } from '../../nodes/mergeCandidates.ts';
-import type { Candidate } from '../../entities/Book.ts';
+import type { CandidateType } from '../../entities/Book.ts';
 import { BookBuilder } from '../../entities/Book.ts';
 
 // ── Minimal context fixture ───────────────────────────────────────────────────
@@ -35,7 +35,7 @@ class MergeFallbackFixture {
     } as unknown as Parameters<typeof mergeCandidates.runItem>[1];
   }
 
-  static liveCandidate(isbn: string, score: number): Candidate {
+  static liveCandidate(isbn: string, score: number): CandidateType {
     return {
       'book':   BookBuilder.from({ isbn, 'title': `Title ${isbn}`, 'authors': ['Author'] }),
       score,
@@ -43,7 +43,7 @@ class MergeFallbackFixture {
     };
   }
 
-  static priorCandidate(isbn: string): Candidate {
+  static priorCandidate(isbn: string): CandidateType {
     return {
       'book':   BookBuilder.from({ isbn, 'title': `Prior ${isbn}`, 'authors': ['Prior Author'] }),
       'score':  0.5,

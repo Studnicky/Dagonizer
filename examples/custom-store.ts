@@ -8,7 +8,7 @@
  *   4. snapshot / restore round-trip (persists to a second instance)
  *
  * The MapStore in examples/dags/custom-store.ts extends BaseStore with a
- * real Map<string, JsonValue> backing. This entry point exercises every public
+ * real Map<string, JsonValueType> backing. This entry point exercises every public
  * method so the implementation is verifiably runnable.
  *
  * Run: npx tsx examples/custom-store.ts
@@ -57,7 +57,7 @@ process.stdout.write(`[update] counter after +10: ${String(score3)}\n`);
 
 // ── 4. snapshot / restore round-trip ─────────────────────────────────────────
 //
-// snapshot() returns a StoreSnapshot envelope ({ version, type, entries }).
+// snapshot() returns a StoreSnapshotType envelope ({ version, type, entries }).
 // restore(snapshot) validates type + version before calling performRestoreEntries.
 // A fresh MapStore instance restores to the identical state.
 

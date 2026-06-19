@@ -31,7 +31,7 @@ import type {
   RegistryModuleInterface,
 } from '@studnicky/dagonizer/contracts';
 import { NodeOutputBuilder } from '@studnicky/dagonizer/entities';
-import type { JsonObject, NodeContextInterface, NodeOutputInterface } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType, NodeContextType, NodeOutputType } from '@studnicky/dagonizer/entities';
 import { ConformanceRegistry } from '@studnicky/dagonizer/testing';
 import type { ConformanceState } from '@studnicky/dagonizer/testing';
 
@@ -48,7 +48,7 @@ class ScatterKillerNode extends ScalarNode<ConformanceState, 'done'> {
   readonly 'name' = 'scatter-counter';
   readonly 'outputs' = ['done'] as const;
 
-  protected override async executeOne(state: ConformanceState, _context: NodeContextInterface): Promise<NodeOutputInterface<'done'>> {
+  protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
     const current = state.getMetadata<number>('currentItem');
     if (current === KILL_ITEM) {
       // Silent death: terminate this worker thread mid-request. No result is
@@ -82,7 +82,7 @@ function buildKillBundle(): RegistryBundleInterface {
 }
 
 const registry: RegistryModuleInterface = {
-  async instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     return buildKillBundle();
   },
 };

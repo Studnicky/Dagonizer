@@ -1,4 +1,4 @@
-export type { Book, BookAvailability, BookIdentity, BookInput, BookPublication, Candidate, Money } from './entities.js';
+export type { BookAvailabilityType, BookIdentityType, BookInputType, BookPublicationType, BookType, CandidateType, MoneyType } from './entities.js';
 export {
   BookAvailabilitySchema,
   BookIdentitySchema,

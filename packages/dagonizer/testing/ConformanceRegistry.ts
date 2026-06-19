@@ -56,10 +56,10 @@
 import type { NodeInterface } from '../dist/contracts/NodeInterface.js';
 import type { RegistryBundleInterface } from '../dist/contracts/RegistryBundleInterface.js';
 import type { RegistryModuleInterface } from '../dist/contracts/RegistryModuleInterface.js';
-import type { DAG } from '../dist/entities/dag/DAG.js';
-import type { JsonObject } from '../dist/entities/json.js';
-import type { NodeContextInterface } from '../dist/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../dist/entities/node/NodeOutput.js';
+import type { DAGType } from '../dist/entities/dag/DAG.js';
+import type { JsonObjectType } from '../dist/entities/json.js';
+import type { NodeContextType } from '../dist/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../dist/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
 import { CheckpointRestoreAdapterFn, NodeStateBase, ScalarNode, Timeout } from '@studnicky/dagonizer';
@@ -110,7 +110,7 @@ export class ConformanceState extends NodeStateBase {
     this.gatheredItems = [];
   }
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       'value': this.value,
       'executedNodes': [...this.executedNodes],
@@ -135,7 +135,7 @@ export class ConformanceState extends NodeStateBase {
 }
 
 /** Restore a ConformanceState from a snapshot (the registry's restoreState). */
-function restoreConformanceState(snapshot: JsonObject): ConformanceState {
+function restoreConformanceState(snapshot: JsonObjectType): ConformanceState {
   const instance = new ConformanceState();
   instance.applySnapshot(snapshot);
   return instance;
@@ -163,7 +163,7 @@ function sleepUntilAborted(signal: AbortSignal, ceilingMs: number): Promise<void
 class RecorderNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'recorder';
   override readonly outputs = ['done'] as const;
-  protected override async executeOne(state: ConformanceState, _context: NodeContextInterface<undefined>): Promise<NodeOutputInterface<'done'>> {
+  protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'done'>> {
     state.executedNodes.push('recorder');
     return { 'errors': [], 'output': 'done' };
   }
@@ -172,7 +172,7 @@ class RecorderNode extends ScalarNode<ConformanceState, 'done'> {
 class MutatorNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'mutator';
   override readonly outputs = ['done'] as const;
-  protected override async executeOne(state: ConformanceState, _context: NodeContextInterface<undefined>): Promise<NodeOutputInterface<'done'>> {
+  protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'done'>> {
     state.value = 99;
     return { 'errors': [], 'output': 'done' };
   }
@@ -181,7 +181,7 @@ class MutatorNode extends ScalarNode<ConformanceState, 'done'> {
 class ErrorEmitterNode extends ScalarNode<ConformanceState, 'error'> {
   override readonly name = 'error-emitter';
   override readonly outputs = ['error'] as const;
-  protected override async executeOne(state: ConformanceState, _context: NodeContextInterface<undefined>): Promise<NodeOutputInterface<'error'>> {
+  protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'error'>> {
     state.collectError({
       'code': 'TEST_ERROR',
       'context': {},
@@ -200,8 +200,8 @@ class TimeoutSleeperNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly timeout = Timeout.ofMs(TIMEOUT_SLEEPER_TIMEOUT_MS);
   protected override async executeOne(
     _state: ConformanceState,
-    context: NodeContextInterface<undefined>,
-  ): Promise<NodeOutputInterface<'done'>> {
+    context: NodeContextType<undefined>,
+  ): Promise<NodeOutputType<'done'>> {
     await sleepUntilAborted(context.signal, SLEEPER_SAFETY_CEILING_MS);
     return { 'errors': [], 'output': 'done' };
   }
@@ -212,8 +212,8 @@ class AbortSleeperNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly outputs = ['done'] as const;
   protected override async executeOne(
     state: ConformanceState,
-    context: NodeContextInterface<undefined>,
-  ): Promise<NodeOutputInterface<'done'>> {
+    context: NodeContextType<undefined>,
+  ): Promise<NodeOutputType<'done'>> {
     state.began = true;
     await sleepUntilAborted(context.signal, SLEEPER_SAFETY_CEILING_MS);
     return { 'errors': [], 'output': 'done' };
@@ -229,7 +229,7 @@ class AbortSleeperNode extends ScalarNode<ConformanceState, 'done'> {
 class ScatterCounterNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'scatter-counter';
   override readonly outputs = ['done'] as const;
-  protected override async executeOne(state: ConformanceState, _context: NodeContextInterface<undefined>): Promise<NodeOutputInterface<'done'>> {
+  protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'done'>> {
     state.value += 1;
     return { 'errors': [], 'output': 'done' };
   }
@@ -264,7 +264,7 @@ const DAG_CONTEXT = {
 /**
  * Build a simple single-node DAG (the body DAG that runs inside the host).
  */
-function singleNodeDag(dagName: string, nodeName: string, output: string): DAG {
+function singleNodeDag(dagName: string, nodeName: string, output: string): DAGType {
   return {
     '@context': DAG_CONTEXT,
     '@id': `urn:conformance:dag:${dagName}`,
@@ -287,7 +287,7 @@ function singleNodeDag(dagName: string, nodeName: string, output: string): DAG {
         'outcome': 'completed',
       },
     ],
-  } as unknown as DAG;
+  } as unknown as DAGType;
 }
 
 /**
@@ -300,7 +300,7 @@ function singleNodeDag(dagName: string, nodeName: string, output: string): DAG {
  * This is required so conformance law assertions on parent state reflect
  * mutations made inside the contained execution.
  */
-function embeddingDag(runnerName: string, childDagName: string, _outputs: string[]): DAG {
+function embeddingDag(runnerName: string, childDagName: string, _outputs: string[]): DAGType {
   // All embedded DAG outputs route to a shared 'end' TerminalNode.
   // The _outputs parameter names the possible outcomes of the child DAG (e.g. 'done', 'error');
   // each is routed to the parent's terminal placement.
@@ -338,7 +338,7 @@ function embeddingDag(runnerName: string, childDagName: string, _outputs: string
         'outcome': 'completed',
       },
     ],
-  } as unknown as DAG;
+  } as unknown as DAGType;
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +351,7 @@ function embeddingDag(runnerName: string, childDagName: string, _outputs: string
 /** Name of the DAG that runs inside each scatter item clone. */
 export const SCATTER_ITEM_BODY_DAG = 'conformance-scatter-item-body';
 
-function scatterItemBodyDag(): DAG {
+function scatterItemBodyDag(): DAGType {
   return {
     '@context': DAG_CONTEXT,
     '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}`,
@@ -374,7 +374,7 @@ function scatterItemBodyDag(): DAG {
         'outcome': 'completed',
       },
     ],
-  } as unknown as DAG;
+  } as unknown as DAGType;
 }
 
 /**
@@ -384,7 +384,7 @@ function scatterItemBodyDag(): DAG {
  * `scatterItems` array. The scatter-counter node increments clone.value so
  * the gather result is a per-item integer array — deterministic and comparable.
  */
-function scatterDag(runnerName: string): DAG {
+function scatterDag(runnerName: string): DAGType {
   return {
     '@context': DAG_CONTEXT,
     '@id': `urn:conformance:dag:${runnerName}`,
@@ -417,7 +417,7 @@ function scatterDag(runnerName: string): DAG {
         'outcome': 'completed',
       },
     ],
-  } as unknown as DAG;
+  } as unknown as DAGType;
 }
 
 // ---------------------------------------------------------------------------
@@ -496,7 +496,7 @@ const CONFORMANCE_NODES: NodeInterface<NodeStateInterface, string, unknown>[] = 
  * clone). This DAG is registered so both parent-side and host-side dispatchers
  * can resolve it when the scatter dag-body is dispatched through the container.
  */
-const CONFORMANCE_DAGS: DAG[] = [
+const CONFORMANCE_DAGS: DAGType[] = [
   bodyLaw1, bodyLaw2, bodyLaw3, bodyLaw4, bodyLaw5, bodyLaw6, bodyLaw9,
   scatterItemBody,
   runnerLaw1, runnerLaw2, runnerLaw3, runnerLaw4, runnerLaw5, runnerLaw6,
@@ -516,7 +516,7 @@ export class ConformanceRegistry {
       },
       'services': undefined,
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'restoreState': CheckpointRestoreAdapterFn.wrap((snap: JsonObject) => restoreConformanceState(snap) as NodeStateInterface),
+      'restoreState': CheckpointRestoreAdapterFn.wrap((snap: JsonObjectType) => restoreConformanceState(snap) as NodeStateInterface),
     };
   }
 }
@@ -526,7 +526,7 @@ export class ConformanceRegistry {
 // ---------------------------------------------------------------------------
 
 const registryModule: RegistryModuleInterface = {
-  async instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     return ConformanceRegistry.bundle();
   },
 };

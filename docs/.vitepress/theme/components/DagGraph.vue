@@ -15,7 +15,7 @@
 
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 
-import type { DAG } from '../../../../packages/dagonizer/src/entities/dag/DAG.js';
+import type { DAGType } from '../../../../packages/dagonizer/src/entities/dag/DAG.js';
 
 import DiagramFrame from './DiagramFrame.vue';
 import GraphDpad from './graph/GraphDpad.vue';
@@ -25,8 +25,8 @@ import { AnimatedDagGraph } from './viz/AnimatedDagGraph.ts';
 import type { DagVizEvent } from './viz/DagVizMachine.ts';
 
 const props = defineProps<{
-  dag: DAG;
-  embeddedDAGs?: ReadonlyMap<string, DAG>;
+  dag: DAGType;
+  embeddedDAGs?: ReadonlyMap<string, DAGType>;
   nodeKinds?: Readonly<Record<string, string>>;
   expandAll?: boolean;
   ariaLabel?: string;

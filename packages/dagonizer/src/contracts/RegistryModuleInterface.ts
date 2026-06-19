@@ -10,7 +10,7 @@
  * bag via its registry module.
  */
 
-import type { JsonObject } from '../entities/json.js';
+import type { JsonObjectType } from '../entities/json.js';
 
 import type { RegistryBundleInterface } from './RegistryBundleInterface.js';
 
@@ -24,5 +24,5 @@ export interface RegistryModuleInterface<TServices = unknown> {
    * the registry module interprets it to wire its dependencies. `TServices`
    * defaults to `unknown`; a module that knows its services shape narrows it.
    */
-  instantiate(servicesConfig: JsonObject): Promise<RegistryBundleInterface<TServices>>;
+  instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface<TServices>>;
 }

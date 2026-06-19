@@ -13,9 +13,9 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
@@ -23,7 +23,7 @@ export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered', Archi
   readonly name = 'group-by-year';
   readonly outputs = ['ordered'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {
       context.services.logger.info('group-by-year: nothing to reorder');
       return NodeOutputBuilder.of('ordered');
@@ -39,7 +39,7 @@ export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered', Archi
       if (ya !== yb) return ya - yb;
       return a.position - b.position;
     });
-    const ordered: Candidate[] = indexed.map((entry) => entry.candidate);
+    const ordered: CandidateType[] = indexed.map((entry) => entry.candidate);
     state.candidates = ordered;
     state.shortlist  = ordered;
     const first = ordered[0];

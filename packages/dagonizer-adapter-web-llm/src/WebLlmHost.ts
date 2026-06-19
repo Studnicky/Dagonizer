@@ -18,14 +18,14 @@
  * package never instantiates its own Ajv.
  */
 
-import type { EntityValidator } from '@studnicky/dagonizer/validation';
+import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
-export interface WebLlmInitReportInterface {
+export type WebLlmInitReportType = {
   readonly progress: number;
   readonly text: string;
-}
+};
 
 export const WebLlmEngineSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer-adapter-web-llm/WebLlmEngine',
@@ -55,28 +55,28 @@ export type WebLlmEngineBaseType = FromSchema<typeof WebLlmEngineSchema>;
 export type WebLlmModuleBaseType = FromSchema<typeof WebLlmModuleSchema>;
 
 /** Chat-completion request the adapter sends to the WebLLM engine. */
-export interface WebLlmCompletionParamsInterface {
+export type WebLlmCompletionParamsType = {
   readonly messages: ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   readonly temperature?: number;
   readonly response_format?: { type: 'json_object' | 'text' };
-}
+};
 
 /** Chat-completion result returned by the WebLLM engine. */
-export interface WebLlmCompletionResultInterface {
+export type WebLlmCompletionResultType = {
   readonly choices: ReadonlyArray<{ message: { content: string } }>;
-}
+};
 
 /**
- * Entity-narrowing interface for the live WebLLM engine. Adds the callable
+ * Entity-narrowing type for the live WebLLM engine. Adds the callable
  * signatures the schema validates only structurally.
  */
-export interface WebLlmEngineInterface extends WebLlmEngineBaseType {
+export type WebLlmEngineType = WebLlmEngineBaseType & {
   chat: {
     completions: {
-      create(params: WebLlmCompletionParamsInterface): Promise<WebLlmCompletionResultInterface>;
+      create(params: WebLlmCompletionParamsType): Promise<WebLlmCompletionResultType>;
     };
   };
-}
+};
 
 /**
  * Entity-narrowing interface for the imported WebLLM module. Adds the
@@ -85,8 +85,8 @@ export interface WebLlmEngineInterface extends WebLlmEngineBaseType {
 export interface WebLlmModuleInterface extends WebLlmModuleBaseType {
   CreateMLCEngine(
     model: string,
-    options?: { initProgressCallback?: (report: WebLlmInitReportInterface) => void },
-  ): Promise<WebLlmEngineInterface>;
+    options?: { initProgressCallback?: (report: WebLlmInitReportType) => void },
+  ): Promise<WebLlmEngineType>;
 }
 
 /**
@@ -95,7 +95,7 @@ export interface WebLlmModuleInterface extends WebLlmModuleBaseType {
  * (`Validator.compile`). `#boot` narrows the resolved module through
  * `.validate(value)` at the import boundary.
  */
-export const webLlmModuleValidator: EntityValidator<WebLlmModuleInterface> =
+export const webLlmModuleValidator: EntityValidatorInterface<WebLlmModuleInterface> =
   Validator.compile<WebLlmModuleInterface>(WebLlmModuleSchema);
 
 /**
@@ -103,5 +103,5 @@ export const webLlmModuleValidator: EntityValidator<WebLlmModuleInterface> =
  * through the engine's shared Ajv (`Validator.compile`). `#boot` narrows
  * the engine through `.validate(value)` before first chat completion.
  */
-export const webLlmEngineValidator: EntityValidator<WebLlmEngineInterface> =
-  Validator.compile<WebLlmEngineInterface>(WebLlmEngineSchema);
+export const webLlmEngineValidator: EntityValidatorInterface<WebLlmEngineType> =
+  Validator.compile<WebLlmEngineType>(WebLlmEngineSchema);

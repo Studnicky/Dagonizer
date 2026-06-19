@@ -19,8 +19,8 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
-import type { BaseEmbedderOptions } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 
 import { GeminiApiEmbedResponseValidator } from './GeminiApiEmbedResponse.js';
 
@@ -37,7 +37,7 @@ const GEMINI_API_EMBEDDER_DEFAULTS = {
  * from `BaseEmbedderOptions`; the provider default (`text-embedding-004`,
  * 768-dim) is supplied by `GEMINI_API_EMBEDDER_DEFAULTS`.
  */
-export type GeminiApiEmbedderOptions = BaseEmbedderOptions;
+export type GeminiApiEmbedderOptionsType = BaseEmbedderOptionsType;
 
 export class GeminiApiEmbedder extends BaseEmbedder {
   readonly #apiKey: string;
@@ -50,7 +50,7 @@ export class GeminiApiEmbedder extends BaseEmbedder {
    * its `probe()` can return false, letting the cascade route around
    * it cleanly.
    */
-  constructor(apiKey: string, options: GeminiApiEmbedderOptions = {}) {
+  constructor(apiKey: string, options: GeminiApiEmbedderOptionsType = {}) {
     const resolved = { ...GEMINI_API_EMBEDDER_DEFAULTS, ...options };
     super('gemini-api', `Gemini REST (${resolved.model})`, resolved.dimensions, options);
     this.#apiKey = apiKey;
@@ -81,7 +81,7 @@ export class GeminiApiEmbedder extends BaseEmbedder {
    * Probe true when a non-empty API key was supplied. Never throws.
    * Symmetric with `GeminiApiAdapter.probe`.
    */
-  override async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
+  override async probe(_options?: AbortableOptionsType): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 }

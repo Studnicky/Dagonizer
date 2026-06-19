@@ -1,27 +1,27 @@
 /**
- * Embedder: produces a fixed-dimensionality vector for a text input.
+ * EmbedderInterface: produces a fixed-dimensionality vector for a text input.
  *
  * Plugin authors implement this (typically by extending `BaseEmbedder`)
  * to swap embedding backends. The dispatcher's adapter cascade pattern
- * applies: register multiple `Embedder`s, probe at runtime, pick the
- * first available. Mirrors `LlmAdapter` exactly so the registry +
+ * applies: register multiple `EmbedderInterface`s, probe at runtime, pick the
+ * first available. Mirrors `LlmAdapterInterface` exactly so the registry +
  * cascade plumbing is symmetric.
  *
- *   Embedder contract → BaseEmbedder ┐
+ *   EmbedderInterface contract → BaseEmbedder ┐
  *                                    ├─ embed() → retry-wrapped performEmbed()
  *                                    └─ classify(err) returns retryable/non-retryable
  *
- * Why a separate contract from `LlmAdapter`? Chat and embedding are
+ * Why a separate contract from `LlmAdapterInterface`? Chat and embedding are
  * different surfaces (no message list, no tools, no structured output;
  * just text to vector). Forcing them through the same contract would
  * leak chat concerns into embedding-only providers. Keep them parallel
  * but distinct; share the retry plumbing and the error taxonomy.
  */
 
-import type { AbortableOptionsInterface } from './AbortableOptionsInterface.js';
+import type { AbortableOptionsType } from './AbortableOptionsType.js';
 
 /** Implemented by every embedding provider. */
-export interface Embedder {
+export interface EmbedderInterface {
   /** Provider identifier (e.g. `'ollama'`, `'gemini-api'`). */
   readonly id: string;
   /** Human-readable label for logs and UI. */
@@ -40,7 +40,7 @@ export interface Embedder {
    * or fall back. Retry plumbing is provided by `BaseEmbedder`.
    * `options.signal` aborts in-flight requests and retry-loop waits.
    */
-  embed(text: string, options?: AbortableOptionsInterface): Promise<readonly number[]>;
+  embed(text: string, options?: AbortableOptionsType): Promise<readonly number[]>;
 
   /**
    * Batch convenience: embed multiple texts. Default implementation in
@@ -48,7 +48,7 @@ export interface Embedder {
    * native batch endpoints override. Threads `options.signal` into each
    * `embed()` call so the batch aborts cleanly.
    */
-  embedBatch(texts: readonly string[], options?: AbortableOptionsInterface): Promise<readonly (readonly number[])[]>;
+  embedBatch(texts: readonly string[], options?: AbortableOptionsType): Promise<readonly (readonly number[])[]>;
 
   /**
    * Quick availability check. Returns true when this embedder can
@@ -60,7 +60,7 @@ export interface Embedder {
    * `BaseEmbedder` ships a default that returns true; concrete adapters
    * override with a real probe (e.g. credential check, HEAD request).
    */
-  probe(options?: AbortableOptionsInterface): Promise<boolean>;
+  probe(options?: AbortableOptionsType): Promise<boolean>;
 
   /**
    * Bring up any per-session state (model download, websocket
@@ -68,8 +68,8 @@ export interface Embedder {
    * `BaseEmbedder` provides a default empty implementation so consumers
    * don't branch on `connect` vs `undefined`.
    */
-  connect(options?: AbortableOptionsInterface): Promise<void>;
+  connect(options?: AbortableOptionsType): Promise<void>;
 
   /** Tear down any per-session state. No-op default on `BaseEmbedder`. */
-  disconnect(options?: AbortableOptionsInterface): Promise<void>;
+  disconnect(options?: AbortableOptionsType): Promise<void>;
 }

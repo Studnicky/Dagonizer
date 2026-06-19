@@ -20,7 +20,7 @@ import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 type IntentOutput =
   | 'lookup-author'
@@ -43,7 +43,7 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput,
   readonly name = 'classify-intent';
   readonly outputs = ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'off-topic', 'retry', 'salvage'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const summary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;

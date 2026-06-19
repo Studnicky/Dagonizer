@@ -1,5 +1,5 @@
 /**
- * JsonSchema: TypeScript model of JSON Schema draft 2020-12.
+ * JsonSchemaType: TypeScript model of JSON Schema draft 2020-12.
  *
  * Narrow by design: only keywords defined by the 2020-12 core, validation,
  * format-annotation, content, and meta-data vocabularies are representable.
@@ -20,9 +20,9 @@
 
 /**
  * Union of the seven primitive type names defined by JSON Schema 2020-12.
- * Used as the type for the `type` keyword in `JsonSchemaObject`.
+ * Used as the type for the `type` keyword in `JsonSchemaObjectType`.
  */
-export type JsonSchemaTypeName =
+export type JsonSchemaTypeNameType =
   | 'array'
   | 'boolean'
   | 'integer'
@@ -35,19 +35,19 @@ export type JsonSchemaTypeName =
  * TypeScript model of a JSON Schema 2020-12 keyword object.
  *
  * All keyword fields are optional; only the keywords applicable to the
- * schema's type need be present. A `JsonSchema` is either a
- * `JsonSchemaObject` or a boolean (`true` accepts everything, `false`
+ * schema's type need be present. A `JsonSchemaType` is either a
+ * `JsonSchemaObjectType` or a boolean (`true` accepts everything, `false`
  * rejects everything).
  *
- * See `JsonSchema` for the full union, and the file-level comment for the
+ * See `JsonSchemaType` for the full union, and the file-level comment for the
  * list of draft-07 keywords intentionally omitted.
  */
-export interface JsonSchemaObject {
+export type JsonSchemaObjectType = {
   // ── Core: identifiers and references ────────────────────────────
   $schema?: string;
   $id?: string;
   $ref?: string;
-  $defs?: { [name: string]: JsonSchema };
+  $defs?: { [name: string]: JsonSchemaType };
   $anchor?: string;
   $dynamicAnchor?: string;
   $dynamicRef?: string;
@@ -55,32 +55,32 @@ export interface JsonSchemaObject {
   $comment?: string;
 
   // ── Applicators: composition ────────────────────────────────────
-  allOf?: JsonSchema[];
-  anyOf?: JsonSchema[];
-  oneOf?: JsonSchema[];
-  not?: JsonSchema;
+  allOf?: JsonSchemaType[];
+  anyOf?: JsonSchemaType[];
+  oneOf?: JsonSchemaType[];
+  not?: JsonSchemaType;
 
   // ── Applicators: conditional ────────────────────────────────────
-  if?: JsonSchema;
-  then?: JsonSchema;
-  else?: JsonSchema;
+  if?: JsonSchemaType;
+  then?: JsonSchemaType;
+  else?: JsonSchemaType;
 
   // ── Applicators: objects ────────────────────────────────────────
-  properties?: { [name: string]: JsonSchema };
-  patternProperties?: { [regex: string]: JsonSchema };
-  additionalProperties?: JsonSchema;
-  propertyNames?: JsonSchema;
-  unevaluatedProperties?: JsonSchema;
-  dependentSchemas?: { [name: string]: JsonSchema };
+  properties?: { [name: string]: JsonSchemaType };
+  patternProperties?: { [regex: string]: JsonSchemaType };
+  additionalProperties?: JsonSchemaType;
+  propertyNames?: JsonSchemaType;
+  unevaluatedProperties?: JsonSchemaType;
+  dependentSchemas?: { [name: string]: JsonSchemaType };
 
   // ── Applicators: arrays ─────────────────────────────────────────
-  prefixItems?: JsonSchema[];
-  items?: JsonSchema;
-  contains?: JsonSchema;
-  unevaluatedItems?: JsonSchema;
+  prefixItems?: JsonSchemaType[];
+  items?: JsonSchemaType;
+  contains?: JsonSchemaType;
+  unevaluatedItems?: JsonSchemaType;
 
   // ── Validation: any instance ────────────────────────────────────
-  type?: JsonSchemaTypeName | JsonSchemaTypeName[];
+  type?: JsonSchemaTypeNameType | JsonSchemaTypeNameType[];
   enum?: unknown[];
   const?: unknown;
 
@@ -115,7 +115,7 @@ export interface JsonSchemaObject {
   // ── Content ─────────────────────────────────────────────────────
   contentEncoding?: string;
   contentMediaType?: string;
-  contentSchema?: JsonSchema;
+  contentSchema?: JsonSchemaType;
 
   // ── Meta-data ───────────────────────────────────────────────────
   title?: string;
@@ -132,4 +132,4 @@ export interface JsonSchemaObject {
  * `true` is the schema that accepts every instance; `false` is the schema
  * that rejects every instance.
  */
-export type JsonSchema = JsonSchemaObject | boolean;
+export type JsonSchemaType = JsonSchemaObjectType | boolean;

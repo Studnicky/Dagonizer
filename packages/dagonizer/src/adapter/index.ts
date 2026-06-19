@@ -2,7 +2,7 @@
  * @studnicky/dagonizer/adapter: public adapter contract surface.
  *
  * Every LLM transport plugin in the ecosystem (Gemini API, Groq, Mistral,
- * Cerebras, OpenRouter, …) implements `LlmAdapter` and typically extends
+ * Cerebras, OpenRouter, …) implements `LlmAdapterInterface` and typically extends
  * `BaseAdapter` to inherit retry + error classification. Adapter packages
  * depend on this subpath for the contract; the dispatcher and consumers
  * pull the same types through the same export so there's exactly one
@@ -10,18 +10,18 @@
  */
 
 export type {
-  AdapterCapabilities,
-  ChatMessage,
-  ChatRequest,
-  ChatResponse,
-  ChatResponseMessage,
-  LlmAdapter,
-  LlmOutputSchema,
-  PartialChatRequest,
-  TokenUsage,
-  ToolCall,
-  ToolChoice,
-  ToolDefinition,
+  AdapterCapabilitiesType,
+  ChatMessageType,
+  ChatRequestType,
+  ChatResponseType,
+  ChatResponseMessageType,
+  LlmAdapterInterface,
+  LlmOutputSchemaType,
+  PartialChatRequestType,
+  TokenUsageType,
+  ToolCallType,
+  ToolChoiceType,
+  ToolDefinitionType,
 } from './LlmAdapter.js';
 
 export {
@@ -47,53 +47,53 @@ export {
   DEFAULT_MAX_ATTEMPTS,
 } from './BaseAdapterCore.js';
 export type {
-  BaseAdapterCoreOptions,
-  BaseAdapterCoreOptionsResolved,
+  BaseAdapterCoreOptionsType,
+  BaseAdapterCoreOptionsResolvedType,
 } from './BaseAdapterCore.js';
 
 export { BaseAdapter } from './BaseAdapter.js';
 
 export { OpenAiCompatibleAdapter } from './OpenAiCompatibleAdapter.js';
 export type {
-  OpenAiCompatibleAdapterOptions,
-  OpenAiCompatibleConfig,
+  OpenAiCompatibleAdapterOptionsType,
+  OpenAiCompatibleConfigType,
 } from './OpenAiCompatibleAdapter.js';
 
 // `OpenAiResponseBody` is a schema entity (canonical home `entities/adapter/`).
 // Re-exported here so the OpenAI-compatible wire shape stays reachable through
 // the `./adapter` public subpath alongside the adapter that parses it.
 export { OpenAiResponseBodySchema } from '../entities/adapter/OpenAiResponseBody.js';
-export type { OpenAiResponseBody } from '../entities/adapter/OpenAiResponseBody.js';
+export type { OpenAiResponseBodyType } from '../entities/adapter/OpenAiResponseBody.js';
 
 export {
   Classifications,
   LlmError,
 } from './LlmError.js';
-export type { ErrorClassification, LlmErrorReason } from './LlmError.js';
+export type { ErrorClassificationType, LlmErrorReasonType } from './LlmError.js';
 
 export { AdapterDescriptor } from './AdapterDescriptor.js';
-export type { AdapterDescriptorShape } from './AdapterDescriptor.js';
+export type { AdapterDescriptorShapeType } from './AdapterDescriptor.js';
 
 export { ToolCallCodec } from './ToolCallCodec.js';
 
 export { BaseRegistry } from './BaseRegistry.js';
 
 export { LlmAdapterRegistry } from './LlmAdapterRegistry.js';
-export type { AdapterFactory } from './LlmAdapterRegistry.js';
+export type { AdapterFactoryType } from './LlmAdapterRegistry.js';
 
 export { BaseCascade } from './BaseCascade.js';
-export type { CascadePreference } from './BaseCascade.js';
+export type { CascadePreferenceType } from './BaseCascade.js';
 
 export { LlmAdapterCascade } from './LlmAdapterCascade.js';
 
-// ── Embedder surface (parallel to LlmAdapter) ──────────────────────────────
-export type { Embedder } from '../contracts/Embedder.js';
+// ── EmbedderInterface surface (parallel to LlmAdapterInterface) ──────────────────────────────
+export type { EmbedderInterface } from '../contracts/EmbedderInterface.js';
 
 export { BaseEmbedder } from './BaseEmbedder.js';
-export type { BaseEmbedderOptions } from './BaseEmbedder.js';
+export type { BaseEmbedderOptionsType } from './BaseEmbedder.js';
 
 export { EmbedderRegistry } from './EmbedderRegistry.js';
-export type { EmbedderFactory } from './EmbedderRegistry.js';
+export type { EmbedderFactoryType } from './EmbedderRegistry.js';
 
 export { EmbedderCascade } from './EmbedderCascade.js';
 

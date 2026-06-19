@@ -4,18 +4,18 @@ import { describe, it } from 'node:test';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
-interface PaletteServices {
+type PaletteServices = {
   readonly logger: { entries: string[] };
   readonly client: { url: string };
 }
 
 void describe('Dagonizer services container', () => {
-  void it('passes the services bag through to NodeContextInterface.services', async () => {
+  void it('passes the services bag through to NodeContextType.services', async () => {
     const services: PaletteServices = {
       'logger': { 'entries': [] },
       'client': { 'url': 'https://example' },
@@ -28,7 +28,7 @@ void describe('Dagonizer services container', () => {
     class UseServicesNode extends ScalarNode<S, 'success', PaletteServices> {
       readonly name = 'use-services';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: S, context: NodeContextInterface<PaletteServices>): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: S, context: NodeContextType<PaletteServices>): Promise<NodeOutputType<'success'>> {
         context.services.logger.entries.push(`hit:${context.services.client.url}`);
         state.out = context.services.client.url;
         return { 'errors': [], 'output': 'success' as const };
@@ -37,7 +37,7 @@ void describe('Dagonizer services container', () => {
 
     const dispatcher = new Dagonizer<S, PaletteServices>({ services });
     dispatcher.registerNode(new UseServicesNode());
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:svc',
       '@type':    'DAG',
@@ -68,7 +68,7 @@ void describe('Dagonizer services container', () => {
     class CheckUndefinedNode extends ScalarNode<S, 'success'> {
       readonly name = 'check-undefined';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: S, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: S, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         state.out = context.services;
         return { 'errors': [], 'output': 'success' as const };
       }

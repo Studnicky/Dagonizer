@@ -1,7 +1,7 @@
 /**
- * Tool: canonical executable-tool contract.
+ * ToolInterface: canonical executable-tool contract.
  *
- * A `Tool<TInput, TOutput>` couples a `ToolDefinition` (the JSON-Schema
+ * A `ToolInterface<TInput, TOutput>` couples a `ToolDefinition` (the JSON-Schema
  * surface the LLM declares via the adapter's tool channel) with an
  * `execute()` method the dispatcher invokes when a `ToolCall` lands.
  *
@@ -17,12 +17,12 @@
  * tool-execution boundary speak the same vocabulary.
  */
 
-import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
-import type { ToolDefinition } from '../entities/adapter/ToolDefinition.js';
+import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
+import type { ToolDefinitionType } from '../entities/adapter/ToolDefinition.js';
 
-export interface Tool<TInput extends Record<string, unknown>, TOutput> {
+export interface ToolInterface<TInput extends Record<string, unknown>, TOutput> {
   /** JSON-Schema-shaped declaration the LLM sees in its tool list. */
-  readonly definition: ToolDefinition;
+  readonly definition: ToolDefinitionType;
   /** Invoke the tool. Long-running calls must honour `options.signal`. */
-  execute(input: TInput, options?: AbortableOptionsInterface): Promise<TOutput>;
+  execute(input: TInput, options?: AbortableOptionsType): Promise<TOutput>;
 }

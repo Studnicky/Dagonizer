@@ -16,8 +16,8 @@
  * `context`       — composed NodeContext including the abort signal.
  */
 
-import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
-import type { NodeContextInterface } from '../entities/node/NodeContext.js';
+import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
+import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { Timeout } from '../entities/Timeout.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
@@ -36,12 +36,12 @@ export interface DagTaskInterface<
   /** Live seeded child clone. In-process containers execute against this directly. */
   state: TState;
   /** Composed `NodeContext` carrying the abort signal and services bag for this task. */
-  context: NodeContextInterface<TServices>;
+  context: NodeContextType<TServices>;
   /**
    * Materialise the wire form by snapshotting the live clone. Isolating
    * containers call this to obtain the `ExecutionRequest` they send across
    * the transport boundary. In-process containers ignore it and execute
    * against `state` directly.
    */
-  toRequest(): ExecutionRequest;
+  toRequest(): ExecutionRequestType;
 }

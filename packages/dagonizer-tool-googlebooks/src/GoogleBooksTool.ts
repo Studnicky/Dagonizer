@@ -14,21 +14,21 @@
  * could poison the model's output).
  */
 
-import type { ToolDefinition } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { ToolDefinitionType } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 import { HttpTransport } from '@studnicky/dagonizer/tool';
-import type { Tool } from '@studnicky/dagonizer/tool';
-import type { Candidate } from '@studnicky/dagonizer-book-entities';
+import type { ToolInterface } from '@studnicky/dagonizer/tool';
+import type { CandidateType } from '@studnicky/dagonizer-book-entities';
 import { BookBuilder, CanonicalId, LanguageCode } from '@studnicky/dagonizer-book-entities';
 
 import { GoogleBooksResponseValidator } from './GoogleBooksResponse.js';
 
-interface GoogleBooksInput extends Record<string, unknown> {
+type GoogleBooksInputType = Record<string, unknown> & {
   readonly query:     string;
   readonly maxResults?: number;
   readonly orderBy?:  'relevance' | 'newest';
   readonly langRestrict?: string;
-}
+};
 
 const ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 
@@ -37,8 +37,8 @@ const GOOGLE_BOOKS_MAX_RESULTS = 40;
 const GOOGLE_BOOKS_DEFAULT_RESULTS = 8;
 const GOOGLE_BOOKS_MAX_SUBJECTS = 8;
 
-export class GoogleBooksTool implements Tool<GoogleBooksInput, readonly Candidate[]> {
-  readonly definition: ToolDefinition = {
+export class GoogleBooksTool implements ToolInterface<GoogleBooksInputType, readonly CandidateType[]> {
+  readonly definition: ToolDefinitionType = {
     'name': 'google_books_search',
     'description': 'Search Google Books for real volumes (returns titles, authors, descriptions, average rating, ratings count). Complementary to openlibrary; many editions and reviews land here that openlibrary lacks.',
     'inputSchema': {
@@ -75,7 +75,7 @@ export class GoogleBooksTool implements Tool<GoogleBooksInput, readonly Candidat
     'strict': true,
   };
 
-  async execute(input: GoogleBooksInput, options?: AbortableOptionsInterface): Promise<readonly Candidate[]> {
+  async execute(input: GoogleBooksInputType, options?: AbortableOptionsType): Promise<readonly CandidateType[]> {
     const signal = options?.signal;
     const max = Math.max(GOOGLE_BOOKS_MIN_RESULTS, Math.min(GOOGLE_BOOKS_MAX_RESULTS, input.maxResults ?? GOOGLE_BOOKS_DEFAULT_RESULTS));
     const params = new URLSearchParams({ 'q': input.query, 'maxResults': String(max) });
@@ -90,7 +90,7 @@ export class GoogleBooksTool implements Tool<GoogleBooksInput, readonly Candidat
       { ...(signal !== undefined && { signal }) },
     );
     const volumes = raw.items ?? [];
-    const candidates: Candidate[] = [];
+    const candidates: CandidateType[] = [];
     for (const vol of volumes) {
       const info = vol.volumeInfo;
       if (info === undefined || info.title === undefined) continue;

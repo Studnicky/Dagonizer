@@ -23,7 +23,7 @@ seeAlso:
 |--------|--------|------|
 | `CheckpointStore` | `@studnicky/dagonizer/contracts` | Adapter contract: `save`, `load`, `delete` |
 | `Snapshottable` | `@studnicky/dagonizer/contracts` | Capability contract: `snapshot()`, `restore()`. Required by `Checkpoint.capture` and `restoreStores`. |
-| `StoreSnapshot` | `@studnicky/dagonizer/contracts` | Serialized envelope written into `CheckpointData.stores` |
+| `StoreSnapshotType` | `@studnicky/dagonizer/contracts` | Serialized envelope written into `CheckpointData.stores` |
 | `MemoryCheckpointStore` | `@studnicky/dagonizer/checkpoint` | In-memory reference implementation (tests, demos) |
 | `ckpt.persist(store, key)` | instance method | Serializes and writes via the store |
 | `Checkpoint.recall(store, key)` | `@studnicky/dagonizer/checkpoint` | Reads, parses, validates, wraps |
@@ -31,9 +31,9 @@ seeAlso:
 ## The contract
 
 ```ts twoslash
-import type { CheckpointStore } from '@studnicky/dagonizer/contracts';
+import type { CheckpointStoreInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
-declare const store: CheckpointStore;
+declare const store: CheckpointStoreInterface;
 await store.save('run-42', '{"cursor":null}');
 const json: string | null = await store.load('run-42');
 await store.delete('run-42');
@@ -84,13 +84,13 @@ Implement the three methods against the backend. A Postgres implementation using
 ```ts twoslash
 // pg is not a workspace dependency — declare a minimal surface for type checking.
 // Users: `npm install pg` before importing from 'pg'.
-import type { CheckpointStore } from '@studnicky/dagonizer/contracts';
+import type { CheckpointStoreInterface } from '@studnicky/dagonizer/contracts';
 interface Pool {
   query(text: string, values?: readonly unknown[]): Promise<{ rows: Array<Record<string, unknown>> }>;
   query<T>(text: string, values?: readonly unknown[]): Promise<{ rows: T[] }>;
 }
 // ---cut---
-export class PostgresCheckpointStore implements CheckpointStore {
+export class PostgresCheckpointStore implements CheckpointStoreInterface {
   readonly #pool: Pool;
   readonly #table: string;
 
@@ -126,17 +126,17 @@ The same three-method pattern applies for Redis (`GET`/`SET`/`DEL`), S3 (`GetObj
 
 ## Named stores and `Snapshottable`
 
-`Checkpoint.capture` and `ckpt.restoreStores` both depend on the `Snapshottable` capability, not the full key-value `Store` surface. Any object that implements `snapshot(): Promise<StoreSnapshot>` and `restore(snapshot: StoreSnapshot): Promise<void>` participates in checkpointing. `Store extends Snapshottable`, so every store qualifies, but a non-KV backing (an RDF triple store, a vector index, an append-only log) can ride along in a checkpoint without implementing `get`/`set`/`has`/`delete`/`update`.
+`Checkpoint.capture` and `ckpt.restoreStores` both depend on the `Snapshottable` capability, not the full key-value `Store` surface. Any object that implements `snapshot(): Promise<StoreSnapshotType>` and `restore(snapshot: StoreSnapshotType): Promise<void>` participates in checkpointing. `Store extends Snapshottable`, so every store qualifies, but a non-KV backing (an RDF triple store, a vector index, an append-only log) can ride along in a checkpoint without implementing `get`/`set`/`has`/`delete`/`update`.
 
 ```ts twoslash
-import type { Snapshottable, StoreSnapshot } from '@studnicky/dagonizer/contracts';
+import type { SnapshottableInterface, StoreSnapshotType } from '@studnicky/dagonizer/contracts';
 import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
 
-class FactLog implements Snapshottable {
+class FactLog implements SnapshottableInterface {
   #facts: string[] = [];
   add(fact: string): void { this.#facts.push(fact); }
 
-  async snapshot(): Promise<StoreSnapshot> {
+  async snapshot(): Promise<StoreSnapshotType> {
     return {
       version: 1,
       type: 'fact-log',
@@ -144,7 +144,7 @@ class FactLog implements Snapshottable {
     };
   }
 
-  async restore(snapshot: StoreSnapshot): Promise<void> {
+  async restore(snapshot: StoreSnapshotType): Promise<void> {
     if (snapshot.type !== 'fact-log') throw new Error('Incompatible snapshot type');
     this.#facts = snapshot.entries.map((e) => String(e.value));
   }
@@ -163,7 +163,7 @@ void freshLog;
 export {};
 ```
 
-`CheckpointData.stores` is a **required** field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshot` envelopes when stores are supplied. Any checkpoint payload lacking a `stores` field is rejected by `Checkpoint.load`.
+`CheckpointData.stores` is a **required** field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshotType` envelopes when stores are supplied. Any checkpoint payload lacking a `stores` field is rejected by `Checkpoint.load`.
 
 ## Snapshot round-trip
 
@@ -193,7 +193,7 @@ Three persistence-side implications:
 2. **Per-batch write cadence.** The dispatcher writes the progress entry once per scatter batch (not once per item). The persisted metadata is consistent with the batch boundary that was last `await`-ed; a crash during a batch leaves the last completed batch persisted and the in-flight batch unreported.
 3. **Indices are array positions in the source at resume time.** If the `CheckpointStore` is read across processes that may rebuild state with a different source array, the resumed scatter skips by position, not by item identity. Treat the source as immutable while a scatter checkpoint is live, or clear the progress entry before calling `dispatcher.resume()` when the source has changed.
 
-The reserved key piggybacks on `NodeStateBase.metadata`, so any `CheckpointStore` that already round-trips the `JsonObject` snapshot supports scatter resume with no additional adapter changes. See [Checkpoint and Resume](./checkpoint#scatter-resume-per-item-progress) for the executable contract and index-semantics worked example.
+The reserved key piggybacks on `NodeStateBase.metadata`, so any `CheckpointStore` that already round-trips the `JsonObjectType` snapshot supports scatter resume with no additional adapter changes. See [Checkpoint and Resume](./checkpoint#scatter-resume-per-item-progress) for the executable contract and index-semantics worked example.
 
 ## Related reference
 

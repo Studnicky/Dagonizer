@@ -7,23 +7,23 @@
  */
 
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { Quad } from '@studnicky/dagonizer/patterns';
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { QuadType } from '@studnicky/dagonizer/patterns';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
-import { GraphNode, type GraphServices } from './GraphNode.js';
+import { GraphNode, type GraphServicesType } from './GraphNode.js';
 
 export abstract class RecordFindingsNode<
   TState extends NodeStateInterface,
   TEntity,
 > extends GraphNode<TState, 'success'> {
   protected abstract selectEntities(state: TState): readonly TEntity[];
-  protected abstract toQuads(entity: TEntity): readonly Quad[];
+  protected abstract toQuads(entity: TEntity): readonly QuadType[];
 
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextInterface<GraphServices>,
-  ): Promise<NodeOutputInterface<'success'>> {
+    context: NodeContextType<GraphServicesType>,
+  ): Promise<NodeOutputType<'success'>> {
     const entities = this.selectEntities(state);
     for (const entity of entities) {
       for (const q of this.toQuads(entity)) {

@@ -8,7 +8,7 @@
  * prose) but the request side is identical.
  *
  *   MonadicNode
- *   └── LlmDispatchNode<TState, TOutput, RagServices>   (this)
+ *   └── LlmDispatchNode<TState, TOutput, RagServicesType>   (this)
  *       ├── DecisionNode (parses TChoice, applies, routes)
  *       └── ComposeNode (writes draft, routes 'success')
  *
@@ -18,18 +18,18 @@
 
 import { ScalarNode } from '@studnicky/dagonizer';
 import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
-import type { ChatRequest, ChatResponse, PartialChatRequest } from '@studnicky/dagonizer/adapter';
-import type { LlmClient } from '@studnicky/dagonizer/patterns';
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { ChatRequestType, ChatResponseType, PartialChatRequestType } from '@studnicky/dagonizer/adapter';
+import type { LlmClientInterface } from '@studnicky/dagonizer/patterns';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
-export interface RagServices {
-  readonly llm: LlmClient;
-}
+export type RagServicesType = {
+  readonly llm: LlmClientInterface;
+};
 
 export abstract class LlmDispatchNode<
   TState extends NodeStateInterface,
   TOutput extends string,
-> extends ScalarNode<TState, TOutput, RagServices> {
+> extends ScalarNode<TState, TOutput, RagServicesType> {
   /** Build the user prompt from state. */
   protected abstract composePrompt(state: TState): string;
 
@@ -42,7 +42,7 @@ export abstract class LlmDispatchNode<
    * `toolCallId`/`toolName` — the `ChatMessageSchema` `oneOf` enforces
    * `additionalProperties: false` on the non-tool branch.
    */
-  protected composeRequest(prompt: string, signal: AbortSignal): PartialChatRequest {
+  protected composeRequest(prompt: string, signal: AbortSignal): PartialChatRequestType {
     return {
       'messages': [{ 'role': 'user', 'content': prompt }],
       signal,
@@ -50,9 +50,9 @@ export abstract class LlmDispatchNode<
   }
 
   /** Send the request through the configured LLM. */
-  protected async dispatch(state: TState, context: NodeContextInterface<RagServices>): Promise<ChatResponse> {
+  protected async dispatch(state: TState, context: NodeContextType<RagServicesType>): Promise<ChatResponseType> {
     const prompt = this.composePrompt(state);
-    const request: ChatRequest = ChatRequestBuilder.from(this.composeRequest(prompt, context.signal));
+    const request: ChatRequestType = ChatRequestBuilder.from(this.composeRequest(prompt, context.signal));
     return context.services.llm.chat(request);
   }
 
@@ -61,13 +61,13 @@ export abstract class LlmDispatchNode<
    * discriminated union: a `tools`-only message carries no prose, so it
    * yields the empty string; `text` and `mixed` messages carry `content`.
    */
-  protected extractContent(response: ChatResponse): string {
+  protected extractContent(response: ChatResponseType): string {
     return response.message.kind === 'tools' ? '' : response.message.content;
   }
 
   /** Leaves provide their own executeOne(); the dispatch loop is shared. */
   protected abstract override executeOne(
     state: TState,
-    context: NodeContextInterface<RagServices>,
-  ): Promise<NodeOutputInterface<TOutput>>;
+    context: NodeContextType<RagServicesType>,
+  ): Promise<NodeOutputType<TOutput>>;
 }

@@ -16,15 +16,15 @@
 
 // #region execute-contract
 import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
-import type { NodeContextInterface, NodeStateInterface, RoutedBatch } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeStateInterface, RoutedBatchType } from '@studnicky/dagonizer';
 import { Batch } from '@studnicky/dagonizer';
 
-// The execute signature: consume Batch<TState>, return RoutedBatch<TOutput, TState>.
+// The execute signature: consume Batch<TState>, return RoutedBatchType<TOutput, TState>.
 // Items are partitioned across output ports — routing IS partitioning.
 export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
   readonly name    = 'echo';
   readonly outputs = ['out'] as const;
-  async execute(batch: Batch<NodeStateInterface>, _ctx: NodeContextInterface): Promise<RoutedBatch<'out', NodeStateInterface>> {
+  async execute(batch: Batch<NodeStateInterface>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', NodeStateInterface>> {
     return RoutedBatchBuilder.of('out', batch);
   }
 }
@@ -32,7 +32,7 @@ export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
 
 // #region monadic-node
 import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeOutputInterface } from '@studnicky/dagonizer';
+import type { NodeOutputType } from '@studnicky/dagonizer';
 
 // ── Domain state ──────────────────────────────────────────────────────────────
 
@@ -49,8 +49,8 @@ abstract class LoggingNode<
 > extends ScalarNode<TState, TOutput> {
   protected override async executeOne(
     state: TState,
-    context: NodeContextInterface,
-  ): Promise<NodeOutputInterface<TOutput>> {
+    context: NodeContextType,
+  ): Promise<NodeOutputType<TOutput>> {
     const start = Date.now();
     const result = await this.run(state, context);
     process.stdout.write(`[${this.name}] output=${result.output} elapsed=${Date.now() - start}ms\n`);
@@ -60,8 +60,8 @@ abstract class LoggingNode<
   /** Subclasses implement domain logic here instead of in execute. */
   protected abstract run(
     state: TState,
-    context: NodeContextInterface,
-  ): Promise<NodeOutputInterface<TOutput>>;
+    context: NodeContextType,
+  ): Promise<NodeOutputType<TOutput>>;
 }
 
 // ── Concrete node: catalogue search ───────────────────────────────────────────
@@ -70,7 +70,7 @@ export class SearchCatalogueNode extends LoggingNode<CatalogueState, 'success' |
   readonly name    = 'search-catalogue';
   readonly outputs = ['success', 'empty', 'error'] as const;
 
-  protected async run(state: CatalogueState): Promise<NodeOutputInterface<'success' | 'empty' | 'error'>> {
+  protected async run(state: CatalogueState): Promise<NodeOutputType<'success' | 'empty' | 'error'>> {
     if (state.query.trim() === '') {
       return NodeOutputBuilder.of('error');
     }
@@ -118,7 +118,7 @@ export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
   readonly name    = 'enrich';
   readonly outputs = ['enriched'] as const;
 
-  async execute(batch: Batch<EventState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'enriched', EventState>> {
+  async execute(batch: Batch<EventState>, _ctx: NodeContextType): Promise<RoutedBatchType<'enriched', EventState>> {
     for (const item of batch) {
       const state = item.state;
       if (state.coords !== null) {

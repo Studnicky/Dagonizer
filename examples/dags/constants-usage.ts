@@ -17,11 +17,11 @@ import {
   NodeTypes,
   OutputNames,
   ScatterOutputNames,
-  type GatherStrategyName,
-  type MetadataKey,
+  type GatherStrategyNameType,
+  type MetadataKeyType,
   type NodeType,
-  type Output,
-  type ScatterOutput,
+  type OutputType,
+  type ScatterOutputType,
 } from '@studnicky/dagonizer/constants';
 
 // ── Item type narrowed at the scatter boundary ────────────────────────────────
@@ -33,7 +33,7 @@ export interface CatalogueItem {
 export class ConstantUsage {
   // -- Output ------------------------------------------------------------------
   // Route by the node's output token.
-  static describeOutput(output: Output): string {
+  static describeOutput(output: OutputType): string {
     if (output === OutputNames.SUCCESS) return 'operation completed';
     if (output === OutputNames.ERROR)   return 'operation failed';
     return output;
@@ -47,20 +47,20 @@ export class ConstantUsage {
 
   // -- GatherStrategyName ------------------------------------------------------
   // Validate a config value against the known gather strategies.
-  static isKnownGatherStrategy(name: string): name is GatherStrategyName {
+  static isKnownGatherStrategy(name: string): name is GatherStrategyNameType {
     return (Object.values(GatherStrategyNames) as readonly string[]).includes(name);
   }
 
   // -- MetadataKey -------------------------------------------------------------
   // Read a reserved key off a node's metadata bag.
   // CURRENT_ITEM is set by scatter; narrow to CatalogueItem at the read site.
-  static readCurrentItem(metadata: Partial<Record<MetadataKey, CatalogueItem>>): CatalogueItem | undefined {
+  static readCurrentItem(metadata: Partial<Record<MetadataKeyType, CatalogueItem>>): CatalogueItem | undefined {
     return metadata[MetadataKeys.CURRENT_ITEM];
   }
 
   // -- ScatterOutput -----------------------------------------------------------
   // Branch on scatter aggregate output.
-  static interpretScatterOutput(output: ScatterOutput): string {
+  static interpretScatterOutput(output: ScatterOutputType): string {
     if (output === ScatterOutputNames.ALL_SUCCESS) return 'all clones succeeded';
     if (output === ScatterOutputNames.ALL_ERROR)   return 'all clones failed';
     if (output === ScatterOutputNames.PARTIAL)     return 'partial success';
@@ -71,5 +71,5 @@ export class ConstantUsage {
 // Select the gather strategy for a fan-out that maps per-clone field values
 // into a target array on the parent state (one entry per source item, in
 // source-index order). Use COLLECT when aggregating output tokens instead.
-export const fanOutGatherStrategy: GatherStrategyName = GatherStrategyNames.MAP;
+export const fanOutGatherStrategy: GatherStrategyNameType = GatherStrategyNames.MAP;
 // #endregion constants

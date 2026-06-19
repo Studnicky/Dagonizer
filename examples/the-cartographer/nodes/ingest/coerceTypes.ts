@@ -19,7 +19,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import { TimeNormalizer } from '../../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -51,7 +51,7 @@ export class CoerceTypesNode extends ScalarNode<CartographerState, 'validate-eve
     return false;
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'validate-event'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'validate-event'>> {
     const coerced: Array<Record<string, unknown>> = state.mappedRecords.map((rec) => {
       const out: Record<string, unknown> = { ...rec };
       for (const field of NUMERIC_FIELDS) {

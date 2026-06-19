@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`OperationContract`, `OperationContractFragment`'
+    description: '`OperationContractType`, `OperationContractFragmentType`'
   - text: 'Reference: Entities'
     link: './entities'
     description: '`DAG`, `ScatterNode`'
@@ -18,16 +18,16 @@ Contract-derived flow generation. Ships through `@studnicky/dagonizer/derive`.
 ```ts twoslash
 import { DAGDeriver, ContractRegistryValidator } from '@studnicky/dagonizer/derive';
 import type {
-  DAGDeriverAnnotations,
-  DAGDeriverEmitTerminal,
-  DAGDeriverEmbeddedDAG,
-  DAGDeriverScatter,
-  DAGDeriverTerminal,
-  DAGDeriverOptions,
+  DAGDeriverAnnotationsType,
+  DAGDeriverEmitTerminalType,
+  DAGDeriverEmbeddedDAGType,
+  DAGDeriverScatterType,
+  DAGDeriverTerminalType,
+  DAGDeriverOptionsType,
 } from '@studnicky/dagonizer/derive';
 import type {
-  OperationContract,
-  OperationContractFragment,
+  OperationContractType,
+  OperationContractFragmentType,
 } from '@studnicky/dagonizer/contracts';
 ```
 
@@ -36,16 +36,16 @@ import type {
 Static class.
 
 ```ts twoslash
-import type { DAGDeriverOptions } from '@studnicky/dagonizer/derive';
-import type { DAG } from '@studnicky/dagonizer';
-import type { NodeInterface, OperationContract } from '@studnicky/dagonizer/contracts';
+import type { DAGDeriverOptionsType } from '@studnicky/dagonizer/derive';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { NodeInterface, OperationContractType } from '@studnicky/dagonizer/contracts';
 // ---cut---
 declare class DAGDeriver {
-  static derive(opts: DAGDeriverOptions): DAG;
-  static extractContracts(nodes: readonly NodeInterface[]): OperationContract[];
-  static edges(contracts: readonly OperationContract[]): ReadonlyMap<string, ReadonlySet<string>>;
+  static derive(opts: DAGDeriverOptionsType): DAGType;
+  static extractContracts(nodes: readonly NodeInterface[]): OperationContractType[];
+  static edges(contracts: readonly OperationContractType[]): ReadonlyMap<string, ReadonlySet<string>>;
   static depthBuckets(
-    contracts: readonly OperationContract[],
+    contracts: readonly OperationContractType[],
     edges: ReadonlyMap<string, ReadonlySet<string>>,
   ): readonly (readonly string[])[];
 }
@@ -53,19 +53,19 @@ declare class DAGDeriver {
 
 ### `derive(opts)`
 
-Build a `DAG` from a node registry plus declared annotations. Each node co-locates its own `contract` field (`{ hardRequired, produces }`); the node's `name` and `outputs` complete the full `OperationContract` surface. At least one node must declare a `contract`.
+Build a `DAG` from a node registry plus declared annotations. Each node co-locates its own `contract` field (`{ hardRequired, produces }`); the node's `name` and `outputs` complete the full `OperationContractType` surface. At least one node must declare a `contract`.
 
 ```ts twoslash
-import type { DAGDeriverAnnotations } from '@studnicky/dagonizer/derive';
+import type { DAGDeriverAnnotationsType } from '@studnicky/dagonizer/derive';
 import type { NodeInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
-interface DAGDeriverOptions {
+interface DAGDeriverOptionsType {
   name: string;
   version: string;
   entrypoint: string;
   /** Node registry. Each node with a co-located `contract` participates in topology derivation. */
   nodes: NodeInterface[];
-  annotations?: DAGDeriverAnnotations;
+  annotations?: DAGDeriverAnnotationsType;
 }
 ```
 
@@ -75,7 +75,7 @@ Throws `DAGError` when no node carries a `contract` field, when a terminal refer
 
 ### `extractContracts(nodes)`
 
-Project contract-bearing nodes from a node registry into `OperationContract[]`. Nodes without a `contract` field are silently skipped. The node's own `name` and `outputs` join the fragment's `hardRequired` and `produces` to form the full `OperationContract` surface. `DAGDeriver.derive` calls this internally; expose it for tooling that needs to inspect the contract projection before or after derivation.
+Project contract-bearing nodes from a node registry into `OperationContractType[]`. Nodes without a `contract` field are silently skipped. The node's own `name` and `outputs` join the fragment's `hardRequired` and `produces` to form the full `OperationContractType` surface. `DAGDeriver.derive` calls this internally; expose it for tooling that needs to inspect the contract projection before or after derivation.
 
 ### `edges(contracts)`
 
@@ -87,21 +87,21 @@ Topological depth buckets. Operations sharing a depth share a bucket. Useful for
 
 ---
 
-## DAGDeriverAnnotations
+## DAGDeriverAnnotationsType
 
 ```ts twoslash
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-interface DAGDeriverEmitTerminal {
+interface DAGDeriverEmitTerminalType {
   name:    string;                    // placement name for the synthesized TerminalNode
   outcome: 'completed' | 'failed';   // lifecycle outcome triggered when reached
 }
 
-type DAGDeriverTerminal =
+type DAGDeriverTerminalType =
   | { outcome: string; target: string }
-  | { outcome: string; emit: DAGDeriverEmitTerminal };
+  | { outcome: string; emit: DAGDeriverEmitTerminalType };
 
-type DAGDeriverScatter = {
+type DAGDeriverScatterType = {
   source:      string;
   itemKey:     string;
   node:        string;
@@ -119,7 +119,7 @@ type DAGDeriverScatter = {
 type ChildKey<T extends NodeStateInterface> =
   NodeStateInterface extends T ? string : keyof T & string;
 
-interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface> {
+interface DAGDeriverEmbeddedDAGType<TChildState extends NodeStateInterface = NodeStateInterface> {
   dag:           string;
   stateMapping?: {
     input?:  Partial<Record<ChildKey<TChildState>, string>>;
@@ -128,10 +128,10 @@ interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = NodeSta
   outputs:       string[];
 }
 
-interface DAGDeriverAnnotations {
-  terminals?:   Record<string, DAGDeriverTerminal[]>;
-  scatters?:    Record<string, DAGDeriverScatter>;
-  embeddedDAGs?: Record<string, DAGDeriverEmbeddedDAG>;
+interface DAGDeriverAnnotationsType {
+  terminals?:   Record<string, DAGDeriverTerminalType[]>;
+  scatters?:    Record<string, DAGDeriverScatterType>;
+  embeddedDAGs?: Record<string, DAGDeriverEmbeddedDAGType>;
 }
 ```
 
@@ -145,12 +145,12 @@ An operation cannot appear in more than one of `scatters` or `embeddedDAGs`. Pla
 
 ---
 
-## OperationContract
+## OperationContractType
 
 ```ts twoslash
-import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
+import type { OperationContractFragmentType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-interface OperationContract extends OperationContractFragment {
+interface OperationContractType extends OperationContractFragmentType {
   name:         string;
   hardRequired: string[];
   produces:     string[];
@@ -160,18 +160,18 @@ interface OperationContract extends OperationContractFragment {
 
 Defined in `@studnicky/dagonizer/contracts`.
 
-`outputs` declares every port the node can emit. `DAGDeriver` auto-wires each port to the next derived stage; `DAGDeriverAnnotations.terminals[name]` overrides individual ports per-operation. Terminals declaring a port not in the contract's `outputs` throw `DAGError` at derive time.
+`outputs` declares every port the node can emit. `DAGDeriver` auto-wires each port to the next derived stage; `DAGDeriverAnnotationsType.terminals[name]` overrides individual ports per-operation. Terminals declaring a port not in the contract's `outputs` throw `DAGError` at derive time.
 
-## OperationContractFragment
+## OperationContractFragmentType
 
 ```ts twoslash
-interface OperationContractFragment {
+interface OperationContractFragmentType {
   hardRequired: string[];
   produces:     string[];
 }
 ```
 
-Defined in `@studnicky/dagonizer/contracts`. Co-located on `NodeInterface.contract` when the consumer wants the node itself to be the single source of truth for its data flow. The node's `name` and `outputs` complete the full `OperationContract` surface at registration time.
+Defined in `@studnicky/dagonizer/contracts`. Co-located on `NodeInterface.contract` when the consumer wants the node itself to be the single source of truth for its data flow. The node's `name` and `outputs` complete the full `OperationContractType` surface at registration time.
 
 ---
 
@@ -180,11 +180,11 @@ Defined in `@studnicky/dagonizer/contracts`. Co-located on `NodeInterface.contra
 Static class. Registration-time checker for co-located node contracts.
 
 ```ts twoslash
-import type { OperationContract } from '@studnicky/dagonizer/contracts';
+import type { OperationContractType } from '@studnicky/dagonizer/contracts';
 // ---cut---
 declare class ContractRegistryValidator {
   static validate(
-    contracts: readonly OperationContract[],
+    contracts: readonly OperationContractType[],
     options?: { entrypointName: string },
   ): void;
 }

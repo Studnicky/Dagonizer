@@ -27,10 +27,10 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import type { DAG } from '../entities/dag/DAG.js';
+import type { DAGType } from '../entities/dag/DAG.js';
 
 import { PlacementUtils } from './internal.js';
-import type { PlacementEntry } from './internal.js';
+import type { PlacementEntryType } from './internal.js';
 
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
 export const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
@@ -85,14 +85,14 @@ export const DagJsonLdDocumentSchema = {
  * wire-shape requirement; `@id` and `@type` are always present and
  * precisely typed.
  */
-export interface JsonLdGraphEntry {
+export type JsonLdGraphEntryType = {
   '@id': string;
   '@type': string;
   [key: string]: unknown;
 }
 
 /** Full JSON-LD document the renderer emits. Derived from `DagJsonLdDocumentSchema`. */
-export type DagJsonLdDocument = FromSchema<typeof DagJsonLdDocumentSchema>;
+export type DagJsonLdDocumentType = FromSchema<typeof DagJsonLdDocumentSchema>;
 
 /**
  * Render a `DAG` as JSON-LD. The output document has a stable
@@ -103,7 +103,7 @@ export class JsonLdRenderer {
   private constructor() { /* static class */ }
 
   /** Mapping from JSON-LD placement-discriminator to vocabulary-prefixed `@type`. */
-  private static readonly TYPE_BY_KIND: Readonly<Record<PlacementEntry['@type'], string>> = {
+  private static readonly TYPE_BY_KIND: Readonly<Record<PlacementEntryType['@type'], string>> = {
     'SingleNode':      'dag:SingleNode',
     'ScatterNode':     'dag:ScatterNode',
     'EmbeddedDAGNode': 'dag:EmbeddedDAGNode',
@@ -111,7 +111,7 @@ export class JsonLdRenderer {
     'PhaseNode':       'dag:PhaseNode',
   };
 
-  static render(dag: DAG): DagJsonLdDocument {
+  static render(dag: DAGType): DagJsonLdDocumentType {
     const placements = PlacementUtils.narrowNodes(dag).map((placement) =>
       JsonLdRenderer.renderPlacement(dag.name, placement),
     );
@@ -155,7 +155,7 @@ export class JsonLdRenderer {
   }
 
   /** Render one placement as a JSON-LD `@graph` entry. */
-  private static renderPlacement(dagName: string, placement: PlacementEntry): JsonLdGraphEntry {
+  private static renderPlacement(dagName: string, placement: PlacementEntryType): JsonLdGraphEntryType {
     const base = {
       '@id':      JsonLdRenderer.placementIri(dagName, placement.name),
       '@type':    JsonLdRenderer.TYPE_BY_KIND[placement['@type']],
@@ -174,7 +174,7 @@ export class JsonLdRenderer {
         // stateMapping, gather, reducer, container). Build a mutable accumulator
         // then freeze on return. The open index is required because JSON-LD
         // property keys are arbitrary vocabulary-prefixed strings.
-        const out: JsonLdGraphEntry & Record<string, unknown> = {
+        const out: JsonLdGraphEntryType & Record<string, unknown> = {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
           'dag:body':   'node' in placement.body
@@ -193,7 +193,7 @@ export class JsonLdRenderer {
       }
       case 'EmbeddedDAGNode': {
         // EmbeddedDAGNode may carry optional stateMapping and container fields.
-        const out: JsonLdGraphEntry & Record<string, unknown> = {
+        const out: JsonLdGraphEntryType & Record<string, unknown> = {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
           'dag:dag':    JsonLdRenderer.dagIri(placement.dag),
@@ -220,7 +220,7 @@ export class JsonLdRenderer {
   }
 
   /** Render the DAG-level root entry that points at every placement. */
-  private static renderDagRoot(dag: DAG): JsonLdGraphEntry {
+  private static renderDagRoot(dag: DAGType): JsonLdGraphEntryType {
     return {
       '@id':            JsonLdRenderer.dagIri(dag.name),
       '@type':          'dag:DAG',

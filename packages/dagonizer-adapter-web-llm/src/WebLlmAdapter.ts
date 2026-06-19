@@ -5,23 +5,23 @@
  * quantized model (~700 MB) on first use; subsequent calls reuse the
  * engine. WebGPU is required (`navigator.gpu`).
  *
- * Tool calling is not native to WebLLM; we use `response_format` with
+ * ToolInterface calling is not native to WebLLM; we use `response_format` with
  * `{ type: 'json_object' }` and the tool-plan JSON Schema in the
  * system context. The model returns a JSON blob that we decode back
  * into `ToolCall[]` via JSON coercion (`ToolCallCodec.decode`).
  */
 
 import type {
-  ChatRequest,
-  ChatResponse,
-  ErrorClassification,
+  ChatRequestType,
+  ChatResponseType,
+  ErrorClassificationType,
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 
 import type {
-  WebLlmCompletionResultInterface,
-  WebLlmEngineInterface,
-  WebLlmInitReportInterface,
+  WebLlmCompletionResultType,
+  WebLlmEngineType,
+  WebLlmInitReportType,
 } from './WebLlmHost.js';
 import {
   webLlmEngineValidator,
@@ -41,12 +41,12 @@ const GPU_PROBE_TIMEOUT_MS = 1_500;
  * never transitions a property's type. The entry is set once on first
  * `#engine()` call and reused for the adapter's lifetime.
  */
-const enginePromises = new WeakMap<WebLlmAdapter, Promise<WebLlmEngineInterface>>();
+const enginePromises = new WeakMap<WebLlmAdapter, Promise<WebLlmEngineType>>();
 
-export interface WebLlmAdapterOptions {
+export type WebLlmAdapterOptionsType = {
   readonly model?: string;
   readonly maxAttempts?: number;
-}
+};
 
 export class WebLlmAdapter extends BaseAdapter {
   readonly #model: string;
@@ -69,7 +69,7 @@ export class WebLlmAdapter extends BaseAdapter {
     return WebLlmAdapter.gpu() !== undefined;
   }
 
-  constructor(options: WebLlmAdapterOptions = {}) {
+  constructor(options: WebLlmAdapterOptionsType = {}) {
     super(
       'web-llm',
       'WebLLM (Phi-3.5 in-browser)',
@@ -87,7 +87,7 @@ export class WebLlmAdapter extends BaseAdapter {
    * (e.g. update a loading indicator). The default implementation is a
    * no-op; the adapter is usable without overriding this method.
    */
-  protected onInitProgress(_report: WebLlmInitReportInterface): void {
+  protected onInitProgress(_report: WebLlmInitReportType): void {
     // no-op default — subclasses override to handle progress events
   }
 
@@ -116,17 +116,17 @@ export class WebLlmAdapter extends BaseAdapter {
     }
   }
 
-  protected async performChat(request: ChatRequest): Promise<ChatResponse> {
+  protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     const engine = await this.#engine();
 
-    // Tool-calling via JSON-coerce: inject a system message with the
+    // ToolInterface-calling via JSON-coerce: inject a system message with the
     // tool-plan schema then ask for json_object.
     const messages = this.#composeMessages(request);
     const wantsJson = (request.tools.length > 0)
       || request.outputSchema.kind === 'schema';
 
     const responseFormat: { type: 'json_object' | 'text' } = { 'type': wantsJson ? 'json_object' : 'text' };
-    let result: WebLlmCompletionResultInterface;
+    let result: WebLlmCompletionResultType;
     try {
       result = await engine.chat.completions.create({
         'messages':        messages,
@@ -147,17 +147,17 @@ export class WebLlmAdapter extends BaseAdapter {
     };
   }
 
-  protected override classify(error: unknown): ErrorClassification {
+  protected override classify(error: unknown): ErrorClassificationType {
     const msg = error instanceof Error ? error.message : String(error);
     if (/webgpu/iu.test(msg)) return Classifications['MODEL_NOT_FOUND'];
     return super.classify(error);
   }
 
-  #composeMessages(request: ChatRequest): ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }> {
+  #composeMessages(request: ChatRequestType): ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }> {
     const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
     for (const m of request.messages) {
       if (m.role === 'tool') {
-        // Tool result rolled into the user channel as scaffolding.
+        // ToolInterface result rolled into the user channel as scaffolding.
         messages.push({ 'role': 'user', 'content': BaseAdapter.formatToolResult(m) });
         continue;
       }
@@ -181,7 +181,7 @@ export class WebLlmAdapter extends BaseAdapter {
     return messages;
   }
 
-  #engine(): Promise<WebLlmEngineInterface> {
+  #engine(): Promise<WebLlmEngineType> {
     const existing = enginePromises.get(this);
     if (existing !== undefined) return existing;
     const pending = this.#boot();
@@ -189,7 +189,7 @@ export class WebLlmAdapter extends BaseAdapter {
     return pending;
   }
 
-  async #boot(): Promise<WebLlmEngineInterface> {
+  async #boot(): Promise<WebLlmEngineType> {
     if (!WebLlmAdapter.detectWebGpu()) {
       throw new LlmError('navigator.gpu unavailable', Classifications['MODEL_NOT_FOUND']);
     }

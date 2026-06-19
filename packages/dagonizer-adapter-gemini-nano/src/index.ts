@@ -1,5 +1,5 @@
 export { GeminiNanoAdapter } from './GeminiNanoAdapter.js';
-export type { GeminiNanoAdapterOptions } from './GeminiNanoAdapter.js';
+export type { GeminiNanoAdapterOptionsType } from './GeminiNanoAdapter.js';
 export {
   LanguageModelSessionSchema,
   LanguageModelStaticSchema,
@@ -12,5 +12,5 @@ export type {
   LanguageModelSessionInterface,
   LanguageModelStaticBaseType,
   LanguageModelStaticInterface,
-  PromptOptionsInterface,
+  PromptOptionsType,
 } from './LanguageModelHost.js';

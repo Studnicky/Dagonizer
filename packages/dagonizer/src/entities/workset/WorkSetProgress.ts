@@ -39,7 +39,7 @@ export const WorkSetItemSchema = {
  * at the point of interruption. Used by `WorkSetCheckpoint` to rehydrate
  * the pending batch on resume.
  */
-export type WorkSetItem = FromSchema<typeof WorkSetItemSchema>;
+export type WorkSetItemType = FromSchema<typeof WorkSetItemSchema>;
 
 // ---------------------------------------------------------------------------
 // WorkSetEntry
@@ -65,7 +65,7 @@ export const WorkSetEntrySchema = {
  * `placement` is the placement name; `items` is the ordered list of pending
  * `WorkSetItem` values for that placement.
  */
-export type WorkSetEntry = FromSchema<typeof WorkSetEntrySchema>;
+export type WorkSetEntryType = FromSchema<typeof WorkSetEntrySchema>;
 
 // ---------------------------------------------------------------------------
 // WorkSetProgress
@@ -91,4 +91,4 @@ export const WorkSetProgressSchema = {
  * boundary; read back on resume to rebuild the pending batches. Absent for
  * size-1 canonical runs (single item whose state is the top-level state).
  */
-export type WorkSetProgress = FromSchema<typeof WorkSetProgressSchema>;
+export type WorkSetProgressType = FromSchema<typeof WorkSetProgressSchema>;

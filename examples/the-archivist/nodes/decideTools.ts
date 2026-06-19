@@ -32,7 +32,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -219,7 +219,7 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
   readonly name = 'decide-tools';
   readonly outputs = ['tools', 'no-tools', 'retry', 'salvage'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     // ── Deterministic shortcut prelude ────────────────────────────────────
     // Pattern-match common query shapes (author lookup, single quoted title,
     // "books about X", catalog browsing). When a pattern fires, populate
@@ -292,7 +292,7 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
         return NodeOutputBuilder.of('tools');
       }
 
-      state.failureCause += 'Tool plan: no tools selected. ';
+      state.failureCause += 'ToolInterface plan: no tools selected. ';
       return NodeOutputBuilder.of('no-tools');
     } catch (err) {
       // External cancellation / run deadline propagates unchanged.

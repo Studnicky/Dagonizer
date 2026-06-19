@@ -14,14 +14,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/dag/DAG.js';
+import type { DAGType } from '../../src/entities/dag/DAG.js';
 import { WellFormedValidator } from '../../src/validation/WellFormedValidator.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSingleNodePlacement(name: string, outputs: Record<string, string>): DAG['nodes'][number] {
+function makeSingleNodePlacement(name: string, outputs: Record<string, string>): DAGType['nodes'][number] {
   return {
     '@id':   `urn:noocodex:dag:test/node/${name}`,
     '@type': 'SingleNode',
@@ -31,7 +31,7 @@ function makeSingleNodePlacement(name: string, outputs: Record<string, string>):
   };
 }
 
-function makeTerminal(name: string, outcome: 'completed' | 'failed'): DAG['nodes'][number] {
+function makeTerminal(name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
   return {
     '@id':     `urn:noocodex:dag:test/node/${name}`,
     '@type':   'TerminalNode',
@@ -40,7 +40,7 @@ function makeTerminal(name: string, outcome: 'completed' | 'failed'): DAG['nodes
   };
 }
 
-function baseDAG(nodes: DAG['nodes']): DAG {
+function baseDAG(nodes: DAGType['nodes']): DAGType {
   return {
     '@context':   DAG_CONTEXT,
     '@id':        'urn:noocodex:dag:test',

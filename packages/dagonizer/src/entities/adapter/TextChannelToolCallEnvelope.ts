@@ -8,7 +8,7 @@
  * because the body is extracted from surrounding model prose and individual
  * entries may be malformed; `ToolCallCodec.decode` filters structurally
  * invalid entries after validation. Validated once at the foreign boundary
- * via a module-load-compiled `EntityValidator`; never cast.
+ * via a module-load-compiled `EntityValidatorInterface`; never cast.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -34,4 +34,4 @@ export const TextChannelToolCallEnvelopeSchema = {
 } as const;
 
 /** TypeScript type derived from `TextChannelToolCallEnvelopeSchema` via `json-schema-to-ts`. */
-export type TextChannelToolCallEnvelope = FromSchema<typeof TextChannelToolCallEnvelopeSchema>;
+export type TextChannelToolCallEnvelopeType = FromSchema<typeof TextChannelToolCallEnvelopeSchema>;

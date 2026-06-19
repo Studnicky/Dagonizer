@@ -1,7 +1,7 @@
 /**
  * GoogleBooksResponse: JSON Schema 2020-12 description of the Google Books v1
  * `volumes` response wire shape, plus its `FromSchema`-derived type and a
- * module-load-compiled `EntityValidator`.
+ * module-load-compiled `EntityValidatorInterface`.
  *
  * The parsed JSON body crosses a foreign boundary (`HttpTransport.getJson`
  * returns it narrowed by `GoogleBooksResponseValidator`). The schema is
@@ -15,7 +15,7 @@
  */
 
 import { Validator } from '@studnicky/dagonizer/validation';
-import type { EntityValidator } from '@studnicky/dagonizer/validation';
+import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
 
 export const GoogleBooksVolumeInfoSchema = {
@@ -74,13 +74,13 @@ export const GoogleBooksResponseSchema = {
 } as const;
 
 /** TypeScript type derived from `GoogleBooksResponseSchema` via `json-schema-to-ts`. */
-export type GoogleBooksResponse = FromSchema<typeof GoogleBooksResponseSchema>;
+export type GoogleBooksResponseType = FromSchema<typeof GoogleBooksResponseSchema>;
 
 /**
  * Module-load-compiled validator for the Google Books volumes response.
- * Narrows the `unknown` HTTP body to `GoogleBooksResponse` via the framework's
+ * Narrows the `unknown` HTTP body to `GoogleBooksResponseType` via the framework's
  * shared Ajv (`Validator.compile`); `OpenApiGuard.assertShape` /
  * `HttpTransport.getJson` consume it.
  */
-export const GoogleBooksResponseValidator: EntityValidator<GoogleBooksResponse> =
-  Validator.compile<GoogleBooksResponse>(GoogleBooksResponseSchema);
+export const GoogleBooksResponseValidator: EntityValidatorInterface<GoogleBooksResponseType> =
+  Validator.compile<GoogleBooksResponseType>(GoogleBooksResponseSchema);

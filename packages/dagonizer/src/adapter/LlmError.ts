@@ -8,7 +8,7 @@
  * on the `retryable` flag.
  */
 
-export type LlmErrorReason =
+export type LlmErrorReasonType =
   | 'AUTH_FAILED'
   | 'MODEL_NOT_FOUND'
   | 'QUOTA_EXHAUSTED'
@@ -27,9 +27,9 @@ export type LlmErrorReason =
  *   - Non-retryable classifications omit `retryAfterMs` entirely so
  *     call sites never need to coalesce a value that has no meaning.
  */
-export type ErrorClassification =
-  | { readonly reason: LlmErrorReason; readonly retryable: true;  readonly retryAfterMs: number | null }
-  | { readonly reason: LlmErrorReason; readonly retryable: false };
+export type ErrorClassificationType =
+  | { readonly reason: LlmErrorReasonType; readonly retryable: true;  readonly retryAfterMs: number | null }
+  | { readonly reason: LlmErrorReasonType; readonly retryable: false };
 
 /**
  * Cap on how long a `QUOTA_EXHAUSTED` `Retry-After` hint is honored. Past this,
@@ -39,7 +39,7 @@ export type ErrorClassification =
 export const MAX_QUOTA_WAIT_MS = 10_000;
 
 /** Canonical classification constants. Retryable entries carry `retryAfterMs: null` (no provider hint). */
-export const Classifications: Readonly<Record<LlmErrorReason, ErrorClassification>> = {
+export const Classifications: Readonly<Record<LlmErrorReasonType, ErrorClassificationType>> = {
   'AUTH_FAILED':          { 'reason': 'AUTH_FAILED',          'retryable': false },
   'MODEL_NOT_FOUND':      { 'reason': 'MODEL_NOT_FOUND',      'retryable': false },
   'QUOTA_EXHAUSTED':      { 'reason': 'QUOTA_EXHAUSTED',      'retryable': true,  'retryAfterMs': null },
@@ -53,9 +53,9 @@ export const Classifications: Readonly<Record<LlmErrorReason, ErrorClassificatio
 };
 
 export class LlmError extends Error {
-  readonly classification: ErrorClassification;
+  readonly classification: ErrorClassificationType;
 
-  constructor(message: string, classification: ErrorClassification, options?: { cause?: unknown }) {
+  constructor(message: string, classification: ErrorClassificationType, options?: { cause?: unknown }) {
     super(message, options?.cause !== undefined ? { 'cause': options.cause } : undefined);
     this.name = 'LlmError';
     this.classification = classification;
@@ -66,7 +66,7 @@ export class LlmError extends Error {
    * adapters can lean on this and only override the cases their wire
    * format complicates.
    */
-  static classifyHttp(status: number, options?: { body?: string }): ErrorClassification {
+  static classifyHttp(status: number, options?: { body?: string }): ErrorClassificationType {
     if (status === 401 || status === 403) return Classifications['AUTH_FAILED'];
     if (status === 404) return Classifications['MODEL_NOT_FOUND'];
     if (status === 402) return Classifications['CREDIT_EXHAUSTED'];

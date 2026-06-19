@@ -4,6 +4,7 @@
 
 ### Changed
 
+- **Adapter-contract interfaces carry the `Interface` suffix (semver-major).** The framework contracts this package's public surface names are imported under their suffixed names: `ToolInterface` and `LlmClientInterface` (the service contracts the RAG pattern nodes call). The renames are type-only and propagate from `@studnicky/dagonizer`; runtime behavior is unchanged. Consumers typing against the old bare names (`Tool`, `LlmClient`) update to the suffixed names.
 - `LlmDispatchNode` owns `extractContent(response)`, which extracts prose
   from the chat-response discriminated union once. `DecisionNode` and
   `ComposeNode` call it instead of repeating the tool-vs-text guard.
