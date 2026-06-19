@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-patterns-graph",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "description": "Pattern plugin for @studnicky/dagonizer: Triple-store node patterns.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
