@@ -79,89 +79,21 @@ The diagram traces method invocations across the save and resume halves. It is n
 
 ## Implementing a custom store
 
-Implement the three methods against the backend. A Postgres implementation using the `pg` driver looks like:
+Implement the three methods against the backend. The store below backs the contract with a real `Map` — a complete, runnable implementation:
 
-```ts twoslash
-// pg is not a workspace dependency — declare a minimal surface for type checking.
-// Users: `npm install pg` before importing from 'pg'.
-import type { CheckpointStoreInterface } from '@studnicky/dagonizer/contracts';
-interface Pool {
-  query(text: string, values?: readonly unknown[]): Promise<{ rows: Array<Record<string, unknown>> }>;
-  query<T>(text: string, values?: readonly unknown[]): Promise<{ rows: T[] }>;
-}
-// ---cut---
-export class PostgresCheckpointStore implements CheckpointStoreInterface {
-  readonly #pool: Pool;
-  readonly #table: string;
+<<< @/../examples/dags/custom-checkpoint-store.ts#custom-store
 
-  constructor(pool: Pool, table = 'checkpoints') {
-    this.#pool = pool;
-    this.#table = table;
-  }
+The same three-method pattern applies for Postgres (`INSERT … ON CONFLICT`/`SELECT`/`DELETE`), Redis (`GET`/`SET`/`DEL`), S3 (`GetObject`/`PutObject`/`DeleteObject`), a file system, or any other key/value store. Only the backing changes; the three methods stay identical. The contract is intentionally thin so it maps cleanly to any backing.
 
-  async save(key: string, json: string): Promise<void> {
-    await this.#pool.query(
-      `INSERT INTO ${this.#table} (key, json, saved_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (key) DO UPDATE SET json = $2, saved_at = NOW()`,
-      [key, json],
-    );
-  }
-
-  async load(key: string): Promise<string | null> {
-    const result = await this.#pool.query<{ json: string }>(
-      `SELECT json FROM ${this.#table} WHERE key = $1`,
-      [key],
-    );
-    return result.rows[0]?.json ?? null;
-  }
-
-  async delete(key: string): Promise<void> {
-    await this.#pool.query(`DELETE FROM ${this.#table} WHERE key = $1`, [key]);
-  }
-}
-```
-
-The same three-method pattern applies for Redis (`GET`/`SET`/`DEL`), S3 (`GetObject`/`PutObject`/`DeleteObject`), a file system, or any other key/value store. The contract is intentionally thin so it maps cleanly to any backing.
+The `custom-checkpoint-store` example exercises the full `save` → `load` → `delete` round-trip end to end; run it with `npx tsx examples/custom-checkpoint-store.ts`.
 
 ## Named stores and `Snapshottable`
 
 `Checkpoint.capture` and `ckpt.restoreStores` both depend on the `Snapshottable` capability, not the full key-value `Store` surface. Any object that implements `snapshot(): Promise<StoreSnapshotType>` and `restore(snapshot: StoreSnapshotType): Promise<void>` participates in checkpointing. `Store extends Snapshottable`, so every store qualifies, but a non-KV backing (an RDF triple store, a vector index, an append-only log) can ride along in a checkpoint without implementing `get`/`set`/`has`/`delete`/`update`.
 
-```ts twoslash
-import type { SnapshottableInterface, StoreSnapshotType } from '@studnicky/dagonizer/contracts';
-import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
+<<< @/../examples/dags/custom-checkpoint-store.ts#snapshottable
 
-class FactLog implements SnapshottableInterface {
-  #facts: string[] = [];
-  add(fact: string): void { this.#facts.push(fact); }
-
-  async snapshot(): Promise<StoreSnapshotType> {
-    return {
-      version: 1,
-      type: 'fact-log',
-      entries: this.#facts.map((fact, i) => ({ key: String(i), value: fact })),
-    };
-  }
-
-  async restore(snapshot: StoreSnapshotType): Promise<void> {
-    if (snapshot.type !== 'fact-log') throw new Error('Incompatible snapshot type');
-    this.#facts = snapshot.entries.map((e) => String(e.value));
-  }
-}
-
-// Pass it to capture just like any MemoryStore:
-const log = new FactLog();
-// const ckpt = await Checkpoint.capture('my-dag', result, { stores: { log } });
-
-// And restore it on resume:
-const freshLog = new FactLog();
-// await recalled.restoreStores({ log: freshLog });
-void Checkpoint;
-void log;
-void freshLog;
-export {};
-```
+`FactLog` implements only `snapshot()` and `restore()` — no `get`/`set`/`has`/`delete`/`update`. Pass it to `Checkpoint.capture('my-dag', result, { stores: { log } })` alongside any `MemoryStore`, and restore it on resume with `recalled.restoreStores({ log: freshLog })`. The `custom-checkpoint-store` example runs the `snapshot` → `restore` round-trip; run it with `npx tsx examples/custom-checkpoint-store.ts`.
 
 `CheckpointData.stores` is a **required** field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshotType` envelopes when stores are supplied. Any checkpoint payload lacking a `stores` field is rejected by `Checkpoint.load`.
 

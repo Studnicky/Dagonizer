@@ -86,47 +86,15 @@ When a top-level DAG completes at a terminal placement bound to a `HandoffChanne
 - `correlationId` — monotonic dispatcher-assigned identifier for deduplication
 - `placementPath` — nesting path for instrumentation
 
-Subclass `InMemoryChannel` and override the protected `onPublished` hook to chain a downstream DAG. `InMemoryChannel` carries no constructor options; passing a callback object is not supported — extension via subclass is the only mechanism.
+Subclass `InMemoryChannel` and override the protected `onPublished` hook to chain a downstream DAG. `InMemoryChannel` carries no constructor options; passing a callback object is not supported — extension via subclass is the only mechanism. The `11-handoff` example does exactly this: the override restores the envelope state and runs DAG B on a second dispatcher.
 
-```ts twoslash
-import { NodeStateBase, Dagonizer } from '@studnicky/dagonizer';
-import { InMemoryChannel } from '@studnicky/dagonizer/channels';
-import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
+<<< @/../examples/11-handoff.ts#channel
 
-class AppState extends NodeStateBase {}
-interface AppServices { db: unknown }
+The dispatcher binds the channel to a terminal name; reaching that terminal publishes a `DAGHandoff` envelope to it:
 
-// In production, downstreamDispatcher and dlqChannel are constructed at
-// function startup (e.g. module scope for Lambda warm starts).
-declare const services: AppServices;
-declare const downstreamDispatcher: Dagonizer<AppState>;
-declare const dlqChannel: InMemoryChannel;
+<<< @/../examples/11-handoff.ts#dag-a-dispatcher
 
-class HandoffChannel extends InMemoryChannel {
-  protected override async onPublished(handoff: DAGHandoffType): Promise<void> {
-    // DAGHandoff is a oneOf discriminated union: either stateSnapshot (by-value
-    // JsonObjectType) or stateSnapshotRef (by-reference URI string). Narrow before
-    // accessing stateSnapshot — the field is absent on the ref branch.
-    if (!('stateSnapshot' in handoff)) return;
-    // Restore state on the receiving side and run the continuation DAG.
-    const state = AppState.restore(handoff.stateSnapshot as JsonObjectType);
-    await downstreamDispatcher.execute('continuation-dag', state);
-  }
-}
-
-const channel = new HandoffChannel();
-
-const dispatcher = new Dagonizer<AppState, AppServices>({
-  services,
-  channels: {
-    done: channel,         // publishes when the 'done' terminal is reached
-    escalate: dlqChannel,  // different terminals can bind different channels
-  },
-});
-export {};
-```
-
-A terminal not listed in `channels` follows today's behavior — the run completes, no envelope is published. Embedded and contained child DAGs never publish; only the top-level host does.
+A terminal not listed in `channels` follows today's behavior — the run completes, no envelope is published. Embedded and contained child DAGs never publish; only the top-level host does. Run the full producer → channel → consumer chain with `npx tsx examples/11-handoff.ts`.
 
 A publish failure collects a `HANDOFF_PUBLISH_FAILED` error on the run's state; the returned `ExecutionResult` and `terminalOutcome` are unchanged.
 
@@ -134,63 +102,15 @@ A publish failure collects a `HANDOFF_PUBLISH_FAILED` error on the run's state; 
 
 A serverless function receives a `DAGHandoff` envelope, restores state, runs the DAG to completion, and lets the bound egress channels publish the next envelope. The function itself requires no Dagonizer-specific runtime; it is a plain `Dagonizer` instance.
 
-```ts twoslash
-import { NodeStateBase, Dagonizer } from '@studnicky/dagonizer';
-import type { DispatcherBundleType } from '@studnicky/dagonizer';
-import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
-import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
+The egress channel implements `HandoffChannelInterface`. The channel below backs the contract with a real in-process queue — a complete, runnable implementation. Production replaces the array push with an SQS / Pub/Sub / RabbitMQ SDK call; the method signature is identical:
 
-class AppState extends NodeStateBase {}
-interface AppServices { db: unknown }
+<<< @/../examples/dags/serverless-handler.ts#queue-channel
 
-// buildServices and myBundle are deployment-specific; they construct the
-// service bag and the compiled DAG+node bundle for this function.
-declare function buildServices(): AppServices;
-declare const myBundle: DispatcherBundleType<AppState, AppServices>;
-const REGISTRY_VERSION = '1.0.0';
+The handler is envelope-in / envelope-out: verify the version, restore state, build a per-invocation dispatcher with egress channels bound to terminal names, execute:
 
-// A transport-specific channel — implement `publish` with your SDK call.
-// Core never imports a cloud SDK; `SqsChannel` is your deployment code.
-class SqsChannel implements HandoffChannelInterface {
-  async publish(handoff: DAGHandoffType): Promise<void> {
-    // await sqsClient.send(new SendMessageCommand({ ... }));
-    void handoff;
-  }
-}
+<<< @/../examples/dags/serverless-handler.ts#handler
 
-// Function handler (e.g. AWS Lambda, Cloud Run, Cloudflare Worker):
-export async function handler(envelope: DAGHandoffType): Promise<void> {
-  // 1. Verify version before executing.
-  if (envelope.registryVersion !== REGISTRY_VERSION) {
-    throw new Error(`Version mismatch: expected ${REGISTRY_VERSION}, got ${envelope.registryVersion}`);
-  }
-
-  // 2. Restore state from the envelope.
-  // DAGHandoff is a oneOf: stateSnapshot (by-value) or stateSnapshotRef
-  // (by-reference URI). Narrow to the by-value branch before calling restore.
-  if (!('stateSnapshot' in envelope)) {
-    throw new Error('stateSnapshotRef envelopes require fetching the snapshot URI before restore');
-  }
-  const state = AppState.restore(envelope.stateSnapshot as JsonObjectType);
-
-  // 3. Construct the dispatcher with egress channels bound to terminal names.
-  const services = buildServices();
-  const dispatcher = new Dagonizer<AppState, typeof services>({
-    services,
-    channels: {
-      done:     new SqsChannel(),  // publishes to the downstream queue
-      escalate: new SqsChannel(),  // routes failures to a DLQ
-    },
-  });
-
-  dispatcher.registerBundle(myBundle);
-
-  // 4. Execute. The channel publishes after the terminal is reached.
-  await dispatcher.execute(envelope.dagName, state);
-}
-```
-
-This pattern composes with any function-as-a-service platform. The dispatcher is constructed, used, and discarded per invocation. There is no persistent scheduler, no long-lived worker, and no agent protocol — Dagonizer is the in-function runtime.
+This pattern composes with any function-as-a-service platform (AWS Lambda, Cloud Run, Cloudflare Worker). The `serverless-handler` example drives a complete envelope through the handler and observes the downstream envelope land in the queue; run it with `npx tsx examples/serverless-handler.ts`. The dispatcher is constructed, used, and discarded per invocation. There is no persistent scheduler, no long-lived worker, and no agent protocol — Dagonizer is the in-function runtime.
 
 ### External orchestrators (Step Functions, Cloud Workflows, etc.)
 

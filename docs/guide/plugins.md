@@ -48,28 +48,11 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 
 ### Writing an adapter
 
-Extend `BaseAdapter` and implement `performChat`:
+Extend `BaseAdapter` and implement the one abstract method, `performChat`. The adapter below is complete and runnable — it echoes the last user message instead of calling a provider, so it needs no network:
 
-```ts twoslash
-import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
-import type { ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
+<<< @/../examples/dags/custom-adapter.ts#custom-adapter
 
-export class MyAdapter extends BaseAdapter {
-  constructor() {
-    super('mine', 'My Provider', { toolUse: 'full', structuredOutput: true, jsonMode: true });
-  }
-
-  protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
-    // Hit the provider, parse response.
-    void request;
-    return {
-      message: ChatResponseMessageBuilder.from('hello back', []),
-      finishReason: 'stop',
-      usage: ZERO_TOKEN_USAGE,
-    };
-  }
-}
-```
+A production adapter fills `performChat` with a real HTTP call; retry, error classification, and `probe()` come from `BaseAdapter` for free. The `custom-adapter` example drives this adapter through a `chat()` call; run it with `npx tsx examples/custom-adapter.ts`.
 
 ## `@studnicky/dagonizer/tool`
 
@@ -124,38 +107,9 @@ MonadicNode<TState, TOutput, TServices>            (root: main package)
 
 ### Example: classifying intent
 
-```ts twoslash
-import { DecisionNode } from '@studnicky/dagonizer-patterns-rag';
-import { NodeStateBase } from '@studnicky/dagonizer';
+<<< @/../examples/dags/pattern-node.ts#pattern-node
 
-type Intent = 'search' | 'describe' | 'recommend' | 'off-topic';
-
-class MyState extends NodeStateBase {
-  query = '';
-  intent: Intent = 'off-topic';
-}
-
-class IntentClassifier extends DecisionNode<MyState, Intent> {
-  readonly name = 'classify-intent';
-  readonly outputs = ['search', 'describe', 'recommend', 'off-topic'] as const;
-
-  protected composePrompt(s: MyState): string {
-    return `Classify: "${s.query}" → search | describe | recommend | off-topic. Reply with one word.`;
-  }
-
-  protected decodeChoice(content: string): Intent {
-    const t = content.trim().toLowerCase();
-    if (t === 'search' || t === 'describe' || t === 'recommend') return t;
-    return 'off-topic';
-  }
-
-  protected routeFor(intent: Intent): Intent { return intent; }
-  protected applyChoice(s: MyState, intent: Intent): void { s.intent = intent; }
-}
-export {};
-```
-
-The pattern handles LLM dispatch, retry, abort propagation, contract field forwarding. The 15 lines above are everything the consumer writes.
+The pattern handles LLM dispatch, retry, abort propagation, and contract field forwarding. The lines above are everything the consumer writes. The `pattern-node` example runs this `IntentClassifier` inside a DAG against an in-process LLM; run it with `npx tsx examples/pattern-node.ts`.
 
 ## Why three subpaths
 
