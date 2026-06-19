@@ -426,7 +426,6 @@ function buildServices(): ArchivistServices {
     // hybrid ranking fall back to Jaccard / heuristics when embedder is null.
     'embedder':          null,
     'nodeTimeouts':      {},
-    'logger':            logger,
   };
 }
 
@@ -653,7 +652,6 @@ async function ask(): Promise<void> {
       'subject-scout':           webSearchMs,
       'wikipedia-scout':         webSearchMs,
     },
-    'logger':            logger,
   };
   let dispatcher: ObservedDagonizer<ArchivistState, ArchivistServices> | null = null;
 
