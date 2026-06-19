@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-embedder-mistral
 
+## 0.22.0
+
 ## [Unreleased]
 
 ### Changed
