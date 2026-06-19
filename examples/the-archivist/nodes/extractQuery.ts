@@ -47,11 +47,9 @@ export class ExtractQueryNode extends ScalarNode<ArchivistState, 'success' | 're
       if (context.signal.aborted) throw err;
       // Node-local timeout or LLM failure → retry budget decides the flow.
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`extract-query: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`extract-query: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);

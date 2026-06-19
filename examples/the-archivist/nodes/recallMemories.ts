@@ -181,9 +181,6 @@ export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled', A
       'summary':         summary,
     };
 
-    context.services.logger.info(
-      `recall-memories: ${String(bookTitles.size)} books, ${String(queryCount)} prior queries, ${String(intentBreakdown.length)} intent types`,
-    );
 
     return NodeOutputBuilder.of('recalled');
   }

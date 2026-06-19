@@ -30,7 +30,7 @@ export class PreRunSetupNode extends ScalarNode<ArchivistState, 'ready', Archivi
   readonly name = 'pre-run-setup';
   readonly outputs = ['ready'] as const;
 
-  protected override executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     // Stamp a per-run identifier that downstream memory-write nodes key their
     // named graph on.  Format: ISO timestamp with milliseconds, URL-safe.
     // crypto.randomUUID() would be stronger but wall-clock is deterministic
@@ -42,10 +42,6 @@ export class PreRunSetupNode extends ScalarNode<ArchivistState, 'ready', Archivi
     // does not accidentally serve stale content.
     state.draft = '';
     state.approvalState = 'pending';
-
-    context.services.logger.info(
-      `pre-run-setup: runId=${runId} query="${state.query.slice(0, 60)}"`,
-    );
 
     return Promise.resolve(NodeOutputBuilder.of('ready'));
   }

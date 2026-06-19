@@ -32,9 +32,8 @@ export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked', Arch
   readonly name = 'pick-best-match';
   readonly outputs = ['picked'] as const;
 
-  protected override executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {
-      context.services.logger.info('pick-best-match: no candidates');
       return Promise.resolve(NodeOutputBuilder.of('picked'));
     }
 
@@ -57,14 +56,6 @@ export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked', Arch
     ];
 
     state.candidates = picked;
-
-    const top = topK[0];
-    context.services.logger.info(
-      `pick-best-match: kept top ${String(Math.min(TOP_K, scored.length))} of ${String(scored.length)}` +
-      (top !== undefined
-        ? ` (best sim ${top.sim.toFixed(3)}: "${top.candidate.book.identity.title}")`
-        : ''),
-    );
 
     return Promise.resolve(NodeOutputBuilder.of('picked'));
   }

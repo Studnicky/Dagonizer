@@ -41,9 +41,10 @@ import { geoResolveBundle } from './embedded-dags/GeoResolveDAG.ts';
 import { ingestSourceBundle } from './embedded-dags/IngestSourceDAG.ts';
 import { orderEnrichmentBundle } from './embedded-dags/OrderEnrichmentDAG.ts';
 import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
+import type { ConsoleLogger } from './logger/ConsoleLogger.ts';
+import { ObservedCartographer } from './ObservedCartographer.ts';
 import { GeoResolvers } from './services/GeoResolvers.ts';
 
-import { Dagonizer } from '@studnicky/dagonizer';
 import { ExecutionError } from '@studnicky/dagonizer/errors';
 
 // ── Parse CLI args ────────────────────────────────────────────────────────────
@@ -97,15 +98,15 @@ class CartographerCli {
     return `${ns} ${ew}`;
   }
 
-  static printJourney(j: JourneyInsights): void {
+  static printJourney(logger: ConsoleLogger, j: JourneyInsights): void {
     const km = Math.round(j.pathKm).toLocaleString('en-US');
     const elapsedH = Math.floor(j.elapsedHours);
     const elapsedM = Math.round((j.elapsedHours - elapsedH) * 60);
-    console.log(`${j.shipmentId}  (${j.scanCount} scans, ${j.timezones.length} timezone(s))`);
+    logger.result(`${j.shipmentId}  (${j.scanCount} scans, ${j.timezones.length} timezone(s))`);
     for (const s of j.scans) {
       const time = s.localIso.slice(11, 16);
       const cum = `+${Math.round(s.legKm).toLocaleString('en-US')} km`;
-      console.log(
+      logger.result(
         `  ${time} ${s.utcOffset.padEnd(7)} ${s.status.padEnd(16)} ` +
         `${s.hub.slice(0, 18).padEnd(19)} ${CartographerCli.fmtCoord(s.lat, s.lng).padEnd(20)} ${cum}`,
       );
@@ -113,15 +114,15 @@ class CartographerCli {
     const tzCrossings = Math.max(0, j.offsets.length - 1);
     const jurisLabel = j.jurisdictions.length > 1 ? `${j.jurisdictions.join('→')}` : j.jurisdictions[0] ?? 'baseline';
     const otLabel = j.delivered ? (j.onTime ? 'on-time' : `late ${j.delayHours}h`) : `in transit (${j.lastStatus})`;
-    console.log(`  journey: ${km} km · ${elapsedH}h${String(elapsedM).padStart(2, '0')}m elapsed · ${tzCrossings} tz crossing(s) · jurisdiction ${jurisLabel} · ${otLabel}`);
+    logger.result(`  journey: ${km} km · ${elapsedH}h${String(elapsedM).padStart(2, '0')}m elapsed · ${tzCrossings} tz crossing(s) · jurisdiction ${jurisLabel} · ${otLabel}`);
   }
 
-  static printRedaction(label: string, rec: EnrichedShipment): void {
-    console.log(`  [${label}] ${rec.shipmentId}  jurisdiction=${rec.jurisdiction}  consent=${rec.consentStatus}`);
-    console.log(`    Name:    ${rec.redactedSample.recipientName}`);
-    console.log(`    Email:   ${rec.redactedSample.recipientEmail}`);
-    console.log(`    Phone:   ${rec.redactedSample.recipientPhone}`);
-    console.log(`    Coords:  ${CartographerCli.fmtCoord(rec.lat, rec.lng)}  ${rec.coordsCoarsened ? '(COARSENED to grid centroid)' : '(precise)'}`);
+  static printRedaction(logger: ConsoleLogger, label: string, rec: EnrichedShipment): void {
+    logger.result(`  [${label}] ${rec.shipmentId}  jurisdiction=${rec.jurisdiction}  consent=${rec.consentStatus}`);
+    logger.result(`    Name:    ${rec.redactedSample.recipientName}`);
+    logger.result(`    Email:   ${rec.redactedSample.recipientEmail}`);
+    logger.result(`    Phone:   ${rec.redactedSample.recipientPhone}`);
+    logger.result(`    Coords:  ${CartographerCli.fmtCoord(rec.lat, rec.lng)}  ${rec.coordsCoarsened ? '(COARSENED to grid centroid)' : '(precise)'}`);
   }
 }
 
@@ -149,7 +150,11 @@ const services: CartographerServices = useLive ? GeoResolvers.live() : GeoResolv
 let workerContainer: { destroy(): Promise<void> } | null = null;
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────
-let dispatcher: Dagonizer<CartographerState, CartographerServices>;
+// ObservedCartographer subclasses Dagonizer and wires every lifecycle hook to
+// its internal ConsoleLogger — the sanctioned class-extension observability
+// demonstration. Progress / status / diagnostic lines flow through the hooks;
+// the final tabular report is routed through `dispatcher.logger.result(...)`.
+let dispatcher: ObservedCartographer;
 
 if (useWorkers) {
   // Dynamic import keeps WorkerThreadContainer out of the tsx bundle; workers
@@ -170,7 +175,7 @@ if (useWorkers) {
   // event-pipeline). The nodes and sub-DAG bodies are only EXECUTED inside the
   // worker threads (the registry module reconstructs them per-worker); registering
   // them on the parent satisfies the validator without running them here.
-  dispatcher = new Dagonizer<CartographerState, CartographerServices>({
+  dispatcher = new ObservedCartographer({
     'services':   services,
     'containers': { 'cpu': container },
   });
@@ -183,7 +188,7 @@ if (useWorkers) {
   // Top-level DAG (cartographerWorkersDAG has container: 'cpu' on process-events).
   dispatcher.registerBundle(cartographerWorkersBundle);
 } else {
-  dispatcher = new Dagonizer<CartographerState, CartographerServices>({ 'services': services });
+  dispatcher = new ObservedCartographer({ 'services': services });
   dispatcher.registerBundle(geoResolveBundle);
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
@@ -191,6 +196,10 @@ if (useWorkers) {
   dispatcher.registerBundle(ingestSourceBundle);
   dispatcher.registerBundle(cartographerBundle);
 }
+
+// The example's own logger, owned by the subclass. Display (the tabular report)
+// goes through `logger.result(...)`; diagnostics flow from the hook overrides.
+const logger = dispatcher.logger;
 
 const state = new CartographerState();
 state.eventCount = eventCount;
@@ -203,18 +212,19 @@ const executionMode = useWorkers
     ? `IN-PROCESS + STREAMING SOURCE${streamCount > 0 ? ` (count=${streamCount})` : ''}`
     : 'IN-PROCESS (no container)';
 
-console.log(`\nCartographer: ${eventCount} journeys → multi-format sources → fan-in → streaming enrichment (concurrency=16)`);
-console.log(`Execution mode: ${executionMode}`);
-console.log(`Geo backend: offline country-coder reverse-geocode + ${useLive ? 'LIVE freeipapi.com IP geolocation' : 'RECORDED IP fixture replay (offline)'}\n`);
+// Run-configuration banner: status diagnostics → leveled info on the logger.
+logger.info('runCartographer', 'banner', `${String(eventCount)} journeys -> multi-format sources -> fan-in -> streaming enrichment (concurrency=16)`);
+logger.info('runCartographer', 'banner', `execution mode: ${executionMode}`);
+logger.info('runCartographer', 'banner', `geo backend: offline country-coder reverse-geocode + ${useLive ? 'LIVE freeipapi.com IP geolocation' : 'RECORDED IP fixture replay (offline)'}`);
 
 // ── Execute ───────────────────────────────────────────────────────────────────
 const ac = new AbortController();
 process.once('SIGINT', () => {
-  console.log('\n[SIGINT] Aborting pipeline...');
+  logger.warn('runCartographer', 'onSigint', 'aborting pipeline');
   ac.abort();
 });
 
-let dotCount = 0;
+let stageCount = 0;
 let peakHeap = process.memoryUsage().heapUsed;
 try {
   const execution = dispatcher.execute('cartographer', state, { 'signal': ac.signal });
@@ -222,20 +232,23 @@ try {
     const cur = process.memoryUsage().heapUsed;
     if (cur > peakHeap) peakHeap = cur;
     if (!stage.skipped) {
-      process.stdout.write('.');
-      dotCount++;
-      if (dotCount % 80 === 0) process.stdout.write('\n');
+      stageCount++;
+      // Periodic progress heartbeat — leveled diagnostic, not raw stdout.
+      // Per-node detail flows from the subclass hooks (onNodeStart/onNodeEnd).
+      if (stageCount % 80 === 0) {
+        logger.trace('runCartographer', 'progress', `${String(stageCount)} stages executed`);
+      }
     }
   }
   await execution;
 } catch (err) {
   if (err instanceof ExecutionError) {
-    console.error(`\nExecution failed: ${err.message}`);
+    logger.fatal('runCartographer', 'execute', `execution failed: ${err.message}`);
     process.exit(1);
   }
   throw err;
 }
-if (dotCount > 0) process.stdout.write('\n');
+logger.debug('runCartographer', 'execute', `pipeline drained: ${String(stageCount)} stages executed`);
 
 // Bounded sample of enriched scans (cap 200). state.records is always empty
 // in the streaming path (and in the insights-fold non-streaming path). All
@@ -251,7 +264,7 @@ for (const r of state.insights.values()) totalScans += r.shipmentCount;
 // ── (0) Streaming source summary ──────────────────────────────────────────────
 // The streaming topology decodes mixed formats inline per scan; there is no
 // separate ingestion fan-in stage. Report what the accumulators know.
-console.log('=== (0) Streaming source — mixed formats decoded inline per scan ===\n');
+logger.result('=== (0) Streaming source — mixed formats decoded inline per scan ===\n');
 
 // Per-event-type lane distribution derived from the bounded sample.
 const byEventType = new Map<string, number>();
@@ -278,14 +291,14 @@ if (distinctFormats.size === 0) {
   }
 }
 
-console.log(`  Total scans folded (exact, from insights accumulator): ${totalScans.toLocaleString()}`);
-console.log(`  Continents resolved: ${state.insights.size}`);
-console.log(`  Wire formats in feed: ${distinctFormats.size > 0 ? [...distinctFormats].sort().join(', ') : 'mixed (json, csv, ndjson, yaml)'}`);
-console.log(`\n  Event-type lane distribution (from a representative sample of ${sampleProcessed.length} scans):`);
+logger.result(`  Total scans folded (exact, from insights accumulator): ${totalScans.toLocaleString()}`);
+logger.result(`  Continents resolved: ${state.insights.size}`);
+logger.result(`  Wire formats in feed: ${distinctFormats.size > 0 ? [...distinctFormats].sort().join(', ') : 'mixed (json, csv, ndjson, yaml)'}`);
+logger.result(`\n  Event-type lane distribution (from a representative sample of ${sampleProcessed.length} scans):`);
 for (const lane of [...byEventType.keys()].sort()) {
-  console.log(`    ${lane.padEnd(28)} ${String(byEventType.get(lane) ?? 0).padStart(5)}`);
+  logger.result(`    ${lane.padEnd(28)} ${String(byEventType.get(lane) ?? 0).padStart(5)}`);
 }
-console.log('');
+logger.result('');
 
 // ── (a) Normalization sample — a multi-zone, multi-scan journey ───────────────
 // Prefer a journey that crosses >=2 timezones to show differing local offsets.
@@ -294,12 +307,12 @@ const multiZoneJourney =
   ?? [...state.journeys.values()].find((j) => j.scanCount >= 2 && j.offsets.length >= 2)
   ?? [...state.journeys.values()].find((j) => j.scanCount >= 2);
 
-console.log('=== (a) Normalization Sample — one journey, per-scan LOCAL time ===\n');
+logger.result('=== (a) Normalization Sample — one journey, per-scan LOCAL time ===\n');
 if (multiZoneJourney !== undefined) {
-  console.log(`${multiZoneJourney.shipmentId}  (${multiZoneJourney.scanCount} scans, ${multiZoneJourney.timezones.length} timezone(s), offsets: ${multiZoneJourney.offsets.join(', ')})`);
+  logger.result(`${multiZoneJourney.shipmentId}  (${multiZoneJourney.scanCount} scans, ${multiZoneJourney.timezones.length} timezone(s), offsets: ${multiZoneJourney.offsets.join(', ')})`);
   for (const s of multiZoneJourney.scans) {
     const time = s.localIso.slice(11, 16);
-    console.log(
+    logger.result(
       `  seq ${s.scanSeq}  ${time} ${s.utcOffset.padEnd(7)} ${s.status.padEnd(16)} ` +
       `${s.hub.slice(0, 18).padEnd(19)} ${CartographerCli.fmtCoord(s.lat, s.lng).padEnd(20)} [${s.jurisdiction}]`,
     );
@@ -309,7 +322,7 @@ if (multiZoneJourney !== undefined) {
 // ── (b) Per-continent insights table ─────────────────────────────────────────
 // Rolled up to the macro continent the real geo API resolved (~6–8 rows), plus a
 // single maritime bucket — the precise locality/country stays on each journey scan.
-console.log('\n=== (b) Per-Continent Insights ===\n');
+logger.result('\n=== (b) Per-Continent Insights ===\n');
 
 const COL_REGION = 34;
 const COL_COUNT  = 7;
@@ -327,8 +340,8 @@ const hdr =
   'Rev $USD'.padStart(COL_REV) +
   'Ship $USD'.padStart(COL_SHIP) +
   'Dist km'.padStart(COL_DIST);
-console.log(hdr);
-console.log('-'.repeat(hdr.length));
+logger.result(hdr);
+logger.result('-'.repeat(hdr.length));
 
 const sortedRegions = [...state.insights.values()].sort((a, b) => a.region.localeCompare(b.region));
 for (const r of sortedRegions) {
@@ -337,7 +350,7 @@ for (const r of sortedRegions) {
   const revUsd  = (r.totalSubtotalUsdMinor / 100).toFixed(0);
   const shipUsd = (r.totalShippingUsdMinor / 100).toFixed(0);
   const distKm  = r.totalDistanceKm > 0 ? Math.round(r.totalDistanceKm / r.shipmentCount).toString() : '0';
-  console.log(
+  logger.result(
     r.region.slice(0, COL_REGION - 1).padEnd(COL_REGION) +
     String(r.shipmentCount).padStart(COL_COUNT) +
     String(r.exceptions).padStart(COL_EXC) +
@@ -347,7 +360,7 @@ for (const r of sortedRegions) {
     `${distKm}`.padStart(COL_DIST),
   );
 }
-console.log(`\nTotal scans folded: ${totalScans.toLocaleString()} · Journeys sampled: ${state.journeys.size}`);
+logger.result(`\nTotal scans folded: ${totalScans.toLocaleString()} · Journeys sampled: ${state.journeys.size}`);
 
 // ── (b2) ROUTING SAVINGS VIEW (the thesis made tangible — §B0.7c) ─────────────
 // Each clone records its own RAN/SKIPPED decisions on the enriched record; the
@@ -410,27 +423,27 @@ const pricingEtaAvoided = priceSkip * ORDER_ENRICH_NODES;
 // collapses repeated IPs, so unique calls are far fewer than the per-event count.
 const ipGeolocateAvoided = geoSkip + ipgeoSkip;          // skipped sub-DAG + GPS-only signals
 
-console.log('\n=== (b2) Routing Savings — from a bounded sample of recent scans ===\n');
-console.log(`  Sample size: ${sampleTotal} scans (representative bounded FIFO, cap 200 — routing distribution is consistent across the full run)\n`);
-console.log(`  HEADLINE: deterministic routing skipped ${skippedNodes.toLocaleString('en-US')} node-executions in sample ` +
+logger.result('\n=== (b2) Routing Savings — from a bounded sample of recent scans ===\n');
+logger.result(`  Sample size: ${sampleTotal} scans (representative bounded FIFO, cap 200 — routing distribution is consistent across the full run)\n`);
+logger.result(`  HEADLINE: deterministic routing skipped ${skippedNodes.toLocaleString('en-US')} node-executions in sample ` +
   `(~${pct(skippedNodes, naiveNodes)} of the ${naiveNodes.toLocaleString('en-US')} always-run maximum).\n`);
-console.log('  Geo resolution (the real-world win — don\'t hammer the API):');
-console.log(`    • reverse-geocode (offline country-coder, no network): RESOLVED ${revgeoRun} events · 0 API calls (deterministic, free, no key)`);
-console.log(`    • ip-geolocate (freeipapi.com, REAL API):              RAN for ${ipgeoRun} events · AVOIDED ${ipGeolocateAvoided} (pre-resolved or no gateway IP)`);
-console.log(`    • caching collapses repeated IPs → the actual UNIQUE upstream IP calls are far fewer (per-IP cache).`);
-console.log(`    • multi-modal fusion: ${fusedGpsIp} events fused GPS+IP (agreement → high confidence); the rest are GPS-only.`);
-console.log('');
-console.log(`  geo-resolve: RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${pct(geoSkip, sampleTotal)} — source already resolved → geo sub-DAG + IP call avoided)`);
-console.log(`  redaction:   RAN ${redRun}  ·  SKIPPED ${redSkip} (${pct(redSkip, sampleTotal)} — no PII / not required → redaction sub-DAG bypassed)`);
-console.log(`  pricing+eta: RAN ${sampleTotal - priceSkip}  ·  SKIPPED ${priceSkip} (${pct(priceSkip, sampleTotal)} — non-order event types carry no basket/delivery)`);
-console.log(`  per-event-type lanes: ${[...pathCounts.entries()].sort().map(([p, n]) => `${p}=${n}`).join('  ')}`);
-console.log(`  cold-chain-check RAN ${coldRun} (sensor lane only) · customs-dwell RAN ${customsRun} (customs lane only)`);
-console.log('\n  Compute avoided in sample (extrapolates across full run):');
-console.log(`    • ${redactionPassesAvoided.toLocaleString('en-US')} redaction passes avoided — skip hashing/coarsening when there is no PII to protect.`);
-console.log(`    • ${pricingEtaAvoided.toLocaleString('en-US')} pricing/shipping/ETA node-executions avoided — don't price a position ping.`);
+logger.result('  Geo resolution (the real-world win — don\'t hammer the API):');
+logger.result(`    • reverse-geocode (offline country-coder, no network): RESOLVED ${revgeoRun} events · 0 API calls (deterministic, free, no key)`);
+logger.result(`    • ip-geolocate (freeipapi.com, REAL API):              RAN for ${ipgeoRun} events · AVOIDED ${ipGeolocateAvoided} (pre-resolved or no gateway IP)`);
+logger.result(`    • caching collapses repeated IPs → the actual UNIQUE upstream IP calls are far fewer (per-IP cache).`);
+logger.result(`    • multi-modal fusion: ${fusedGpsIp} events fused GPS+IP (agreement → high confidence); the rest are GPS-only.`);
+logger.result('');
+logger.result(`  geo-resolve: RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${pct(geoSkip, sampleTotal)} — source already resolved → geo sub-DAG + IP call avoided)`);
+logger.result(`  redaction:   RAN ${redRun}  ·  SKIPPED ${redSkip} (${pct(redSkip, sampleTotal)} — no PII / not required → redaction sub-DAG bypassed)`);
+logger.result(`  pricing+eta: RAN ${sampleTotal - priceSkip}  ·  SKIPPED ${priceSkip} (${pct(priceSkip, sampleTotal)} — non-order event types carry no basket/delivery)`);
+logger.result(`  per-event-type lanes: ${[...pathCounts.entries()].sort().map(([p, n]) => `${p}=${n}`).join('  ')}`);
+logger.result(`  cold-chain-check RAN ${coldRun} (sensor lane only) · customs-dwell RAN ${customsRun} (customs lane only)`);
+logger.result('\n  Compute avoided in sample (extrapolates across full run):');
+logger.result(`    • ${redactionPassesAvoided.toLocaleString('en-US')} redaction passes avoided — skip hashing/coarsening when there is no PII to protect.`);
+logger.result(`    • ${pricingEtaAvoided.toLocaleString('en-US')} pricing/shipping/ETA node-executions avoided — don't price a position ping.`);
 
 // ── (c) Per-journey summaries (a few) ─────────────────────────────────────────
-console.log('\n=== (c) Per-Journey Summaries ===\n');
+logger.result('\n=== (c) Per-Journey Summaries ===\n');
 const journeysSorted = [...state.journeys.values()].sort((a, b) => b.scanCount - a.scanCount);
 // Show a few: one multi-tz, one multi-jurisdiction, one delivered.
 const shown = new Set<string>();
@@ -442,14 +455,14 @@ if (multiJuris !== undefined) { picks.push(multiJuris); shown.add(multiJuris.shi
 const deliveredJourney = journeysSorted.find((j) => j.delivered && !shown.has(j.shipmentId));
 if (deliveredJourney !== undefined) { picks.push(deliveredJourney); shown.add(deliveredJourney.shipmentId); }
 for (const j of picks) {
-  CartographerCli.printJourney(j);
-  console.log('');
+  CartographerCli.printJourney(logger, j);
+  logger.result('');
 }
 
 const tzCrossingJourneys = [...state.journeys.values()].filter((j) => j.offsets.length >= 2).length;
 const jurisChangeJourneys = [...state.journeys.values()].filter((j) => j.jurisdictions.length >= 2).length;
-console.log(`Journeys crossing >=2 timezones: ${tzCrossingJourneys}`);
-console.log(`Journeys changing jurisdiction mid-path: ${jurisChangeJourneys}`);
+logger.result(`Journeys crossing >=2 timezones: ${tzCrossingJourneys}`);
+logger.result(`Journeys changing jurisdiction mid-path: ${jurisChangeJourneys}`);
 
 // ── (d) Location-driven redaction comparison ──────────────────────────────────
 // Drawn from the bounded sample (cap 200) — sufficient to find representative
@@ -461,16 +474,16 @@ const baselineRecord = sampleProcessed.find(
   (r) => !r.coordsCoarsened && r.jurisdiction === 'baseline' && r.consentStatus === 'valid',
 ) ?? sampleProcessed.find((r) => !r.coordsCoarsened);
 
-console.log('\n=== (d) Location-Driven Redaction (strict vs baseline) ===\n');
-if (strictRecord !== undefined) CartographerCli.printRedaction('strict', strictRecord);
+logger.result('\n=== (d) Location-Driven Redaction (strict vs baseline) ===\n');
+if (strictRecord !== undefined) CartographerCli.printRedaction(logger, 'strict', strictRecord);
 if (baselineRecord !== undefined) {
-  console.log('');
-  CartographerCli.printRedaction('baseline', baselineRecord);
+  logger.result('');
+  CartographerCli.printRedaction(logger, 'baseline', baselineRecord);
 }
 
-console.log(`\nDone. ${state.insights.size} continent(s), ${state.journeys.size} journey(s). No Date.now. No Math.random.`);
-console.log(`Peak heap: ${Math.round(peakHeap / 1048576)} MB · scans folded: ${totalScans.toLocaleString()} · journeys sampled: ${state.journeys.size} · sampleRecords: ${state.sampleRecords.length}`);
-console.log(`Execution mode: ${executionMode}\n`);
+logger.result(`\nDone. ${state.insights.size} continent(s), ${state.journeys.size} journey(s). No Date.now. No Math.random.`);
+logger.result(`Peak heap: ${Math.round(peakHeap / 1048576)} MB · scans folded: ${totalScans.toLocaleString()} · journeys sampled: ${state.journeys.size} · sampleRecords: ${state.sampleRecords.length}`);
+logger.result(`Execution mode: ${executionMode}\n`);
 
 // Release the worker pool so the process exits cleanly.
 if (workerContainer !== null) {

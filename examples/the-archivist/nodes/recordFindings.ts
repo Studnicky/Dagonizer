@@ -132,15 +132,10 @@ export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded', A
           const run = MemoryStore.runIri(state.runId);
           memory.assert(run, dagQueryEmbedding, MemoryStore.lit.str(JSON.stringify([...queryVec])), GRAPH_MEMORY);
         }
-        context.services.logger.info(
-          `record-findings: wrote ${String(state.shortlist.length)} book embeddings + run query embedding (dim=${String(embedder.dimensions)})`,
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        context.services.logger.warn(`record-findings: embedder unreachable, skipping embedding writes (fallback to Jaccard recall): ${message}`);
+      } catch {
+        // Embedder unreachable: skip embedding writes. Recall falls back to
+        // Jaccard similarity, so the per-run findings are still recorded.
       }
-    } else {
-      context.services.logger.info('record-findings: embedder unreachable, skipping embedding writes (fallback to Jaccard recall)');
     }
 
     return NodeOutputBuilder.of('recorded');

@@ -23,9 +23,8 @@ export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered', Archi
   readonly name = 'group-by-year';
   readonly outputs = ['ordered'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {
-      context.services.logger.info('group-by-year: nothing to reorder');
       return NodeOutputBuilder.of('ordered');
     }
     const indexed = state.candidates.map((candidate, position) => ({ candidate, position }));
@@ -42,13 +41,6 @@ export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered', Archi
     const ordered: CandidateType[] = indexed.map((entry) => entry.candidate);
     state.candidates = ordered;
     state.shortlist  = ordered;
-    const first = ordered[0];
-    const last  = ordered[ordered.length - 1];
-    if (first !== undefined && last !== undefined) {
-      const firstYear = first.book.publication.firstPublishYear !== null ? String(first.book.publication.firstPublishYear) : '?';
-      const lastYear  = last.book.publication.firstPublishYear  !== null ? String(last.book.publication.firstPublishYear)  : '?';
-      context.services.logger.info(`group-by-year: ${String(ordered.length)} works (${firstYear} → ${lastYear})`);
-    }
     return NodeOutputBuilder.of('ordered');
   }
 }

@@ -67,7 +67,6 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     try {
       state.draft = await composeCall();
       if (state.priorContext.length > 0) {
-        context.services.logger.info(`compose: ${String(state.priorContext.length)} prior facts in context`);
       }
       return NodeOutputBuilder.of('drafted');
     } catch (err) {
@@ -76,10 +75,8 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
       // Own timeout or transient compose failure → retry budget decides the
       // flow. The attempt was already recorded above, so read the count.
       if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
-        context.services.logger.warn(`compose-response: failed (attempt ${String(state.retriesFor('compose'))}/${String(MAX_COMPOSE_ATTEMPTS)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');
       }
-      context.services.logger.warn(`compose-response: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);
@@ -205,22 +202,18 @@ export class ValidateResponseNode extends ScalarNode<
     // failureCause so the next compose attempt knows what to fix.
     const antiHal = ResponseAnalysis.antiHallucinationCheck(state.draft, state.shortlist, state.priorCandidates);
     if (antiHal.status === 'fail') {
-      context.services.logger.warn(`validate-anti-hallucination: FAIL: ${antiHal.cause.trim()}`);
       state.failureCause += antiHal.cause;
       state.approvalState = 'rejected';
       if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
-        context.services.logger.warn('compose attempts exhausted (anti-hallucination)');
         return NodeOutputBuilder.of('exhausted');
       }
       return NodeOutputBuilder.of('retry');
     }
-    context.services.logger.info(`validate-anti-hallucination: PASS (${String(antiHal.count)} entities checked)`);
 
     const ok = await context.services.llm.validate(state.draft, state.shortlist);
     state.approvalState = ok ? 'approved' : 'rejected';
     if (ok) return NodeOutputBuilder.of('approved');
     if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
-      context.services.logger.warn('compose attempts exhausted');
       return NodeOutputBuilder.of('exhausted');
     }
     return NodeOutputBuilder.of('retry');

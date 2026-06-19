@@ -306,11 +306,7 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled', Ar
     }
 
     if (summary.length > 0) {
-      context.services.logger.info(
-        `recall-context: ${String(priorIntents.length)} prior intents, ${String(recentCandidates.length)} recent candidates, ${String(similarPriorQueries.length)} similar queries (loaded ${String(priorCandidatesFromContext.length)} into priorCandidates)`,
-      );
     } else {
-      context.services.logger.info('recall-context: no prior context found');
     }
 
     return NodeOutputBuilder.of('recalled');

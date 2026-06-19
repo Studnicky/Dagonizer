@@ -184,15 +184,13 @@ const services: ArchivistServices = {
   // Jaccard / heuristics when embedder is null.
   'embedder':         null,
   'nodeTimeouts':     {},
-  'logger':           logger,
 };
 
 // ObservedArchivist: a Dagonizer subclass that wires every lifecycle hook to
-// the logger via protected hook overrides (the sole observability surface).
-const dispatcher = new ObservedArchivist(
-  { services },
-  logger,
-);
+// its own internally-owned logger via protected hook overrides (the sole
+// observability surface). The DOM driver keeps its own `DomConsoleLogger`
+// (above) to stream its stage / result display lines into the `<pre>` panel.
+const dispatcher = new ObservedArchivist({ services });
 // #endregion wire-services
 
 // #region register-bundle
