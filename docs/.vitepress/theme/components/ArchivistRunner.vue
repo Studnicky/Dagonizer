@@ -18,19 +18,20 @@
 
 import { computed, onMounted, ref, watch } from 'vue';
 
-import { Checkpoint, CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
-import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
 import { archivistBundle, archivistDAG } from '../../../../examples/the-archivist/dag.ts';
-import { ConsoleLogger } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
+import { DomConsoleLogger } from '../../../../examples/the-archivist/logger/DomConsoleLogger.ts';
+import type { LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import { ONTOLOGY_NTRIPLES } from '../../../../examples/the-archivist/ontology/ArchivistOntology.ts';
 import { SeedLibrary } from '../../../../examples/the-archivist/data/SeedLibrary.ts';
 import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/RdfProvObserver.ts';
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
 import { NODE_KINDS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
-import { detectBackends, hasNoRunnableModel, instantiateProvider, loadApiKeys, loadOllamaModel, pickBestBackend, saveApiKeys, saveOllamaModel } from '../../../../examples/the-archivist/providers/index.ts';
+import { ApiKeyStore, BackendMatrix, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
@@ -62,15 +63,15 @@ import { RunnerMachine } from '../runner/RunnerMachine.ts';
 // ── State ───────────────────────────────────────────────────────────────
 const backends = ref<readonly BackendAvailability[]>([]);
 // Prefer a saved override; fall back to the highest-priority reachable
-// backend at mount time (resolved in onMounted once detectBackends completes).
+// backend at mount time (resolved in onMounted once BackendMatrix.detect completes).
 const savedBackend = typeof localStorage !== 'undefined'
   ? (localStorage.getItem('dagonizer-active-backend') as ProviderId | null)
   : null;
 const activeBackend = ref<ProviderId | null>(savedBackend);
 const noModel = ref(false);
 const isMobile = ref(false);
-const apiKeys = ref<Partial<Record<ProviderId, string>>>(loadApiKeys());
-const ollamaModel = ref<string>(loadOllamaModel());
+const apiKeys = ref<Partial<Record<ProviderId, string>>>(ApiKeyStore.load());
+const ollamaModel = ref<string>(OllamaModels.loadModel());
 
 // Slow-backend banner: shown when the active backend is the browser
 // built-in `LanguageModel` or WebLLM AND no cloud key is configured.
@@ -109,7 +110,10 @@ const memoryStore = new MemoryStore();
 memoryStore.enablePersistence();
 const memoryTick = ref(0); // bumped after each write so MemoryGraph re-renders
 const isPersisted = ref(memoryStore.isPersisted);
-const logger = new ConsoleLogger();
+// Reactive event sink owned by Vue: DomConsoleLogger.onEmit appends here, so
+// TraceFeed re-renders from `logEvents` without any subscribe callback.
+const logEvents = ref<LogEvent[]>([]);
+const logger = new DomConsoleLogger({ 'events': logEvents.value });
 
 // `memoryStore` is a plain class, not a reactive object, so a bare
 // `memoryStore.size` read in the template never re-evaluates on its own. Route
@@ -164,7 +168,7 @@ const checkpointNode = ref<string | null>(null);
 const hasCheckpoint = ref(
   typeof localStorage !== 'undefined' && localStorage.getItem('dagonizer-archivist-checkpoint') !== null
 );
-let lastResult: ExecutionResultInterface<ArchivistState> | null = null;
+let lastResult: ExecutionResultType<ArchivistState> | null = null;
 let lastDagName = 'the-archivist';
 
 async function saveCheckpoint(): Promise<void> {
@@ -205,7 +209,7 @@ async function resumeFromCheckpoint(): Promise<void> {
     const ckpt = Checkpoint.load(parsed);
     await ckpt.restoreStores({ 'memory': memoryStore });
     restored = ckpt.restoreState(
-      CheckpointRestoreAdapterFn.fromFn((snap) => ArchivistState.restore(snap)),
+      CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
     );
   } catch (err) {
     logger.warn(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -341,7 +345,7 @@ const resolvedOllamaModel = computed<string>(() => {
 /** Construct an LLM client for the active backend, or null when none is selected. */
 function makeLlm() {
   if (activeBackend.value === null) return null;
-  return instantiateProvider(activeBackend.value, {
+  return ProviderInstantiator.instantiate(activeBackend.value, {
     'apiKeys':     apiKeys.value,
     'ollamaModel': resolvedOllamaModel.value,
   });
@@ -363,8 +367,8 @@ function clearMemory(): void {
 
 // Re-detect backend availability when apiKeys change.
 watch(apiKeys, async () => {
-  backends.value = await detectBackends({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
-  noModel.value = hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+  backends.value = await BackendMatrix.detect({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
+  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
 }, { 'deep': true });
 
 // Persist the visitor's backend selection so it survives page reloads.
@@ -422,7 +426,6 @@ function buildServices(): ArchivistServices {
     // hybrid ranking fall back to Jaccard / heuristics when embedder is null.
     'embedder':          null,
     'nodeTimeouts':      {},
-    'logger':            logger,
   };
 }
 
@@ -534,10 +537,10 @@ onMounted(async () => {
 
   isMobile.value = MobileDetection.isLikelyMobile();
 
-  backends.value = await detectBackends({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
+  backends.value = await BackendMatrix.detect({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
 
   // Show the no-model gate when no real backend is available on this device.
-  if (hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
+  if (BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
     noModel.value = true;
     logger.warn('no LLM backend detected; visitor must enable one');
     return;
@@ -546,7 +549,7 @@ onMounted(async () => {
 
   // Auto-pick the best backend only when no saved user preference exists.
   if (savedBackend === null) {
-    const picked = pickBestBackend(backends.value, { 'isMobile': isMobile.value });
+    const picked = BackendMatrix.pickBest(backends.value, { 'isMobile': isMobile.value });
     if (picked !== null) {
       activeBackend.value = picked.id;
       logger.info(`backend auto-selected: ${picked.displayName}`);
@@ -593,8 +596,8 @@ onMounted(async () => {
   }
 });
 
-watch(apiKeys, () => { saveApiKeys(apiKeys.value); }, { 'deep': true });
-watch(ollamaModel, (next) => { saveOllamaModel(next); });
+watch(apiKeys, () => { ApiKeyStore.save(apiKeys.value); }, { 'deep': true });
+watch(ollamaModel, (next) => { OllamaModels.saveModel(next); });
 
 // ── Run ──────────────────────────────────────────────────────────────────
 async function ask(): Promise<void> {
@@ -649,7 +652,6 @@ async function ask(): Promise<void> {
       'subject-scout':           webSearchMs,
       'wikipedia-scout':         webSearchMs,
     },
-    'logger':            logger,
   };
   let dispatcher: ObservedDagonizer<ArchivistState, ArchivistServices> | null = null;
 
@@ -948,7 +950,7 @@ function reset(): void {
 
             <!-- Trace tab: merged node lifecycle + logger feed -->
             <template #trace>
-              <TraceFeed :entries="trace" :logger="logger" @node-click="onToolSelect" />
+              <TraceFeed :entries="trace" :log-events="logEvents" @node-click="onToolSelect" />
             </template>
           </PanesTabs>
         </div>

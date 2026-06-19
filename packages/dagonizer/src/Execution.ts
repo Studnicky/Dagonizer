@@ -31,35 +31,40 @@
  * ```
  */
 
-import type { ExecutionResultInterface } from './entities/execution/ExecutionResult.js';
-import type { NodeResultInterface } from './entities/node/NodeResult.js';
+import type { ExecutionResultType } from './entities/execution/ExecutionResult.js';
+import type { NodeResultType } from './entities/node/NodeResult.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 
-type NodesFnType<TState extends NodeStateInterface>
-  = () => AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void>;
-
 export class Execution<TState extends NodeStateInterface>
-implements AsyncIterable<NodeResultInterface<TState>>, PromiseLike<ExecutionResultInterface<TState>> {
-  readonly #nodesFn: NodesFnType<TState>;
-  #generator: AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> | null = null;
-  #drained: Promise<ExecutionResultInterface<TState>> | null = null;
-  #cachedResult: ExecutionResultInterface<TState> | null = null;
+implements AsyncIterable<NodeResultType<TState>>, PromiseLike<ExecutionResultType<TState>> {
+  readonly #generator: AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void>;
+  #drained: Promise<ExecutionResultType<TState>> | null = null;
+  #cachedResult: ExecutionResultType<TState> | null = null;
 
-  constructor(nodesFn: NodesFnType<TState>) {
-    this.#nodesFn = nodesFn;
+  /**
+   * Wrap an already-created flow generator.
+   *
+   * The dispatcher passes `this.runNodes(...)` directly: an async generator
+   * function returns a generator that does not begin executing until the first
+   * `next()`, so construction is side-effect-free. The flow body runs exactly
+   * once, lazily, on the first iteration or `await`. There is no factory
+   * function-pass-in — the generator IS the execution.
+   */
+  constructor(generator: AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void>) {
+    this.#generator = generator;
   }
 
-  [Symbol.asyncIterator](): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
+  [Symbol.asyncIterator](): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
     return this.#iterate();
   }
 
   /**
-   * Awaiting an `Execution` resolves to the final `ExecutionResultInterface`.
+   * Awaiting an `Execution` resolves to the final `ExecutionResultType`.
    * If the iterator has already been consumed, the cached result is
    * returned; otherwise the generator is drained.
    */
-  then<TResult1 = ExecutionResultInterface<TState>, TResult2 = never>(
-    onfulfilled?: ((value: ExecutionResultInterface<TState>) => TResult1 | PromiseLike<TResult1>) | null,
+  then<TResult1 = ExecutionResultType<TState>, TResult2 = never>(
+    onfulfilled?: ((value: ExecutionResultType<TState>) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): PromiseLike<TResult1 | TResult2> {
     if (this.#drained === null) {
@@ -68,12 +73,9 @@ implements AsyncIterable<NodeResultInterface<TState>>, PromiseLike<ExecutionResu
     return this.#drained.then(onfulfilled, onrejected);
   }
 
-  async *#iterate(): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
+  async *#iterate(): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
     if (this.#cachedResult !== null) {
       return this.#cachedResult;
-    }
-    if (this.#generator === null) {
-      this.#generator = this.#nodesFn();
     }
     const gen = this.#generator;
     while (true) {
@@ -86,7 +88,7 @@ implements AsyncIterable<NodeResultInterface<TState>>, PromiseLike<ExecutionResu
     }
   }
 
-  async #drain(): Promise<ExecutionResultInterface<TState>> {
+  async #drain(): Promise<ExecutionResultType<TState>> {
     if (this.#cachedResult !== null) return this.#cachedResult;
     const it = this.#iterate();
     while (true) {

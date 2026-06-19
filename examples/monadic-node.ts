@@ -17,12 +17,12 @@
  */
 
 import { DAG_CONTEXT, Dagonizer } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 import { CatalogueState, SearchCatalogueNode } from './dags/monadic-node.js';
 
 // ── Build a minimal DAG: search-catalogue → end ─────────────────────────────
 
-const dag: DAG = {
+const dag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:catalogue-search',
   '@type':     'DAG',

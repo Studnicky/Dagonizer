@@ -11,7 +11,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { EventClassifier, Units } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -20,7 +20,7 @@ export class CanonicalizeFacilityNode extends ScalarNode<CartographerState, 'don
   readonly 'name' = 'canonicalize-facility';
   readonly 'outputs' = ['done'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'done'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'done'>> {
     if (state.canonicalVariant.eventType !== 'facility-scan') {
       return NodeOutputBuilder.of('done');
     }

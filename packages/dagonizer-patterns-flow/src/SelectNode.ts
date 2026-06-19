@@ -2,8 +2,8 @@
  * SelectNode: root for "pick or sort items from a list" patterns.
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -18,8 +18,8 @@ export abstract class SelectNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextInterface<undefined>,
-  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
+    _context: NodeContextType<undefined>,
+  ): Promise<NodeOutputType<'success' | 'empty'>> {
     const items = this.readItems(state);
     const next = this.transform(items);
     this.writeBack(state, next);

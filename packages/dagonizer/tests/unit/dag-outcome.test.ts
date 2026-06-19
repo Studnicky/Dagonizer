@@ -4,7 +4,7 @@
  * Pins the shape of DagOutcome.transportError(correlationId) and the
  * TransportErrorCode.isInfrastructureFailure predicate.
  *
- * DagOutcome.transportError returns a DagOutcomeInterface that the scatter and
+ * DagOutcome.transportError returns a DagOutcomeType that the scatter and
  * embedded-DAG execution branches use to distinguish an infrastructure failure
  * (retryable: leave the scatter item un-acked) from a legitimate body-error
  * outcome (the DAG ran and routed to its error output; ack it as completed).

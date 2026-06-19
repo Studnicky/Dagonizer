@@ -24,7 +24,7 @@ import type { CanonicalEventVariant } from '../../entities/CanonicalEvent.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
 import { IDENTITY_EXTRAS_BY_TYPE } from '../../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -37,7 +37,7 @@ export class ValidateEventNode extends ScalarNode<CartographerState, 'validated'
     return typeof value === 'string' ? value : '';
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'validated'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'validated'>> {
     const source = state.currentSource;
     const eventType = source.eventType;
     const extras = IDENTITY_EXTRAS_BY_TYPE[eventType] ?? [];

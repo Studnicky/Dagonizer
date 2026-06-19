@@ -10,8 +10,8 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node: iterates a list while checking context.signal.aborted between items
@@ -22,7 +22,7 @@ export class BatchProcessNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'batch-process';
   readonly outputs = ['success'] as const;
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface) {
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextType) {
     const items = ['alpha', 'beta', 'gamma', 'delta', 'epsilon'];
     for (const item of items) {
       if (context.signal.aborted) break;        // check between iterations
@@ -51,7 +51,7 @@ export class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'slow';
   readonly outputs = ['success'] as const;
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface) {
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextType) {
     // Wrap the delay in a manual Promise that listens for abort. If the node
     // ignores context.signal, cancellation would not take effect until the
     // current node finishes, even if the signal fires.
@@ -76,7 +76,7 @@ export class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
 // DAGs
 // ---------------------------------------------------------------------------
 
-export const batchDag: DAG = {
+export const batchDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:batch-dag',
   '@type':     'DAG',
@@ -100,7 +100,7 @@ export const batchDag: DAG = {
   ],
 };
 
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:slow-dag',
   '@type':     'DAG',

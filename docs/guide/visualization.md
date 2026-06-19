@@ -34,15 +34,15 @@ const dag: DAG = {
 
 # Visualization
 
-Three renderers ship in `@studnicky/dagonizer/viz`. Each consumes a `DAG` and emits a different surface: `MermaidRenderer.render` produces `flowchart` source for embedding in Markdown; `JsonLdRenderer.render` produces a JSON-LD document for graph databases and semantic tooling; `CytoscapeRenderer.render` produces a plain `readonly CytoscapeElement[]` array for consumers who manage their own cytoscape instance.
+Three renderers ship in `@studnicky/dagonizer/viz`. Each consumes a `DAG` and emits a different surface: `MermaidRenderer.render` produces `flowchart` source for embedding in Markdown; `JsonLdRenderer.render` produces a JSON-LD document for graph databases and semantic tooling; `CytoscapeRenderer.render` produces a plain `readonly CytoscapeElementType[]` array for consumers who manage their own cytoscape instance.
 
 ## API surface
 
 | Symbol | Source | Role |
 |--------|--------|------|
 | `MermaidRenderer.render(dag)` | `@studnicky/dagonizer/viz` | Returns Mermaid `flowchart` source |
-| `JsonLdRenderer.render(dag)` | `@studnicky/dagonizer/viz` | Returns a `DagJsonLdDocument` |
-| `CytoscapeRenderer.render(dag, options?)` | `@studnicky/dagonizer/viz` | Returns `readonly CytoscapeElement[]` (elements only; no positions) |
+| `JsonLdRenderer.render(dag)` | `@studnicky/dagonizer/viz` | Returns a `DagJsonLdDocumentType` |
+| `CytoscapeRenderer.render(dag, options?)` | `@studnicky/dagonizer/viz` | Returns `readonly CytoscapeElementType[]` (elements only; no positions) |
 | `DAGONIZER_VOCAB` | `@studnicky/dagonizer/viz` | Vocabulary base URI string; classes appear as `dag:ClassName` in the `@context` |
 
 ## MermaidRenderer
@@ -79,7 +79,7 @@ The output is a complete Mermaid block ready to drop into a fenced code block.
 
 ## CytoscapeRenderer
 
-`CytoscapeRenderer.render(dag, options?)` returns a plain `readonly CytoscapeElement[]` with NO positions. Positioning is performed separately by `CompositeLayout.compute` (async) or handled internally by the `CytoscapeGraph` factory. To use the cytoscape visualizer, install the optional peer dependencies:
+`CytoscapeRenderer.render(dag, options?)` returns a plain `readonly CytoscapeElementType[]` with NO positions. Positioning is performed separately by `CompositeLayout.compute` (async) or handled internally by the `CytoscapeGraph` factory. To use the cytoscape visualizer, install the optional peer dependencies:
 
 ```sh
 npm install cytoscape @dagrejs/dagre
@@ -131,7 +131,7 @@ The same factory drives every DAG diagram in this guide and in the [Phase demos]
 
 <<< @/../examples/the-archivist/viz/render-jsonld.ts#jsonld-render
 
-The output is a `DagJsonLdDocument`: `@context`, `@id`, `@type`, `@graph` (one entry per placement). Useful when feeding to a triple store, an RDF reasoner, or a graph database that consumes JSON-LD natively. The vocabulary base URI is available as `DAGONIZER_VOCAB` and is printed by the example above.
+The output is a `DagJsonLdDocumentType`: `@context`, `@id`, `@type`, `@graph` (one entry per placement). Useful when feeding to a triple store, an RDF reasoner, or a graph database that consumes JSON-LD natively. The vocabulary base URI is available as `DAGONIZER_VOCAB` and is printed by the example above.
 
 Classes appear in the output as prefixed IRIs under the `dag:` prefix (e.g. `dag:ScatterNode`, `dag:EmbeddedDAGNode`), where `dag` resolves to `DAGONIZER_VOCAB` via the document's `@context`.
 

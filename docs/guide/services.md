@@ -15,16 +15,16 @@ seeAlso:
 
 # Services container
 
-`DagonizerOptionsInterface.services` accepts a typed bag of dependencies. The same reference flows through every node as `context.services`. Nodes never construct their own clients; they read from `context.services`.
+`DagonizerOptionsType.services` accepts a typed bag of dependencies. The same reference flows through every node as `context.services`. Nodes never construct their own clients; they read from `context.services`.
 
 ## API surface
 
 | Symbol | Source | Role |
 |--------|--------|------|
 | `Dagonizer<TState, TServices>` | `@studnicky/dagonizer` | Carries the services type as a generic parameter |
-| `DagonizerOptionsInterface.services` | `@studnicky/dagonizer` | The bag passed at construction |
+| `DagonizerOptionsType.services` | `@studnicky/dagonizer` | The bag passed at construction |
 | `NodeInterface<TState, TOutput, TServices>` | `@studnicky/dagonizer` | Propagates `TServices` to `context.services` |
-| `NodeContextInterface.services` | `@studnicky/dagonizer` | The per-call view of the bag |
+| `NodeContextType.services` | `@studnicky/dagonizer` | The per-call view of the bag |
 
 `TServices` defaults to `undefined`. Dispatchers that need nothing typed through services work as `new Dagonizer<S>()`.
 

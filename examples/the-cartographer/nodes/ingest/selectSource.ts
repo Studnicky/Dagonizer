@@ -16,7 +16,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -25,7 +25,7 @@ export class SelectSourceNode extends ScalarNode<CartographerState, 'compressed'
   readonly 'name' = 'select-source';
   readonly 'outputs' = ['compressed', 'plain', 'invalid'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'compressed' | 'plain' | 'invalid'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'compressed' | 'plain' | 'invalid'>> {
     const item = state.getMetadata<SourcePayload>('source');
     if (item === null || item === undefined || !item.sourceId || !item.payload) {
       return NodeOutputBuilder.of('invalid');

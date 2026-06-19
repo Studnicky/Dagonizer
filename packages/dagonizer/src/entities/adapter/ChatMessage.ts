@@ -44,4 +44,4 @@ export const ChatMessageSchema = {
 } as const;
 
 /** A single message in a chat-style conversation. */
-export type ChatMessage = FromSchema<typeof ChatMessageSchema>;
+export type ChatMessageType = FromSchema<typeof ChatMessageSchema>;

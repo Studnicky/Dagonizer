@@ -19,7 +19,7 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 import { GeoFusion } from '../../services/GeoFusion.ts';
 import { TimeZoneResolver } from '../../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -28,7 +28,7 @@ export class FuseGeoNode extends ScalarNode<CartographerState, 'fused', Cartogra
   readonly 'name' = 'fuse-geo';
   readonly 'outputs' = ['fused'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'fused'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'fused'>> {
     const lat = state.raw.latitude;
     const lng = state.raw.longitude;
     const resolved = GeoFusion.fuse(state.gpsCandidate, state.ipCandidate, lat, lng);

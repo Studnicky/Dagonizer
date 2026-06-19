@@ -25,7 +25,7 @@ export const RecommendedWorkerCountConfigSchema = {
 } as const;
 
 /** TypeScript type derived from `RecommendedWorkerCountConfigSchema` via `json-schema-to-ts`. */
-export type RecommendedWorkerCountConfig = FromSchema<typeof RecommendedWorkerCountConfigSchema>;
+export type RecommendedWorkerCountConfigType = FromSchema<typeof RecommendedWorkerCountConfigSchema>;
 
 /** Default for `mainThreadReservation`: reserve 1 thread for the main thread. */
 export const RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION = 1;
@@ -40,9 +40,9 @@ export const RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES: null = null;
  * Canonical default RecommendedWorkerCountConfig.
  * Producers pass this (spread + override) to fill all required fields.
  */
-export const RecommendedWorkerCountConfigDefault: RecommendedWorkerCountConfig = {
+export const RecommendedWorkerCountConfigDefault: RecommendedWorkerCountConfigType = {
   'maximumWorkers':        1,
   'mainThreadReservation': RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
   'fallbackWorkerCount':   RECOMMENDED_WORKER_COUNT_FALLBACK,
   'memoryPerWorkerBytes':  RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
-} as const satisfies RecommendedWorkerCountConfig;
+} as const satisfies RecommendedWorkerCountConfigType;

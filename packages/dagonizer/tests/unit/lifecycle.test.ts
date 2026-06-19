@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGLifecycleMachine } from '../../src/lifecycle/DAGLifecycleMachine.js';
-import type { DAGLifecycleState } from '../../src/lifecycle/DAGLifecycleState.js';
+import type { DAGLifecycleStateType } from '../../src/lifecycle/DAGLifecycleState.js';
 
 void describe('DAGLifecycleMachine', () => {
   void it('starts in pending', () => {
@@ -17,7 +17,7 @@ void describe('DAGLifecycleMachine', () => {
       { 'type': 'start', 'at': 1000 },
     );
     assert.equal(next.kind, 'running');
-    assert.equal((next as Extract<DAGLifecycleState, { kind: 'running' }>).startedAt, 1000);
+    assert.equal((next as Extract<DAGLifecycleStateType, { kind: 'running' }>).startedAt, 1000);
   });
 
   void it('running + succeed → completed', () => {
@@ -38,7 +38,7 @@ void describe('DAGLifecycleMachine', () => {
     const error = new Error('boom');
     const next = DAGLifecycleMachine.transition(running, { 'type': 'fail', 'error': error, 'at': 2000 });
     assert.equal(next.kind, 'failed');
-    assert.equal((next as Extract<DAGLifecycleState, { kind: 'failed' }>).error, error);
+    assert.equal((next as Extract<DAGLifecycleStateType, { kind: 'failed' }>).error, error);
   });
 
   void it('terminal states are sticky (return same reference)', () => {
@@ -64,6 +64,6 @@ void describe('DAGLifecycleMachine', () => {
     );
     const cancelled = DAGLifecycleMachine.transition(running, { 'type': 'cancel', 'reason': 'user-abort', 'at': 1500 });
     assert.equal(cancelled.kind, 'cancelled');
-    assert.equal((cancelled as Extract<DAGLifecycleState, { kind: 'cancelled' }>).reason, 'user-abort');
+    assert.equal((cancelled as Extract<DAGLifecycleStateType, { kind: 'cancelled' }>).reason, 'user-abort');
   });
 });

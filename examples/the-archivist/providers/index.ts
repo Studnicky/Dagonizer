@@ -9,9 +9,9 @@
  *   mistral      →  Mistral AI REST (mistral-small-latest, free tier)
  *   openrouter   →  OpenRouter REST (llama-3.3-70b-instruct:free, free-tier models)
  *
- * Every backend is one `LlmAdapter` (transport + native tool format)
+ * Every backend is one `LlmAdapterInterface` (transport + native tool format)
  * wrapped by `BaseLlmClient` (prompt choreography). The choice between
- * backends is just a choice of adapter; the high-level `LlmClient`
+ * backends is just a choice of adapter; the high-level `LlmClientInterface`
  * surface is identical.
  *
  * `BackendMatrix.detect(inputs)` probes each one and returns rows for all.
@@ -28,7 +28,7 @@
  * `ApiKeyStore.save()` to read/write.
  */
 
-import type { LlmClient } from '../services.ts';
+import type { LlmClientInterface } from '../services.ts';
 
 import {
   CerebrasApiAdapter,
@@ -40,8 +40,8 @@ import {
   OpenRouterApiAdapter,
   WebLlmAdapter,
   OllamaProbe,
-  type GeminiNanoAvailability,
-  type WebLlmInitReport,
+  type GeminiNanoAvailabilityType,
+  type WebLlmInitReportType,
 } from './adapters/index.ts';
 import { LlmError } from '@studnicky/dagonizer/adapter';
 import { BaseLlmClient } from './BaseLlmClient.ts';
@@ -132,7 +132,7 @@ export interface PickBestOptions {
 export interface InstantiateInputs {
   readonly apiKeys?: Partial<Record<ProviderId, string>>;
   readonly webLlmModel?: string;
-  readonly onWebLlmProgress?: (report: WebLlmInitReport) => void;
+  readonly onWebLlmProgress?: (report: WebLlmInitReportType) => void;
   /**
    * Ollama chat model to use. Defaults to the installed model the detector
    * resolved from the daemon's tag list (e.g. 'llama3.2:3b'); pass a value to
@@ -222,7 +222,7 @@ export class BackendMatrix {
     const keys = inputs.apiKeys ?? {};
     const out: BackendAvailability[] = [];
 
-    const nanoStatus: GeminiNanoAvailability = await GeminiNanoAdapter.detect();
+    const nanoStatus: GeminiNanoAvailabilityType = await GeminiNanoAdapter.detect();
     out.push({
       'id': 'gemini-nano',
       'displayName': 'Browser built-in LanguageModel (on-device)',
@@ -364,10 +364,10 @@ export class BackendMatrix {
 }
 
 /**
- * ProviderInstantiator: factory for LlmClient instances given a ProviderId.
+ * ProviderInstantiator: factory for LlmClientInterface instances given a ProviderId.
  */
 export class ProviderInstantiator {
-  static instantiate(id: ProviderId, inputs: InstantiateInputs = {}): LlmClient {
+  static instantiate(id: ProviderId, inputs: InstantiateInputs = {}): LlmClientInterface {
     const keys = inputs.apiKeys ?? {};
     switch (id) {
       case 'gemini-nano':
@@ -380,7 +380,7 @@ export class ProviderInstantiator {
         return new BaseLlmClient(new GeminiApiAdapter(key));
       }
       case 'web-llm': {
-        const options: { model?: string; onProgress?: (report: WebLlmInitReport) => void } = {};
+        const options: { model?: string; onProgress?: (report: WebLlmInitReportType) => void } = {};
         if (inputs.webLlmModel !== undefined) options.model = inputs.webLlmModel;
         if (inputs.onWebLlmProgress !== undefined) options.onProgress = inputs.onWebLlmProgress;
         return new BaseLlmClient(new WebLlmAdapter(options));
@@ -431,30 +431,6 @@ export class ProviderInstantiator {
   }
 }
 
-/**
- * Free-function aliases for the provider store and detection static methods.
- */
-export const loadApiKeys = (): Partial<Record<ProviderId, string>> => ApiKeyStore.load();
-export const saveApiKeys = (keys: Partial<Record<ProviderId, string>>): void => { ApiKeyStore.save(keys); };
-export const loadOllamaModel = (): string => OllamaModels.loadModel();
-export const saveOllamaModel = (model: string): void => { OllamaModels.saveModel(model); };
-export const pickOllamaChatModel = (installed: readonly string[], preferred?: string): string | null =>
-  OllamaModels.pickChat(installed, preferred);
-export const detectBackends = (inputs: DetectionInputs = {}): Promise<readonly BackendAvailability[]> =>
-  BackendMatrix.detect(inputs);
-export const pickBestBackend = (
-  available: readonly BackendAvailability[],
-  options: PickBestOptions = {},
-): BackendAvailability | null => BackendMatrix.pickBest(available, options);
-export const hasNoRunnableModel = (
-  available: readonly BackendAvailability[],
-  options: PickBestOptions = {},
-): boolean => BackendMatrix.hasNoRunnableModel(available, options);
-export const browserVisibleBackends = (isMobile: boolean): readonly ProviderId[] =>
-  BackendMatrix.browserVisible(isMobile);
-export const instantiateProvider = (id: ProviderId, inputs: InstantiateInputs = {}): LlmClient =>
-  ProviderInstantiator.instantiate(id, inputs);
-
 export { BaseLlmClient } from './BaseLlmClient.ts';
 export {
   CerebrasApiAdapter,
@@ -466,8 +442,6 @@ export {
   OpenRouterApiAdapter,
   WebLlmAdapter,
   OllamaProbe,
-  detectOllama,
-  listOllamaModels,
 } from './adapters/index.ts';
 export { MobileDetection } from './MobileDetection.ts';
-export type { GeminiNanoAvailability, WebLlmInitReport };
+export type { GeminiNanoAvailabilityType, WebLlmInitReportType };

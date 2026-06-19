@@ -8,10 +8,10 @@
  */
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
+import type { OperationContractFragmentType } from '../../src/contracts/OperationContractFragment.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 
@@ -41,8 +41,8 @@ export class TestNode {
 
       override async executeOne(
         state: TState,
-        _context: NodeContextInterface,
-      ): Promise<NodeOutputInterface<string>> {
+        _context: NodeContextType,
+      ): Promise<NodeOutputType<string>> {
         const output = exec !== undefined ? await exec(state) : defaultOutput;
         return NodeOutputBuilder.of(output);
       }
@@ -52,7 +52,7 @@ export class TestNode {
   }
 
   /**
-   * Create a minimal `NodeInterface<TState>` with an `OperationContractFragment`
+   * Create a minimal `NodeInterface<TState>` with an `OperationContractFragmentType`
    * attached. Nodes always return `outputs[0]`; the contract is the fixture under
    * test (consumed by `DAGBuilder.contract()` validation).
    *
@@ -63,19 +63,19 @@ export class TestNode {
   static withContract<TState extends NodeStateInterface>(
     name: string,
     outputs: readonly string[],
-    contract: OperationContractFragment,
+    contract: OperationContractFragmentType,
   ): NodeInterface<TState, string> {
     const defaultOutput = outputs[0] ?? 'success';
 
     class WithContractNode extends ScalarNode<TState, string> {
       override readonly name = name;
       override readonly outputs = outputs as readonly string[];
-      override readonly contract: OperationContractFragment = contract;
+      override readonly contract: OperationContractFragmentType = contract;
 
       override async executeOne(
         _state: TState,
-        _context: NodeContextInterface,
-      ): Promise<NodeOutputInterface<string>> {
+        _context: NodeContextType,
+      ): Promise<NodeOutputType<string>> {
         return NodeOutputBuilder.of(defaultOutput);
       }
     }

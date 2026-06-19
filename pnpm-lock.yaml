@@ -4,10 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  vue: 3.5.38
-  '@shikijs/twoslash': 2.5.0
-
 importers:
 
   .:
@@ -15,6 +11,9 @@ importers:
       '@changesets/cli':
         specifier: ^2.31.0
         version: 2.31.0(@types/node@25.9.1)
+      '@shikijs/vitepress-twoslash':
+        specifier: ^2.5.0
+        version: 2.5.0(typescript@5.9.3)
       '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:packages/dagonizer
@@ -69,9 +68,6 @@ importers:
       '@studnicky/dagonizer-tool-wikipedia':
         specifier: workspace:^
         version: link:packages/dagonizer-tool-wikipedia
-      '@shikijs/vitepress-twoslash':
-        specifier: ^2.5.0
-        version: 2.5.0(typescript@5.9.3)
       tsx:
         specifier: ^4.20.0
         version: 4.22.3
@@ -96,6 +92,9 @@ importers:
       '@studnicky/dagonizer-executor-node':
         specifier: workspace:^
         version: link:../packages/dagonizer-executor-node
+      '@studnicky/dagonizer-patterns-rag':
+        specifier: workspace:^
+        version: link:../packages/dagonizer-patterns-rag
     devDependencies:
       '@types/node':
         specifier: ^25.2.0
@@ -164,12 +163,12 @@ importers:
 
   examples/the-cartographer:
     dependencies:
-      '@studnicky/dagonizer':
-        specifier: workspace:^
-        version: link:../../packages/dagonizer
       '@rapideditor/country-coder':
         specifier: ^5.6.1
         version: 5.6.1
+      '@studnicky/dagonizer':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer
       tz-lookup:
         specifier: ^6.1.25
         version: 6.1.25
@@ -270,6 +269,9 @@ importers:
       '@types/node':
         specifier: ^25.2.0
         version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
 
   packages/dagonizer-adapter-gemini-nano:
     dependencies:
@@ -280,6 +282,9 @@ importers:
       '@types/node':
         specifier: ^25.2.0
         version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
 
   packages/dagonizer-adapter-groq:
     dependencies:
@@ -330,8 +335,15 @@ importers:
       '@types/node':
         specifier: ^25.2.0
         version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
 
   packages/dagonizer-book-entities:
+    dependencies:
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
     devDependencies:
       '@types/node':
         specifier: ^25.2.0
@@ -346,6 +358,9 @@ importers:
       '@types/node':
         specifier: ^25.2.0
         version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
 
   packages/dagonizer-embedder-mistral:
     dependencies:
@@ -356,6 +371,9 @@ importers:
       '@types/node':
         specifier: ^25.2.0
         version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
 
   packages/dagonizer-embedder-ollama:
     dependencies:
@@ -366,6 +384,9 @@ importers:
       '@types/node':
         specifier: ^25.2.0
         version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
 
   packages/dagonizer-executor-node:
     dependencies:
@@ -494,6 +515,9 @@ importers:
       '@types/node':
         specifier: ^25.2.0
         version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
 
   packages/dagonizer-tool-openlibrary:
     dependencies:
@@ -507,6 +531,9 @@ importers:
       '@types/node':
         specifier: ^25.2.0
         version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
 
   packages/dagonizer-tool-wikipedia:
     dependencies:
@@ -520,6 +547,9 @@ importers:
       '@types/node':
         specifier: ^25.2.0
         version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
 
 packages:
 
@@ -1828,7 +1858,7 @@ packages:
     engines: {node: ^18.0.0 || >=20.0.0}
     peerDependencies:
       vite: ^5.0.0 || ^6.0.0
-      vue: 3.5.38
+      vue: ^3.2.25
 
   '@volar/language-core@2.4.15':
     resolution: {integrity: sha512-3VHw+QZU0ZG9IuQmzT68IyN4hZNd9GchGPhbD9+pa8CVv7rnoOZwo7T8weIbrRmihqy3ATpdfXFnqRrfPVK6CA==}
@@ -2464,7 +2494,7 @@ packages:
     resolution: {integrity: sha512-afW+h2CFafo+7Y9Lvw/xsqjaQlKLdJV7h1fCHfcYQ1C4SVMlu7OAekqWgu5d4SgvkBVU0pVpLlVsrSTBURFRkg==}
     peerDependencies:
       '@nuxt/kit': ^3.2.0
-      vue: 3.5.38
+      vue: ^3.2.0
     peerDependenciesMeta:
       '@nuxt/kit':
         optional: true
@@ -3297,7 +3327,7 @@ packages:
   vue-resize@2.0.0-alpha.1:
     resolution: {integrity: sha512-7+iqOueLU7uc9NrMfrzbG8hwMqchfVfSzpVlCMeJQe4pyibqyoifDNbKTZvwxZKDvGkB+PdFeKvnGZMoEb8esg==}
     peerDependencies:
-      vue: 3.5.38
+      vue: ^3.0.0
 
   vue-tsc@2.2.12:
     resolution: {integrity: sha512-P7OP77b2h/Pmk+lZdJ0YWs+5tJ6J2+uOQPo7tlBnY44QqQSPYvS0qVT4wqDJgwrZaLe47etJLLQRFia71GYITw==}

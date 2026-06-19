@@ -3,8 +3,8 @@
  * on the consumer-supplied predicate.
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -17,8 +17,8 @@ export abstract class PredicateGateNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextInterface<undefined>,
-  ): Promise<NodeOutputInterface<'pass' | 'fail'>> {
+    _context: NodeContextType<undefined>,
+  ): Promise<NodeOutputType<'pass' | 'fail'>> {
     return NodeOutputBuilder.of(this.predicate(state) ? 'pass' : 'fail');
   }
 }

@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 void describe('Dagonizer scatter gather strategies', () => {
@@ -18,7 +18,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     class ClassifyNode extends ScalarNode<NodeStateBase, 'even' | 'odd'> {
       readonly name = 'classify';
       readonly outputs = ['even', 'odd'] as const;
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputInterface<'even' | 'odd'>> {
+      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'even' | 'odd'>> {
         const n = state.getMetadata<number>('item') ?? 0;
         return { 'errors': [], 'output': n % 2 === 0 ? 'even' as const : 'odd' as const };
       }
@@ -58,12 +58,12 @@ void describe('Dagonizer scatter gather strategies', () => {
     class ClsNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'classify';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     class MergeNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'merge';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'success'>> {
         seenResults = state.getMetadata<GatherResultRecord[]>('gatherResults');
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -108,7 +108,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     class PassThroughNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'passThrough';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     const passThrough = new PassThroughNode();
     dispatcher.registerNode(passThrough);
@@ -146,7 +146,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     class ProduceNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'produce';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'success'>> {
         state.setMetadata('answer', 'hello');
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -193,7 +193,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'slow';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
+      protected async executeOne(): Promise<NodeOutputType<'success'>> {
         inFlight++;
         peak = Math.max(peak, inFlight);
         await new Promise<void>((r) => setImmediate(r));

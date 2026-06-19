@@ -7,12 +7,12 @@
  * provenance differs.
  *
  * Construction calls `cluster.setupPrimary({ exec: entryPath })` once (lazily
- * on first createEntry). All workers run the forkEntry bootstrap over IPC.
+ * on first composeEntry). All workers run the forkEntry bootstrap over IPC.
  *
  * Constructor options:
  *   registryModule   — URL string passed to DagHost init
  *   registryVersion  — version for the init ↔ ready handshake
- *   servicesConfig   — opaque JSON passed to createBundle (default: {})
+ *   servicesConfig   — opaque JSON passed to instantiate (default: {})
  *   poolSize         — number of cluster workers (default: NodeSystemInfo)
  *   entryUrl         — override the default forkEntry.js URL (for tests)
  *
@@ -22,50 +22,29 @@
 import cluster from 'node:cluster';
 import type { Worker } from 'node:cluster';
 
-import type { NodeStateInterface } from '@studnicky/dagonizer';
-import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
-import type { PoolEntry } from '@studnicky/dagonizer/container';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
+import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
 
 import { IpcChannel } from './IpcChannel.js';
-import { NodeSystemInfo } from './NodeSystemInfo.js';
+import { NodeContainerBase } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptionsType } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
-// ClusterContainerOptions
+// ClusterContainerOptionsType
 // ---------------------------------------------------------------------------
 
-export interface ClusterContainerOptions {
-  readonly registryModule: string;
-  readonly registryVersion: string;
-  readonly servicesConfig?: JsonObject;
-  readonly poolSize?: number;
-  readonly entryUrl?: URL;
-}
+export type ClusterContainerOptionsType = NodeContainerBaseOptionsType;
 
 // ---------------------------------------------------------------------------
 // ClusterContainer
 // ---------------------------------------------------------------------------
 
-export class ClusterContainer extends DagContainerBase<NodeStateInterface, Worker> {
+export class ClusterContainer extends NodeContainerBase<Worker> {
   readonly #entryUrl: URL;
   #setupDone: boolean;
 
-  constructor(options: ClusterContainerOptions) {
-    const sysInfo = new NodeSystemInfo();
-    const defaultPoolSize = sysInfo.recommendedWorkerCount({
-      ...RecommendedWorkerCountConfigDefault,
-      'maximumWorkers': 8,
-    });
-    super({
-      ...DagContainerBase.defaultOptions,
-      'poolSize': options.poolSize ?? defaultPoolSize,
-      'init': {
-        'registryModule': options.registryModule,
-        'registryVersion': options.registryVersion,
-        'servicesConfig': options.servicesConfig ?? {},
-      },
-    });
+  constructor(options: ClusterContainerOptionsType) {
+    super(NodeContainerBase.resolveOptions(options));
     this.#entryUrl = options.entryUrl ?? new URL('./forkEntry.js', import.meta.url);
     this.#setupDone = false;
   }
@@ -75,17 +54,17 @@ export class ClusterContainer extends DagContainerBase<NodeStateInterface, Worke
   // ---------------------------------------------------------------------------
 
   /**
-   * createEntry: configure cluster primary (once) and fork a worker, initialized: false.
+   * composeEntry: configure cluster primary (once) and fork a worker, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override createEntry(): PoolEntry<Worker> {
+  protected override composeEntry(): PoolEntryType<Worker> {
     if (!this.#setupDone) {
       cluster.setupPrimary({ 'exec': this.#entryUrl.pathname });
       this.#setupDone = true;
     }
 
     const worker = cluster.fork();
-    const channel = IpcChannel.fromChildProcess(worker);
+    const channel = IpcChannel.ofChildProcess(worker);
     return { 'worker': worker, 'channel': channel, 'initialized': false };
   }
 
@@ -94,7 +73,7 @@ export class ClusterContainer extends DagContainerBase<NodeStateInterface, Worke
    * Called unconditionally; the base's #destroyed guard prevents spurious
    * eviction during intentional teardown.
    */
-  protected override attachDeathListeners(entry: PoolEntry<Worker>): void {
+  protected override attachDeathListeners(entry: PoolEntryType<Worker>): void {
     entry.worker.on('error', (err: Error) => {
       this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, `cluster worker error: ${err.message}`);
     });

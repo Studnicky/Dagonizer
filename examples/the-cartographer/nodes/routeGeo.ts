@@ -15,7 +15,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 
@@ -24,7 +24,7 @@ export class RouteGeoNode extends ScalarNode<CartographerState, 'has-geo' | 'nee
   readonly 'name' = 'route-geo';
   readonly 'outputs' = ['has-geo', 'needs-geo'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'has-geo' | 'needs-geo'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'has-geo' | 'needs-geo'>> {
     const geo = state.canonical.geo;
     // A source's pre-resolved geo only lets us skip the lookup when it actually
     // resolved a location — an 'UNK'/'Unmapped' placeholder (e.g. a ping whose

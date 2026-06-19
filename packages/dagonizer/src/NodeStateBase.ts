@@ -1,9 +1,9 @@
-import type { JsonObject, JsonValue } from './entities/json.js';
-import type { NodeErrorInterface } from './entities/node/NodeError.js';
-import type { NodeWarning } from './entities/node/NodeWarning.js';
+import type { JsonObjectType, JsonValueType } from './entities/json.js';
+import type { NodeErrorType } from './entities/node/NodeError.js';
+import type { NodeWarningType } from './entities/node/NodeWarning.js';
 import { DAGError } from './errors/DAGError.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
-import type { DAGLifecycleState } from './lifecycle/DAGLifecycleState.js';
+import type { DAGLifecycleStateType } from './lifecycle/DAGLifecycleState.js';
 import { Clock } from './runtime/Clock.js';
 import { Validator } from './validation/Validator.js';
 
@@ -29,22 +29,22 @@ export interface NodeStateInterface {
   clone(): this;
 
   /**
-   * Collect an error in state. `context` is required on `NodeErrorInterface`
+   * Collect an error in state. `context` is required on `NodeErrorType`
    * and always present; the engine stores errors without additional normalisation.
    */
-  collectError(error: NodeErrorInterface): void;
+  collectError(error: NodeErrorType): void;
 
   /**
    * Collect a warning in state.
    */
-  collectWarning(warning: NodeWarning): void;
+  collectWarning(warning: NodeWarningType): void;
 
   /**
    * Collected errors from all nodes.
    * Errors accumulate; they don't stop the flow.
    * At completion, caller decides what to do with them.
    */
-  readonly 'errors': readonly NodeErrorInterface[];
+  readonly 'errors': readonly NodeErrorType[];
 
   /**
    * Get a metadata value with type casting.
@@ -54,7 +54,7 @@ export interface NodeStateInterface {
   /**
    * Current DAG lifecycle state (full discriminated union).
    */
-  readonly 'lifecycle': DAGLifecycleState;
+  readonly 'lifecycle': DAGLifecycleStateType;
 
   /**
    * Mark state as cancelled (terminal). Dispatched by the dispatcher (or a
@@ -146,13 +146,13 @@ export interface NodeStateInterface {
   /**
    * Collected warnings from all nodes.
    */
-  readonly 'warnings': readonly NodeWarning[];
+  readonly 'warnings': readonly NodeWarningType[];
 
   /**
    * Serialize state to a JSON-safe snapshot for transport or checkpointing.
    * Subclasses with extra fields override `snapshotData()` to add them.
    */
-  snapshot(): JsonObject;
+  snapshot(): JsonObjectType;
 
   /**
    * Apply a snapshot to this instance in place. Used by the container seam
@@ -163,12 +163,12 @@ export interface NodeStateInterface {
    * Subclasses override to read domain-specific fields, calling
    * `super.applySnapshot` to inherit the base behavior.
    */
-  applySnapshot(snapshot: JsonObject): void;
+  applySnapshot(snapshot: JsonObjectType): void;
 }
 
 /**
  * Base implementation of node state. Lifecycle is the canonical
- * `DAGLifecycleState` discriminated union exposed via the `lifecycle`
+ * `DAGLifecycleStateType` discriminated union exposed via the `lifecycle`
  * getter.
  *
  * Each `mark*` dispatches the corresponding lifecycle event through the
@@ -185,7 +185,7 @@ export interface NodeStateInterface {
  *     return { items: [...this.items] };
  *   }
  *
- *   protected override restoreData(snap: JsonObject) {
+ *   protected override restoreData(snap: JsonObjectType) {
  *     const raw = snap['items'];
  *     if (Array.isArray(raw)) this.items = raw as string[];
  *   }
@@ -198,11 +198,11 @@ export interface NodeStateInterface {
  * ```
  */
 export class NodeStateBase implements NodeStateInterface {
-  private readonly _errors: NodeErrorInterface[] = [];
-  private _lifecycle: DAGLifecycleState = DAGLifecycleMachine.initial();
-  private _metadata: Record<string, JsonValue> = {};
+  private readonly _errors: NodeErrorType[] = [];
+  private _lifecycle: DAGLifecycleStateType = DAGLifecycleMachine.initial();
+  private _metadata: Record<string, JsonValueType> = {};
   private _retries: Map<string, number> = new Map();
-  private readonly _warnings: NodeWarning[] = [];
+  private readonly _warnings: NodeWarningType[] = [];
 
   constructor() {
     // Canonical instantiation. Subclass to add domain-specific state.
@@ -223,21 +223,21 @@ export class NodeStateBase implements NodeStateInterface {
     return cloned;
   }
 
-  collectError(error: NodeErrorInterface): void {
-    // context is required on NodeErrorInterface; spread to a stable shape.
+  collectError(error: NodeErrorType): void {
+    // context is required on NodeErrorType; spread to a stable shape.
     this._errors.push({ ...error });
   }
 
-  collectWarning(warning: NodeWarning): void {
+  collectWarning(warning: NodeWarningType): void {
     this._warnings.push(warning);
   }
 
-  get errors(): readonly NodeErrorInterface[] {
+  get errors(): readonly NodeErrorType[] {
     return this._errors;
   }
 
   getMetadata<T>(key: string): T | undefined {
-    // Sound narrowing: `_metadata` values are `JsonValue` (JSON-safe by the
+    // Sound narrowing: `_metadata` values are `JsonValueType` (JSON-safe by the
     // `setMetadata` contract). The cast to `T | undefined` is the single
     // permitted caller-trust boundary for metadata reads; callers are
     // responsible for using the same type `T` they wrote via `setMetadata`.
@@ -247,7 +247,7 @@ export class NodeStateBase implements NodeStateInterface {
   /**
    * Current DAG lifecycle state (full discriminated union).
    */
-  get lifecycle(): DAGLifecycleState {
+  get lifecycle(): DAGLifecycleStateType {
     return this._lifecycle;
   }
 
@@ -288,9 +288,9 @@ export class NodeStateBase implements NodeStateInterface {
     // permitted ingest point: callers must supply JSON-serialisable values,
     // enforced by convention (schema-derived types + engine discipline) rather
     // than at the TypeScript type level (scatter items carry `unknown` payloads
-    // in their schema-derived types, making a strict `JsonValue` parameter
+    // in their schema-derived types, making a strict `JsonValueType` parameter
     // break legitimate engine write sites).
-    this._metadata[key] = value as JsonValue;
+    this._metadata[key] = value as JsonValueType;
   }
 
   deleteMetadata(key: string): void {
@@ -316,13 +316,13 @@ export class NodeStateBase implements NodeStateInterface {
     return this.recordAttempt(key) < maxAttempts;
   }
 
-  get warnings(): readonly NodeWarning[] {
+  get warnings(): readonly NodeWarningType[] {
     return this._warnings;
   }
 
   private dispatch(
     event: Parameters<typeof DAGLifecycleMachine.transition>[1],
-    targetKind: DAGLifecycleState['kind'],
+    targetKind: DAGLifecycleStateType['kind'],
   ): void {
     const next = DAGLifecycleMachine.transition(this._lifecycle, event);
 
@@ -341,21 +341,21 @@ export class NodeStateBase implements NodeStateInterface {
    * the base implementation captures metadata, retries, and warnings.
    * Lifecycle is intentionally NOT captured; resume starts a fresh
    * execution from `pending`. Errors are intentionally NOT captured;
-   * engine error diagnostics flow via `DagOutcomeInterface.errors` as the
+   * engine error diagnostics flow via `DagOutcomeType.errors` as the
    * single authoritative channel, exactly as lifecycle is excluded.
    */
-  snapshot(): JsonObject {
+  snapshot(): JsonObjectType {
     return {
       // Spread to a stable snapshot object; the live record is not passed
       // by reference so checkpoint consumers cannot mutate internal state.
       'metadata': { ...this._metadata },
       // Sound JSON-safe narrowing: `_retries` entries are number values.
       // Convert Map → plain Record at the wire boundary.
-      'retries': Object.fromEntries(this._retries) as JsonValue,
+      'retries': Object.fromEntries(this._retries) as JsonValueType,
       // Sound JSON-safe narrowing: `NodeWarning` fields are all primitive
       // strings/numbers (schema-derived). Spread copies them to a plain object;
-      // the resulting array of plain objects satisfies `JsonValue`.
-      'warnings': this._warnings.map((w) => ({ ...w })) as JsonValue,
+      // the resulting array of plain objects satisfies `JsonValueType`.
+      'warnings': this._warnings.map((w) => ({ ...w })) as JsonValueType,
       ...this.snapshotData(),
     };
   }
@@ -364,7 +364,7 @@ export class NodeStateBase implements NodeStateInterface {
    * Subclass hook for snapshotting additional fields. Default returns an
    * empty object. Override to include domain-specific state.
    */
-  protected snapshotData(): JsonObject {
+  protected snapshotData(): JsonObjectType {
     return {};
   }
 
@@ -375,7 +375,7 @@ export class NodeStateBase implements NodeStateInterface {
    * Subclasses with extra fields override `restoreData()` to read them
    * off the snapshot before the constructor returns.
    */
-  static restore<T extends NodeStateBase>(this: new () => T, snapshot: JsonObject): T {
+  static restore<T extends NodeStateBase>(this: new () => T, snapshot: JsonObjectType): T {
     const instance = new this();
     instance.applySnapshot(snapshot);
     return instance;
@@ -394,14 +394,14 @@ export class NodeStateBase implements NodeStateInterface {
    * supplied via `outcome.errors` (the single authoritative channel) by the
    * caller after applying the snapshot.
    */
-  applySnapshot(snapshot: JsonObject): void {
+  applySnapshot(snapshot: JsonObjectType): void {
     // Reset base fields to empty before populating from the snapshot so
     // this method is idempotent (replace-semantics, not append-semantics).
     // Errors are intentionally excluded — they flow via outcome.errors, not
     // via the snapshot, so _errors is left as-is for the caller to populate.
     this._warnings.splice(0);
     // Replace the metadata record wholesale. Reassignment keeps the hidden
-    // class stable (the property type stays `Record<string, JsonValue>`);
+    // class stable (the property type stays `Record<string, JsonValueType>`);
     // no existing key is deleted in place, so the backing object starts fresh.
     this._metadata = {};
     this._retries.clear();
@@ -410,7 +410,7 @@ export class NodeStateBase implements NodeStateInterface {
     if (metadata !== undefined && typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
       // Populate from the plain Record wire shape.
       for (const [k, v] of Object.entries(metadata)) {
-        this._metadata[k] = v as JsonValue;
+        this._metadata[k] = v as JsonValueType;
       }
     }
     const retries = snapshot['retries'];
@@ -422,7 +422,7 @@ export class NodeStateBase implements NodeStateInterface {
         }
       }
     }
-    const warnings = snapshot['warnings'];
+    const warnings: unknown = snapshot['warnings'];
     if (Array.isArray(warnings)) {
       for (const w of warnings) {
         if (Validator.nodeWarning.is(w)) {
@@ -443,5 +443,5 @@ export class NodeStateBase implements NodeStateInterface {
   /**
    * Subclass hook for restoring additional fields. Default is a no-op.
    */
-  protected restoreData(_snapshot: JsonObject): void { /* override */ }
+  protected restoreData(_snapshot: JsonObjectType): void { /* override */ }
 }

@@ -29,11 +29,11 @@
  */
 
 import { NodeErrorBuilder, NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
-import type { Embedder } from '@studnicky/dagonizer/contracts';
+import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 import { TextSimilarity } from './textUtils.ts';
@@ -95,8 +95,8 @@ export class CandidateScorer {
    * whole weight via the redistribution branch above).
    */
   static async embedTitles(
-    embedder: Embedder,
-    candidates: readonly Candidate[],
+    embedder: EmbedderInterface,
+    candidates: readonly CandidateType[],
   ): Promise<readonly (readonly number[] | null)[]> {
     const out: (readonly number[] | null)[] = [];
     for (const c of candidates) {
@@ -115,7 +115,7 @@ export class CandidateScorer {
    * is deterministic and unit-testable.
    */
   static compositeScore(
-    candidate: Candidate,
+    candidate: CandidateType,
     queryVec: readonly number[] | null,
     titleVec: readonly number[] | null,
     termTokens: Set<string>,
@@ -152,7 +152,7 @@ export class CandidateScorer {
 }
 
 interface ScoredEntry {
-  readonly candidate: Candidate;
+  readonly candidate: CandidateType;
   readonly score: number;
   readonly titleEmbedding: readonly number[] | null;
 }
@@ -161,10 +161,9 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
   readonly name = 'rank-candidates';
   readonly outputs = ['ranked', 'retry', 'salvage'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {
       state.clearAttempts(context.nodeName);
-      context.services.logger.info('rank-candidates: no candidates to rank');
       return NodeOutputBuilder.of('ranked');
     }
 
@@ -185,9 +184,9 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
         try {
           queryVec  = await embedder.embed(queryText);
           titleVecs = await CandidateScorer.embedTitles(embedder, state.candidates);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          context.services.logger.warn(`rank-candidates: embedder threw, dropping cosine term: ${message}`);
+        } catch {
+          // Embedder threw: drop the cosine term and fall back to the
+          // deterministic composite score for every candidate.
           queryVec  = null;
           titleVecs = state.candidates.map(() => null);
         }
@@ -202,7 +201,6 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
       scored.sort((a, b) => b.score - a.score);
 
       // ── Step 3: LLM tiebreak on the top-3 when scores are within ε ──────
-      let llmTiebreaks = 0;
       const top3 = scored.slice(0, 3);
       const needsTiebreak = top3.length === 3 &&
         (top3[0]!.score - top3[2]!.score) <= TIE_WINDOW;
@@ -225,17 +223,14 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
           // Defensive: if the LLM dropped one (schema drift), fall back.
           if (reorderedTop.length === 3) {
             scored.splice(0, 3, ...reorderedTop);
-            llmTiebreaks = 3;
           }
-        } catch (err) {
-          // Salvage: keep deterministic order.
-          const message = err instanceof Error ? err.message : String(err);
-          context.services.logger.info(`rank-candidates: tiebreak fell back to deterministic order (${message})`);
+        } catch {
+          // Salvage: the tiebreak call failed; keep the deterministic order.
         }
       }
 
       // ── Emit ranked candidates with composite scores + cached embeddings ─
-      const ranked: Candidate[] = scored.map((entry) => {
+      const ranked: CandidateType[] = scored.map((entry) => {
         const baseNotes: Record<string, unknown> = entry.candidate.notes !== undefined
           ? { ...entry.candidate.notes }
           : {};
@@ -251,10 +246,6 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
       });
       state.candidates = ranked;
 
-      const top = ranked[0];
-      context.services.logger.info(
-        `rank-candidates: hybrid (${String(scored.length)} deterministic, ${String(llmTiebreaks)} LLM-tiebreaks); top: ${top !== undefined ? `"${top.book.identity.title}" score=${top.score.toFixed(3)}` : 'none'}`,
-      );
       state.clearAttempts(context.nodeName);
       return NodeOutputBuilder.of('ranked');
     } catch (err) {
@@ -272,11 +263,9 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
         new Date().toISOString(),
       ));
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`rank-candidates: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`rank-candidates: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);

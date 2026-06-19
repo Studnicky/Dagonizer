@@ -8,8 +8,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Batch } from '../../src/core/batch/Batch.js';
 import { WorkSet } from '../../src/core/WorkSet.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 void describe('WorkSet', () => {

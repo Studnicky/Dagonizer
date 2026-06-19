@@ -20,10 +20,10 @@
 
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistServices } from '../services.ts';
 
 const MAX_COMPOSE_ATTEMPTS = 3;
@@ -35,7 +35,7 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
   readonly name = 'compose-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.recordAttempt('compose');
     const llm = context.services.llm;
     const prior = state.priorContext.length > 0 ? state.priorContext : undefined;
@@ -67,7 +67,6 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     try {
       state.draft = await composeCall();
       if (state.priorContext.length > 0) {
-        context.services.logger.info(`compose: ${String(state.priorContext.length)} prior facts in context`);
       }
       return NodeOutputBuilder.of('drafted');
     } catch (err) {
@@ -76,10 +75,8 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
       // Own timeout or transient compose failure → retry budget decides the
       // flow. The attempt was already recorded above, so read the count.
       if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
-        context.services.logger.warn(`compose-response: failed (attempt ${String(state.retriesFor('compose'))}/${String(MAX_COMPOSE_ATTEMPTS)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');
       }
-      context.services.logger.warn(`compose-response: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);
@@ -146,8 +143,8 @@ export class ResponseAnalysis {
    */
   static antiHallucinationCheck(
     draft: string,
-    shortlist: readonly Candidate[],
-    priorCandidates: readonly Candidate[],
+    shortlist: readonly CandidateType[],
+    priorCandidates: readonly CandidateType[],
   ): { readonly status: 'pass' | 'fail'; readonly count: number; readonly cause: string } {
     const knownTitles: readonly string[] = [
       ...shortlist.map((c) => c.book.identity.title.toLowerCase()),
@@ -198,29 +195,25 @@ export class ValidateResponseNode extends ScalarNode<
   readonly name = 'validate-response';
   readonly outputs = ['approved', 'retry', 'exhausted'] as const;
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     // ── Deterministic anti-hallucination pre-check ───────────────────────
     // Runs BEFORE the LLM validator. When it fails we force a retry
     // without paying for an LLM round-trip; we accumulate a
     // failureCause so the next compose attempt knows what to fix.
     const antiHal = ResponseAnalysis.antiHallucinationCheck(state.draft, state.shortlist, state.priorCandidates);
     if (antiHal.status === 'fail') {
-      context.services.logger.warn(`validate-anti-hallucination: FAIL: ${antiHal.cause.trim()}`);
       state.failureCause += antiHal.cause;
       state.approvalState = 'rejected';
       if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
-        context.services.logger.warn('compose attempts exhausted (anti-hallucination)');
         return NodeOutputBuilder.of('exhausted');
       }
       return NodeOutputBuilder.of('retry');
     }
-    context.services.logger.info(`validate-anti-hallucination: PASS (${String(antiHal.count)} entities checked)`);
 
     const ok = await context.services.llm.validate(state.draft, state.shortlist);
     state.approvalState = ok ? 'approved' : 'rejected';
     if (ok) return NodeOutputBuilder.of('approved');
     if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
-      context.services.logger.warn('compose attempts exhausted');
       return NodeOutputBuilder.of('exhausted');
     }
     return NodeOutputBuilder.of('retry');

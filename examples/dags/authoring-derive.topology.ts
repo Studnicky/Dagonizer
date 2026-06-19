@@ -12,7 +12,7 @@
 // #region research-agent
 import { DAGDeriver } from '@studnicky/dagonizer/derive';
 import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
-import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
+import type { OperationContractFragmentType } from '@studnicky/dagonizer/contracts';
 
 export class ResearchState extends NodeStateBase {
   query     = '';
@@ -25,7 +25,7 @@ export class ResearchState extends NodeStateBase {
 export class ClassifyIntentNode extends ScalarNode<ResearchState, 'lookup' | 'similar' | 'off-topic'> {
   readonly name    = 'classify-intent';
   readonly outputs = ['lookup', 'similar', 'off-topic'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['query'], produces: ['intent'] };
+  override readonly contract: OperationContractFragmentType = { hardRequired: ['query'], produces: ['intent'] };
 
   protected override async executeOne(state: ResearchState) {
     state.intent = 'lookup';
@@ -36,7 +36,7 @@ export class ClassifyIntentNode extends ScalarNode<ResearchState, 'lookup' | 'si
 export class FetchCandidatesNode extends ScalarNode<ResearchState, 'success' | 'empty'> {
   readonly name    = 'fetch-candidates';
   readonly outputs = ['success', 'empty'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['intent'], produces: ['candidates'] };
+  override readonly contract: OperationContractFragmentType = { hardRequired: ['intent'], produces: ['candidates'] };
 
   protected override async executeOne(state: ResearchState) {
     state.candidates = ['a', 'b'];
@@ -47,7 +47,7 @@ export class FetchCandidatesNode extends ScalarNode<ResearchState, 'success' | '
 export class RankNode extends ScalarNode<ResearchState, 'success'> {
   readonly name    = 'rank';
   readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['candidates'], produces: ['shortlist'] };
+  override readonly contract: OperationContractFragmentType = { hardRequired: ['candidates'], produces: ['shortlist'] };
 
   protected override async executeOne(state: ResearchState) {
     state.shortlist = state.candidates.slice(0, 1);
@@ -58,7 +58,7 @@ export class RankNode extends ScalarNode<ResearchState, 'success'> {
 export class ComposeNode extends ScalarNode<ResearchState, 'success' | 'retry'> {
   readonly name    = 'compose';
   readonly outputs = ['success', 'retry'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['shortlist'], produces: ['response'] };
+  override readonly contract: OperationContractFragmentType = { hardRequired: ['shortlist'], produces: ['response'] };
 
   protected override async executeOne(state: ResearchState) {
     state.response = `from ${state.shortlist.join(', ')}`;

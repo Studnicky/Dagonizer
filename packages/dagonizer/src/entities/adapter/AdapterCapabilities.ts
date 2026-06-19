@@ -1,5 +1,5 @@
 /**
- * AdapterCapabilities: capability declaration for an LLM adapter.
+ * AdapterCapabilitiesType: capability declaration for an LLM adapter.
  *
  * The host DAG introspects this to decide whether to route through
  * tool-calling paths or degrade to direct-prose / structured-JSON paths.
@@ -32,7 +32,7 @@
  *     true: adapter supports `{ "type": "json_object" }` style coarse
  *             JSON-only mode (no schema).
  */
-export interface AdapterCapabilities {
+export type AdapterCapabilitiesType = {
   toolUse: 'full' | 'partial' | 'none';
   structuredOutput: boolean;
   jsonMode: boolean;

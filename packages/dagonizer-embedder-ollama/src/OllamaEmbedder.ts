@@ -31,14 +31,27 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
-import type { BaseAdapterCoreOptions } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 
-const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
-const DEFAULT_MODEL = 'nomic-embed-text';
+import { OllamaEmbedResponseValidator } from './OllamaEmbedResponse.js';
+
 /** Dimensions for `nomic-embed-text`, the default model. Mirrors `KNOWN_DIMENSIONS[DEFAULT_MODEL]`. */
 const DEFAULT_DIMENSIONS = 768;
 const PROBE_TIMEOUT_MS = 500;
+
+/**
+ * Module-level defaults; the producer fills them so the consumer never
+ * sees absence. `apiKey` defaults to the empty string — local Ollama
+ * needs no auth, and the empty string keeps the private field a stable
+ * `string` (V8 shape stability) instead of `string | undefined`. The
+ * Authorization header is gated on a non-empty key.
+ */
+const OLLAMA_EMBEDDER_DEFAULTS = {
+  'baseUrl': 'http://127.0.0.1:11434',
+  'model': 'nomic-embed-text',
+  'apiKey': '',
+} as const;
 
 /**
  * Known model → output dimensionality. Sourced from each model card on
@@ -69,12 +82,7 @@ const KNOWN_DIMENSIONS: Readonly<Record<string, number>> = {
  * needs no key at all. `apiKey` therefore lives in the options bag and is
  * omitted for local usage.
  */
-export interface OllamaEmbedderOptions extends BaseAdapterCoreOptions {
-  /**
-   * Embedding model name. Must match a model pulled on the target server.
-   * Defaults to `'nomic-embed-text'`.
-   */
-  readonly model?: string;
+export type OllamaEmbedderOptionsType = BaseEmbedderOptionsType & {
   /**
    * Base URL of the Ollama server.
    * Local default: `'http://127.0.0.1:11434'`.
@@ -82,31 +90,17 @@ export interface OllamaEmbedderOptions extends BaseAdapterCoreOptions {
    */
   readonly baseUrl?: string;
   /**
-   * Explicit dimensions. Required for models not in the built-in table.
-   * Otherwise auto-resolved from `KNOWN_DIMENSIONS`.
-   */
-  readonly dimensions?: number;
-  /**
    * API key for Ollama Cloud authentication.
    * When present, requests include `Authorization: Bearer <apiKey>`.
    * Omit entirely for local Ollama daemon usage (no auth header is sent).
    */
   readonly apiKey?: string;
-}
-
-interface OllamaEmbedResponse {
-  readonly embedding: readonly number[];
-}
-
-function isOllamaEmbedResponse(v: unknown): v is OllamaEmbedResponse {
-  if (typeof v !== 'object' || v === null) return false;
-  return Array.isArray((v as Record<string, unknown>)['embedding']);
-}
+};
 
 export class OllamaEmbedder extends BaseEmbedder {
   readonly #baseUrl: string;
   readonly #model: string;
-  readonly #apiKey: string | undefined;
+  readonly #apiKey: string;
 
   /**
    * Constructor: `(options?)`. All configuration lives in `options`.
@@ -122,49 +116,33 @@ export class OllamaEmbedder extends BaseEmbedder {
    * local Ollama needs no key. Compare `GeminiApiEmbedder(apiKey, options?)` and
    * `MistralEmbedder(apiKey, options?)` where a key is always required.
    */
-  constructor(options: OllamaEmbedderOptions = {}) {
-    const model = options.model ?? DEFAULT_MODEL;
+  constructor(options: OllamaEmbedderOptionsType = {}) {
+    const resolved = { ...OLLAMA_EMBEDDER_DEFAULTS, ...options };
     // Resolve dimensions: explicit override → known-model table → DEFAULT_DIMENSIONS (768).
-    // DEFAULT_DIMENSIONS mirrors KNOWN_DIMENSIONS[DEFAULT_MODEL] and is a concrete constant,
+    // DEFAULT_DIMENSIONS mirrors KNOWN_DIMENSIONS['nomic-embed-text'] and is a concrete constant,
     // so the fallback chain always terminates with a number.
-    const dimensions = options.dimensions ?? KNOWN_DIMENSIONS[model] ?? DEFAULT_DIMENSIONS;
-    super('ollama', `Ollama (${model})`, dimensions, options);
-    this.#baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
-    this.#model = model;
-    this.#apiKey = options.apiKey;
+    const dimensions = options.dimensions ?? KNOWN_DIMENSIONS[resolved.model] ?? DEFAULT_DIMENSIONS;
+    super('ollama', `Ollama (${resolved.model})`, dimensions, options);
+    this.#baseUrl = resolved.baseUrl;
+    this.#model = resolved.model;
+    this.#apiKey = resolved.apiKey;
   }
 
   protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (this.#apiKey !== undefined) {
+    if (this.#apiKey.length > 0) {
       headers['Authorization'] = `Bearer ${this.#apiKey}`;
     }
-    let res: Response;
-    try {
-      res = await fetch(`${this.#baseUrl}/api/embeddings`, {
+    const raw = await this.fetchJson(
+      `${this.#baseUrl}/api/embeddings`,
+      {
         'method': 'POST',
         headers,
         'body': JSON.stringify({ 'model': this.#model, 'prompt': text }),
-        signal,
-      });
-    } catch (err) {
-      throw new LlmError(
-        `Ollama embed network error: ${err instanceof Error ? err.message : String(err)}`,
-        Classifications['NETWORK'],
-        { 'cause': err },
-      );
-    }
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new LlmError(
-        `Ollama embed failed: ${String(res.status)} ${body}`,
-        LlmError.classifyHttp(res.status, { 'body': body }),
-      );
-    }
-
-    const raw: unknown = await res.json();
-    if (!isOllamaEmbedResponse(raw) || raw.embedding.length === 0) {
+      },
+      signal,
+    );
+    if (!OllamaEmbedResponseValidator.is(raw) || raw.embedding.length === 0) {
       throw new LlmError(
         `Ollama embed: missing or empty 'embedding' field`,
         Classifications['SCHEMA_VIOLATION'],
@@ -182,11 +160,11 @@ export class OllamaEmbedder extends BaseEmbedder {
    * cascade routes around the embedder. Symmetric with
    * `OllamaApiAdapter.probe`.
    */
-  override async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
+  override async probe(_options?: AbortableOptionsType): Promise<boolean> {
     const controller = new AbortController();
     const timer = setTimeout(() => { controller.abort(); }, PROBE_TIMEOUT_MS);
     const headers: Record<string, string> = {};
-    if (this.#apiKey !== undefined) {
+    if (this.#apiKey.length > 0) {
       headers['Authorization'] = `Bearer ${this.#apiKey}`;
     }
     try {

@@ -66,7 +66,7 @@ import { streamEventDAG } from './embedded-dags/StreamEventDAG.ts';
 import type { CartographerState } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
 import './core/InsightsFoldGather.ts';
@@ -94,7 +94,7 @@ import './core/InsightsFoldGather.ts';
  *               gather: { strategy: 'insights-fold' }, concurrency: 16)
  *     → summarize → done
  */
-export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
+export const cartographerDAG: DAGType = new DAGBuilder('cartographer', '1.0')
 
   // Pre-phase: seeds state.sources before the scatter reads it. When
   // state.useStreamingSource is true, sources is an AsyncIterable<SourcePayload>;
@@ -161,7 +161,7 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
  * to embedded child clones. Both route-event-type-variant and parse-variant
  * read 'canonical-event' from metadata.
  */
-export const eventPipelineTypedDAG: DAG = new DAGBuilder('event-pipeline-typed', '1.0')
+export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typed', '1.0')
 
   // 1. route-event-type-variant: read eventType from 'canonical-event' metadata
   //    and dispatch to the corresponding per-type sub-DAG.
@@ -188,6 +188,7 @@ export const eventPipelineTypedDAG: DAG = new DAGBuilder('event-pipeline-typed',
       'legKm':            'legKm',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -207,6 +208,7 @@ export const eventPipelineTypedDAG: DAG = new DAGBuilder('event-pipeline-typed',
       'legKm':            'legKm',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -226,6 +228,7 @@ export const eventPipelineTypedDAG: DAG = new DAGBuilder('event-pipeline-typed',
       'legKm':             'legKm',
       'routing':           'routing',
       'enriched':          'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -249,6 +252,7 @@ export const eventPipelineTypedDAG: DAG = new DAGBuilder('event-pipeline-typed',
       'gdprResult':        'gdprResult',
       'routing':           'routing',
       'enriched':          'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -269,6 +273,7 @@ export const eventPipelineTypedDAG: DAG = new DAGBuilder('event-pipeline-typed',
       'gdprResult':       'gdprResult',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -301,7 +306,7 @@ export const DEFAULT_RESERVOIR_CAPACITY = 1000;
  *               container: 'cpu', reservoir: { capacity })
  *     → summarize → done
  */
-export function buildCartographerWorkersDAG(capacity: number = DEFAULT_RESERVOIR_CAPACITY): DAG {
+export function buildCartographerWorkersDAG(capacity: number = DEFAULT_RESERVOIR_CAPACITY): DAGType {
   return new DAGBuilder('cartographer', '1.0')
 
     .phase('seed', 'pre', seedEvents)
@@ -339,7 +344,7 @@ export function buildCartographerWorkersDAG(capacity: number = DEFAULT_RESERVOIR
  * CLI, smoke tests, and dag-validate consumers use this constant; the browser
  * demo uses buildCartographerWorkersDAG(capacity) with a UI-controlled value.
  */
-export const cartographerWorkersDAG: DAG = buildCartographerWorkersDAG();
+export const cartographerWorkersDAG: DAGType = buildCartographerWorkersDAG();
 // #endregion cartographer-workers-dag
 
 // ── Bundle registration ───────────────────────────────────────────────────────
@@ -360,7 +365,7 @@ export const cartographerWorkersDAG: DAG = buildCartographerWorkersDAG();
  * in multiple bundle.nodes arrays; since they are the same singleton instances,
  * repeated registration is a no-op.
  */
-export const eventPipelineBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const eventPipelineBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [
     // geo-resolve leaf nodes
     reverseGeocode, routeModalities, ipGeolocate, fuseGeo,
@@ -414,7 +419,7 @@ export const eventPipelineBundle: DispatcherBundle<CartographerState, Cartograph
  * routeEventType appearing in both eventPipelineBundle.nodes and streamEventBundle.nodes
  * is safe: the bundle registrar is idempotent for same-instance re-registration.
  */
-export const cartographerBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const cartographerBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
   'nodes': [
     ...eventPipelineBundle.nodes,
     // Top-level cartographer nodes
@@ -441,7 +446,7 @@ export const cartographerBundle: DispatcherBundle<CartographerState, Cartographe
  */
 export function buildCartographerWorkersBundle(
   capacity: number = DEFAULT_RESERVOIR_CAPACITY,
-): DispatcherBundle<CartographerState, CartographerServices> {
+): DispatcherBundleType<CartographerState, CartographerServices> {
   return {
     'nodes': [
       ...eventPipelineBundle.nodes,
@@ -460,5 +465,5 @@ export function buildCartographerWorkersBundle(
  * cartographerWorkersDAG, which binds container: 'cpu' on the process-stream
  * scatter. Used by runCartographer.ts when --workers is active.
  */
-export const cartographerWorkersBundle: DispatcherBundle<CartographerState, CartographerServices> = buildCartographerWorkersBundle();
+export const cartographerWorkersBundle: DispatcherBundleType<CartographerState, CartographerServices> = buildCartographerWorkersBundle();
 // #endregion dispatcher-bundle

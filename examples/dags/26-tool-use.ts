@@ -3,21 +3,21 @@
  * No side effects, no dispatcher, no execute.
  * Imported by examples/26-tool-use.ts (the executable entry point).
  *
- * Demonstrates: Tool<TInput, TOutput> definition, ToolCallCodec.decode for
+ * Demonstrates: ToolInterface<TInput, TOutput> definition, ToolCallCodec.decode for
  * text-channel tool-call extraction, and a DAG node that dispatches to the
- * Tool and routes on the result.
+ * ToolInterface and routes on the result.
  */
 
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { LlmAdapter, ToolCall, ToolDefinition } from '@studnicky/dagonizer/adapter';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { LlmAdapterInterface, ToolCallType, ToolDefinitionType } from '@studnicky/dagonizer/adapter';
 import { ChatRequestBuilder, ToolCallCodec } from '@studnicky/dagonizer/adapter';
-import type { Tool } from '@studnicky/dagonizer/tool';
+import type { ToolInterface } from '@studnicky/dagonizer/tool';
 
 // ---------------------------------------------------------------------------
-// Tool: calculator — adds two numbers
+// ToolInterface: calculator — adds two numbers
 // ---------------------------------------------------------------------------
 
 // #region tool-impl
@@ -31,7 +31,7 @@ export interface CalcOutput {
 }
 
 // #region tool-usage
-export class CalculatorTool implements Tool<CalcInput, CalcOutput> {
+export class CalculatorTool implements ToolInterface<CalcInput, CalcOutput> {
   readonly definition = {
     'name':        'calculator',
     'description': 'Add two numbers. Returns { result: number }.',
@@ -54,10 +54,10 @@ export class CalculatorTool implements Tool<CalcInput, CalcOutput> {
 // #endregion tool-impl
 
 // ---------------------------------------------------------------------------
-// Tool registry (simple map; no framework needed for the dispatch pattern)
+// ToolInterface registry (simple map; no framework needed for the dispatch pattern)
 // ---------------------------------------------------------------------------
 
-type AnyTool = Tool<Record<string, unknown>, unknown>;
+type AnyTool = ToolInterface<Record<string, unknown>, unknown>;
 
 export class ToolRegistry {
   readonly #tools = new Map<string, AnyTool>();
@@ -70,7 +70,7 @@ export class ToolRegistry {
     return this.#tools.get(name) ?? null;
   }
 
-  definitions(): readonly ToolDefinition[] {
+  definitions(): readonly ToolDefinitionType[] {
     return [...this.#tools.values()].map((t) => t.definition);
   }
 }
@@ -80,12 +80,12 @@ export class ToolRegistry {
 // ---------------------------------------------------------------------------
 
 export class ToolUseState extends NodeStateBase {
-  adapter: LlmAdapter | null = null;
+  adapter: LlmAdapterInterface | null = null;
   registry: ToolRegistry = new ToolRegistry();
   question: string = '';
   toolCallRaw: string = '';          // raw text from adapter (codec input)
   dispatchedTool: string = '';       // name of the tool that was called
-  toolResult: unknown = null;        // output from Tool.execute()
+  toolResult: unknown = null;        // output from ToolInterface.execute()
   finalAnswer: string = '';
 }
 
@@ -116,7 +116,7 @@ export class CallLlmNode extends ScalarNode<ToolUseState, 'tool_call' | 'text'> 
       const firstCall = response.message.toolCalls[0];
       if (firstCall !== undefined) {
         state.dispatchedTool = firstCall.name;
-        // Store as serialized text for codec demo path (codec handles prose too)
+        // StoreInterface as serialized text for codec demo path (codec handles prose too)
         state.toolCallRaw = JSON.stringify({ tool_calls: [{ name: firstCall.name, arguments: firstCall.arguments }] });
         return NodeOutputBuilder.of('tool_call');
       }
@@ -126,7 +126,7 @@ export class CallLlmNode extends ScalarNode<ToolUseState, 'tool_call' | 'text'> 
       // Text-channel fallback: adapter returned prose with embedded tool JSON.
       // ToolCallCodec.decode extracts { tool_calls: [...] } from arbitrary prose.
       state.toolCallRaw = response.message.content;
-      const calls: ToolCall[] = ToolCallCodec.decode(response.message.content, 'demo');
+      const calls: ToolCallType[] = ToolCallCodec.decode(response.message.content, 'demo');
       if (calls.length > 0 && calls[0] !== undefined) {
         state.dispatchedTool = calls[0].name;
         return NodeOutputBuilder.of('tool_call');
@@ -139,20 +139,20 @@ export class CallLlmNode extends ScalarNode<ToolUseState, 'tool_call' | 'text'> 
   }
 }
 
-/** Dispatch the tool call to the registered Tool and collect the result. */
+/** Dispatch the tool call to the registered ToolInterface and collect the result. */
 export class DispatchToolNode extends ScalarNode<ToolUseState, 'done' | 'error'> {
   readonly name = 'dispatchTool';
   readonly outputs = ['done', 'error'] as const;
   protected override async executeOne(state: ToolUseState) {
     // Decode from raw text (works for both native JSON and prose-wrapped)
-    const calls: ToolCall[] = ToolCallCodec.decode(state.toolCallRaw, 'dispatch');
+    const calls: ToolCallType[] = ToolCallCodec.decode(state.toolCallRaw, 'dispatch');
 
     if (calls.length === 0) {
       state.finalAnswer = 'Error: could not decode tool call from adapter response.';
       return NodeOutputBuilder.of('error');
     }
 
-    const call = calls[0] as ToolCall;
+    const call = calls[0] as ToolCallType;
     const tool = state.registry.resolve(call.name);
     if (tool === null) {
       state.finalAnswer = `Error: unknown tool "${call.name}"`;
@@ -161,7 +161,7 @@ export class DispatchToolNode extends ScalarNode<ToolUseState, 'done' | 'error'>
 
     const result = await tool.execute(call.arguments);
     state.toolResult = result;
-    state.finalAnswer = `Tool "${call.name}" returned: ${JSON.stringify(result)}`;
+    state.finalAnswer = `ToolInterface "${call.name}" returned: ${JSON.stringify(result)}`;
     return NodeOutputBuilder.of('done');
   }
 }
@@ -197,7 +197,7 @@ export class OnToolErrorNode extends ScalarNode<ToolUseState, 'done'> {
 // DAG
 // ---------------------------------------------------------------------------
 
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:tool-use-demo',
   '@type':    'DAG',

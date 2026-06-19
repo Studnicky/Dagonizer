@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import type { Binding, SlotPattern, TripleStore } from '@studnicky/dagonizer/patterns';
+import type { Binding, SlotPattern, TripleStoreInterface } from '@studnicky/dagonizer/patterns';
 
 import { RecallContextNode } from '../src/index.js';
 
@@ -16,7 +16,7 @@ class TestState {
 class TestRecall extends RecallContextNode<TestState, string> {
   readonly name = 'test-recall';
   readonly outputs = ['success', 'empty'] as const;
-  protected buildQuery(_s: TestState): SlotPattern { return { 'subject': '?s' }; }
+  protected composeQuery(_s: TestState): SlotPattern { return { 'subject': '?s' }; }
   protected mapBindings(rows: readonly Binding[]): readonly string[] { return rows.map((r) => r['s']?.value ?? ''); }
   protected applyRecall(s: TestState, items: readonly string[]): void { s.recalled = [...items]; }
 }
@@ -31,7 +31,7 @@ void test('RecallContextNode reads + writes via the store', async () => {
     'count': () => 1,
     'clearGraph': () => undefined,
     'triples': function* () { /* empty */ },
-  } as unknown as TripleStore;
+  } as unknown as TripleStoreInterface;
   const ctx = { 'services': { 'memory': mockStore }, 'signal': new AbortController().signal } as unknown as Parameters<typeof node.execute>[1];
   const result = await node.execute(state, ctx);
   assert.equal(result.output, 'success');

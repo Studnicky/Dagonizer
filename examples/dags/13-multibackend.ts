@@ -28,9 +28,9 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // State
@@ -43,7 +43,7 @@ export class MultiBackendState extends NodeStateBase {
   lastResult: number   = 0;    // scalar per-item, gathered by 'append'
   total:      number   = 0;    // sum of all squared results (written by sum node)
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       "tasks":      [...this.tasks],
       "results":    [...this.results],
@@ -52,7 +52,7 @@ export class MultiBackendState extends NodeStateBase {
     };
   }
 
-  protected override restoreData(snapshot: JsonObject): void {
+  protected override restoreData(snapshot: JsonObjectType): void {
     const tasks = snapshot['tasks'];
     if (Array.isArray(tasks)) {
       this.tasks = tasks.filter((x): x is number => typeof x === 'number');
@@ -103,7 +103,7 @@ export class SumNode extends ScalarNode<MultiBackendState, 'done'> {
 // ---------------------------------------------------------------------------
 
 // #region cpu-dag
-export const squareItemDag: DAG = {
+export const squareItemDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:square-item-mb',
   '@type':     'DAG',
@@ -133,7 +133,7 @@ export const squareItemDag: DAG = {
 // ---------------------------------------------------------------------------
 
 // #region io-dag
-export const sumResultsDag: DAG = {
+export const sumResultsDag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:sum-results',
   '@type':     'DAG',
@@ -163,7 +163,7 @@ export const sumResultsDag: DAG = {
 // ---------------------------------------------------------------------------
 
 // #region parent-dag
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:multibackend',
   '@type':     'DAG',
@@ -181,7 +181,7 @@ export const dag: DAG = {
       "concurrency":  2,
       "container":    'cpu',                  // routes per-item body to the WorkerThreadContainer
       "gather": {
-        "strategy":   GatherStrategyName.APPEND,
+        "strategy":   GatherStrategyNames.APPEND,
         "field":      'lastResult',
         "target":     'results',
       },

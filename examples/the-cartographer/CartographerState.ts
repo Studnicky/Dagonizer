@@ -54,9 +54,11 @@ import type { ShipmentEvent } from './entities/ShipmentEvent.ts';
 import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
 import type { EventTypeConfig } from './services.ts';
+import type { GeoErrorRecordType } from './errors/GeoErrorRecord.ts';
+import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/types';
+import type { JsonObjectType } from '@studnicky/dagonizer/types';
 
 /** Per-region aggregated insights (fixed-size accumulator). */
 export interface RegionInsights {
@@ -231,6 +233,14 @@ export class CartographerState extends NodeStateBase {
   /** Per-journey aggregate (grouped by shipmentId) produced by summarizeInsights. */
   journeys: Map<string, JourneyInsights> = new Map();
 
+  /**
+   * Parent-side bounded rollup of captured exceptions, folded by the
+   * insights-fold gather from each clone's `state.capturedErrors`. Errors flow
+   * scatter→gather as first-class data; the run prints this distribution for
+   * analysis. Reset per execution by the gather's `initial`.
+   */
+  errorRollup: ErrorRollupType = ErrorRollup.empty();
+
   /** Raw scan from scatter metadata (set by parseEvent). */
   raw: RawShipmentEvent = {
     'shipmentId':          '',
@@ -384,6 +394,19 @@ export class CartographerState extends NodeStateBase {
    */
   routing: EnrichedShipment['routing'] = CartographerState.defaultRouting();
 
+  /**
+   * Ephemeral per-clone accumulator of captured exceptions (like gpsCandidate:
+   * non-serialized, recomputed each dispatch). The geo / ingest nodes append a
+   * `GeoErrorRecordType` here whenever their transport reports a captured error;
+   * the gather folds these into the parent's `errorRollup`. The node still
+   * routes its normal output — the error rides alongside as data.
+   *
+   * Named `capturedErrors` (not `errors`) to stay distinct from the framework
+   * `NodeStateInterface.errors` channel — these are the example's own captured
+   * geo/ingest faults, a different concern.
+   */
+  capturedErrors: readonly GeoErrorRecordType[] = [];
+
   /** GPS-modality candidate from reverse-geocode (set by the geo-resolve sub-DAG). */
   gpsCandidate: GeoCandidate = CartographerState.unresolvedCandidate('gps');
 
@@ -488,6 +511,7 @@ export class CartographerState extends NodeStateBase {
     copy.sampleRecords   = [];
     copy.insights        = new Map();
     copy.journeys        = new Map();
+    copy.errorRollup     = ErrorRollup.empty();
 
     copy.currentSource  = { ...this.currentSource };
     copy.decodedText    = this.decodedText;
@@ -531,6 +555,7 @@ export class CartographerState extends NodeStateBase {
     copy.coldChainBreach = this.coldChainBreach;
     copy.customsDwellHours = this.customsDwellHours;
 
+    copy.capturedErrors = this.capturedErrors.map((e) => ({ ...e }));
     copy.gpsCandidate = { ...this.gpsCandidate };
     copy.ipCandidate  = { ...this.ipCandidate };
     copy.resolvedGeo  = { ...this.resolvedGeo, 'modalities': [...this.resolvedGeo.modalities] };
@@ -554,7 +579,7 @@ export class CartographerState extends NodeStateBase {
   // #endregion clone
 
   // #region snapshot-restore
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
       'eventCount': this.eventCount,
       'eventConfig': this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ 'format': m.format, 'compression': m.compression, 'weight': m.weight })) })),
@@ -574,7 +599,7 @@ export class CartographerState extends NodeStateBase {
     };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     if (typeof snap['eventCount'] === 'number') this.eventCount = snap['eventCount'];
     if (typeof snap['useStreamingSource'] === 'boolean') this.useStreamingSource = snap['useStreamingSource'];
     if (typeof snap['streamCount'] === 'number') this.streamCount = snap['streamCount'];
@@ -726,8 +751,8 @@ export class CartographerState extends NodeStateBase {
   }
 
   /** Serialize a CanonicalEventVariant to a JSON-safe object (switches on eventType for exact body fields). */
-  private static variantToJson(v: CanonicalEventVariant): JsonObject {
-    const envelope: JsonObject = {
+  private static variantToJson(v: CanonicalEventVariant): JsonObjectType {
+    const envelope: JsonObjectType = {
       'shipmentId':        v.shipmentId,
       'eventId':           v.eventId,
       'epochMs':           v.epochMs,
@@ -926,7 +951,7 @@ export class CartographerState extends NodeStateBase {
     return result;
   }
 
-  private static sourceToJson(s: SourcePayload): JsonObject {
+  private static sourceToJson(s: SourcePayload): JsonObjectType {
     return {
       'sourceId':    s.sourceId,
       'format':      s.format,
@@ -1011,7 +1036,7 @@ export class CartographerState extends NodeStateBase {
   }
 
   // ── Entity ↔ JSON reconstruction (field-by-field) ──────────────────────────
-  private static enrichedToJson(e: EnrichedShipment): JsonObject {
+  private static enrichedToJson(e: EnrichedShipment): JsonObjectType {
     return {
       'shipmentId': e.shipmentId, 'scanSeq': e.scanSeq, 'epochMs': e.epochMs,
       'localIso': e.localIso, 'utcOffset': e.utcOffset, 'timezone': e.timezone, 'jurisdiction': e.jurisdiction,
@@ -1063,7 +1088,7 @@ export class CartographerState extends NodeStateBase {
     };
   }
 
-  private static routingToJson(r: EnrichedShipment['routing']): JsonObject {
+  private static routingToJson(r: EnrichedShipment['routing']): JsonObjectType {
     return {
       'path':              r.path,
       'geoLookupRun':      r.geoLookupRun,

@@ -41,7 +41,7 @@ This is the same pattern a serverless function handler uses across a real messag
 | `InMemoryChannel` | `@studnicky/dagonizer/channels` | Stores envelopes; calls the protected `onPublished` hook after each publish |
 | `InMemoryChannel.onPublished` | `@studnicky/dagonizer/channels` | Protected hook to override in a subclass to chain the downstream DAG |
 | `DAGHandoff` | `@studnicky/dagonizer/entities` | Wire-safe envelope with `stateSnapshot`, `terminalName`, `registryVersion`, `correlationId` |
-| `DagonizerOptionsInterface.channels` | `@studnicky/dagonizer` | Binds terminal names to `HandoffChannelInterface` instances |
+| `DagonizerOptionsType.channels` | `@studnicky/dagonizer` | Binds terminal names to `HandoffChannelInterface` instances |
 
 The `channels` option is a `Record<terminalName, HandoffChannelInterface>`. Terminals not listed follow the default path — no publish, the run completes normally.
 

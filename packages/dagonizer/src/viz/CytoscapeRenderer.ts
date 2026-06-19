@@ -34,11 +34,11 @@
  * plain element array synchronously.
  */
 
-import type { DAG } from '../entities/dag/DAG.js';
-import type { GatherConfig } from '../entities/dag/GatherConfig.js';
+import type { DAGType } from '../entities/dag/DAG.js';
+import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 
 import { PlacementUtils, RoleColorUtils } from './internal.js';
-import type { PlacementEntry } from './internal.js';
+import type { PlacementEntryType } from './internal.js';
 
 /**
  * Data bag carried by every Cytoscape node element.
@@ -48,7 +48,7 @@ import type { PlacementEntry } from './internal.js';
  * placement kind, so consumers can read them in stylesheets/handlers
  * without resorting to index access.
  */
-export interface CytoscapeNodeData {
+export type CytoscapeNodeDataType = {
   id: string;
   label: string;
   /** Placement kind; selector use: `node[type="scatter"]`. */
@@ -65,7 +65,7 @@ export interface CytoscapeNodeData {
   phase?: string;      // PhaseNode
   body?: string;       // ScatterNode body ref
   source?: string;     // ScatterNode
-  gather?: GatherConfig; // ScatterNode
+  gather?: GatherConfigType; // ScatterNode
   reducer?: string;    // ScatterNode
   /**
    * Reservoir config for a reservoir-configured ScatterNode.
@@ -82,15 +82,15 @@ export interface CytoscapeNodeData {
    * Determinism classification for stylesheet selection
    * (`node[kind="deterministic"]` / `node[kind="non-deterministic"]`).
    * The base renderer leaves this unset; subclasses enrich it by
-   * overriding `buildElements()` (e.g. from a node registry).
+   * overriding `composeElements()` (e.g. from a node registry).
    */
   kind?: 'deterministic' | 'non-deterministic';
 }
 
 /** A Cytoscape node element. */
-export interface CytoscapeNodeElement {
+export type CytoscapeNodeElementType = {
   group: 'nodes';
-  data: CytoscapeNodeData;
+  data: CytoscapeNodeDataType;
   /** Always populated by the renderer; required so consumers can rely on it for stylesheet selection. */
   classes: string;
   /**
@@ -103,7 +103,7 @@ export interface CytoscapeNodeElement {
 }
 
 /** A Cytoscape edge element. */
-export interface CytoscapeEdgeElement {
+export type CytoscapeEdgeElementType = {
   group: 'edges';
   data: {
     id: string;
@@ -116,10 +116,10 @@ export interface CytoscapeEdgeElement {
   classes: string;
 }
 
-export type CytoscapeElement = CytoscapeNodeElement | CytoscapeEdgeElement;
+export type CytoscapeElementType = CytoscapeNodeElementType | CytoscapeEdgeElementType;
 
 /** Optional inputs the renderer reads. */
-export interface RenderOptions {
+export type RenderOptionsType = {
   /**
    * Registry of embedded-DAGs by name. Any `embedded-dag` placement whose
    * `placement.dag` matches a key here is expanded inline; its
@@ -127,29 +127,29 @@ export interface RenderOptions {
    * placement, so the diagram shows the full inner flow instead of
    * a single opaque box.
    */
-  embeddedDAGs?: ReadonlyMap<string, DAG>;
+  embeddedDAGs?: ReadonlyMap<string, DAGType>;
   /** Max recursion depth; guards against accidental embedded-DAG cycles. */
   maxDepth?: number;
 }
 
 /**
- * The subset of `PlacementEntry` union members that carry an `outputs` routing map.
+ * The subset of `PlacementEntryType` union members that carry an `outputs` routing map.
  *
  * `TerminalNode` and `PhaseNode` are leaf placements with no outbound routes;
  * all other placement types (`SingleNode`, `ScatterNode`, `EmbeddedDAGNode`)
  * carry `outputs`. `Extract` selects only those union members so the predicate
  * return type satisfies TypeScript's assignability requirement without an unsafe cast.
  */
-type PlacementWithOutputs = Extract<PlacementEntry, { outputs: Record<string, string> }>;
+type PlacementWithOutputs = Extract<PlacementEntryType, { outputs: Record<string, string> }>;
 
 /** Default empty embedded-DAG registry used when none is supplied. */
-const DEFAULT_EMBEDDED_DAGS: ReadonlyMap<string, DAG> = new Map();
+const DEFAULT_EMBEDDED_DAGS: ReadonlyMap<string, DAGType> = new Map();
 
 /** Default max recursion depth for embedded-DAG inline expansion. */
 const DEFAULT_MAX_DEPTH = 6;
 
 /**
- * Canonical defaults for `RenderOptions`.
+ * Canonical defaults for `RenderOptionsType`.
  *
  * Every field that has a default is present here. `render()` resolves
  * all options in one spread: `{ ...CYTOSCAPE_RENDER_DEFAULTS, ...options }`.
@@ -160,8 +160,8 @@ const CYTOSCAPE_RENDER_DEFAULTS = {
 } as const;
 
 /** Resolved render options — all fields required; defaults filled before first use. */
-interface ResolvedRenderOptions {
-  embeddedDAGs: ReadonlyMap<string, DAG>;
+type ResolvedRenderOptions = {
+  embeddedDAGs: ReadonlyMap<string, DAGType>;
   maxDepth: number;
 }
 
@@ -175,7 +175,7 @@ interface ResolvedRenderOptions {
  * a single hidden class and inline-cache the property access.
  */
 class RenderState {
-  readonly elements: CytoscapeElement[];
+  readonly elements: CytoscapeElementType[];
   readonly options:  ResolvedRenderOptions;
   /**
    * True when the current recursion is inside a container-bound (worker)
@@ -224,7 +224,7 @@ export class CytoscapeRenderer {
     'PhaseNode':        'phase',
   };
 
-  static render(dag: DAG, options: RenderOptions = {}): readonly CytoscapeElement[] {
+  static render(dag: DAGType, options: RenderOptionsType = {}): readonly CytoscapeElementType[] {
     const resolved: ResolvedRenderOptions = { ...CYTOSCAPE_RENDER_DEFAULTS, ...options };
     const state = new RenderState(resolved);
     CytoscapeRenderer.renderInto(dag, '', undefined, state, 0, new Set<string>([dag.name]));
@@ -232,7 +232,7 @@ export class CytoscapeRenderer {
   }
 
   /**
-   * Build the base `CytoscapeNodeData` for a placement, including container
+   * Build the base `CytoscapeNodeDataType` for a placement, including container
    * role colors when the placement is bound to a worker/isolate container.
    *
    * A standalone helper for `placementNode`, independently testable.
@@ -240,12 +240,12 @@ export class CytoscapeRenderer {
    * receive only `id`, `label`, and `type`; container-bound placements receive
    * the additional `container*` color keys (honoring `exactOptionalPropertyTypes`).
    */
-  private static buildNodeData(
+  private static composeNodeData(
     id: string,
     label: string,
-    kind: CytoscapeNodeData['type'],
+    kind: CytoscapeNodeDataType['type'],
     role: string | null,
-  ): CytoscapeNodeData {
+  ): CytoscapeNodeDataType {
     if (role !== null) {
       const colors = RoleColorUtils.forRole(role);
       return {
@@ -284,12 +284,12 @@ export class CytoscapeRenderer {
    *   `node[container]`       — data selector, matches any node with a container role
    *   `node[container="cpu"]` — data selector, matches a specific role
    */
-  private static placementNode(placement: PlacementEntry, id: string): CytoscapeNodeElement {
+  private static placementNode(placement: PlacementEntryType, id: string): CytoscapeNodeElementType {
     const kind = CytoscapeRenderer.PLACEMENT_KIND[placement['@type']] ?? 'single';
     const role = PlacementUtils.containerRole(placement);
 
     const baseLabel = CytoscapeRenderer.titleCase(placement.name);
-    const baseData: CytoscapeNodeData = CytoscapeRenderer.buildNodeData(id, baseLabel, kind, role);
+    const baseData: CytoscapeNodeDataType = CytoscapeRenderer.composeNodeData(id, baseLabel, kind, role);
 
     // Append dag-contained class for stylesheet selection.
     const classes = role !== null ? `dag-${kind} dag-contained` : `dag-${kind}`;
@@ -359,24 +359,24 @@ export class CytoscapeRenderer {
   }
 
   /**
-   * Type predicate that narrows a `PlacementEntry` to a `PlacementWithOutputs`.
+   * Type predicate that narrows a `PlacementEntryType` to a `PlacementWithOutputs`.
    *
    * Checks for the presence of `outputs` as an own property. This avoids a
    * type-unsafe `as Record<string,string>` cast at every call site.
    */
-  private static hasOutputs(placement: PlacementEntry): placement is PlacementWithOutputs {
+  private static hasOutputs(placement: PlacementEntryType): placement is PlacementWithOutputs {
     return 'outputs' in placement;
   }
 
   /** Render a placement's outbound routes as Cytoscape edge elements. */
   private static placementEdges(
-    placement: PlacementEntry,
+    placement: PlacementEntryType,
     fromId: string,
     prefix: string,
-  ): readonly CytoscapeEdgeElement[] {
+  ): readonly CytoscapeEdgeElementType[] {
     // TerminalNode and PhaseNode are leaf placements with no outbound routes.
     if (!CytoscapeRenderer.hasOutputs(placement)) return [];
-    const edges: CytoscapeEdgeElement[] = [];
+    const edges: CytoscapeEdgeElementType[] = [];
     for (const [output, target] of Object.entries(placement.outputs)) {
       const destId = PlacementUtils.idIn(prefix, target);
       edges.push({
@@ -400,7 +400,7 @@ export class CytoscapeRenderer {
    * into embedded-DAGs when their target body is in `state.options.embeddedDAGs`.
    */
   private static renderInto(
-    dag: DAG,
+    dag: DAGType,
     prefix: string,
     compoundParent: string | undefined,
     state: RenderState,
@@ -451,7 +451,7 @@ export class CytoscapeRenderer {
         // Emit the placement as a compound parent (label tells the visitor
         // which embedded-DAG this cluster represents).
         const parentNode = CytoscapeRenderer.placementNode(placement, myId);
-        const labelled: CytoscapeNodeElement = {
+        const labelled: CytoscapeNodeElementType = {
           ...parentNode,
           "data": {
             ...parentNode.data,
@@ -502,7 +502,7 @@ export class CytoscapeRenderer {
 
       // ── Regular placement (or unresolved embedded-dag): emit as a single node.
       const node = CytoscapeRenderer.placementNode(placement, myId);
-      const enriched: CytoscapeNodeElement = myCompoundParent !== undefined
+      const enriched: CytoscapeNodeElementType = myCompoundParent !== undefined
         ? { ...node, "data": { ...node.data, "parent": myCompoundParent } }
         : node;
       state.elements.push(enriched);
@@ -561,7 +561,7 @@ export class CytoscapeRenderer {
    * Each id is returned prefixed with the parent placement path.
    */
   private static collectExitLeaves(
-    body: DAG,
+    body: DAGType,
     innerPrefix: string,
   ): { readonly completed: readonly string[]; readonly failed: readonly string[] } {
     const completed: string[] = [];

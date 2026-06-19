@@ -32,22 +32,22 @@
  */
 
 import { BookEntitiesError } from './BookEntitiesError.js';
-import type { Book, BookAvailability, BookIdentity, BookPublication, Candidate } from './entities.js';
+import type { BookAvailabilityType, BookIdentityType, BookPublicationType, BookType, CandidateType } from './entities.js';
 
 // ── Dispatch map types ─────────────────────────────────────────────────────────
 
-interface LongestEntry     { readonly 'kind': 'longest';       readonly 'key': 'summary' }
-interface FirstDefEntry    { readonly 'kind': 'first-defined'; readonly 'key': 'firstPublishYear' }
-interface UniqueUnionEntry { readonly 'kind': 'unique-union';  readonly 'key': 'languages' | 'publishers' | 'subjects' }
+type LongestEntryType     = { readonly 'kind': 'longest';       readonly 'key': 'summary' };
+type FirstDefEntryType    = { readonly 'kind': 'first-defined'; readonly 'key': 'firstPublishYear' };
+type UniqueUnionEntryType = { readonly 'kind': 'unique-union';  readonly 'key': 'languages' | 'publishers' | 'subjects' };
 
-type PublicationMergeEntry = LongestEntry | FirstDefEntry | UniqueUnionEntry;
+type PublicationMergeEntryType = LongestEntryType | FirstDefEntryType | UniqueUnionEntryType;
 
 /**
  * Dispatch map: one entry per BookPublication field.
  * The loop in `mergePublication` routes each entry to the appropriately-typed
  * branch, eliminating all per-field ternary spreads.
  */
-const PUBLICATION_MERGE_MAP: readonly PublicationMergeEntry[] = [
+const PUBLICATION_MERGE_MAP: readonly PublicationMergeEntryType[] = [
   { 'kind': 'longest',       'key': 'summary'          },
   { 'kind': 'first-defined', 'key': 'firstPublishYear'  },
   { 'kind': 'unique-union',  'key': 'languages'         },
@@ -59,7 +59,7 @@ export class CanonicalId {
   private constructor() { /* static class */ }
 
   /** Pick the best id from an array of possible ISBNs. */
-  static fromIsbns(isbns: readonly string[] | undefined): string | null {
+  static ofIsbns(isbns: readonly string[] | undefined): string | null {
     if (isbns === undefined || isbns.length === 0) return null;
     const thirteen = isbns.find(
       (s) => s.length === 13 && (s.startsWith('978') || s.startsWith('979')),
@@ -72,7 +72,7 @@ export class CanonicalId {
   }
 
   /** Generate a stable work URN from title + first author (case + punct stripped). */
-  static fromWork(title: string, firstAuthor: string | undefined): string {
+  static ofWork(title: string, firstAuthor: string | undefined): string {
     const slugTitle  = CanonicalId.slugify(title);
     const slugAuthor = CanonicalId.slugify(firstAuthor ?? 'unknown');
     return `urn:work:${slugTitle}::${slugAuthor}`;
@@ -92,9 +92,9 @@ export class CanonicalId {
     readonly title:    string;
     readonly authors?: readonly string[];
   }): string {
-    const isbn = CanonicalId.fromIsbns(input.isbns);
+    const isbn = CanonicalId.ofIsbns(input.isbns);
     if (isbn !== null) return isbn;
-    return CanonicalId.fromWork(input.title, input.authors?.[0]);
+    return CanonicalId.ofWork(input.title, input.authors?.[0]);
   }
 
   /**
@@ -102,7 +102,7 @@ export class CanonicalId {
    * richest individual field, unions list fields, accumulates `sources[]`
    * (carried in `book.notes._sources`) and `notes`.
    */
-  static merge(a: Candidate, b: Candidate): Candidate {
+  static merge(a: CandidateType, b: CandidateType): CandidateType {
     const identity    = CanonicalId.mergeIdentity(a.book.identity, b.book.identity);
     const publication = CanonicalId.mergePublication(a.book.publication, b.book.publication);
     const availability = CanonicalId.mergeAvailability(a.book.availability, b.book.availability);
@@ -110,7 +110,7 @@ export class CanonicalId {
       ...CanonicalId.sourceList(a),
       ...CanonicalId.sourceList(b),
     ]);
-    const book: Book = { 'identity': identity, 'publication': publication, 'availability': availability };
+    const book: BookType = { 'identity': identity, 'publication': publication, 'availability': availability };
 
     return {
       'book':   book,
@@ -129,8 +129,8 @@ export class CanonicalId {
    * Dedupe a candidate stream by canonical id, merging when two
    * candidates collide. The first occurrence's order is preserved.
    */
-  static dedupe(candidates: readonly Candidate[]): readonly Candidate[] {
-    const byId = new Map<string, Candidate>();
+  static dedupe(candidates: readonly CandidateType[]): readonly CandidateType[] {
+    const byId = new Map<string, CandidateType>();
     const order: string[] = [];
     for (const c of candidates) {
       const isbn = c.book.identity.isbn;
@@ -151,7 +151,7 @@ export class CanonicalId {
 
   // ── Private merge helpers ──────────────────────────────────────────────────
 
-  private static mergeIdentity(a: BookIdentity, b: BookIdentity): BookIdentity {
+  private static mergeIdentity(a: BookIdentityType, b: BookIdentityType): BookIdentityType {
     return {
       'isbn':    a.isbn,
       'title':   a.title.length >= b.title.length ? a.title : b.title,
@@ -166,20 +166,20 @@ export class CanonicalId {
    * needed. TypeScript narrows `entry.key` inside each `case` block, letting
    * each branch access only the fields it was designed for.
    */
-  private static mergePublication(a: BookPublication, b: BookPublication): BookPublication {
-    let summary: string | undefined;
-    let firstPublishYear: number | undefined;
-    let languages: readonly string[] = [];
-    let publishers: readonly string[] = [];
-    let subjects: readonly string[] = [];
+  private static mergePublication(a: BookPublicationType, b: BookPublicationType): BookPublicationType {
+    let summary: string | null = null;
+    let firstPublishYear: number | null = null;
+    let languages: string[] = [];
+    let publishers: string[] = [];
+    let subjects: string[] = [];
 
     for (const entry of PUBLICATION_MERGE_MAP) {
       switch (entry.kind) {
         case 'longest':
-          summary = CanonicalId.longest(a[entry.key], b[entry.key]);
+          summary = CanonicalId.longest(a.summary, b.summary);
           break;
         case 'first-defined':
-          firstPublishYear = a[entry.key] ?? b[entry.key];
+          firstPublishYear = a.firstPublishYear ?? b.firstPublishYear;
           break;
         case 'unique-union':
           switch (entry.key) {
@@ -194,7 +194,7 @@ export class CanonicalId {
     return { 'summary': summary, 'firstPublishYear': firstPublishYear, 'languages': languages, 'publishers': publishers, 'subjects': subjects };
   }
 
-  private static mergeAvailability(a: BookAvailability, b: BookAvailability): BookAvailability {
+  private static mergeAvailability(a: BookAvailabilityType, b: BookAvailabilityType): BookAvailabilityType {
     return {
       'price':   a.price.amount > 0 ? a.price : b.price,
       'inStock': a.inStock ?? b.inStock,
@@ -212,15 +212,15 @@ export class CanonicalId {
     return out;
   }
 
-  private static longest(a: string | undefined, b: string | undefined): string | undefined {
-    if (a === undefined) return b;
-    if (b === undefined) return a;
+  private static longest(a: string | null, b: string | null): string | null {
+    if (a === null) return b;
+    if (b === null) return a;
     return a.length >= b.length ? a : b;
   }
 
-  private static sourceList(c: Candidate): string[] {
-    const fromNotes = c.notes?.['_sources'];
-    if (Array.isArray(fromNotes)) return fromNotes.filter((s): s is string => typeof s === 'string');
+  private static sourceList(c: CandidateType): string[] {
+    const noteSources = c.notes?.['_sources'];
+    if (Array.isArray(noteSources)) return noteSources.filter((s): s is string => typeof s === 'string');
     return c.source.split('+').map((s) => s.trim()).filter(Boolean);
   }
 }

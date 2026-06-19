@@ -15,7 +15,7 @@
  *
  * MemoryCheckpointStore is in-process only: the map is discarded when the
  * process exits. In production, swap it for a file-, Redis-, or DB-backed
- * CheckpointStore that implements save / load / delete.
+ * CheckpointStoreInterface that implements save / load / delete.
  *
  * DAG definition (state, nodes, dag): examples/dags/23-checkpoint-store.ts
  *
@@ -24,7 +24,7 @@
 
 import {
   Checkpoint,
-  CheckpointRestoreAdapterFn,
+  CheckpointRestoreAdapter,
   Dagonizer,
   MemoryCheckpointStore,
 } from '@studnicky/dagonizer';
@@ -102,7 +102,7 @@ if (recalled === null) {
 }
 
 const { state, dagName, cursor } = recalled.restoreState(
-  CheckpointRestoreAdapterFn.fromFn((snap) => PipelineState.restore(snap)),
+  CheckpointRestoreAdapter.wrap((snap) => PipelineState.restore(snap)),
 );
 
 process.stdout.write(`[resume] restored cursor="${cursor}" tally=${String(state.tally)}\n`);

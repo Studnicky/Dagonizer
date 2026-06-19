@@ -24,21 +24,21 @@ import { archivistBundle } from './dag.ts';
 import { UserLanguage } from './language/UserLanguage.ts';
 import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
 import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
-import { ConsoleLogger, type LogEvent } from './logger/ConsoleLogger.ts';
+import { DomConsoleLogger } from './logger/DomConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedArchivist } from './ObservedArchivist.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
-import { listOllamaModels, pickOllamaChatModel } from './providers/index.ts';
-import type { ArchivistServices, LlmClient } from './services.ts';
+import { OllamaModels, OllamaProbe } from './providers/index.ts';
+import type { ArchivistServices, LlmClientInterface } from './services.ts';
 
 import { GeminiApiAdapter }   from '@studnicky/dagonizer-adapter-gemini-api';
 import { GeminiNanoAdapter }  from '@studnicky/dagonizer-adapter-gemini-nano';
 import { OllamaApiAdapter }   from '@studnicky/dagonizer-adapter-ollama';
 import { WebLlmAdapter }      from '@studnicky/dagonizer-adapter-web-llm';
-import type { WebLlmInitReport } from '@studnicky/dagonizer-adapter-web-llm';
+import type { WebLlmInitReportType } from '@studnicky/dagonizer-adapter-web-llm';
 
 import { LlmAdapterCascade, LlmAdapterRegistry } from '@studnicky/dagonizer/adapter';
-import type { AdapterCapabilities } from '@studnicky/dagonizer/adapter';
+import type { AdapterCapabilitiesType } from '@studnicky/dagonizer/adapter';
 
 import { GoogleBooksTool }       from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool, SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
@@ -52,14 +52,6 @@ const logEl   = document.getElementById('archivist-log') as HTMLPreElement;
 
 /** Static CLI helpers for the browser demo: log wiring and query submission. */
 class ArchivistCli {
-  static appendLogLine(event: LogEvent): void {
-    const line = document.createElement('span');
-    line.className = event.level;
-    line.textContent = `[${event.level}] ${event.message}\n`;
-    logEl.appendChild(line);
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-
   static appendErrorLine(message: string): void {
     const line = document.createElement('span');
     line.className = 'error';
@@ -90,14 +82,14 @@ class ArchivistCli {
   }
 }
 
-// ── Logger wiring: stream every event to the <pre>. ──────────────────────
-const logger = new ConsoleLogger();
-logger.subscribe(ArchivistCli.appendLogLine);
+// ── Logger wiring: DomConsoleLogger streams every event to the <pre> via
+//    its onEmit override (no subscribe callback). ──────────────────────────
+const logger = new DomConsoleLogger({ 'panel': logEl });
 
 // ── Cascade: browser-runnable adapters in preference order. ──────────────
-const CAPS_FULL_TOOLS:    AdapterCapabilities = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
-const CAPS_PARTIAL_TOOLS: AdapterCapabilities = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
-const CAPS_NO_TOOLS:      AdapterCapabilities = { 'toolUse': 'none',    'structuredOutput': true, 'jsonMode': false };
+const CAPS_FULL_TOOLS:    AdapterCapabilitiesType = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
+const CAPS_PARTIAL_TOOLS: AdapterCapabilitiesType = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
+const CAPS_NO_TOOLS:      AdapterCapabilitiesType = { 'toolUse': 'none',    'structuredOutput': true, 'jsonMode': false };
 
 const params = new URLSearchParams(window.location.search);
 const urlApiKey = params.get('apiKey') ?? '';
@@ -121,7 +113,7 @@ registry.register(
 // Progress reporting is an extension seam: subclass and override
 // onInitProgress rather than passing a callback in.
 class LoggingWebLlmAdapter extends WebLlmAdapter {
-  protected override onInitProgress(report: WebLlmInitReport): void {
+  protected override onInitProgress(report: WebLlmInitReportType): void {
     logger.info(`web-llm: ${report.text} (${String(Math.round(report.progress * 100))}%)`);
   }
 }
@@ -144,7 +136,7 @@ registry.register(
 // daemon's installed list (GET /api/tags) so it always names a model the
 // host has actually pulled; ollama is skipped entirely when no chat model
 // is installed, so the cascade never falls into a "model not found" loop.
-const ollamaModel = pickOllamaChatModel(await listOllamaModels());
+const ollamaModel = OllamaModels.pickChat(await OllamaProbe.listModels());
 if (ollamaModel !== null) {
   registry.register(
     { 'provider': 'ollama', 'model': ollamaModel, 'capabilities': CAPS_PARTIAL_TOOLS },
@@ -159,7 +151,7 @@ const cascade = new LlmAdapterCascade(registry, [
   ...(ollamaModel !== null ? [{ 'provider': 'ollama', 'model': ollamaModel }] : []),
 ]);
 
-let llm: LlmClient;
+let llm: LlmClientInterface;
 try {
   const adapter = await cascade.select();
   // Browser: no native embedder is wired today (the browser built-in
@@ -192,15 +184,13 @@ const services: ArchivistServices = {
   // Jaccard / heuristics when embedder is null.
   'embedder':         null,
   'nodeTimeouts':     {},
-  'logger':           logger,
 };
 
 // ObservedArchivist: a Dagonizer subclass that wires every lifecycle hook to
-// the logger via protected hook overrides (the sole observability surface).
-const dispatcher = new ObservedArchivist(
-  { services },
-  logger,
-);
+// its own internally-owned logger via protected hook overrides (the sole
+// observability surface). The DOM driver keeps its own `DomConsoleLogger`
+// (above) to stream its stage / result display lines into the `<pre>` panel.
+const dispatcher = new ObservedArchivist({ services });
 // #endregion wire-services
 
 // #region register-bundle

@@ -13,7 +13,7 @@
  *   if (violations.length > 0) { ... }
  */
 
-import type { DAG } from '../entities/dag/DAG.js';
+import type { DAGType } from '../entities/dag/DAG.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 
@@ -41,11 +41,11 @@ export class WellFormedValidator {
    * @param dag - A schema-validated DAG object.
    * @returns Array of human-readable violation messages. Empty = well-formed.
    */
-  static check(dag: DAG): readonly string[] {
+  static check(dag: DAGType): readonly string[] {
     const violations: string[] = [];
 
     // Build a set of all placement names for target resolution.
-    const placementNames = new Set<string>(dag.nodes.map((n) => n.name));
+    const placementNames = new Set<string>(dag.nodes.map((n: DAGNodeType) => n.name));
 
     for (const node of dag.nodes) {
       WellFormedValidator.checkPlacement(node, placementNames, violations);

@@ -13,39 +13,25 @@
  * if other tools already returned a book with the same canonical id.
  */
 
-import type { ToolDefinition } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import type { ToolDefinitionType } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 import { HttpTransport, ToolError } from '@studnicky/dagonizer/tool';
-import type { Tool } from '@studnicky/dagonizer/tool';
-import type { Candidate } from '@studnicky/dagonizer-book-entities';
+import type { ToolInterface } from '@studnicky/dagonizer/tool';
+import type { CandidateType } from '@studnicky/dagonizer-book-entities';
 import { BookBuilder, CanonicalId, LanguageCode } from '@studnicky/dagonizer-book-entities';
 
-interface WikiSummary {
-  readonly title?:           string;
-  readonly description?:     string;
-  readonly extract?:         string;
-  readonly type?:            string;
-  readonly content_urls?:    { desktop?: { page?: string } };
-  readonly thumbnail?:       { source?: string };
-}
+import type { WikipediaSummaryResponseType } from './WikipediaSummaryResponse.js';
+import { WikipediaSummaryResponseValidator } from './WikipediaSummaryResponse.js';
 
-interface WikipediaInput extends Record<string, unknown> {
+type WikipediaInputType = Record<string, unknown> & {
   readonly query: string;
   readonly lang?: string;
-}
-
-function isWikiSummary(value: unknown): value is WikiSummary {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  if ('title' in v && typeof v['title'] !== 'string') return false;
-  if ('extract' in v && typeof v['extract'] !== 'string') return false;
-  return true;
-}
+};
 
 const DEFAULT_LANG = 'en';
 
-export class WikipediaSummaryTool implements Tool<WikipediaInput, readonly Candidate[]> {
-  readonly definition: ToolDefinition = {
+export class WikipediaSummaryTool implements ToolInterface<WikipediaInputType, readonly CandidateType[]> {
+  readonly definition: ToolDefinitionType = {
     'name': 'wikipedia_summary',
     'description': 'Fetch the Wikipedia summary paragraph for a book, author, or topic. Use to enrich a known title with editorial context, or to look up an author bio.',
     'inputSchema': {
@@ -69,7 +55,7 @@ export class WikipediaSummaryTool implements Tool<WikipediaInput, readonly Candi
     'strict': true,
   };
 
-  async execute(input: WikipediaInput, options?: AbortableOptionsInterface): Promise<readonly Candidate[]> {
+  async execute(input: WikipediaInputType, options?: AbortableOptionsType): Promise<readonly CandidateType[]> {
     const signal = options?.signal;
     const lang = input.lang !== undefined && input.lang.length > 0
       ? WikipediaSummaryTool.normalizeLang(input.lang)
@@ -77,10 +63,11 @@ export class WikipediaSummaryTool implements Tool<WikipediaInput, readonly Candi
     const endpoint = WikipediaSummaryTool.endpointFor(lang);
     const title = encodeURIComponent(input.query.trim().replace(/\s+/gu, '_'));
 
-    let raw: unknown;
+    let payload: WikipediaSummaryResponseType;
     try {
-      raw = await HttpTransport.getJson<unknown>(
+      payload = await HttpTransport.getJson(
         `${endpoint}${title}`,
+        WikipediaSummaryResponseValidator,
         { ...(signal !== undefined && { signal }), 'headers': { 'accept': 'application/json' } },
       );
     } catch (err) {
@@ -88,13 +75,6 @@ export class WikipediaSummaryTool implements Tool<WikipediaInput, readonly Candi
       if (err instanceof ToolError && err.status === 404) return [];
       throw err;
     }
-    if (!isWikiSummary(raw)) {
-      throw new ToolError('Unexpected Wikipedia API response shape', {
-        'reason': 'PARSE_ERROR',
-        'retryable': false,
-      });
-    }
-    const payload = raw;
 
     if (payload.title === undefined || payload.extract === undefined) return [];
 
@@ -108,7 +88,7 @@ export class WikipediaSummaryTool implements Tool<WikipediaInput, readonly Candi
       && (payload.description ?? '').toLowerCase().includes('book');
 
     const canonical = isBookish
-      ? CanonicalId.fromWork(payload.title, undefined)
+      ? CanonicalId.ofWork(payload.title, undefined)
       : `urn:wiki:${CanonicalId.slugify(payload.title)}`;
 
     const notes: Record<string, unknown> = {

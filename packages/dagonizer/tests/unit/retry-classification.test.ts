@@ -3,10 +3,10 @@ import { describe, it } from 'node:test';
 
 import { Classifications, LlmError } from '../../src/adapter/LlmError.js';
 import { RetryableErrorPolicy } from '../../src/adapter/RetryableErrorPolicy.js';
-import { BackoffStrategy } from '../../src/runtime/index.js';
+import { BackoffStrategyNames } from '../../src/entities/runtime/BackoffStrategy.js';
 
 const policy = (): RetryableErrorPolicy =>
-  RetryableErrorPolicy.from({ 'maxAttempts': 3, 'strategy': BackoffStrategy.EXPONENTIAL, 'baseDelay': 0 });
+  RetryableErrorPolicy.from({ 'maxAttempts': 3, 'strategy': BackoffStrategyNames.EXPONENTIAL, 'baseDelay': 0 });
 
 void describe('RetryableErrorPolicy honors LlmError.classification.retryable', () => {
   void it('does NOT retry a non-retryable LlmError (exactly one attempt)', async () => {

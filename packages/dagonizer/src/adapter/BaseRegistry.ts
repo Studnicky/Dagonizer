@@ -11,11 +11,11 @@
  * error message so diagnostics remain accurate.
  */
 
-import { AdapterDescriptor, type AdapterDescriptorShape } from './AdapterDescriptor.js';
+import { AdapterDescriptor, type AdapterDescriptorShapeType } from './AdapterDescriptor.js';
 import { Classifications, LlmError } from './LlmError.js';
 
-interface RegistryEntry<TFactory> {
-  readonly descriptor: AdapterDescriptorShape;
+type RegistryEntry<TFactory> = {
+  readonly descriptor: AdapterDescriptorShapeType;
   readonly factory:    TFactory;
 }
 
@@ -33,7 +33,7 @@ export abstract class BaseRegistry<TInstance> {
    * descriptor. Throws `LlmError(CONFIGURATION)` if the key is already
    * registered; re-registration is almost always a bug.
    */
-  register(descriptor: AdapterDescriptorShape, factory: () => TInstance): void {
+  register(descriptor: AdapterDescriptorShapeType, factory: () => TInstance): void {
     const key = AdapterDescriptor.key(descriptor.provider, descriptor.model);
     if (this.#entries.has(key)) {
       throw new LlmError(
@@ -61,7 +61,7 @@ export abstract class BaseRegistry<TInstance> {
   }
 
   /** Snapshot of all registered descriptors in insertion order. */
-  list(): readonly AdapterDescriptorShape[] {
+  list(): readonly AdapterDescriptorShapeType[] {
     return [...this.#entries.values()].map((entry) => entry.descriptor);
   }
 }

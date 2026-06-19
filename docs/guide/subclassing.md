@@ -33,7 +33,7 @@ The Archivist demo carries a rich state object: `query`, `terms`, `candidates`, 
 
 <<< @/../examples/the-archivist/ArchivistState.ts#snapshot-restore
 
-`snapshotData()` returns a `JsonObject`. The base class merges it with the base snapshot (metadata, retries, warnings) and serialises the result. Lifecycle and engine errors are intentionally excluded: lifecycle resets to `pending` on resume, and errors flow via `outcome.errors`. `restoreData()` receives the merged snapshot; it reads only the domain fields and assigns them onto the instance with the type guards visible above.
+`snapshotData()` returns a `JsonObjectType`. The base class merges it with the base snapshot (metadata, retries, warnings) and serialises the result. Lifecycle and engine errors are intentionally excluded: lifecycle resets to `pending` on resume, and errors flow via `outcome.errors`. `restoreData()` receives the merged snapshot; it reads only the domain fields and assigns them onto the instance with the type guards visible above.
 
 Two invariants the override must hold:
 

@@ -11,7 +11,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State: fields live on the same class; inputs / outputs control which
@@ -44,7 +44,7 @@ export class IncrementNode extends ScalarNode<IncrementState, 'success'> {
 // ---------------------------------------------------------------------------
 
 // #region child-dag
-export const child: DAG = {
+export const child: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:child',
   '@type':     'DAG',
@@ -74,7 +74,7 @@ export const child: DAG = {
 // ---------------------------------------------------------------------------
 
 // #region parent-dag
-export const parent: DAG = {
+export const parent: DAGType = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:parent',
   '@type':     'DAG',

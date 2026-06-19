@@ -6,7 +6,7 @@
  * Validator.bridgeMessage before dispatch.
  *
  * Lifecycle:
- *   init     → dynamic-import registry module; createBundle; reply ready
+ *   init     → dynamic-import registry module; instantiate; reply ready
  *   execute  → restore state(s); run whole DAG per item; reply result + stream intermediates
  *   abort    → fire AbortController for that correlationId
  *   shutdown → destroy registered nodes; close channel
@@ -22,18 +22,19 @@
  * (unsafe for concurrent executions); per-execute construction is cheap and
  * gives exact per-correlationId routing without synchronisation.
  *
- * `registry` in `DagHostOptions` statically injects the isolate registry: when
+ * `registry` in `DagHostOptionsType` statically injects the isolate registry: when
  * set, init uses it directly instead of importing `registryModule` by URL.
  *
  * All properties are initialised in constructor for V8 hidden-class stability.
  */
 
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
-import type { RegistryBundleInterface, RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
-import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
-import type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
-import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
-import type { JsonObject } from '../entities/json.js';
+import type { RegistryBundleInterface } from '../contracts/RegistryBundleInterface.js';
+import type { RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
+import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
+import type { ExecutionResponseType } from '../entities/executor/ExecutionResponse.js';
+import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
+import type { JsonObjectType } from '../entities/json.js';
 import { NodeErrorBuilder } from '../entities/node/NodeError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
@@ -41,7 +42,7 @@ import { Validator } from '../validation/Validator.js';
 import { WorkerObserver } from './WorkerObserver.js';
 
 // ---------------------------------------------------------------------------
-// DagHostOptions
+// DagHostOptionsType
 // ---------------------------------------------------------------------------
 
 /**
@@ -49,7 +50,7 @@ import { WorkerObserver } from './WorkerObserver.js';
  * registry: when set, init uses it directly instead of importing
  * `registryModule` by URL. Omit it for the URL-import path.
  */
-export interface DagHostOptions {
+export type DagHostOptionsType = {
   registry?: RegistryModuleInterface;
 }
 
@@ -66,7 +67,7 @@ export class DagHost {
   /** Bundle loaded after init. */
   #bundle: RegistryBundleInterface | null;
 
-  constructor(channel: MessageChannelInterface, options: DagHostOptions = {}) {
+  constructor(channel: MessageChannelInterface, options: DagHostOptionsType = {}) {
     this.#channel = channel;
     this.#inflight = new Map();
     this.#registry = options.registry ?? null;
@@ -120,7 +121,7 @@ export class DagHost {
     // must not crash the host.
     switch (message.kind) {
       case 'init':
-        await this.#handleInit(message.registryModule, message.registryVersion, message.servicesConfig as JsonObject);
+        await this.#handleInit(message.registryModule, message.registryVersion, message.servicesConfig as JsonObjectType);
         break;
       case 'execute':
         // R3: fire-and-forget with error capture so failures reach the caller.
@@ -164,7 +165,7 @@ export class DagHost {
   async #handleInit(
     registryModule: string,
     expectedVersion: string,
-    servicesConfig: JsonObject,
+    servicesConfig: JsonObjectType,
   ): Promise<void> {
     try {
       let registry: RegistryModuleInterface;
@@ -178,29 +179,29 @@ export class DagHost {
         const mod = await import(registryModule) as { default?: unknown };
 
         // Runtime-narrow the default export via typeof checks before the cast.
-        // The guard below confirms `createBundle` is a function before the cast
+        // The guard below confirms `instantiate` is a function before the cast
         // to RegistryModuleInterface, making the subsequent typed call safe.
         const registryInterface = mod.default;
         if (
           registryInterface === null ||
           typeof registryInterface !== 'object' ||
-          typeof (registryInterface as Record<string, unknown>)['createBundle'] !== 'function'
+          typeof (registryInterface as Record<string, unknown>)['instantiate'] !== 'function'
         ) {
           this.#channel.send({
             'kind': 'error',
             'correlationId': null,
             'code': 'INVALID_REGISTRY_MODULE',
-            'message': `Registry module default export does not implement RegistryModuleInterface (missing createBundle)`,
+            'message': `Registry module default export does not implement RegistryModuleInterface (missing instantiate)`,
             'recoverable': false,
           });
           return;
         }
 
-        // Cast is safe: the typeof guard above confirms createBundle exists as a function.
+        // Cast is safe: the typeof guard above confirms instantiate exists as a function.
         registry = registryInterface as RegistryModuleInterface;
       }
 
-      const bundle = await registry.createBundle(servicesConfig);
+      const bundle = await registry.instantiate(servicesConfig);
 
       if (bundle.registryVersion !== expectedVersion) {
         this.#channel.send({
@@ -238,7 +239,7 @@ export class DagHost {
 
   async #handleExecute(
     correlationId: string,
-    request: ExecutionRequest,
+    request: ExecutionRequestType,
   ): Promise<void> {
     if (this.#bundle === null) {
       this.#channel.send({
@@ -264,15 +265,15 @@ export class DagHost {
 
   async #executeDAG(
     correlationId: string,
-    request: ExecutionRequest,
+    request: ExecutionRequestType,
     controller: AbortController,
     bundle: RegistryBundleInterface,
   ): Promise<void> {
     // Restore all item states from the request's items array.
     const requestItems = request.items;
-    const restoredItems = requestItems.map(({ id, snapshot }) => ({
+    const restoredItems = requestItems.map(({ id, snapshot }: { id: string; snapshot: Record<string, unknown> }) => ({
       'id': id,
-      'state': bundle.restoreState.restore(snapshot as JsonObject),
+      'state': bundle.restoreState.restore(snapshot as JsonObjectType),
     }));
 
     // Set up timeout abort if specified.
@@ -296,7 +297,7 @@ export class DagHost {
     dagonizer.registerBundle(bundle.bundle);
 
     try {
-      const intermediates: ExecutorIntermediate[] = [];
+      const intermediates: ExecutorIntermediateType[] = [];
 
       if (restoredItems.length === 1) {
         // Single-item path: use the standard execute() API.
@@ -317,7 +318,7 @@ export class DagHost {
             break;
           }
           const nodeResult = next.value;
-          const intermediate: ExecutorIntermediate = {
+          const intermediate: ExecutorIntermediateType = {
             'output': nodeResult.output,
             'skipped': nodeResult.skipped,
             'nodeName': nodeResult.nodeName,
@@ -352,7 +353,7 @@ export class DagHost {
             : []),
         ];
 
-        const response: ExecutionResponse = {
+        const response: ExecutionResponseType = {
           'correlationId': correlationId,
           'items': [{ 'id': item.id, 'snapshot': item.state.snapshot(), 'terminalOutcome': derivedTerminal }],
           'errors': collectedErrors,
@@ -416,7 +417,7 @@ export class DagHost {
           'terminalOutcome': terminalByItemId.get(id) ?? 'failed',
         }));
 
-        const response: ExecutionResponse = {
+        const response: ExecutionResponseType = {
           'correlationId': correlationId,
           'items': responseItems,
           'errors': allErrors,
@@ -431,11 +432,11 @@ export class DagHost {
       // On unhandled exception, return failed items for all items in the request.
       const failedItems = restoredItems.map(({ id, state }) => ({
         'id': id,
-        'snapshot': state.snapshot() as JsonObject | null,
+        'snapshot': state.snapshot() as JsonObjectType | null,
         'terminalOutcome': 'failed',
       }));
 
-      const response: ExecutionResponse = {
+      const response: ExecutionResponseType = {
         'correlationId': correlationId,
         'items': failedItems,
         'errors': [NodeErrorBuilder.from(

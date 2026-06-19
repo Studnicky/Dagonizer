@@ -26,11 +26,11 @@
  */
 
 import {
-  BackoffStrategy,
+  BackoffStrategyNames,
   RetryPolicy,
   Scheduler,
 } from '@studnicky/dagonizer';
-import type { RetryPolicyOptionsInterface } from '@studnicky/dagonizer';
+import type { BackoffStrategyType, RetryPolicyOptionsType } from '@studnicky/dagonizer';
 
 import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 
@@ -45,13 +45,13 @@ import { FlakyStub } from './dags/22-backoff-strategies.js';
 class RecordingPolicy extends RetryPolicy {
   readonly #delays: number[] = [];
 
-  constructor(options?: RetryPolicyOptionsInterface) {
+  constructor(options?: RetryPolicyOptionsType) {
     super(options);
   }
 
   get delays(): readonly number[] { return this.#delays; }
 
-  override getDelay(attempt: number, options: { readonly error?: Error | null } = {}): number {
+  override getDelay(attempt: number, options: { readonly error: Error | null } = { 'error': null }): number {
     const delay = super.getDelay(attempt, options);
     this.#delays.push(delay);
     return delay;
@@ -67,7 +67,7 @@ class RecordingPolicy extends RetryPolicy {
 class StrategyRunner {
   static async run(
     strategyName: string,
-    strategy: BackoffStrategy,
+    strategy: BackoffStrategyType,
     baseDelay: number,
     maxAttempts: number,
     jitterFactor: number,
@@ -127,17 +127,17 @@ const BASE_DELAY   = 100;
 
 // #region strategies
 // CONSTANT: every wait is exactly baseDelay.
-await StrategyRunner.run('CONSTANT', BackoffStrategy.CONSTANT, BASE_DELAY, MAX_ATTEMPTS, 0);
+await StrategyRunner.run('CONSTANT', BackoffStrategyNames.CONSTANT, BASE_DELAY, MAX_ATTEMPTS, 0);
 
 // LINEAR: wait grows as baseDelay × attempt (100, 200, 300 ms …).
-await StrategyRunner.run('LINEAR', BackoffStrategy.LINEAR, BASE_DELAY, MAX_ATTEMPTS, 0);
+await StrategyRunner.run('LINEAR', BackoffStrategyNames.LINEAR, BASE_DELAY, MAX_ATTEMPTS, 0);
 
 // EXPONENTIAL: wait grows as baseDelay × 2^(attempt-1) (100, 200, 400 ms …).
-await StrategyRunner.run('EXPONENTIAL', BackoffStrategy.EXPONENTIAL, BASE_DELAY, MAX_ATTEMPTS, 0);
+await StrategyRunner.run('EXPONENTIAL', BackoffStrategyNames.EXPONENTIAL, BASE_DELAY, MAX_ATTEMPTS, 0);
 
 // DECORRELATED_JITTER: wait is random in [baseDelay, baseDelay × 3].
 // jitterFactor is ignored for this strategy; the output varies each run.
-await StrategyRunner.run('DECORRELATED_JITTER', BackoffStrategy.DECORRELATED_JITTER, BASE_DELAY, MAX_ATTEMPTS, 0.1);
+await StrategyRunner.run('DECORRELATED_JITTER', BackoffStrategyNames.DECORRELATED_JITTER, BASE_DELAY, MAX_ATTEMPTS, 0.1);
 // #endregion strategies
 
 process.stdout.write('\nLesson: choose a strategy to match your retry workload:\n');

@@ -130,6 +130,10 @@
       "types": "./dist/entities/index.d.ts",
       "default": "./dist/entities/index.js"
     },
+    "./dag": {
+      "types": "./dist/dag/index.d.ts",
+      "default": "./dist/dag/index.js"
+    },
     "./checkpoint": {
       "types": "./dist/checkpoint/index.d.ts",
       "default": "./dist/checkpoint/index.js"

@@ -5,42 +5,20 @@
  * within the viz module only.
  */
 
-import type { DAG } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { PhaseNode } from '../entities/dag/PhaseNode.js';
-import type { ScatterNode } from '../entities/dag/ScatterNode.js';
-import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { TerminalNode } from '../entities/dag/TerminalNode.js';
+import type { DAGType } from '../entities/dag/DAG.js';
+import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
+import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
+import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
+import type { TerminalNodeType } from '../entities/dag/TerminalNode.js';
 
 /** 5-member union of every concrete placement shape. */
-export type PlacementEntry =
-  | EmbeddedDAGNode
-  | ScatterNode
-  | SingleNodePlacementInterface
-  | TerminalNode
-  | PhaseNode;
-
-/** The discriminant values that identify a valid `PlacementEntry`. */
-const PLACEMENT_TYPES = new Set<string>([
-  'EmbeddedDAGNode',
-  'ScatterNode',
-  'SingleNode',
-  'TerminalNode',
-  'PhaseNode',
-]);
-
-/**
- * Type guard: narrows an `object` to `PlacementEntry` by checking the
- * `@type` discriminant field. Ajv has already validated the DAG document
- * against its schema, so any object in `dag.nodes` with a recognised
- * `@type` is structurally valid. The guard exists to eliminate the bare
- * `as` cast at the schema boundary without requiring a full deep validation
- * pass here.
- */
-function isPlacementEntry(node: object): node is PlacementEntry {
-  const type = (node as Record<string, unknown>)['@type'];
-  return typeof type === 'string' && PLACEMENT_TYPES.has(type);
-}
+export type PlacementEntryType =
+  | EmbeddedDAGNodeType
+  | ScatterNodeType
+  | SingleNodePlacementType
+  | TerminalNodeType
+  | PhaseNodeType;
 
 /**
  * The three color tokens a contained placement carries.
@@ -49,7 +27,7 @@ function isPlacementEntry(node: object): node is PlacementEntry {
  * `stroke` — border / outline color (darker shade of the same hue).
  * `text`   — label text color (light for dark fills, dark for light fills).
  */
-export interface RoleColors {
+export type RoleColorsType = {
   fill:   string;
   stroke: string;
   text:   string;
@@ -131,7 +109,7 @@ export class RoleColorUtils {
    *   RoleColorUtils.forRole('cpu')  // { fill: '#b45309', stroke: '#d97706', text: '#eef3f7' }
    *   RoleColorUtils.forRole('io')   // { fill: '#be185d', stroke: '#db2777', text: '#eef3f7' }
    */
-  static forRole(role: string): RoleColors {
+  static forRole(role: string): RoleColorsType {
     const idx = RoleColorUtils.hashToPaletteIndex(role);
     const entry = RoleColorUtils.PALETTE[idx];
     // PALETTE is a compile-time constant with 8 entries; hashToPaletteIndex
@@ -146,6 +124,28 @@ export class RoleColorUtils {
 export class PlacementUtils {
   private constructor() { /* static class */ }
 
+  /** The discriminant values that identify a valid `PlacementEntryType`. */
+  private static readonly PLACEMENT_TYPES = new Set<string>([
+    'EmbeddedDAGNode',
+    'ScatterNode',
+    'SingleNode',
+    'TerminalNode',
+    'PhaseNode',
+  ]);
+
+  /**
+   * Type guard: narrows an `object` to `PlacementEntryType` by checking the
+   * `@type` discriminant field. Ajv has already validated the DAG document
+   * against its schema, so any object in `dag.nodes` with a recognised
+   * `@type` is structurally valid. The guard exists to eliminate the bare
+   * `as` cast at the schema boundary without requiring a full deep validation
+   * pass here.
+   */
+  private static isPlacementEntry(node: object): node is PlacementEntryType {
+    const type = (node as Record<string, unknown>)['@type'];
+    return typeof type === 'string' && PlacementUtils.PLACEMENT_TYPES.has(type);
+  }
+
   /**
    * Return the sub-DAG name that this placement embeds, or `null` if it does
    * not embed a DAG.
@@ -154,7 +154,7 @@ export class PlacementUtils {
    *   - `EmbeddedDAGNode`           → `placement.dag`
    *   - `ScatterNode` with dag body → `placement.body.dag`
    */
-  static embeddedDagName(placement: PlacementEntry): string | null {
+  static embeddedDagName(placement: PlacementEntryType): string | null {
     if (placement['@type'] === 'EmbeddedDAGNode') return placement.dag;
     if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) return placement.body.dag;
     return null;
@@ -167,7 +167,7 @@ export class PlacementUtils {
    *
    * A non-null return means the placement is container-bound (worker/isolate).
    */
-  static containerRole(placement: PlacementEntry): string | null {
+  static containerRole(placement: PlacementEntryType): string | null {
     if (placement['@type'] === 'EmbeddedDAGNode') {
       return placement.container ?? null;
     }
@@ -178,7 +178,7 @@ export class PlacementUtils {
   }
 
   /**
-   * Narrow `dag.nodes` to `PlacementEntry[]`.
+   * Narrow `dag.nodes` to `PlacementEntryType[]`.
    *
    * `DAG.nodes` is typed as `ReadonlyArray<object>` at the schema boundary so
    * the engine core stays dependency-free. All renderer/layout callers in the
@@ -189,8 +189,8 @@ export class PlacementUtils {
    * Nodes that fail the guard (which would indicate a schema bypass) are
    * excluded rather than crashing the renderer, preserving graceful degradation.
    */
-  static narrowNodes(dag: DAG): PlacementEntry[] {
-    return dag.nodes.filter(isPlacementEntry);
+  static narrowNodes(dag: DAGType): PlacementEntryType[] {
+    return dag.nodes.filter((node) => PlacementUtils.isPlacementEntry(node));
   }
 
   /** Build a placement-name id, optionally prefixed by an enclosing scope. */

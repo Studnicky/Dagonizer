@@ -3,13 +3,13 @@ import { describe, it } from 'node:test';
 
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
+import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const node = (name: string, outputs: readonly string[]) => TestNode.make<NodeStateBase>(name, outputs, () => outputs[0] as string);
 
-const makeDAG = (name: string, entrypoint: string, nodes: DAG['nodes']): DAG => ({
+const makeDAG = (name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType => ({
   '@context': DAG_CONTEXT, '@id': `urn:noocodex:dag:${name}`, '@type': 'DAG',
   name, 'version': '1', entrypoint, nodes,
 });

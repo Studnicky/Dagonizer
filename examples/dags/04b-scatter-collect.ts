@@ -10,8 +10,8 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import type { DAGType } from '@studnicky/dagonizer';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // #region state
 export interface Candidate {
@@ -50,7 +50,7 @@ export class ProviderNode extends ScalarNode<GenerateState, 'success'> {
     // is an LLM/tool call producing a candidate answer + a quality score.
     const score = name.length * 10 + (name.charCodeAt(0) % 7);
     // Write to a clone field; the map gather reads `candidate` off each
-    // clone via the StateAccessor and appends it into parent.candidates.
+    // clone via the StateAccessorInterface and appends it into parent.candidates.
     state.candidate = {
       "provider": name,
       "text":     `answer from ${name}`,
@@ -80,7 +80,7 @@ export class SelectNode extends ScalarNode<GenerateState, 'selected' | 'none'> {
 // #endregion select-node
 
 // #region scatter-collect-placement
-export const dag: DAG = {
+export const dag: DAGType = {
   '@context':   DAG_CONTEXT,
   '@id':        'urn:noocodex:dag:generate-select',
   '@type':      'DAG',
@@ -100,7 +100,7 @@ export const dag: DAG = {
       // parent.candidates in source-index order. Because `source` is set, a
       // map gather appends (N clones ⇒ array); produced data survives.
       "gather": {
-        "strategy": GatherStrategyName.MAP,
+        "strategy": GatherStrategyNames.MAP,
         "mapping":  { "candidate": 'candidates' },     // cloneField → parentPath
       },
       // Aggregate outputs from the default 'aggregate' reducer. All providers

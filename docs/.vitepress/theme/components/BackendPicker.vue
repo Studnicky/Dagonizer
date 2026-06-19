@@ -13,7 +13,7 @@
 
 import { computed, ref } from 'vue';
 
-import { browserVisibleBackends } from '../../../../examples/the-archivist/providers/index.ts';
+import { BackendMatrix } from '../../../../examples/the-archivist/providers/index.ts';
 
 interface BackendOption {
   readonly id: string;
@@ -82,7 +82,7 @@ const emit = defineEmits<{
 const revealMap = ref<Record<string, boolean>>({});
 
 /** Visible backend IDs for the current device context. */
-const visibleIds = computed(() => new Set<string>(browserVisibleBackends(props.isMobile ?? false)));
+const visibleIds = computed(() => new Set<string>(BackendMatrix.browserVisible(props.isMobile ?? false)));
 
 /** Backends sorted runnable-first, then alphabetical by displayName. */
 const sortedBackends = computed<readonly BackendOption[]>(() => {
@@ -166,7 +166,7 @@ function keyFor(id: string): string {
         target="_blank"
         rel="noreferrer"
       ><code>providers/index.ts</code></a>
-      (functions <code>loadApiKeys</code> / <code>saveApiKeys</code>) for the source.
+      (<code>ApiKeyStore.load</code> / <code>ApiKeyStore.save</code>) for the source.
     </p>
 
     <!-- Per-backend key inputs: one collapsible <details> each -->

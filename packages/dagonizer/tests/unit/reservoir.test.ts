@@ -15,15 +15,17 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import type { Batch } from '../../src/core/batch/Batch.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import type { ReservoirDriverInterface, ScatterItemBatchResultType } from '../../src/contracts/ReservoirDriver.js';
+import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
-import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
-import type { ScatterProgress } from '../../src/Dagonizer.js';
+import { Dagonizer } from '../../src/Dagonizer.js';
+import type { ScatterProgressType } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
+import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
+import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/index.js';
-import type { JsonObject } from '../../src/entities/json.js';
-import type { ReservoirDriverInterface, ScatterItemBatchResult } from '../../src/execution/ReservoirBuffer.js';
+import type { DAGType } from '../../src/entities/index.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
 import { ReservoirBuffer } from '../../src/execution/ReservoirBuffer.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
@@ -44,14 +46,14 @@ class ReservoirState extends NodeStateBase {
   items: ReservoirItem[] = [];
   gathered: ReservoirItem[] = [];
 
-  protected override snapshotData(): JsonObject {
+  protected override snapshotData(): JsonObjectType {
     return {
-      'items':    this.items as unknown as JsonObject,
-      'gathered': this.gathered as unknown as JsonObject,
+      'items':    this.items as unknown as JsonObjectType,
+      'gathered': this.gathered as unknown as JsonObjectType,
     };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     const items = snap['items'];
     if (Array.isArray(items)) {
       this.items = items.filter(
@@ -72,7 +74,7 @@ class ReservoirState extends NodeStateBase {
 }
 
 /** Build a reservoir DAG whose scatter node uses the given keyField + capacity. */
-function makeReservoirDag(dagName: string, keyField: string, capacity: number): DAG {
+function makeReservoirDag(dagName: string, keyField: string, capacity: number): DAGType {
   return {
     '@context': DAG_CONTEXT,
     '@id':      `urn:noocodex:dag:${dagName}`,
@@ -119,7 +121,7 @@ class BatchTrackingNode extends MonadicNode<ReservoirState, string> {
     super();
   }
 
-  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatch<string, ReservoirState>> {
+  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
     this.batchSizes.push(batch.size);
     return new Map([['success', batch]]);
   }
@@ -134,7 +136,7 @@ class PassthroughNode extends MonadicNode<ReservoirState, string> {
   readonly name = 'worker';
   readonly outputs: readonly string[] = ['success'];
 
-  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatch<string, ReservoirState>> {
+  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
     return new Map([['success', batch]]);
   }
 }
@@ -182,7 +184,7 @@ class KeyedPartitionNode extends MonadicNode<ReservoirState, string> {
     super();
   }
 
-  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatch<string, ReservoirState>> {
+  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
     // Collect the items from this batch to verify no cross-key mixing.
     const keys = new Set<string>();
     const batchItems: ReservoirItem[] = [];
@@ -246,7 +248,7 @@ class ExecuteCounterNode extends MonadicNode<ReservoirState, string> {
     super();
   }
 
-  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatch<string, ReservoirState>> {
+  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
     this.calls.n++;
     return new Map([['success', batch]]);
   }
@@ -318,7 +320,7 @@ class CrashingNode extends MonadicNode<ReservoirState, string> {
     super();
   }
 
-  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatch<string, ReservoirState>> {
+  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
     this.crash.n++;
     if (this.crash.n === 3) throw new Error('simulated crash on third batch');
     return new Map([['success', batch]]);
@@ -350,7 +352,7 @@ void describe('Reservoir scatter — crash-safe resume', () => {
       `expected 10 gathered after crash, got ${partial.state.gathered.length}`);
 
     // Checkpoint must have survived.
-    const stored = partial.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    const stored = partial.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
     assert.ok(stored !== undefined, 'expected checkpoint metadata after crash');
 
     // ── Phase 2: resume ──────────────────────────────────────────────────────
@@ -386,7 +388,7 @@ void describe('Reservoir scatter — no-reservoir parity', () => {
     dispatcher.registerNode(makeBatchTrackingNode(batchSizes));
 
     // No `reservoir` field → non-reservoir path (ScatterWorkerPool).
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:no-reservoir',
       '@type':    'DAG',
@@ -478,7 +480,7 @@ function makeControlledSource(items: IdleItem[], gate: Deferred<void>): AsyncIte
  */
 function makeFakeDriver(releases: { size: number; key: string }[]): ReservoirDriverInterface<NodeStateBase> {
   return {
-    async executeBatch(items): Promise<ScatterItemBatchResult<NodeStateBase>> {
+    async executeBatch(items): Promise<ScatterItemBatchResultType<NodeStateBase>> {
       const key = String((items[0] as { bufferKey: string } | undefined)?.bufferKey ?? '');
       releases.push({ 'size': items.length, key });
       return {
@@ -497,13 +499,16 @@ function makeFakeDriver(releases: { size: number; key: string }[]): ReservoirDri
   };
 }
 
-/** Simple accessor that reads a top-level property from a plain object. */
-const accessor = {
-  get(obj: unknown, path: string): unknown {
-    if (obj !== null && typeof obj === 'object' && path in (obj as Record<string, unknown>)) {
-      return (obj as Record<string, unknown>)[path];
+/** Simple `StateAccessorInterface` that reads/writes a top-level property on a plain object. */
+const accessor: StateAccessorInterface = {
+  get<T = unknown>(state: object, path: string): T | null {
+    if (path in (state as Record<string, unknown>)) {
+      return (state as Record<string, T>)[path] ?? null;
     }
-    return undefined;
+    return null;
+  },
+  set(state: object, path: string, value: unknown): void {
+    (state as Record<string, unknown>)[path] = value;
   },
 };
 

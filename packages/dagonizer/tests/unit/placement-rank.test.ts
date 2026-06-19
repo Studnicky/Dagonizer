@@ -10,12 +10,12 @@ import { describe, it } from 'node:test';
 
 import { PlacementRank } from '../../src/core/PlacementRank.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG } from '../../src/entities/dag/DAG.js';
+import type { DAGType } from '../../src/entities/dag/DAG.js';
 
 void describe('PlacementRank.compute', () => {
   void it('assigns rank 0 to entry and increments linearly', () => {
     // a → b → c → end
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:linear-rank',
       '@type': 'DAG',
@@ -43,7 +43,7 @@ void describe('PlacementRank.compute', () => {
   void it('handles a branching DAG (two branches from one node)', () => {
     // entry → left → end
     //       → right → end
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:branch-rank',
       '@type': 'DAG',
@@ -74,7 +74,7 @@ void describe('PlacementRank.compute', () => {
     // a → c (rank 1) → d
     // b → e (rank 2) → d
     // Diamond: a→b, a→c, b→d, c→d — d gets rank 2 (max pred rank = 1)
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:diamond-rank',
       '@type': 'DAG',
@@ -104,7 +104,7 @@ void describe('PlacementRank.compute', () => {
     // a (0) → b (1) → c (2) → join (3)
     // a (0)          → join
     // join has predecessors c (rank 2) and a (rank 0) → rank = 3
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:asym-diamond',
       '@type': 'DAG',
@@ -133,7 +133,7 @@ void describe('PlacementRank.compute', () => {
   void it('terminates and excludes back-edges in a cyclic DAG', () => {
     // Self-loop: a → a → end (a has a self-edge)
     // Also: a → end
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:self-loop-rank',
       '@type': 'DAG',
@@ -158,7 +158,7 @@ void describe('PlacementRank.compute', () => {
   void it('terminates on a two-node cycle without hanging', () => {
     // a → b → a → ... (cycle)
     // Also: a → end (escape)
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:two-cycle',
       '@type': 'DAG',
@@ -187,7 +187,7 @@ void describe('PlacementRank.compute', () => {
 
   void it('assigns MAX_SAFE_INTEGER to unreachable placements', () => {
     // a → end; b is unreachable (not reachable from 'a')
-    const dag: DAG = {
+    const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:unreachable',
       '@type': 'DAG',

@@ -1,19 +1,19 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { AdapterDescriptor, type AdapterDescriptorShape } from '../../src/adapter/AdapterDescriptor.js';
+import { AdapterDescriptor, type AdapterDescriptorShapeType } from '../../src/adapter/AdapterDescriptor.js';
 import { BaseAdapter } from '../../src/adapter/BaseAdapter.js';
 import type {
-  AdapterCapabilities,
-  ChatRequest,
-  ChatResponse,
+  AdapterCapabilitiesType,
+  ChatRequestType,
+  ChatResponseType,
 } from '../../src/adapter/LlmAdapter.js';
 import { ZERO_TOKEN_USAGE } from '../../src/adapter/LlmAdapter.js';
 import { LlmAdapterCascade } from '../../src/adapter/LlmAdapterCascade.js';
 import { LlmAdapterRegistry } from '../../src/adapter/LlmAdapterRegistry.js';
 import { LlmError } from '../../src/adapter/LlmError.js';
 
-const FULL_CAPABILITIES: AdapterCapabilities = {
+const FULL_CAPABILITIES: AdapterCapabilitiesType = {
   'toolUse': 'full',
   'structuredOutput': true,
   'jsonMode': true,
@@ -31,7 +31,7 @@ class TestAdapter extends BaseAdapter {
     this.#probeResult = probeResult;
   }
 
-  protected async performChat(_request: ChatRequest): Promise<ChatResponse> {
+  protected async performChat(_request: ChatRequestType): Promise<ChatResponseType> {
     return Promise.resolve({
       'message':      { 'kind': 'text', 'content': '' },
       'finishReason': 'stop',
@@ -50,7 +50,7 @@ class DefaultProbeAdapter extends BaseAdapter {
     super('default-probe', 'default-probe', FULL_CAPABILITIES);
   }
 
-  protected async performChat(_request: ChatRequest): Promise<ChatResponse> {
+  protected async performChat(_request: ChatRequestType): Promise<ChatResponseType> {
     return Promise.resolve({
       'message':      { 'kind': 'text', 'content': '' },
       'finishReason': 'stop',
@@ -59,7 +59,7 @@ class DefaultProbeAdapter extends BaseAdapter {
   }
 }
 
-function descriptorOf(provider: string, model: string): AdapterDescriptorShape {
+function descriptorOf(provider: string, model: string): AdapterDescriptorShapeType {
   return {
     'provider':     provider,
     'model':        model,

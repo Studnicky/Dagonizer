@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '../../src/contracts/RemoteStore.js';
-import type { StoreSnapshotEntry } from '../../src/contracts/Snapshottable.js';
-import type { JsonValue } from '../../src/entities/json.js';
-import { BaseStore, type BaseStoreOptions } from '../../src/store/BaseStore.js';
+import type { RemoteStoreEndpointType } from '../../src/contracts/RemoteStoreEndpoint.js';
+import type { RemoteStoreInterface } from '../../src/contracts/RemoteStoreInterface.js';
+import type { RemoteStoreLeaseType } from '../../src/contracts/RemoteStoreLease.js';
+import type { StoreSnapshotEntryType } from '../../src/contracts/SnapshottableInterface.js';
+import type { JsonValueType } from '../../src/entities/json.js';
+import { BaseStore, type BaseStoreOptionsType } from '../../src/store/BaseStore.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
-import { StoreError, type StoreErrorClassification } from '../../src/store/StoreError.js';
+import { StoreError, type StoreErrorClassificationType } from '../../src/store/StoreError.js';
 import { TypedStore } from '../../src/store/TypedStore.js';
 
 // ── Minimum-viable test plugin ──────────────────────────────────────────────
@@ -15,9 +17,9 @@ import { TypedStore } from '../../src/store/TypedStore.js';
 // Exercises every protected abstract method to lock the plugin surface.
 
 class PassThroughStore extends BaseStore {
-  readonly #backing: Record<string, JsonValue>;
+  readonly #backing: Record<string, JsonValueType>;
 
-  constructor(backing: Record<string, JsonValue>, options: BaseStoreOptions = { 'namespace': '' }) {
+  constructor(backing: Record<string, JsonValueType>, options: BaseStoreOptionsType = { 'namespace': '' }) {
     super(options);
     this.#backing = backing;
   }
@@ -25,12 +27,12 @@ class PassThroughStore extends BaseStore {
   protected get snapshotType(): string    { return 'pass-through-store'; }
   protected get snapshotVersion(): number { return 1; }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
     const value = this.#backing[key];
     return value === undefined ? null : (value as T);
   }
 
-  protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
+  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
     this.#backing[key] = value;
   }
 
@@ -44,14 +46,14 @@ class PassThroughStore extends BaseStore {
     return true;
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
+  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
     return Object.entries(this.#backing).map(([key, value]) => ({
       'key':   key,
       'value': value,
     }));
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void> {
+  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
     for (const key of Object.keys(this.#backing)) {
       Reflect.deleteProperty(this.#backing, key);
     }
@@ -65,22 +67,22 @@ class PassThroughStore extends BaseStore {
    * test-only store: the backing is an in-memory record with no concurrency
    * guarantees, so the default sequential RMW is sufficient.
    */
-  override async update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
+  override async update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     return this.performUpdateRmw(key, fn);
   }
 }
 
 // ── MockRemoteStore ─────────────────────────────────────────────────────────
 //
-// Minimal no-op implementation. Purpose: prove the RemoteStore contract is
+// Minimal no-op implementation. Purpose: prove the RemoteStoreInterface contract is
 // fully implementable; no production behavior required.
 
-class MockRemoteStore extends BaseStore implements RemoteStore {
-  readonly endpoint: RemoteStoreEndpoint;
+class MockRemoteStore extends BaseStore implements RemoteStoreInterface {
+  readonly endpoint: RemoteStoreEndpointType;
 
-  readonly #backing: Map<string, JsonValue>;
+  readonly #backing: Map<string, JsonValueType>;
 
-  constructor(endpoint: RemoteStoreEndpoint, options: BaseStoreOptions = { 'namespace': '' }) {
+  constructor(endpoint: RemoteStoreEndpointType, options: BaseStoreOptionsType = { 'namespace': '' }) {
     super(options);
     this.endpoint = endpoint;
     this.#backing = new Map();
@@ -91,12 +93,12 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
   protected get snapshotType(): string    { return 'mock-remote-store-v1'; }
   protected get snapshotVersion(): number { return 1; }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
     const value = this.#backing.get(key);
     return value === undefined ? null : (value as T);
   }
 
-  protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
+  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
     this.#backing.set(key, value);
   }
 
@@ -108,11 +110,11 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
     return this.#backing.delete(key);
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
+  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
     return [...this.#backing.entries()].map(([key, value]) => ({ key, value }));
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void> {
+  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
     this.#backing.clear();
     for (const { key, value } of entries) {
       this.#backing.set(key, value);
@@ -120,7 +122,7 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
   }
 
   // Atomic override: Map access is synchronous, no interleaving possible.
-  override async update<T extends JsonValue>(
+  override async update<T extends JsonValueType>(
     key: string,
     fn: (current: T | undefined) => T,
   ): Promise<T> {
@@ -130,9 +132,9 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
     return next;
   }
 
-  // ── RemoteStore-specific methods ────────────────────────────────────────
+  // ── RemoteStoreInterface-specific methods ────────────────────────────────────────
 
-  async acquireLease(subject: string, ttlMs: number, _maxWaitMs: number): Promise<RemoteStoreLease> {
+  async acquireLease(subject: string, ttlMs: number, _maxWaitMs: number): Promise<RemoteStoreLeaseType> {
     return {
       'token':     `mock-token-${subject}`,
       'expiresAt': Date.now() + ttlMs,
@@ -140,7 +142,7 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
     };
   }
 
-  async releaseLease(_lease: RemoteStoreLease): Promise<void> {
+  async releaseLease(_lease: RemoteStoreLeaseType): Promise<void> {
     // no-op; mock never holds state for leases
   }
 
@@ -151,7 +153,7 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
 
 // ── Test schema for TypedStore ────────────────────────────────────────────────
 
-interface AppSchema {
+type AppSchema = {
   count:   number;
   label:   string;
   tags:    string[];
@@ -285,7 +287,7 @@ void describe('MemoryStore', () => {
 
 void describe('PassThroughStore (BaseStore plugin smoke test)', () => {
   void it('round-trips snapshot/restore using only documented overrides', async () => {
-    const backing: Record<string, JsonValue> = {};
+    const backing: Record<string, JsonValueType> = {};
     const store = new PassThroughStore(backing);
 
     await store.set<string>('p', 'plugin-value');
@@ -304,14 +306,14 @@ void describe('PassThroughStore (BaseStore plugin smoke test)', () => {
   });
 
   void it('delete returns correct boolean from backing', async () => {
-    const backing: Record<string, JsonValue> = { 'existing': true };
+    const backing: Record<string, JsonValueType> = { 'existing': true };
     const store = new PassThroughStore(backing);
     assert.equal(await store.delete('existing'), true);
     assert.equal(await store.delete('missing'), false);
   });
 
   void it('update works through the default RMW path', async () => {
-    const backing: Record<string, JsonValue> = {};
+    const backing: Record<string, JsonValueType> = {};
     const store = new PassThroughStore(backing);
     await store.update<number>('n', (v) => (v ?? 0) + 5);
     await store.update<number>('n', (v) => (v ?? 0) + 5);
@@ -408,13 +410,13 @@ void describe('TypedStore', () => {
     assert.equal(await fresh.get('label'), 'snap-test');
   });
 
-  void it('.inner provides access to the underlying Store for un-narrowed ops', async () => {
+  void it('.inner provides access to the underlying StoreInterface for un-narrowed ops', async () => {
     const inner = new MemoryStore();
     const typed = new TypedStore<AppSchema>(inner);
 
     await typed.set('count', 7);
 
-    // .inner exposes the wide Store interface; caller specifies <T> directly.
+    // .inner exposes the wide StoreInterface interface; caller specifies <T> directly.
     const raw = await typed.inner.get<number>('count');
     assert.equal(raw, 7);
 
@@ -475,28 +477,28 @@ void describe('TypedStore', () => {
   });
 });
 
-// ── RemoteStore contract tests ────────────────────────────────────────────────
+// ── RemoteStoreInterface contract tests ────────────────────────────────────────────────
 
-void describe('RemoteStore contract', () => {
-  void it('MockRemoteStore is assignable to RemoteStore (contract is fully implementable)', () => {
-    const endpoint: RemoteStoreEndpoint = { 'url': 'http://localhost:6379', 'region': '' };
-    const store: RemoteStore = new MockRemoteStore(endpoint);
+void describe('RemoteStoreInterface contract', () => {
+  void it('MockRemoteStore is assignable to RemoteStoreInterface (contract is fully implementable)', () => {
+    const endpoint: RemoteStoreEndpointType = { 'url': 'http://localhost:6379', 'region': '' };
+    const store: RemoteStoreInterface = new MockRemoteStore(endpoint);
     assert.ok(store instanceof MockRemoteStore);
     assert.equal(store.endpoint.url, 'http://localhost:6379');
     assert.equal(store.endpoint.region, '');
   });
 
   void it('endpoint with region hint round-trips correctly', () => {
-    const endpoint: RemoteStoreEndpoint = { 'url': 'grpc://store.us-east-1.internal:50051', 'region': 'us-east-1' };
+    const endpoint: RemoteStoreEndpointType = { 'url': 'grpc://store.us-east-1.internal:50051', 'region': 'us-east-1' };
     const store = new MockRemoteStore(endpoint);
     assert.equal(store.endpoint.region, 'us-east-1');
   });
 
-  void it('acquireLease returns a well-formed RemoteStoreLease', async () => {
+  void it('acquireLease returns a well-formed RemoteStoreLeaseType', async () => {
     const store = new MockRemoteStore({ 'url': 'http://localhost:6379', 'region': '' });
     const ttl   = 5_000;
     const before = Date.now();
-    const lease: RemoteStoreLease = await store.acquireLease('run-abc', ttl, 1_000);
+    const lease: RemoteStoreLeaseType = await store.acquireLease('run-abc', ttl, 1_000);
 
     assert.equal(lease.subject, 'run-abc');
     assert.ok(typeof lease.token === 'string' && lease.token.length > 0);
@@ -505,7 +507,7 @@ void describe('RemoteStore contract', () => {
 
   void it('releaseLease resolves without throwing', async () => {
     const store = new MockRemoteStore({ 'url': 'http://localhost:6379', 'region': '' });
-    const lease: RemoteStoreLease = {
+    const lease: RemoteStoreLeaseType = {
       'token':     'tok-xyz',
       'expiresAt': Date.now() + 1_000,
       'subject':   'run-xyz',
@@ -519,8 +521,8 @@ void describe('RemoteStore contract', () => {
     assert.equal(ok, true);
   });
 
-  void it('Store surface (get/set/has/delete) works through RemoteStore', async () => {
-    const store: RemoteStore = new MockRemoteStore({ 'url': 'http://localhost:6379', 'region': '' });
+  void it('StoreInterface surface (get/set/has/delete) works through RemoteStoreInterface', async () => {
+    const store: RemoteStoreInterface = new MockRemoteStore({ 'url': 'http://localhost:6379', 'region': '' });
     await store.set<string>('greeting', 'hello');
     assert.equal(await store.get('greeting'), 'hello');
     assert.equal(await store.has('greeting'), true);
@@ -534,7 +536,7 @@ void describe('RemoteStore contract', () => {
 
 void describe('StoreError: remote-specific classification reasons', () => {
   void it('LEASE_DENIED classifies and discriminates correctly', () => {
-    const classification: StoreErrorClassification = {
+    const classification: StoreErrorClassificationType = {
       'reason':  'LEASE_DENIED',
       'subject': 'run-abc',
       'holder':  'worker-7',
@@ -553,7 +555,7 @@ void describe('StoreError: remote-specific classification reasons', () => {
   });
 
   void it('LEASE_EXPIRED classifies and discriminates correctly', () => {
-    const classification: StoreErrorClassification = {
+    const classification: StoreErrorClassificationType = {
       'reason':  'LEASE_EXPIRED',
       'subject': 'run-abc',
       'token':   'tok-stale-xyz',
@@ -573,7 +575,7 @@ void describe('StoreError: remote-specific classification reasons', () => {
 
   void it('UNREACHABLE classifies and discriminates correctly', () => {
     const cause = new Error('ECONNREFUSED');
-    const classification: StoreErrorClassification = {
+    const classification: StoreErrorClassificationType = {
       'reason':   'UNREACHABLE',
       'endpoint': 'http://localhost:6379',
       'cause':    cause,
@@ -593,7 +595,7 @@ void describe('StoreError: remote-specific classification reasons', () => {
 
   void it('existing BACKING_ERROR reason is unaffected by the new union members', () => {
     const cause = new Error('disk full');
-    const classification: StoreErrorClassification = {
+    const classification: StoreErrorClassificationType = {
       'reason': 'BACKING_ERROR',
       'cause':  cause,
     };

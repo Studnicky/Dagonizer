@@ -6,12 +6,12 @@
  *     (valid shape passes; additionalProperties fails; missing-required fails).
  *   - The same schemas are reachable from the package's shared Ajv by $id.
  *   - Validator.dag accepts a minimal well-formed DAG and rejects an incomplete one.
- *   - BridgeMessage envelope: every branch validates; additionalProperties is
+ *   - BridgeMessageType envelope: every branch validates; additionalProperties is
  *     rejected per branch; the execute request is dag-only (no per-node routing);
  *     Validator.bridgeMessage.validate() throws on invalid and returns a typed
  *     message on valid input.
  *
- * The BridgeMessage execute branch wraps an ExecutionRequest and the result
+ * The BridgeMessageType execute branch wraps an ExecutionRequest and the result
  * branch wraps an ExecutionResponse (with ExecutorIntermediate items), so the
  * entity schemas and the envelope schema validate one cohesive wire contract.
  */
@@ -19,7 +19,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
+import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import { ExecutionRequestSchema } from '../../src/entities/executor/ExecutionRequest.js';
 import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionResponse.js';
 import { ExecutorIntermediateSchema } from '../../src/entities/executor/ExecutorIntermediate.js';
@@ -238,17 +238,17 @@ void describe('Validator.dag validates a well-formed DAG literal', () => {
 });
 
 // ---------------------------------------------------------------------------
-// BridgeMessage envelope — valid branch fixtures
+// BridgeMessageType envelope — valid branch fixtures
 // ---------------------------------------------------------------------------
 
-const validInit: BridgeMessage = {
+const validInit: BridgeMessageType = {
   'kind': 'init',
   'registryModule': '/some/module.js',
   'registryVersion': '1.0.0',
   'servicesConfig': {},
 };
 
-const validExecute: BridgeMessage = {
+const validExecute: BridgeMessageType = {
   'kind': 'execute',
   'request': {
     'dagName': 'my-dag',
@@ -259,7 +259,7 @@ const validExecute: BridgeMessage = {
   },
 };
 
-const validExecuteNullTimeout: BridgeMessage = {
+const validExecuteNullTimeout: BridgeMessageType = {
   'kind': 'execute',
   'request': {
     'dagName': 'my-dag',
@@ -270,23 +270,23 @@ const validExecuteNullTimeout: BridgeMessage = {
   },
 };
 
-const validAbort: BridgeMessage = {
+const validAbort: BridgeMessageType = {
   'kind': 'abort',
   'correlationId': 'req-1',
   'reason': 'abort',
 };
 
-const validShutdown: BridgeMessage = {
+const validShutdown: BridgeMessageType = {
   'kind': 'shutdown',
 };
 
-const validReady: BridgeMessage = {
+const validReady: BridgeMessageType = {
   'kind': 'ready',
   'registryVersion': '1.0.0',
   'capabilities': [],
 };
 
-const validResult: BridgeMessage = {
+const validResult: BridgeMessageType = {
   'kind': 'result',
   'response': {
     'correlationId': 'req-1',
@@ -298,7 +298,7 @@ const validResult: BridgeMessage = {
   },
 };
 
-const validResultNullSnapshot: BridgeMessage = {
+const validResultNullSnapshot: BridgeMessageType = {
   'kind': 'result',
   'response': {
     'correlationId': 'req-1',
@@ -315,7 +315,7 @@ const validResultNullSnapshot: BridgeMessage = {
   },
 };
 
-const validIntermediate: BridgeMessage = {
+const validIntermediate: BridgeMessageType = {
   'kind': 'intermediate',
   'correlationId': 'req-1',
   'nodeName': 'step1',
@@ -323,7 +323,7 @@ const validIntermediate: BridgeMessage = {
   'placementPath': ['parent'],
 };
 
-const validInstrumentation: BridgeMessage = {
+const validInstrumentation: BridgeMessageType = {
   'kind': 'instrumentation',
   'correlationId': 'req-1',
   'hook': 'nodeStart',
@@ -335,7 +335,7 @@ const validInstrumentation: BridgeMessage = {
   'placementPath': ['parent'],
 };
 
-const validError: BridgeMessage = {
+const validError: BridgeMessageType = {
   'kind': 'error',
   'correlationId': null,
   'code': 'INIT_FAILED',
@@ -343,15 +343,7 @@ const validError: BridgeMessage = {
   'recoverable': false,
 };
 
-const validLog: BridgeMessage = {
-  'kind': 'log',
-  'level': 'info',
-  'component': 'DagHost',
-  'operation': 'init',
-  'message': 'host started',
-};
-
-describe('BridgeMessage schema — valid branches', () => {
+describe('BridgeMessageType schema — valid branches', () => {
   it('validates init branch', () => {
     assert.ok(Validator.bridgeMessage.is(validInit));
   });
@@ -395,13 +387,9 @@ describe('BridgeMessage schema — valid branches', () => {
   it('validates error branch with null correlationId', () => {
     assert.ok(Validator.bridgeMessage.is(validError));
   });
-
-  it('validates log branch', () => {
-    assert.ok(Validator.bridgeMessage.is(validLog));
-  });
 });
 
-describe('BridgeMessage schema — dag-only proof (execute request)', () => {
+describe('BridgeMessageType schema — dag-only proof (execute request)', () => {
   it('rejects execute request with stray nodeName field', () => {
     const invalid = {
       'kind': 'execute',
@@ -459,7 +447,7 @@ describe('BridgeMessage schema — dag-only proof (execute request)', () => {
   });
 });
 
-describe('BridgeMessage schema — additionalProperties rejection', () => {
+describe('BridgeMessageType schema — additionalProperties rejection', () => {
   it('rejects init branch with extra property', () => {
     const invalid = {
       'kind': 'init',
@@ -488,7 +476,7 @@ describe('BridgeMessage schema — additionalProperties rejection', () => {
   });
 });
 
-describe('BridgeMessage schema — Validator.validate() throws on invalid', () => {
+describe('BridgeMessageType schema — Validator.validate() throws on invalid', () => {
   it('throws ValidationError for completely invalid input', () => {
     assert.throws(
       () => Validator.bridgeMessage.validate({ 'kind': 'unknown-kind' }),

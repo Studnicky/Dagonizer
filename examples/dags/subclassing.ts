@@ -9,8 +9,8 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { NodeContextInterface } from '@studnicky/dagonizer';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
+import type { NodeContextType } from '@studnicky/dagonizer';
+import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // Basic subclass
@@ -98,11 +98,11 @@ export function demoStaticRestore(): void {
 export class ApiState extends NodeStateBase {
   data: unknown = null;
 
-  protected override snapshotData(): JsonObject {
-    return { data: this.data as JsonObject };
+  protected override snapshotData(): JsonObjectType {
+    return { data: this.data as JsonObjectType };
   }
 
-  protected override restoreData(snap: JsonObject): void {
+  protected override restoreData(snap: JsonObjectType): void {
     this.data = snap['data'] ?? null;
   }
 }
@@ -111,7 +111,7 @@ export class ApiNode extends ScalarNode<ApiState, 'success' | 'retry' | 'salvage
   readonly name    = 'api';
   readonly outputs = ['success', 'retry', 'salvage'] as const;
 
-  protected override async executeOne(state: ApiState, context: NodeContextInterface) {
+  protected override async executeOne(state: ApiState, context: NodeContextType) {
     try {
       // Stub: production code would call an external service here.
       state.data = { ok: true };

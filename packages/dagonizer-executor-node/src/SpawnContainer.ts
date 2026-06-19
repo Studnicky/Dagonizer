@@ -9,7 +9,7 @@
  * Constructor options:
  *   registryModule   — URL string passed to DagHost init
  *   registryVersion  — version for the init ↔ ready handshake
- *   servicesConfig   — opaque JSON passed to createBundle (default: {})
+ *   servicesConfig   — opaque JSON passed to instantiate (default: {})
  *   poolSize         — number of processes (default: NodeSystemInfo)
  *   command          — override spawn command (default: process.execPath)
  *   args             — override spawn args (default: [spawnEntry.js path])
@@ -21,57 +21,34 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 
-import type { NodeStateInterface } from '@studnicky/dagonizer';
-import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
-import type { PoolEntry } from '@studnicky/dagonizer/container';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
+import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
 
 import { NdjsonChannel } from './NdjsonChannel.js';
-import { NodeSystemInfo } from './NodeSystemInfo.js';
+import { NodeContainerBase } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptionsType } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
-// SpawnContainerOptions
+// SpawnContainerOptionsType
 // ---------------------------------------------------------------------------
 
-export interface SpawnContainerOptions {
-  readonly registryModule: string;
-  readonly registryVersion: string;
-  readonly servicesConfig?: JsonObject;
-  readonly poolSize?: number;
+export type SpawnContainerOptionsType = NodeContainerBaseOptionsType & {
   readonly command?: string;
   readonly args?: readonly string[];
-  readonly entryUrl?: URL;
-}
+};
 
 // ---------------------------------------------------------------------------
 // SpawnContainer
 // ---------------------------------------------------------------------------
 
-export class SpawnContainer extends DagContainerBase<NodeStateInterface, ChildProcess> {
+export class SpawnContainer extends NodeContainerBase<ChildProcess> {
   readonly #command: string;
   readonly #args: readonly string[];
   readonly #entryUrl: URL;
 
-  constructor(options: SpawnContainerOptions) {
-    const sysInfo = new NodeSystemInfo();
-    const defaultPoolSize = sysInfo.recommendedWorkerCount({
-      ...RecommendedWorkerCountConfigDefault,
-      'maximumWorkers': 8,
-    });
-    // Resolve entryUrl before super() so #args can reference it safely via
-    // a local binding (super() must be the first statement).
-    const entryUrl = options.entryUrl ?? new URL('./spawnEntry.js', import.meta.url);
-    super({
-      ...DagContainerBase.defaultOptions,
-      'poolSize': options.poolSize ?? defaultPoolSize,
-      'init': {
-        'registryModule': options.registryModule,
-        'registryVersion': options.registryVersion,
-        'servicesConfig': options.servicesConfig ?? {},
-      },
-    });
-    this.#entryUrl = entryUrl;
+  constructor(options: SpawnContainerOptionsType) {
+    super(NodeContainerBase.resolveOptions(options));
+    this.#entryUrl = options.entryUrl ?? new URL('./spawnEntry.js', import.meta.url);
     this.#command = options.command ?? process.execPath;
     this.#args = options.args ?? [this.#entryUrl.pathname];
   }
@@ -81,10 +58,10 @@ export class SpawnContainer extends DagContainerBase<NodeStateInterface, ChildPr
   // ---------------------------------------------------------------------------
 
   /**
-   * createEntry: spawn a child process + construct an NdjsonChannel, initialized: false.
+   * composeEntry: spawn a child process + construct an NdjsonChannel, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override createEntry(): PoolEntry<ChildProcess> {
+  protected override composeEntry(): PoolEntryType<ChildProcess> {
     const child = spawn(this.#command, [...this.#args], {
       'stdio': ['pipe', 'pipe', 'inherit'],
     });
@@ -104,7 +81,7 @@ export class SpawnContainer extends DagContainerBase<NodeStateInterface, ChildPr
    * Called unconditionally; the base's #destroyed guard prevents spurious
    * eviction during intentional teardown.
    */
-  protected override attachDeathListeners(entry: PoolEntry<ChildProcess>): void {
+  protected override attachDeathListeners(entry: PoolEntryType<ChildProcess>): void {
     const { stdin, stdout } = entry.worker;
 
     entry.worker.on('error', (err: Error) => {

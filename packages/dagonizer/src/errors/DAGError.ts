@@ -1,4 +1,4 @@
-import type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
+import type { DAGErrorJSONType } from '../entities/errors/DAGErrorJSON.js';
 
 /**
  * Interface for DAGError class.
@@ -17,7 +17,7 @@ export interface DAGErrorInterface extends Error {
   /**
    * Serialize to JSON. Returns the `DAGErrorJSON` wire shape.
    */
-  toJSON(): DAGErrorJSON;
+  toJSON(): DAGErrorJSONType;
 }
 
 /** Module-level defaults for `DAGError` options. `cause` is not defaulted — it is a genuine optional sentinel. */
@@ -50,7 +50,7 @@ export class DAGError extends Error implements DAGErrorInterface {
     Error.captureStackTrace(this, this.constructor);
   }
 
-  toJSON(): DAGErrorJSON {
+  toJSON(): DAGErrorJSONType {
     // Stable shape: all keys always present, `null` when absent.
     // Every serialized DAGError has the same hidden class for V8 stability.
     return {
@@ -95,7 +95,7 @@ export class ExecutionError extends DAGError {
    * `ExecutionError`. Used by scheduler and retry implementations that must
    * normalise AbortSignal.reason into a typed error.
    */
-  static fromSignal(signal?: AbortSignal): Error {
+  static ofSignal(signal?: AbortSignal): Error {
     const reason = signal?.reason;
     if (reason instanceof Error) return reason;
     return new ExecutionError(typeof reason === 'string' ? reason : 'aborted');

@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { Batch } from '@studnicky/dagonizer';
-import type { ChatResponse } from '@studnicky/dagonizer/adapter';
+import type { ChatResponseType } from '@studnicky/dagonizer/adapter';
 
 import { DecisionNode } from '../src/index.js';
 
@@ -17,8 +17,8 @@ class TestState {
 class TestDecision extends DecisionNode<TestState, 'yes' | 'no', 'yes' | 'no'> {
   readonly name = 'test-decision';
   readonly outputs = ['yes', 'no'] as const;
-  protected buildPrompt(_s: TestState): string { return 'choose'; }
-  protected parseChoice(c: string): 'yes' | 'no' { return c.toLowerCase().includes('y') ? 'yes' : 'no'; }
+  protected composePrompt(_s: TestState): string { return 'choose'; }
+  protected decodeChoice(c: string): 'yes' | 'no' { return c.toLowerCase().includes('y') ? 'yes' : 'no'; }
   protected routeFor(c: 'yes' | 'no'): 'yes' | 'no' { return c; }
   protected applyChoice(s: TestState, c: 'yes' | 'no'): void { s.intent = c; }
 }
@@ -26,7 +26,7 @@ class TestDecision extends DecisionNode<TestState, 'yes' | 'no', 'yes' | 'no'> {
 void test('DecisionNode routes by parsed choice + writes state', async () => {
   const node = new TestDecision();
   const state = new TestState();
-  const mockResponse: ChatResponse = {
+  const mockResponse: ChatResponseType = {
     'message': { 'kind': 'text', 'content': 'yes please' },
     'finishReason': 'stop',
     'usage': { 'promptTokens': 0, 'completionTokens': 0 },

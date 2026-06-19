@@ -4,11 +4,12 @@
  * The `output` field is the named port used to route to the next node.
  * Errors are collected and forwarded to state; they do not stop execution.
  *
- * The NodeError shape is inlined here (same approach used by DAGSchema
- * which inlines GatherConfig). Standalone NodeErrorSchema is authoritative for
- * that shape; this is a structural copy to avoid $ref resolution at compile time.
+ * The NodeError item shape references the single-source `NodeErrorProperties`
+ * const and `NodeErrorSchema.required` from `NodeError.ts` structurally;
+ * `json-schema-to-ts` reads the literal at compile time, so the derived type is
+ * identical to an inline copy while field changes propagate from one place.
  *
- * Both `errors` (on NodeOutput) and `context` (on each inlined error item) are
+ * Both `errors` (on NodeOutputType) and `context` (on each error item) are
  * required — always present, no optional fields, one hidden class per shape.
  * V8 monomorphic.
  *
@@ -18,7 +19,8 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import type { NodeErrorInterface } from './NodeError.js';
+import { NodeErrorProperties, NodeErrorSchema } from './NodeError.js';
+import type { NodeErrorType } from './NodeError.js';
 
 export const NodeOutputSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/NodeOutput',
@@ -31,15 +33,8 @@ export const NodeOutputSchema = {
       'type': 'array',
       'items': {
         'type': 'object',
-        'required': ['code', 'context', 'message', 'operation', 'recoverable', 'timestamp'],
-        'properties': {
-          'code': { 'type': 'string' },
-          'context': { 'type': 'object' },
-          'message': { 'type': 'string' },
-          'operation': { 'type': 'string' },
-          'recoverable': { 'type': 'boolean' },
-          'timestamp': { 'type': 'string' },
-        },
+        'required': NodeErrorSchema.required,
+        'properties': NodeErrorProperties,
         'additionalProperties': false,
       },
     },
@@ -48,28 +43,27 @@ export const NodeOutputSchema = {
 } as const;
 
 /** TypeScript type derived from `NodeOutputSchema` via `json-schema-to-ts`. */
-export type NodeOutput = FromSchema<typeof NodeOutputSchema>;
+export type NodeOutputWireType = FromSchema<typeof NodeOutputSchema>;
 
 /**
  * Result returned by a DAG node.
  * Determines routing to next stage(s).
  *
- * Extends `NodeOutput` entity via `Omit<NodeOutput, 'output' | 'errors'>`:
+ * Extends `NodeOutputWireType` entity via `Omit<NodeOutputWireType, 'output' | 'errors'>`:
  *   - `output` is narrowed from `string` to `TOutput`
- *   - `errors` is narrowed from the entity's inlined shape to `NodeErrorInterface[]`
+ *   - `errors` is narrowed from the entity's inlined shape to `NodeErrorType[]`
  *     (which carries a narrowed `context: Record<string, unknown>`)
  *
  * `errors` is required — always present. `NodeOutputBuilder.of` fills `errors: []`
  * by default so authors never write boilerplate.
  */
-export interface NodeOutputInterface<TOutput extends string = string>
-  extends Omit<NodeOutput, 'errors' | 'output'> {
+export type NodeOutputType<TOutput extends string = string> = Omit<NodeOutputWireType, 'errors' | 'output'> & {
   /**
    * Errors to collect in state. Always present; empty when the node reports no errors.
    * Errors are accumulated, not thrown.
    * At flow completion, caller decides what to do with collected errors.
    */
-  'errors': NodeErrorInterface[];
+  'errors': NodeErrorType[];
 
   /**
    * Named output port to route to.
@@ -77,13 +71,13 @@ export interface NodeOutputInterface<TOutput extends string = string>
    * Examples: 'success', 'error', 'retry', 'skip', 'partial'
    */
   'output': TOutput;
-}
+};
 
 /**
- * Static factory for `NodeOutputInterface`.
+ * Static factory for `NodeOutputType`.
  *
  * Named `NodeOutputBuilder` to avoid the identifier collision with the
- * schema-derived `NodeOutput` type (per the canonical-names rule: when a
+ * schema-derived `NodeOutputType` type (per the canonical-names rule: when a
  * type and a value share a name, rename the value to its real role).
  *
  * `NodeOutputBuilder.of(output, options?)` constructs a complete result with
@@ -94,7 +88,7 @@ export class NodeOutputBuilder {
   private constructor() { /* static class */ }
 
   /**
-   * Construct a `NodeOutputInterface` with `errors` defaulting to `[]`.
+   * Construct a `NodeOutputType` with `errors` defaulting to `[]`.
    *
    * @example
    * ```ts
@@ -104,8 +98,8 @@ export class NodeOutputBuilder {
    */
   static of<TOutput extends string>(
     output: TOutput,
-    options: { errors?: NodeErrorInterface[] } = {},
-  ): NodeOutputInterface<TOutput> {
+    options: { errors?: NodeErrorType[] } = {},
+  ): NodeOutputType<TOutput> {
     return { output, 'errors': options.errors ?? [] };
   }
 }

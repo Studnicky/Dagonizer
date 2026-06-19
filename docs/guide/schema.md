@@ -36,7 +36,7 @@ The Phase 03 demo exercises the validation path with a deliberately broken docum
 
 <<< @/../examples/03-schema.ts#validate
 
-## `DAGDocument.fromValue`
+## `DAGDocument.ofValue`
 
 Validate an already-parsed value (a YAML parser's output, for example):
 

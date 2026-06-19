@@ -2,17 +2,17 @@
  * NodeRunner: static utility that runs a `NodeInterface` over a `Batch`.
  *
  * All nodes implement the one batch-native contract
- * `execute(batch, context) → RoutedBatch`. `NodeRunner.run` is a thin
+ * `execute(batch, context) → RoutedBatchType`. `NodeRunner.run` is a thin
  * delegation helper retained for call sites that benefit from a named
  * invocation boundary (tests, composites).
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
-import type { NodeContextInterface } from '../entities/node/NodeContext.js';
+import type { Batch } from '../entities/batch/Batch.js';
+import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
+import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import type { Batch } from './batch/Batch.js';
-import type { RoutedBatch } from './batch/RoutedBatch.js';
 
 export class NodeRunner {
   private constructor() { /* static class */ }
@@ -28,8 +28,8 @@ export class NodeRunner {
   >(
     node: NodeInterface<TState, TOutput, TServices>,
     batch: Batch<TState>,
-    context: NodeContextInterface<TServices>,
-  ): Promise<RoutedBatch<TOutput, TState>> {
+    context: NodeContextType<TServices>,
+  ): Promise<RoutedBatchType<TOutput, TState>> {
     return node.execute(batch, context);
   }
 }

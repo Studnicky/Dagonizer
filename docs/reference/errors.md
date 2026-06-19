@@ -162,8 +162,8 @@ const _check: DAGErrorInterface = {} as DAGErrorInterface;
 Shape returned by `DAGError.toJSON()`:
 
 ```ts twoslash
-import type { DAGErrorJSON } from '@studnicky/dagonizer';
-// DAGErrorJSON (schema-derived; all fields required):
+import type { DAGErrorJSONType } from '@studnicky/dagonizer';
+// DAGErrorJSONType (schema-derived; all fields required):
 //   name: string
 //   message: string
 //   code: string
@@ -171,7 +171,7 @@ import type { DAGErrorJSON } from '@studnicky/dagonizer';
 //   stack: string | null            // null when unavailable
 //   context: Record<string, unknown>
 //   cause: { name: string; message: string; stack: string | null } | null
-const _check: DAGErrorJSON = {} as DAGErrorJSON;
+const _check: DAGErrorJSONType = {} as DAGErrorJSONType;
 ```
 
 ---

@@ -23,11 +23,11 @@ import {
   DAGONIZER_VOCAB,
 } from '@studnicky/dagonizer/viz';
 import type {
-  DagJsonLdDocument,
-  JsonLdGraphEntry,
-  CytoscapeElement,
-  CytoscapeNodeElement,
-  CytoscapeEdgeElement,
+  DagJsonLdDocumentType,
+  JsonLdGraphEntryType,
+  CytoscapeElementType,
+  CytoscapeNodeElementType,
+  CytoscapeEdgeElementType,
 } from '@studnicky/dagonizer/viz';
 
 export {};
@@ -39,9 +39,9 @@ Static class.
 
 ```ts twoslash
 import { MermaidRenderer } from '@studnicky/dagonizer/viz';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
-declare const dag: DAG;
+declare const dag: DAGType;
 const mermaid: string = MermaidRenderer.render(dag);
 ```
 
@@ -105,11 +105,11 @@ Static class.
 
 ```ts twoslash
 import { JsonLdRenderer } from '@studnicky/dagonizer/viz';
-import type { DAG } from '@studnicky/dagonizer';
-import type { DagJsonLdDocument } from '@studnicky/dagonizer/viz';
+import type { DAGType } from '@studnicky/dagonizer';
+import type { DagJsonLdDocumentType } from '@studnicky/dagonizer/viz';
 // ---cut---
-declare const dag: DAG;
-const doc: DagJsonLdDocument = JsonLdRenderer.render(dag);
+declare const dag: DAGType;
+const doc: DagJsonLdDocumentType = JsonLdRenderer.render(dag);
 ```
 
 Renders a `DAG` as a JSON-LD document with a `@context` and a `@graph` containing the DAG root plus every placement, all typed against the Dagonizer vocabulary (`DAGONIZER_VOCAB`). The output is a plain object; serialize with `JSON.stringify`.
@@ -135,13 +135,13 @@ Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. Prefixed as `dag
 ### Types
 
 ```ts twoslash
-import type { DagJsonLdDocument, JsonLdGraphEntry } from '@studnicky/dagonizer/viz';
+import type { DagJsonLdDocumentType, JsonLdGraphEntryType } from '@studnicky/dagonizer/viz';
 // ---cut---
-declare const doc: DagJsonLdDocument;
+declare const doc: DagJsonLdDocumentType;
 const ctx: Record<string, string> = doc['@context'];
-const graph: readonly JsonLdGraphEntry[] = doc['@graph'];
+const graph: readonly JsonLdGraphEntryType[] = doc['@graph'];
 
-declare const entry: JsonLdGraphEntry;
+declare const entry: JsonLdGraphEntryType;
 const id: string = entry['@id'];
 const type: string = entry['@type'];
 ```
@@ -150,16 +150,15 @@ const type: string = entry['@type'];
 
 ## CytoscapeGraph
 
-Subclassable factory class for mounting an interactive cytoscape graph in a DOM container. `cytoscape` and `@dagrejs/dagre` are optional peer dependencies; install them to use this class. The cytoscape constructor is dependency-injected: consumers pass it to the `CytoscapeGraph` constructor so the factory never bundles cytoscape directly.
+Subclassable factory class for mounting an interactive cytoscape graph in a DOM container. `cytoscape` and `@dagrejs/dagre` are optional peer dependencies; install them to use this class. The cytoscape runtime is resolved internally by a lazy `Cytoscape.create()` dynamic import, so the package never bundles cytoscape and SSR/headless builds never load it until a graph mounts. A subclass that needs a custom `cytoscape.Core` build (extensions registered, a pinned cytoscape version, a renderer-less test harness) overrides the protected `construct(options)` hook instead of injecting a factory.
 
 ```ts twoslash
 import { CytoscapeGraph } from '@studnicky/dagonizer/viz';
-import type { DAG } from '@studnicky/dagonizer';
-import cytoscape from 'cytoscape';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
 declare const container: HTMLElement;
-declare const dag: DAG;
-const graph = new CytoscapeGraph(cytoscape, container, dag);
+declare const dag: DAGType;
+const graph = new CytoscapeGraph(container, dag);
 const cy = await graph.mount(); // returns cytoscape.Core
 ```
 
@@ -167,32 +166,30 @@ const cy = await graph.mount(); // returns cytoscape.Core
 
 ```ts twoslash
 import { CytoscapeGraph } from '@studnicky/dagonizer/viz';
-import type { CytoscapeGraphOptions } from '@studnicky/dagonizer/viz';
-import type { DAG } from '@studnicky/dagonizer';
-import cytoscape from 'cytoscape';
+import type { CytoscapeGraphOptionsType } from '@studnicky/dagonizer/viz';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
 declare const container: HTMLElement;
-declare const dag: DAG;
-declare const options: CytoscapeGraphOptions;
-// new CytoscapeGraph(cytoscapeFactory, container, dag, options?)
-const graph = new CytoscapeGraph(cytoscape, container, dag, options);
+declare const dag: DAGType;
+declare const options: CytoscapeGraphOptionsType;
+// new CytoscapeGraph(container, dag, options?)
+const graph = new CytoscapeGraph(container, dag, options);
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `cytoscapeFactory` | `typeof cytoscape` | The cytoscape constructor (DI-injected; not bundled) |
 | `container` | `HTMLElement` | DOM element to mount the graph into |
 | `dag` | `DAG` | The DAG to render |
-| `options` | `CytoscapeGraphOptions?` | Optional configuration |
+| `options` | `CytoscapeGraphOptionsType?` | Optional configuration |
 
-### `CytoscapeGraphOptions`
+### `CytoscapeGraphOptionsType`
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `embeddedDAGs?` | `ReadonlyMap<string, DAG>` | Registry of embedded-DAGs by name, passed to `CytoscapeRenderer` and `CompositeLayout` for recursive expansion. Default: empty `Map`. |
-| `layoutOptions?` | `CompositeLayoutOptions` | Layout tuning options forwarded to `CompositeLayout.compute`. Default: `{}` (all tuning delegated to `CompositeLayout`'s own defaults). |
+| `layoutOptions?` | `CompositeLayoutOptionsType` | Layout tuning options forwarded to `CompositeLayout.compute`. Default: `{}` (all tuning delegated to `CompositeLayout`'s own defaults). |
 
-The constructor accepts `Partial<CytoscapeGraphOptions>`; both fields are optional at the call site with the defaults noted above.
+The constructor accepts `Partial<CytoscapeGraphOptionsType>`; both fields are optional at the call site with the defaults noted above.
 
 ### `async mount(): Promise<cytoscape.Core>`
 
@@ -202,12 +199,11 @@ Builds elements via `CytoscapeRenderer.render`, computes layout via `CompositeLa
 
 ```ts twoslash
 import { CytoscapeGraph } from '@studnicky/dagonizer/viz';
-import type { DAG } from '@studnicky/dagonizer';
-import cytoscape from 'cytoscape';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
 declare const container: HTMLElement;
-declare const dag: DAG;
-const graph = new CytoscapeGraph(cytoscape, container, dag);
+declare const dag: DAGType;
+const graph = new CytoscapeGraph(container, dag);
 // cy is null before mount, cytoscape.Core after
 const cy = graph.cy;
 ```
@@ -218,7 +214,8 @@ Returns the `cytoscape.Core` after a successful `mount()`, or `null` if the grap
 
 | Hook | Signature | Purpose |
 |------|-----------|---------|
-| `buildElements` | `() => ReadonlyArray<cytoscape.ElementDefinition>` | Override to customize element construction. Default delegates to `CytoscapeRenderer.render`. |
+| `construct` | `(options: cytoscape.CytoscapeOptions) => Promise<cytoscape.Core>` | Override to supply a custom `cytoscape.Core` (extensions registered, a pinned build, a headless harness). Default delegates to `Cytoscape.create`, which lazily dynamic-imports the optional `cytoscape` peer. This is the extension point that replaces the former injected factory. |
+| `composeElements` | `() => ReadonlyArray<cytoscape.ElementDefinition>` | Override to customize element construction. Default delegates to `CytoscapeRenderer.render`. |
 | `stylesheet` | `() => cytoscape.StylesheetStyle[]` | Override to supply a custom stylesheet. |
 | `presetLayout` | `() => cytoscape.PresetLayoutOptions` | Override to change the preset layout options passed to cytoscape. Default uses `preset` with `fit: true, padding: 60`. |
 | `interactionDefaults` | `() => Record<string, unknown>` | Override to customize pan/zoom/interaction defaults spread into the cytoscape constructor. |
@@ -243,11 +240,11 @@ Static class. Returns a plain element array with NO computed positions. Layout i
 
 ```ts twoslash
 import { CytoscapeRenderer } from '@studnicky/dagonizer/viz';
-import type { CytoscapeElement, RenderOptions } from '@studnicky/dagonizer/viz';
-import type { DAG } from '@studnicky/dagonizer';
+import type { CytoscapeElementType, RenderOptionsType } from '@studnicky/dagonizer/viz';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
-declare const dag: DAG;
-const elements: readonly CytoscapeElement[] = CytoscapeRenderer.render(dag);
+declare const dag: DAGType;
+const elements: readonly CytoscapeElementType[] = CytoscapeRenderer.render(dag);
 ```
 
 Renders a `DAG` as a Cytoscape elements array.
@@ -261,14 +258,14 @@ Renders a `DAG` as a Cytoscape elements array.
 <<< @/../examples/the-archivist/viz/render-cytoscape.ts#cytoscape-render
 ```
 
-### `RenderOptions`
+### `RenderOptionsType`
 
 ```ts twoslash
-import type { RenderOptions } from '@studnicky/dagonizer/viz';
-import type { DAG } from '@studnicky/dagonizer';
+import type { RenderOptionsType } from '@studnicky/dagonizer/viz';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
-declare const opts: RenderOptions;
-// embeddedDAGs?: ReadonlyMap<string, DAG>
+declare const opts: RenderOptionsType;
+// embeddedDAGs?: ReadonlyMap<string, DAGType>
 // maxDepth?: number  (default 6)
 export {};
 ```
@@ -289,23 +286,23 @@ Select contained nodes via `.dag-contained` (class selector) or `node[container]
 
 ```ts twoslash
 import type {
-  CytoscapeElement,
-  CytoscapeNodeElement,
-  CytoscapeEdgeElement,
+  CytoscapeElementType,
+  CytoscapeNodeElementType,
+  CytoscapeEdgeElementType,
 } from '@studnicky/dagonizer/viz';
 // ---cut---
-declare const el: CytoscapeElement;
+declare const el: CytoscapeElementType;
 
-// CytoscapeNodeElement
-declare const node: CytoscapeNodeElement;
+// CytoscapeNodeElementType
+declare const node: CytoscapeNodeElementType;
 const _group: 'nodes' = node.group;
 const _id: string = node.data.id;
 const _label: string = node.data.label;
 const _type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase' = node.data.type;
 const _classes: string = node.classes;
 
-// CytoscapeEdgeElement
-declare const edge: CytoscapeEdgeElement;
+// CytoscapeEdgeElementType
+declare const edge: CytoscapeEdgeElementType;
 const _eg: 'edges' = edge.group;
 const _eid: string = edge.data.id;
 const _src: string = edge.data.source;
@@ -317,16 +314,16 @@ const _eclasses: string = edge.classes;
 
 ## CompositeLayout
 
-Static class that computes node positions for a `DAG` using `@dagrejs/dagre`. `compute` is async: it lazy-loads dagre, recursively lays out embedded-DAG sub-graphs bottom-up, and returns a `LayoutResult` with a position map and bounding-box dimensions.
+Static class that computes node positions for a `DAG` using `@dagrejs/dagre`. `compute` is async: it lazy-loads dagre, recursively lays out embedded-DAG sub-graphs bottom-up, and returns a `LayoutResultType` with a position map and bounding-box dimensions.
 
 ```ts twoslash
 import { CompositeLayout } from '@studnicky/dagonizer/viz';
-import type { LayoutResult } from '@studnicky/dagonizer/viz';
-import type { DAG } from '@studnicky/dagonizer';
+import type { LayoutResultType } from '@studnicky/dagonizer/viz';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
-declare const dag: DAG;
-const embeddedDAGs: ReadonlyMap<string, DAG> = new Map();
-const result: LayoutResult = await CompositeLayout.compute(dag, embeddedDAGs);
+declare const dag: DAGType;
+const embeddedDAGs: ReadonlyMap<string, DAGType> = new Map();
+const result: LayoutResultType = await CompositeLayout.compute(dag, embeddedDAGs);
 // result.positions: ReadonlyMap<string, { x: number; y: number }>
 // result.width:     number  (total bounding-box width)
 // result.height:    number  (total bounding-box height)
@@ -336,26 +333,26 @@ const result: LayoutResult = await CompositeLayout.compute(dag, embeddedDAGs);
 
 ```ts twoslash
 import { CompositeLayout } from '@studnicky/dagonizer/viz';
-import type { LayoutResult, CompositeLayoutOptions } from '@studnicky/dagonizer/viz';
-import type { DAG } from '@studnicky/dagonizer';
+import type { LayoutResultType, CompositeLayoutOptionsType } from '@studnicky/dagonizer/viz';
+import type { DAGType } from '@studnicky/dagonizer';
 // ---cut---
-declare const dag: DAG;
-declare const embeddedDAGs: ReadonlyMap<string, DAG>;
-declare const options: CompositeLayoutOptions;
-const result: LayoutResult = await CompositeLayout.compute(dag, embeddedDAGs, options);
+declare const dag: DAGType;
+declare const embeddedDAGs: ReadonlyMap<string, DAGType>;
+declare const options: CompositeLayoutOptionsType;
+const result: LayoutResultType = await CompositeLayout.compute(dag, embeddedDAGs, options);
 ```
 
-`LayoutResult`:
+`LayoutResultType`:
 
 ```ts twoslash
-import type { LayoutResult, NodePosition } from '@studnicky/dagonizer/viz';
+import type { LayoutResultType, NodePositionType } from '@studnicky/dagonizer/viz';
 // ---cut---
-declare const result: LayoutResult;
-const positions: ReadonlyMap<string, NodePosition> = result.positions;
+declare const result: LayoutResultType;
+const positions: ReadonlyMap<string, NodePositionType> = result.positions;
 const width: number = result.width;
 const height: number = result.height;
 
-declare const pos: NodePosition;
+declare const pos: NodePositionType;
 const x: number = pos.x;
 const y: number = pos.y;
 ```

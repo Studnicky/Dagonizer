@@ -30,9 +30,9 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextInterface, NodeOutputInterface } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer';
 
-import type { Candidate } from '../entities/Book.ts';
+import type { CandidateType } from '../entities/Book.ts';
 import { BookBuilder } from '../entities/Book.ts';
 import { BOOK_NS, GRAPH_MEMORY, MemoryStore, RUN_NS, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -77,11 +77,11 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
   readonly outputs = ['recalled'] as const;
 
   /** Public per-item entry point for tests and dispatch delegation. */
-  public async runItem(state: ArchivistState, context: NodeContextInterface<ArchivistServices>): Promise<NodeOutputInterface<'recalled'>> {
+  public async runItem(state: ArchivistState, context: NodeContextType<ArchivistServices>): Promise<NodeOutputType<'recalled'>> {
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory   = context.services.memory;
     const embedder = context.services.embedder;
 
@@ -101,9 +101,8 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
       try {
         queryVec = await embedder.embed(queryText);
         useCosine = true;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        context.services.logger.warn(`recall-candidates: embedder threw, falling back to Jaccard: ${message}`);
+      } catch {
+        // Embedder threw: fall back to Jaccard similarity for recall.
         useCosine = false;
       }
     }
@@ -162,16 +161,12 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
     }
 
     if (matchingRunIris.length === 0) {
-      const reason = useCosine
-        ? 'no similar prior runs (cosine >= 0.70)'
-        : 'no similar prior runs (Jaccard >= 0.35, embedder unreachable)';
-      context.services.logger.info(`recall-candidates: ${reason}`);
       return NodeOutputBuilder.of('recalled');
     }
 
     // ── Collect shortlisted book IRIs from matching runs ──────────────
     const seenIsbns    = new Set<string>();
-    const priorCandidates: Candidate[] = [];
+    const priorCandidates: CandidateType[] = [];
 
     for (const runIri of matchingRunIris) {
       if (priorCandidates.length >= MAX_PRIOR_CANDIDATES) break;
@@ -216,11 +211,6 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
     }
 
     state.priorCandidates = priorCandidates;
-
-    const detail = useCosine ? 'cosine >= 0.70' : 'Jaccard >= 0.35, embedder unreachable';
-    context.services.logger.info(
-      `recall-candidates: ${String(priorCandidates.length)} prior shortlisted books from ${String(matchingRunIris.length)} similar prior runs (${detail})`,
-    );
 
     return NodeOutputBuilder.of('recalled');
   }
