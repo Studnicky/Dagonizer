@@ -11,8 +11,9 @@
  *
  * Prerequisites:
  *   - Ollama installed and running on the default port (11434).
- *   - The model pulled: ollama pull llama3.2
- *     (change the model string below to any model you have pulled)
+ *   - At least one chat model pulled (e.g. ollama pull llama3.2:3b).
+ *     The example discovers an installed chat model from the daemon's tag
+ *     list; override the choice with the OLLAMA_MODEL env var.
  *
  * Cascade shape: the primary adapter targets a deliberately unreachable port
  * (1), so probe() returns false and the cascade skips it. The fallback targets
@@ -33,10 +34,26 @@ import { OllamaApiAdapter } from '@studnicky/dagonizer-adapter-ollama';
 import { ChatAdapterState, ChatNode, HandleTextNode, HandleToolsNode, dag } from './dags/24-llm-adapter.js';
 
 // ---------------------------------------------------------------------------
-// The model to use. Change this to any model you have pulled via `ollama pull`.
+// Discover an installed chat model from the running Ollama daemon. Hardcoding
+// a tag (e.g. 'llama3.2') silently produces empty responses when the host has
+// not pulled that exact tag; discovery names a model the host actually has.
+// Override the choice with the OLLAMA_MODEL env var.
 // ---------------------------------------------------------------------------
 
-const OLLAMA_MODEL = 'llama3.2';
+const preferredModel = process.env['OLLAMA_MODEL'];
+const OLLAMA_MODEL = await OllamaApiAdapter.firstChatModel(
+  undefined,
+  preferredModel !== undefined ? { 'preferred': preferredModel } : {},
+);
+
+if (OLLAMA_MODEL === null) {
+  process.stdout.write(
+    'No Ollama chat model installed — start the daemon at 127.0.0.1:11434 and run `ollama pull llama3.2:3b`.\n',
+  );
+  process.exit(0);
+}
+
+process.stdout.write(`Discovered Ollama chat model: "${OLLAMA_MODEL}"\n`);
 
 // ---------------------------------------------------------------------------
 // 1. Registry: register two adapters under (provider, model) keys.
