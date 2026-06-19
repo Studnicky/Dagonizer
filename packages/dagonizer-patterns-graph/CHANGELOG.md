@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-patterns-graph
 
+## 0.22.0
+
 ## [Unreleased]
 
 ### Changed

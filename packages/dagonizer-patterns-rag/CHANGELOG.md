@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-patterns-rag
 
+## 0.22.0
+
 ## [Unreleased]
 
 ### Changed

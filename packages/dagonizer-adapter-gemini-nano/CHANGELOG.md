@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-adapter-gemini-nano
 
+## 0.22.0
+
 ## [Unreleased]
 
 ### Changed
