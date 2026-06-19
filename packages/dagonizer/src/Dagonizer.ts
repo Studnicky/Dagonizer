@@ -1,4 +1,3 @@
-import { WorkSetCheckpoint } from './checkpoint/WorkSetCheckpoint.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 import type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
@@ -6,23 +5,15 @@ import type { HandoffChannelInterface } from './contracts/HandoffChannelInterfac
 import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
-import { PlacementRank } from './core/PlacementRank.js';
-import { WorkSet } from './core/WorkSet.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
 import { Batch } from './entities/batch/Batch.js';
 import type { DAGType } from './entities/dag/DAG.js';
-import { EmbeddedDAGNodeDefaults } from './entities/dag/EmbeddedDAGNode.js';
-import type { PhaseNodeType } from './entities/dag/PhaseNode.js';
 import { Placement } from './entities/dag/Placement.js';
 import type { DAGNodeType } from './entities/dag/Placement.js';
-import type { SingleNodePlacementType } from './entities/dag/SingleNode.js';
-import type { ExecutionResultType, InterruptionInfoType } from './entities/execution/ExecutionResult.js';
-import type { DAGHandoffType } from './entities/handoff/DAGHandoff.js';
-import type { JsonObjectType } from './entities/json.js';
+import type { ExecutionResultType } from './entities/execution/ExecutionResult.js';
 import { NodeContextBuilder } from './entities/node/NodeContext.js';
 import type { NodeContextType } from './entities/node/NodeContext.js';
 import type { NodeResultType } from './entities/node/NodeResult.js';
-import type { WorkSetProgressType } from './entities/workset/WorkSetProgress.js';
 import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
 import { BodyExecutor } from './execution/BodyExecutor.js';
 import type { BodyRunPortInterface } from './execution/BodyExecutor.js';
@@ -32,11 +23,12 @@ import { Gather } from './execution/Gather.js';
 import type { GatherSourceInterface } from './execution/Gather.js';
 import { LeafExecutor } from './execution/LeafExecutor.js';
 import type { LeafExecutorSourceInterface } from './execution/LeafExecutor.js';
+import { NodeScheduler } from './execution/NodeScheduler.js';
+import type { NodeSchedulerSourceInterface } from './execution/NodeScheduler.js';
 import { PlacementDispatch } from './execution/PlacementDispatch.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType, ScatterDispatchSourceInterface } from './execution/ScatterDispatch.js';
 import { ScatterExecutor } from './execution/ScatterExecutor.js';
 import { Execution } from './Execution.js';
-import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 import { DispatcherHooks } from './observer/DispatcherHooks.js';
 import type { DispatcherRelaySourceInterface } from './observer/DispatcherHooks.js';
@@ -259,11 +251,14 @@ implements
   LeafExecutorSourceInterface<TState, TServices>,
   EmbeddedDagExecutorSourceType<TState>,
   BodyRunPortInterface<TState, TServices>,
-  ScatterDispatchSourceInterface<TState, TServices> {
-  private readonly dags = new Map<string, DAGType>();
-  // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
+  ScatterDispatchSourceInterface<TState, TServices>,
+  NodeSchedulerSourceInterface<TState, TServices> {
+  // Read by NodeScheduler via NodeSchedulerSourceInterface.
+  readonly dags = new Map<string, DAGType>();
+  // Read by ScatterDispatchAdapter / NodeScheduler via their source interfaces.
   readonly nodes = new Map<string, NodeInterface<TState, string, TServices>>();
-  private readonly nodeIndex = new Map<string, DAGNodeType>();
+  // Read by NodeScheduler via NodeSchedulerSourceInterface.
+  readonly nodeIndex = new Map<string, DAGNodeType>();
   // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
   readonly accessor: StateAccessorInterface;
   // Declared as TServices so NodeContextType<TServices>.services is
@@ -275,8 +270,10 @@ implements
   // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
   readonly stateMapper: StateMapper<TState>;
   private readonly containers: Readonly<Record<string, DagContainerInterface<TState>>>;
-  private readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
-  private readonly registryVersion: string;
+  // Read by NodeScheduler via NodeSchedulerSourceInterface (hand-off publish).
+  readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
+  // Read by NodeScheduler via NodeSchedulerSourceInterface (hand-off envelope).
+  readonly registryVersion: string;
   /**
    * Stable `DispatcherHooksInterface` adapter bound to this instance's protected
    * hooks. Created once in the constructor and reused by every `relayFor` call
@@ -316,6 +313,13 @@ implements
   private readonly placementDispatch: PlacementDispatch<TState>;
 
   /**
+   * Work-set node-graph scheduler. Built once per dispatcher instance, bound to
+   * this instance via the narrow `NodeSchedulerSourceInterface`. Owns the
+   * streaming DAG traversal; `runNodes` delegates to `this.nodeScheduler.run`.
+   */
+  private readonly nodeScheduler: NodeScheduler<TState, TServices>;
+
+  /**
    * Construct a dispatcher. Subclass and override the protected hooks
    * (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`)
    * for observability; no factory indirection, no callbacks.
@@ -346,6 +350,7 @@ implements
     this.embeddedDagExecutor = new EmbeddedDagExecutor<TState, TServices>(this, this.bodyExecutor);
     this.scatterExecutor = new ScatterExecutor<TState, TServices>(this, this.bodyExecutor, this.gather);
     this.placementDispatch = new PlacementDispatch<TState>(this.leafExecutor, this.embeddedDagExecutor, this.scatterExecutor);
+    this.nodeScheduler = new NodeScheduler<TState, TServices>(this);
   }
 
   // ---------------------------------------------------------------------------
@@ -396,6 +401,16 @@ implements
   // entry forwards into the matching protected hook, the one place that
   // protected access is in scope. They satisfy `DispatcherRelaySourceInterface`.
   // ---------------------------------------------------------------------------
+
+  /** Relay a flow-start event from the node scheduler into `onFlowStart`. */
+  relayFlowStart(dagName: string, state: TState): void {
+    this.onFlowStart(dagName, state);
+  }
+
+  /** Relay a flow-end event from the node scheduler into `onFlowEnd`. */
+  relayFlowEnd(dagName: string, state: TState, result: ExecutionResultType<TState>): void {
+    this.onFlowEnd(dagName, state, result);
+  }
 
   /** Relay a node-start event from a worker/contained sub-DAG into `onNodeStart`. */
   relayNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
@@ -493,15 +508,43 @@ implements
 
   /**
    * Run a node over a single `state` as a size-1 batch. Satisfies
-   * `GatherSourceInterface` and `LeafExecutorSourceInterface`, exposing the
-   * private `#runNodeOnState` primitive to the focused executor modules.
+   * `GatherSourceInterface` and `LeafExecutorSourceInterface`, the canonical
+   * size-1 node-run primitive the focused executor modules drive.
+   *
+   * Wraps `state` in `Batch.of(state)`, calls `node.execute(batch, context)`,
+   * asserts the size-1 invariant (exactly one route with exactly one item), and
+   * returns the single output port key.
+   *
+   * The node owns error-forwarding: `ScalarNode.execute` forwards per-item
+   * errors to `item.state.collectError` during `execute`. Since `Batch.of`
+   * wraps the same state reference, mutations are visible after this call.
+   *
+   * Throws `DAGError` if the returned `RoutedBatchType` does not contain exactly
+   * one route with exactly one item (invariant violation for size-1 dispatch).
    */
   async runNodeOnState(
     node: NodeInterface<TState, string, TServices>,
     state: TState,
     context: NodeContextType<TServices>,
   ): Promise<string> {
-    return this.#runNodeOnState(node, state, context);
+    const batch = Batch.of(state);
+    const routed = await node.execute(batch, context);
+    if (routed.size !== 1) {
+      throw new DAGError(
+        `Node '${node.name}' returned ${routed.size} routes for a size-1 batch (expected exactly 1).`,
+      );
+    }
+    const entry = routed.entries().next().value;
+    if (entry === undefined) {
+      throw new DAGError(`Node '${node.name}' returned an empty RoutedBatchType for a size-1 batch.`);
+    }
+    const [output, resultBatch] = entry;
+    if (resultBatch.size !== 1) {
+      throw new DAGError(
+        `Node '${node.name}' route '${output}' contains ${resultBatch.size} items for a size-1 batch (expected exactly 1).`,
+      );
+    }
+    return output;
   }
 
   /**
@@ -655,19 +698,23 @@ implements
   }
 
   /**
-   * Canonical generator. Yields each node result (including the
-   * intermediate yields from parallel / scatter nodes) and
-   * returns the final `ExecutionResultType` with `cursor` set.
-   * Never throws.
+   * Canonical generator. Yields each node result (including the intermediate
+   * yields from parallel / scatter nodes) and returns the final
+   * `ExecutionResultType` with `cursor` set. Never throws.
+   *
+   * Thin delegate to `this.nodeScheduler.run`. The scheduler owns the work-set
+   * traversal cluster; `Dagonizer` stays the orchestration layer. `execute`,
+   * `resume`, `executeBatch`, and the executor modules' `runBodyNodes` /
+   * `runScatterNodes` seams all drive the run through this method.
    *
    * `runOptions.embedded` is a private implementation detail for recursive
    * embedded-DAG re-entry. When `true`, lifecycle transitions (`markRunning`,
-   * `markCompleted`) and flow hooks (`onFlowStart`, `onFlowEnd`) are
-   * suppressed (those are top-level concerns owned by the consumer's
-   * `execute()` / `resume()` call). Node hooks (`onNodeStart`, `onNodeEnd`,
-   * `onError`) still fire for every child node.
+   * `markCompleted`) and flow hooks (`onFlowStart`, `onFlowEnd`) are suppressed
+   * (those are top-level concerns owned by the consumer's `execute()` /
+   * `resume()` call). Node hooks (`onNodeStart`, `onNodeEnd`, `onError`) still
+   * fire for every child node.
    */
-  private async *runNodes(
+  private runNodes(
     dagName: string,
     state: TState,
     fromStage: string | null,
@@ -676,821 +723,8 @@ implements
     placementPath: readonly string[] = [],
     batch: RunNodesBatchType<TState> = {},
   ): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
-    const { inputBatch, terminalByItemId } = batch;
-    const dag = this.dags.get(dagName);
-
-    if (!dag) {
-      // Unknown DAG: synthesize an error result without starting the
-      // lifecycle. `state` may not have been touched yet, so don't mark
-      // running. The cursor is null because there is no DAG to resume.
-      const error = new DAGError(`Unknown DAG: ${dagName}`);
-      this.onError('<unknown>', error, state, placementPath);
-      if (!runOptions.embedded) {
-        try { state.markFailed(error); } catch { /* state may already be terminal */ }
-      }
-      const result: ExecutionResultType<TState> = {
-        'cursor': null, 'executedNodes': [], 'skippedNodes': [], state, 'terminalOutcome': null,
-        'interruptedAt': null,
-      };
-      if (!runOptions.embedded) {
-        this.onFlowEnd(dagName, state, result);
-      }
-      return result;
-    }
-
-    const signal = SignalComposer.compose(options);
-
-    if (!runOptions.embedded) {
-      // When resuming after a crash (fromStage !== null), the prior run may
-      // have left the lifecycle in a terminal state (failed/cancelled/timed_out).
-      // Reset to `pending` so `markRunning()` can re-enter the running state.
-      // Lifecycle is not captured in snapshots; this reset is safe — the
-      // checkpoint data (SCATTER_PROGRESS_KEY, etc.) is in metadata and survives.
-      if (fromStage !== null && DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-        state.resetLifecycle();
-      }
-      state.markRunning();
-      this.onFlowStart(dagName, state);
-    }
-
-    const executedNodes: string[] = [];
-    const skippedNodes: string[] = [];
-    let terminalNodeName: string | null = null;
-
-    // --- Pre-phase placements --------------------------------------------------
-    // Run before the entrypoint, in DAG declaration order. Suppressed when this
-    // is a embedded-DAG re-entry; pre/post phases are top-level concerns owned by
-    // the consumer's `execute()` / `resume()` call.
-    if (!runOptions.embedded) {
-      const prePhases = dag.nodes.filter(
-        (n): n is PhaseNodeType =>
-          n['@type'] === 'PhaseNode' && n.phase === 'pre',
-      );
-      for (const phase of prePhases) {
-        this.onPhaseEnter(dagName, 'pre', phase.name, state, placementPath);
-        try {
-          await this.executePhasePlacement(phase, state, dagName, signal);
-          executedNodes.push(phase.name);
-        } catch (err) {
-          const error = err instanceof Error ? err : new ExecutionError(String(err));
-          this.onError(phase.name, error, state, placementPath);
-          try { state.markFailed(error); } catch { /* already terminal */ }
-          this.onPhaseExit(dagName, 'pre', phase.name, state, placementPath);
-          const result = this.composeResult(null, executedNodes, skippedNodes, null, null, state);
-          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-          return result;
-        }
-        this.onPhaseExit(dagName, 'pre', phase.name, state, placementPath);
-      }
-    }
-
-    let cursor: null | string = fromStage ?? dag.entrypoint;
-    let terminalOutcome: 'completed' | 'failed' | null = null;
-
-    // Skip phase placements in the main loop; they are out-of-band and
-    // never the entrypoint. If the consumer's fromStage / entrypoint happens
-    // to name a phase placement, treat it as if the main loop is empty.
-    if (cursor !== null && this.isPhaseEntry(dagName, cursor)) {
-      cursor = null;
-    }
-
-    // ── Work-set scheduler ──────────────────────────────────────────────────
-    // Initialize the work set with the input state at the entry placement.
-    // When cursor is null (phase-entry guard tripped), skip the main loop.
-    if (cursor !== null) {
-      // Build rank and declaration-index maps once per walk.
-      const rankMap = PlacementRank.compute(dag);
-      const declIndex = new Map<string, number>();
-      for (let i = 0; i < dag.nodes.length; i++) {
-        declIndex.set((dag.nodes[i] as DAGNodeType).name, i);
-      }
-
-      const rankOf = (name: string): number => rankMap.get(name) ?? Number.MAX_SAFE_INTEGER;
-      const declIndexOf = (name: string): number => declIndex.get(name) ?? Number.MAX_SAFE_INTEGER;
-
-      const pending = new WorkSet<TState>();
-
-      // Resume: when fromStage is provided and this is a top-level run, check
-      // for a persisted work-set blob. If present, rebuild `pending` from it so
-      // every in-flight item's state is restored exactly. If absent, fall through
-      // to the size-1 seed below (the cursor model — byte-identical to before).
-      if (fromStage !== null && !runOptions.embedded) {
-        const workSetBlob = WorkSetCheckpoint.read(state);
-        if (workSetBlob !== undefined) {
-          // Rebuild pending from the blob: for each placement, reconstruct each
-          // item's state via clone + applySnapshot, then accumulate into the
-          // work set in declaration order.
-          //
-          // `state.clone()` copies the current metadata (including the blob),
-          // but `applySnapshot` resets metadata and repopulates from the item
-          // snapshot, so reconstructed item states do not carry the parent blob.
-          for (const entry of workSetBlob.entries) {
-            const items: Array<{ 'id': string; 'state': TState }> = [];
-            for (const workItem of entry.items) {
-              const itemState = state.clone();
-              // workItem.snapshot is typed as `{}` by json-schema-to-ts for
-              // `{ type: 'object' }`. The engine contract requires snapshots to
-              // be JSON-safe objects (they were produced by `state.snapshot()`
-              // which returns `JsonObjectType`). Cast at the single ingest boundary.
-              itemState.applySnapshot(workItem.snapshot as JsonObjectType);
-              items.push({ 'id': workItem.id, 'state': itemState });
-            }
-            pending.add(entry.placement, Batch.from(items));
-          }
-          // Clear the blob from all reconstructed item states (applySnapshot
-          // already reset each clone's metadata from its item snapshot, so the
-          // blob is absent there). Clear from the top-level state too so a
-          // re-interrupted run captures a fresh blob rather than the old one.
-          WorkSetCheckpoint.clear(state);
-        } else {
-          // Size-1 canonical resume: no blob → seed with the top-level state at
-          // the cursor. Byte-identical to the existing checkpoint test path.
-          pending.add(cursor, Batch.of(state));
-        }
-      } else {
-        // Fresh execute (fromStage === null) or embedded: seed with the
-        // provided inputBatch when supplied (batch-native embedded path),
-        // otherwise seed with the single top-level state.
-        pending.add(cursor, inputBatch ?? Batch.of(state));
-      }
-
-      // Terminal accumulator: collects batches per terminal name so all items
-      // reaching terminal nodes are processed before outcome is determined.
-      // For size-1 batches this is a map with exactly one entry of size 1,
-      // and the behaviour is byte-identical to the prior break-on-first path.
-      const terminalAccumulator = new Map<string, { 'outcome': 'completed' | 'failed'; 'batch': Batch<TState> }>();
-
-      // Work-set scheduling loop.
-      // For size-1 input: exactly one placement holds exactly one item at all
-      // times; nextReady returns that placement, SingleNode fires over the
-      // size-1 batch returning one route with one item, and the item advances
-      // to the next placement.
-      scheduleLoop: while (true) {
-        const currentPlacementName = pending.nextReady(rankOf, declIndexOf);
-        if (currentPlacementName === null) break scheduleLoop;
-
-        // Advance cursor to the placement about to fire, immediately after
-        // picking, so the abort-check result correctly identifies the placement
-        // that would have fired.
-        cursor = currentPlacementName;
-
-        // Abort check: fires before each placement.
-        if (signal?.aborted) {
-          const abortInfo = this.handleAbort(state, signal);
-          this.onError(currentPlacementName, abortInfo.error, state, placementPath);
-          const interruptedAt: InterruptionInfoType = {
-            'nodeName': currentPlacementName,
-            'reason':   abortInfo.reason,
-          };
-
-          // Work-set serialization for top-level runs: persist the in-flight
-          // work set so a subsequent resume can rebuild `pending` with the
-          // correct item states for every placement.
-          //
-          // Size-1 canonical detection: exactly one item total across the whole
-          // work set AND that item's state is reference-equal to the top-level
-          // state. When this holds, the cursor model already captures everything
-          // (cursor = placement name, state = top-level state) and no blob is
-          // needed — byte-identical to existing behaviour. When it does NOT hold
-          // (multi-item or a cloned item state), write the blob.
-          if (!runOptions.embedded) {
-            let totalItems = 0;
-            let canonicalState: TState | undefined;
-            for (const [, batch] of pending.entries()) {
-              for (const item of batch) {
-                totalItems++;
-                canonicalState = item.state;
-              }
-            }
-            const isSize1Canonical = totalItems === 1 && canonicalState === state;
-
-            if (!isSize1Canonical) {
-              // Build the WorkSetProgress blob from the current `pending` map.
-              // Each entry serialises one placement's batch (in item order).
-              const entries: WorkSetProgressType['entries'] = [];
-              for (const [placement, batch] of pending.entries()) {
-                const items: WorkSetProgressType['entries'][number]['items'] = [];
-                for (const item of batch) {
-                  items.push({ 'id': item.id, 'snapshot': item.state.snapshot() });
-                }
-                entries.push({ placement, items });
-              }
-              WorkSetCheckpoint.write(state, { entries });
-            }
-          }
-
-          const result = this.composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-          return result;
-        }
-
-        // Take the batch pending at this placement.
-        const batch = pending.take(currentPlacementName) as Batch<TState>;
-
-        const node = this.nodeIndex.get(`${dagName}:${currentPlacementName}`);
-
-        if (!node) {
-          const error = new DAGError(`Unknown node: ${currentPlacementName} in DAG ${dagName}`);
-          this.onError(currentPlacementName, error, state, placementPath);
-          if (!runOptions.embedded) {
-            try { state.markFailed(error); } catch { /* already terminal */ }
-          }
-          const result = this.composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
-          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-          return result;
-        }
-
-        // Representative state: first item in the batch. For size-1 batches
-        // this is identical to the single cursor state — byte-identical to today.
-        const repState = batch.row(0).state;
-
-        this.onNodeStart(node.name, repState, placementPath);
-
-        // TerminalNode: no-op execution — capture outcome, synthesize result,
-        // fire onNodeEnd, and continue the work-set loop so remaining items
-        // can reach their own terminals (which may differ in multi-item batches).
-        if (Placement.isTerminal(node)) {
-          const terminal = node;
-          // Accumulate this terminal's batch. Multiple items may arrive at the
-          // same terminal (coalesced by the work-set) or at different terminals.
-          const existing = terminalAccumulator.get(terminal.name);
-          if (existing === undefined) {
-            terminalAccumulator.set(terminal.name, { 'outcome': terminal.outcome, 'batch': batch });
-          } else {
-            // Same terminal reached by items in separate work-set turns; merge.
-            const merged: Array<{ 'id': string; 'state': TState }> = [];
-            for (const item of existing.batch) merged.push({ 'id': item.id, 'state': item.state });
-            for (const item of batch) merged.push({ 'id': item.id, 'state': item.state });
-            terminalAccumulator.set(terminal.name, { 'outcome': terminal.outcome, 'batch': Batch.from(merged) });
-          }
-          // Populate per-item terminal map when the caller requested it (batch-native
-          // embedded path needs to know which items ended at which terminal kind).
-          if (terminalByItemId !== undefined) {
-            for (const item of batch) {
-              terminalByItemId.set(item.id, terminal.outcome);
-            }
-          }
-          executedNodes.push(terminal.name);
-          const terminalResult: NodeResultType<TState> = {
-            'output': terminal.outcome,
-            'skipped': false,
-            'nodeName': terminal.name,
-            'state': repState,
-            'intermediateResults': [],
-          };
-          this.onNodeEnd(terminal.name, terminal.outcome, repState, placementPath);
-          yield terminalResult;
-          continue scheduleLoop;
-        }
-
-        // SingleNode: batch-native path.
-        if (Placement.isSingle(node)) {
-          let nodeResult: NodeResultType<TState>;
-          try {
-            nodeResult = await this.#fireSinglePlacement(node, batch, dagName, signal, pending);
-          } catch (caughtError) {
-            const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
-            this.onError(currentPlacementName, error, repState, placementPath);
-            let interruptedAt: InterruptionInfoType | null = null;
-            if (signal?.aborted) {
-              if (!runOptions.embedded) {
-                const abortInfo = this.handleAbort(state, signal);
-                interruptedAt = { 'nodeName': currentPlacementName, 'reason': abortInfo.reason };
-              } else {
-                const isTimeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
-                interruptedAt = { 'nodeName': currentPlacementName, 'reason': isTimeout ? 'timeout' : 'abort' };
-              }
-            } else if (error instanceof NodeTimeoutError) {
-              interruptedAt = { 'nodeName': currentPlacementName, 'reason': 'timeout' };
-              if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-                try { state.markFailed(error); } catch { /* already terminal */ }
-              }
-            } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-              try { state.markFailed(error); } catch { /* already terminal */ }
-            }
-            const result = this.composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-            await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-            return result;
-          }
-
-          executedNodes.push(nodeResult.nodeName);
-          this.onNodeEnd(node.name, nodeResult.output, repState, placementPath);
-          yield nodeResult;
-          continue scheduleLoop;
-        }
-
-        // EmbeddedDAGNode batch-native path (in-process only): run the child DAG
-        // once over all N items as a single batch rather than N separate calls.
-        // This avoids N redundant DAG setups and preserves batch semantics in
-        // the child flow. Only applies when the container resolves to null (in-
-        // process); the contained path uses per-item executeDAGNode below.
-        if (Placement.isEmbeddedDAG(node) && this.resolveContainer(node.container) === null) {
-          const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(node);
-          const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(node);
-          const innerPath: readonly string[] = [...placementPath, node.name];
-
-          // Build child batch: one clone per parent item, seeded via inputMapping.
-          const parentItems = [...batch];
-          const childItems: Array<{ 'id': string; 'state': TState }> = [];
-          for (const item of parentItems) {
-            const childClone = this.stateMapper.cloneChild(item.state, inputMapping);
-            childItems.push({ 'id': item.id, 'state': childClone });
-          }
-          const childBatch = Batch.from(childItems);
-
-          // Per-item terminal outcome map: populated by the child runNodes when
-          // each item reaches a TerminalNode. Maps item.id → terminal outcome.
-          const childTerminalByItemId = new Map<string, 'completed' | 'failed'>();
-
-          // Run the child DAG once over all N items (batch-native embedded).
-          // `childRepState` is a standalone clone used as the `state` argument
-          // required by the runNodes signature; the actual items are in childBatch.
-          const childRepState = repState.clone();
-          const childOptions: ExecuteOptionsType = { ...(signal !== null && { 'signal': signal }) };
-          const intermediateResults: Array<NodeResultType<TState>> = [];
-          const iter = this.runNodes(node.dag, childRepState, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': childBatch, 'terminalByItemId': childTerminalByItemId });
-
-          // Collect inner intermediates when streaming (top-level only); at nested
-          // or composite scale, drain without buffering to avoid O(N*M*L) heap.
-          if (!runOptions.embedded) {
-            let step = await iter.next();
-            while (!step.done) {
-              const nr = step.value;
-              intermediateResults.push({
-                'output': nr.output,
-                'skipped': nr.skipped,
-                'nodeName': `${node.name}.${nr.nodeName}`,
-                'state': repState,
-                'intermediateResults': [],
-              });
-              step = await iter.next();
-            }
-          } else {
-            while (true) {
-              const step = await iter.next();
-              if (step.done) break;
-            }
-          }
-
-          // Route each parent item by its child clone's terminal outcome + errors.
-          const routeOutputByItemId = new Map<string, string>();
-          for (let i = 0; i < parentItems.length; i++) {
-            // parentItems and childItems are parallel arrays built above, so both
-            // index i are always within bounds inside this loop.
-            const parentItem = parentItems[i] as (typeof parentItems)[number];
-            const childClone = (childItems[i] as (typeof childItems)[number]).state;
-
-            // Propagate errors and warnings from child clone to parent.
-            for (const err of childClone.errors) parentItem.state.collectError(err);
-            for (const warn of childClone.warnings) parentItem.state.collectWarning(warn);
-
-            // Apply output state mapping: child → parent.
-            this.stateMapper.mapOutput(childClone, parentItem.state, outputMapping);
-
-            // Determine route from per-item terminal outcome + unrecoverable errors.
-            // childTerminalByItemId is populated by runNodes when each item hits a
-            // TerminalNode, giving accurate per-item failed/completed status.
-            const childTerminalOutcome = childTerminalByItemId.get(parentItem.id) ?? 'completed';
-            const hasUnrecoverable = childClone.errors.some((e) => e.recoverable === false);
-            const routeOutput = (childTerminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
-            routeOutputByItemId.set(parentItem.id, routeOutput);
-            const nextPlacement = node.outputs[routeOutput] ?? null;
-
-            if (nextPlacement !== null) {
-              pending.add(nextPlacement, Batch.of(parentItem.state, parentItem.id));
-            }
-          }
-
-          // Representative observability output for the batch firing.
-          // Unanimous when all items routed to the same port, else null.
-          let repOutput: string | null = null;
-          let allSameOutput = true;
-          for (const [, output] of routeOutputByItemId) {
-            if (repOutput === null) {
-              repOutput = output;
-            } else if (output !== repOutput) {
-              allSameOutput = false;
-              break;
-            }
-          }
-          if (!allSameOutput) repOutput = null;
-
-          // Stream intermediates before this node's own result.
-          for (const intermediate of intermediateResults) {
-            yield intermediate;
-          }
-
-          executedNodes.push(node.name);
-          this.onNodeEnd(node.name, repOutput, repState, placementPath);
-          yield {
-            'output': repOutput,
-            'skipped': false,
-            'nodeName': node.name,
-            'state': repState,
-            'intermediateResults': [],
-          };
-          continue scheduleLoop;
-        }
-
-        // ScatterNode / EmbeddedDAGNode fire batch-native by running the
-        // existing per-item composite logic (executeDAGNode) for each item in
-        // the batch, then partitioning the items across output ports by the
-        // route each one selected (RFC 0003 §6 — single-item = internal
-        // iteration; the sub-walk / scatter machinery is reused unchanged). For
-        // a size-1 batch this is byte-identical to the prior single dispatch:
-        // one item, one executeDAGNode call, one route.
-        const composite: Array<{ 'state': TState; 'nextStage': string | null; 'result': NodeResultType<TState> }> = [];
-        for (const item of batch) {
-          try {
-            // bufferIntermediates: only accumulate inner-node results when
-            // running at the top level (not embedded). Inside a scatter body
-            // or nested embedded DAG, intermediates are discarded by the caller
-            // anyway, and buffering at N×M×L scale causes unbounded heap growth.
-            const outcome = await this.executeDAGNode(node, item.state, dagName, signal, placementPath, !runOptions.embedded);
-            composite.push({ 'state': item.state, 'nextStage': outcome.nextStage, 'result': outcome.result });
-          } catch (caughtError) {
-            // A thrown firing fails the whole fired batch (RFC 0003 §10.2). Same
-            // classification + lifecycle handling as the single-item path; the
-            // representative state for telemetry is the batch's first item.
-            const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
-            this.onError(currentPlacementName, error, repState, placementPath);
-            let interruptedAt: InterruptionInfoType | null = null;
-            if (signal?.aborted) {
-              if (!runOptions.embedded) {
-                const abortInfo = this.handleAbort(state, signal);
-                interruptedAt = { 'nodeName': currentPlacementName, 'reason': abortInfo.reason };
-              } else {
-                const isTimeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
-                interruptedAt = { 'nodeName': currentPlacementName, 'reason': isTimeout ? 'timeout' : 'abort' };
-              }
-            } else if (error instanceof NodeTimeoutError) {
-              interruptedAt = { 'nodeName': currentPlacementName, 'reason': 'timeout' };
-              if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-                try { state.markFailed(error); } catch { /* already terminal */ }
-              }
-            } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-              try { state.markFailed(error); } catch { /* already terminal */ }
-            }
-            const result = this.composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-            await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-            return result;
-          }
-        }
-
-        // Stream every item's composite intermediates, in item order, before
-        // the firing's own result.
-        for (const entry of composite) {
-          for (const intermediate of entry.result.intermediateResults) {
-            yield intermediate;
-          }
-        }
-
-        // Observability: one onNodeEnd + one yielded result per firing. For a
-        // size-1 batch this is the single item's result, byte-identical to the
-        // prior single dispatch. For a multi-item batch the representative
-        // output is the one distinct output port when every item agrees, else
-        // null (the items split across ports).
-        const soleResult = composite.length === 1 ? composite[0]?.result : undefined;
-        if (soleResult !== undefined) {
-          if (soleResult.skipped) {
-            skippedNodes.push(soleResult.nodeName);
-          } else {
-            executedNodes.push(soleResult.nodeName);
-          }
-          this.onNodeEnd(node.name, soleResult.output, repState, placementPath);
-          yield soleResult;
-        } else {
-          executedNodes.push(node.name);
-          let repOutput: string | null = composite[0]?.result.output ?? null;
-          for (const entry of composite) {
-            if (entry.result.output !== repOutput) { repOutput = null; break; }
-          }
-          this.onNodeEnd(node.name, repOutput, repState, placementPath);
-          yield {
-            'output': repOutput,
-            'skipped': false,
-            'nodeName': node.name,
-            'state': repState,
-            'intermediateResults': [],
-          };
-        }
-
-        // Route each item to the next placement its outcome selected.
-        for (const entry of composite) {
-          if (entry.nextStage !== null) {
-            pending.add(entry.nextStage, Batch.of(entry.state));
-          }
-        }
-      }
-
-      // Resolve terminalOutcome and terminalNodeName from the accumulator after
-      // the work-set loop drains. For size-1 batches with a single terminal this
-      // is identical to the prior break-on-first behaviour. For multi-item batches
-      // with multiple terminals: any 'failed' terminal makes the overall outcome
-      // 'failed'; terminalNodeName is set only when all items converged on a single
-      // terminal (otherwise left null for the lifecycle code below to handle).
-      if (terminalAccumulator.size > 0) {
-        let allSameTerminal = terminalAccumulator.size === 1;
-        let overallFailed = false;
-        for (const [tName, { outcome }] of terminalAccumulator) {
-          if (outcome === 'failed') overallFailed = true;
-          terminalNodeName = tName;
-        }
-        terminalOutcome = overallFailed ? 'failed' : 'completed';
-        if (!allSameTerminal) {
-          // Multiple terminal nodes reached — no single representative terminal.
-          terminalNodeName = null;
-        }
-      }
-    }
-
-    if (!runOptions.embedded) {
-      if (terminalOutcome === 'failed') {
-        try {
-          state.markFailed(new DAGError(`Flow terminated at '${executedNodes[executedNodes.length - 1] ?? '<unknown>'}' with outcome=failed`));
-        } catch { /* state may already be terminal */ }
-      } else {
-        // terminalOutcome === 'completed'; flows always end at a TerminalNode.
-        try { state.markCompleted(); } catch { /* state may already be terminal */ }
-      }
-      // Clear any stale work-set blob so a completed run carries no lingering
-      // progress metadata. This is a no-op for size-1 runs (no blob was written)
-      // and ensures a second execution of the same state instance starts clean.
-      WorkSetCheckpoint.clear(state);
-    }
-    const result = this.composeResult(null, executedNodes, skippedNodes, terminalOutcome, null, state);
-    await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-    return result;
+    return this.nodeScheduler.run(dagName, state, fromStage, options, runOptions, placementPath, batch);
   }
-
-  /**
-   * Shared result-object constructor. Centralises the
-   * `ExecutionResultType<TState>` shape so every exit branch in
-   * `runNodes` returns an identically-shaped object (same key order, same
-   * field set), keeping V8 hidden classes stable across success and error
-   * paths.
-   */
-  private composeResult(
-    cursor: string | null,
-    executedNodes: string[],
-    skippedNodes: string[],
-    terminalOutcome: 'completed' | 'failed' | null,
-    interruptedAt: InterruptionInfoType | null,
-    state: TState,
-  ): ExecutionResultType<TState> {
-    return {
-      cursor,
-      executedNodes,
-      skippedNodes,
-      state,
-      terminalOutcome,
-      interruptedAt,
-    };
-  }
-
-  /**
-   * Run every `phase: 'post'` placement in DAG declaration order, then
-   * fire `onFlowEnd` + `instrumentation.flowEnd`. Suppressed when
-   * `runOptions.embedded` is true; phase placements are top-level concerns owned
-   * by the consumer's `execute()` / `resume()` call.
-   *
-   * Errors thrown by a post-phase placement are collected as warnings on
-   * `state` (code `POST_PHASE_FAILED`) and do NOT change the already-set
-   * lifecycle. Each post-phase that completes successfully is appended to
-   * `result.executedNodes` (the array reference shared with the result).
-   */
-  private async runPostPhasesAndFinalize(
-    dag: DAGType,
-    dagName: string,
-    state: TState,
-    result: ExecutionResultType<TState>,
-    runOptions: RunOptionsType,
-    terminalNodeName: string | null,
-    placementPath: readonly string[] = [],
-  ): Promise<void> {
-    if (runOptions.embedded) {
-      return;
-    }
-
-    const postPhases = dag.nodes.filter(
-      (n): n is PhaseNodeType =>
-        n['@type'] === 'PhaseNode' && n.phase === 'post',
-    );
-    for (const phase of postPhases) {
-      this.onPhaseEnter(dagName, 'post', phase.name, state, placementPath);
-      try {
-        await this.executePhasePlacement(phase, state, dagName, null);
-        result.executedNodes.push(phase.name);
-      } catch (err) {
-        const error = err instanceof Error ? err : new ExecutionError(String(err));
-        // Post-phase intentionally runs without the parent abort signal (null)
-        // so lifecycle has already been set; collect as warning, not re-throw.
-        this.onError(phase.name, error, state, placementPath);
-        state.collectWarning({
-          'code':      'POST_PHASE_FAILED',
-          'message':   `post-phase '${phase.name}' threw: ${error.message}`,
-          'operation': phase.name,
-          'timestamp': new Date().toISOString(),
-        });
-      }
-      this.onPhaseExit(dagName, 'post', phase.name, state, placementPath);
-    }
-    this.onFlowEnd(dagName, state, result);
-
-    // Hand-off channel publish: only for non-embedded top-level runs that
-    // completed at a bound terminal. The in-process (no-channels) path is
-    // byte-identical: when channels is empty this block is skipped entirely.
-    if (terminalNodeName !== null) {
-      const channel = this.channels[terminalNodeName];
-      if (channel !== undefined) {
-        const stateSnapshot = state.snapshot();
-        const handoff: DAGHandoffType = {
-          'dagName': dagName,
-          'terminalName': terminalNodeName,
-          'terminalOutput': result.terminalOutcome ?? 'completed',
-          'registryVersion': this.registryVersion,
-          'correlationId': this.nextCorrelationId(dagName),
-          'placementPath': [...placementPath],
-          'stateSnapshot': stateSnapshot,
-        };
-        try {
-          await channel.publish(handoff);
-        } catch (err) {
-          const error = err instanceof Error ? err : new Error(String(err));
-          state.collectError({
-            'code': 'HANDOFF_PUBLISH_FAILED',
-            'context': {},
-            'message': `Channel publish failed for terminal '${terminalNodeName}': ${error.message}`,
-            'operation': terminalNodeName,
-            'recoverable': false,
-            'timestamp': new Date().toISOString(),
-          });
-          this.onError(terminalNodeName, error, state, placementPath);
-        }
-      }
-    }
-  }
-
-  /**
-   * Execute a single PhaseNode placement. Looks up the registered node by
-   * `phase.node`, builds a node context, and invokes `node.execute(state,
-   * ctx)` through `withNodeTimeout` so per-node timeouts apply uniformly.
-   * Errors collected by the node are forwarded to `state` via
-   * `state.collectError`. Throws when the registered node is not found or
-   * when the node throws / times out.
-   */
-  private async executePhasePlacement(
-    phase: PhaseNodeType,
-    state: TState,
-    dagName: string,
-    signal: AbortSignal | null,
-  ): Promise<void> {
-    const node = this.nodes.get(phase.node);
-    if (node === undefined) {
-      throw new DAGError(
-        `PhaseNode '${phase.name}' references unknown registered node: ${phase.node}`,
-      );
-    }
-    await this.withNodeTimeout(node, signal, (nodeSignal) => {
-      const context = NodeContextBuilder.of(dagName, phase.name, nodeSignal, this.services);
-      return this.#runNodeOnState(node, state, context);
-    });
-  }
-
-  /**
-   * Invokes a node on a single state as a size-1 batch.
-   *
-   * Wraps `state` in `Batch.of(state)`, calls `node.execute(batch, context)`,
-   * asserts the size-1 invariant (exactly one route with exactly one item),
-   * and returns the single output port key.
-   *
-   * The node owns error-forwarding: `ScalarNode.execute` forwards per-item
-   * errors to `item.state.collectError` during `execute`. Since `Batch.of`
-   * wraps the same state reference, mutations are visible after this call.
-   *
-   * Throws `DAGError` if the returned `RoutedBatchType` does not contain exactly
-   * one route with exactly one item (invariant violation for size-1 dispatch).
-   */
-  async #runNodeOnState(
-    node: NodeInterface<TState, string, TServices>,
-    state: TState,
-    context: NodeContextType<TServices>,
-  ): Promise<string> {
-    const batch = Batch.of(state);
-    const routed = await node.execute(batch, context);
-    if (routed.size !== 1) {
-      throw new DAGError(
-        `Node '${node.name}' returned ${routed.size} routes for a size-1 batch (expected exactly 1).`,
-      );
-    }
-    const entry = routed.entries().next().value;
-    if (entry === undefined) {
-      throw new DAGError(`Node '${node.name}' returned an empty RoutedBatchType for a size-1 batch.`);
-    }
-    const [output, resultBatch] = entry;
-    if (resultBatch.size !== 1) {
-      throw new DAGError(
-        `Node '${node.name}' route '${output}' contains ${resultBatch.size} items for a size-1 batch (expected exactly 1).`,
-      );
-    }
-    return output;
-  }
-
-  /**
-   * Fire a SingleNode placement over a batch in the work-set scheduler.
-   *
-   * Calls `node.execute(batch, context)` via `withNodeTimeout`, adds each
-   * output port's sub-batch to the downstream node's pending work, and returns
-   * a representative `NodeResultType` for the firing.
-   *
-   * For a size-1 batch: exactly one route is produced with exactly one item,
-   * so `output` equals the single port key and `state` equals the single item.
-   *
-   * For a multi-item batch: items may split across multiple output ports.
-   * `output` is `null` (no single representative output) and `state` is the
-   * representative state (`batch.row(0).state`). Each sub-batch is added to the
-   * work set for downstream placement processing.
-   *
-   * Throws `DAGError` when the placement routing map has no entry for a returned
-   * output port.
-   */
-  async #fireSinglePlacement(
-    nodeConfig: SingleNodePlacementType,
-    batch: Batch<TState>,
-    dagName: string,
-    signal: AbortSignal | null,
-    pending: WorkSet<TState>,
-  ): Promise<NodeResultType<TState>> {
-    const dagNode = this.nodes.get(nodeConfig.node);
-
-    if (!dagNode) {
-      throw new DAGError(`Unknown node: ${nodeConfig.node}`);
-    }
-
-    const routed = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
-      const context = NodeContextBuilder.of(dagName, nodeConfig.name, nodeSignal, this.services);
-      return dagNode.execute(batch, context);
-    });
-
-    // Add each output port's sub-batch to the downstream node's pending work.
-    for (const [outputPort, subBatch] of routed.entries()) {
-      const nextPlacement = nodeConfig.outputs[outputPort];
-      if (nextPlacement === undefined) {
-        throw new DAGError(
-          `Node ${dagNode.name} returned output '${outputPort}' but node ${nodeConfig.name} has no routing for it. `
-          + `Available outputs: ${Object.keys(nodeConfig.outputs).join(', ')}`,
-        );
-      }
-      pending.add(nextPlacement, subBatch);
-    }
-
-    // For size-1 batches: exactly one route, one item → single representative output.
-    // For multi-item batches: items may split → null representative output.
-    const repState = batch.row(0).state;
-    const output = routed.size === 1 ? (routed.keys().next().value as string) : null;
-
-    return {
-      output,
-      'skipped': false,
-      'nodeName': nodeConfig.name,
-      'state': repState,
-      'intermediateResults': [],
-    };
-  }
-
-  /**
-   * Returns true when the named placement in the given DAG is a `PhaseNode`.
-   * Phase placements are out-of-band lifecycle hooks; they are never valid
-   * entrypoints or resume targets for the main loop.
-   */
-  private isPhaseEntry(dagName: string, name: string): boolean {
-    const entry = this.nodeIndex.get(`${dagName}:${name}`);
-    return entry?.['@type'] === 'PhaseNode';
-  }
-
-  /**
-   * Inspect a triggered abort and mark the lifecycle terminal accordingly.
-   * Returns the error to surface on the dispatcher boundary and the
-   * `InterruptionInfo.reason` discriminant ('abort' vs 'timeout') so the
-   * caller can populate `ExecutionResultType.interruptedAt`.
-   */
-  private handleAbort(state: TState, signal: AbortSignal): { 'error': Error; 'reason': 'abort' | 'timeout' } {
-    const reason = signal.reason;
-    const isTimeout = reason instanceof Error && reason.name === 'TimeoutError';
-    if (isTimeout) {
-      try { state.markTimedOut(); } catch { /* lifecycle already terminal */ }
-      return { 'error': reason, 'reason': 'timeout' };
-    }
-    const message = reason instanceof Error
-      ? reason.message
-      : (typeof reason === 'string' ? reason : 'aborted');
-    try { state.markCancelled(message); } catch { /* lifecycle already terminal */ }
-    return {
-      'error':  reason instanceof Error ? reason : new ExecutionError(message),
-      'reason': 'abort',
-    };
-  }
-
 
 
   /**
@@ -1573,7 +807,13 @@ implements
     }
   }
 
-  private async executeDAGNode(
+  /**
+   * Dispatch a composite (`ScatterNode` / `EmbeddedDAGNode`) placement for one
+   * item through the per-`@type` `PlacementDispatch`. Satisfies
+   * `NodeSchedulerSourceInterface`; the scheduler's per-item composite path
+   * drives this for each item in a fired batch.
+   */
+  async executeDAGNode(
     entry: DAGNodeType,
     state: TState,
     dagName: string,
