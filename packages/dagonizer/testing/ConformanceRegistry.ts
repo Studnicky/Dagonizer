@@ -62,7 +62,7 @@ import type { NodeContextType } from '../dist/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../dist/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
-import { CheckpointRestoreAdapterFn, NodeStateBase, ScalarNode, Timeout } from '@studnicky/dagonizer';
+import { CheckpointRestoreAdapter, NodeStateBase, ScalarNode, Timeout } from '@studnicky/dagonizer';
 
 
 // ---------------------------------------------------------------------------
@@ -516,7 +516,7 @@ export class ConformanceRegistry {
       },
       'services': undefined,
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'restoreState': CheckpointRestoreAdapterFn.wrap((snap: JsonObjectType) => restoreConformanceState(snap) as NodeStateInterface),
+      'restoreState': CheckpointRestoreAdapter.wrap((snap: JsonObjectType) => restoreConformanceState(snap) as NodeStateInterface),
     };
   }
 }

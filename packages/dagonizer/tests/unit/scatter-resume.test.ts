@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
+import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgressType } from '../../src/Dagonizer.js';
@@ -631,7 +631,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const round = ckpt.toJson();
     const parsed = JSON.parse(round) as unknown;
     const ckpt2 = Checkpoint.load(parsed);
-    const { 'state': rehydrated, cursor, dagName } = ckpt2.restoreState(CheckpointRestoreAdapterFn.wrap((snap) => ScatterState.restore(snap)));
+    const { 'state': rehydrated, cursor, dagName } = ckpt2.restoreState(CheckpointRestoreAdapter.wrap((snap) => ScatterState.restore(snap)));
     assert.equal(cursor, 'fan');
 
     const stored = rehydrated.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);

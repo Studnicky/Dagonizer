@@ -24,7 +24,7 @@
 
 import {
   Checkpoint,
-  CheckpointRestoreAdapterFn,
+  CheckpointRestoreAdapter,
   Dagonizer,
   MemoryCheckpointStore,
 } from '@studnicky/dagonizer';
@@ -102,7 +102,7 @@ if (recalled === null) {
 }
 
 const { state, dagName, cursor } = recalled.restoreState(
-  CheckpointRestoreAdapterFn.wrap((snap) => PipelineState.restore(snap)),
+  CheckpointRestoreAdapter.wrap((snap) => PipelineState.restore(snap)),
 );
 
 process.stdout.write(`[resume] restored cursor="${cursor}" tally=${String(state.tally)}\n`);

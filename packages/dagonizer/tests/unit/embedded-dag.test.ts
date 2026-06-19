@@ -22,7 +22,7 @@ class CounterState extends NodeStateBase {
 
 // One increment node per level; each adds a distinct power of ten so the
 // final total proves every level executed exactly once and in order.
-class IncNodeImpl extends ScalarNode<CounterState, string> {
+class IncNode extends ScalarNode<CounterState, string> {
   readonly name: string;
   readonly outputs: readonly string[];
   private readonly delta: number;
@@ -43,8 +43,8 @@ class IncNodeImpl extends ScalarNode<CounterState, string> {
   }
 }
 
-const incNode = (name: string, delta: number): IncNodeImpl =>
-  new IncNodeImpl(name, ['success'], delta);
+const incNode = (name: string, delta: number): IncNode =>
+  new IncNode(name, ['success'], delta);
 
 // Identity state mapping: seed the child's `value` from the parent and copy it
 // back out. Applied at every embed boundary so the accumulator survives the
@@ -208,7 +208,7 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
   }
 }
 
-class MakeNodeImpl extends ScalarNode<NodeStateBase, string> {
+class MakeNode extends ScalarNode<NodeStateBase, string> {
   readonly name: string;
   readonly outputs: readonly string[];
 
@@ -226,8 +226,8 @@ class MakeNodeImpl extends ScalarNode<NodeStateBase, string> {
   }
 }
 
-const makeNode = (name: string, outputs: readonly string[]): MakeNodeImpl =>
-  new MakeNodeImpl(name, outputs);
+const makeNode = (name: string, outputs: readonly string[]): MakeNode =>
+  new MakeNode(name, outputs);
 
 // Child DAG (two nodes: start → finish).
 const childDAG: DAGType = {

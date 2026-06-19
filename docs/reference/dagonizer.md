@@ -278,7 +278,7 @@ declare const state: MyState;
 const execution: Execution<MyState> = dispatcher.resume('my-flow', state, 'node-b');
 ```
 
-Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(CheckpointRestoreAdapterFn.wrap(fn))`) before calling.
+Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(CheckpointRestoreAdapter.wrap(fn))`) before calling.
 
 <<< @/../examples/the-archivist/runArchivist.ts#resume-run
 

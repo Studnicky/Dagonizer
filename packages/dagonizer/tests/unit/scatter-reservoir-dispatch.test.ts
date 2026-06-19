@@ -38,7 +38,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
+import { CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
 import type { InitMessageShapeType } from '../../src/container/ChannelDispatch.js';
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
 import type { PoolEntryType } from '../../src/container/DagContainerBase.js';
@@ -619,7 +619,7 @@ const SUITE_D_REGISTRY_VERSION = '1.0.0';
  * router reads `currentItem` on the host side).
  */
 const suiteDRestoreAdapter: CheckpointRestoreAdapterInterface<NodeStateInterface> =
-  CheckpointRestoreAdapterFn.wrap((snap: JsonObjectType): NodeStateInterface => {
+  CheckpointRestoreAdapter.wrap((snap: JsonObjectType): NodeStateInterface => {
     const state = new ReservoirDispatchState();
     state.applySnapshot(snap);
     return state;

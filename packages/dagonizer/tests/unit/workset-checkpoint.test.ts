@@ -17,7 +17,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
+import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
@@ -115,7 +115,7 @@ class FanNode extends MonadicNode<WalkState, 'out'> {
 function makeFanNode(name: string, n: number): FanNode { return new FanNode(name, n); }
 
 /** Process node: stamps each item's log. */
-class ProcNodeImpl extends ScalarNode<WalkState, 'done'> {
+class ProcNode extends ScalarNode<WalkState, 'done'> {
   readonly name: string;
   readonly outputs: readonly ['done'] = ['done'];
 
@@ -126,7 +126,7 @@ class ProcNodeImpl extends ScalarNode<WalkState, 'done'> {
     return { 'errors': [], 'output': 'done' };
   }
 }
-function makeProcNode(name: string): ProcNodeImpl { return new ProcNodeImpl(name); }
+function makeProcNode(name: string): ProcNode { return new ProcNode(name); }
 
 /** Accumulator node: pushes all items into `collected`, routes 'done'. */
 class CollectNode extends MonadicNode<WalkState, 'done'> {
@@ -260,7 +260,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       const parsed = JSON.parse(raw) as unknown;
       const ckpt2 = Checkpoint.load(parsed);
       const { 'state': restoredState, dagName, cursor } = ckpt2.restoreState(
-        CheckpointRestoreAdapterFn.wrap(restoreWalkState),
+        CheckpointRestoreAdapter.wrap(restoreWalkState),
       );
 
       // ── Run 2: resume ────────────────────────────────────────────────────
@@ -421,7 +421,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       const dispatcher = new Dagonizer<CountState>();
 
       // Inline node factory — increments count and routes to 'next'.
-      class IncNodeImpl extends ScalarNode<CountState, 'next'> {
+      class IncNode extends ScalarNode<CountState, 'next'> {
         readonly name: string;
         readonly outputs: readonly ['next'] = ['next'];
 
@@ -432,7 +432,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
           return { 'errors': [], 'output': 'next' };
         }
       }
-      function makeIncNode(name: string): IncNodeImpl { return new IncNodeImpl(name); }
+      function makeIncNode(name: string): IncNode { return new IncNode(name); }
 
       dispatcher.registerNode(makeIncNode('inc'));
 
@@ -487,7 +487,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       const parsed = JSON.parse(raw) as unknown;
       const ckpt2 = Checkpoint.load(parsed);
       const { state, dagName, cursor } = ckpt2.restoreState(
-        CheckpointRestoreAdapterFn.wrap((snap) => CountState.restore(snap)),
+        CheckpointRestoreAdapter.wrap((snap) => CountState.restore(snap)),
       );
 
       assert.equal(state.count, 1, 'restored count must be 1');

@@ -52,12 +52,12 @@ export class IpcChannel extends BaseMessageChannel {
    * Both ForkContainer and ClusterContainer use this factory.
    */
   static ofChildProcess(process: IpcProcessLikeInterface): IpcChannel {
-    const sendFn = (message: unknown): void => { process.send(message as object); };
-    const onFn = (event: 'message', listener: (message: unknown) => void): IpcEndpointInterface => {
+    const send = (message: unknown): void => { process.send(message as object); };
+    const subscribe = (event: 'message', listener: (message: unknown) => void): IpcEndpointInterface => {
       process.on(event, listener);
-      return { 'send': sendFn, 'on': onFn };
+      return { 'send': send, 'on': subscribe };
     };
-    return new IpcChannel({ 'send': sendFn, 'on': onFn });
+    return new IpcChannel({ 'send': send, 'on': subscribe });
   }
 
   constructor(endpoint: IpcEndpointInterface) {

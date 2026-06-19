@@ -23,7 +23,7 @@
 
 import {
   Checkpoint,
-  CheckpointRestoreAdapterFn,
+  CheckpointRestoreAdapter,
   Dagonizer,
 } from '@studnicky/dagonizer';
 import { CountingState, IncNode, dag } from './dags/08-checkpoint.js';
@@ -69,7 +69,7 @@ const ckpt = Checkpoint.load(JSON.parse(persisted) as unknown);
 // Consumers supply their own restore fn so the checkpoint module never
 // imports domain state classes.
 const { state, dagName, cursor } = ckpt.restoreState(
-  CheckpointRestoreAdapterFn.wrap((snap) => CountingState.restore(snap)),  // rehydrates domain fields via restoreData()
+  CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)),  // rehydrates domain fields via restoreData()
 );
 
 process.stdout.write(`  restored: count=${state.count} cursor="${cursor}"\n`);

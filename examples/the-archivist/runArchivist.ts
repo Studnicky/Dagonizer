@@ -70,7 +70,7 @@ import {
 import { ExecutionError, NodeTimeoutError } from '@studnicky/dagonizer/errors';
 import type { AdapterCapabilitiesType } from '@studnicky/dagonizer/adapter';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
-import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
+import { Checkpoint, CheckpointRestoreAdapter, MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
 
 const logger = new ConsoleLogger();
 
@@ -324,7 +324,7 @@ if (cancelResult.cursor !== null) {
     const freshMemory = new MemoryStore();
     await recalled.restoreStores({ 'memory': freshMemory });
     const { dagName, state, cursor } = recalled.restoreState(
-      CheckpointRestoreAdapterFn.wrap((snap) => ArchivistState.restore(snap)),
+      CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
     );
     const resumeResult = await dispatcher.resume(dagName, state, cursor);
     logger.result(`resumed draft=${resumeResult.state.draft}`);

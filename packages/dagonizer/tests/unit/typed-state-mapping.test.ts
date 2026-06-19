@@ -175,7 +175,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
 void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () => {
   void it('inputs + outputs mappings propagate state correctly across the embedded-DAG boundary', async () => {
     // Child node reads cloneState.payload and writes cloneState.result.
-    class ChildNodeImpl extends ScalarNode<ChildState, 'success'> {
+    class ChildNode extends ScalarNode<ChildState, 'success'> {
       readonly name = 'child-node';
       readonly outputs = ['success'] as const;
       protected async executeOne(state: ChildState): Promise<NodeOutputType<'success'>> {
@@ -184,7 +184,7 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
         return { 'errors': [], 'output': 'success' as const };
       }
     }
-    const childNode = new ChildNodeImpl();
+    const childNode = new ChildNode();
 
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(childNode);

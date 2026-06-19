@@ -33,7 +33,7 @@
 
 import {
   Checkpoint,
-  CheckpointRestoreAdapterFn,
+  CheckpointRestoreAdapter,
   Dagonizer,
   SCATTER_PROGRESS_KEY,
 } from '@studnicky/dagonizer';
@@ -103,7 +103,7 @@ const persisted  = ckpt.toJson();
 // Simulate process restart: parse the JSON and restore typed state.
 const restored  = Checkpoint.load(JSON.parse(persisted) as unknown);
 const { state: resumedState, cursor } = restored.restoreState(
-  CheckpointRestoreAdapterFn.wrap((snap) => ResumeState.restore(snap)),
+  CheckpointRestoreAdapter.wrap((snap) => ResumeState.restore(snap)),
 );
 
 process.stdout.write(`  cursor restored to: "${cursor}"\n`);

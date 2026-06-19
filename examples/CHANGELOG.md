@@ -34,7 +34,7 @@
 
 - `NodeErrorBuilder.from(...)` is positional: `from(code, message, operation, recoverable, timestamp, options?)`. All call sites updated.
 - `MonadicNode` no longer provides `successPort()`/`emptyPort()`/`errorPort()` helpers. Subclasses return the output port string literal directly.
-- Registry modules (`12-workers.registry.ts`, `13-multibackend.registry.ts`): `restoreState` is a `CheckpointRestoreAdapter<NodeStateInterface>`, wrapped with `CheckpointRestoreAdapterFn.wrap(...)` from `@studnicky/dagonizer/checkpoint`.
+- Registry modules (`12-workers.registry.ts`, `13-multibackend.registry.ts`): `restoreState` is a `CheckpointRestoreAdapter<NodeStateInterface>`, wrapped with `CheckpointRestoreAdapter.wrap(...)` from `@studnicky/dagonizer/checkpoint`.
 - `RetryPolicy.getDelay` override signature requires `{ error: Error | null }` (not optional).
 - `ChannelInterface` references updated to `HandoffChannelInterface` throughout.
 - `Instrumentation` plugin and `NoopInstrumentation` references removed; phase/observability events surface via protected subclass hooks on `Dagonizer` (`onPhaseEnter`, `onPhaseExit`, `onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`).

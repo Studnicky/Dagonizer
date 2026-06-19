@@ -230,7 +230,7 @@ export { NodeRunner } from './core/NodeRunner.js';
 // CHECKPOINT
 // =============================================================================
 
-export { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from './checkpoint/index.js';
+export { Checkpoint, CheckpointRestoreAdapter, MemoryCheckpointStore } from './checkpoint/index.js';
 export type { CaptureOptionsType, RecalledCheckpointType } from './checkpoint/index.js';
 
 // =============================================================================

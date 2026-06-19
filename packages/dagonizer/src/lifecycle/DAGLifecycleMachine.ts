@@ -68,10 +68,10 @@ export class DAGLifecycleMachine {
     // cast to a plain `(state, event) => DAGLifecycleStateType` is necessary
     // because the generic K/T are not propagatable through a dynamic index
     // lookup; the shape is structurally identical at runtime.
-    const handlerFn = DAGLifecycleMachine.TRANSITION_TABLE[activeState.kind][event.type] as
+    const transition = DAGLifecycleMachine.TRANSITION_TABLE[activeState.kind][event.type] as
       | ((state: ActiveState, event: DAGLifecycleEventType) => DAGLifecycleStateType)
       | undefined;
-    return handlerFn ? handlerFn(activeState, event) : state;
+    return transition ? transition(activeState, event) : state;
   }
 
   /** True iff `state` has reached one of the four terminal kinds. */
