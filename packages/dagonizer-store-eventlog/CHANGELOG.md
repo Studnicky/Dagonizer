@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-store-eventlog
 
+## 0.22.0
+
 ## [Unreleased]
 
 ### Changed
