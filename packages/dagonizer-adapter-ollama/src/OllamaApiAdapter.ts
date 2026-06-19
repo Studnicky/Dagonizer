@@ -24,7 +24,28 @@
 import { Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
 import type { ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
 
+import { OllamaTagsResponseValidator } from './OllamaTagsResponse.js';
+
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
+
+/**
+ * Substrings that mark an installed model as embedding-only. The chat-model
+ * picker skips any model whose name contains one of these — an embedder
+ * (e.g. `nomic-embed-text`, `bge-*`, `all-minilm`, `gte-*`) cannot answer a
+ * chat prompt, so handing it to a chat node would only produce empty output.
+ */
+const EMBED_MARKERS: readonly string[] = ['embed', 'bge', 'minilm', 'gte-'];
+
+/**
+ * Tag suffixes that mark a model as Ollama-cloud-routed rather than fully
+ * local. Ollama spells the cloud variant two ways: a bare `:cloud` tag
+ * (e.g. `glm-5.1:cloud`) and a size-qualified `-cloud` suffix on the tag
+ * (e.g. `qwen3-coder:480b-cloud`). Either needs an Ollama account and a
+ * network round-trip, so the discovery picker deprioritizes both.
+ */
+const CLOUD_SUFFIXES: readonly string[] = [':cloud', '-cloud'];
+
+const DISCOVERY_TIMEOUT_MS = 1500;
 // No portable default model: Ollama models are pulled per-host.
 // Consumers name the model they've pulled; this fallback is a convenience
 // for bare `new OllamaApiAdapter()` in development only.
@@ -78,6 +99,75 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
       }
     );
     this.#baseUrl = baseUrl;
+  }
+
+  /**
+   * List the models the Ollama daemon has pulled, via `GET /api/tags`.
+   *
+   * The response body is validated against `OllamaTagsResponseSchema`
+   * through the framework's shared Ajv before any field is read; the names
+   * are returned exactly as the daemon reports them (e.g. `'llama3.2:3b'`,
+   * `'nomic-embed-text:latest'`). Consumers discover an installed model
+   * instead of hardcoding a tag the host may not have pulled.
+   *
+   * `baseUrl` defaults to the adapter's loopback default
+   * (`http://127.0.0.1:11434`). Never throws: returns `[]` on any failure
+   * (daemon down, non-2xx, malformed body, timeout).
+   */
+  static async listModels(baseUrl: string = DEFAULT_BASE_URL): Promise<readonly string[]> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${baseUrl}/api/tags`, {
+        'method': 'GET',
+        'signal': controller.signal,
+      });
+      if (!res.ok) return [];
+      const body: unknown = await res.json();
+      if (!OllamaTagsResponseValidator.is(body)) return [];
+      return body.models.map((entry) => entry.name);
+    } catch {
+      return [];
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Discover the first installed chat model the daemon can answer with,
+   * preferring a fully-local model over a `:cloud`-routed one.
+   *
+   * Lists installed models via `listModels`, drops embedding-only models
+   * (names containing `embed`/`bge`/`minilm`/`gte-`), and picks:
+   *   1. `options.preferred` when the daemon has that exact tag pulled, else
+   *   2. the first fully-local chat model (tag ends in neither `:cloud` nor
+   *      `-cloud`), else
+   *   3. the first cloud-routed chat model — used only when no fully-local
+   *      chat model is installed.
+   *
+   * A cloud-routed model needs an Ollama account and a network round-trip, so
+   * it is the wrong default for a runnable local example; local models win.
+   *
+   * `baseUrl` defaults to the adapter's loopback default. Returns `null`
+   * when no chat model is installed or the daemon is unreachable. Never
+   * throws.
+   */
+  static async firstChatModel(
+    baseUrl: string = DEFAULT_BASE_URL,
+    options: { readonly preferred?: string } = {},
+  ): Promise<string | null> {
+    const installed = await OllamaApiAdapter.listModels(baseUrl);
+    const preferred = options.preferred;
+    if (preferred !== undefined && preferred.length > 0 && installed.includes(preferred)) {
+      return preferred;
+    }
+    const chat = installed.filter(
+      (name) => !EMBED_MARKERS.some((marker) => name.toLowerCase().includes(marker)),
+    );
+    const local = chat.filter(
+      (name) => !CLOUD_SUFFIXES.some((suffix) => name.toLowerCase().endsWith(suffix)),
+    );
+    return local[0] ?? chat[0] ?? null;
   }
 
   /**
