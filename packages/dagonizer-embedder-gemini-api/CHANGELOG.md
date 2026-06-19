@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-embedder-gemini-api
 
+## 0.22.0
+
 ## [Unreleased]
 
 ### Changed

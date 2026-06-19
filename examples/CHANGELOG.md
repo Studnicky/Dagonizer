@@ -1,5 +1,26 @@
 # @studnicky/dagonizer-examples
 
+## 0.0.9
+
+### Patch Changes
+
+- ce2708d: Convert the residual guide twoslash blocks to real-source transclusions. The
+  custom checkpoint store, custom adapter, pattern node, and serverless handler
+  guides now pull from runnable example modules — `custom-checkpoint-store.ts`,
+  `custom-adapter.ts`, `pattern-node.ts`, `serverless-handler.ts` — that
+  type-check under the examples tsconfig and run offline against real in-process
+  backings (Map-backed store, echo adapter, in-memory queue channel). The
+  distribution hand-off guide transcludes the existing `11-handoff.ts` channel
+  implementation. The persistence contract block remains a reference-style
+  twoslash for the `CheckpointStoreInterface` surface.
+- Updated dependencies [e4a84bc]
+- Updated dependencies [59a763d]
+  - @studnicky/dagonizer-adapter-ollama@0.22.0
+  - @studnicky/dagonizer@0.22.0
+  - @studnicky/dagonizer-embedder-ollama@0.22.0
+  - @studnicky/dagonizer-executor-node@0.22.0
+  - @studnicky/dagonizer-patterns-rag@0.22.0
+
 ## 0.0.8
 
 ### Patch Changes
