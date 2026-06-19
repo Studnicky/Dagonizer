@@ -16,6 +16,8 @@ import { parse as yamlParse } from 'yaml';
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
+import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
+
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
@@ -31,7 +33,9 @@ export class ParseYamlNode extends ScalarNode<CartographerState, 'normalized' | 
     let parsed: unknown;
     try {
       parsed = yamlParse(text);
-    } catch {
+    } catch (caught) {
+      // Capture the parse failure as data rather than swallowing it.
+      state.capturedErrors = [...state.capturedErrors, GeoErrorRecord.capture('parse-yaml', caught, `source=${state.currentSource.sourceId}`)];
       return NodeOutputBuilder.of('invalid');
     }
     if (!Array.isArray(parsed)) {

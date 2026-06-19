@@ -10,13 +10,13 @@
  * may involve I/O); this implementation resolves immediately.
  */
 
-import type { GeoCandidate } from '../entities/GeoCandidate.ts';
 import type { ReverseGeocoder } from '../contracts/ReverseGeocoder.ts';
+import type { GeoLookupOutcomeType } from '../errors/GeoLookupOutcome.ts';
 import { OfflineGeo } from './OfflineGeo.ts';
 
 // #region offline-reverse-geocoder
 export class OfflineReverseGeocoder implements ReverseGeocoder {
-  async lookup(lat: number, lng: number, signal: AbortSignal): Promise<GeoCandidate> {
+  async lookup(lat: number, lng: number, signal: AbortSignal): Promise<GeoLookupOutcomeType> {
     if (signal.aborted) throw new Error('Aborted');
     return OfflineGeo.resolve(lat, lng);
   }

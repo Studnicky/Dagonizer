@@ -54,6 +54,8 @@ import type { ShipmentEvent } from './entities/ShipmentEvent.ts';
 import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
 import type { EventTypeConfig } from './services.ts';
+import type { GeoErrorRecordType } from './errors/GeoErrorRecord.ts';
+import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/types';
@@ -231,6 +233,14 @@ export class CartographerState extends NodeStateBase {
   /** Per-journey aggregate (grouped by shipmentId) produced by summarizeInsights. */
   journeys: Map<string, JourneyInsights> = new Map();
 
+  /**
+   * Parent-side bounded rollup of captured exceptions, folded by the
+   * insights-fold gather from each clone's `state.capturedErrors`. Errors flow
+   * scatter→gather as first-class data; the run prints this distribution for
+   * analysis. Reset per execution by the gather's `initial`.
+   */
+  errorRollup: ErrorRollupType = ErrorRollup.empty();
+
   /** Raw scan from scatter metadata (set by parseEvent). */
   raw: RawShipmentEvent = {
     'shipmentId':          '',
@@ -384,6 +394,19 @@ export class CartographerState extends NodeStateBase {
    */
   routing: EnrichedShipment['routing'] = CartographerState.defaultRouting();
 
+  /**
+   * Ephemeral per-clone accumulator of captured exceptions (like gpsCandidate:
+   * non-serialized, recomputed each dispatch). The geo / ingest nodes append a
+   * `GeoErrorRecordType` here whenever their transport reports a captured error;
+   * the gather folds these into the parent's `errorRollup`. The node still
+   * routes its normal output — the error rides alongside as data.
+   *
+   * Named `capturedErrors` (not `errors`) to stay distinct from the framework
+   * `NodeStateInterface.errors` channel — these are the example's own captured
+   * geo/ingest faults, a different concern.
+   */
+  capturedErrors: readonly GeoErrorRecordType[] = [];
+
   /** GPS-modality candidate from reverse-geocode (set by the geo-resolve sub-DAG). */
   gpsCandidate: GeoCandidate = CartographerState.unresolvedCandidate('gps');
 
@@ -488,6 +511,7 @@ export class CartographerState extends NodeStateBase {
     copy.sampleRecords   = [];
     copy.insights        = new Map();
     copy.journeys        = new Map();
+    copy.errorRollup     = ErrorRollup.empty();
 
     copy.currentSource  = { ...this.currentSource };
     copy.decodedText    = this.decodedText;
@@ -531,6 +555,7 @@ export class CartographerState extends NodeStateBase {
     copy.coldChainBreach = this.coldChainBreach;
     copy.customsDwellHours = this.customsDwellHours;
 
+    copy.capturedErrors = this.capturedErrors.map((e) => ({ ...e }));
     copy.gpsCandidate = { ...this.gpsCandidate };
     copy.ipCandidate  = { ...this.ipCandidate };
     copy.resolvedGeo  = { ...this.resolvedGeo, 'modalities': [...this.resolvedGeo.modalities] };

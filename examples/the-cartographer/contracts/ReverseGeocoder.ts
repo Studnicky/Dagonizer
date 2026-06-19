@@ -14,15 +14,18 @@
  */
 
 // #region reverse-geocoder-contract
-import type { GeoCandidate } from '../entities/GeoCandidate.ts';
+import type { GeoLookupOutcomeType } from '../errors/GeoLookupOutcome.ts';
 
 export interface ReverseGeocoder {
   /**
-   * Reverse-geocode coordinates to a single GPS-modality GeoCandidate. Resolves
-   * to `{ resolved: false, … }` (never throws) when the backend has no answer,
-   * so the fuse node can degrade gracefully. Open water → `water: true` with
-   * 'International Waters' in `locality`.
+   * Reverse-geocode coordinates to a single GPS-modality outcome. The outcome's
+   * `candidate` resolves to `{ resolved: false, … }` (never throws) when the
+   * backend has no answer, so the fuse node degrades gracefully; open water →
+   * `water: true` with 'International Waters' in `locality`. The outcome's
+   * `error` is set ONLY when a real exception was caught (e.g. an out-of-range
+   * coordinate the timezone backend rejects) — the failure rides as DATA the
+   * node appends to `state.errors`, never swallowed.
    */
-  lookup(lat: number, lng: number, signal: AbortSignal): Promise<GeoCandidate>;
+  lookup(lat: number, lng: number, signal: AbortSignal): Promise<GeoLookupOutcomeType>;
 }
 // #endregion reverse-geocoder-contract

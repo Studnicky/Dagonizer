@@ -18,6 +18,8 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import { TimeNormalizer } from '../../services.ts';
+import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
+import type { GeoErrorRecordType } from '../../errors/GeoErrorRecord.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
@@ -52,6 +54,7 @@ export class CoerceTypesNode extends ScalarNode<CartographerState, 'validate-eve
   }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'validate-event'>> {
+    const lineItemErrors: GeoErrorRecordType[] = [];
     const coerced: Array<Record<string, unknown>> = state.mappedRecords.map((rec) => {
       const out: Record<string, unknown> = { ...rec };
       for (const field of NUMERIC_FIELDS) {
@@ -68,13 +71,18 @@ export class CoerceTypesNode extends ScalarNode<CartographerState, 'validate-eve
       if ('lineItems' in out && typeof out['lineItems'] === 'string') {
         try {
           out['lineItems'] = JSON.parse(out['lineItems']);
-        } catch {
+        } catch (caught) {
+          // Capture the lineItems parse failure as data; degrade to empty array.
+          lineItemErrors.push(GeoErrorRecord.capture('coerce-types', caught, `source=${state.currentSource.sourceId}`));
           out['lineItems'] = [];
         }
       }
       return out;
     });
     state.mappedRecords = coerced;
+    if (lineItemErrors.length > 0) {
+      state.capturedErrors = [...state.capturedErrors, ...lineItemErrors];
+    }
     return NodeOutputBuilder.of('validate-event');
   }
 }

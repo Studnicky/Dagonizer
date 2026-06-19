@@ -25,11 +25,17 @@ export class ReverseGeocodeNode extends ScalarNode<CartographerState, 'geocoded'
   readonly 'outputs' = ['geocoded'] as const;
 
   protected override async executeOne(state: CartographerState, context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'geocoded'>> {
-    state.gpsCandidate = await context.services.reverseGeocoder.lookup(
+    const outcome = await context.services.reverseGeocoder.lookup(
       state.raw.latitude,
       state.raw.longitude,
       context.signal,
     );
+    state.gpsCandidate = outcome.candidate;
+    // A captured transport exception rides as data: append it to state.capturedErrors.
+    // The node still routes 'geocoded' — graceful degradation, error recorded.
+    if (outcome.error !== null) {
+      state.capturedErrors = [...state.capturedErrors, outcome.error];
+    }
     state.routing = { ...state.routing, 'reverseGeocodeRun': true };
     return NodeOutputBuilder.of('geocoded');
   }

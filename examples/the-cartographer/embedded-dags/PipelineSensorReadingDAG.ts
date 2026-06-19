@@ -48,14 +48,16 @@ export const pipelineSensorReadingDAG: DAGType = new DAGBuilder('pipeline-sensor
     'error':   'rejected',
   }, {
     'inputs': {
-      'raw':       'raw',
-      'canonical': 'canonical',
-      'routing':   'routing',
+      'raw':            'raw',
+      'canonical':      'canonical',
+      'routing':        'routing',
+      'capturedErrors': 'capturedErrors',
     },
     'outputs': {
-      'geoContext':  'geoContext',
-      'resolvedGeo': 'resolvedGeo',
-      'routing':     'routing',
+      'geoContext':     'geoContext',
+      'resolvedGeo':    'resolvedGeo',
+      'routing':        'routing',
+      'capturedErrors': 'capturedErrors',
     },
   })
 

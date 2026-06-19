@@ -16,6 +16,8 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
+import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
+
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
@@ -41,7 +43,9 @@ export class DecompressNode extends ScalarNode<CartographerState, 'route-format'
       const merged = new Uint8Array(total);
       let off = 0; for (const c of chunks) { merged.set(c, off); off += c.length; }
       state.decodedText = new TextDecoder().decode(merged);
-    } catch {
+    } catch (caught) {
+      // Capture the decompression failure as data rather than swallowing it.
+      state.capturedErrors = [...state.capturedErrors, GeoErrorRecord.capture('decompress', caught, `source=${state.currentSource.sourceId}`)];
       return NodeOutputBuilder.of('invalid');
     }
     return NodeOutputBuilder.of('route-format');

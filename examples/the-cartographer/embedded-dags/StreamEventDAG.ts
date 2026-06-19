@@ -67,6 +67,7 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
       'legKm':            'legKm',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -86,6 +87,7 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
       'legKm':            'legKm',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -105,6 +107,7 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
       'legKm':             'legKm',
       'routing':           'routing',
       'enriched':          'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -128,6 +131,7 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
       'gdprResult':        'gdprResult',
       'routing':           'routing',
       'enriched':          'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
@@ -148,6 +152,7 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
       'gdprResult':       'gdprResult',
       'routing':          'routing',
       'enriched':         'enriched',
+      'capturedErrors':   'capturedErrors',
     },
   })
 
