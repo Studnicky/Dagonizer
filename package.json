@@ -75,10 +75,6 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "unrs-resolver"
-    ],
-    "overrides": {
-      "vue": "3.5.38",
-      "@shikijs/twoslash": "2.5.0"
-    }
+    ]
   }
 }
