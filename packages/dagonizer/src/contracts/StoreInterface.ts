@@ -45,9 +45,13 @@ import type { SnapshottableInterface } from './SnapshottableInterface.js';
  * at every call site. The engine never uses `unknown` here.
  */
 export interface StoreInterface extends SnapshottableInterface {
+  /** Read the value at `key`, or `null` when the key is absent. */
   get<T extends JsonValueType>(key: string): Promise<T | null>;
+  /** Write `value` at `key`; last-write-wins. */
   set<T extends JsonValueType>(key: string, value: T): Promise<void>;
+  /** True when `key` is present. */
   has(key: string): Promise<boolean>;
+  /** Remove `key`; resolves true when a value was removed, false when absent. */
   delete(key: string): Promise<boolean>;
 
   /**

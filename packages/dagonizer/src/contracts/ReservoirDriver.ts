@@ -31,6 +31,8 @@ export type ScatterItemBatchResultType<TState extends NodeStateInterface> = {
  * batch; all DAG/state mutation logic lives in the implementor, not the buffer.
  */
 export interface ReservoirDriverInterface<TState extends NodeStateInterface> {
+  /** Execute one released batch of items and return a result per item. */
   executeBatch(items: { index: number; item: unknown; bufferKey: string }[]): Promise<ScatterItemBatchResultType<TState>>;
+  /** Acknowledge a completed batch: fold its results into parent state and persist the checkpoint. */
   ackBatch(batchResult: ScatterItemBatchResultType<TState>): Promise<void>;
 }

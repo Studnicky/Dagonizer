@@ -22,6 +22,7 @@ export interface LlmAdapterInterface {
   readonly displayName: string;
   /** Declared capabilities; the dispatcher consults these to route tool-call and structured-output paths. */
   readonly capabilities: AdapterCapabilitiesType;
+  /** Send a chat request to the provider and resolve its response. */
   chat(request: ChatRequestType): Promise<ChatResponseType>;
   /**
    * Bring up any per-session state (model download, websocket handshake).
