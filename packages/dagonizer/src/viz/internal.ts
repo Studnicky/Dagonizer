@@ -20,28 +20,6 @@ export type PlacementEntryType =
   | TerminalNodeType
   | PhaseNodeType;
 
-/** The discriminant values that identify a valid `PlacementEntryType`. */
-const PLACEMENT_TYPES = new Set<string>([
-  'EmbeddedDAGNode',
-  'ScatterNode',
-  'SingleNode',
-  'TerminalNode',
-  'PhaseNode',
-]);
-
-/**
- * Type guard: narrows an `object` to `PlacementEntryType` by checking the
- * `@type` discriminant field. Ajv has already validated the DAG document
- * against its schema, so any object in `dag.nodes` with a recognised
- * `@type` is structurally valid. The guard exists to eliminate the bare
- * `as` cast at the schema boundary without requiring a full deep validation
- * pass here.
- */
-function isPlacementEntry(node: object): node is PlacementEntryType {
-  const type = (node as Record<string, unknown>)['@type'];
-  return typeof type === 'string' && PLACEMENT_TYPES.has(type);
-}
-
 /**
  * The three color tokens a contained placement carries.
  *
@@ -146,6 +124,28 @@ export class RoleColorUtils {
 export class PlacementUtils {
   private constructor() { /* static class */ }
 
+  /** The discriminant values that identify a valid `PlacementEntryType`. */
+  private static readonly PLACEMENT_TYPES = new Set<string>([
+    'EmbeddedDAGNode',
+    'ScatterNode',
+    'SingleNode',
+    'TerminalNode',
+    'PhaseNode',
+  ]);
+
+  /**
+   * Type guard: narrows an `object` to `PlacementEntryType` by checking the
+   * `@type` discriminant field. Ajv has already validated the DAG document
+   * against its schema, so any object in `dag.nodes` with a recognised
+   * `@type` is structurally valid. The guard exists to eliminate the bare
+   * `as` cast at the schema boundary without requiring a full deep validation
+   * pass here.
+   */
+  private static isPlacementEntry(node: object): node is PlacementEntryType {
+    const type = (node as Record<string, unknown>)['@type'];
+    return typeof type === 'string' && PlacementUtils.PLACEMENT_TYPES.has(type);
+  }
+
   /**
    * Return the sub-DAG name that this placement embeds, or `null` if it does
    * not embed a DAG.
@@ -190,7 +190,7 @@ export class PlacementUtils {
    * excluded rather than crashing the renderer, preserving graceful degradation.
    */
   static narrowNodes(dag: DAGType): PlacementEntryType[] {
-    return dag.nodes.filter(isPlacementEntry);
+    return dag.nodes.filter((node) => PlacementUtils.isPlacementEntry(node));
   }
 
   /** Build a placement-name id, optionally prefixed by an enclosing scope. */

@@ -5,8 +5,7 @@ import type { HandoffChannelInterface } from './contracts/HandoffChannelInterfac
 import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
-import { DagRegistrar } from './dag/DagRegistrar.js';
-import type { DagRegistrarSourceInterface } from './dag/DagRegistrar.js';
+import type { DagRegistrar, DagRegistrarSourceInterface } from './dag/DagRegistrar.js';
 import { Batch } from './entities/batch/Batch.js';
 import type { DAGType } from './entities/dag/DAG.js';
 import type { DAGNodeType } from './entities/dag/Placement.js';
@@ -15,22 +14,16 @@ import { NodeContextBuilder } from './entities/node/NodeContext.js';
 import type { NodeContextType } from './entities/node/NodeContext.js';
 import type { NodeResultType } from './entities/node/NodeResult.js';
 import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
-import { BodyExecutor } from './execution/BodyExecutor.js';
 import type { BodyRunPortInterface } from './execution/BodyExecutor.js';
-import { EmbeddedDagExecutor } from './execution/EmbeddedDagExecutor.js';
 import type { EmbeddedDagExecutorSourceType } from './execution/EmbeddedDagExecutor.js';
-import { Gather } from './execution/Gather.js';
+import { EngineComposer } from './execution/EngineComposer.js';
 import type { GatherSourceInterface } from './execution/Gather.js';
-import { LeafExecutor } from './execution/LeafExecutor.js';
 import type { LeafExecutorSourceInterface } from './execution/LeafExecutor.js';
-import { NodeScheduler } from './execution/NodeScheduler.js';
-import type { NodeSchedulerSourceInterface } from './execution/NodeScheduler.js';
-import { PlacementDispatch } from './execution/PlacementDispatch.js';
+import type { NodeScheduler, NodeSchedulerSourceInterface } from './execution/NodeScheduler.js';
+import type { PlacementDispatch } from './execution/PlacementDispatch.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType, ScatterDispatchSourceInterface } from './execution/ScatterDispatch.js';
-import { ScatterExecutor } from './execution/ScatterExecutor.js';
 import { Execution } from './Execution.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
-import { DispatcherHooks } from './observer/DispatcherHooks.js';
 import type { DispatcherRelaySourceInterface } from './observer/DispatcherHooks.js';
 import { ObserverRelay } from './observer/ObserverRelay.js';
 import type { DispatcherHooksInterface } from './observer/ObserverRelay.js';
@@ -283,27 +276,6 @@ implements
   #correlationSeq = 0;
 
   /**
-   * Shared body-run + transport-branch primitive. Built once per dispatcher
-   * instance, bound to this instance via the narrow `BodyRunPortInterface`.
-   * Both `EmbeddedDagExecutor` and the scatter per-item DAG-body path run their
-   * sub-DAG body through it, so the in-process-vs-container branch and the
-   * bufferIntermediates guard live in one place.
-   */
-  private readonly bodyExecutor: BodyExecutor<TState, TServices>;
-
-  /** Gather execution composer and registered-node invoker for custom gather strategies. */
-  private readonly gather: Gather<TState, TServices>;
-
-  /** `SingleNode` placement executor. */
-  private readonly leafExecutor: LeafExecutor<TState, TServices>;
-
-  /** `EmbeddedDAGNode` placement executor. */
-  private readonly embeddedDagExecutor: EmbeddedDagExecutor<TState, TServices>;
-
-  /** `ScatterNode` placement executor. */
-  private readonly scatterExecutor: ScatterExecutor<TState, TServices>;
-
-  /**
    * Per-`@type` execution dispatch. Built once per dispatcher instance (not per
    * node call) so node execution is a single keyed branch with no per-call
    * closure/object allocation in the hot loop. The `PlacementDispatch` class
@@ -347,19 +319,21 @@ implements
     this.containers = resolved.containers;
     this.channels = resolved.channels;
     this.registryVersion = resolved.registryVersion;
-    // Build the relay hooks adapter and placement dispatcher once per instance,
-    // bound to `this` here (within the class body, so protected hooks and
-    // engine-internal executors are accessible). Each is a named class with a
-    // stable hidden class, not an object-literal of arrow closures.
-    this.#relayHooks = new DispatcherHooks<TState>(this);
-    this.bodyExecutor = new BodyExecutor<TState, TServices>(this);
-    this.gather = new Gather<TState, TServices>(this);
-    this.leafExecutor = new LeafExecutor<TState, TServices>(this);
-    this.embeddedDagExecutor = new EmbeddedDagExecutor<TState, TServices>(this, this.bodyExecutor);
-    this.scatterExecutor = new ScatterExecutor<TState, TServices>(this, this.bodyExecutor, this.gather);
-    this.placementDispatch = new PlacementDispatch<TState>(this.leafExecutor, this.embeddedDagExecutor, this.scatterExecutor);
-    this.nodeScheduler = new NodeScheduler<TState, TServices>(this);
-    this.dagRegistrar = new DagRegistrar<TState, TServices>(this);
+    // Construct the engine module graph in one place. `EngineComposer.compose`
+    // owns the dependency ordering (bodyExecutor before its consumers, the three
+    // executors before placementDispatch); `this` satisfies `EngineHostType`
+    // because it implements every narrow source port the modules require. The
+    // root retains only the modules it drives directly — the relay-hooks adapter,
+    // the per-`@type` dispatch, the scheduler, and the registrar. The five
+    // intermediate executors (`bodyExecutor`, `gather`, `leafExecutor`,
+    // `embeddedDagExecutor`, `scatterExecutor`) are wired into the graph by the
+    // composer and held only by their consumers, so the root keeps no field for
+    // them. Wire in declaration order to keep the hidden class stable.
+    const engine = EngineComposer.compose<TState, TServices>(this);
+    this.#relayHooks = engine.relayHooks;
+    this.placementDispatch = engine.placementDispatch;
+    this.nodeScheduler = engine.nodeScheduler;
+    this.dagRegistrar = engine.dagRegistrar;
   }
 
   // ---------------------------------------------------------------------------
