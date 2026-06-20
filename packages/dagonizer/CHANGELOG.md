@@ -1,5 +1,11 @@
 # @studnicky/dagonizer
 
+## 0.24.0
+
+### Minor Changes
+
+- b9f68c5: The `DAGDeriver` contract-derived flow generation is removed along with `DerivableNodeInterface`, `ChainableType`, `OperationContractType`, `ContractRegistryValidator`, and the `./derive` subpath export. `DAGBuilder` is the single, explicitly-wired, compile-checked way to construct a DAG.
+
 ## 0.23.0
 
 ### Minor Changes
