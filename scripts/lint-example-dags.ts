@@ -9,7 +9,7 @@
  *   2. The numbered-example DAG definitions (`examples/dags/*.ts`). These are
  *      pure modules — exported `DAG` consts with zero top-level side effects —
  *      so importing them runs no dispatcher. The runnable entry points
- *      (`examples/0*.ts`, `examples/derive.ts`) import from these modules.
+ *      (`examples/0*.ts`) import from these modules.
  *
  * EXCEPTION: `examples/dags/09-terminals.ts` exports `dag1`, which deliberately
  * retains a bare `null` route to demonstrate the implicit-terminal pattern. It
@@ -43,7 +43,6 @@ import {
   childDAG as terminalsChildDAG,
 } from '../examples/dags/09-terminals.js';
 import { childDag as sharedChildDAG, parentDag as sharedParentDAG } from '../examples/dags/10-shared-state.js';
-import { childDAG as deriveChildDAG, parentDAG as deriveParentDAG } from '../examples/dags/derive.js';
 
 import { cartographerDAG, eventPipelineTypedDAG }  from '../examples/the-cartographer/dag.js';
 import { streamEventDAG }                          from '../examples/the-cartographer/embedded-dags/StreamEventDAG.js';
@@ -72,8 +71,6 @@ const dags: ReadonlyArray<readonly [string, DAG]> = [
   ['dags / 09-terminals (childDAG)',         terminalsChildDAG],
   ['dags / 10-shared-state (sub-flow)',      sharedChildDAG],
   ['dags / 10-shared-state (main-flow)',     sharedParentDAG],
-  ['dags / derive (plugin:transform)',       deriveChildDAG],
-  ['dags / derive (parent)',                 deriveParentDAG],
   ['the-cartographer / cartographerDAG',       cartographerDAG],
   ['the-cartographer / ingestSourceDAG',       ingestSourceDAG],
   ['the-cartographer / geoResolveDAG',         geoResolveDAG],

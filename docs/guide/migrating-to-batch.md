@@ -16,7 +16,7 @@ What changed:
 
 - `implements NodeInterface` → `extends ScalarNode`.
 - `async execute(state, ctx)` → `protected override async executeOne(state, ctx)` — **the body is unchanged**. The base loops `executeOne` over the batch and groups items by the returned port.
-- Drop the `contract` and `timeout` boilerplate that just set the default — `ScalarNode` supplies `EMPTY_CONTRACT_FRAGMENT` and `Timeout.none()`. Keep them (with `override`) only when you set a real value, e.g. `override readonly timeout = Timeout.ofMs(5000)`.
+- Drop the `timeout` boilerplate that just sets the default — `ScalarNode` supplies `Timeout.none()`. Keep it (with `override`) only when you set a real value, e.g. `override readonly timeout = Timeout.ofMs(5000)`.
 - `validate()` / `destroy()` defaults are inherited; add `override` if you provide your own.
 
 ## Batch-native nodes → `MonadicNode`

@@ -82,8 +82,7 @@ export {};
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { NodeInterface, OperationContractFragmentType } from '@studnicky/dagonizer';
-import { Timeout } from '@studnicky/dagonizer';
+import type { NodeInterface } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const node: NodeInterface<MyState, string, undefined>;
@@ -148,11 +147,9 @@ Registers a DAG after two validation passes, followed by an optional contract ch
 1. **Schema pass.** `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
 2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular embedded-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
 
-After both passes, `ContractRegistryValidator` runs a data-flow check for each placement whose backing node carries a co-located contract. Dangling reads (a non-entrypoint node requires a path no upstream node produces) and dead writes (a node produces a path no downstream node requires) both throw `DAGError`. This check is skipped for placements without a contract.
+After both passes, a data-flow check runs for each placement whose backing node declares required and produced state paths. Dangling reads (a non-entrypoint node requires a path no upstream node produces) and dead writes (a node produces a path no downstream node requires) both throw `DAGError`. This check is skipped for placements without a contract.
 
 Throws `DAGError` with a multi-line message listing all failures.
-
-See [catching contract drift](../guide/derive.md#catching-contract-drift) for the full validation semantics.
 
 ---
 
@@ -330,7 +327,7 @@ class ObservableDagonizer extends Dagonizer<MyState> {
 
 `placementPath` is the ordered array of parent embedded-DAG placement names leading to the current node. Top-level nodes receive `[]`; a node inside an `EmbeddedDAGNode` named `'search'` receives `['search']`. The full cytoscape-style node id is `[...placementPath, nodeName].join('/')`.
 
-See [Observability](/guide/observability) for usage examples. Contract misalignment — a dangling read or a dead write — throws a `DAGError` at `registerDAG`/`build` time rather than surfacing a warning; see [catching contract drift](../guide/derive.md#catching-contract-drift).
+See [Observability](/guide/observability) for usage examples. Contract misalignment — a dangling read or a dead write — throws a `DAGError` at `registerDAG`/`build` time rather than surfacing a warning.
 
 ---
 
