@@ -22,6 +22,13 @@
 
 export { MonadicNode } from '../core/MonadicNode.js';
 
+export {
+  DecodeTextToolCallsNode,
+  DispatchToolCallsNode,
+  LlmChatNode,
+  PartitionToolCallsNode,
+} from './agent/index.js';
+
 export type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
 
 export type {
@@ -31,3 +38,13 @@ export type {
   TermType,
   TripleStoreInterface,
 } from '../contracts/TripleStoreInterface.js';
+
+export type {
+  DecodeTextToolCallsNodeOptionsType,
+  DispatchToolCallsNodeOptionsType,
+  LlmChatNodeOptionsType,
+  PartitionToolCallsNodeOptionsType,
+  ToolDispatchRecordType,
+  ToolWorksetType,
+  ToolWorksetVariantType,
+} from './agent/index.js';

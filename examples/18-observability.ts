@@ -234,11 +234,14 @@ if (lc.variant === 'completed') {
 // execute() composes an optional caller AbortSignal and an optional deadlineMs
 // into one composed signal via AbortSignal.any. Both are optional; either alone
 // is also valid. Each node receives the composed signal as context.signal.
-function composeSignal(callerSignal: AbortSignal | undefined, deadlineMs: number | undefined): AbortSignal {
-  const sources: AbortSignal[] = [];
-  if (callerSignal !== undefined) sources.push(callerSignal);
-  if (deadlineMs !== undefined) sources.push(AbortSignal.timeout(deadlineMs));
-  return sources.length > 0 ? AbortSignal.any(sources) : new AbortController().signal;
+class AbortSignals {
+  private constructor() { /* static-only */ }
+  static composed(callerSignal: AbortSignal | undefined, deadlineMs: number | undefined): AbortSignal {
+    const sources: AbortSignal[] = [];
+    if (callerSignal !== undefined) sources.push(callerSignal);
+    if (deadlineMs !== undefined) sources.push(AbortSignal.timeout(deadlineMs));
+    return sources.length > 0 ? AbortSignal.any(sources) : new AbortController().signal;
+  }
 }
-void composeSignal; // documentation region — not called at runtime
+void AbortSignals; // documentation region — not called at runtime
 // #endregion signal-compose

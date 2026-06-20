@@ -1,3 +1,4 @@
+import type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 import type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
@@ -64,7 +65,7 @@ export type { ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType,
  * passes through every `NodeContextType`. Default `undefined` means
  * nodes receive `context.services === undefined`.
  */
-export type DagonizerOptionsType<TState extends NodeStateInterface = NodeStateInterface, TServices = undefined> = {
+export type DagonizerOptionsType<TServices = undefined> = {
   /**
    * Path resolver used for scatter source reads, gather writes, and
    * embedded-DAG state mapping. Defaults to a `DottedPathAccessor` that
@@ -88,7 +89,7 @@ export type DagonizerOptionsType<TState extends NodeStateInterface = NodeStateIn
    * Containers are optional: an empty registry is the default and
    * means every placement runs in-process.
    */
-  containers?: Record<string, DagContainerInterface<TState>>;
+  containers?: Record<string, DagContainerInterface>;
   /**
    * Named egress channels keyed by terminal placement name. When a
    * non-embedded run completes at a terminal whose name is bound here,
@@ -148,9 +149,12 @@ export interface DagonizerInterface<
   getDAG(name: string): DAGType | undefined;
 
   /**
-   * Look up a registered node by name.
+   * Look up a registered node by name. Returns `NodeInterface<NodeStateInterface,...>`
+   * because the registry stores heterogeneous node types at the base interface.
+   * Consumers that registered a `NodeInterface<MyState,...>` and need to call it
+   * directly should retain their own typed reference rather than looking it up here.
    */
-  getNode(name: string): NodeInterface<TState, string, TServices> | undefined;
+  getNode(name: string): NodeInterface<NodeStateInterface, string, TServices> | undefined;
 
   /**
    * List every registered DAG. Useful for visualization, contract checks,
@@ -160,8 +164,10 @@ export interface DagonizerInterface<
 
   /**
    * List every registered node. Useful for visualization and tooling.
+   * Returns base-typed `NodeInterface<NodeStateInterface,...>` for the same reason as
+   * `getNode`: the registry stores nodes with potentially heterogeneous state types.
    */
-  listNodes(): readonly NodeInterface<TState, string, TServices>[];
+  listNodes(): readonly NodeInterface<NodeStateInterface, string, TServices>[];
 
   /**
    * Resume a DAG from a given node name. The caller is responsible for
@@ -175,21 +181,26 @@ export interface DagonizerInterface<
   ): Execution<TState>;
 
   /**
-   * Register a DAG configuration.
+   * Register a DAG configuration with an optional child-state factory.
    */
-  registerDAG(dag: DAGType): void;
+  registerDAG(dag: DAGType, stateFactory?: ChildStateFactoryType): void;
 
   /**
-   * Register a DAG node.
+   * Register a DAG node. Accepts nodes typed against any `TNodeState extends
+   * NodeStateInterface` so child-state nodes (isolation factory bodies) can be
+   * registered on a dispatcher typed for the parent state without casts.
    */
-  registerNode<TOutput extends string>(
-    node: NodeInterface<TState, TOutput, TServices>,
+  registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
+    node: NodeInterface<TNodeState, TOutput, TServices>,
   ): void;
 
   /**
-   * Register every node, then every DAG, in the supplied bundle.
+   * Register every node, then every DAG, in the supplied bundle. Accepts
+   * bundles typed against any `TBundleState extends NodeStateInterface` so
+   * child-state bundles (e.g. tool bundles) can be registered on a dispatcher
+   * typed for the parent state without casts at the call site.
    */
-  registerBundle(bundle: DispatcherBundleType<TState, TServices>): void;
+  registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState, TServices>): void;
 }
 
 /**
@@ -237,18 +248,21 @@ export interface DagonizerInterface<
 export class Dagonizer<TState extends NodeStateInterface, TServices = undefined>
 implements
   DagonizerInterface<TState, TServices>,
-  DispatcherRelaySourceInterface<TState>,
-  GatherSourceInterface<TState, TServices>,
-  LeafExecutorSourceInterface<TState, TServices>,
-  EmbeddedDagExecutorSourceType<TState>,
-  BodyRunPortInterface<TState, TServices>,
-  ScatterDispatchSourceInterface<TState, TServices>,
-  NodeSchedulerSourceInterface<TState, TServices>,
-  DagRegistrarSourceInterface<TState, TServices> {
+  DispatcherRelaySourceInterface,
+  GatherSourceInterface<TServices>,
+  LeafExecutorSourceInterface<TServices>,
+  EmbeddedDagExecutorSourceType,
+  BodyRunPortInterface<TServices>,
+  ScatterDispatchSourceInterface<TServices>,
+  NodeSchedulerSourceInterface<TServices>,
+  DagRegistrarSourceInterface<TServices> {
   // Read by NodeScheduler via NodeSchedulerSourceInterface.
   readonly dags = new Map<string, DAGType>();
   // Read by ScatterDispatchAdapter / NodeScheduler via their source interfaces.
-  readonly nodes = new Map<string, NodeInterface<TState, string, TServices>>();
+  // Typed NodeStateInterface so heterogeneous child-node states (whose concrete
+  // class may differ from TState) are stored without casts. TState remains on the
+  // public execute/resume/executeBatch boundary; internally nodes are base-typed.
+  readonly nodes = new Map<string, NodeInterface<NodeStateInterface, string, TServices>>();
   // Read by NodeScheduler via NodeSchedulerSourceInterface.
   readonly nodeIndex = new Map<string, DAGNodeType>();
   // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
@@ -260,8 +274,12 @@ implements
   // TServices the error surfaces at the call site, not here.
   private readonly services: TServices;
   // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
-  readonly stateMapper: StateMapper<TState>;
-  private readonly containers: Readonly<Record<string, DagContainerInterface<TState>>>;
+  readonly stateMapper: StateMapper;
+  // Every registered DAG has an entry here; ChildStateFactory.cloneParent is stored
+  // at registerDAG time when the caller omits an override. Read by ScatterDispatchAdapter
+  // and EmbeddedDagExecutor via their source interfaces.
+  readonly stateFactories = new Map<string, ChildStateFactoryType>();
+  private readonly containers: Readonly<Record<string, DagContainerInterface>>;
   // Read by NodeScheduler via NodeSchedulerSourceInterface (hand-off publish).
   readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
   // Read by NodeScheduler via NodeSchedulerSourceInterface (hand-off envelope).
@@ -272,7 +290,7 @@ implements
    * so relay construction allocates only the `ObserverRelay` instance (stable
    * hidden class) without a fresh closure-bearing adapter on each invocation.
    */
-  readonly #relayHooks: DispatcherHooksInterface<TState>;
+  readonly #relayHooks: DispatcherHooksInterface;
   #correlationSeq = 0;
 
   /**
@@ -281,14 +299,14 @@ implements
    * closure/object allocation in the hot loop. The `PlacementDispatch` class
    * holds a stable shape; routing lives in its `dispatch` method.
    */
-  private readonly placementDispatch: PlacementDispatch<TState>;
+  private readonly placementDispatch: PlacementDispatch;
 
   /**
    * Work-set node-graph scheduler. Built once per dispatcher instance, bound to
    * this instance via the narrow `NodeSchedulerSourceInterface`. Owns the
    * streaming DAG traversal; `runNodes` delegates to `this.nodeScheduler.run`.
    */
-  private readonly nodeScheduler: NodeScheduler<TState, TServices>;
+  private readonly nodeScheduler: NodeScheduler<TServices>;
 
   /**
    * Registration + validation cluster. Built once per dispatcher instance, bound
@@ -297,7 +315,7 @@ implements
    * The public `registerDAG` / `registerNode` / `registerBundle` methods delegate
    * here so `Dagonizer` stays the composition root.
    */
-  private readonly dagRegistrar: DagRegistrar<TState, TServices>;
+  private readonly dagRegistrar: DagRegistrar<TServices>;
 
   /**
    * Construct a dispatcher. Subclass and override the protected hooks
@@ -311,11 +329,11 @@ implements
    * `options.services` is the typed services bag exposed to every node
    * via `context.services`. Defaults to `undefined`.
    */
-  constructor(options: DagonizerOptionsType<TState, TServices> = {}) {
-    const resolved = Dagonizer.options<TState, TServices>(options);
+  constructor(options: DagonizerOptionsType<TServices> = {}) {
+    const resolved = Dagonizer.options<TServices>(options);
     this.accessor = resolved.accessor;
     this.services = resolved.services;
-    this.stateMapper = new StateMapper<TState>(this.accessor);
+    this.stateMapper = new StateMapper(this.accessor);
     this.containers = resolved.containers;
     this.channels = resolved.channels;
     this.registryVersion = resolved.registryVersion;
@@ -329,7 +347,7 @@ implements
     // `embeddedDagExecutor`, `scatterExecutor`) are wired into the graph by the
     // composer and held only by their consumers, so the root keeps no field for
     // them. Wire in declaration order to keep the hidden class stable.
-    const engine = EngineComposer.compose<TState, TServices>(this);
+    const engine = EngineComposer.compose<TServices>(this);
     this.#relayHooks = engine.relayHooks;
     this.placementDispatch = engine.placementDispatch;
     this.nodeScheduler = engine.nodeScheduler;
@@ -340,8 +358,8 @@ implements
   // Observability hooks: protected, no-op defaults. Subclass + override.
   // ---------------------------------------------------------------------------
 
-  protected onFlowStart(_dagName: string, _state: TState): void { /* override */ }
-  protected onFlowEnd(_dagName: string, _state: TState, _result: ExecutionResultType<TState>): void { /* override */ }
+  protected onFlowStart(_dagName: string, _state: NodeStateInterface): void { /* override */ }
+  protected onFlowEnd(_dagName: string, _state: NodeStateInterface, _result: ExecutionResultType<NodeStateInterface>): void { /* override */ }
   /**
    * Fires before a node begins executing. `placementPath` is the ordered
    * list of parent embedded-DAG placement names that led to this node.
@@ -352,30 +370,34 @@ implements
    *
    * This hook fires for BOTH in-process nodes AND for nodes running in
    * worker/contained sub-DAGs (via the internal observer relay).
+   *
+   * `state` is typed `NodeStateInterface` because this hook fires for every
+   * node — including embedded child nodes whose concrete class may differ from
+   * the dispatcher's `TState`. Consumers that need typed fields narrow locally.
    */
-  protected onNodeStart(_nodeName: string, _state: TState, _placementPath: readonly string[]): void { /* override */ }
+  protected onNodeStart(_nodeName: string, _state: NodeStateInterface, _placementPath: readonly string[]): void { /* override */ }
   /**
    * Fires after a node completes successfully. See {@link onNodeStart} for
-   * `placementPath` semantics. Fires for in-process and worker nodes.
+   * `placementPath` and `state` typing semantics. Fires for in-process and worker nodes.
    */
-  protected onNodeEnd(_nodeName: string, _output: string | null, _state: TState, _placementPath: readonly string[]): void { /* override */ }
+  protected onNodeEnd(_nodeName: string, _output: string | null, _state: NodeStateInterface, _placementPath: readonly string[]): void { /* override */ }
   /**
    * Fires when the dispatcher catches an error from a node (or from the
    * abort/timeout machinery). See {@link onNodeStart} for `placementPath`
-   * semantics. Fires for in-process and worker nodes.
+   * and `state` typing semantics. Fires for in-process and worker nodes.
    */
-  protected onError(_nodeName: string, _error: Error, _state: TState, _placementPath: readonly string[]): void { /* override */ }
+  protected onError(_nodeName: string, _error: Error, _state: NodeStateInterface, _placementPath: readonly string[]): void { /* override */ }
   /**
    * Fires before a `pre` or `post` phase placement runs. `placementPath`
    * follows the same semantics as `onNodeStart`. Fires for in-process and
    * worker phases.
    */
-  protected onPhaseEnter(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: TState, _placementPath: readonly string[]): void { /* override */ }
+  protected onPhaseEnter(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: NodeStateInterface, _placementPath: readonly string[]): void { /* override */ }
   /**
    * Fires after a `pre` or `post` phase placement completes (success or
    * collected error). See {@link onPhaseEnter}.
    */
-  protected onPhaseExit(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: TState, _placementPath: readonly string[]): void { /* override */ }
+  protected onPhaseExit(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: NodeStateInterface, _placementPath: readonly string[]): void { /* override */ }
 
   // ---------------------------------------------------------------------------
   // Relay seam: public entries the container path (WorkerObserver/ChannelDispatch)
@@ -386,37 +408,37 @@ implements
   // ---------------------------------------------------------------------------
 
   /** Relay a flow-start event from the node scheduler into `onFlowStart`. */
-  relayFlowStart(dagName: string, state: TState): void {
+  relayFlowStart(dagName: string, state: NodeStateInterface): void {
     this.onFlowStart(dagName, state);
   }
 
   /** Relay a flow-end event from the node scheduler into `onFlowEnd`. */
-  relayFlowEnd(dagName: string, state: TState, result: ExecutionResultType<TState>): void {
+  relayFlowEnd(dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>): void {
     this.onFlowEnd(dagName, state, result);
   }
 
   /** Relay a node-start event from a worker/contained sub-DAG into `onNodeStart`. */
-  relayNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
+  relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.onNodeStart(nodeName, state, placementPath);
   }
 
   /** Relay a node-end event from a worker/contained sub-DAG into `onNodeEnd`. */
-  relayNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void {
+  relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.onNodeEnd(nodeName, output, state, placementPath);
   }
 
   /** Relay an error event from a worker/contained sub-DAG into `onError`. */
-  relayError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void {
+  relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.onError(nodeName, error, state, placementPath);
   }
 
   /** Relay a phase-enter event from a worker/contained sub-DAG into `onPhaseEnter`. */
-  relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void {
+  relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.onPhaseEnter(dagName, phase, placementName, state, placementPath);
   }
 
   /** Relay a phase-exit event from a worker/contained sub-DAG into `onPhaseExit`. */
-  relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void {
+  relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.onPhaseExit(dagName, phase, placementName, state, placementPath);
   }
 
@@ -428,7 +450,7 @@ implements
    * Resolve a logical container role to its bound `DagContainerInterface`, or
    * return `null` when the role is undefined or not bound (null = in-process path).
    */
-  resolveContainer(role: string | undefined): DagContainerInterface<TState> | null {
+  resolveContainer(role: string | undefined): DagContainerInterface | null {
     if (role === undefined) return null;
     const bound = this.containers[role];
     return bound !== undefined ? bound : null;
@@ -467,8 +489,8 @@ implements
    * container dispatch path. The stable `#relayHooks` adapter (a `DispatcherHooks`
    * bound to this dispatcher) supplies the protected-hook forwarding.
    */
-  relayFor(state: TState): ObserverRelayInterface {
-    return new ObserverRelay<TState>(this.#relayHooks, state);
+  relayFor(state: NodeStateInterface): ObserverRelayInterface {
+    return new ObserverRelay(this.#relayHooks, state);
   }
 
   /**
@@ -541,13 +563,15 @@ implements
    */
   runBodyNodes(
     dagName: string,
-    state: TState,
+    state: NodeStateInterface,
     fromStage: string | null,
     options: ExecuteOptionsType,
     runOptions: RunOptionsType,
     placementPath: readonly string[],
-    batch?: RunNodesBatchType<TState>,
-  ): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
+    batch?: RunNodesBatchType,
+  ): AsyncGenerator<NodeResultType<NodeStateInterface>, { terminalOutcome: 'completed' | 'failed' | null }, void> {
+    // runNodes accepts NodeStateInterface and crosses the single TState boundary
+    // internally; child states from isolation factories pass through directly.
     return this.runNodes(dagName, state, fromStage, options, runOptions, placementPath, batch ?? {});
   }
 
@@ -558,13 +582,15 @@ implements
    */
   runScatterNodes(
     dagName: string,
-    state: TState,
+    state: NodeStateInterface,
     fromStage: string | null,
     options: ExecuteOptionsType,
     runOptions: RunOptionsType,
     placementPath: readonly string[],
-    batch?: RunNodesBatchType<TState>,
-  ): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
+    batch?: RunNodesBatchType,
+  ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<NodeStateInterface>, void> {
+    // runNodes accepts NodeStateInterface and crosses the single TState boundary
+    // internally; the scatter adapter's child states pass through directly.
     return this.runNodes(dagName, state, fromStage, options, runOptions, placementPath, batch ?? {});
   }
 
@@ -608,7 +634,7 @@ implements
    * Look up a registered node by name. Returns `undefined` when the node
    * has not been registered.
    */
-  getNode(name: string): NodeInterface<TState, string, TServices> | undefined {
+  getNode(name: string): NodeInterface<NodeStateInterface, string, TServices> | undefined {
     return this.nodes.get(name);
   }
 
@@ -624,7 +650,7 @@ implements
    * Snapshot of every registered node. The returned array is a fresh
    * shallow copy; mutating it does not affect the registry.
    */
-  listNodes(): readonly NodeInterface<TState, string, TServices>[] {
+  listNodes(): readonly NodeInterface<NodeStateInterface, string, TServices>[] {
     return [...this.nodes.values()];
   }
 
@@ -700,16 +726,22 @@ implements
    * `resume()` call). Node hooks (`onNodeStart`, `onNodeEnd`, `onError`) still
    * fire for every child node.
    */
-  private runNodes(
+  private runNodes<TReturn extends NodeStateInterface = NodeStateInterface>(
     dagName: string,
-    state: TState,
+    state: TReturn,
     fromStage: string | null,
     options: ExecuteOptionsType,
     runOptions: RunOptionsType = { 'embedded': false },
     placementPath: readonly string[] = [],
-    batch: RunNodesBatchType<TState> = {},
-  ): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
-    return this.nodeScheduler.run(dagName, state, fromStage, options, runOptions, placementPath, batch);
+    batch: RunNodesBatchType = {},
+  ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TReturn>, void> {
+    // The generator yields heterogeneous per-node results (a child embedded node
+    // runs on its own isolation state) typed `NodeStateInterface`, and returns the
+    // final `ExecutionResultType<TReturn>` whose `state` is the caller's own
+    // `TReturn` instance — both honest, no cast at the boundary.
+    return this.nodeScheduler.run<TReturn>(
+      dagName, state, fromStage, options, runOptions, placementPath, batch,
+    );
   }
 
 
@@ -727,7 +759,7 @@ implements
    * Timer and parent-abort listener are cleaned up in `finally`.
    */
   async withNodeTimeout<TResult>(
-    dagNode: NodeInterface<TState, string, TServices>,
+    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
     parentSignal: AbortSignal | null,
     fn: (signal: AbortSignal) => Promise<TResult>,
   ): Promise<TResult> {
@@ -806,7 +838,7 @@ implements
     signal: AbortSignal | null,
     placementPath: readonly string[],
     bufferIntermediates: boolean = true,
-  ): Promise<RunNodeResultType<TState>> {
+  ): Promise<RunNodeResultType> {
     return this.placementDispatch.dispatch(entry, state, dagName, signal, placementPath, bufferIntermediates);
   }
 
@@ -823,8 +855,8 @@ implements
    *    no circular embedded-DAG references, and every registered node output has a routing
    *    entry in the placement's `outputs` map.
    */
-  registerDAG(dag: DAGType): void {
-    this.dagRegistrar.registerDAG(dag);
+  registerDAG(dag: DAGType, stateFactory?: ChildStateFactoryType): void {
+    this.dagRegistrar.registerDAG(dag, stateFactory);
   }
 
   /**
@@ -840,19 +872,19 @@ implements
    * do not, the cast is unsound at their call site — the type system surfaces
    * the error there, not here.
    */
-  static options<TState extends NodeStateInterface, TServices = undefined>(
-    partial: DagonizerOptionsType<TState, TServices> = {},
+  static options<TServices = undefined>(
+    partial: DagonizerOptionsType<TServices> = {},
   ): Readonly<{
     accessor: StateAccessorInterface;
     services: TServices;
-    containers: Readonly<Record<string, DagContainerInterface<TState>>>;
+    containers: Readonly<Record<string, DagContainerInterface>>;
     channels: Readonly<Record<string, HandoffChannelInterface>>;
     registryVersion: string;
   }> {
     return {
       'accessor':        partial.accessor ?? DEFAULT_STATE_ACCESSOR,
       'services':        partial.services as TServices,
-      'containers':      partial.containers ?? (DAGONIZER_OPTION_DEFAULTS.containers as Readonly<Record<string, DagContainerInterface<TState>>>),
+      'containers':      partial.containers ?? (DAGONIZER_OPTION_DEFAULTS.containers as Readonly<Record<string, DagContainerInterface>>),
       'channels':        partial.channels ?? DAGONIZER_OPTION_DEFAULTS.channels,
       'registryVersion': partial.registryVersion ?? DEFAULT_REGISTRY_VERSION,
     };
@@ -866,8 +898,8 @@ implements
    *
    * Throws `DAGError` when a node with the same name is already registered.
    */
-  registerNode<TOutput extends string>(
-    node: NodeInterface<TState, TOutput, TServices>,
+  registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
+    node: NodeInterface<TNodeState, TOutput, TServices>,
   ): void {
     this.dagRegistrar.registerNode(node);
   }
@@ -879,7 +911,7 @@ implements
    * registration throws (validation failure, duplicate name, etc.);
    * registrations that ran before the failing one remain installed.
    */
-  registerBundle(bundle: DispatcherBundleType<TState, TServices>): void {
+  registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState, TServices>): void {
     this.dagRegistrar.registerBundle(bundle);
   }
 }

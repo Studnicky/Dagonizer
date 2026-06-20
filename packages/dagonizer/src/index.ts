@@ -227,6 +227,26 @@ export { ScalarNode } from './core/ScalarNode.js';
 export { NodeRunner } from './core/NodeRunner.js';
 
 // =============================================================================
+// PATTERNS
+// =============================================================================
+
+export {
+  DecodeTextToolCallsNode,
+  DispatchToolCallsNode,
+  LlmChatNode,
+  PartitionToolCallsNode,
+} from './patterns/index.js';
+export type {
+  DecodeTextToolCallsNodeOptionsType,
+  DispatchToolCallsNodeOptionsType,
+  LlmChatNodeOptionsType,
+  PartitionToolCallsNodeOptionsType,
+  ToolDispatchRecordType,
+  ToolWorksetType,
+  ToolWorksetVariantType,
+} from './patterns/index.js';
+
+// =============================================================================
 // CHECKPOINT
 // =============================================================================
 
@@ -248,6 +268,10 @@ export type { DagonizerInterface } from './Dagonizer.js';
 export type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 export type { NodeStateInterface } from './NodeStateBase.js';
 export type { DAGErrorInterface } from './errors/DAGError.js';
+
+// Child-state factory: class with clone-parent default.
+export { ChildStateFactory } from './runtime/ChildStateFactory.js';
+export type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js';
 
 // =============================================================================
 // CONTRACTS (adapter-pattern interfaces)

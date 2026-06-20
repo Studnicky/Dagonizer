@@ -248,8 +248,8 @@ void describe('TST-18: registerBundle node-body scatter without container role',
   void it('DAG with explicit unbound container role throws DAGError on registerDAG', () => {
     // Bind one role so the dispatcher is in container-dispatch mode; the DAG
     // below declares a DIFFERENT, unbound role, which is the misalignment.
-    const fakeContainer: DagContainerInterface<NodeStateBase> = {
-      async runDag(_task: DagTaskInterface<NodeStateBase, unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+    const fakeContainer: DagContainerInterface = {
+      async runDag(_task: DagTaskInterface<unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
         return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
       },
     };

@@ -57,39 +57,42 @@ class BoundedWorkerNode extends ScalarNode<BoundedState, 'success'> {
 
 // ── minimal scatter DAG ──────────────────────────────────────────────────────
 
-function makeScatterDag(name: string, concurrency: number): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    'name':     name,
-    'version':  '1',
-    'entrypoint': 'fan',
-    'nodes': [
-      {
-        '@id':         `urn:noocodex:dag:${name}/node/fan`,
-        '@type':       'ScatterNode',
-        'name':        'fan',
-        'body':        { 'node': 'worker' },
-        'source':      'items',
-        'itemKey':     'item',
-        'concurrency': concurrency,
-        'gather':      { 'strategy': 'append', 'target': 'processed' },
-        'outputs':     {
-          'all-success': 'end',
-          'partial':     'end',
-          'all-error':   'end',
-          'empty':       'end',
+class TestScatterDag {
+  private constructor() {}
+  static ofConcurrency(name: string, concurrency: number): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@type':       'ScatterNode',
+          'name':        'fan',
+          'body':        { 'node': 'worker' },
+          'source':      'items',
+          'itemKey':     'item',
+          'concurrency': concurrency,
+          'gather':      { 'strategy': 'append', 'target': 'processed' },
+          'outputs':     {
+            'all-success': 'end',
+            'partial':     'end',
+            'all-error':   'end',
+            'empty':       'end',
+          },
         },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  };
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+  }
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -122,7 +125,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const dispatcher = new Dagonizer<BoundedState>();
     dispatcher.registerNode(new BoundedWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('bounded-ahead-cap', CONCURRENCY));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-ahead-cap', CONCURRENCY));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => i + 1);
@@ -147,7 +150,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const dispatcher = new Dagonizer<BoundedState>();
     dispatcher.registerNode(new BoundedWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('bounded-watermark-mono', 2));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-watermark-mono', 2));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => (i + 1) * 10);
@@ -171,7 +174,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const dispatcher = new Dagonizer<BoundedState>();
     dispatcher.registerNode(new BoundedWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('bounded-tally', 2));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-tally', 2));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => i);
@@ -209,7 +212,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const dispatcher = new Dagonizer<BoundedState>();
     dispatcher.registerNode(new ResumeTrackingNode());
-    dispatcher.registerDAG(makeScatterDag('bounded-resume', 2));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-resume', 2));
 
     const state = new BoundedState();
     state.items = [10, 20, 30, 40, 50];
@@ -267,7 +270,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const baselineDispatcher = new Dagonizer<BoundedState>();
     baselineDispatcher.registerNode(new BoundedWorkerNode());
-    baselineDispatcher.registerDAG(makeScatterDag('byte-identity-baseline', 2));
+    baselineDispatcher.registerDAG(TestScatterDag.ofConcurrency('byte-identity-baseline', 2));
 
     class BaselineTrackingNode extends ScalarNode<BoundedState, 'success'> {
       readonly name = 'worker';
@@ -280,7 +283,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     }
     const baselineDispatcher2 = new Dagonizer<BoundedState>();
     baselineDispatcher2.registerNode(new BaselineTrackingNode());
-    baselineDispatcher2.registerDAG(makeScatterDag('byte-identity-baseline', 2));
+    baselineDispatcher2.registerDAG(TestScatterDag.ofConcurrency('byte-identity-baseline', 2));
 
     const baselineState = new BoundedState();
     baselineState.items = Array.from({ 'length': N }, (_, i) => i + 1);
@@ -315,7 +318,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
       }
     }
     interruptedDispatcher.registerNode(new InterruptedWorkerNode());
-    interruptedDispatcher.registerDAG(makeScatterDag('byte-identity-interrupted', 2));
+    interruptedDispatcher.registerDAG(TestScatterDag.ofConcurrency('byte-identity-interrupted', 2));
 
     const interruptedState = new BoundedState();
     interruptedState.items = Array.from({ 'length': N }, (_, i) => i + 1);
@@ -342,7 +345,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
       }
     }
     resumeDispatcher.registerNode(new ResumeTrackingNode());
-    resumeDispatcher.registerDAG(makeScatterDag('byte-identity-interrupted', 2));
+    resumeDispatcher.registerDAG(TestScatterDag.ofConcurrency('byte-identity-interrupted', 2));
 
     const resumeState = new BoundedState();
     // Carry the bounded checkpoint metadata from the partial run.
@@ -412,7 +415,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
       dispatcher.registerNode(new SizeWorkerNode());
 
       const dagName = `size-bound-n${n}`;
-      dispatcher.registerDAG(makeScatterDag(dagName, 2));
+      dispatcher.registerDAG(TestScatterDag.ofConcurrency(dagName, 2));
 
       const st = new BoundedState();
       st.items = Array.from({ 'length': n }, (_, i) => i + 1);
@@ -443,7 +446,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     const TOTAL = 5;
     const dispatcher = new Dagonizer<BoundedState>();
     dispatcher.registerNode(new BoundedWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('bounded-final', 2));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-final', 2));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => i + 1);

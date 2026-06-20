@@ -155,7 +155,7 @@ export class PlacementUtils {
    *   - `ScatterNode` with dag body → `placement.body.dag`
    */
   static embeddedDagName(placement: PlacementEntryType): string | null {
-    if (placement['@type'] === 'EmbeddedDAGNode') return placement.dag;
+    if (placement['@type'] === 'EmbeddedDAGNode') return placement.dag ?? null;
     if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) return placement.body.dag;
     return null;
   }

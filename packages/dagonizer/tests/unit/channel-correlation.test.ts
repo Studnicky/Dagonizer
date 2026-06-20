@@ -87,7 +87,7 @@ class MinimalState extends NodeStateBase {}
 // MinimalDagTask: minimal DagTaskInterface implementation
 // ---------------------------------------------------------------------------
 
-function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<MinimalState, undefined> {
+function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<undefined> {
   return {
     'dagName': 'test-dag',
     'placementPath': [],
@@ -128,7 +128,7 @@ const NOOP_INIT: DagContainerOptionsType['init'] = {
   'servicesConfig': {},
 };
 
-class SingleChannelContainer extends DagContainerBase<MinimalState, null> {
+class SingleChannelContainer extends DagContainerBase<null> {
   readonly #channel: MessageChannelInterface;
 
   constructor(channel: MessageChannelInterface, _options: Partial<DagContainerOptionsType> = {}) {

@@ -10,18 +10,47 @@
  * logic is decoupled from the concrete accessor implementation.
  */
 
+import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-export class StateMapper<TState extends NodeStateInterface> {
+export class StateMapper {
   readonly #accessor: StateAccessorInterface;
 
   constructor(accessor: StateAccessorInterface) {
     this.#accessor = accessor;
   }
 
-  cloneChild(parentState: TState, inputMapping: Record<string, string>): TState {
+  /**
+   * Clone the parent state and seed the clone with the input mapping.
+   *
+   * Used by scatter paths that always clone the parent state. Returns
+   * `NodeStateInterface` — the `clone(): this` method on the interface returns
+   * the concrete subclass type at runtime; the engine threads the cloned state
+   * as `NodeStateInterface` internally and consumers do not need the narrower type.
+   *
+   * Factory-based sub-DAG body paths use `spawnChild` instead.
+   */
+  cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface {
     const childState = parentState.clone();
+    for (const [childKey, parentKey] of Object.entries(inputMapping)) {
+      this.#accessor.set(childState, childKey, this.#accessor.get(parentState, parentKey));
+    }
+    return childState;
+  }
+
+  /**
+   * Build a child state for factory-based sub-DAG body execution and seed it
+   * with the input mapping.
+   *
+   * Used by embedded-DAG and scatter DAG-body paths. Returns `NodeStateInterface`
+   * because an isolation factory builds a child-specific class that is not
+   * assignment-compatible with the parent state type. Callers read/write child
+   * fields through the `StateAccessorInterface` (dotted-path accessor), which is
+   * runtime type-agnostic.
+   */
+  spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface {
+    const childState = factory(parentState);
     for (const [childKey, parentKey] of Object.entries(inputMapping)) {
       this.#accessor.set(childState, childKey, this.#accessor.get(parentState, parentKey));
     }
@@ -34,8 +63,12 @@ export class StateMapper<TState extends NodeStateInterface> {
    * `childKey` from `childState` and write it to `parentPath` on `parentState`.
    * Pass `{}` when no output mapping is needed; the loop over an empty object
    * is a no-op.
+   *
+   * Both states are typed as `NodeStateInterface` because the child may be a
+   * different concrete class (produced by an isolation factory); the dotted-path
+   * accessor operates on declared fields of the concrete class.
    */
-  mapOutput(childState: TState, parentState: TState, output: Record<string, string>): void {
+  mapOutput(childState: NodeStateInterface, parentState: NodeStateInterface, output: Record<string, string>): void {
     for (const [parentKey, childKey] of Object.entries(output)) {
       this.#accessor.set(parentState, parentKey, this.#accessor.get(childState, childKey));
     }

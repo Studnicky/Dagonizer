@@ -236,13 +236,13 @@ const nodeBodyRunnerDag: DAGType = Validator.dag.validate({
 // outcome. This lets us test the seam wiring without a real isolate.
 // ---------------------------------------------------------------------------
 
-function buildTestContainer(): DagContainerInterface<ScatterContainerState> {
+function buildTestContainer(): DagContainerInterface {
   const innerDispatcher = new Dagonizer<ScatterContainerState>();
   innerDispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
   innerDispatcher.registerDAG(bodyDag);
 
   return {
-    async runDag(task: DagTaskInterface<ScatterContainerState, unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+    async runDag(task: DagTaskInterface<unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
       const cloneState = task.state;
       const intermediates: Array<{ output: string | null; skipped: boolean; nodeName: string }> = [];
 
@@ -250,7 +250,7 @@ function buildTestContainer(): DagContainerInterface<ScatterContainerState> {
         // Drain the execution iterator: collect intermediates and capture the
         // terminal result. Execution is a PromiseLike AND AsyncIterable;
         // iterate manually so we capture both.
-        const exec = innerDispatcher.execute(task.dagName, cloneState);
+        const exec = innerDispatcher.execute(task.dagName, cloneState as ScatterContainerState);
         const iter = exec[Symbol.asyncIterator]();
         let step = await iter.next();
         while (!step.done) {
@@ -315,7 +315,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     const testContainer = buildTestContainer();
 
     let runDagCallCount = 0;
-    const trackingContainer: DagContainerInterface<ScatterContainerState> = {
+    const trackingContainer: DagContainerInterface = {
       async runDag(task, options): Promise<DagOutcomeType> {
         runDagCallCount++;
         return testContainer.runDag(task, options);
@@ -349,7 +349,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     let containerCalls = 0;
     let inlineNodeCalls = 0;
 
-    const container: DagContainerInterface<ScatterContainerState> = {
+    const container: DagContainerInterface = {
       async runDag(_task, _options): Promise<DagOutcomeType> {
         containerCalls++;
         return {
@@ -396,7 +396,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
   // ── (d) Container error → collected error, not unhandled throw ───────────
   void it('transport failure from container collects error; scatter routes to error output', async () => {
-    const failContainer: DagContainerInterface<ScatterContainerState> = {
+    const failContainer: DagContainerInterface = {
       async runDag(task, _options): Promise<DagOutcomeType> {
         return {
           'terminalOutput': 'failed',

@@ -162,77 +162,96 @@ interface Destroyable {
 type ContainerFactory = () => Destroyable & DagContainerInterface;
 
 // ---------------------------------------------------------------------------
-// buildHarness
+// Container
 //
-// The harness creates a FRESH container per createDispatcher call.
-// Each per-law container is tracked and destroyed in afterEach.
+// Static factory that builds one fresh container, registers it for teardown,
+// and tracks it in the factory-created set for Law 8 detection.
 // ---------------------------------------------------------------------------
 
-function buildHarness(factory: ContainerFactory): DagConformanceHarnessInterface {
-  const perLaw: Destroyable[] = [];
-  // Track containers created by factory so we can detect sentinel vs law-8 containers.
-  const factoryCreated = new Set<DagContainerInterface>();
+class Container {
+  private constructor() {}
 
-  function makeContainer(): Destroyable & DagContainerInterface {
+  static build(
+    factory: ContainerFactory,
+    perLaw: Destroyable[],
+    factoryCreated: Set<DagContainerInterface>,
+  ): Destroyable & DagContainerInterface {
     const c = factory();
     factoryCreated.add(c);
     perLaw.push(c);
     return c;
   }
+}
 
-  return {
-    createDispatcher(
-      bundle: DispatcherBundleType<NodeStateInterface, undefined>,
-      passedContainers: Readonly<Record<string, DagContainerInterface>>,
-    ): DagonizerInterface<NodeStateInterface, undefined> {
-      // Use the passed container only if it was NOT created by this harness's
-      // factory (Law 8 provides KillAfterOneContainer / fresh container from
-      // outside the factory). For all other laws, build a fresh factory container.
-      const passedContainer = passedContainers[CONFORMANCE_CONTAINER_ROLE];
-      let container: DagContainerInterface;
-      if (passedContainer !== undefined && !factoryCreated.has(passedContainer)) {
-        // Law 8: use the caller-supplied container directly.
-        container = passedContainer;
-      } else {
-        // Laws 1–7, 9: build a fresh container.
-        container = makeContainer();
-      }
+// ---------------------------------------------------------------------------
+// Harness
+//
+// The harness creates a FRESH container per createDispatcher call.
+// Each per-law container is tracked and destroyed in afterEach.
+// ---------------------------------------------------------------------------
 
-      const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
-      const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
-      dispatcher.registerBundle(bundle);
-      return dispatcher as unknown as DagonizerInterface<NodeStateInterface, undefined>;
-    },
+class Harness {
+  private constructor() {}
 
-    // Law 7: build a dispatcher WITHOUT the container role bound so
-    // resolveContainer(CONFORMANCE_CONTAINER_ROLE) returns null → inline path.
-    createInProcessDispatcher(
-      bundle: DispatcherBundleType<NodeStateInterface, undefined>,
-    ): DagonizerInterface<NodeStateInterface, undefined> {
-      const dispatcher = new Dagonizer<NodeStateInterface, undefined>();
-      dispatcher.registerBundle(bundle);
-      return dispatcher as unknown as DagonizerInterface<NodeStateInterface, undefined>;
-    },
+  static of(factory: ContainerFactory): DagConformanceHarnessInterface {
+    const perLaw: Destroyable[] = [];
+    // Track containers created by factory so we can detect sentinel vs law-8 containers.
+    const factoryCreated = new Set<DagContainerInterface>();
 
-    createState(): ConformanceState {
-      return new ConformanceState();
-    },
+    return {
+      createDispatcher(
+        bundle: DispatcherBundleType<NodeStateInterface, undefined>,
+        passedContainers: Readonly<Record<string, DagContainerInterface>>,
+      ): DagonizerInterface<NodeStateInterface, undefined> {
+        // Use the passed container only if it was NOT created by this harness's
+        // factory (Law 8 provides KillAfterOneContainer / fresh container from
+        // outside the factory). For all other laws, build a fresh factory container.
+        const passedContainer = passedContainers[CONFORMANCE_CONTAINER_ROLE];
+        let container: DagContainerInterface;
+        if (passedContainer !== undefined && !factoryCreated.has(passedContainer)) {
+          // Law 8: use the caller-supplied container directly.
+          container = passedContainer;
+        } else {
+          // Laws 1–7, 9: build a fresh container.
+          container = Container.build(factory, perLaw, factoryCreated);
+        }
 
-    'containerRole': CONFORMANCE_CONTAINER_ROLE,
+        const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
+        const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
+        dispatcher.registerBundle(bundle);
+        return dispatcher as unknown as DagonizerInterface<NodeStateInterface, undefined>;
+      },
 
-    // Sentinel container: used by Law 6 which bypasses createDispatcher and
-    // wires its own RecordingDispatcher. Created lazily per teardown cycle so
-    // it is never destroyed before the law that uses it runs.
-    get 'container'(): Destroyable & DagContainerInterface {
-      return makeContainer();
-    },
+      // Law 7: build a dispatcher WITHOUT the container role bound so
+      // resolveContainer(CONFORMANCE_CONTAINER_ROLE) returns null → inline path.
+      createInProcessDispatcher(
+        bundle: DispatcherBundleType<NodeStateInterface, undefined>,
+      ): DagonizerInterface<NodeStateInterface, undefined> {
+        const dispatcher = new Dagonizer<NodeStateInterface, undefined>();
+        dispatcher.registerBundle(bundle);
+        return dispatcher as unknown as DagonizerInterface<NodeStateInterface, undefined>;
+      },
 
-    async teardown(): Promise<void> {
-      for (const c of perLaw.splice(0)) {
-        await c.destroy();
-      }
-    },
-  };
+      createState(): ConformanceState {
+        return new ConformanceState();
+      },
+
+      'containerRole': CONFORMANCE_CONTAINER_ROLE,
+
+      // Sentinel container: used by Law 6 which bypasses createDispatcher and
+      // wires its own RecordingDispatcher. Created lazily per teardown cycle so
+      // it is never destroyed before the law that uses it runs.
+      get 'container'(): Destroyable & DagContainerInterface {
+        return Container.build(factory, perLaw, factoryCreated);
+      },
+
+      async teardown(): Promise<void> {
+        for (const c of perLaw.splice(0)) {
+          await c.destroy();
+        }
+      },
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -283,9 +302,9 @@ void describe('DAG Container Conformance — WorkerThreadContainer (Laws 1–9)'
   };
 
   // Use Object.defineProperties to preserve the `container` getter from buildHarness.
-  // Plain spread `{ ...buildHarness(factory) }` evaluates the getter once and copies
+  // Plain spread `{ ...Harness.of(factory) }` evaluates the getter once and copies
   // the value — the sentinel container becomes the same destroyed instance for all laws.
-  const baseHarness = buildHarness(factory);
+  const baseHarness = Harness.of(factory);
   const harness = Object.defineProperties(
     Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
     {
@@ -461,9 +480,9 @@ void describe('DAG Container Conformance — ForkContainer (Laws 1–9 including
   };
 
   // Use Object.defineProperties to preserve the `container` getter from buildHarness.
-  // Plain spread `{ ...buildHarness(factory) }` evaluates the getter once and copies
+  // Plain spread `{ ...Harness.of(factory) }` evaluates the getter once and copies
   // the value — the sentinel container becomes the same destroyed instance for all laws.
-  const baseHarness = buildHarness(factory);
+  const baseHarness = Harness.of(factory);
   const harness = Object.defineProperties(
     Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
     {
@@ -532,9 +551,9 @@ void describe('DAG Container Conformance — SpawnContainer (Laws 1–9 includin
   };
 
   // Use Object.defineProperties to preserve the `container` getter from buildHarness.
-  // Plain spread `{ ...buildHarness(factory) }` evaluates the getter once and copies
+  // Plain spread `{ ...Harness.of(factory) }` evaluates the getter once and copies
   // the value — the sentinel container becomes the same destroyed instance for all laws.
-  const baseHarness = buildHarness(factory);
+  const baseHarness = Harness.of(factory);
   const harness = Object.defineProperties(
     Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
     {
@@ -616,9 +635,9 @@ void describe('DAG Container Conformance — ClusterContainer (Laws 1–9 includ
   };
 
   // Use Object.defineProperties to preserve the `container` getter from buildHarness.
-  // Plain spread `{ ...buildHarness(factory) }` evaluates the getter once and copies
+  // Plain spread `{ ...Harness.of(factory) }` evaluates the getter once and copies
   // the value — the sentinel container becomes the same destroyed instance for all laws.
-  const baseHarness = buildHarness(factory);
+  const baseHarness = Harness.of(factory);
   const harness = Object.defineProperties(
     Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
     {

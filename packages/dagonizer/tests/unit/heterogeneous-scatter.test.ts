@@ -108,7 +108,7 @@ class FlatMergeGather extends GatherStrategy {
     accessor: StateAccessorInterface,
   ): void {
     for (const item of batch) {
-      const record: GatherRecordType<NodeStateInterface> = item.state;
+      const record: GatherRecordType = item.state;
       const existingResults = accessor.get<string[]>(state, 'results')      ?? [];
       const existingFails   = accessor.get<string[]>(state, 'failMessages') ?? [];
 

@@ -194,18 +194,21 @@ class FakeWebWorkerContainer extends WebWorkerContainer {
 }
 
 // ---------------------------------------------------------------------------
-// buildContainer: factory for per-law FakeWebWorkerContainer
+// ContainerFixture: factory for per-law FakeWebWorkerContainer
 //
 // Creates a fresh container with a FakeWorker pool size of 1.
 // ---------------------------------------------------------------------------
 
-function buildContainer(): FakeWebWorkerContainer {
-  const opts: WebWorkerContainerOptionsType = {
-    'registryModule': conformanceRegistryUrl(),
-    'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-    'poolSize': 1,
-  };
-  return new FakeWebWorkerContainer(opts);
+class ContainerFixture {
+  private constructor() {}
+  static of(): FakeWebWorkerContainer {
+    const opts: WebWorkerContainerOptionsType = {
+      'registryModule': conformanceRegistryUrl(),
+      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+      'poolSize': 1,
+    };
+    return new FakeWebWorkerContainer(opts);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +228,7 @@ const harness: DagConformanceHarnessInterface = {
   ): DagonizerInterface<NodeStateInterface, undefined> {
     // Create a fresh per-law container. Ignore the incoming _containers arg —
     // the sentinel harness.container is only a placeholder.
-    const container = buildContainer();
+    const container = ContainerFixture.of();
     perLawContainers.push(container);
     const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
     const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
@@ -237,7 +240,7 @@ const harness: DagConformanceHarnessInterface = {
   },
   'containerRole': CONFORMANCE_CONTAINER_ROLE,
   // Sentinel container accessed only by laws that bypass createDispatcher (none currently).
-  'container': buildContainer(),
+  'container': ContainerFixture.of(),
   async teardown(): Promise<void> {
     for (const c of perLawContainers.splice(0)) {
       await c.destroy();

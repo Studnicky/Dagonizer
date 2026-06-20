@@ -466,7 +466,7 @@ class ScoutGatherStrategy extends GatherStrategy {
 
   override reduce(
     _config: GatherConfigType,
-    batch: Batch<GatherRecordType<NodeStateInterface>>,
+    batch: Batch<GatherRecordType>,
     state: NodeStateInterface,
     _accessor: StateAccessorInterface,
   ): void {

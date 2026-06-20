@@ -3,10 +3,10 @@ import { describe, it } from 'node:test';
 
 import type cytoscape from 'cytoscape';
 
-import { DAG_CONTEXT } from '../../src/entities/index.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { CompositeLayout } from '../../src/viz/CompositeLayout.js';
 import { CytoscapeGraph } from '../../src/viz/CytoscapeGraph.js';
+import { TestDag } from '../_support/TestDag.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -17,18 +17,6 @@ function singleNode(name: string, outputs: Record<string, string>): DAGType['nod
     'name':   name,
     'node':   name,
     'outputs': outputs,
-  };
-}
-
-function makeDAG(name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType {
-  return {
-    '@context':   DAG_CONTEXT,
-    '@id':        `urn:noocodex:dag:${name}`,
-    '@type':      'DAG',
-    'name':       name,
-    'version':    '1',
-    'entrypoint': entrypoint,
-    'nodes':      nodes,
   };
 }
 
@@ -92,7 +80,7 @@ function capturedStyle(capture: Capture): Array<{ selector?: string; style?: Rec
 
 void describe('CytoscapeGraph.mount', () => {
   void it('mounts: resolves the Core, sets .cy, and invokes onReady', async () => {
-    const dag = makeDAG('linear', 'A', [
+    const dag = TestDag.of('linear', 'A', [
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
       singleNode('C', { "done": 'end' }),
@@ -116,7 +104,7 @@ void describe('CytoscapeGraph.mount', () => {
   });
 
   void it('applies pre-computed positions to every node element', async () => {
-    const dag = makeDAG('linear', 'A', [
+    const dag = TestDag.of('linear', 'A', [
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
       singleNode('C', { "done": 'end' }),
@@ -137,7 +125,7 @@ void describe('CytoscapeGraph.mount', () => {
   });
 
   void it('stylesheet uses explicit numeric node sizing — never the string "label"', async () => {
-    const dag = makeDAG('mini', 'A', [
+    const dag = TestDag.of('mini', 'A', [
       singleNode('A', { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
@@ -161,7 +149,7 @@ void describe('CytoscapeGraph.mount', () => {
 
   void it('self-loop (retry-to-self) node still renders and enforceVisibility does not throw', async () => {
     // 'retry' route targets the node itself → a cytoscape self-loop edge.
-    const dag = makeDAG('retry', 'work', [
+    const dag = TestDag.of('retry', 'work', [
       singleNode('work', { "success": 'end', "retry": 'work' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
@@ -182,7 +170,7 @@ void describe('CytoscapeGraph.mount', () => {
 
 void describe('CompositeLayout.compute', () => {
   void it('linear DAG: A→B→C positions form a top-down sequence (A smallest y)', async () => {
-    const dag = makeDAG('linear', 'A', [
+    const dag = TestDag.of('linear', 'A', [
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
       singleNode('C', { "done": 'end' }),
@@ -205,19 +193,19 @@ void describe('CompositeLayout.compute', () => {
 
   void it('2-level nesting: sibling compounds do not overlap each other', async () => {
     // inner DAGs: each has two leaf nodes
-    const innerA = makeDAG('innerA', 'a1', [
+    const innerA = TestDag.of('innerA', 'a1', [
       singleNode('a1', { "go": 'a2' }),
       singleNode('a2', { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
-    const innerB = makeDAG('innerB', 'b1', [
+    const innerB = TestDag.of('innerB', 'b1', [
       singleNode('b1', { "go": 'b2' }),
       singleNode('b2', { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAGType['nodes'][0],
     ]);
 
     // outer DAG: embedA then embedB in sequence
-    const outerDAG: DAGType = makeDAG('outer2', 'embedA', [
+    const outerDAG: DAGType = TestDag.of('outer2', 'embedA', [
       {
         '@id':    'urn:noocodex:dag:outer2/node/embedA',
         '@type':  'EmbeddedDAGNode',
@@ -273,7 +261,7 @@ void describe('CompositeLayout.compute', () => {
 
   void it('ScatterNode (body.dag): inner children sit between predecessor and successor in y; entry has smallest y in subgraph', async () => {
     // inner DAG: entry-node → middle-node → exit-node
-    const innerDAG = makeDAG('inner', 'entry-node', [
+    const innerDAG = TestDag.of('inner', 'entry-node', [
       singleNode('entry-node',  { "go": 'middle-node' }),
       singleNode('middle-node', { "go": 'exit-node' }),
       singleNode('exit-node',   { "done": 'end' }),
@@ -281,7 +269,7 @@ void describe('CompositeLayout.compute', () => {
     ]);
 
     // outer DAG: before → ScatterNode(body.dag=inner) → after
-    const outerDAG: DAGType = makeDAG('outer', 'before', [
+    const outerDAG: DAGType = TestDag.of('outer', 'before', [
       singleNode('before', { "go": 'embed' }),
       {
         '@id':    'urn:noocodex:dag:outer/node/embed',

@@ -179,8 +179,8 @@ const parentContainerDAG: DAGType = {
 
 // Minimal CounterState container test double used only to put a dispatcher in
 // container-dispatch mode (its runDag is never invoked by the registration tests).
-const fakeCounterContainer: DagContainerInterface<CounterState> = {
-  async runDag(_task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+const fakeCounterContainer: DagContainerInterface = {
+  async runDag(_task: DagTaskInterface<unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
   },
 };
@@ -244,8 +244,8 @@ const validDagBodyScatterDAG: DAGType = {
 // Minimal container test double bound to role 'cpu' so a dag-body scatter that
 // declares that role registers without tripping the unbound-role throw. Its
 // runDag is never invoked by the registration-only test below.
-const fakeDagContainer: DagContainerInterface<NodeStateBase> = {
-  async runDag(_task: DagTaskInterface<NodeStateBase, unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+const fakeDagContainer: DagContainerInterface = {
+  async runDag(_task: DagTaskInterface<unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
   },
 };
@@ -373,8 +373,8 @@ void describe('Container seam — W1', () => {
   // (b) Bound container: test double that runs child in-process and returns via contract
   void it('bound container receives runDag call and outcome is applied to parent state', async () => {
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
-    const fakeContainer: DagContainerInterface<CounterState> = {
-      async runDag(task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+    const fakeContainer: DagContainerInterface = {
+      async runDag(task: DagTaskInterface<unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
         // Restore child clone from the snapshot in the task.
         // items[0].snapshot is JsonObjectType at the wire boundary; cast is safe here.
         const request = task.toRequest();

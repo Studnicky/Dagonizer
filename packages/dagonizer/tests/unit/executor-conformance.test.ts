@@ -72,7 +72,7 @@ type LoopbackWorker = {
 // connected over a LoopbackChannel. Uses poolSize:1.
 // ---------------------------------------------------------------------------
 
-class LoopbackContainer extends DagContainerBase<NodeStateInterface, LoopbackWorker> {
+class LoopbackContainer extends DagContainerBase<LoopbackWorker> {
   constructor(registryModuleUrl: string, options: Partial<DagContainerOptionsType> = {}) {
     super({
       ...DagContainerBase.defaultOptions,
@@ -135,7 +135,7 @@ async function teardownPerLawContainers(): Promise<void> {
 
 function createDispatcherForLaw(
   bundle: DispatcherBundleType<NodeStateInterface, undefined>,
-  _containers: Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>,
+  _containers: Readonly<Record<string, DagContainerInterface>>,
 ): Dagonizer<NodeStateInterface, undefined> {
   // LoopbackContainer demand-grows its pool on first runDag(); no async init
   // needed in the synchronous factory. The base's acquireChannel loop handles
@@ -143,7 +143,7 @@ function createDispatcherForLaw(
   const container = new LoopbackContainer(REGISTRY_MODULE_URL);
   perLawContainers.push(container);
 
-  const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>;
+  const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
   const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ containers });
   dispatcher.registerBundle(bundle);
   return dispatcher;
@@ -234,7 +234,7 @@ describe('LoopbackContainer — state round-trip fixed point (Law 9 direct)', ()
 
     try {
       const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundleType<NodeStateInterface, undefined>;
-      const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>;
+      const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
       const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ containers });
       dispatcher.registerBundle(bundle);
 
@@ -271,7 +271,7 @@ describe('LoopbackContainer — state round-trip fixed point (Law 9 direct)', ()
 // and a resume on a healthy container reprocesses exactly those items.
 // ---------------------------------------------------------------------------
 
-class ReturnTransportErrorAfterOneContainer implements DagContainerInterface<NodeStateInterface> {
+class ReturnTransportErrorAfterOneContainer implements DagContainerInterface {
   readonly #inner: LazyLoopbackContainer;
   #callCount: number;
 
@@ -280,7 +280,7 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface<Nod
     this.#callCount = 0;
   }
 
-  async runDag(task: DagTaskInterface<NodeStateInterface, unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+  async runDag(task: DagTaskInterface<unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     this.#callCount += 1;
     if (this.#callCount === 1) {
       // First item: run for real so it acks.
@@ -328,7 +328,7 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
 
     const failingContainers = {
       [CONFORMANCE_CONTAINER_ROLE]: failing,
-    } as Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>;
+    } as Readonly<Record<string, DagContainerInterface>>;
     const failingDispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': failingContainers });
     failingDispatcher.registerBundle(bundle);
 
@@ -363,7 +363,7 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     perLawContainers.push(fresh);
     const freshContainers = {
       [CONFORMANCE_CONTAINER_ROLE]: fresh,
-    } as Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>;
+    } as Readonly<Record<string, DagContainerInterface>>;
     const freshDispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': freshContainers });
     freshDispatcher.registerBundle(bundle);
 

@@ -21,26 +21,14 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestDag } from '../_support/TestDag.js';
 
 // ===========================================================================
 // DAG builder helpers
 // ===========================================================================
-
-function makeDAG(name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id': `urn:noocodex:dag:${name}`,
-    '@type': 'DAG',
-    name,
-    'version': '1',
-    entrypoint,
-    nodes,
-  };
-}
 
 function singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
   return {
@@ -115,62 +103,66 @@ class ValueState extends NodeStateBase {
 // Shared node helpers
 // ===========================================================================
 
-// Fan-out node: takes a size-1 batch and emits N items with the given values.
-function makeFanOutNode(name: string, values: number[]): MonadicNode<ValueState, 'out'> {
-  class FanOutNode extends MonadicNode<ValueState, 'out'> {
-    readonly name: string;
-    readonly outputs = ['out'] as const;
+class TestBatchNode {
+  private constructor() { /* static class */ }
 
-    constructor(
-      nodeName: string,
-      private readonly values: number[],
-    ) {
-      super();
-      this.name = nodeName;
-    }
+  // Fan-out node: takes a size-1 batch and emits N items with the given values.
+  static fanOut(name: string, values: number[]): MonadicNode<ValueState, 'out'> {
+    class FanOutNode extends MonadicNode<ValueState, 'out'> {
+      readonly name: string;
+      readonly outputs = ['out'] as const;
 
-    override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', ValueState>> {
-      const source = batch.row(0).state;
-      const items: Array<ItemType<ValueState>> = [];
-      for (let i = 0; i < this.values.length; i++) {
-        const clone = source.clone();
-        const v = this.values[i] as number;
-        clone.value = v;
-        clone.log.push(`fan:${v}`);
-        items.push({ 'id': String(i), 'state': clone });
+      constructor(
+        nodeName: string,
+        private readonly values: number[],
+      ) {
+        super();
+        this.name = nodeName;
       }
-      const result = new Map<'out', Batch<ValueState>>();
-      result.set('out', Batch.from(items));
-      return result;
-    }
-  }
-  return new FanOutNode(name, values);
-}
 
-// Accumulator node: collects all items into an external array, passes through.
-function makeAccumulatorNode(name: string, collected: ValueState[]): MonadicNode<ValueState, 'done'> {
-  class AccumulatorNode extends MonadicNode<ValueState, 'done'> {
-    readonly name: string;
-    readonly outputs = ['done'] as const;
-
-    constructor(
-      nodeName: string,
-      private readonly collected: ValueState[],
-    ) {
-      super();
-      this.name = nodeName;
-    }
-
-    override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
-      for (const item of batch) {
-        this.collected.push(item.state);
+      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', ValueState>> {
+        const source = batch.row(0).state;
+        const items: Array<ItemType<ValueState>> = [];
+        for (let i = 0; i < this.values.length; i++) {
+          const clone = source.clone();
+          const v = this.values[i] as number;
+          clone.value = v;
+          clone.log.push(`fan:${v}`);
+          items.push({ 'id': String(i), 'state': clone });
+        }
+        const result = new Map<'out', Batch<ValueState>>();
+        result.set('out', Batch.from(items));
+        return result;
       }
-      const result = new Map<'done', Batch<ValueState>>();
-      result.set('done', batch);
-      return result;
     }
+    return new FanOutNode(name, values);
   }
-  return new AccumulatorNode(name, collected);
+
+  // Accumulator node: collects all items into an external array, passes through.
+  static accumulator(name: string, collected: ValueState[]): MonadicNode<ValueState, 'done'> {
+    class AccumulatorNode extends MonadicNode<ValueState, 'done'> {
+      readonly name: string;
+      readonly outputs = ['done'] as const;
+
+      constructor(
+        nodeName: string,
+        private readonly collected: ValueState[],
+      ) {
+        super();
+        this.name = nodeName;
+      }
+
+      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
+        for (const item of batch) {
+          this.collected.push(item.state);
+        }
+        const result = new Map<'done', Batch<ValueState>>();
+        result.set('done', batch);
+        return result;
+      }
+    }
+    return new AccumulatorNode(name, collected);
+  }
 }
 
 // ===========================================================================
@@ -262,7 +254,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
 
     const collected: ValueState[] = [];
 
-    const dag = makeDAG('bne-converge', 'fan', [
+    const dag = TestDag.of('bne-converge', 'fan', [
       singleNode('bne-converge', 'fan', 'fanout', { 'out': 'dispatch' }),
       singleNode('bne-converge', 'dispatch', 'dispatch', { 'high': 'high-step', 'low': 'low-step' }),
       singleNode('bne-converge', 'high-step', 'high-branch', { 'done': 'converge-step' }),
@@ -273,12 +265,12 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
-    dispatcher.registerNode(makeFanOutNode('fanout', [5, -3, 7]));
+    dispatcher.registerNode(TestBatchNode.fanOut('fanout', [5, -3, 7]));
     dispatcher.registerNode(new DispatchNode());
     dispatcher.registerNode(new HighBranchNode());
     dispatcher.registerNode(new LowBranchNode());
     dispatcher.registerNode(new ConvergeNode());
-    dispatcher.registerNode(makeAccumulatorNode('acc', collected));
+    dispatcher.registerNode(TestBatchNode.accumulator('acc', collected));
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('bne-converge', new ValueState());
@@ -342,7 +334,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch reaches differe
       }
     }
 
-    const dag = makeDAG('bne-diverge', 'fan', [
+    const dag = TestDag.of('bne-diverge', 'fan', [
       singleNode('bne-diverge', 'fan', 'fanout', { 'out': 'router-step' }),
       singleNode('bne-diverge', 'router-step', 'router', {
         'success-path': 'success-term',
@@ -353,7 +345,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch reaches differe
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
-    dispatcher.registerNode(makeFanOutNode('fanout', [1, -1]));
+    dispatcher.registerNode(TestBatchNode.fanOut('fanout', [1, -1]));
     dispatcher.registerNode(new RouterNode());
     dispatcher.registerDAG(dag);
 
@@ -410,7 +402,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
       }
     }
 
-    const childDAG = makeDAG('bne-child', 'inc-step', [
+    const childDAG = TestDag.of('bne-child', 'inc-step', [
       singleNode('bne-child', 'inc-step', 'inc', { 'done': 'child-end' }),
       terminalNode('bne-child', 'child-end', 'completed'),
     ]);
@@ -419,7 +411,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
 
     const collected: ValueState[] = [];
 
-    const parentDAG = makeDAG('bne-parent', 'fan', [
+    const parentDAG = TestDag.of('bne-parent', 'fan', [
       singleNode('bne-parent', 'fan', 'fanout', { 'out': 'embed-step' }),
       embedNode(
         'bne-parent',
@@ -433,9 +425,9 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
-    dispatcher.registerNode(makeFanOutNode('fanout', [1, 2, 3]));
+    dispatcher.registerNode(TestBatchNode.fanOut('fanout', [1, 2, 3]));
     dispatcher.registerNode(new IncNode(childItemsSeen));
-    dispatcher.registerNode(makeAccumulatorNode('acc', collected));
+    dispatcher.registerNode(TestBatchNode.accumulator('acc', collected));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
@@ -473,14 +465,14 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
       }
     }
 
-    const childDAG = makeDAG('bne-child42', 'inc-step', [
+    const childDAG = TestDag.of('bne-child42', 'inc-step', [
       singleNode('bne-child42', 'inc-step', 'inc42', { 'done': 'child-end' }),
       terminalNode('bne-child42', 'child-end', 'completed'),
     ]);
 
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
-    const parentDAG = makeDAG('bne-parent42', 'entry', [
+    const parentDAG = TestDag.of('bne-parent42', 'entry', [
       singleNode('bne-parent42', 'entry', 'entry-node', { 'ok': 'embed-step' }),
       embedNode(
         'bne-parent42',

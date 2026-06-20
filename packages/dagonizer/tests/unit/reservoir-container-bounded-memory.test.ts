@@ -58,11 +58,14 @@ const REGISTRY_VERSION = '1.0.0';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildHostPair(): { host: DagHost; parentSide: MessageChannelInterface } {
-  const [parentSide, hostSide] = LoopbackChannel.pair();
-  const host = new DagHost(hostSide);
-  host.start();
-  return { host, parentSide };
+class TestHostPair {
+  private constructor() {}
+  static create(): { host: DagHost; parentSide: MessageChannelInterface } {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    const host = new DagHost(hostSide);
+    host.start();
+    return { host, parentSide };
+  }
 }
 
 /** Initialize the host and assert it replied 'ready'. */
@@ -98,7 +101,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
    * independent of the (now-empty) `response.intermediates` array.
    */
   void it('batch response carries empty intermediates[] while live intermediate messages are still forwarded', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     await initHost(parentSide);
 
     const N = 5; // Small N — we test the structural contract, not heap scale
@@ -179,7 +182,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
    * `intermediates` in `ExecutionResponse`.
    */
   void it('single-item (N=1) response still carries non-empty intermediates for top-level streaming', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     await initHost(parentSide);
 
     const initialState = new NodeStateBase();
@@ -216,7 +219,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
    * Proves the bounded contract holds regardless of batch size.
    */
   void it('large batch (N=50) produces empty intermediates in response', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     await initHost(parentSide);
 
     const N = 50;
@@ -287,7 +290,7 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
     }
     const gc = (globalThis as unknown as { gc: () => void }).gc;
 
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     await initHost(parentSide);
 
     const BATCH_SIZE = 100;

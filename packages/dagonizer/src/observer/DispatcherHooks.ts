@@ -16,13 +16,18 @@ import type { DispatcherHooksInterface } from './ObserverRelay.js';
  *
  * `onFlowStart`/`onFlowEnd` are deliberately absent: those are top-level
  * concerns owned by the dispatcher's own `execute()` call, never relayed.
+ *
+ * State parameters are `NodeStateInterface` rather than the dispatcher's `TState`
+ * because hooks fire for every node — including embedded child nodes whose
+ * concrete state class differs from the top-level `TState`. Consumers that need
+ * typed state fields narrow locally via a type guard at their hook implementation.
  */
-export interface DispatcherRelaySourceInterface<TState extends NodeStateInterface> {
-  relayNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void;
-  relayNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void;
-  relayError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void;
-  relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
-  relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
+export interface DispatcherRelaySourceInterface {
+  relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
+  relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void;
+  relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void;
+  relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
+  relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
 }
 
 /**
@@ -38,30 +43,30 @@ export interface DispatcherRelaySourceInterface<TState extends NodeStateInterfac
  * Constructed once per dispatcher (in the `Dagonizer` constructor) and reused by
  * every `relayFor` call.
  */
-export class DispatcherHooks<TState extends NodeStateInterface> implements DispatcherHooksInterface<TState> {
-  readonly #source: DispatcherRelaySourceInterface<TState>;
+export class DispatcherHooks implements DispatcherHooksInterface {
+  readonly #source: DispatcherRelaySourceInterface;
 
-  constructor(source: DispatcherRelaySourceInterface<TState>) {
+  constructor(source: DispatcherRelaySourceInterface) {
     this.#source = source;
   }
 
-  onNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
+  onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.#source.relayNodeStart(nodeName, state, placementPath);
   }
 
-  onNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void {
+  onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.#source.relayNodeEnd(nodeName, output, state, placementPath);
   }
 
-  onError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void {
+  onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.#source.relayError(nodeName, error, state, placementPath);
   }
 
-  onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void {
+  onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.#source.relayPhaseEnter(dagName, phase, placementName, state, placementPath);
   }
 
-  onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void {
+  onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.#source.relayPhaseExit(dagName, phase, placementName, state, placementPath);
   }
 }

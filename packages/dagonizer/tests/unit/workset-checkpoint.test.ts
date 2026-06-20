@@ -112,8 +112,6 @@ class FanNode extends MonadicNode<WalkState, 'out'> {
     return result;
   }
 }
-function makeFanNode(name: string, n: number): FanNode { return new FanNode(name, n); }
-
 /** Process node: stamps each item's log. */
 class ProcNode extends ScalarNode<WalkState, 'done'> {
   readonly name: string;
@@ -126,7 +124,6 @@ class ProcNode extends ScalarNode<WalkState, 'done'> {
     return { 'errors': [], 'output': 'done' };
   }
 }
-function makeProcNode(name: string): ProcNode { return new ProcNode(name); }
 
 /** Accumulator node: pushes all items into `collected`, routes 'done'. */
 class CollectNode extends MonadicNode<WalkState, 'done'> {
@@ -145,58 +142,65 @@ class CollectNode extends MonadicNode<WalkState, 'done'> {
     return result;
   }
 }
-function makeCollectNode(name: string, collected: WalkState[]): CollectNode {
-  return new CollectNode(name, collected);
+
+class TestWorksetNode {
+  private constructor() {}
+  static fan(name: string, n: number): FanNode { return new FanNode(name, n); }
+  static proc(name: string): ProcNode { return new ProcNode(name); }
+  static collect(name: string, collected: WalkState[]): CollectNode { return new CollectNode(name, collected); }
 }
 
-/** Build and register the fan→proc→collect DAG. */
-function buildFanDAG(
-  dispatcher: Dagonizer<WalkState>,
-  collected: WalkState[],
-): DAGType {
-  dispatcher.registerNode(makeFanNode('fan', FAN_N));
-  dispatcher.registerNode(makeProcNode('proc'));
-  dispatcher.registerNode(makeCollectNode('collect', collected));
+class TestWorksetDag {
+  private constructor() {}
+  /** Build and register the fan→proc→collect DAG. */
+  static fan(
+    dispatcher: Dagonizer<WalkState>,
+    collected: WalkState[],
+  ): DAGType {
+    dispatcher.registerNode(TestWorksetNode.fan('fan', FAN_N));
+    dispatcher.registerNode(TestWorksetNode.proc('proc'));
+    dispatcher.registerNode(TestWorksetNode.collect('collect', collected));
 
-  const dag: DAGType = {
-    '@context': DAG_CONTEXT,
-    '@id': 'urn:noocodex:dag:fan-proc-collect',
-    '@type': 'DAG',
-    'name': 'fan-proc-collect',
-    'version': '1',
-    'entrypoint': 'fan-node',
-    'nodes': [
-      {
-        '@id': 'urn:noocodex:dag:fan-proc-collect/node/fan-node',
-        '@type': 'SingleNode',
-        'name': 'fan-node',
-        'node': 'fan',
-        'outputs': { 'out': 'proc-node' },
-      },
-      {
-        '@id': 'urn:noocodex:dag:fan-proc-collect/node/proc-node',
-        '@type': 'SingleNode',
-        'name': 'proc-node',
-        'node': 'proc',
-        'outputs': { 'done': 'collect-node' },
-      },
-      {
-        '@id': 'urn:noocodex:dag:fan-proc-collect/node/collect-node',
-        '@type': 'SingleNode',
-        'name': 'collect-node',
-        'node': 'collect',
-        'outputs': { 'done': 'end' },
-      },
-      {
-        '@id': 'urn:noocodex:dag:fan-proc-collect/node/end',
-        '@type': 'TerminalNode',
-        'name': 'end',
-        'outcome': 'completed',
-      },
-    ],
-  };
-  dispatcher.registerDAG(dag);
-  return dag;
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': 'urn:noocodex:dag:fan-proc-collect',
+      '@type': 'DAG',
+      'name': 'fan-proc-collect',
+      'version': '1',
+      'entrypoint': 'fan-node',
+      'nodes': [
+        {
+          '@id': 'urn:noocodex:dag:fan-proc-collect/node/fan-node',
+          '@type': 'SingleNode',
+          'name': 'fan-node',
+          'node': 'fan',
+          'outputs': { 'out': 'proc-node' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:fan-proc-collect/node/proc-node',
+          '@type': 'SingleNode',
+          'name': 'proc-node',
+          'node': 'proc',
+          'outputs': { 'done': 'collect-node' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:fan-proc-collect/node/collect-node',
+          '@type': 'SingleNode',
+          'name': 'collect-node',
+          'node': 'collect',
+          'outputs': { 'done': 'end' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:fan-proc-collect/node/end',
+          '@type': 'TerminalNode',
+          'name': 'end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+    dispatcher.registerDAG(dag);
+    return dag;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +219,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       // ── Reference run ──────────────────────────────────────────────────────
       const refCollected: WalkState[] = [];
       const refDispatcher = new Dagonizer<WalkState>();
-      buildFanDAG(refDispatcher, refCollected);
+      TestWorksetDag.fan(refDispatcher, refCollected);
 
       const refResult = await refDispatcher.execute('fan-proc-collect', new WalkState());
       assert.equal(refResult.cursor, null, 'reference run must complete');
@@ -235,7 +239,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       let stagesYielded = 0;
 
       const run1Dispatcher = new Dagonizer<WalkState>();
-      buildFanDAG(run1Dispatcher, run1Collected);
+      TestWorksetDag.fan(run1Dispatcher, run1Collected);
 
       const initialState = new WalkState();
       const execution = run1Dispatcher.execute('fan-proc-collect', initialState, {
@@ -266,7 +270,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       // ── Run 2: resume ────────────────────────────────────────────────────
       const run2Collected: WalkState[] = [];
       const run2Dispatcher = new Dagonizer<WalkState>();
-      buildFanDAG(run2Dispatcher, run2Collected);
+      TestWorksetDag.fan(run2Dispatcher, run2Collected);
 
       const run2Result = await run2Dispatcher.resume(dagName, restoredState, cursor);
       assert.equal(run2Result.cursor, null, 'run 2 must complete');
@@ -309,7 +313,7 @@ void describe('WorkSet checkpoint — blob shape', () => {
 
       const dispatcher = new Dagonizer<WalkState>();
       const collected: WalkState[] = [];
-      buildFanDAG(dispatcher, collected);
+      TestWorksetDag.fan(dispatcher, collected);
 
       const initialState = new WalkState();
       const execution = dispatcher.execute('fan-proc-collect', initialState, {
@@ -366,7 +370,7 @@ void describe('WorkSet checkpoint — blob shape', () => {
 
       const dispatcher = new Dagonizer<WalkState>();
       const collected: WalkState[] = [];
-      buildFanDAG(dispatcher, collected);
+      TestWorksetDag.fan(dispatcher, collected);
 
       const result = await dispatcher.execute('fan-proc-collect', new WalkState());
       assert.equal(result.cursor, null, 'run must complete');
@@ -432,9 +436,8 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
           return { 'errors': [], 'output': 'next' };
         }
       }
-      function makeIncNode(name: string): IncNode { return new IncNode(name); }
 
-      dispatcher.registerNode(makeIncNode('inc'));
+      dispatcher.registerNode(new IncNode('inc'));
 
       const dag: DAGType = {
         '@context': DAG_CONTEXT,

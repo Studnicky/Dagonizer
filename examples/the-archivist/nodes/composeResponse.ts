@@ -55,17 +55,16 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     // (the retry loop and validate-response wiring stays one
     // implementation), and dispatches to the intent-flavoured prompt
     // builder so the LLM gets the right directives + framing.
-    const composeCall = (): Promise<string> => {
-      switch (state.intent) {
-        case 'lookup-author':     return llm.composeAuthor(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-        case 'find-reviews':      return llm.composeReviews(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-        case 'describe-book':     return llm.describeBook(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-        case 'recommend-similar': return llm.composeSimilar(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-        default:                  return llm.compose(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-      }
-    };
+    let draftPromise: Promise<string>;
+    switch (state.intent) {
+      case 'lookup-author':     draftPromise = llm.composeAuthor(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
+      case 'find-reviews':      draftPromise = llm.composeReviews(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
+      case 'describe-book':     draftPromise = llm.describeBook(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
+      case 'recommend-similar': draftPromise = llm.composeSimilar(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
+      default:                  draftPromise = llm.compose(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
+    }
     try {
-      state.draft = await composeCall();
+      state.draft = await draftPromise;
       if (state.priorContext.length > 0) {
       }
       return NodeOutputBuilder.of('drafted');

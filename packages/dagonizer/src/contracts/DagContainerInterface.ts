@@ -9,17 +9,16 @@
  *
  * Implementations are free to pool resources internally. `destroy()` releases
  * pool resources when the dispatcher shuts down.
+ *
+ * The `TServices` on `DagTaskInterface` in `runDag` is `unknown` so the container
+ * interface remains decoupled from the dispatcher's services bag.
  */
-
-import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { DagOutcomeType } from './DagOutcomeType.js';
 import type { DagTaskInterface } from './DagTaskInterface.js';
 import type { ObserverRelayInterface } from './ObserverRelayInterface.js';
 
-export interface DagContainerInterface<
-  TState extends NodeStateInterface = NodeStateInterface,
-> {
+export interface DagContainerInterface {
   /**
    * Run a whole embedded DAG to completion inside the isolate.
    *
@@ -42,7 +41,7 @@ export interface DagContainerInterface<
    * errors are returned as collected errors in `DagOutcomeType.errors`
    * with `recoverable: false`.
    */
-  runDag(task: DagTaskInterface<TState, unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
+  runDag(task: DagTaskInterface<unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
 
   /**
    * Release pool resources. Called by the dispatcher's `destroy()`. Optional:

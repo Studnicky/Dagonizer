@@ -17,6 +17,7 @@
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
+import type { ChildStateFactoryType } from './ChildStateFactoryType.js';
 import type { NodeInterface } from './NodeInterface.js';
 
 export type DispatcherBundleType<TState extends NodeStateInterface, TServices = undefined> = {
@@ -24,4 +25,11 @@ export type DispatcherBundleType<TState extends NodeStateInterface, TServices = 
   nodes: NodeInterface<TState, string, TServices>[];
   /** DAGs to register; their node references must resolve against `nodes`. */
   dags:  DAGType[];
+  /**
+   * Per-DAG child-state factories keyed by DAG name. When a DAG name is absent
+   * from this map, `ChildStateFactory.cloneParent` (clone-parent) is used.
+   * Omitting the field entirely is equivalent to an empty map — all DAGs in the
+   * bundle receive the default factory.
+   */
+  stateFactories?: Record<string, ChildStateFactoryType>;
 }

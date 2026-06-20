@@ -155,39 +155,42 @@ const bodyDag: DAGType = Validator.dag.validate({
 
 // ── Parent DAG: scatter with DAG body ─────────────────────────────────────────
 
-function makeBoundDag(name: string, concurrency: number): DAGType {
-  return Validator.dag.validate({
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    'name':     name,
-    'version':  '1',
-    'entrypoint': 'fan',
-    'nodes': [
-      {
-        '@id':         `urn:noocodex:dag:${name}/node/fan`,
-        '@type':       'ScatterNode',
-        'name':        'fan',
-        'body':        { 'dag': BODY_DAG_NAME },
-        'source':      'items',
-        'itemKey':     'item',
-        'concurrency': concurrency,
-        'gather':      { 'strategy': 'bound-memory-gather' },
-        'outputs': {
-          'all-success': 'end',
-          'partial':     'end',
-          'all-error':   'end',
-          'empty':       'end',
+class TestScatterDag {
+  private constructor() {}
+  static bound(name: string, concurrency: number): DAGType {
+    return Validator.dag.validate({
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@type':       'ScatterNode',
+          'name':        'fan',
+          'body':        { 'dag': BODY_DAG_NAME },
+          'source':      'items',
+          'itemKey':     'item',
+          'concurrency': concurrency,
+          'gather':      { 'strategy': 'bound-memory-gather' },
+          'outputs': {
+            'all-success': 'end',
+            'partial':     'end',
+            'all-error':   'end',
+            'empty':       'end',
+          },
         },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  });
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    });
+  }
 }
 
 // ── Observer subclass: counts onNodeEnd calls ─────────────────────────────────
@@ -223,7 +226,7 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     dispatcher.registerNode(new BodyNodeB());
     dispatcher.registerNode(new BodyNodeC());
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(makeBoundDag('bound-N3000', 4));
+    dispatcher.registerDAG(TestScatterDag.bound('bound-N3000', 4));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
@@ -275,7 +278,7 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     dispatcher.registerNode(new BodyNodeB());
     dispatcher.registerNode(new BodyNodeC());
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(makeBoundDag('bound-hooks-N500', 4));
+    dispatcher.registerDAG(TestScatterDag.bound('bound-hooks-N500', 4));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
@@ -320,13 +323,16 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     dispatcher.registerNode(new BodyNodeB());
     dispatcher.registerNode(new BodyNodeC());
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(makeBoundDag('bound-intermediates-N200', 2));
+    dispatcher.registerDAG(TestScatterDag.bound('bound-intermediates-N200', 2));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
     const execution = dispatcher.execute('bound-intermediates-N200', state);
-    let scatterResult: NodeResultType<BoundState> | null = null;
+    // Iteration yields heterogeneous per-node results typed `NodeStateInterface`
+    // (a child embedded node runs on its own isolation state); this test reads
+    // only `nodeName` and `intermediateResults`, both on the base interface.
+    let scatterResult: NodeResultType<NodeStateInterface> | null = null;
 
     for await (const stage of execution) {
       if (stage.nodeName === 'fan') {
@@ -364,7 +370,7 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     dispatcher.registerNode(new BodyNodeB());
     dispatcher.registerNode(new BodyNodeC());
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(makeBoundDag('bound-heap-N3000', 4));
+    dispatcher.registerDAG(TestScatterDag.bound('bound-heap-N3000', 4));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);

@@ -50,31 +50,34 @@ import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 /** Yield to the microtask queue (one setImmediate cycle). */
 const tick = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
 
-/** Build a minimal single-node DAG wired to a single registered node. */
-function buildSingleNodeDag(
-  dispatcher: Dagonizer<NodeStateBase>,
-  node: NodeInterface<NodeStateBase, string>,
-  dagName: string,
-  output: string,
-): void {
-  dispatcher.registerNode(node);
-  dispatcher.registerDAG({
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${dagName}`,
-    '@type':    'DAG',
-    'name': dagName,
-    'version': '1',
-    'entrypoint': 'stage',
-    'nodes': [{
-      '@id':   `urn:noocodex:dag:${dagName}/node/stage`,
-      '@type': 'SingleNode',
-      'name':  'stage',
-      'node':  node.name,
-      'outputs': { [output]: 'end' },
-    },
-    { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
-    ],
-  });
+class TestHarness {
+  private constructor() {}
+  /** Build a minimal single-node DAG wired to a single registered node. */
+  static singleNodeDag(
+    dispatcher: Dagonizer<NodeStateBase>,
+    node: NodeInterface<NodeStateBase, string>,
+    dagName: string,
+    output: string,
+  ): void {
+    dispatcher.registerNode(node);
+    dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@type':    'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoint': 'stage',
+      'nodes': [{
+        '@id':   `urn:noocodex:dag:${dagName}/node/stage`,
+        '@type': 'SingleNode',
+        'name':  'stage',
+        'node':  node.name,
+        'outputs': { [output]: 'end' },
+      },
+      { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +112,7 @@ void describe('per-node timeout', () => {
     const slowNode = new SlowNode();
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    buildSingleNodeDag(dispatcher, slowNode, 'timeout-dag', 'success');
+    TestHarness.singleNodeDag(dispatcher, slowNode, 'timeout-dag', 'success');
 
     const state = new NodeStateBase();
     const runPromise = dispatcher.execute('timeout-dag', state);
@@ -167,7 +170,7 @@ void describe('per-node timeout', () => {
     const slowNode = new TardyNode();
 
     const dispatcher = new ObservingDagonizer();
-    buildSingleNodeDag(dispatcher, slowNode, 'err-dag', 'success');
+    TestHarness.singleNodeDag(dispatcher, slowNode, 'err-dag', 'success');
 
     const state = new NodeStateBase();
     const runPromise = dispatcher.execute('err-dag', state);
@@ -210,7 +213,7 @@ void describe('per-node timeout', () => {
     const fastNode = new FastNode();
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    buildSingleNodeDag(dispatcher, fastNode, 'fast-dag', 'done');
+    TestHarness.singleNodeDag(dispatcher, fastNode, 'fast-dag', 'done');
 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('fast-dag', state);
@@ -239,7 +242,7 @@ void describe('per-node timeout', () => {
     const slowNode = new SlowCancelNode();
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    buildSingleNodeDag(dispatcher, slowNode, 'cancel-dag', 'success');
+    TestHarness.singleNodeDag(dispatcher, slowNode, 'cancel-dag', 'success');
 
     const state = new NodeStateBase();
     const ctrl = new AbortController();

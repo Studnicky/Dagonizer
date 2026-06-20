@@ -73,25 +73,31 @@ class InjectableAdapter extends OpenAiCompatibleAdapter {
   }
 }
 
-function makeRequest(withTools: boolean): ChatRequestType {
-  return {
-    'messages': [{ 'role': 'user', 'content': 'hi' }],
-    'tools': withTools
-      ? [{ 'name': 'test', 'description': 'd', 'inputSchema': {}, 'strict': false }]
-      : [],
-    'toolChoice': { 'type': 'auto' },
-    'outputSchema': { 'variant': 'none' },
-    'maxTokens': 64,
-    'temperature': 0.2,
-    'signal': new AbortController().signal,
-  };
+class TestRequest {
+  private constructor() {}
+  static withTools(withTools: boolean): ChatRequestType {
+    return {
+      'messages': [{ 'role': 'user', 'content': 'hi' }],
+      'tools': withTools
+        ? [{ 'name': 'test', 'description': 'd', 'inputSchema': {}, 'strict': false }]
+        : [],
+      'toolChoice': { 'type': 'auto' },
+      'outputSchema': { 'variant': 'none' },
+      'maxTokens': 64,
+      'temperature': 0.2,
+      'signal': new AbortController().signal,
+    };
+  }
 }
 
-function makeFakeResponse(content: string): Response {
-  return new Response(JSON.stringify({
-    'choices': [{ 'message': { 'content': content }, 'finish_reason': 'stop' }],
-    'usage': { 'prompt_tokens': 5, 'completion_tokens': 3 },
-  }), { 'status': 200, 'headers': { 'content-type': 'application/json' } });
+class TestResponse {
+  private constructor() {}
+  static fake(content: string): Response {
+    return new Response(JSON.stringify({
+      'choices': [{ 'message': { 'content': content }, 'finish_reason': 'stop' }],
+      'usage': { 'prompt_tokens': 5, 'completion_tokens': 3 },
+    }), { 'status': 200, 'headers': { 'content-type': 'application/json' } });
+  }
 }
 
 async function withFetch<T>(impl: () => Promise<Response>, fn: () => Promise<T>): Promise<T> {
@@ -127,7 +133,7 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
       'usage': { 'prompt_tokens': 5, 'completion_tokens': 3 },
     });
 
-    const resp = await adapter.chat(makeRequest(false));
+    const resp = await adapter.chat(TestRequest.withTools(false));
     assert.equal(resp.finishReason, 'stop');
     assert.equal(resp.message.variant, 'text');
     if (resp.message.variant === 'text') {
@@ -152,7 +158,7 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
       'usage': { 'prompt_tokens': 10, 'completion_tokens': 5 },
     });
 
-    const resp = await adapter.chat(makeRequest(true));
+    const resp = await adapter.chat(TestRequest.withTools(true));
     assert.equal(resp.finishReason, 'tool_call');
     assert.equal(resp.message.variant, 'tools');
     if (resp.message.variant === 'tools') {
@@ -168,7 +174,7 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
         'finish_reason': 'stop',
       }],
     });
-    const resp = await adapter.chat(makeRequest(true));
+    const resp = await adapter.chat(TestRequest.withTools(true));
     assert.deepEqual(resp.usage, ZERO_TOKEN_USAGE);
   });
 
@@ -189,7 +195,7 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
     });
 
     await assert.rejects(
-      () => adapter.chat(makeRequest(true)),
+      () => adapter.chat(TestRequest.withTools(true)),
       (err: unknown): err is LlmError => {
         if (!(err instanceof LlmError)) return false;
         assert.equal(err.classification.reason, 'SCHEMA_VIOLATION');
@@ -204,7 +210,7 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
     const adapter = new InjectableAdapter('this is not an object');
 
     await assert.rejects(
-      () => adapter.chat(makeRequest(false)),
+      () => adapter.chat(TestRequest.withTools(false)),
       (err: unknown): err is LlmError => {
         if (!(err instanceof LlmError)) return false;
         assert.equal(err.classification.reason, 'SCHEMA_VIOLATION');
@@ -219,7 +225,7 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
     const adapter = new InjectableAdapter({ 'choices': 'not-an-array' });
 
     await assert.rejects(
-      () => adapter.chat(makeRequest(false)),
+      () => adapter.chat(TestRequest.withTools(false)),
       (err: unknown): err is LlmError => {
         if (!(err instanceof LlmError)) return false;
         assert.equal(err.classification.reason, 'SCHEMA_VIOLATION');
@@ -244,7 +250,7 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
     });
 
     await assert.rejects(
-      () => adapter.chat(makeRequest(true)),
+      () => adapter.chat(TestRequest.withTools(true)),
       (err: unknown): err is LlmError => {
         if (!(err instanceof LlmError)) return false;
         assert.equal(err.classification.reason, 'SCHEMA_VIOLATION',
@@ -271,7 +277,7 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
     });
 
     await assert.rejects(
-      () => adapter.chat(makeRequest(true)),
+      () => adapter.chat(TestRequest.withTools(true)),
       (err: unknown): err is LlmError => {
         if (!(err instanceof LlmError)) return false;
         assert.equal(err.classification.reason, 'SCHEMA_VIOLATION');
@@ -293,7 +299,7 @@ void describe('OpenAiCompatibleAdapter shouldFallbackWithoutTools', () => {
           // Provider returns 422 (SCHEMA_VIOLATION) for tools
           return new Response('tools not supported', { 'status': 422 });
         },
-        () => adapter.chat(makeRequest(true)),
+        () => adapter.chat(TestRequest.withTools(true)),
       ),
       (err: unknown): err is LlmError => {
         if (!(err instanceof LlmError)) return false;
@@ -316,9 +322,9 @@ void describe('OpenAiCompatibleAdapter shouldFallbackWithoutTools', () => {
           return new Response('tools not supported', { 'status': 422 });
         }
         // Second call (without tools): success
-        return makeFakeResponse('fallback works');
+        return TestResponse.fake('fallback works');
       },
-      () => adapter.chat(makeRequest(true)),
+      () => adapter.chat(TestRequest.withTools(true)),
     );
 
     assert.equal(fetchCallCount, 2, 'should make exactly 2 fetch calls');
@@ -338,7 +344,7 @@ void describe('OpenAiCompatibleAdapter shouldFallbackWithoutTools', () => {
           fetchCallCount++;
           return new Response('error', { 'status': 422 });
         },
-        () => adapter.chat(makeRequest(false)), // no tools
+        () => adapter.chat(TestRequest.withTools(false)), // no tools
       ),
       (err: unknown): err is LlmError => {
         if (!(err instanceof LlmError)) return false;

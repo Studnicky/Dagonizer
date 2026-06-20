@@ -2,24 +2,18 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Dagonizer } from '../../src/Dagonizer.js';
-import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAGType } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const node = (name: string, outputs: readonly string[]) => TestNode.make<NodeStateBase>(name, outputs, () => outputs[0] as string);
-
-const makeDAG = (name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType => ({
-  '@context': DAG_CONTEXT, '@id': `urn:noocodex:dag:${name}`, '@type': 'DAG',
-  name, 'version': '1', entrypoint, nodes,
-});
 
 void describe('Execution streaming (async-iterable)', () => {
   void it('yields each node stage incrementally, then resolves to the final result', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(node('a', ['success']));
     dispatcher.registerNode(node('b', ['success']));
-    dispatcher.registerDAG(makeDAG('linear', 'a', [
+    dispatcher.registerDAG(TestDag.of('linear', 'a', [
       { '@id': 'urn:noocodex:dag:linear/node/a', '@type': 'SingleNode', 'name': 'a', 'node': 'a', 'outputs': { 'success': 'b' } },
       { '@id': 'urn:noocodex:dag:linear/node/b', '@type': 'SingleNode', 'name': 'b', 'node': 'b', 'outputs': { 'success': 'end' } },
       { '@id': 'urn:noocodex:dag:linear/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
@@ -42,11 +36,11 @@ void describe('Execution streaming (async-iterable)', () => {
     dispatcher.registerNode(node('start', ['success']));
     dispatcher.registerNode(node('inner', ['success']));
 
-    dispatcher.registerDAG(makeDAG('child', 'inner', [
+    dispatcher.registerDAG(TestDag.of('child', 'inner', [
       { '@id': 'urn:noocodex:dag:child/node/inner', '@type': 'SingleNode', 'name': 'inner', 'node': 'inner', 'outputs': { 'success': 'child-end' } },
       { '@id': 'urn:noocodex:dag:child/node/child-end', '@type': 'TerminalNode', 'name': 'child-end', 'outcome': 'completed' },
     ]));
-    dispatcher.registerDAG(makeDAG('outer', 'start', [
+    dispatcher.registerDAG(TestDag.of('outer', 'start', [
       { '@id': 'urn:noocodex:dag:outer/node/start', '@type': 'SingleNode', 'name': 'start', 'node': 'start', 'outputs': { 'success': 'embed' } },
       { '@id': 'urn:noocodex:dag:outer/node/embed', '@type': 'EmbeddedDAGNode', 'name': 'embed', 'dag': 'child', 'outputs': { 'success': 'outer-end', 'error': 'outer-end' } },
       { '@id': 'urn:noocodex:dag:outer/node/outer-end', '@type': 'TerminalNode', 'name': 'outer-end', 'outcome': 'completed' },

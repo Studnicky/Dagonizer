@@ -369,16 +369,16 @@ void describe('Scatter reservoir: DAGType body in-process (Branch B)', () => {
 function buildLoopbackContainer(
   innerDispatcher: Dagonizer<ReservoirDispatchState>,
   callCounter: { count: number },
-): DagContainerInterface<ReservoirDispatchState> {
+): DagContainerInterface {
   return {
     async runDag(
-      task: DagTaskInterface<ReservoirDispatchState, unknown>,
+      task: DagTaskInterface<unknown>,
       _options?: { readonly relay?: ObserverRelayInterface },
     ): Promise<DagOutcomeType> {
       callCounter.count++;
       const cloneState = task.state;
       try {
-        const exec = innerDispatcher.execute(task.dagName, cloneState);
+        const exec = innerDispatcher.execute(task.dagName, cloneState as ReservoirDispatchState);
         const iter = exec[Symbol.asyncIterator]();
         let step = await iter.next();
         while (!step.done) {
@@ -684,7 +684,7 @@ const SUITE_D_INIT: InitMessageShapeType = {
   'servicesConfig': {},
 };
 
-class SingleChannelContainer extends DagContainerBase<ReservoirDispatchState, null> {
+class SingleChannelContainer extends DagContainerBase<null> {
   readonly #channel: MessageChannelInterface;
   /** Single-flight init promise: shared across concurrent acquireChannel calls. */
   #initPromise: Promise<void> | null = null;

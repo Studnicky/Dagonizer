@@ -58,14 +58,23 @@ class PhaseThrowingNode extends ScalarNode<TrackingState, string> {
   }
 }
 
-const makeNode = (
-  name: string,
-  outputs: readonly string[] = ['success'],
-  side?: (state: TrackingState) => void | Promise<void>,
-): PhaseMakeNode => new PhaseMakeNode(name, outputs, side);
+class TestPhaseNode {
+  private constructor() { /* static class */ }
+  static of(
+    name: string,
+    outputs: readonly string[] = ['success'],
+    side?: (state: TrackingState) => void | Promise<void>,
+  ): PhaseMakeNode {
+    return new PhaseMakeNode(name, outputs, side);
+  }
+}
 
-const makeThrowingNode = (name: string, message: string): PhaseThrowingNode =>
-  new PhaseThrowingNode(name, message);
+class TestThrowingNode {
+  private constructor() { /* static class */ }
+  static of(name: string, message: string): PhaseThrowingNode {
+    return new PhaseThrowingNode(name, message);
+  }
+}
 
 // Recording Dagonizer subclass captures phase hook invocations in order.
 type Call = {
@@ -187,14 +196,14 @@ void describe('PhaseNode placements: schema validation', () => {
 void describe('PhaseNode placements: pre-phase execution', () => {
   void it('pre-phase runs before the entrypoint and its mutations are visible to the entrypoint', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(makeNode('setup-node', ['success'], (state) => {
+    dispatcher.registerNode(TestPhaseNode.of('setup-node', ['success'], (state) => {
       state.trace.push('pre-setup');
     }));
-    dispatcher.registerNode(makeNode('entry', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
 
     const dag = new DAGBuilder('pre-runs-first', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
-      .phase('setup', 'pre', makeNode('setup-node', ['success']))
+      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
+      .phase('setup', 'pre', TestPhaseNode.of('setup-node', ['success']))
       .terminal('end')
       .build();
 
@@ -207,12 +216,12 @@ void describe('PhaseNode placements: pre-phase execution', () => {
 
   void it('pre-phase throw aborts the run; lifecycle is failed and main loop never executes', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(makeThrowingNode('boom-pre', 'pre-phase fail'));
-    dispatcher.registerNode(makeNode('entry', ['success']));
+    dispatcher.registerNode(TestThrowingNode.of('boom-pre', 'pre-phase fail'));
+    dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
 
     const dag = new DAGBuilder('pre-aborts', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
-      .phase('boom', 'pre', makeThrowingNode('boom-pre', 'pre-phase fail'))
+      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
+      .phase('boom', 'pre', TestThrowingNode.of('boom-pre', 'pre-phase fail'))
       .terminal('end')
       .build();
 
@@ -226,16 +235,16 @@ void describe('PhaseNode placements: pre-phase execution', () => {
 
   void it('multiple pre-phases run in declaration order', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(makeNode('p1', ['success'], (s) => { s.trace.push('p1'); }));
-    dispatcher.registerNode(makeNode('p2', ['success'], (s) => { s.trace.push('p2'); }));
-    dispatcher.registerNode(makeNode('p3', ['success'], (s) => { s.trace.push('p3'); }));
-    dispatcher.registerNode(makeNode('entry', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('p1', ['success'], (s) => { s.trace.push('p1'); }));
+    dispatcher.registerNode(TestPhaseNode.of('p2', ['success'], (s) => { s.trace.push('p2'); }));
+    dispatcher.registerNode(TestPhaseNode.of('p3', ['success'], (s) => { s.trace.push('p3'); }));
+    dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
 
     const dag = new DAGBuilder('multi-pre', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
-      .phase('p1', 'pre', makeNode('p1', ['success']))
-      .phase('p2', 'pre', makeNode('p2', ['success']))
-      .phase('p3', 'pre', makeNode('p3', ['success']))
+      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
+      .phase('p1', 'pre', TestPhaseNode.of('p1', ['success']))
+      .phase('p2', 'pre', TestPhaseNode.of('p2', ['success']))
+      .phase('p3', 'pre', TestPhaseNode.of('p3', ['success']))
       .terminal('end')
       .build();
 
@@ -251,12 +260,12 @@ void describe('PhaseNode placements: pre-phase execution', () => {
 void describe('PhaseNode placements: post-phase execution', () => {
   void it('post-phase runs after the main loop on the success path', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(makeNode('entry', ['success']));
-    dispatcher.registerNode(makeNode('teardown', ['success'], (s) => { s.trace.push('post-teardown'); }));
+    dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('teardown', ['success'], (s) => { s.trace.push('post-teardown'); }));
 
     const dag = new DAGBuilder('post-success', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
-      .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
+      .phase('teardown', 'post', TestPhaseNode.of('teardown', ['success']))
       .terminal('end')
       .build();
 
@@ -269,7 +278,7 @@ void describe('PhaseNode placements: post-phase execution', () => {
 
   void it('post-phase runs after the main loop on the abort path', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(makeNode('teardown', ['success'], (s) => { s.trace.push('post-teardown'); }));
+    dispatcher.registerNode(TestPhaseNode.of('teardown', ['success'], (s) => { s.trace.push('post-teardown'); }));
 
     // Slow node that signals readiness once suspended, then waits for abort.
     // Using a readiness promise avoids any wall-clock dependency.
@@ -299,8 +308,8 @@ void describe('PhaseNode placements: post-phase execution', () => {
     });
 
     const dag = new DAGBuilder('post-abort', '1')
-      .node('slow', makeNode('slow', ['success']), { 'success': 'end' })
-      .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .node('slow', TestPhaseNode.of('slow', ['success']), { 'success': 'end' })
+      .phase('teardown', 'post', TestPhaseNode.of('teardown', ['success']))
       .terminal('end')
       .build();
 
@@ -318,12 +327,12 @@ void describe('PhaseNode placements: post-phase execution', () => {
 
   void it('post-phase throw collects a warning; lifecycle is unchanged', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(makeNode('entry', ['success']));
-    dispatcher.registerNode(makeThrowingNode('boom-post', 'post-phase fail'));
+    dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
+    dispatcher.registerNode(TestThrowingNode.of('boom-post', 'post-phase fail'));
 
     const dag = new DAGBuilder('post-throws', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
-      .phase('boom', 'post', makeThrowingNode('boom-post', 'post-phase fail'))
+      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
+      .phase('boom', 'post', TestThrowingNode.of('boom-post', 'post-phase fail'))
       .terminal('end')
       .build();
 
@@ -339,16 +348,16 @@ void describe('PhaseNode placements: post-phase execution', () => {
 
   void it('multiple post-phases run in declaration order', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(makeNode('entry', ['success']));
-    dispatcher.registerNode(makeNode('p1', ['success'], (s) => { s.trace.push('p1'); }));
-    dispatcher.registerNode(makeNode('p2', ['success'], (s) => { s.trace.push('p2'); }));
-    dispatcher.registerNode(makeNode('p3', ['success'], (s) => { s.trace.push('p3'); }));
+    dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('p1', ['success'], (s) => { s.trace.push('p1'); }));
+    dispatcher.registerNode(TestPhaseNode.of('p2', ['success'], (s) => { s.trace.push('p2'); }));
+    dispatcher.registerNode(TestPhaseNode.of('p3', ['success'], (s) => { s.trace.push('p3'); }));
 
     const dag = new DAGBuilder('multi-post', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
-      .phase('p1', 'post', makeNode('p1', ['success']))
-      .phase('p2', 'post', makeNode('p2', ['success']))
-      .phase('p3', 'post', makeNode('p3', ['success']))
+      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
+      .phase('p1', 'post', TestPhaseNode.of('p1', ['success']))
+      .phase('p2', 'post', TestPhaseNode.of('p2', ['success']))
+      .phase('p3', 'post', TestPhaseNode.of('p3', ['success']))
       .terminal('end')
       .build();
 
@@ -365,14 +374,14 @@ void describe('PhaseNode placements: subclass phase hooks', () => {
   void it('onPhaseEnter / onPhaseExit fire with correct phase + placement name', async () => {
     const dispatcher = new RecordingDagonizer();
 
-    dispatcher.registerNode(makeNode('setup', ['success']));
-    dispatcher.registerNode(makeNode('entry', ['success']));
-    dispatcher.registerNode(makeNode('teardown', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('setup', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('teardown', ['success']));
 
     const dag = new DAGBuilder('instr-phases', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
-      .phase('setup', 'pre', makeNode('setup', ['success']))
-      .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
+      .phase('setup', 'pre', TestPhaseNode.of('setup', ['success']))
+      .phase('teardown', 'post', TestPhaseNode.of('teardown', ['success']))
       .terminal('end')
       .build();
 
@@ -402,14 +411,14 @@ void describe('PhaseNode placements: subclass phase hooks', () => {
 void describe('PhaseNode placements: executedNodes ordering', () => {
   void it('executedNodes includes pre-phase names at the start and post-phase names at the end', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(makeNode('setup', ['success']));
-    dispatcher.registerNode(makeNode('teardown', ['success']));
-    dispatcher.registerNode(makeNode('entry', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('setup', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('teardown', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
 
     const dag = new DAGBuilder('ordering', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
-      .phase('setup', 'pre', makeNode('setup', ['success']))
-      .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .node('entry', TestPhaseNode.of('entry', ['success']), { 'success': 'end' })
+      .phase('setup', 'pre', TestPhaseNode.of('setup', ['success']))
+      .phase('teardown', 'post', TestPhaseNode.of('teardown', ['success']))
       .terminal('end')
       .build();
 
@@ -425,7 +434,7 @@ void describe('PhaseNode placements: executedNodes ordering', () => {
 void describe('PhaseNode placements: registration validation', () => {
   void it('registerDAG throws when a PhaseNode references an unregistered node', () => {
     const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(makeNode('entry', ['success']));
+    dispatcher.registerNode(TestPhaseNode.of('entry', ['success']));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,

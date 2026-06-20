@@ -1,5 +1,11 @@
 # @studnicky/dagonizer
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking: `TState` generic removed from engine internals (semver-major).** The engine now threads state through `NodeStateInterface` uniformly across all internal modules. `DagTaskInterface<TState, TServices>` drops `TState` (now `DagTaskInterface<TServices>`); `DagContainerInterface<TState>` drops `TState` (now `DagContainerInterface`); `GatherExecutionType<TState, TItem>` drops `TState` (`state` field is `NodeStateInterface`). The public boundary (`Dagonizer<TState, TServices>`, `execute`, `resume`, `Execution<TState>`, `NodeResultType<TState>`, `ExecutionResultType<TState>`) is unchanged. This reflects the engine's actual design: embedded/scatter child DAGs run on their own heterogeneous state classes — each child state implements `NodeStateInterface` but is not `TState`. The prior `TState` threading was a fiction that forced `as`/`as unknown as` casts at every containment boundary. Consumers who pass a concrete `TState` generic to `DagContainerInterface` or `DagTaskInterface` remove that type argument; all other public-API call sites are source-compatible.
+
 ## 0.24.0
 
 ### Minor Changes

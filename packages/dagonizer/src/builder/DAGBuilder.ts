@@ -209,7 +209,7 @@ export class DAGBuilder {
   scatter<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
     name: string,
     source: string,
-    body: NodeInterface<TState, TOutput, TServices> | { readonly dag: string },
+    body: NodeInterface<TState, TOutput, TServices> | { readonly dag: string } | { readonly dagFrom: string },
     outputs: Record<string, string>,
     options: ScatterOptionsType<TState>,
   ): this {
@@ -218,14 +218,23 @@ export class DAGBuilder {
     // runtime (concurrency) or whose absence is semantically meaningful (inputs,
     // container) remain optional and are spread only when the caller provides them.
     const resolved = ScatterOptions.resolve(options);
+
+    // Resolve body to the wire shape: node, dag, or dagFrom.
+    let wireBody: ScatterNodeType['body'];
+    if ('dag' in body) {
+      wireBody = { 'dag': body.dag };
+    } else if ('dagFrom' in body) {
+      wireBody = { 'dagFrom': body.dagFrom };
+    } else {
+      wireBody = { 'node': (body as NodeInterface<TState, TOutput, TServices>).name };
+    }
+
     const scatterNode: ScatterNodeType = {
       '@id':     DAGIdentity.placementId(this.#name, name),
       '@type':   'ScatterNode',
       name,
       'source':  source,
-      // Generic erasure: the dag-branch is already narrowed by the `'dag' in body` guard;
-      // the node-branch cast drops TState/TOutput/TServices which the entity shape doesn't carry.
-      'body':    'dag' in body ? { 'dag': body.dag } : { 'node': (body as NodeInterface<TState, TOutput, TServices>).name },
+      'body':    wireBody,
       'gather':  resolved.gather,
       // outputs: Record<string, string> satisfies ScatterNode['outputs'].
       'outputs': outputs as Record<string, string>,
@@ -255,11 +264,21 @@ export class DAGBuilder {
    * `options.inputs` seeds the child from the parent before it runs;
    * `options.outputs` copies child fields back into the parent after it completes.
    *
+   * `dag` is either:
+   * - a `string` (build-time literal dag name, validated at `registerDAG` time), or
+   * - `{ from: string }` (a dotted state path read at runtime; an unregistered
+   *   resolved name routes the placement to `error` without throwing).
+   *
    * @example
    * ```ts
+   * // Build-time literal:
    * builder.embeddedDAG<ChildState, ParentState>('invoke', 'child-dag',
    *   { success: 'next', error: 'end-fail' },
    *   { inputs: { payload: 'user.name' }, outputs: { 'user.age': 'result' } },
+   * );
+   * // Runtime state path:
+   * builder.embeddedDAG('invoke', { from: 'selectedDag' },
+   *   { success: 'next', error: 'end-fail' },
    * );
    * ```
    */
@@ -268,7 +287,7 @@ export class DAGBuilder {
     TParentState extends NodeStateInterface = NodeStateInterface,
   >(
     name: string,
-    dagName: string,
+    dag: string | { readonly from: string },
     outputs: Record<'success' | 'error', string>,
     options: TypedEmbeddedDAGOptionsType<TChildState, TParentState> = {},
   ): this {
@@ -280,13 +299,19 @@ export class DAGBuilder {
           ...(options.outputs !== undefined ? { 'output': options.outputs as Record<string, string> } : {}),
         }
         : undefined;
+
+    // Resolve dag vs dagFrom: exactly one is set on the wire node.
+    const dagField: { dag: string } | { dagFrom: string } =
+      typeof dag === 'string' ? { 'dag': dag } : { 'dagFrom': dag.from };
+
     const embeddedNode: EmbeddedDAGNodeType = {
       '@id':     DAGIdentity.placementId(this.#name, name),
       '@type':   'EmbeddedDAGNode',
       name,
-      'dag':     dagName,
       // Record<'success'|'error', string> satisfies EmbeddedDAGNode['outputs']: Record<string, string>.
       'outputs': outputs as Record<string, string>,
+      // Exactly one of dag | dagFrom, spread at construction — no post-construction shape mutation.
+      ...dagField,
       // Optional fields spread at construction — no post-construction shape mutation.
       ...(stateMapping !== undefined ? { 'stateMapping': stateMapping } : {}),
       ...(options.container !== undefined ? { 'container': options.container } : {}),

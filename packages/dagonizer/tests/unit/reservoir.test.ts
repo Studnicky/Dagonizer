@@ -478,9 +478,9 @@ function makeControlledSource(items: IdleItem[], gate: Deferred<void>): AsyncIte
  * Build a fake driver that records released batches. Items carry `bufferKey`;
  * each batch is recorded as `{ size, key }`.
  */
-function makeFakeDriver(releases: { size: number; key: string }[]): ReservoirDriverInterface<NodeStateBase> {
+function makeFakeDriver(releases: { size: number; key: string }[]): ReservoirDriverInterface {
   return {
-    async executeBatch(items): Promise<ScatterItemBatchResultType<NodeStateBase>> {
+    async executeBatch(items): Promise<ScatterItemBatchResultType> {
       const key = String((items[0] as { bufferKey: string } | undefined)?.bufferKey ?? '');
       releases.push({ 'size': items.length, key });
       return {
@@ -533,7 +533,7 @@ void describe('Reservoir scatter — idle release (partial buffer)', () => {
     const gate = makeDeferred<void>();
     const releases: { size: number; key: string }[] = [];
 
-    const buf = new ReservoirBuffer<NodeStateBase>(
+    const buf = new ReservoirBuffer(
       makeFakeDriver(releases),
       {
         'concurrencyLimit': 10,
@@ -599,7 +599,7 @@ void describe('Reservoir scatter — idle timer invalidated by capacity release'
     const gate = makeDeferred<void>();
     const releases: { size: number; key: string }[] = [];
 
-    const buf = new ReservoirBuffer<NodeStateBase>(
+    const buf = new ReservoirBuffer(
       makeFakeDriver(releases),
       {
         'concurrencyLimit': 10,
@@ -657,7 +657,7 @@ void describe('Reservoir scatter — no idleMs, no idle timers', () => {
     const releases: { size: number; key: string }[] = [];
 
     // No idleMs — complete-flush only.
-    const buf = new ReservoirBuffer<NodeStateBase>(
+    const buf = new ReservoirBuffer(
       makeFakeDriver(releases),
       {
         'concurrencyLimit': 10,

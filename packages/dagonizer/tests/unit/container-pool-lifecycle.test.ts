@@ -59,7 +59,7 @@ type TestWorker = {
   hostSide: MessageChannelInterface;
 }
 
-class TestLoopbackContainer extends DagContainerBase<NodeStateInterface, TestWorker> {
+class TestLoopbackContainer extends DagContainerBase<TestWorker> {
   entriesCreated: number = 0;
   readonly #deathCallbacks: Array<() => void> = [];
 
@@ -119,7 +119,7 @@ class TestLoopbackContainer extends DagContainerBase<NodeStateInterface, TestWor
 // Minimal DagTaskInterface implementation for direct runDag() calls
 // ---------------------------------------------------------------------------
 
-class MinimalTask implements DagTaskInterface<NodeStateInterface, undefined> {
+class MinimalTask implements DagTaskInterface<undefined> {
   readonly dagName: string;
   readonly placementPath: string[];
   readonly correlationId: string;
@@ -160,7 +160,7 @@ function buildDispatcher(
   container: TestLoopbackContainer,
 ): Dagonizer<NodeStateInterface, undefined> {
   const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundleType<NodeStateInterface, undefined>;
-  const containers: Readonly<Record<string, DagContainerInterface<NodeStateInterface>>> = {
+  const containers: Readonly<Record<string, DagContainerInterface>> = {
     [CONFORMANCE_CONTAINER_ROLE]: container,
   };
   const d = new Dagonizer<NodeStateInterface, undefined>({ containers });
@@ -323,7 +323,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
 
       // Create a task whose signal we can fire.
       class AbortableTask extends NodeStateBase {}
-      const abortTask: DagTaskInterface<NodeStateInterface, undefined> = {
+      const abortTask: DagTaskInterface<undefined> = {
         'dagName': CONFORMANCE_DAG.law1,
         'placementPath': [],
         'correlationId': 'con1-abort',

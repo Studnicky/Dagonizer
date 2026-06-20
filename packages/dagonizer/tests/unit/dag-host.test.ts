@@ -54,14 +54,14 @@ const INVALID_MODULE_URL = resolve(PACKAGE_ROOT, 'dist', 'index.js');
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildHostPair(): {
-  host: DagHost;
-  parentSide: MessageChannelInterface;
-} {
-  const [parentSide, hostSide] = LoopbackChannel.pair();
-  const host = new DagHost(hostSide);
-  host.start();
-  return { host, parentSide };
+class TestHostPair {
+  private constructor() {}
+  static create(): { host: DagHost; parentSide: MessageChannelInterface } {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    const host = new DagHost(hostSide);
+    host.start();
+    return { host, parentSide };
+  }
 }
 
 /** Collect the next single message from a channel. */
@@ -93,7 +93,7 @@ async function sendInit(
 
 void describe('DagHost — init handshake', () => {
   void it('replies ready with matching registryVersion on valid init', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     const reply = await sendInit(parentSide);
 
     assert.strictEqual(reply.variant, 'ready');
@@ -104,7 +104,7 @@ void describe('DagHost — init handshake', () => {
   });
 
   void it('replies error with VERSION_MISMATCH when version does not match', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     const reply = await sendInit(parentSide, REGISTRY_MODULE_URL, '99.0.0');
 
     assert.strictEqual(reply.variant, 'error');
@@ -116,7 +116,7 @@ void describe('DagHost — init handshake', () => {
   });
 
   void it('replies error when module cannot be resolved', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     const reply = await sendInit(parentSide, '/nonexistent/module-does-not-exist.js');
 
     assert.strictEqual(reply.variant, 'error');
@@ -127,7 +127,7 @@ void describe('DagHost — init handshake', () => {
   });
 
   void it('replies error with INVALID_REGISTRY_MODULE for module without instantiate', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     const reply = await sendInit(parentSide, INVALID_MODULE_URL);
 
     assert.strictEqual(reply.variant, 'error');
@@ -147,7 +147,7 @@ void describe('DagHost — init handshake', () => {
 
 void describe('DagHost — execute returns result', () => {
   void it('runs a dag and returns result with items[0].terminalOutcome + items[0].snapshot + intermediates', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
 
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready');
@@ -187,7 +187,7 @@ void describe('DagHost — execute returns result', () => {
   });
 
   void it('forwards intermediate messages for each node in the dag', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
 
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready');
@@ -225,7 +225,7 @@ void describe('DagHost — execute returns result', () => {
   });
 
   void it('returns result with items[0].terminalOutcome failed on execution error', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
 
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready');
@@ -267,7 +267,7 @@ void describe('DagHost — execute returns result', () => {
 
 void describe('DagHost — abort', () => {
   void it('fires the AbortController; in-flight sleeper terminates before safety ceiling', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
 
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready');
@@ -315,7 +315,7 @@ void describe('DagHost — abort', () => {
 
 void describe('DagHost — shutdown', () => {
   void it('channel closes after shutdown message (no hang)', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
 
     const ready = await sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready');
@@ -334,7 +334,7 @@ void describe('DagHost — shutdown', () => {
 
 void describe('DagHost — execute before init (G8)', () => {
   void it('replies error with NOT_INITIALIZED when execute arrives before init', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
 
     // DO NOT send init — send execute directly.
     const replyPromise = nextMessage(parentSide);
@@ -362,7 +362,7 @@ void describe('DagHost — execute before init (G8)', () => {
   });
 
   void it('can init successfully after a NOT_INITIALIZED execute attempt', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
 
     // First: send execute without init — consume the error.
     const errorPromise = nextMessage(parentSide);

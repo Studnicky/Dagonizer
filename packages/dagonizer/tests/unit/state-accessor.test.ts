@@ -200,7 +200,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
   });
 
   void it('StateMapper.cloneChild produces a correctly-typed subclass instance with mapped metadata', () => {
-    const mapper = new StateMapper<DomainState>(metadataAccessor);
+    const mapper = new StateMapper(metadataAccessor);
     const parent = new DomainState();
     parent.domainValue = 55;
     parent.setMetadata('item', 3);

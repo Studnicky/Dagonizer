@@ -20,7 +20,6 @@ import type { ReservoirDriverInterface } from '../contracts/ReservoirDriver.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { ExecutionError } from '../errors/index.js';
-import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Scheduler } from '../runtime/Scheduler.js';
 
 // V8-stable buffered item shape. Module-private; not exported.
@@ -52,8 +51,8 @@ export type ReservoirBufferOptionsType = {
  * V8 shape stability: all fields are initialised in declaration order in the
  * constructor. No fields are added or deleted after construction.
  */
-export class ReservoirBuffer<TState extends NodeStateInterface> {
-  readonly #driver: ReservoirDriverInterface<TState>;
+export class ReservoirBuffer {
+  readonly #driver: ReservoirDriverInterface;
   readonly #concurrencyLimit: number;
   readonly #inbox: ScatterInboxItemType[];
   readonly #freshIter: AsyncIterator<unknown>;
@@ -69,7 +68,7 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
   #activeWorkers: number;
   #slotResolve: (() => void) | null;
 
-  constructor(driver: ReservoirDriverInterface<TState>, options: ReservoirBufferOptionsType) {
+  constructor(driver: ReservoirDriverInterface, options: ReservoirBufferOptionsType) {
     this.#driver = driver;
     this.#concurrencyLimit = options.concurrencyLimit;
     this.#inbox = options.inbox;

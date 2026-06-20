@@ -79,3 +79,6 @@ export type { RemoteStoreLeaseType } from './RemoteStoreLease.js';
 // Key-value store: snapshottable, cross-embedded-DAG shared state.
 export type { SnapshottableInterface, StoreSnapshotType, StoreSnapshotEntryType } from './SnapshottableInterface.js';
 export type { StoreInterface } from './StoreInterface.js';
+
+// Child-state factory: constructor thunk for isolated sub-DAG child states.
+export type { ChildStateFactoryType } from './ChildStateFactoryType.js';

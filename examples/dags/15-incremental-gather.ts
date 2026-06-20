@@ -95,7 +95,7 @@ export class LoggingMapStrategy extends GatherStrategy {
   ): void {
     const mapping = config.mapping ?? {};
     for (const item of batch) {
-      const record = item.state as GatherRecordType<NodeStateInterface>;
+      const record = item.state as GatherRecordType;
       for (const [clonePath, parentPath] of Object.entries(mapping)) {
         const value = accessor.get(record.cloneState, clonePath);
         const existing = accessor.get<readonly unknown[]>(state, parentPath) ?? [];

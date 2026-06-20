@@ -92,7 +92,7 @@ export const gatherPartition = { strategy: 'partition', partitions: { success: '
 class TopNGather extends GatherStrategy {
   readonly name = 'top-n';
   override initial(_config: GatherConfigType, _state: NodeStateInterface, _accessor: StateAccessorInterface): void { /* seed */ }
-  override reduce(_config: GatherConfigType, _batch: Batch<GatherRecordType<NodeStateInterface>>, _state: NodeStateInterface, _accessor: StateAccessorInterface): void { /* fold */ }
+  override reduce(_config: GatherConfigType, _batch: Batch<GatherRecordType>, _state: NodeStateInterface, _accessor: StateAccessorInterface): void { /* fold */ }
   override async finalize(_config: GatherConfigType, _execution: GatherExecutionType<NodeStateInterface>): Promise<void> { /* trim to top-N */ }
 }
 GatherStrategies.register(new TopNGather());

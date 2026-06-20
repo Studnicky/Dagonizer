@@ -36,8 +36,8 @@ import type { NodeResultType } from './entities/node/NodeResult.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 
 export class Execution<TState extends NodeStateInterface>
-implements AsyncIterable<NodeResultType<TState>>, PromiseLike<ExecutionResultType<TState>> {
-  readonly #generator: AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void>;
+implements AsyncIterable<NodeResultType<NodeStateInterface>>, PromiseLike<ExecutionResultType<TState>> {
+  readonly #generator: AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void>;
   #drained: Promise<ExecutionResultType<TState>> | null = null;
   #cachedResult: ExecutionResultType<TState> | null = null;
 
@@ -50,11 +50,11 @@ implements AsyncIterable<NodeResultType<TState>>, PromiseLike<ExecutionResultTyp
    * once, lazily, on the first iteration or `await`. There is no factory
    * function-pass-in — the generator IS the execution.
    */
-  constructor(generator: AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void>) {
+  constructor(generator: AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void>) {
     this.#generator = generator;
   }
 
-  [Symbol.asyncIterator](): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
+  [Symbol.asyncIterator](): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void> {
     return this.#iterate();
   }
 
@@ -73,7 +73,7 @@ implements AsyncIterable<NodeResultType<TState>>, PromiseLike<ExecutionResultTyp
     return this.#drained.then(onfulfilled, onrejected);
   }
 
-  async *#iterate(): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
+  async *#iterate(): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void> {
     if (this.#cachedResult !== null) {
       return this.#cachedResult;
     }

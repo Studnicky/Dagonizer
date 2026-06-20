@@ -304,7 +304,7 @@ export class CytoscapeRenderer {
       case 'SingleNode':
         return { ...base, "data": { ...base.data, "node": placement.node } };
       case 'ScatterNode': {
-        const bodyRef = 'node' in placement.body ? placement.body.node : placement.body.dag;
+        const bodyRef = 'node' in placement.body ? placement.body.node : ('dag' in placement.body ? placement.body.dag : `dagFrom:${placement.body.dagFrom}`);
         // Add dag-reservoir class when reservoir config is present, so a
         // stylesheet or animation layer can target it for the glyph and
         // per-key fill. Per-key fill and per-firing batch size are runtime
@@ -337,7 +337,7 @@ export class CytoscapeRenderer {
         };
       }
       case 'EmbeddedDAGNode':
-        return { ...base, "data": { ...base.data, "dag": placement.dag } };
+        return { ...base, "data": { ...base.data, ...(placement.dag !== undefined && { "dag": placement.dag }), ...(placement.dagFrom !== undefined && { "dagFrom": placement.dagFrom }) } };
       case 'TerminalNode':
         return {
           ...base,

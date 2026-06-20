@@ -50,6 +50,15 @@ export const ScatterNodeSchema = {
           'properties': { 'dag': { 'type': 'string', 'minLength': 1 } },
           'additionalProperties': false,
         },
+        {
+          // dagFrom: a dotted state path on the per-item clone state whose
+          // resolved string value names the dag at runtime.
+          // Unregistered resolved names route the item to `error` (no throw).
+          'type': 'object',
+          'required': ['dagFrom'],
+          'properties': { 'dagFrom': { 'type': 'string', 'minLength': 1 } },
+          'additionalProperties': false,
+        },
       ],
     },
     'source':      { 'type': 'string', 'minLength': 1 },

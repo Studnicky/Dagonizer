@@ -1,6 +1,5 @@
 import type { DagRegistrarSourceInterface } from '../dag/DagRegistrar.js';
 import { DagRegistrar } from '../dag/DagRegistrar.js';
-import type { NodeStateInterface } from '../NodeStateBase.js';
 import type { DispatcherRelaySourceInterface } from '../observer/DispatcherHooks.js';
 import { DispatcherHooks } from '../observer/DispatcherHooks.js';
 import type { DispatcherHooksInterface } from '../observer/ObserverRelay.js';
@@ -37,15 +36,15 @@ import { ScatterExecutor } from './ScatterExecutor.js';
  * whole engine module graph, so the explicit dependency ordering lives in one
  * place rather than being implied by constructor statement order on the root.
  */
-export type EngineHostType<TState extends NodeStateInterface, TServices> =
-  & DispatcherRelaySourceInterface<TState>
-  & BodyRunPortInterface<TState, TServices>
-  & GatherSourceInterface<TState, TServices>
-  & LeafExecutorSourceInterface<TState, TServices>
-  & EmbeddedDagExecutorSourceType<TState>
-  & ScatterDispatchSourceInterface<TState, TServices>
-  & NodeSchedulerSourceInterface<TState, TServices>
-  & DagRegistrarSourceInterface<TState, TServices>;
+export type EngineHostType<TServices> =
+  & DispatcherRelaySourceInterface
+  & BodyRunPortInterface<TServices>
+  & GatherSourceInterface<TServices>
+  & LeafExecutorSourceInterface<TServices>
+  & EmbeddedDagExecutorSourceType
+  & ScatterDispatchSourceInterface<TServices>
+  & NodeSchedulerSourceInterface<TServices>
+  & DagRegistrarSourceInterface<TServices>;
 
 /**
  * Immutable record of every engine module constructed for one dispatcher
@@ -54,16 +53,16 @@ export type EngineHostType<TState extends NodeStateInterface, TServices> =
  * composition root reads each field onto its own `this.X` slots in declaration
  * order, preserving V8 shape stability and every existing internal call site.
  */
-export type EngineBundleType<TState extends NodeStateInterface, TServices> = {
-  readonly relayHooks: DispatcherHooksInterface<TState>;
-  readonly bodyExecutor: BodyExecutor<TState, TServices>;
-  readonly gather: Gather<TState, TServices>;
-  readonly leafExecutor: LeafExecutor<TState, TServices>;
-  readonly embeddedDagExecutor: EmbeddedDagExecutor<TState, TServices>;
-  readonly scatterExecutor: ScatterExecutor<TState, TServices>;
-  readonly placementDispatch: PlacementDispatch<TState>;
-  readonly nodeScheduler: NodeScheduler<TState, TServices>;
-  readonly dagRegistrar: DagRegistrar<TState, TServices>;
+export type EngineBundleType<TServices> = {
+  readonly relayHooks: DispatcherHooksInterface;
+  readonly bodyExecutor: BodyExecutor<TServices>;
+  readonly gather: Gather<TServices>;
+  readonly leafExecutor: LeafExecutor<TServices>;
+  readonly embeddedDagExecutor: EmbeddedDagExecutor<TServices>;
+  readonly scatterExecutor: ScatterExecutor<TServices>;
+  readonly placementDispatch: PlacementDispatch;
+  readonly nodeScheduler: NodeScheduler<TServices>;
+  readonly dagRegistrar: DagRegistrar<TServices>;
 };
 
 /**
@@ -86,18 +85,18 @@ export type EngineBundleType<TState extends NodeStateInterface, TServices> = {
 export class EngineComposer {
   private constructor() { /* static class */ }
 
-  static compose<TState extends NodeStateInterface, TServices>(
-    host: EngineHostType<TState, TServices>,
-  ): EngineBundleType<TState, TServices> {
-    const relayHooks = new DispatcherHooks<TState>(host);
-    const bodyExecutor = new BodyExecutor<TState, TServices>(host);
-    const gather = new Gather<TState, TServices>(host);
-    const leafExecutor = new LeafExecutor<TState, TServices>(host);
-    const embeddedDagExecutor = new EmbeddedDagExecutor<TState, TServices>(host, bodyExecutor);
-    const scatterExecutor = new ScatterExecutor<TState, TServices>(host, bodyExecutor, gather);
-    const placementDispatch = new PlacementDispatch<TState>(leafExecutor, embeddedDagExecutor, scatterExecutor);
-    const nodeScheduler = new NodeScheduler<TState, TServices>(host);
-    const dagRegistrar = new DagRegistrar<TState, TServices>(host);
+  static compose<TServices>(
+    host: EngineHostType<TServices>,
+  ): EngineBundleType<TServices> {
+    const relayHooks = new DispatcherHooks(host);
+    const bodyExecutor = new BodyExecutor<TServices>(host);
+    const gather = new Gather<TServices>(host);
+    const leafExecutor = new LeafExecutor<TServices>(host);
+    const embeddedDagExecutor = new EmbeddedDagExecutor<TServices>(host, bodyExecutor);
+    const scatterExecutor = new ScatterExecutor<TServices>(host, bodyExecutor, gather);
+    const placementDispatch = new PlacementDispatch(leafExecutor, embeddedDagExecutor, scatterExecutor);
+    const nodeScheduler = new NodeScheduler<TServices>(host);
+    const dagRegistrar = new DagRegistrar<TServices>(host);
     return {
       relayHooks,
       bodyExecutor,

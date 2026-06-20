@@ -1,7 +1,9 @@
+import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
+import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
-import type { StateMapper } from '../runtime/StateMapper.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
 import { PlacementRouter } from './PlacementRouter.js';
@@ -15,8 +17,18 @@ import type { RunNodeResultType } from './ScatterDispatch.js';
  * no methods, which the `noocodec/interface-must-be-contract` rule requires be
  * a `type` rather than an `interface`.
  */
-export type EmbeddedDagExecutorSourceType<TState extends NodeStateInterface> = {
-  readonly stateMapper: StateMapper<TState>;
+export type EmbeddedDagExecutorSourceType = {
+  readonly stateMapper: {
+    cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
+    spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
+    mapOutput(childState: NodeStateInterface, parentState: NodeStateInterface, output: Record<string, string>): void;
+  };
+  /** State path accessor — used to resolve `dagFrom` paths at execution time. */
+  readonly accessor: StateAccessorInterface;
+  /** Registered DAGs — used to validate that a `dagFrom`-resolved name is registered. */
+  readonly dags: ReadonlyMap<string, DAGType>;
+  /** Per-DAG child-state factories — used to spawn isolated child state when registered. */
+  readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
 };
 
 /**
@@ -33,13 +45,13 @@ export type EmbeddedDagExecutorSourceType<TState extends NodeStateInterface> = {
  * error to the placement's `'error'` output. `body.infrastructureError` is
  * intentionally ignored here (no re-queue).
  */
-export class EmbeddedDagExecutor<TState extends NodeStateInterface, TServices> {
-  readonly #source: EmbeddedDagExecutorSourceType<TState>;
-  readonly #bodyExecutor: BodyExecutor<TState, TServices>;
+export class EmbeddedDagExecutor<TServices> {
+  readonly #source: EmbeddedDagExecutorSourceType;
+  readonly #bodyExecutor: BodyExecutor<TServices>;
 
   constructor(
-    source: EmbeddedDagExecutorSourceType<TState>,
-    bodyExecutor: BodyExecutor<TState, TServices>,
+    source: EmbeddedDagExecutorSourceType,
+    bodyExecutor: BodyExecutor<TServices>,
   ) {
     this.#source = source;
     this.#bodyExecutor = bodyExecutor;
@@ -47,20 +59,62 @@ export class EmbeddedDagExecutor<TState extends NodeStateInterface, TServices> {
 
   async executeEmbeddedDAG(
     placement: EmbeddedDAGNodeType,
-    state: TState,
+    state: NodeStateInterface,
     signal: AbortSignal | null,
     placementPath: readonly string[],
     bufferIntermediates: boolean = true,
-  ): Promise<RunNodeResultType<TState>> {
+  ): Promise<RunNodeResultType> {
     const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
     const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
-    const cloneState = this.#source.stateMapper.cloneChild(state, inputMapping);
+
+    // Resolve the sub-DAG name: `dag` is a build-time literal; `dagFrom` is
+    // resolved from state at execution time. A null result means the path did
+    // not resolve to a string — route to the error output via a null body run.
+    const dagName = EmbeddedDAGNodeDefaults.resolveDagName(placement, state, this.#source.accessor);
+
+    // Produce the child state. Use the DAG's isolation factory when registered,
+    // otherwise fall back to cloneChild (clone-parent semantics). The factory
+    // lookup uses the resolved dagName; if dagName is null the assembly below
+    // routes to error without touching the child state meaningfully.
+    const factory = dagName !== null ? this.#source.stateFactories.get(dagName) : undefined;
+    const cloneState = factory !== undefined
+      ? this.#source.stateMapper.spawnChild(state, inputMapping, factory)
+      : this.#source.stateMapper.cloneChild(state, inputMapping);
+
+    if (dagName === null) {
+      return PlacementRouter.assemble(
+        placement.name,
+        placement.outputs,
+        null,
+        cloneState,
+        state,
+        outputMapping,
+        [],
+        this.#source.stateMapper,
+      );
+    }
+
+    // Validate that the resolved dag name is registered. An unregistered name
+    // means the runtime path resolved to a string that does not correspond to
+    // any known DAG — route to error without throwing.
+    if (!this.#source.dags.has(dagName)) {
+      return PlacementRouter.assemble(
+        placement.name,
+        placement.outputs,
+        null,
+        cloneState,
+        state,
+        outputMapping,
+        [],
+        this.#source.stateMapper,
+      );
+    }
 
     // Run the sub-DAG body in-process or through a bound container. The
     // in-process-vs-container branch, the bufferIntermediates O(N*M*L) guard,
     // and the container error/snapshot collection all live in BodyExecutor.
     const body = await this.#bodyExecutor.run(
-      placement.dag,
+      dagName,
       placement.name,
       cloneState,
       state,

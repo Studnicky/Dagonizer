@@ -60,28 +60,33 @@ class AbortState extends NodeStateBase {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 /** Build a simple scatter DAG over an `items` source with an append gather. */
-const makeAbortDag = (name: string, concurrency: number): DAGType => ({
-  '@context': DAG_CONTEXT,
-  '@id':      `urn:noocodex:dag:${name}`,
-  '@type':    'DAG',
-  'name':     name,
-  'version':  '1',
-  'entrypoint': 'fan',
-  'nodes': [
-    {
-      '@id':         `urn:noocodex:dag:${name}/node/fan`,
-      '@type':       'ScatterNode',
-      'name':        'fan',
-      'body':        { 'node': 'worker' },
-      'source':      'items',
-      'itemKey':     'item',
-      'concurrency': concurrency,
-      'gather':      { 'strategy': 'append', 'target': 'processed' },
-      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
-    },
-    { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
-  ],
-});
+class TestAbortDag {
+  private constructor() {}
+  static ofConcurrency(name: string, concurrency: number): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@type':       'ScatterNode',
+          'name':        'fan',
+          'body':        { 'node': 'worker' },
+          'source':      'items',
+          'itemKey':     'item',
+          'concurrency': concurrency,
+          'gather':      { 'strategy': 'append', 'target': 'processed' },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
+    };
+  }
+}
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
@@ -134,7 +139,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     const worker = new WorkerNode();
 
     dispatcher.registerNode(worker);
-    dispatcher.registerDAG(makeAbortDag('abort-async-50', 2));
+    dispatcher.registerDAG(TestAbortDag.ofConcurrency('abort-async-50', 2));
 
     const state = new AbortState();
 
@@ -263,7 +268,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
       }
     }
     dispatcher.registerNode(new PreAbortWorkerNode());
-    dispatcher.registerDAG(makeAbortDag('pre-aborted', 2));
+    dispatcher.registerDAG(TestAbortDag.ofConcurrency('pre-aborted', 2));
 
     const state = new AbortState();
 

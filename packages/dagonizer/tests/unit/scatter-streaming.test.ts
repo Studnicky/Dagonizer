@@ -75,30 +75,35 @@ class StreamState extends NodeStateBase {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-const makeScatterDag = (
-  dagName: string,
-  gatherStrategy: GatherConfigType,
-  options: { concurrency?: number } = {},
-): DAGType => ({
-  '@context': DAG_CONTEXT,
-  '@id':      `urn:noocodex:dag:${dagName}`,
-  '@type':    'DAG',
-  'name': dagName, 'version': '1', 'entrypoint': 'fan',
-  'nodes': [
-    {
-      '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
-      '@type':  'ScatterNode',
-      'name':   'fan',
-      'body':   { 'node': 'worker' },
-      'source': 'items',
-      'itemKey': 'item',
-      ...(options.concurrency !== undefined ? { 'concurrency': options.concurrency } : {}),
-      'gather': gatherStrategy,
-      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
-    },
-    { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
-  ],
-});
+class TestScatterDag {
+  private constructor() {}
+  static streaming(
+    dagName: string,
+    gatherStrategy: GatherConfigType,
+    options: { concurrency?: number } = {},
+  ): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@type':    'DAG',
+      'name': dagName, 'version': '1', 'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
+          '@type':  'ScatterNode',
+          'name':   'fan',
+          'body':   { 'node': 'worker' },
+          'source': 'items',
+          'itemKey': 'item',
+          ...(options.concurrency !== undefined ? { 'concurrency': options.concurrency } : {}),
+          'gather': gatherStrategy,
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
+    };
+  }
+}
 
 // ─── tests ───────────────────────────────────────────────────────────────────
 
@@ -112,7 +117,7 @@ void describe('Scatter: array source backward compatibility', () => {
       protected async executeOne(): Promise<NodeOutputType<'success'>> { calls++; return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new ArrCompatWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('arr-compat',
+    dispatcher.registerDAG(TestScatterDag.streaming('arr-compat',
       { 'strategy': 'append', 'target': 'processed' }));
 
     const state = new StreamState();
@@ -143,7 +148,7 @@ void describe('Scatter: array source backward compatibility', () => {
     }
     dispatcher.registerNode(new BoundedWorkerNode());
     // concurrency=2 on 6 items: peak should never exceed 2.
-    dispatcher.registerDAG(makeScatterDag('arr-bounded',
+    dispatcher.registerDAG(TestScatterDag.streaming('arr-bounded',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 2 }));
 
@@ -165,7 +170,7 @@ void describe('Scatter: AsyncIterable source', () => {
       protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new AsyncSourceWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('async-source',
+    dispatcher.registerDAG(TestScatterDag.streaming('async-source',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
 
@@ -215,7 +220,7 @@ void describe('Scatter: AsyncIterable source', () => {
     }
     dispatcher.registerNode(new BackpressureWorkerNode());
     // concurrency=1: only one item in-flight at a time.
-    dispatcher.registerDAG(makeScatterDag('bp-test',
+    dispatcher.registerDAG(TestScatterDag.streaming('bp-test',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
 
@@ -262,7 +267,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
       }
     }
     dispatcher.registerNode(new ResumeArrWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('resume-arr',
+    dispatcher.registerDAG(TestScatterDag.streaming('resume-arr',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
 
@@ -311,7 +316,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
       }
     }
     dispatcher.registerNode(new ResumeInboxWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('resume-inbox',
+    dispatcher.registerDAG(TestScatterDag.streaming('resume-inbox',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
 
@@ -366,7 +371,7 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
       }
     }
     dispatcher.registerNode(new ResumeAsyncWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('resume-async',
+    dispatcher.registerDAG(TestScatterDag.streaming('resume-async',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
 
@@ -494,7 +499,7 @@ void describe('Scatter: incremental gather', () => {
       protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new IncrAppendWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('incr-append',
+    dispatcher.registerDAG(TestScatterDag.streaming('incr-append',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
 
@@ -662,7 +667,7 @@ void describe('Scatter: progress shape (inbox model)', () => {
       protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new ProgressShapeWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('progress-shape',
+    dispatcher.registerDAG(TestScatterDag.streaming('progress-shape',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
 
@@ -736,7 +741,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
       }
     }
     dispatcher.registerNode(new WorkerNode());
-    dispatcher.registerDAG(makeScatterDag('abort-async-50',
+    dispatcher.registerDAG(TestScatterDag.streaming('abort-async-50',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 2 }));
 
@@ -789,7 +794,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
       }
     }
     resumeDispatcher.registerNode(new ResumeWorkerNode());
-    resumeDispatcher.registerDAG(makeScatterDag('abort-async-resume',
+    resumeDispatcher.registerDAG(TestScatterDag.streaming('abort-async-resume',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 2 }));
 
@@ -834,7 +839,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
       }
     }
     dispatcher.registerNode(new PreAbortWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('pre-aborted',
+    dispatcher.registerDAG(TestScatterDag.streaming('pre-aborted',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 2 }));
 
@@ -891,7 +896,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     }
     dispatcher.registerNode(new ExactlyOnceWorkerNode());
     // Array source, concurrency=1 for deterministic index-stable resume.
-    dispatcher.registerDAG(makeScatterDag('exactly-once-abort',
+    dispatcher.registerDAG(TestScatterDag.streaming('exactly-once-abort',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
 
@@ -916,7 +921,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
       }
     }
     resumeDispatcher.registerNode(new ExactlyOnceResumeWorkerNode());
-    resumeDispatcher.registerDAG(makeScatterDag('exactly-once-abort',
+    resumeDispatcher.registerDAG(TestScatterDag.streaming('exactly-once-abort',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
 

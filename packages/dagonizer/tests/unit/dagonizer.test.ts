@@ -13,17 +13,15 @@ import {
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const makeNode = TestNode.make;
-
 void describe('Dagonizer single-node routing', () => {
   void it('routes per output and terminates at explicit TerminalNode', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('classify', ['ok', 'no'], (s) => {
+    dispatcher.registerNode(TestNode.make('classify', ['ok', 'no'], (s) => {
       s.setMetadata('classified', true);
       return 'ok';
     }));
-    dispatcher.registerNode(makeNode('plan', ['success'], () => 'success'));
-    dispatcher.registerNode(makeNode('reject', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('plan', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('reject', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -59,7 +57,7 @@ void describe('Dagonizer single-node routing', () => {
     // Node declares only 'success'; at runtime it returns 'phantom' (not in
     // the placement routing map) — exercises the unwired-output error path
     // without requiring a second registration.
-    dispatcher.registerNode(makeNode('rogue', ['success'], () => 'phantom'));
+    dispatcher.registerNode(TestNode.make('rogue', ['success'], () => 'phantom'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -135,7 +133,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
 
   void it('skips with empty output when source array is empty', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('noop', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('noop', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -179,7 +177,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
       }
     }
     dispatcher.registerNode(new IncNode());
-    dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('done', ['success'], () => 'success'));
 
     const child: DAGType = {
       '@context': DAG_CONTEXT,
@@ -228,7 +226,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
 
   void it('rejects scatter placement referencing an unregistered DAG', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('done', ['success'], () => 'success'));
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:orphan',
@@ -255,7 +253,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
 void describe('Dagonizer validation', () => {
   void it('rejects duplicate node names', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('op', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('op', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -278,7 +276,7 @@ void describe('Dagonizer validation', () => {
 
   void it('rejects missing entrypoint', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('op', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('op', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -311,22 +309,22 @@ void describe('Dagonizer validation', () => {
   void it('single node registration succeeds', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     assert.doesNotThrow(() => {
-      dispatcher.registerNode(makeNode('once', ['success'], () => 'success'));
+      dispatcher.registerNode(TestNode.make('once', ['success'], () => 'success'));
     });
   });
 
   void it('registering two nodes with the same name throws DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('dup', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('dup', ['success'], () => 'success'));
     assert.throws(
-      () => dispatcher.registerNode(makeNode('dup', ['success'], () => 'success')),
+      () => dispatcher.registerNode(TestNode.make('dup', ['success'], () => 'success')),
       DAGError,
     );
   });
 
   void it('single DAG registration succeeds', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('op', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('op', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -347,7 +345,7 @@ void describe('Dagonizer validation', () => {
 
   void it('registering two DAGs with the same name throws DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('op2', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('op2', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -375,8 +373,8 @@ void describe('Dagonizer validation', () => {
 void describe('Dagonizer iterative execution', () => {
   void it('yields each node result in order', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('a', ['success'], () => 'success'));
-    dispatcher.registerNode(makeNode('b', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('a', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('b', ['success'], () => 'success'));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,

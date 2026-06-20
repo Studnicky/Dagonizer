@@ -34,3 +34,18 @@ export {
 export type {
   HttpRequestOptionsType,
 } from './HttpTransport.js';
+
+export {
+  ToolInvocationState,
+} from './ToolInvocationState.js';
+
+export {
+  ToolInvokeNode,
+} from './ToolInvokeNode.js';
+
+export {
+  ToolRegistry,
+} from './ToolRegistry.js';
+export type {
+  ResolvedToolType,
+} from './ToolRegistry.js';

@@ -30,23 +30,12 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ===========================================================================
 // DAG builder helpers
 // ===========================================================================
-
-function makeDAG(name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id': `urn:noocodex:dag:${name}`,
-    '@type': 'DAG',
-    name,
-    'version': '1',
-    entrypoint,
-    nodes,
-  };
-}
 
 function singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
   return {
@@ -135,9 +124,6 @@ class FanOutNode extends MonadicNode<WalkState, 'out'> {
   }
 }
 
-function makeFanOutNode(name: string, n: number): FanOutNode {
-  return new FanOutNode(name, n);
-}
 
 // Partition node — splits items across two ports by even/odd count.
 class PartitionNode extends MonadicNode<WalkState, 'even' | 'odd'> {
@@ -159,9 +145,6 @@ class PartitionNode extends MonadicNode<WalkState, 'even' | 'odd'> {
   }
 }
 
-function makePartitionNode(name: string): PartitionNode {
-  return new PartitionNode(name);
-}
 
 // Recording node — stamps each item's log and records the size of every batch
 // it fires over (one entry per invocation).
@@ -189,12 +172,6 @@ class RecordingNode extends MonadicNode<WalkState, 'done'> {
   }
 }
 
-function makeRecordingNode(
-  name: string,
-  firings: number[],
-): RecordingNode {
-  return new RecordingNode(name, firings);
-}
 
 // Accumulator node — merges all items into an external array and routes them
 // through to 'done'.
@@ -219,11 +196,16 @@ class AccumulatorNode extends MonadicNode<WalkState, 'done'> {
   }
 }
 
-function makeAccumulatorNode(
-  name: string,
-  collected: WalkState[],
-): AccumulatorNode {
-  return new AccumulatorNode(name, collected);
+// ===========================================================================
+// TestWalkNode: static factory for WalkState node instances
+// ===========================================================================
+
+class TestWalkNode {
+  private constructor() {}
+  static fanOut(name: string, n: number): FanOutNode { return new FanOutNode(name, n); }
+  static partition(name: string): PartitionNode { return new PartitionNode(name); }
+  static recording(name: string, firings: number[]): RecordingNode { return new RecordingNode(name, firings); }
+  static accumulator(name: string, collected: WalkState[]): AccumulatorNode { return new AccumulatorNode(name, collected); }
 }
 
 // ===========================================================================
@@ -272,9 +254,6 @@ class CompositeFanOutNode extends MonadicNode<CompositeState, 'out'> {
   }
 }
 
-function makeCompositeFanOutNode(name: string, n: number): CompositeFanOutNode {
-  return new CompositeFanOutNode(name, n);
-}
 
 class CompositeAccumulatorNode extends MonadicNode<CompositeState, 'done'> {
   readonly name: string;
@@ -295,12 +274,6 @@ class CompositeAccumulatorNode extends MonadicNode<CompositeState, 'done'> {
   }
 }
 
-function makeCompositeAccumulatorNode(
-  name: string,
-  collected: CompositeState[],
-): CompositeAccumulatorNode {
-  return new CompositeAccumulatorNode(name, collected);
-}
 
 class CompositeRecordingNode extends MonadicNode<CompositeState, 'done'> {
   readonly name: string;
@@ -319,11 +292,17 @@ class CompositeRecordingNode extends MonadicNode<CompositeState, 'done'> {
   }
 }
 
-function makeCompositeRecordingNode(
-  name: string,
-  firings: number[],
-): CompositeRecordingNode {
-  return new CompositeRecordingNode(name, firings);
+// ===========================================================================
+// TestWalkNode: composite (CompositeState) static factories
+// ===========================================================================
+
+// (added as methods on TestWalkNode below the WalkState ones — placed here
+// to keep the class definition close to the composite class definitions)
+class TestCompositeWalkNode {
+  private constructor() {}
+  static fanOut(name: string, n: number): CompositeFanOutNode { return new CompositeFanOutNode(name, n); }
+  static accumulator(name: string, collected: CompositeState[]): CompositeAccumulatorNode { return new CompositeAccumulatorNode(name, collected); }
+  static recording(name: string, firings: number[]): CompositeRecordingNode { return new CompositeRecordingNode(name, firings); }
 }
 
 // ScatterParentState — source array, gather target, parent id. Drives the
@@ -378,251 +357,234 @@ class CycleState extends NodeStateBase {
   }
 }
 
+// ===========================================================================
+// CycleState node classes (hoisted from inner-class factories)
+// ===========================================================================
+
 // Fan-out node — emits N items where item i receives `exitAt = i`, so item 0
 // exits immediately, item 1 after one retry, item 4 after four retries, etc.
-function makeCycleFanOutNode(name: string, n: number): MonadicNode<CycleState, 'out'> {
-  class CycleFanOutNode extends MonadicNode<CycleState, 'out'> {
-    readonly name: string;
-    readonly outputs = ['out'] as const;
+class CycleFanOutNode extends MonadicNode<CycleState, 'out'> {
+  readonly name: string;
+  readonly outputs = ['out'] as const;
 
-    constructor(
-      name: string,
-      private readonly n: number,
-    ) {
-      super();
-      this.name = name;
-    }
-
-    override async execute(
-      batch: Batch<CycleState>,
-      _ctx: NodeContextType,
-    ): Promise<RoutedBatchType<'out', CycleState>> {
-      const sourceState = batch.row(0).state;
-      const items: Array<{ 'id': string; 'state': CycleState }> = [];
-      for (let i = 0; i < this.n; i++) {
-        const clone = sourceState.clone();
-        clone.exitAt = i;
-        clone.attempts = 0;
-        items.push({ 'id': String(i), 'state': clone });
-      }
-      const result = new Map<'out', Batch<CycleState>>();
-      result.set('out', Batch.from(items));
-      return result;
-    }
+  constructor(
+    name: string,
+    private readonly n: number,
+  ) {
+    super();
+    this.name = name;
   }
-  return new CycleFanOutNode(name, n);
+
+  override async execute(
+    batch: Batch<CycleState>,
+    _ctx: NodeContextType,
+  ): Promise<RoutedBatchType<'out', CycleState>> {
+    const sourceState = batch.row(0).state;
+    const items: Array<{ 'id': string; 'state': CycleState }> = [];
+    for (let i = 0; i < this.n; i++) {
+      const clone = sourceState.clone();
+      clone.exitAt = i;
+      clone.attempts = 0;
+      items.push({ 'id': String(i), 'state': clone });
+    }
+    const result = new Map<'out', Batch<CycleState>>();
+    result.set('out', Batch.from(items));
+    return result;
+  }
 }
 
 // Fan-out with uniform exitAt — all N items exit after the same number of
 // attempts. Used for the homogeneous lockstep walk.
-function makeHomogeneousFanOutNode(
-  name: string,
-  n: number,
-  exitAt: number,
-): MonadicNode<CycleState, 'out'> {
-  class HomogeneousFanOutNode extends MonadicNode<CycleState, 'out'> {
-    readonly name: string;
-    readonly outputs = ['out'] as const;
+class HomogeneousFanOutNode extends MonadicNode<CycleState, 'out'> {
+  readonly name: string;
+  readonly outputs = ['out'] as const;
 
-    constructor(
-      name: string,
-      private readonly n: number,
-      private readonly exitAt: number,
-    ) {
-      super();
-      this.name = name;
-    }
-
-    override async execute(
-      batch: Batch<CycleState>,
-      _ctx: NodeContextType,
-    ): Promise<RoutedBatchType<'out', CycleState>> {
-      const sourceState = batch.row(0).state;
-      const items: Array<{ 'id': string; 'state': CycleState }> = [];
-      for (let i = 0; i < this.n; i++) {
-        const clone = sourceState.clone();
-        clone.exitAt = this.exitAt;
-        clone.attempts = 0;
-        items.push({ 'id': String(i), 'state': clone });
-      }
-      const result = new Map<'out', Batch<CycleState>>();
-      result.set('out', Batch.from(items));
-      return result;
-    }
+  constructor(
+    name: string,
+    private readonly n: number,
+    private readonly exitAt: number,
+  ) {
+    super();
+    this.name = name;
   }
-  return new HomogeneousFanOutNode(name, n, exitAt);
+
+  override async execute(
+    batch: Batch<CycleState>,
+    _ctx: NodeContextType,
+  ): Promise<RoutedBatchType<'out', CycleState>> {
+    const sourceState = batch.row(0).state;
+    const items: Array<{ 'id': string; 'state': CycleState }> = [];
+    for (let i = 0; i < this.n; i++) {
+      const clone = sourceState.clone();
+      clone.exitAt = this.exitAt;
+      clone.attempts = 0;
+      items.push({ 'id': String(i), 'state': clone });
+    }
+    const result = new Map<'out', Batch<CycleState>>();
+    result.set('out', Batch.from(items));
+    return result;
+  }
 }
 
 // Retry node — increments `attempts` per item; routes items whose attempt count
 // has reached `exitAt` to `done`, others to `retry`. Hard cap at 50 iterations
 // prevents an infinite loop if a scheduler bug stops items from exiting — the
 // test then fails on the wrong `executedNodes` assertion rather than hanging.
-function makeRetryNode(
-  name: string,
-  firings: number[],
-): MonadicNode<CycleState, 'retry' | 'done'> {
-  class RetryNode extends MonadicNode<CycleState, 'retry' | 'done'> {
-    readonly name: string;
-    readonly outputs = ['retry', 'done'] as const;
+class RetryNode extends MonadicNode<CycleState, 'retry' | 'done'> {
+  readonly name: string;
+  readonly outputs = ['retry', 'done'] as const;
 
-    constructor(
-      name: string,
-      private readonly firings: number[],
-    ) {
-      super();
-      this.name = name;
-    }
-
-    override async execute(
-      batch: Batch<CycleState>,
-      _ctx: NodeContextType,
-    ): Promise<RoutedBatchType<'retry' | 'done', CycleState>> {
-      this.firings.push(batch.size);
-
-      const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
-      const doneItems: Array<{ 'id': string; 'state': CycleState }> = [];
-
-      for (const item of batch) {
-        item.state.attempts += 1;
-        // Safety cap: treat items that have been around too long as done to
-        // prevent hangs; a real engine regression surfaces as a wrong assertion.
-        if (item.state.attempts > 50 || item.state.attempts > item.state.exitAt) {
-          doneItems.push({ 'id': item.id, 'state': item.state });
-        } else {
-          retryItems.push({ 'id': item.id, 'state': item.state });
-        }
-      }
-
-      const result = new Map<'retry' | 'done', Batch<CycleState>>();
-      if (retryItems.length > 0) {
-        result.set('retry', Batch.from(retryItems));
-      }
-      if (doneItems.length > 0) {
-        result.set('done', Batch.from(doneItems));
-      }
-      return result;
-    }
+  constructor(
+    name: string,
+    private readonly firings: number[],
+  ) {
+    super();
+    this.name = name;
   }
-  return new RetryNode(name, firings);
+
+  override async execute(
+    batch: Batch<CycleState>,
+    _ctx: NodeContextType,
+  ): Promise<RoutedBatchType<'retry' | 'done', CycleState>> {
+    this.firings.push(batch.size);
+
+    const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
+    const doneItems: Array<{ 'id': string; 'state': CycleState }> = [];
+
+    for (const item of batch) {
+      item.state.attempts += 1;
+      // Safety cap: treat items that have been around too long as done to
+      // prevent hangs; a real engine regression surfaces as a wrong assertion.
+      if (item.state.attempts > 50 || item.state.attempts > item.state.exitAt) {
+        doneItems.push({ 'id': item.id, 'state': item.state });
+      } else {
+        retryItems.push({ 'id': item.id, 'state': item.state });
+      }
+    }
+
+    const result = new Map<'retry' | 'done', Batch<CycleState>>();
+    if (retryItems.length > 0) {
+      result.set('retry', Batch.from(retryItems));
+    }
+    if (doneItems.length > 0) {
+      result.set('done', Batch.from(doneItems));
+    }
+    return result;
+  }
 }
 
 // Budget-based retry node — uses `withinRetryBudget` to decide routing. Items
 // within budget go to `retry`; exhausted items go to `salvage`; items with
 // `exitAt = 0` succeed immediately and go to `done`.
-function makeBudgetRetryNode(
-  name: string,
-  maxAttempts: number,
-  firings: number[],
-): MonadicNode<CycleState, 'retry' | 'done' | 'salvage'> {
-  class BudgetRetryNode extends MonadicNode<CycleState, 'retry' | 'done' | 'salvage'> {
-    readonly name: string;
-    readonly outputs = ['retry', 'done', 'salvage'] as const;
+class BudgetRetryNode extends MonadicNode<CycleState, 'retry' | 'done' | 'salvage'> {
+  readonly name: string;
+  readonly outputs = ['retry', 'done', 'salvage'] as const;
 
-    constructor(
-      name: string,
-      private readonly maxAttempts: number,
-      private readonly firings: number[],
-    ) {
-      super();
-      this.name = name;
-    }
-
-    override async execute(
-      batch: Batch<CycleState>,
-      _ctx: NodeContextType,
-    ): Promise<RoutedBatchType<'retry' | 'done' | 'salvage', CycleState>> {
-      this.firings.push(batch.size);
-
-      const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
-      const doneItems: Array<{ 'id': string; 'state': CycleState }> = [];
-      const salvageItems: Array<{ 'id': string; 'state': CycleState }> = [];
-
-      for (const item of batch) {
-        // Items with `exitAt = 0` succeed immediately (do not consume budget).
-        if (item.state.exitAt === 0) {
-          item.state.attempts += 1;
-          doneItems.push({ 'id': item.id, 'state': item.state });
-        } else if (item.state.withinRetryBudget('loop', this.maxAttempts)) {
-          // Within budget — loop again.
-          item.state.attempts += 1;
-          retryItems.push({ 'id': item.id, 'state': item.state });
-        } else {
-          // Budget exhausted.
-          item.state.attempts += 1;
-          salvageItems.push({ 'id': item.id, 'state': item.state });
-        }
-      }
-
-      const result = new Map<'retry' | 'done' | 'salvage', Batch<CycleState>>();
-      if (retryItems.length > 0) result.set('retry', Batch.from(retryItems));
-      if (doneItems.length > 0) result.set('done', Batch.from(doneItems));
-      if (salvageItems.length > 0) result.set('salvage', Batch.from(salvageItems));
-      return result;
-    }
+  constructor(
+    name: string,
+    private readonly maxAttempts: number,
+    private readonly firings: number[],
+  ) {
+    super();
+    this.name = name;
   }
-  return new BudgetRetryNode(name, maxAttempts, firings);
+
+  override async execute(
+    batch: Batch<CycleState>,
+    _ctx: NodeContextType,
+  ): Promise<RoutedBatchType<'retry' | 'done' | 'salvage', CycleState>> {
+    this.firings.push(batch.size);
+
+    const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
+    const doneItems: Array<{ 'id': string; 'state': CycleState }> = [];
+    const salvageItems: Array<{ 'id': string; 'state': CycleState }> = [];
+
+    for (const item of batch) {
+      // Items with `exitAt = 0` succeed immediately (do not consume budget).
+      if (item.state.exitAt === 0) {
+        item.state.attempts += 1;
+        doneItems.push({ 'id': item.id, 'state': item.state });
+      } else if (item.state.withinRetryBudget('loop', this.maxAttempts)) {
+        // Within budget — loop again.
+        item.state.attempts += 1;
+        retryItems.push({ 'id': item.id, 'state': item.state });
+      } else {
+        // Budget exhausted.
+        item.state.attempts += 1;
+        salvageItems.push({ 'id': item.id, 'state': item.state });
+      }
+    }
+
+    const result = new Map<'retry' | 'done' | 'salvage', Batch<CycleState>>();
+    if (retryItems.length > 0) result.set('retry', Batch.from(retryItems));
+    if (doneItems.length > 0) result.set('done', Batch.from(doneItems));
+    if (salvageItems.length > 0) result.set('salvage', Batch.from(salvageItems));
+    return result;
+  }
 }
 
 // Accumulator node — collects all items for post-run inspection.
-function makeCycleAccumulatorNode(
-  name: string,
-  collected: CycleState[],
-): MonadicNode<CycleState, 'done'> {
-  class CycleAccumulatorNode extends MonadicNode<CycleState, 'done'> {
-    readonly name: string;
-    readonly outputs = ['done'] as const;
+class CycleAccumulatorNode extends MonadicNode<CycleState, 'done'> {
+  readonly name: string;
+  readonly outputs = ['done'] as const;
 
-    constructor(
-      name: string,
-      private readonly collected: CycleState[],
-    ) {
-      super();
-      this.name = name;
-    }
-
-    override async execute(
-      batch: Batch<CycleState>,
-      _ctx: NodeContextType,
-    ): Promise<RoutedBatchType<'done', CycleState>> {
-      for (const item of batch) {
-        this.collected.push(item.state);
-      }
-      const result = new Map<'done', Batch<CycleState>>();
-      result.set('done', batch);
-      return result;
-    }
+  constructor(
+    name: string,
+    private readonly collected: CycleState[],
+  ) {
+    super();
+    this.name = name;
   }
-  return new CycleAccumulatorNode(name, collected);
+
+  override async execute(
+    batch: Batch<CycleState>,
+    _ctx: NodeContextType,
+  ): Promise<RoutedBatchType<'done', CycleState>> {
+    for (const item of batch) {
+      this.collected.push(item.state);
+    }
+    const result = new Map<'done', Batch<CycleState>>();
+    result.set('done', batch);
+    return result;
+  }
 }
 
 // Recording node — stamps firings array and passes items through.
-function makeCycleRecordingNode(
-  name: string,
-  firings: number[],
-): MonadicNode<CycleState, 'done'> {
-  class CycleRecordingNode extends MonadicNode<CycleState, 'done'> {
-    readonly name: string;
-    readonly outputs = ['done'] as const;
+class CycleRecordingNode extends MonadicNode<CycleState, 'done'> {
+  readonly name: string;
+  readonly outputs = ['done'] as const;
 
-    constructor(
-      name: string,
-      private readonly firings: number[],
-    ) {
-      super();
-      this.name = name;
-    }
-
-    override async execute(
-      batch: Batch<CycleState>,
-      _ctx: NodeContextType,
-    ): Promise<RoutedBatchType<'done', CycleState>> {
-      this.firings.push(batch.size);
-      const result = new Map<'done', Batch<CycleState>>();
-      result.set('done', batch);
-      return result;
-    }
+  constructor(
+    name: string,
+    private readonly firings: number[],
+  ) {
+    super();
+    this.name = name;
   }
-  return new CycleRecordingNode(name, firings);
+
+  override async execute(
+    batch: Batch<CycleState>,
+    _ctx: NodeContextType,
+  ): Promise<RoutedBatchType<'done', CycleState>> {
+    this.firings.push(batch.size);
+    const result = new Map<'done', Batch<CycleState>>();
+    result.set('done', batch);
+    return result;
+  }
+}
+
+// ===========================================================================
+// TestCycleWalkNode: static factory for CycleState node instances
+// ===========================================================================
+
+class TestCycleWalkNode {
+  private constructor() {}
+  static fanOut(name: string, n: number): CycleFanOutNode { return new CycleFanOutNode(name, n); }
+  static homogeneousFanOut(name: string, n: number, exitAt: number): HomogeneousFanOutNode { return new HomogeneousFanOutNode(name, n, exitAt); }
+  static retry(name: string, firings: number[]): RetryNode { return new RetryNode(name, firings); }
+  static budgetRetry(name: string, maxAttempts: number, firings: number[]): BudgetRetryNode { return new BudgetRetryNode(name, maxAttempts, firings); }
+  static accumulator(name: string, collected: CycleState[]): CycleAccumulatorNode { return new CycleAccumulatorNode(name, collected); }
+  static recording(name: string, firings: number[]): CycleRecordingNode { return new CycleRecordingNode(name, firings); }
 }
 
 // ===========================================================================
@@ -693,7 +655,7 @@ void describe('Batch walk — size-1 parity', () => {
 
   void it('EmbeddedDAGNode via size-1 batch produces same executedNodes/outcome as direct execute', async () => {
     // Simple child DAG: one transform node → terminal.
-    const childDAG = makeDAG('parity-child', 'transform', [
+    const childDAG = TestDag.of('parity-child', 'transform', [
       singleNode('parity-child', 'transform', 'transform-node', { 'ok': 'child-end' }),
       terminalNode('parity-child', 'child-end', 'completed'),
     ]);
@@ -701,7 +663,7 @@ void describe('Batch walk — size-1 parity', () => {
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
     // Parent DAG: single entry → embed → terminal.
-    const parentDAG = makeDAG('parity-parent', 'entry', [
+    const parentDAG = TestDag.of('parity-parent', 'entry', [
       singleNode('parity-parent', 'entry', 'entry-node', { 'ok': 'embed' }),
       embedNode(
         'parity-parent',
@@ -758,7 +720,7 @@ void describe('Batch walk — size-1 parity', () => {
 
     const bodyNode = new ParityBodyNode();
 
-    const parity1Dag = makeDAG('parity-scatter-1', 'parity-scatter', [
+    const parity1Dag = TestDag.of('parity-scatter-1', 'parity-scatter', [
       {
         '@id': 'urn:noocodex:dag:parity-scatter-1/node/parity-scatter',
         '@type': 'ScatterNode',
@@ -799,11 +761,11 @@ void describe('Batch walk — multi-item plain placements', () => {
     const dispatcher = new Dagonizer<WalkState>();
     const bFirings: number[] = [];
 
-    dispatcher.registerNode(makeFanOutNode('fanout', 4));
-    dispatcher.registerNode(makeRecordingNode('recorder', bFirings));
+    dispatcher.registerNode(TestWalkNode.fanOut('fanout', 4));
+    dispatcher.registerNode(TestWalkNode.recording('recorder', bFirings));
 
     const collected: WalkState[] = [];
-    dispatcher.registerNode(makeAccumulatorNode('acc', collected));
+    dispatcher.registerNode(TestWalkNode.accumulator('acc', collected));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -840,18 +802,18 @@ void describe('Batch walk — multi-item plain placements', () => {
   void it('partition node splits N items across two ports, each port fires once downstream', async () => {
     const dispatcher = new Dagonizer<WalkState>();
     // Items 0..5; even: 0, 2, 4 (3 items); odd: 1, 3, 5 (3 items).
-    dispatcher.registerNode(makeFanOutNode('fanout', 6));
-    dispatcher.registerNode(makePartitionNode('part'));
+    dispatcher.registerNode(TestWalkNode.fanOut('fanout', 6));
+    dispatcher.registerNode(TestWalkNode.partition('part'));
 
     const evenFirings: number[] = [];
     const oddFirings: number[] = [];
     const evenCollected: WalkState[] = [];
     const oddCollected: WalkState[] = [];
 
-    dispatcher.registerNode(makeRecordingNode('even-proc', evenFirings));
-    dispatcher.registerNode(makeRecordingNode('odd-proc', oddFirings));
-    dispatcher.registerNode(makeAccumulatorNode('even-acc', evenCollected));
-    dispatcher.registerNode(makeAccumulatorNode('odd-acc', oddCollected));
+    dispatcher.registerNode(TestWalkNode.recording('even-proc', evenFirings));
+    dispatcher.registerNode(TestWalkNode.recording('odd-proc', oddFirings));
+    dispatcher.registerNode(TestWalkNode.accumulator('even-acc', evenCollected));
+    dispatcher.registerNode(TestWalkNode.accumulator('odd-acc', oddCollected));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -904,12 +866,12 @@ void describe('Batch walk — multi-item plain placements', () => {
     const dFirings: number[] = [];
     const collected: WalkState[] = [];
 
-    dispatcher.registerNode(makeFanOutNode('fanout', 8)); // 8 items: 0..7
-    dispatcher.registerNode(makePartitionNode('part'));
-    dispatcher.registerNode(makeRecordingNode('b-proc', []));  // even branch
-    dispatcher.registerNode(makeRecordingNode('c-proc', []));  // odd branch
-    dispatcher.registerNode(makeRecordingNode('join', dFirings));  // THE JOIN
-    dispatcher.registerNode(makeAccumulatorNode('acc', collected));
+    dispatcher.registerNode(TestWalkNode.fanOut('fanout', 8)); // 8 items: 0..7
+    dispatcher.registerNode(TestWalkNode.partition('part'));
+    dispatcher.registerNode(TestWalkNode.recording('b-proc', []));  // even branch
+    dispatcher.registerNode(TestWalkNode.recording('c-proc', []));  // odd branch
+    dispatcher.registerNode(TestWalkNode.recording('join', dFirings));  // THE JOIN
+    dispatcher.registerNode(TestWalkNode.accumulator('acc', collected));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -993,7 +955,7 @@ void describe('Batch walk — multi-item composites', () => {
     const childIncrNode = new ChildIncrNode(childItemsSeen);
 
     // Child DAG: child-incr → child-end (success terminal).
-    const childDAG = makeDAG('embed-uniform-child', 'child-incr', [
+    const childDAG = TestDag.of('embed-uniform-child', 'child-incr', [
       singleNode('embed-uniform-child', 'child-incr', 'child-incr', { 'done': 'child-end' }),
       terminalNode('embed-uniform-child', 'child-end', 'completed'),
     ]);
@@ -1005,7 +967,7 @@ void describe('Batch walk — multi-item composites', () => {
     const downstreamCollected: CompositeState[] = [];
     const downstreamFirings: number[] = [];
 
-    const parentDAG = makeDAG('embed-uniform-parent', 'fan', [
+    const parentDAG = TestDag.of('embed-uniform-parent', 'fan', [
       {
         '@id': 'urn:noocodex:dag:embed-uniform-parent/node/fan',
         '@type': 'SingleNode',
@@ -1026,10 +988,10 @@ void describe('Batch walk — multi-item composites', () => {
     ]);
 
     const dispatcher = new Dagonizer<CompositeState>();
-    dispatcher.registerNode(makeCompositeFanOutNode('fan4', 4));
+    dispatcher.registerNode(TestCompositeWalkNode.fanOut('fan4', 4));
     dispatcher.registerNode(childIncrNode);
-    dispatcher.registerNode(makeCompositeRecordingNode('downstream-rec', downstreamFirings));
-    dispatcher.registerNode(makeCompositeAccumulatorNode('acc-node', downstreamCollected));
+    dispatcher.registerNode(TestCompositeWalkNode.recording('downstream-rec', downstreamFirings));
+    dispatcher.registerNode(TestCompositeWalkNode.accumulator('acc-node', downstreamCollected));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
@@ -1088,7 +1050,7 @@ void describe('Batch walk — multi-item composites', () => {
     // Child DAG: router → success-terminal or failure-terminal.
     // success terminal outcome = 'completed', failure terminal outcome = 'failed'.
     // The engine maps 'completed' → 'success' output, 'failed' → 'error' output.
-    const childDAG = makeDAG('embed-split-child', 'child-router', [
+    const childDAG = TestDag.of('embed-split-child', 'child-router', [
       {
         '@id': 'urn:noocodex:dag:embed-split-child/node/child-router',
         '@type': 'SingleNode',
@@ -1106,7 +1068,7 @@ void describe('Batch walk — multi-item composites', () => {
 
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
-    const parentDAG = makeDAG('embed-split-parent', 'fan', [
+    const parentDAG = TestDag.of('embed-split-parent', 'fan', [
       {
         '@id': 'urn:noocodex:dag:embed-split-parent/node/fan',
         '@type': 'SingleNode',
@@ -1127,10 +1089,10 @@ void describe('Batch walk — multi-item composites', () => {
     ]);
 
     const dispatcher = new Dagonizer<CompositeState>();
-    dispatcher.registerNode(makeCompositeFanOutNode('fan6', 6));
+    dispatcher.registerNode(TestCompositeWalkNode.fanOut('fan6', 6));
     dispatcher.registerNode(childRouterNode);
-    dispatcher.registerNode(makeCompositeAccumulatorNode('even-collector', evenCollected));
-    dispatcher.registerNode(makeCompositeAccumulatorNode('odd-collector', oddCollected));
+    dispatcher.registerNode(TestCompositeWalkNode.accumulator('even-collector', evenCollected));
+    dispatcher.registerNode(TestCompositeWalkNode.accumulator('odd-collector', oddCollected));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
@@ -1219,7 +1181,7 @@ void describe('Batch walk — multi-item composites', () => {
 
     const downstreamNode = new DownstreamNode(downstreamCollected);
 
-    const dag = makeDAG('scatter-per-parent', 'fan', [
+    const dag = TestDag.of('scatter-per-parent', 'fan', [
       {
         '@id': 'urn:noocodex:dag:scatter-per-parent/node/fan',
         '@type': 'SingleNode',
@@ -1299,9 +1261,9 @@ void describe('Batch walk — cycles and retry loops', () => {
     const dispatcher = new Dagonizer<CycleState>();
     const firings: number[] = [];
 
-    dispatcher.registerNode(makeRetryNode('retrier', firings));
+    dispatcher.registerNode(TestCycleWalkNode.retry('retrier', firings));
     const collected: CycleState[] = [];
-    dispatcher.registerNode(makeCycleAccumulatorNode('acc', collected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('acc', collected));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -1359,9 +1321,9 @@ void describe('Batch walk — cycles and retry loops', () => {
     const dispatcher = new Dagonizer<CycleState>();
     const firings: number[] = [];
 
-    dispatcher.registerNode(makeRetryNode('retrier', firings));
+    dispatcher.registerNode(TestCycleWalkNode.retry('retrier', firings));
     const collected: CycleState[] = [];
-    dispatcher.registerNode(makeCycleAccumulatorNode('acc', collected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('acc', collected));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -1412,10 +1374,10 @@ void describe('Batch walk — cycles and retry loops', () => {
     const dispatcher = new Dagonizer<CycleState>();
     const firings: number[] = [];
 
-    dispatcher.registerNode(makeHomogeneousFanOutNode('fan', 4, 2));
-    dispatcher.registerNode(makeRetryNode('retrier', firings));
+    dispatcher.registerNode(TestCycleWalkNode.homogeneousFanOut('fan', 4, 2));
+    dispatcher.registerNode(TestCycleWalkNode.retry('retrier', firings));
     const collected: CycleState[] = [];
-    dispatcher.registerNode(makeCycleAccumulatorNode('acc', collected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('acc', collected));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -1483,10 +1445,10 @@ void describe('Batch walk — cycles and retry loops', () => {
     const dispatcher = new Dagonizer<CycleState>();
     const firings: number[] = [];
 
-    dispatcher.registerNode(makeCycleFanOutNode('fan', 5));
-    dispatcher.registerNode(makeRetryNode('retrier', firings));
+    dispatcher.registerNode(TestCycleWalkNode.fanOut('fan', 5));
+    dispatcher.registerNode(TestCycleWalkNode.retry('retrier', firings));
     const collected: CycleState[] = [];
-    dispatcher.registerNode(makeCycleAccumulatorNode('acc', collected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('acc', collected));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -1593,12 +1555,12 @@ void describe('Batch walk — cycles and retry loops', () => {
     const mixedFanOut = new MixedFanOutNode();
 
     dispatcher.registerNode(mixedFanOut);
-    dispatcher.registerNode(makeBudgetRetryNode('budget-retrier', MAX_ATTEMPTS, firings));
+    dispatcher.registerNode(TestCycleWalkNode.budgetRetry('budget-retrier', MAX_ATTEMPTS, firings));
 
     const successCollected: CycleState[] = [];
     const salvageCollected: CycleState[] = [];
-    dispatcher.registerNode(makeCycleAccumulatorNode('success-acc', successCollected));
-    dispatcher.registerNode(makeCycleAccumulatorNode('salvage-acc', salvageCollected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('success-acc', successCollected));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('salvage-acc', salvageCollected));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -1715,9 +1677,9 @@ void describe('Batch walk — cycles and retry loops', () => {
     const fanNode = new CycleJoinFanNode();
 
     dispatcher.registerNode(fanNode);
-    dispatcher.registerNode(makeRetryNode('cycle-retrier', []));
-    dispatcher.registerNode(makeCycleRecordingNode('j-join', jFirings));
-    dispatcher.registerNode(makeCycleAccumulatorNode('j-acc', collected));
+    dispatcher.registerNode(TestCycleWalkNode.retry('cycle-retrier', []));
+    dispatcher.registerNode(TestCycleWalkNode.recording('j-join', jFirings));
+    dispatcher.registerNode(TestCycleWalkNode.accumulator('j-acc', collected));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,

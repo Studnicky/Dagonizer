@@ -39,28 +39,27 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const makeNode = (name: string, outputs: readonly string[]) =>
-  TestNode.make<NodeStateBase>(name, outputs, () => outputs[0] as string);
-
-// Use a class for the error node since it needs state access in executeOne.
-const makeErrorNode = (nodeName: string) => {
-  class ErrorNode extends ScalarNode<NodeStateBase, 'done'> {
-    readonly name = nodeName;
-    readonly outputs = ['done'] as const;
-    protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'done'>> {
-      state.collectError({
-        'code':        'ERR',
-        'context':     {},
-        'message':     'node failed',
-        'operation':   nodeName,
-        'recoverable': false,
-        'timestamp':   new Date().toISOString(),
-      });
-      return { 'errors': [], 'output': 'done' as const };
+class TestErrorNode {
+  private constructor() { /* static class */ }
+  static of(nodeName: string): ScalarNode<NodeStateBase, 'done'> {
+    class ErrorNode extends ScalarNode<NodeStateBase, 'done'> {
+      readonly name = nodeName;
+      readonly outputs = ['done'] as const;
+      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'done'>> {
+        state.collectError({
+          'code':        'ERR',
+          'context':     {},
+          'message':     'node failed',
+          'operation':   nodeName,
+          'recoverable': false,
+          'timestamp':   new Date().toISOString(),
+        });
+        return { 'errors': [], 'output': 'done' as const };
+      }
     }
+    return new ErrorNode();
   }
-  return new ErrorNode();
-};
+}
 
 // ── 1. Schema validation ──────────────────────────────────────────────────
 
@@ -148,7 +147,7 @@ void describe('TerminalNode: schema validation', () => {
 void describe('TerminalNode: DAGBuilder.terminal()', () => {
   void it('produces a TerminalNode placement with @type and default outcome=completed', () => {
     const dag = new DAGBuilder('demo', '1')
-      .node('a', makeNode('a', ['ok']), { 'ok': 'end' })
+      .node('a', TestNode.make('a', ['ok'], () => 'ok'), { 'ok': 'end' })
       .terminal('end')
       .build();
 
@@ -161,7 +160,7 @@ void describe('TerminalNode: DAGBuilder.terminal()', () => {
 
   void it('produces a TerminalNode placement with outcome=failed', () => {
     const dag = new DAGBuilder('demo', '1')
-      .node('a', makeNode('a', ['ok']), { 'ok': 'fail-end' })
+      .node('a', TestNode.make('a', ['ok'], () => 'ok'), { 'ok': 'fail-end' })
       .terminal('fail-end', { 'outcome': 'failed' })
       .build();
 
@@ -176,10 +175,10 @@ void describe('TerminalNode: DAGBuilder.terminal()', () => {
 void describe('TerminalNode: execution with outcome=completed', () => {
   void it('state ends completed, executedNodes includes terminal, onFlowEnd fires once', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('a', ['ok']));
+    dispatcher.registerNode(TestNode.make('a', ['ok'], () => 'ok'));
 
     const dag = new DAGBuilder('term-completed', '1')
-      .node('a', makeNode('a', ['ok']), { 'ok': 'end' })
+      .node('a', TestNode.make('a', ['ok'], () => 'ok'), { 'ok': 'end' })
       .terminal('end', { 'outcome': 'completed' })
       .build();
 
@@ -203,10 +202,10 @@ void describe('TerminalNode: execution with outcome=completed', () => {
 void describe('TerminalNode: execution with outcome=failed', () => {
   void it('state ends failed when terminal has outcome=failed', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('a', ['ok']));
+    dispatcher.registerNode(TestNode.make('a', ['ok'], () => 'ok'));
 
     const dag = new DAGBuilder('term-failed', '1')
-      .node('a', makeNode('a', ['ok']), { 'ok': 'fail-end' })
+      .node('a', TestNode.make('a', ['ok'], () => 'ok'), { 'ok': 'fail-end' })
       .terminal('fail-end', { 'outcome': 'failed' })
       .build();
 
@@ -249,8 +248,8 @@ void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () 
 
   void it('registers and executes cleanly when child ends at an explicit TerminalNode', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('parent-entry', ['next']));
-    dispatcher.registerNode(makeNode('child-step', ['done']));
+    dispatcher.registerNode(TestNode.make('parent-entry', ['next'], () => 'next'));
+    dispatcher.registerNode(TestNode.make('child-step', ['done'], () => 'done'));
     dispatcher.registerDAG(childDAG);
 
     const parentDAG: DAGType = {
@@ -298,39 +297,44 @@ void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () 
 // ── 6. Embedded-DAG routing to a TerminalNode ─────────────────────────────────
 
 void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placements', () => {
-  const buildParentWithTerminals = (): DAGType => ({
-    '@context': DAG_CONTEXT,
-    '@id':      'urn:noocodex:dag:parent-explicit',
-    '@type':    'DAG',
-    'name':       'parent-explicit',
-    'version':    '1',
-    'entrypoint': 'run-child',
-    'nodes': [
-      {
-        '@id':   'urn:noocodex:dag:parent-explicit/node/run-child',
-        '@type': 'EmbeddedDAGNode',
-        'name':  'run-child',
-        'dag':   'child-explicit',
-        'outputs': { 'success': 'end-ok', 'error': 'end-fail' },
-      },
-      {
-        '@id':     'urn:noocodex:dag:parent-explicit/node/end-ok',
-        '@type':   'TerminalNode',
-        'name':    'end-ok',
-        'outcome': 'completed',
-      },
-      {
-        '@id':     'urn:noocodex:dag:parent-explicit/node/end-fail',
-        '@type':   'TerminalNode',
-        'name':    'end-fail',
-        'outcome': 'failed',
-      },
-    ],
-  });
+  class TestParentWithTerminals {
+    private constructor() { /* static class */ }
+    static build(): DAGType {
+      return {
+        '@context': DAG_CONTEXT,
+        '@id':      'urn:noocodex:dag:parent-explicit',
+        '@type':    'DAG',
+        'name':       'parent-explicit',
+        'version':    '1',
+        'entrypoint': 'run-child',
+        'nodes': [
+          {
+            '@id':   'urn:noocodex:dag:parent-explicit/node/run-child',
+            '@type': 'EmbeddedDAGNode',
+            'name':  'run-child',
+            'dag':   'child-explicit',
+            'outputs': { 'success': 'end-ok', 'error': 'end-fail' },
+          },
+          {
+            '@id':     'urn:noocodex:dag:parent-explicit/node/end-ok',
+            '@type':   'TerminalNode',
+            'name':    'end-ok',
+            'outcome': 'completed',
+          },
+          {
+            '@id':     'urn:noocodex:dag:parent-explicit/node/end-fail',
+            '@type':   'TerminalNode',
+            'name':    'end-fail',
+            'outcome': 'failed',
+          },
+        ],
+      };
+    }
+  }
 
   void it('ends completed when child emits no errors (routes to end-ok)', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('child-work-ok', ['done']));
+    dispatcher.registerNode(TestNode.make('child-work-ok', ['done'], () => 'done'));
 
     // Register child DAG with ok-node
     const childOk: DAGType = {
@@ -353,7 +357,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
       ],
     };
     dispatcher.registerDAG(childOk);
-    dispatcher.registerDAG(buildParentWithTerminals());
+    dispatcher.registerDAG(TestParentWithTerminals.build());
 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('parent-explicit', state);
@@ -363,7 +367,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
   void it('ends failed when child emits errors (routes to end-fail)', async () => {
     // Use a fresh dispatcher to avoid shared child DAG name collision
     const dispatcher2 = new CountingDagonizer<NodeStateBase>();
-    dispatcher2.registerNode(makeErrorNode('child-work-err'));
+    dispatcher2.registerNode(TestErrorNode.of('child-work-err'));
 
     const childErr: DAGType = {
       '@context': DAG_CONTEXT,
@@ -385,7 +389,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
       ],
     };
     dispatcher2.registerDAG(childErr);
-    dispatcher2.registerDAG(buildParentWithTerminals());
+    dispatcher2.registerDAG(TestParentWithTerminals.build());
 
     const state = new NodeStateBase();
     const result = await dispatcher2.execute('parent-explicit', state);

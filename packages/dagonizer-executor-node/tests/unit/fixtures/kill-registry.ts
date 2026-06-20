@@ -66,24 +66,28 @@ class ScatterKillerNode extends ScalarNode<ConformanceState, 'done'> {
  * replaced by scatter-killer. Same DAGs (law8 runner, scatter-item-body) and
  * the same restoreState/version so the parent and the worker agree on shapes.
  */
-function buildKillBundle(): RegistryBundleInterface {
-  const base = ConformanceRegistry.bundle();
-  const nodes = base.bundle.nodes.filter((n) => n.name !== 'scatter-counter');
-  nodes.push(new ScatterKillerNode() as (typeof base.bundle.nodes)[number]);
-  return {
-    'bundle': {
-      'nodes': nodes,
-      'dags': base.bundle.dags,
-    },
-    'services': base.services,
-    'registryVersion': base.registryVersion,
-    'restoreState': base.restoreState,
-  };
+class KillBundle {
+  private constructor() {}
+
+  static of(): RegistryBundleInterface {
+    const base = ConformanceRegistry.bundle();
+    const nodes = base.bundle.nodes.filter((n) => n.name !== 'scatter-counter');
+    nodes.push(new ScatterKillerNode() as (typeof base.bundle.nodes)[number]);
+    return {
+      'bundle': {
+        'nodes': nodes,
+        'dags': base.bundle.dags,
+      },
+      'services': base.services,
+      'registryVersion': base.registryVersion,
+      'restoreState': base.restoreState,
+    };
+  }
 }
 
 const registry: RegistryModuleInterface = {
   async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
-    return buildKillBundle();
+    return KillBundle.of();
   },
 };
 

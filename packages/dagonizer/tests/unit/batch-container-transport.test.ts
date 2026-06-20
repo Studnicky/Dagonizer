@@ -69,7 +69,7 @@ function makeTask(
   correlationId: string,
   signal: AbortSignal,
   state: TestState = new TestState(),
-): DagTaskInterface<TestState, undefined> {
+): DagTaskInterface<undefined> {
   return {
     'dagName': 'test-dag',
     'placementPath': [],
@@ -98,7 +98,7 @@ function makeTask(
  * SingleChannelContainer: a DagContainerBase subclass that always routes
  * through one pre-built channel. Pool seams are no-ops.
  */
-class SingleChannelContainer extends DagContainerBase<TestState, null> {
+class SingleChannelContainer extends DagContainerBase<null> {
   readonly #channel: MessageChannelInterface;
 
   constructor(channel: MessageChannelInterface) {

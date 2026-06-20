@@ -74,7 +74,9 @@ class SlowNode extends ScalarNode<NodeStateBase, 'done'> {
   }
 }
 
-async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototype.execute>> {
+class TestCheckpoint {
+  private constructor() {}
+  static async abortedResult(): Promise<Awaited<ReturnType<typeof Dagonizer.prototype.execute>>> {
   const dispatcher = new Dagonizer<NodeStateBase>();
 
   let resolveNodeReady!: () => void;
@@ -107,6 +109,7 @@ async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototyp
   // Ensure we have a cursor so Checkpoint.capture can proceed.
   assert.ok(result.cursor !== null, 'Expected aborted result to have a cursor');
   return result;
+  }
 }
 
 /**
@@ -456,7 +459,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     await memory.set('counter', 42);
     await memory.set('label', 'hello');
 
-    const result = await makeAbortedResult();
+    const result = await TestCheckpoint.abortedResult();
     const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { memory } });
 
     assert.ok(ckpt.data.stores !== undefined, 'stores should be present on checkpoint data');
@@ -484,7 +487,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     await memory.set('x', 1);
     await audit.set('event', 'login');
 
-    const result = await makeAbortedResult();
+    const result = await TestCheckpoint.abortedResult();
     const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { memory, audit } });
 
     const cpStore = new MemoryCheckpointStore();
@@ -509,7 +512,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     const memory = new MemoryStore();
     await memory.set('k', 'v');
 
-    const result = await makeAbortedResult();
+    const result = await TestCheckpoint.abortedResult();
     const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { memory } });
 
     // Pass empty map; 'memory' is in the checkpoint but not supplied.
@@ -530,7 +533,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     const memory = new MemoryStore();
     await memory.set('k', 'v');
 
-    const result = await makeAbortedResult();
+    const result = await TestCheckpoint.abortedResult();
     const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { memory } });
 
     const freshMemory = new MemoryStore();
@@ -578,7 +581,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
   });
 
   void it('capture with an empty stores option produces no store entries and a no-op restoreStores', async () => {
-    const result = await makeAbortedResult();
+    const result = await TestCheckpoint.abortedResult();
     const ckpt = await Checkpoint.capture('store-test', result, { 'stores': {} });
 
     // Implementation choice: empty stores map → no stores field in data
@@ -597,7 +600,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
   });
 
   void it('capture with no stores option succeeds unchanged with a no-op restoreStores', async () => {
-    const result = await makeAbortedResult();
+    const result = await TestCheckpoint.abortedResult();
     const ckpt = await Checkpoint.capture('store-test', result);
 
     assert.ok(ckpt instanceof Checkpoint, 'Expected a Checkpoint instance');
@@ -613,7 +616,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     log.add('born');
     log.add('crawled');
 
-    const result = await makeAbortedResult();
+    const result = await TestCheckpoint.abortedResult();
     const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { 'log': log } });
 
     const cpStore = new MemoryCheckpointStore();

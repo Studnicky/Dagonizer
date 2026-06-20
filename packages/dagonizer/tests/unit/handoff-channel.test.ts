@@ -80,30 +80,33 @@ const noopNode = new NoopNode();
 // DAG helpers
 // ---------------------------------------------------------------------------
 
-function makeSimpleDAG(dagName: string, terminalName: string, outcome: 'completed' | 'failed'): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id': `urn:noocodex:dag:${dagName}`,
-    '@type': 'DAG',
-    'name': dagName,
-    'version': '1',
-    'entrypoint': 'increment',
-    'nodes': [
-      {
-        '@id': `urn:noocodex:dag:${dagName}/node/increment`,
-        '@type': 'SingleNode',
-        'name': 'increment',
-        'node': 'increment',
-        'outputs': { 'next': terminalName },
-      },
-      {
-        '@id': `urn:noocodex:dag:${dagName}/node/${terminalName}`,
-        '@type': 'TerminalNode',
-        'name': terminalName,
-        'outcome': outcome,
-      },
-    ],
-  };
+class TestHandoffDag {
+  private constructor() {}
+  static simple(dagName: string, terminalName: string, outcome: 'completed' | 'failed'): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id': `urn:noocodex:dag:${dagName}`,
+      '@type': 'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoint': 'increment',
+      'nodes': [
+        {
+          '@id': `urn:noocodex:dag:${dagName}/node/increment`,
+          '@type': 'SingleNode',
+          'name': 'increment',
+          'node': 'increment',
+          'outputs': { 'next': terminalName },
+        },
+        {
+          '@id': `urn:noocodex:dag:${dagName}/node/${terminalName}`,
+          '@type': 'TerminalNode',
+          'name': terminalName,
+          'outcome': outcome,
+        },
+      ],
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +116,7 @@ function makeSimpleDAG(dagName: string, terminalName: string, outcome: 'complete
 void describe('handoff-channel: bound terminal', () => {
   void it('publishes exactly one envelope with state snapshot', async () => {
     const channel = new InMemoryChannel();
-    const dag = makeSimpleDAG('handoff-bound', 'done', 'completed');
+    const dag = TestHandoffDag.simple('handoff-bound', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': channel },
       'registryVersion': '1.2.3',
@@ -147,7 +150,7 @@ void describe('handoff-channel: bound terminal', () => {
 
   void it('envelope state reflects node mutations (counter incremented)', async () => {
     const channel = new InMemoryChannel();
-    const dag = makeSimpleDAG('handoff-counter', 'done', 'completed');
+    const dag = TestHandoffDag.simple('handoff-counter', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': channel },
     });
@@ -172,7 +175,7 @@ void describe('handoff-channel: bound terminal', () => {
 void describe('handoff-channel: unbound terminal', () => {
   void it('publishes nothing when terminal is not in channels', async () => {
     const channel = new InMemoryChannel();
-    const dag = makeSimpleDAG('handoff-unbound', 'done', 'completed');
+    const dag = TestHandoffDag.simple('handoff-unbound', 'done', 'completed');
     // channels does NOT include 'done'
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'other': channel },
@@ -189,7 +192,7 @@ void describe('handoff-channel: unbound terminal', () => {
 
   void it('publishes nothing when channels option is empty', async () => {
     const channel = new InMemoryChannel();
-    const dag = makeSimpleDAG('handoff-empty-channels', 'done', 'completed');
+    const dag = TestHandoffDag.simple('handoff-empty-channels', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>();
     dispatcher.registerNode(incrementNode);
     dispatcher.registerDAG(dag);
@@ -213,7 +216,7 @@ void describe('handoff-channel: publish failure', () => {
       },
     };
 
-    const dag = makeSimpleDAG('handoff-fail', 'done', 'completed');
+    const dag = TestHandoffDag.simple('handoff-fail', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': failingChannel },
     });
@@ -426,7 +429,7 @@ void describe('InMemoryChannel: onPublished hook', () => {
       }
     }
     const channel = new RecordingChannel();
-    const dag = makeSimpleDAG('handoff-hook', 'done', 'completed');
+    const dag = TestHandoffDag.simple('handoff-hook', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': channel },
     });
@@ -448,7 +451,7 @@ void describe('InMemoryChannel: onPublished hook', () => {
       }
     }
     const channel = new ThrowingChannel();
-    const dag = makeSimpleDAG('handoff-throw', 'done', 'completed');
+    const dag = TestHandoffDag.simple('handoff-throw', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': channel },
     });
@@ -466,7 +469,7 @@ void describe('InMemoryChannel: onPublished hook', () => {
 
   void it('publishErrors is empty when onPublished succeeds', async () => {
     const channel = new InMemoryChannel();
-    const dag = makeSimpleDAG('handoff-no-error', 'done', 'completed');
+    const dag = TestHandoffDag.simple('handoff-no-error', 'done', 'completed');
     const dispatcher = new Dagonizer<HandoffState>({
       'channels': { 'done': channel },
     });
