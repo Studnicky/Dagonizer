@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-tool-wikipedia
 
+## 0.24.0
+
+### Patch Changes
+
+- @studnicky/dagonizer-book-entities@0.24.0
+
 ## 0.23.0
 
 ### Patch Changes
