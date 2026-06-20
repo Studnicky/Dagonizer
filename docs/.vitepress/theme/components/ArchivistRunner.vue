@@ -30,7 +30,7 @@ import { ONTOLOGY_NTRIPLES } from '../../../../examples/the-archivist/ontology/A
 import { SeedLibrary } from '../../../../examples/the-archivist/data/SeedLibrary.ts';
 import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/RdfProvObserver.ts';
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
-import { NODE_KINDS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
+import { NODE_VARIANTS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
 import { ApiKeyStore, BackendMatrix, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
@@ -98,12 +98,12 @@ const visitorQuery = ref('');
 const isRunning = ref(false);
 const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([]);
 type TraceEvent =
-  | { readonly kind: 'start'; readonly node: string; readonly ts: number }
-  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
-  | { readonly kind: 'error'; readonly node: string; readonly ts: number; readonly message: string };
+  | { readonly variant: 'start'; readonly node: string; readonly ts: number }
+  | { readonly variant: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
+  | { readonly variant: 'error'; readonly node: string; readonly ts: number; readonly message: string };
 
 const trace = ref<TraceEvent[]>([]);
-const terminalKind = ref<'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out'>('pending');
+const terminalVariant = ref<'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out'>('pending');
 
 const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 const memoryStore = new MemoryStore();
@@ -185,7 +185,7 @@ async function saveCheckpoint(): Promise<void> {
     trace.value = [...trace.value, {
       'node': lastResult.cursor,
       'ts': Date.now(),
-      'kind': 'end',
+      'variant': 'end',
       'output': 'checkpoint saved',
     }];
     logger.info(`checkpoint saved at ${lastResult.cursor}`);
@@ -218,7 +218,7 @@ async function resumeFromCheckpoint(): Promise<void> {
 
   runnerMachine.dispatch({ 'type': 'submit' });
   isRunning.value = true;
-  terminalKind.value = 'pending';
+  terminalVariant.value = 'pending';
   trace.value = [];
   await dagGraph.value?.reset();
   memoryTick.value++;
@@ -449,14 +449,14 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
       // inside `on-topic-search` vs `author-search` vs `similar-search`)
       // so only the placement currently executing lights up.
       const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'kind': 'start' }];
+      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'start' }];
       dagGraph.value?.setActive(fullId);
       prov.recordNodeStart(nodeName);
       runnerMachine.pulse({ 'type': 'nodeStart', 'node': nodeName });
     },
     onNodeEnd(nodeName: string, output: string | null, state: ArchivistState, placementPath: readonly string[] = []) {
       const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'kind': 'end' }];
+      trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'variant': 'end' }];
       dagGraph.value?.setCompleted(fullId);
       if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
       StateProjection.project(state, memoryStore);
@@ -468,15 +468,15 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
     },
     onError(nodeName: string, error: Error, _state: ArchivistState, placementPath: readonly string[] = []) {
       const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'kind': 'error', 'message': error.message !== '' ? error.message : String(error) }];
+      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'error', 'message': error.message !== '' ? error.message : String(error) }];
       dagGraph.value?.setErrored(fullId);
       prov.recordError(nodeName, error);
       runnerMachine.pulse({ 'type': 'nodeError', 'node': nodeName, 'error': error });
     },
     onFlowEnd(_dagName: string, state: ArchivistState, result: { cursor: string | null }) {
-      const kind = state.lifecycle.kind;
-      if (kind === 'completed' || kind === 'failed' || kind === 'cancelled' || kind === 'timed_out') {
-        terminalKind.value = kind;
+      const lifecycleVariant = state.lifecycle.variant;
+      if (lifecycleVariant === 'completed' || lifecycleVariant === 'failed' || lifecycleVariant === 'cancelled' || lifecycleVariant === 'timed_out') {
+        terminalVariant.value = lifecycleVariant;
       }
       if (state.draft.length > 0) {
         conversation.value = [...conversation.value, {
@@ -488,10 +488,10 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
       lastResult = result as never;
       lastDagName = _dagName;
       if (result.cursor !== null) checkpointNode.value = result.cursor;
-      prov.recordFlowEnd(kind);
+      prov.recordFlowEnd(lifecycleVariant);
       memoryTick.value++;
-      logger.result(`intent=${state.intent} · shortlist=${String(state.shortlist.length)} · triples=${String(memoryStore.size)} · lifecycle=${kind}`);
-      runnerMachine.dispatch({ 'type': 'flowEnd', 'lifecycle': kind });
+      logger.result(`intent=${state.intent} · shortlist=${String(state.shortlist.length)} · triples=${String(memoryStore.size)} · lifecycle=${lifecycleVariant}`);
+      runnerMachine.dispatch({ 'type': 'flowEnd', 'lifecycle': lifecycleVariant });
     },
   };
 }
@@ -604,7 +604,7 @@ async function ask(): Promise<void> {
   if (isRunning.value || visitorQuery.value.trim().length === 0 || activeBackend.value === null) return;
   runnerMachine.dispatch({ 'type': 'submit' });
   isRunning.value = true;
-  terminalKind.value = 'pending';
+  terminalVariant.value = 'pending';
   trace.value = [];
 
   const queryText = visitorQuery.value;
@@ -697,7 +697,7 @@ async function ask(): Promise<void> {
 function reset(): void {
   conversation.value = [];
   trace.value = [];
-  terminalKind.value = 'pending';
+  terminalVariant.value = 'pending';
   selectedSelection.value = null;
   selectedTool.value = null;
   checkpointNode.value = null;
@@ -844,7 +844,7 @@ function reset(): void {
                 <SendForm
                   :query="visitorQuery"
                   :running="isRunning"
-                  :terminal-kind="terminalKind"
+                  :terminal-variant="terminalVariant"
                   @update:query="visitorQuery = $event"
                   @ask="ask"
                   @cancel="cancel"
@@ -916,7 +916,7 @@ function reset(): void {
                   ref="dagGraph"
                   :dag="archivistDAG"
                   :embedded-d-a-gs="embeddedDagRegistry"
-                  :node-kinds="NODE_KINDS"
+                  :node-variants="NODE_VARIANTS"
                   :expand-all="true"
                   aria-label="Archivist DAG live execution"
                   @node-click="onToolSelect"

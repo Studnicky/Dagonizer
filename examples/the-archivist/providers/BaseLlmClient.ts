@@ -103,7 +103,7 @@ export class BaseLlmClient implements LlmClientInterface {
     // Token-economy win for slow constrained-output backends (Nano, WebLLM).
     const request = ChatRequestBuilder.from({
       'messages':     [{ 'role': 'user', 'content': prompts.decideTools(this.language, query, available) }],
-      'outputSchema': { 'kind': 'schema', 'schema': schemas.decideTools, 'id': 'archivist-decide-tools-v1' },
+      'outputSchema': { 'variant': 'schema', 'schema': schemas.decideTools, 'id': 'archivist-decide-tools-v1' },
       'temperature':  0.1,
       'maxTokens':    256,
       ...(signal !== undefined ? { 'signal': signal } : {}),
@@ -138,7 +138,7 @@ export class BaseLlmClient implements LlmClientInterface {
     if (candidates.length === 0) return [];
     const request = ChatRequestBuilder.from({
       'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(this.language, query, candidates) }],
-      'outputSchema': { 'kind': 'schema', 'schema': schemas.rankCandidates, 'id': 'archivist-rank-v1' },
+      'outputSchema': { 'variant': 'schema', 'schema': schemas.rankCandidates, 'id': 'archivist-rank-v1' },
       'temperature':  0.1,
       'maxTokens':    256,
       ...(signal !== undefined ? { 'signal': signal } : {}),
@@ -181,7 +181,7 @@ export class BaseLlmClient implements LlmClientInterface {
   async compose(
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
     signal?: AbortSignal,
@@ -192,7 +192,7 @@ export class BaseLlmClient implements LlmClientInterface {
   async composeAuthor(
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
     signal?: AbortSignal,
@@ -203,7 +203,7 @@ export class BaseLlmClient implements LlmClientInterface {
   async composeReviews(
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
     signal?: AbortSignal,
@@ -214,7 +214,7 @@ export class BaseLlmClient implements LlmClientInterface {
   async describeBook(
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
     signal?: AbortSignal,
@@ -225,7 +225,7 @@ export class BaseLlmClient implements LlmClientInterface {
   async composeSimilar(
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
     signal?: AbortSignal,
@@ -280,7 +280,7 @@ export class BaseLlmClient implements LlmClientInterface {
 
   /** Discriminated-union accessor for the ChatResponse.message shape. */
   private static contentOf(msg: ChatResponseMessageType): string {
-    return msg.kind === 'tools' ? '' : msg.content;
+    return msg.variant === 'tools' ? '' : msg.content;
   }
 
   /**

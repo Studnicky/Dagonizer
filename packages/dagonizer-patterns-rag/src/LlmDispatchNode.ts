@@ -62,7 +62,7 @@ export abstract class LlmDispatchNode<
    * yields the empty string; `text` and `mixed` messages carry `content`.
    */
   protected extractContent(response: ChatResponseType): string {
-    return response.message.kind === 'tools' ? '' : response.message.content;
+    return response.message.variant === 'tools' ? '' : response.message.content;
   }
 
   /** Leaves provide their own executeOne(); the dispatch loop is shared. */

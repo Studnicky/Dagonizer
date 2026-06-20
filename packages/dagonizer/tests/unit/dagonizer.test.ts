@@ -51,7 +51,7 @@ void describe('Dagonizer single-node routing', () => {
     assert.deepEqual(result.executedNodes, ['classify', 'plan', 'end']);
     assert.equal(result.skippedNodes.length, 0);
     assert.equal(state.getMetadata('classified'), true);
-    assert.equal(state.lifecycle.kind, 'completed');
+    assert.equal(state.lifecycle.variant, 'completed');
   });
 
   void it('marks state failed when node returns unwired output', async () => {
@@ -78,9 +78,9 @@ void describe('Dagonizer single-node routing', () => {
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('rogue', new NodeStateBase());
-    assert.equal(result.state.lifecycle.kind, 'failed');
+    assert.equal(result.state.lifecycle.variant, 'failed');
     assert.equal(result.cursor, 'rogue');
-    if (result.state.lifecycle.kind === 'failed') {
+    if (result.state.lifecycle.variant === 'failed') {
       assert.ok(result.state.lifecycle.error instanceof DAGError);
     }
   });

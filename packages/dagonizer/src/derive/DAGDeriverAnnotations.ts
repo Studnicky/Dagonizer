@@ -10,7 +10,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  *   scatters: operations whose data-graph successor is reached by
  *             scatter over a state-array source. Specifies the source
  *             path, the per-item key, the concurrency cap, the
- *             per-item kind (node), the gather strategy with its
+ *             per-item variant (node), the gather strategy with its
  *             strategy-specific fields, and the scatter outcome names.
  *   embeddedDAGs: operations that delegate execution to a nested
  *                 registered DAG. Renders as an `EmbeddedDAGNode` placement
@@ -63,7 +63,7 @@ export const DEFAULT_SCATTER_CONCURRENCY = 0;
 
 /**
  * Common fields every scatter annotation carries regardless of strategy.
- * The per-item kind is a registered node.
+ * The per-item variant is a registered node.
  */
 type DAGDeriverScatterBase = {
   /** Dotted path on state to the source array. */

@@ -228,6 +228,12 @@ export type { ChatResponseType } from './adapter/ChatResponse.js';
 export { ChatResponseMessageSchema } from './adapter/ChatResponseMessage.js';
 export type { ChatResponseMessageType } from './adapter/ChatResponseMessage.js';
 
+export { LlmModelSchema } from './adapter/LlmModel.js';
+export type { LlmModelType } from './adapter/LlmModel.js';
+
+export { OpenAiModelsResponseSchema } from './adapter/OpenAiModelsResponse.js';
+export type { OpenAiModelsResponseType } from './adapter/OpenAiModelsResponse.js';
+
 export { TextChannelToolCallEnvelopeSchema } from './adapter/TextChannelToolCallEnvelope.js';
 export type { TextChannelToolCallEnvelopeType } from './adapter/TextChannelToolCallEnvelope.js';
 

@@ -64,7 +64,7 @@ const rows = computed<readonly Row[]>(() => {
   if (sel === null) return [];
   const out: Row[] = [];
 
-  if (sel.kind === 'iri') {
+  if (sel.variant === 'iri') {
     // Outbound: IRI is the subject.
     for (const q of props.store.select({ 'subject': MemoryStore.iri(sel.iri), 'predicate': '?p', 'object': '?o', 'graph': '?g' })) {
       const graph = q['g'];
@@ -101,13 +101,13 @@ const grouped = computed<readonly { layer: Row['layer']; rows: readonly Row[] }[
 });
 
 /** Whether the current selection is an IRI node (vs a literal value). */
-const isIri = computed<boolean>(() => props.selection?.kind === 'iri');
+const isIri = computed<boolean>(() => props.selection?.variant === 'iri');
 
 /** Human label: rdfs:label of the IRI when present, else its local name; literal value verbatim. */
 const nodeLabel = computed<string>(() => {
   const sel = props.selection;
   if (sel === null) return '';
-  if (sel.kind === 'literal') return sel.value;
+  if (sel.variant === 'literal') return sel.value;
   const labelRows = props.store.select({ 'subject': MemoryStore.iri(sel.iri), 'predicate': MemoryStore.iri(RDFS_LABEL), 'object': '?o' });
   const labelTerm = labelRows.map((r) => r['o']).find((o) => o !== undefined && o.termType === 'Literal');
   return labelTerm?.value ?? localPart(sel.iri);
@@ -116,20 +116,20 @@ const nodeLabel = computed<string>(() => {
 /** CURIE for an IRI selection (empty when no namespace matches or for literals). */
 const nodeCurie = computed<string>(() => {
   const sel = props.selection;
-  if (sel === null || sel.kind !== 'iri') return '';
+  if (sel === null || sel.variant !== 'iri') return '';
   return toCurie(sel.iri) ?? '';
 });
 
 /** Full IRI for an IRI selection; empty for literals. */
 const nodeIri = computed<string>(() => {
   const sel = props.selection;
-  return sel !== null && sel.kind === 'iri' ? sel.iri : '';
+  return sel !== null && sel.variant === 'iri' ? sel.iri : '';
 });
 
 /** Datatype/language descriptor for a literal selection (e.g. `@en`, `xsd:integer`). */
 const literalKind = computed<string>(() => {
   const sel = props.selection;
-  if (sel === null || sel.kind !== 'literal') return '';
+  if (sel === null || sel.variant !== 'literal') return '';
   for (const q of props.store.triples()) {
     if (q.object.termType !== 'Literal' || q.object.value !== sel.value) continue;
     if (q.object.language.length > 0) return `@${q.object.language}`;

@@ -38,11 +38,11 @@ import type { BatchRunResultType } from './DagOutcome.js';
 /**
  * Shape of the init message sent to DagHost. Derived from the 'init' branch of
  * BridgeMessage so it cannot drift from the canonical schema definition.
- * Extracting `& { kind: 'init' }` narrows BridgeMessage to the init discriminant
- * and then omits the `kind` field (which the init sender does not supply as a
+ * Extracting `& { variant: 'init' }` narrows BridgeMessage to the init discriminant
+ * and then omits the `variant` field (which the init sender does not supply as a
  * separate argument — it is added by ChannelDispatch.init() internally).
  */
-export type InitMessageShapeType = Omit<BridgeMessageType & { kind: 'init' }, 'kind'>;
+export type InitMessageShapeType = Omit<BridgeMessageType & { variant: 'init' }, 'variant'>;
 
 /** Per-request correlation entry for single-item (N=1) requests. */
 type PendingEntry = {
@@ -50,7 +50,7 @@ type PendingEntry = {
   settle: (outcome: DagOutcomeType) => void;
   relay: ObserverRelayInterface | null;
   settled: boolean;
-  kind: 'single';
+  variant: 'single';
 }
 
 /** Per-request correlation entry for multi-item batch (N>1) requests. */
@@ -59,7 +59,7 @@ type BatchPendingEntry = {
   settle: (results: BatchRunResultType[]) => void;
   relay: ObserverRelayInterface | null;
   settled: boolean;
-  kind: 'batch';
+  variant: 'batch';
   itemIds: readonly string[];
 }
 
@@ -111,7 +111,7 @@ export class ChannelDispatch {
         'expectedVersion': message['registryVersion'],
       };
       this.#channel.send({
-        'kind': 'init',
+        'variant': 'init',
         'registryModule': message['registryModule'],
         'registryVersion': message['registryVersion'],
         'servicesConfig': message['servicesConfig'],
@@ -138,7 +138,7 @@ export class ChannelDispatch {
         'settle': resolve,
         'relay': relay,
         'settled': false,
-        'kind': 'single',
+        'variant': 'single',
       };
 
       this.#pending.set(correlationId, entry);
@@ -154,7 +154,7 @@ export class ChannelDispatch {
       entry.settle = settleOnce;
 
       try {
-        this.#channel.send({ 'kind': 'execute', 'request': request });
+        this.#channel.send({ 'variant': 'execute', 'request': request });
       } catch {
         // Send failure: resolve immediately as transport error.
         settleOnce(DagOutcome.transportError(correlationId));
@@ -183,7 +183,7 @@ export class ChannelDispatch {
         'settle': resolve,
         'relay': relay,
         'settled': false,
-        'kind': 'batch',
+        'variant': 'batch',
         'itemIds': itemIds,
       };
 
@@ -198,7 +198,7 @@ export class ChannelDispatch {
       entry.settle = settleOnce;
 
       try {
-        this.#channel.send({ 'kind': 'execute', 'request': request });
+        this.#channel.send({ 'variant': 'execute', 'request': request });
       } catch {
         // Send failure: return transport-error results for all items.
         settleOnce(itemIds.map((id: string) =>
@@ -216,7 +216,7 @@ export class ChannelDispatch {
    * Register an abort listener that forwards the cancellation to the host and
    * return the handler reference so the caller can deregister it on settle.
    *
-   * Derives the abort kind from `signal.reason`: a `TimeoutError` on the reason
+   * Derives the abort variant from `signal.reason`: a `TimeoutError` on the reason
    * means the run-level deadline expired, so it sends `'timeout'`; everything
    * else is a caller-initiated cancel (`'abort'`). The send is fire-and-forget.
    */
@@ -228,7 +228,7 @@ export class ChannelDispatch {
             ? 'timeout'
             : 'abort';
         this.#channel.send({
-          'kind': 'abort',
+          'variant': 'abort',
           'correlationId': correlationId,
           'reason': abortReason,
         });
@@ -281,7 +281,7 @@ export class ChannelDispatch {
     // Snapshot entries before settling: settleOnce mutates #pending (delete).
     const entries = [...this.#pending.values()];
     for (const entry of entries) {
-      if (entry.kind === 'single') {
+      if (entry.variant === 'single') {
         entry.settle(DagOutcome.transportError(entry.correlationId, { code, message }));
       } else {
         // Batch entry: produce one transport-error result per item.
@@ -301,7 +301,7 @@ export class ChannelDispatch {
   // ---------------------------------------------------------------------------
 
   #route(msg: BridgeMessageType): void {
-    switch (msg.kind) {
+    switch (msg.variant) {
       case 'ready': {
         const waiter = this.#initWaiter;
         if (waiter === null) return;
@@ -330,7 +330,7 @@ export class ChannelDispatch {
         //     object, values confirmed JSON-compatible by the validator; safe to narrow
         //     from { [k: string]: unknown } | null to JsonObjectType | null.
 
-        if (entry.kind === 'single') {
+        if (entry.variant === 'single') {
           // Single-item (N=1): unpack items[0] into a flat DagOutcomeType.
           const firstItem = msg.response.items[0];
           entry.settle({
@@ -364,7 +364,7 @@ export class ChannelDispatch {
         const path = msg.placementPath as readonly string[];
         // Dispatch map over switch: each hook handler is a closed-over function
         // that forwards the instrumentation event to the relay.
-        type InstrMsg = typeof msg & { kind: 'instrumentation' };
+        type InstrMsg = typeof msg & { variant: 'instrumentation' };
         const hookDispatch: Partial<Record<InstrMsg['hook'], (m: InstrMsg) => void>> = {
           'nodeStart': (m) => {
             relay.onNodeStart(m.nodeName, path);
@@ -396,7 +396,7 @@ export class ChannelDispatch {
           // Request-scoped error: settle that specific pending entry.
           const entry = this.#pending.get(correlationId);
           if (entry !== undefined) {
-            if (entry.kind === 'single') {
+            if (entry.variant === 'single') {
               entry.settle(DagOutcome.transportError(correlationId, { 'code': msg.code, 'message': msg.message }));
             } else {
               entry.settle(

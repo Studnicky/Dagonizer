@@ -195,20 +195,20 @@ process.stdout.write(`  logA lines: ${String(logA.length)} | logB lines: ${Strin
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Lifecycle state access: how to read kind + timestamps after execution
+// Lifecycle state access: how to read variant + timestamps after execution
 // (doc region — illustrates discriminated union usage)
 // ---------------------------------------------------------------------------
 
 // #region lifecycle-state
-// state.lifecycle is a discriminated union narrowed by `kind`.
+// state.lifecycle is a discriminated union narrowed by `variant`.
 // Timestamps are monotonic milliseconds from Clock.monotonicMs().
 //
-//   { kind: 'pending',    startedAt: null,   finishedAt: null,   error: null,  reason: null }
-//   { kind: 'running',    startedAt: number, finishedAt: null,   error: null,  reason: null }
-//   { kind: 'completed',  startedAt: number, finishedAt: number, error: null,  reason: null }
-//   { kind: 'failed',     startedAt: number, finishedAt: number, error: Error, reason: null }
-//   { kind: 'cancelled',  startedAt: number, finishedAt: number, error: null,  reason: string }
-//   { kind: 'timed_out',  startedAt: number, finishedAt: number, error: null,  reason: null }
+//   { variant: 'pending',    startedAt: null,   finishedAt: null,   error: null,  reason: null }
+//   { variant: 'running',    startedAt: number, finishedAt: null,   error: null,  reason: null }
+//   { variant: 'completed',  startedAt: number, finishedAt: number, error: null,  reason: null }
+//   { variant: 'failed',     startedAt: number, finishedAt: number, error: Error, reason: null }
+//   { variant: 'cancelled',  startedAt: number, finishedAt: number, error: null,  reason: string }
+//   { variant: 'timed_out',  startedAt: number, finishedAt: number, error: null,  reason: null }
 
 const lifecycleDispatcher = new TracingDispatcher('[lifecycle]');
 lifecycleDispatcher.registerNode(new ValidateNode());
@@ -219,13 +219,13 @@ const lifecycleState = new PipelineState();
 await lifecycleDispatcher.execute('observe-demo', lifecycleState);
 
 const lc = lifecycleState.lifecycle;
-if (lc.kind === 'completed') {
+if (lc.variant === 'completed') {
   // Both startedAt and finishedAt are numbers; no null-check needed here.
   const durationMs = lc.finishedAt - lc.startedAt;
   process.stdout.write(`  completed in ${String(durationMs)} ms\n`);
-} else if (lc.kind === 'failed') {
+} else if (lc.variant === 'failed') {
   process.stdout.write(`  failed: ${lc.error.message}\n`);
-} else if (lc.kind === 'cancelled') {
+} else if (lc.variant === 'cancelled') {
   process.stdout.write(`  cancelled: ${lc.reason}\n`);
 }
 // #endregion lifecycle-state

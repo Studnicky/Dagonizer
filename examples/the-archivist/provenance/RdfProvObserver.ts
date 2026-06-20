@@ -145,16 +145,16 @@ export class RdfProvObserver {
   }
 
   /** Sub-activity for one LLM round-trip. */
-  recordLlmCall(parentNode: string, providerId: string, kind: string): Term {
+  recordLlmCall(parentNode: string, providerId: string, callVariant: string): Term {
     const parent = this.#activeByNode.get(parentNode) ?? this.#run;
     const now = Date.now();
-    const activity = ProvIris.activity(this.#runId, `llm-${kind}`, now);
+    const activity = ProvIris.activity(this.#runId, `llm-${callVariant}`, now);
     this.#typed(activity, PROV.Activity);
     this.#typed(activity, DAG_ACT.LlmCall);
     const agent = ProvIris.agent(`llm:${providerId}`);
     this.#typed(agent, PROV.SoftwareAgent);
-    this.#store.assert(activity, MemoryStore.dagIri('llmKind'),
-      MemoryStore.lit.str(kind), this.#graph);
+    this.#store.assert(activity, MemoryStore.dagIri('llmVariant'),
+      MemoryStore.lit.str(callVariant), this.#graph);
     this.#store.assert(activity, PROV.startedAtTime,
       MemoryStore.lit.dateTime(new Date(now)), this.#graph);
     this.#store.assert(activity, PROV.wasInformedBy, parent, this.#graph);

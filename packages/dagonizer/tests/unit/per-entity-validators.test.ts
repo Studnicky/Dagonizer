@@ -195,7 +195,7 @@ void describe('Validator per-entity sub-validators', () => {
   void it('Validator.dagLifecycleState accepts a wire-shape lifecycle record', () => {
     assert.equal(
       Validator.dagLifecycleState.is({
-        'kind': 'pending',
+        'variant': 'pending',
         'startedAt': null,
         'finishedAt': null,
         'error': null,

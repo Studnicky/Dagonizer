@@ -45,20 +45,20 @@ import type { PlacementEntryType } from './internal.js';
  *
  * The required fields (`id`, `label`, `type`) are always present.
  * The optional fields cover all extra keys the renderer writes per
- * placement kind, so consumers can read them in stylesheets/handlers
+ * placement variant, so consumers can read them in stylesheets/handlers
  * without resorting to index access.
  */
 export type CytoscapeNodeDataType = {
   id: string;
   label: string;
-  /** Placement kind; selector use: `node[type="scatter"]`. */
+  /** Placement variant; selector use: `node[type="scatter"]`. */
   type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase';
   // ── Containment (EmbeddedDAGNode / dag-body ScatterNode with a container role) ──
   container?: string;
   containerColor?: string;
   containerStroke?: string;
   containerText?: string;
-  // ── Per-kind extras ──
+  // ── Per-variant extras ──
   node?: string;       // SingleNode, PhaseNode
   dag?: string;        // EmbeddedDAGNode
   outcome?: string;    // TerminalNode
@@ -80,11 +80,11 @@ export type CytoscapeNodeDataType = {
   parent?: string;
   /**
    * Determinism classification for stylesheet selection
-   * (`node[kind="deterministic"]` / `node[kind="non-deterministic"]`).
+   * (`node[variant="deterministic"]` / `node[variant="non-deterministic"]`).
    * The base renderer leaves this unset; subclasses enrich it by
    * overriding `composeElements()` (e.g. from a node registry).
    */
-  kind?: 'deterministic' | 'non-deterministic';
+  variant?: 'deterministic' | 'non-deterministic';
 }
 
 /** A Cytoscape node element. */
@@ -243,7 +243,7 @@ export class CytoscapeRenderer {
   private static composeNodeData(
     id: string,
     label: string,
-    kind: CytoscapeNodeDataType['type'],
+    variant: CytoscapeNodeDataType['type'],
     role: string | null,
   ): CytoscapeNodeDataType {
     if (role !== null) {
@@ -251,14 +251,14 @@ export class CytoscapeRenderer {
       return {
         "id":               id,
         "label":            label,
-        "type":             kind,
+        "type":             variant,
         "container":        role,
         "containerColor":   colors.fill,
         "containerStroke":  colors.stroke,
         "containerText":    colors.text,
       };
     }
-    return { "id": id, "label": label, "type": kind };
+    return { "id": id, "label": label, "type": variant };
   }
 
   /**
@@ -269,7 +269,7 @@ export class CytoscapeRenderer {
    *   `data.containerColor`  — per-role fill color (from `RoleColorUtils.forRole`)
    *   `data.containerStroke` — per-role border color
    *   `data.containerText`   — per-role label color
-   * and the additional `dag-contained` class alongside the existing `dag-${kind}`
+   * and the additional `dag-contained` class alongside the existing `dag-${nodeVariant}`
    * class. In-process placements omit all four container data keys entirely
    * (honoring `exactOptionalPropertyTypes`).
    *
@@ -285,14 +285,14 @@ export class CytoscapeRenderer {
    *   `node[container="cpu"]` — data selector, matches a specific role
    */
   private static placementNode(placement: PlacementEntryType, id: string): CytoscapeNodeElementType {
-    const kind = CytoscapeRenderer.PLACEMENT_KIND[placement['@type']] ?? 'single';
+    const nodeVariant = CytoscapeRenderer.PLACEMENT_KIND[placement['@type']] ?? 'single';
     const role = PlacementUtils.containerRole(placement);
 
     const baseLabel = CytoscapeRenderer.titleCase(placement.name);
-    const baseData: CytoscapeNodeDataType = CytoscapeRenderer.composeNodeData(id, baseLabel, kind, role);
+    const baseData: CytoscapeNodeDataType = CytoscapeRenderer.composeNodeData(id, baseLabel, nodeVariant, role);
 
     // Append dag-contained class for stylesheet selection.
-    const classes = role !== null ? `dag-${kind} dag-contained` : `dag-${kind}`;
+    const classes = role !== null ? `dag-${nodeVariant} dag-contained` : `dag-${nodeVariant}`;
 
     const base = {
       "group": 'nodes' as const,

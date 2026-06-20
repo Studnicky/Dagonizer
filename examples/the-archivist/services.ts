@@ -115,7 +115,7 @@ export interface LlmClientInterface {
   compose(
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,
@@ -124,7 +124,7 @@ export interface LlmClientInterface {
   composeAuthor(
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,
@@ -133,7 +133,7 @@ export interface LlmClientInterface {
   composeReviews(
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,
@@ -142,7 +142,7 @@ export interface LlmClientInterface {
   describeBook(
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,
@@ -151,7 +151,7 @@ export interface LlmClientInterface {
   composeSimilar(
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,

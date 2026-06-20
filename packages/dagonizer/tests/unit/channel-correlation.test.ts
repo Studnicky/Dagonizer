@@ -175,16 +175,16 @@ class SingleChannelContainer extends DagContainerBase<MinimalState, null> {
 
 function startFakeHost(hostSide: MessageChannelInterface): void {
   hostSide.onMessage((msg) => {
-    if (msg.kind === 'init') {
+    if (msg.variant === 'init') {
       hostSide.send({
-        'kind': 'ready',
+        'variant': 'ready',
         'registryVersion': msg.registryVersion,
         'capabilities': [],
       });
-    } else if (msg.kind === 'execute') {
+    } else if (msg.variant === 'execute') {
       const { correlationId } = msg.request;
       hostSide.send({
-        'kind': 'result',
+        'variant': 'result',
         'response': {
           'correlationId': correlationId,
           'items': [{ 'id': correlationId, 'snapshot': null, 'terminalOutcome': `done-${correlationId}` }],
@@ -274,13 +274,13 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     // to prove correlationId routing (not FIFO) assigns responses correctly.
     const pending: Array<{ correlationId: string }> = [];
     hostSide.onMessage((msg) => {
-      if (msg.kind === 'init') {
+      if (msg.variant === 'init') {
         hostSide.send({
-          'kind': 'ready',
+          'variant': 'ready',
           'registryVersion': msg.registryVersion,
           'capabilities': [],
         });
-      } else if (msg.kind === 'execute') {
+      } else if (msg.variant === 'execute') {
         pending.push({ 'correlationId': msg.request.correlationId });
         // After collecting two requests, respond in REVERSE order.
         if (pending.length === 2) {
@@ -289,7 +289,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
           // Respond to second first, then first.
           setImmediate(() => {
             hostSide.send({
-              'kind': 'result',
+              'variant': 'result',
               'response': {
                 'correlationId': secondId,
                 'items': [{ 'id': secondId, 'snapshot': null, 'terminalOutcome': `done-${secondId}` }],
@@ -299,7 +299,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
             });
             setImmediate(() => {
               hostSide.send({
-                'kind': 'result',
+                'variant': 'result',
                 'response': {
                   'correlationId': firstId,
                   'items': [{ 'id': firstId, 'snapshot': null, 'terminalOutcome': `done-${firstId}` }],
@@ -344,12 +344,12 @@ void describe('worker observability: forwarded node events reach the parent obse
     // FakeHost: on execute, forward an inner node-start (exactly as DagHost's
     // WorkerObserver does for a contained sub-DAG), then complete the request.
     hostSide.onMessage((msg) => {
-      if (msg.kind === 'init') {
-        hostSide.send({ 'kind': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
-      } else if (msg.kind === 'execute') {
+      if (msg.variant === 'init') {
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+      } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
         hostSide.send({
-          'kind': 'instrumentation',
+          'variant': 'instrumentation',
           'correlationId': correlationId,
           'hook': 'nodeStart',
           'phase': '',
@@ -360,7 +360,7 @@ void describe('worker observability: forwarded node events reach the parent obse
           'placementPath': ['scatter-placement', 'inner-step'],
         });
         hostSide.send({
-          'kind': 'result',
+          'variant': 'result',
           'response': {
             'correlationId': correlationId,
             'items': [{ 'id': correlationId, 'snapshot': null, 'terminalOutcome': 'done' }],

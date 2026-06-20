@@ -24,7 +24,7 @@
  *      Same state graphs; collect `(?run dag:intent ?i)` and group by
  *        intent value, tallying occurrences.
  *
- * kind: 'non-deterministic': SPARQL output depends on accumulated memory.
+ * variant: 'non-deterministic': SPARQL output depends on accumulated memory.
  * output: 'recalled': always routes forward; empty memory is a valid
  *   recall result (the digest will have bookCount === 0).
  */

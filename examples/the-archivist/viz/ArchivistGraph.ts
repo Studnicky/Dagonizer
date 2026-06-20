@@ -1,11 +1,11 @@
 /**
  * ArchivistGraph: minimal `CytoscapeGraph` subclass for the Archivist DAG.
  *
- * Overrides `composeElements()` to enrich every node element's `data.kind`
- * from `NODE_KINDS`, making it available to Cytoscape stylesheets via
- * `node[kind="deterministic"]` and `node[kind="non-deterministic"]`
+ * Overrides `composeElements()` to enrich every node element's `data.variant`
+ * from `NODE_VARIANTS`, making it available to Cytoscape stylesheets via
+ * `node[variant="deterministic"]` and `node[variant="non-deterministic"]`
  * selectors. The base `CytoscapeGraph` stylesheet already defines visual
- * rules for both kinds (dashed violet border for non-deterministic nodes).
+ * rules for both variants (dashed violet border for non-deterministic nodes).
  *
  * Cytoscape is resolved internally by `CytoscapeGraph` via a lazy
  * `Cytoscape.create()` dynamic import; consumers no longer pass the
@@ -33,12 +33,12 @@
 import { CytoscapeGraph }  from '@studnicky/dagonizer/viz';
 import { CytoscapeRenderer } from '@studnicky/dagonizer/viz';
 import type { CytoscapeElementType, CytoscapeGraphOptionsType } from '@studnicky/dagonizer/viz';
-import { NODE_KINDS } from '../nodes/ArchivistNode.ts';
+import { NODE_VARIANTS } from '../nodes/ArchivistNode.ts';
 
 /**
  * `CytoscapeGraph` subclass that annotates every rendered node element with
- * `data.kind` from the Archivist's `NODE_KINDS` registry. Stylesheets can then
- * select `node[kind="non-deterministic"]` to apply the dashed violet border.
+ * `data.variant` from the Archivist's `NODE_VARIANTS` registry. Stylesheets can then
+ * select `node[variant="non-deterministic"]` to apply the dashed violet border.
  */
 export class ArchivistGraph extends CytoscapeGraph {
   constructor(
@@ -50,8 +50,8 @@ export class ArchivistGraph extends CytoscapeGraph {
   }
 
   /**
-   * Render the DAG elements and enrich each node's `data.kind` from
-   * `NODE_KINDS`. Nodes absent from the registry are emitted unchanged.
+   * Render the DAG elements and enrich each node's `data.variant` from
+   * `NODE_VARIANTS`. Nodes absent from the registry are emitted unchanged.
    */
   protected override composeElements(): ReadonlyArray<CytoscapeElementType> {
     const raw = CytoscapeRenderer.render(this.dag, {
@@ -61,9 +61,9 @@ export class ArchivistGraph extends CytoscapeGraph {
     return raw.map((el) => {
       if (el.group !== 'nodes') return el;
       const nodeName = el.data.node ?? el.data.id;
-      const kind = NODE_KINDS[nodeName];
-      if (kind === undefined) return el;
-      return { ...el, data: { ...el.data, kind } };
+      const variant = NODE_VARIANTS[nodeName];
+      if (variant === undefined) return el;
+      return { ...el, data: { ...el.data, variant } };
     });
   }
 }

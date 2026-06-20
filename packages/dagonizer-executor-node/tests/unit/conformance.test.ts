@@ -410,8 +410,8 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
       `all 3 items must be gathered after resume (no loss), got ${finalItems.length}`,
     );
     assert.strictEqual(
-      result.state.lifecycle.kind, 'completed',
-      `flow must complete after resume, got ${result.state.lifecycle.kind}`,
+      result.state.lifecycle.variant, 'completed',
+      `flow must complete after resume, got ${result.state.lifecycle.variant}`,
     );
   });
 });

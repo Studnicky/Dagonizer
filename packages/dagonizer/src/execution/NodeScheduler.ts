@@ -380,7 +380,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
             terminalAccumulator.set(terminal.name, { 'outcome': terminal.outcome, 'batch': Batch.from(merged) });
           }
           // Populate per-item terminal map when the caller requested it (batch-native
-          // embedded path needs to know which items ended at which terminal kind).
+          // embedded path needs to know which items ended at which terminal variant).
           if (terminalByItemId !== undefined) {
             for (const item of batch) {
               terminalByItemId.set(item.id, terminal.outcome);

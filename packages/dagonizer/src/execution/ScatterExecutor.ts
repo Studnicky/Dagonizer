@@ -236,11 +236,11 @@ export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
         for (const acked of ackedResults) {
           if (freshIndices.has(acked.index)) continue;
           const syntheticClone = state.clone();
-          if (acked.kind === 'map') {
+          if (acked.variant === 'map') {
             for (const [clonePath, val] of Object.entries(acked.mappingValues)) {
               this.#scatterSource.accessor.set(syntheticClone, clonePath, val);
             }
-          } else if (acked.kind === 'field' && scatter.gather.field !== undefined) {
+          } else if (acked.variant === 'field' && scatter.gather.field !== undefined) {
             this.#scatterSource.accessor.set(syntheticClone, scatter.gather.field, acked.fieldValue);
           }
           syntheticRecords.push({

@@ -188,7 +188,7 @@ void describe('TerminalNode: execution with outcome=completed', () => {
     const state = new NodeStateBase();
     const result = await dispatcher.execute('term-completed', state);
 
-    assert.equal(result.state.lifecycle.kind, 'completed', 'lifecycle is completed');
+    assert.equal(result.state.lifecycle.variant, 'completed', 'lifecycle is completed');
     assert.ok(result.executedNodes.includes('a'),   'a is in executedNodes');
     assert.ok(result.executedNodes.includes('end'), 'end is in executedNodes');
     assert.equal(dispatcher.flowEndCount,   1, 'onFlowEnd fires once');
@@ -215,7 +215,7 @@ void describe('TerminalNode: execution with outcome=failed', () => {
     const state = new NodeStateBase();
     const result = await dispatcher.execute('term-failed', state);
 
-    assert.equal(result.state.lifecycle.kind, 'failed', 'lifecycle is failed');
+    assert.equal(result.state.lifecycle.variant, 'failed', 'lifecycle is failed');
     assert.ok(result.executedNodes.includes('fail-end'), 'terminal is in executedNodes');
   });
 });
@@ -289,7 +289,7 @@ void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('parent-tn', state);
 
-    assert.equal(result.state.lifecycle.kind, 'completed', 'flow completes cleanly');
+    assert.equal(result.state.lifecycle.variant, 'completed', 'flow completes cleanly');
     assert.equal(dispatcher.flowStartCount, 1, 'onFlowStart fires exactly once');
     assert.equal(dispatcher.flowEndCount,   1, 'onFlowEnd fires exactly once');
   });
@@ -357,7 +357,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('parent-explicit', state);
-    assert.equal(result.state.lifecycle.kind, 'completed', 'routes to end-ok → completed');
+    assert.equal(result.state.lifecycle.variant, 'completed', 'routes to end-ok → completed');
   });
 
   void it('ends failed when child emits errors (routes to end-fail)', async () => {
@@ -389,6 +389,6 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
 
     const state = new NodeStateBase();
     const result = await dispatcher2.execute('parent-explicit', state);
-    assert.equal(result.state.lifecycle.kind, 'failed', 'routes to end-fail → failed');
+    assert.equal(result.state.lifecycle.variant, 'failed', 'routes to end-fail → failed');
   });
 });
