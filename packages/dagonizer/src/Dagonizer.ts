@@ -187,8 +187,10 @@ export interface DagonizerInterface<
 
   /**
    * Register a DAG node. Accepts nodes typed against any `TNodeState extends
-   * NodeStateInterface` so child-state nodes (isolation factory bodies) can be
-   * registered on a dispatcher typed for the parent state without casts.
+   * NodeStateInterface` and any `TNodeServices` so child-state nodes (isolation
+   * factory bodies) and service-free nodes (e.g. `ToolInvokeNode` with
+   * `TServices = undefined`) can be registered on a services-typed dispatcher
+   * without casts.
    */
   registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
     node: NodeInterface<TNodeState, TOutput, TServices>,
@@ -196,9 +198,11 @@ export interface DagonizerInterface<
 
   /**
    * Register every node, then every DAG, in the supplied bundle. Accepts
-   * bundles typed against any `TBundleState extends NodeStateInterface` so
-   * child-state bundles (e.g. tool bundles) can be registered on a dispatcher
-   * typed for the parent state without casts at the call site.
+   * bundles typed against any `TBundleState extends NodeStateInterface` and any
+   * `TBundleServices` so child-state bundles (e.g. tool bundles whose nodes run
+   * inside isolated child DAGs with no parent services) can be registered on a
+   * services-typed dispatcher without casts. The bundle's nodes run only inside
+   * their own child-DAG context where the parent's `TServices` is not injected.
    */
   registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState, TServices>): void;
 }

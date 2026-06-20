@@ -134,12 +134,12 @@ export class DagRegistrar<TServices> {
   /**
    * Register a node. Accepts nodes typed against any `TNodeState extends
    * NodeStateInterface` — including child-state classes that differ from the
-   * dispatcher's state type. The registry stores `NodeInterface<NodeStateInterface,
-   * string, TServices>`; `NodeInterface.execute` uses method syntax (bivariant
-   * under TypeScript), so `NodeInterface<TNodeState>` is structurally assignable
-   * to `NodeInterface<NodeStateInterface>` without a cast. Child-state nodes are
-   * invoked only within body DAGs whose execution is seeded with the correct
-   * child-state type by the isolation factory.
+   * dispatcher's state type. The node's services type is the dispatcher's
+   * `TServices`; services-agnostic nodes (e.g. `ToolInvokeNode<TServices>`) are
+   * constructed typed to the dispatcher's `TServices` at bundle time, so they
+   * register against the `NodeInterface<NodeStateInterface, string, TServices>`
+   * map without a cast (`NodeInterface.execute` is a bivariant method, so the
+   * narrower `TNodeState` is structurally assignable).
    *
    * Throws `DAGError` when a node with the same name is already registered.
    */
@@ -159,8 +159,6 @@ export class DagRegistrar<TServices> {
         throw new DAGError(`Invalid node ${node.name}: ${result.errors.join(', ')}`);
       }
     }
-    // NodeInterface.execute is a method declaration (bivariant); NodeInterface<TNodeState>
-    // is structurally assignable to NodeInterface<NodeStateInterface> without a cast.
     this.#source.nodes.set(node.name, node);
   }
 

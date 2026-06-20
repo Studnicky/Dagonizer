@@ -25,6 +25,15 @@ export class ToolInvocationState extends NodeStateBase {
     this.output = null;
   }
 
+  /**
+   * Type guard: narrows an `unknown` value (a metadata entry or a snapshot
+   * field) to a plain string-keyed record. A trusted predicate — no cast at the
+   * call site.
+   */
+  static isArgumentRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
   protected override snapshotData(): JsonObjectType {
     return {
       // Shallow-copy; caller contract: `input` values are JSON-safe primitives/objects.
@@ -37,13 +46,8 @@ export class ToolInvocationState extends NodeStateBase {
 
   protected override restoreData(snapshot: JsonObjectType): void {
     const rawInput = snapshot['input'];
-    if (
-      rawInput !== undefined &&
-      typeof rawInput === 'object' &&
-      rawInput !== null &&
-      !Array.isArray(rawInput)
-    ) {
-      this.input = rawInput as Record<string, unknown>;
+    if (ToolInvocationState.isArgumentRecord(rawInput)) {
+      this.input = rawInput;
     }
 
     if ('output' in snapshot) {

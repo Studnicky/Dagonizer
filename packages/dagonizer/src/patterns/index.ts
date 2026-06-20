@@ -7,6 +7,10 @@
  *     co-import with the pattern surface. Per-item pattern bases extend
  *     `ScalarNode` (which extends `MonadicNode`); hot-path nodes extend
  *     `MonadicNode` directly.
+ *   - `AgentServicesType`: typed services bag for agent-flow nodes.
+ *   - Agent-flow template-method bases: `BuildChatRequestNode`, `CallModelNode`,
+ *     `NormalizeResponseNode`, `DecodeTextToolCallsNode`, `AppendAssistantNode`,
+ *     `NormalizeToolCallsNode`, `BuildToolWorksetsNode`, `CollectToolResultsNode`.
  *   - `LlmClientInterface`: minimal chat-shaped service contract; any
  *     `LlmAdapterInterface` satisfies it.
  *   - `TripleStoreInterface`: minimal RDF quad-store service contract.
@@ -22,12 +26,20 @@
 
 export { MonadicNode } from '../core/MonadicNode.js';
 
+export type { AgentServicesType } from '../contracts/AgentServicesType.js';
+
 export {
+  AppendAssistantNode,
+  BuildChatRequestNode,
+  BuildToolWorksetsNode,
+  CallModelNode,
+  CollectToolResultsNode,
   DecodeTextToolCallsNode,
-  DispatchToolCallsNode,
-  LlmChatNode,
-  PartitionToolCallsNode,
+  NormalizeResponseNode,
+  NormalizeToolCallsNode,
 } from './agent/index.js';
+
+export type { ToolCallScatterItemType } from './agent/index.js';
 
 export type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
 
@@ -38,13 +50,3 @@ export type {
   TermType,
   TripleStoreInterface,
 } from '../contracts/TripleStoreInterface.js';
-
-export type {
-  DecodeTextToolCallsNodeOptionsType,
-  DispatchToolCallsNodeOptionsType,
-  LlmChatNodeOptionsType,
-  PartitionToolCallsNodeOptionsType,
-  ToolDispatchRecordType,
-  ToolWorksetType,
-  ToolWorksetVariantType,
-} from './agent/index.js';

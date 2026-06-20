@@ -231,19 +231,18 @@ export { NodeRunner } from './core/NodeRunner.js';
 // =============================================================================
 
 export {
+  AppendAssistantNode,
+  BuildChatRequestNode,
+  BuildToolWorksetsNode,
+  CallModelNode,
+  CollectToolResultsNode,
   DecodeTextToolCallsNode,
-  DispatchToolCallsNode,
-  LlmChatNode,
-  PartitionToolCallsNode,
+  NormalizeResponseNode,
+  NormalizeToolCallsNode,
 } from './patterns/index.js';
 export type {
-  DecodeTextToolCallsNodeOptionsType,
-  DispatchToolCallsNodeOptionsType,
-  LlmChatNodeOptionsType,
-  PartitionToolCallsNodeOptionsType,
-  ToolDispatchRecordType,
-  ToolWorksetType,
-  ToolWorksetVariantType,
+  AgentServicesType,
+  ToolCallScatterItemType,
 } from './patterns/index.js';
 
 // =============================================================================
