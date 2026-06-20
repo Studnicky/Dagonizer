@@ -1,5 +1,12 @@
 # @studnicky/dagonizer-executor-node
 
+## 0.24.0
+
+### Patch Changes
+
+- Updated dependencies [b9f68c5]
+  - @studnicky/dagonizer@0.24.0
+
 ## 0.23.0
 
 ### Patch Changes
