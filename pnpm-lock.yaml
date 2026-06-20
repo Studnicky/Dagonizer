@@ -4,8 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-packageExtensionsChecksum: sha256-OzMhP4oezXAt26qNYzSyMNVl1w2WFAP6RvPPdszRZkI=
-
 importers:
 
   .:
@@ -393,7 +391,7 @@ importers:
   packages/dagonizer-executor-node:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:>=0.22.0
+        specifier: workspace:>=0.23.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -418,7 +416,7 @@ importers:
   packages/dagonizer-executor-web:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:>=0.22.0
+        specifier: workspace:>=0.23.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -483,7 +481,7 @@ importers:
   packages/dagonizer-store-sqlite:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:>=0.22.0
+        specifier: workspace:>=0.23.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -511,7 +509,7 @@ importers:
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
       '@studnicky/dagonizer-book-entities':
-        specifier: workspace:>=0.22.0
+        specifier: workspace:>=0.23.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
@@ -527,7 +525,7 @@ importers:
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
       '@studnicky/dagonizer-book-entities':
-        specifier: workspace:>=0.22.0
+        specifier: workspace:>=0.23.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
@@ -543,7 +541,7 @@ importers:
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
       '@studnicky/dagonizer-book-entities':
-        specifier: workspace:>=0.22.0
+        specifier: workspace:>=0.23.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
