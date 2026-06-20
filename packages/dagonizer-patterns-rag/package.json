@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-patterns-rag",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "description": "Pattern plugin for @studnicky/dagonizer: RAG node patterns.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

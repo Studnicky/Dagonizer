@@ -1,5 +1,16 @@
 # @studnicky/dagonizer-examples
 
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies [b9f68c5]
+  - @studnicky/dagonizer@0.24.0
+  - @studnicky/dagonizer-adapter-ollama@0.24.0
+  - @studnicky/dagonizer-embedder-ollama@0.24.0
+  - @studnicky/dagonizer-executor-node@0.24.0
+  - @studnicky/dagonizer-patterns-rag@0.24.0
+
 ## 0.0.10
 
 ### Patch Changes
