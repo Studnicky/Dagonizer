@@ -21,6 +21,12 @@ import { BackoffStrategyNames } from '../entities/runtime/BackoffStrategy.js';
 import { Classifications, LlmError, type ErrorClassificationType } from './LlmError.js';
 import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
 
+/** Options for model selection in `selectChatModel` and `selectEmbeddingModel`. */
+export type SelectModelOptionsType = {
+  /** Prefer this model name from the catalogue; falls back to local-first if absent. */
+  readonly preferred?: string;
+}
+
 /** Canonical default: attempts before giving up (adapter + embedder). */
 export const DEFAULT_MAX_ATTEMPTS = 3;
 /** Canonical default: first retry delay in ms (adapter + embedder). */
@@ -40,12 +46,15 @@ export type BaseAdapterCoreOptionsResolvedType = {
 export type BaseAdapterCoreOptionsType = {
   maxAttempts?: number;
   baseDelayMs?: number;
+  /** Fixed model name. When set, `model` getter returns it immediately; `listModels()` seeds a single descriptor. */
+  readonly model?: string;
 }
 
 export abstract class BaseAdapterCore {
   readonly id: string;
   readonly displayName: string;
   readonly #retry: RetryableErrorPolicy;
+  #model: string | null;
 
   /**
    * The canonical default options. Subclasses do not need to spread this
@@ -65,6 +74,33 @@ export abstract class BaseAdapterCore {
       'strategy':    BackoffStrategyNames.EXPONENTIAL,
       'baseDelay':   resolved.baseDelayMs,
     });
+    this.#model = options.model ?? null;
+  }
+
+  /**
+   * The currently selected model name. Throws `MODEL_NOT_FOUND` when no
+   * model has been set at construction or via `selectChatModel` /
+   * `selectEmbeddingModel`. Access only after selection.
+   */
+  protected get model(): string {
+    if (this.#model === null) {
+      throw new LlmError('No model selected. Call selectChatModel or selectEmbeddingModel first, or pass model at construction.', Classifications['MODEL_NOT_FOUND']);
+    }
+    return this.#model;
+  }
+
+  /** Set the active model. Called by `selectChatModel` / `selectEmbeddingModel` after picking. */
+  protected setModel(name: string): void {
+    this.#model = name;
+  }
+
+  /**
+   * The selected model name, or `''` when none is set. Use inside
+   * `listModels()` implementations that need to read the current selection
+   * without triggering the `model` getter's `MODEL_NOT_FOUND` throw.
+   */
+  protected get modelOrEmpty(): string {
+    return this.#model ?? '';
   }
 
   /** No-op default. Subclasses with a session lifecycle override. */

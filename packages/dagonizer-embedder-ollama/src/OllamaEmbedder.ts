@@ -22,6 +22,10 @@
  * Local daemon usage:  `new OllamaEmbedder()`
  * Ollama Cloud usage:  `new OllamaEmbedder({ apiKey: '<key>', baseUrl: 'https://api.ollama.ai' })`
  *
+ * When `options.model` is omitted, call `selectEmbeddingModel()` after
+ * construction to discover and select an available embedding model from
+ * the running daemon.
+ *
  * Probe (local): GET `/api/tags` with a short timeout. Same surface the
  * chat adapter uses, so a single Ollama daemon being up makes both
  * surfaces available.
@@ -33,12 +37,22 @@
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
+import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import { OllamaEmbedResponseValidator } from './OllamaEmbedResponse.js';
+import { OllamaTagsResponseValidator } from './OllamaTagsResponse.js';
 
-/** Dimensions for `nomic-embed-text`, the default model. Mirrors `KNOWN_DIMENSIONS[DEFAULT_MODEL]`. */
+/** Dimensions for `nomic-embed-text`, the default model. Mirrors `KNOWN_DIMENSIONS['nomic-embed-text']`. */
 const DEFAULT_DIMENSIONS = 768;
 const PROBE_TIMEOUT_MS = 500;
+const DISCOVERY_TIMEOUT_MS = 3000;
+
+/**
+ * Lowercased name fragments that identify embedding models in the Ollama model list.
+ * A model name containing any of these substrings is classified as `'embedding'`;
+ * all others default to `'chat'`.
+ */
+const EMBEDDING_MARKERS: readonly string[] = ['embed', 'bge', 'minilm', 'gte-'];
 
 /**
  * Module-level defaults; the producer fills them so the consumer never
@@ -46,10 +60,15 @@ const PROBE_TIMEOUT_MS = 500;
  * needs no auth, and the empty string keeps the private field a stable
  * `string` (V8 shape stability) instead of `string | undefined`. The
  * Authorization header is gated on a non-empty key.
+ *
+ * `model` is intentionally absent here: the base class holds the selected
+ * model and throws when unset. `OllamaEmbedder` resolves a concrete model
+ * at construction (from the explicit option or the DEFAULT_MODEL fallback)
+ * and calls `setModel()` so the base field is always populated when `model`
+ * is supplied; when omitted, `selectEmbeddingModel()` must be called first.
  */
 const OLLAMA_EMBEDDER_DEFAULTS = {
   'baseUrl': 'http://127.0.0.1:11434',
-  'model': 'nomic-embed-text',
   'apiKey': '',
 } as const;
 
@@ -81,6 +100,10 @@ const KNOWN_DIMENSIONS: Readonly<Record<string, number>> = {
  * always required (making it a required positional), Ollama's local mode
  * needs no key at all. `apiKey` therefore lives in the options bag and is
  * omitted for local usage.
+ *
+ * `model` is optional. When omitted, call `selectEmbeddingModel()` to
+ * discover an available model from the running daemon. When provided,
+ * `embed()` is immediately usable.
  */
 export type OllamaEmbedderOptionsType = BaseEmbedderOptionsType & {
   /**
@@ -99,12 +122,12 @@ export type OllamaEmbedderOptionsType = BaseEmbedderOptionsType & {
 
 export class OllamaEmbedder extends BaseEmbedder {
   readonly #baseUrl: string;
-  readonly #model: string;
   readonly #apiKey: string;
 
   /**
    * Constructor: `(options?)`. All configuration lives in `options`.
-   * `options.model` selects the embedding model (default `'nomic-embed-text'`);
+   * `options.model` selects the embedding model — when omitted, call
+   * `selectEmbeddingModel()` before `embed()` to discover and pick one;
    * `options.baseUrl` overrides the server URL;
    * `options.dimensions` overrides the auto-resolved dimensionality;
    * `options.apiKey` enables Ollama Cloud authentication.
@@ -117,15 +140,25 @@ export class OllamaEmbedder extends BaseEmbedder {
    * `MistralEmbedder(apiKey, options?)` where a key is always required.
    */
   constructor(options: OllamaEmbedderOptionsType = {}) {
-    const resolved = { ...OLLAMA_EMBEDDER_DEFAULTS, ...options };
-    // Resolve dimensions: explicit override → known-model table → DEFAULT_DIMENSIONS (768).
-    // DEFAULT_DIMENSIONS mirrors KNOWN_DIMENSIONS['nomic-embed-text'] and is a concrete constant,
-    // so the fallback chain always terminates with a number.
-    const dimensions = options.dimensions ?? KNOWN_DIMENSIONS[resolved.model] ?? DEFAULT_DIMENSIONS;
-    super('ollama', `Ollama (${resolved.model})`, dimensions, options);
-    this.#baseUrl = resolved.baseUrl;
-    this.#model = resolved.model;
-    this.#apiKey = resolved.apiKey;
+    const baseUrl = options.baseUrl ?? OLLAMA_EMBEDDER_DEFAULTS.baseUrl;
+    const apiKey  = options.apiKey  ?? OLLAMA_EMBEDDER_DEFAULTS.apiKey;
+
+    // When a model is provided, resolve dimensions immediately so embed() works
+    // without a discovery round-trip. When omitted, DEFAULT_DIMENSIONS is used
+    // as a placeholder; `selectEmbeddingModel()` will call `setModel()` before
+    // `embed()` is invoked, so the placeholder never surfaces in practice.
+    const selectedModel = options.model;
+    const dimensions = options.dimensions
+      ?? (selectedModel !== undefined ? (KNOWN_DIMENSIONS[selectedModel] ?? DEFAULT_DIMENSIONS) : DEFAULT_DIMENSIONS);
+
+    super('ollama', `Ollama (${selectedModel ?? 'unset'})`, dimensions, options);
+    this.#baseUrl = baseUrl;
+    this.#apiKey  = apiKey;
+
+    // Pre-select the model when supplied so embed() is immediately usable.
+    if (selectedModel !== undefined) {
+      this.setModel(selectedModel);
+    }
   }
 
   protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
@@ -138,7 +171,7 @@ export class OllamaEmbedder extends BaseEmbedder {
       {
         'method': 'POST',
         headers,
-        'body': JSON.stringify({ 'model': this.#model, 'prompt': text }),
+        'body': JSON.stringify({ 'model': this.model, 'prompt': text }),
       },
       signal,
     );
@@ -176,6 +209,60 @@ export class OllamaEmbedder extends BaseEmbedder {
       return res.ok;
     } catch {
       return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Enumerate models installed in the Ollama daemon by calling `GET /api/tags`.
+   * Uses a short discovery timeout composed with any caller-supplied signal.
+   *
+   * Each model name is classified:
+   *   - `'embedding'` when the lowercased name contains any of the known
+   *     embedding markers (`embed`, `bge`, `minilm`, `gte-`).
+   *   - `'chat'` otherwise.
+   *
+   * `cloud` is `true` when the name ends with `:cloud` or `-cloud`; `false`
+   * otherwise. Daemon-local models are always non-cloud.
+   *
+   * Returns `[]` on any transport failure or validation error — never throws.
+   */
+  override async listModels(options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
+    if (options?.signal !== undefined) {
+      options.signal.addEventListener('abort', () => { controller.abort(); }, { 'once': true });
+    }
+    const headers: Record<string, string> = {};
+    if (this.#apiKey.length > 0) {
+      headers['Authorization'] = `Bearer ${this.#apiKey}`;
+    }
+    try {
+      const res = await fetch(`${this.#baseUrl}/api/tags`, {
+        'method': 'GET',
+        headers,
+        'signal': controller.signal,
+      });
+      if (!res.ok) {
+        return [];
+      }
+      const body: unknown = await res.json() as unknown;
+      if (!OllamaTagsResponseValidator.is(body)) {
+        return [];
+      }
+      return body.models.map((entry): LlmModelType => {
+        const lower = entry.name.toLowerCase();
+        const isEmbedding = EMBEDDING_MARKERS.some((marker) => lower.includes(marker));
+        const isCloud = lower.endsWith(':cloud') || lower.endsWith('-cloud');
+        return {
+          'name': entry.name,
+          'variant': isEmbedding ? 'embedding' : 'chat',
+          'cloud': isCloud,
+        };
+      });
+    } catch {
+      return [];
     } finally {
       clearTimeout(timer);
     }

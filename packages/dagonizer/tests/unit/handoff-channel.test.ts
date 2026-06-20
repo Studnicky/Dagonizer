@@ -226,7 +226,7 @@ void describe('handoff-channel: publish failure', () => {
     // terminalOutcome unchanged
     assert.equal(result.terminalOutcome, 'completed');
     // lifecycle still completed
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
     // error collected in state
     const handoffErr = state.errors.find((e) => e.code === 'HANDOFF_PUBLISH_FAILED');
     assert.ok(handoffErr !== undefined, 'HANDOFF_PUBLISH_FAILED error should be collected');

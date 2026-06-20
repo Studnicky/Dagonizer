@@ -7,7 +7,7 @@
  *   2. Wire an LlmAdapterCascade that walks the preference list in order,
  *      probing each adapter and selecting the first available one.
  *   3. Inject the selected LlmAdapterInterface into state and call .chat() inside
- *      a DAG node that routes on the response kind (text vs tool_call).
+ *      a DAG node that routes on the response variant (text vs tool_call).
  *
  * Prerequisites:
  *   - Ollama installed and running on the default port (11434).
@@ -34,15 +34,17 @@ import { OllamaApiAdapter } from '@studnicky/dagonizer-adapter-ollama';
 import { ChatAdapterState, ChatNode, HandleTextNode, HandleToolsNode, dag } from './dags/24-llm-adapter.js';
 
 // ---------------------------------------------------------------------------
-// Discover an installed chat model from the running Ollama daemon. Hardcoding
-// a tag (e.g. 'llama3.2') silently produces empty responses when the host has
-// not pulled that exact tag; discovery names a model the host actually has.
-// Override the choice with the OLLAMA_MODEL env var.
+// Discover an installed chat model via instance-based discovery. Construct the
+// adapter without a model, then call selectChatModel() on the live instance.
+// selectChatModel() calls listModels() against the running daemon, skips
+// embedding models, honors the preferred tag when installed, and sets the
+// chosen model on the adapter. Override the choice with the OLLAMA_MODEL
+// env var.
 // ---------------------------------------------------------------------------
 
 const preferredModel = process.env['OLLAMA_MODEL'];
-const OLLAMA_MODEL = await OllamaApiAdapter.firstChatModel(
-  undefined,
+const discoveryAdapter = new OllamaApiAdapter();
+const OLLAMA_MODEL = await discoveryAdapter.selectChatModel(
   preferredModel !== undefined ? { 'preferred': preferredModel } : {},
 );
 
@@ -95,7 +97,7 @@ process.stdout.write(`  Cascade preferences: ollama-remote (skipped, probe=false
 
 // ---------------------------------------------------------------------------
 // 3. DAG execution: inject adapter into state; chat node calls .chat() and
-//    routes on the response kind.
+//    routes on the response variant.
 // ---------------------------------------------------------------------------
 
 // #region adapter-usage

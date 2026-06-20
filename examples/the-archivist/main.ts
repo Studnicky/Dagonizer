@@ -28,7 +28,6 @@ import { DomConsoleLogger } from './logger/DomConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedArchivist } from './ObservedArchivist.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
-import { OllamaModels, OllamaProbe } from './providers/index.ts';
 import type { ArchivistServices, LlmClientInterface } from './services.ts';
 
 import { GeminiApiAdapter }   from '@studnicky/dagonizer-adapter-gemini-api';
@@ -73,7 +72,7 @@ class ArchivistCli {
       logger.result(`intent=${result.state.intent}`);
       logger.result(`shortlist=${String(result.state.shortlist.length)}`);
       logger.result(`draft=${result.state.draft}`);
-      logger.result(`lifecycle=${result.state.lifecycle.kind}`);
+      logger.result(`lifecycle=${result.state.lifecycle.variant}`);
     } catch (err) {
       ArchivistCli.appendErrorLine(err instanceof Error ? err.message : String(err));
     } finally {
@@ -103,11 +102,17 @@ logger.info(`language: ${userLanguage} (${UserLanguage.displayName(userLanguage)
 
 const registry = new LlmAdapterRegistry();
 
-// On-device first.
-registry.register(
-  { 'provider': 'gemini-nano', 'model': 'on-device', 'capabilities': CAPS_NO_TOOLS },
-  () => new GeminiNanoAdapter(),
-);
+// On-device first. The model name is discovered via the adapter instance
+// contract: `selectChatModel()` resolves the single on-device descriptor
+// ('gemini-nano'); no cosmetic placeholder literal at the registration site.
+const geminiNanoAdapter = new GeminiNanoAdapter();
+const geminiNanoModel = await geminiNanoAdapter.selectChatModel();
+if (geminiNanoModel !== null) {
+  registry.register(
+    { 'provider': 'gemini-nano', 'model': geminiNanoModel, 'capabilities': CAPS_NO_TOOLS },
+    () => geminiNanoAdapter,
+  );
+}
 
 // WebGPU-accelerated in-browser model. Lazy-downloads on first chat.
 // Progress reporting is an extension seam: subclass and override
@@ -117,39 +122,55 @@ class LoggingWebLlmAdapter extends WebLlmAdapter {
     logger.info(`web-llm: ${report.text} (${String(Math.round(report.progress * 100))}%)`);
   }
 }
-registry.register(
-  { 'provider': 'web-llm', 'model': 'Phi-3.5-mini-instruct-q4f16_1-MLC', 'capabilities': CAPS_PARTIAL_TOOLS },
-  () => new LoggingWebLlmAdapter(),
-);
-
-// REST fallback: key from URL param, otherwise prompt the visitor.
-registry.register(
-  { 'provider': 'gemini-api', 'model': 'gemini-2.0-flash', 'capabilities': CAPS_FULL_TOOLS },
-  () => {
-    const key = urlApiKey.length > 0 ? urlApiKey : (window.prompt('Gemini API key (AI Studio):') ?? '');
-    return new GeminiApiAdapter(key, { 'model': 'gemini-2.0-flash' });
-  },
-);
-
-// Ollama: only useful when the daemon is running locally with CORS
-// allowed (see the file-level comment). The model is resolved from the
-// daemon's installed list (GET /api/tags) so it always names a model the
-// host has actually pulled; ollama is skipped entirely when no chat model
-// is installed, so the cascade never falls into a "model not found" loop.
-const ollamaModel = OllamaModels.pickChat(await OllamaProbe.listModels());
-if (ollamaModel !== null) {
+// Model resolution via the adapter instance contract: `selectChatModel`
+// reads web-llm's static prebuilt catalog. The visitor's `WEB_LLM_MODEL`
+// URL param picks a specific prebuilt model when supplied; otherwise the
+// demo prefers the Phi-3.5 mini build the adapter is documented around.
+const loggingWebLlmAdapter = new LoggingWebLlmAdapter();
+const webLlmModel = await loggingWebLlmAdapter.selectChatModel({
+  'preferred': params.get('webLlmModel') ?? 'Phi-3.5-mini-instruct-q4f16_1-MLC',
+});
+if (webLlmModel !== null) {
   registry.register(
-    { 'provider': 'ollama', 'model': ollamaModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-    () => new OllamaApiAdapter({ 'baseUrl': 'http://127.0.0.1:11434', 'model': ollamaModel }),
+    { 'provider': 'web-llm', 'model': webLlmModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+    () => loggingWebLlmAdapter,
   );
 }
 
-const cascade = new LlmAdapterCascade(registry, [
-  { 'provider': 'gemini-nano', 'model': 'on-device' },
-  { 'provider': 'web-llm',     'model': 'Phi-3.5-mini-instruct-q4f16_1-MLC' },
-  { 'provider': 'gemini-api',  'model': 'gemini-2.0-flash' },
-  ...(ollamaModel !== null ? [{ 'provider': 'ollama', 'model': ollamaModel }] : []),
-]);
+// REST fallback: key from URL param, otherwise prompt the visitor.
+// Model is discovered via `selectChatModel` so the adapter always uses a
+// model the provider actually serves; no hardcoded model literal at the
+// registration site.
+const geminiApiAdapter = new GeminiApiAdapter(
+  urlApiKey.length > 0 ? urlApiKey : (window.prompt('Gemini API key (AI Studio):') ?? ''),
+);
+const geminiApiModel = await geminiApiAdapter.selectChatModel();
+if (geminiApiModel !== null) {
+  registry.register(
+    { 'provider': 'gemini-api', 'model': geminiApiModel, 'capabilities': CAPS_FULL_TOOLS },
+    () => geminiApiAdapter,
+  );
+}
+
+// Ollama: only useful when the daemon is running locally with CORS
+// allowed (see the file-level comment). The model is discovered via the
+// adapter instance contract: `selectChatModel` calls `GET /api/tags` and
+// picks the best available chat model. Ollama is skipped entirely when no
+// chat model is installed, so the cascade never falls into a "model not
+// found" loop.
+const ollamaAdapter = new OllamaApiAdapter({ 'baseUrl': 'http://127.0.0.1:11434' });
+const ollamaModel = await ollamaAdapter.selectChatModel();
+if (ollamaModel !== null) {
+  registry.register(
+    { 'provider': 'ollama', 'model': ollamaModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+    () => ollamaAdapter,
+  );
+}
+
+const cascade = new LlmAdapterCascade(registry, registry.list().map((entry) => ({
+  'provider': entry.provider,
+  'model': entry.model,
+})));
 
 let llm: LlmClientInterface;
 try {

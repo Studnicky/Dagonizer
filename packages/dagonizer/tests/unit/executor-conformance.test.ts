@@ -338,7 +338,7 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     // ScatterCheckpoint.clear, so the checkpoint survives with un-acked items.
     const result1 = await failingDispatcher.execute(CONFORMANCE_DAG.law8, state);
     assert.notStrictEqual(
-      result1.state.lifecycle.kind, 'completed',
+      result1.state.lifecycle.variant, 'completed',
       'phase-1 flow must NOT complete cleanly when an item hit a transport error',
     );
 
@@ -376,8 +376,8 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
       `all 3 items must be gathered after resume (no loss, no double-ack), got ${finalItems.length}`,
     );
     assert.strictEqual(
-      result.state.lifecycle.kind, 'completed',
-      `flow must complete after resume, got ${result.state.lifecycle.kind}`,
+      result.state.lifecycle.variant, 'completed',
+      `flow must complete after resume, got ${result.state.lifecycle.variant}`,
     );
   });
 });

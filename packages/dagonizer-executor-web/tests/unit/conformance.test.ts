@@ -337,9 +337,9 @@ class ZombieWorker implements WebWorkerLikeInterface {
     if (this.#terminated) return;
     // Respond to init with `ready`; silently drop everything else.
     const msg = message as Record<string, unknown>;
-    if (msg['kind'] === 'init') {
+    if (msg['variant'] === 'init') {
       const readyMsg = {
-        'kind': 'ready',
+        'variant': 'ready',
         'registryVersion': msg['registryVersion'],
         'capabilities': [],
       };

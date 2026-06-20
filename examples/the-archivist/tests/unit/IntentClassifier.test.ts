@@ -54,6 +54,7 @@ class DeterministicEmbedder implements EmbedderInterface {
   async probe(): Promise<boolean> { return true; }
   async connect(): Promise<void> { /* no-op */ }
   async disconnect(): Promise<void> { /* no-op */ }
+  async listModels(): Promise<readonly []> { return []; }
 }
 
 /** Vector helpers for deterministic IntentClassifier tests. */

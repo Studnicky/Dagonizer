@@ -7,7 +7,7 @@
  *
  * Extends `CytoscapeGraph` and overrides:
  *   - `composeElements()` — renders only expanded embedded-DAGs, enriches
- *     each node's `data.kind` from `nodeKinds`.
+ *     each node's `data.variant` from `nodeVariants`.
  *   - `layoutRegistry()` — returns the same expanded-only subset so
  *     `CompositeLayout` agrees with the rendered element set.
  *   - `onReady(cy)` — wires the `DagVizMachine`, tap listeners, camera
@@ -71,10 +71,10 @@ const MAX_ABSOLUTE_ZOOM = 4;
  */
 export interface AnimatedDagGraphOptions extends Partial<CytoscapeGraphOptionsType> {
   /**
-   * Per-node kind registry: maps node name → kind string ('deterministic' |
-   * 'non-deterministic'). Used to enrich each rendered node's `data.kind`.
+   * Per-node variant registry: maps node name → variant string ('deterministic' |
+   * 'non-deterministic'). Used to enrich each rendered node's `data.variant`.
    */
-  readonly nodeKinds?: Readonly<Record<string, string>>;
+  readonly nodeVariants?: Readonly<Record<string, string>>;
   /**
    * Initial set of embedded-DAG names to expand. Defaults to none expanded
    * (all collapsed as opaque boxes). Mutually exclusive with `expandAll`.
@@ -107,7 +107,7 @@ export interface AnimatedDagGraphOptions extends Partial<CytoscapeGraphOptionsTy
 export class AnimatedDagGraph extends CytoscapeGraph {
   // ── Docs-specific configuration ──────────────────────────────────────────
 
-  readonly #nodeKinds: Readonly<Record<string, string>>;
+  readonly #nodeVariants: Readonly<Record<string, string>>;
   readonly #onNodeClick: ((name: string) => void) | null;
   readonly #onZoomChange: ((level: number) => void) | null;
 
@@ -148,7 +148,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
       ...(options.layoutOptions !== undefined ? { 'layoutOptions': options.layoutOptions } : {}),
     });
 
-    this.#nodeKinds  = options.nodeKinds  ?? {};
+    this.#nodeVariants  = options.nodeVariants  ?? {};
     this.#onNodeClick = options.onNodeClick ?? null;
     this.#onZoomChange = options.onZoomChange ?? null;
 
@@ -182,20 +182,20 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     const filtered = this.#filteredRegistry();
     const raw = CytoscapeRenderer.render(this.dag, { embeddedDAGs: filtered });
 
-    // Enrich each node element with data.kind from nodeKinds map.
+    // Enrich each node element with data.variant from nodeVariants map.
     return raw.map((el) => {
       if (el.group !== 'nodes') return el;
       const nodeData = el.data;
       const nodeName = (nodeData as { node?: string }).node ?? nodeData.id;
-      const rawKind = nodeName !== undefined ? this.#nodeKinds[nodeName] : undefined;
-      if (rawKind === undefined) return el;
-      // Narrow the raw string to the CytoscapeNodeDataType kind union; unknown
-      // values are dropped so the stylesheet never receives an invalid kind.
-      const kind = (rawKind === 'deterministic' || rawKind === 'non-deterministic')
-        ? rawKind as CytoscapeNodeDataType['kind']
+      const rawVariant = nodeName !== undefined ? this.#nodeVariants[nodeName] : undefined;
+      if (rawVariant === undefined) return el;
+      // Narrow the raw string to the CytoscapeNodeDataType variant union; unknown
+      // values are dropped so the stylesheet never receives an invalid variant.
+      const variant = (rawVariant === 'deterministic' || rawVariant === 'non-deterministic')
+        ? rawVariant as CytoscapeNodeDataType['variant']
         : undefined;
-      if (kind === undefined) return el;
-      return { ...el, 'data': { ...el.data, 'kind': kind } };
+      if (variant === undefined) return el;
+      return { ...el, 'data': { ...el.data, 'variant': variant } };
     });
   }
 

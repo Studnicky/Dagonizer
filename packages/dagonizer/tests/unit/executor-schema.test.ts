@@ -100,8 +100,8 @@ void describe('ExecutionRequest schema', () => {
     assert.equal(requestValidator({ ...validRequest, 'timeoutMs': 5000 }), true);
   });
 
-  void it('rejects additionalProperties (kind field from old reference schema)', () => {
-    assert.equal(requestValidator({ ...validRequest, 'kind': 'dag' }), false);
+  void it('rejects additionalProperties (variant field from old reference schema)', () => {
+    assert.equal(requestValidator({ ...validRequest, 'variant': 'dag' }), false);
   });
 
   void it('rejects additionalProperties (nodeName field from old reference schema)', () => {
@@ -242,14 +242,14 @@ void describe('Validator.dag validates a well-formed DAG literal', () => {
 // ---------------------------------------------------------------------------
 
 const validInit: BridgeMessageType = {
-  'kind': 'init',
+  'variant': 'init',
   'registryModule': '/some/module.js',
   'registryVersion': '1.0.0',
   'servicesConfig': {},
 };
 
 const validExecute: BridgeMessageType = {
-  'kind': 'execute',
+  'variant': 'execute',
   'request': {
     'dagName': 'my-dag',
     'placementPath': ['a', 'b'],
@@ -260,7 +260,7 @@ const validExecute: BridgeMessageType = {
 };
 
 const validExecuteNullTimeout: BridgeMessageType = {
-  'kind': 'execute',
+  'variant': 'execute',
   'request': {
     'dagName': 'my-dag',
     'placementPath': [],
@@ -271,23 +271,23 @@ const validExecuteNullTimeout: BridgeMessageType = {
 };
 
 const validAbort: BridgeMessageType = {
-  'kind': 'abort',
+  'variant': 'abort',
   'correlationId': 'req-1',
   'reason': 'abort',
 };
 
 const validShutdown: BridgeMessageType = {
-  'kind': 'shutdown',
+  'variant': 'shutdown',
 };
 
 const validReady: BridgeMessageType = {
-  'kind': 'ready',
+  'variant': 'ready',
   'registryVersion': '1.0.0',
   'capabilities': [],
 };
 
 const validResult: BridgeMessageType = {
-  'kind': 'result',
+  'variant': 'result',
   'response': {
     'correlationId': 'req-1',
     'items': [{ 'id': 'req-1', 'snapshot': { 'value': 99 }, 'terminalOutcome': 'completed' }],
@@ -299,7 +299,7 @@ const validResult: BridgeMessageType = {
 };
 
 const validResultNullSnapshot: BridgeMessageType = {
-  'kind': 'result',
+  'variant': 'result',
   'response': {
     'correlationId': 'req-1',
     'items': [{ 'id': 'req-1', 'snapshot': null, 'terminalOutcome': 'failed' }],
@@ -316,7 +316,7 @@ const validResultNullSnapshot: BridgeMessageType = {
 };
 
 const validIntermediate: BridgeMessageType = {
-  'kind': 'intermediate',
+  'variant': 'intermediate',
   'correlationId': 'req-1',
   'nodeName': 'step1',
   'output': 'done',
@@ -324,7 +324,7 @@ const validIntermediate: BridgeMessageType = {
 };
 
 const validInstrumentation: BridgeMessageType = {
-  'kind': 'instrumentation',
+  'variant': 'instrumentation',
   'correlationId': 'req-1',
   'hook': 'nodeStart',
   'phase': '',
@@ -336,7 +336,7 @@ const validInstrumentation: BridgeMessageType = {
 };
 
 const validError: BridgeMessageType = {
-  'kind': 'error',
+  'variant': 'error',
   'correlationId': null,
   'code': 'INIT_FAILED',
   'message': 'module not found',
@@ -392,7 +392,7 @@ describe('BridgeMessageType schema — valid branches', () => {
 describe('BridgeMessageType schema — dag-only proof (execute request)', () => {
   it('rejects execute request with stray nodeName field', () => {
     const invalid = {
-      'kind': 'execute',
+      'variant': 'execute',
       'request': {
         'dagName': 'my-dag',
         'placementPath': [],
@@ -405,11 +405,11 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
     assert.strictEqual(Validator.bridgeMessage.is(invalid), false);
   });
 
-  it('rejects execute request with stray kind discriminant on request', () => {
+  it('rejects execute request with stray variant discriminant on request', () => {
     const invalid = {
-      'kind': 'execute',
+      'variant': 'execute',
       'request': {
-        'kind': 'dag',          // must be rejected: no kind in dag-only request
+        'variant': 'dag',          // must be rejected: no variant in dag-only request
         'dagName': 'my-dag',
         'placementPath': [],
         'stateSnapshot': {},
@@ -422,7 +422,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
 
   it('rejects execute request missing required dagName', () => {
     const invalid = {
-      'kind': 'execute',
+      'variant': 'execute',
       'request': {
         'placementPath': [],
         'stateSnapshot': {},
@@ -435,7 +435,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
 
   it('rejects execute request missing required correlationId', () => {
     const invalid = {
-      'kind': 'execute',
+      'variant': 'execute',
       'request': {
         'dagName': 'my-dag',
         'placementPath': [],
@@ -450,7 +450,7 @@ describe('BridgeMessageType schema — dag-only proof (execute request)', () => 
 describe('BridgeMessageType schema — additionalProperties rejection', () => {
   it('rejects init branch with extra property', () => {
     const invalid = {
-      'kind': 'init',
+      'variant': 'init',
       'registryModule': '/some/module.js',
       'registryVersion': '1.0.0',
       'servicesConfig': {},
@@ -461,7 +461,7 @@ describe('BridgeMessageType schema — additionalProperties rejection', () => {
 
   it('rejects result response with extra property on intermediates item', () => {
     const invalid = {
-      'kind': 'result',
+      'variant': 'result',
       'response': {
         'correlationId': 'req-1',
         'terminalOutput': 'completed',
@@ -479,15 +479,15 @@ describe('BridgeMessageType schema — additionalProperties rejection', () => {
 describe('BridgeMessageType schema — Validator.validate() throws on invalid', () => {
   it('throws ValidationError for completely invalid input', () => {
     assert.throws(
-      () => Validator.bridgeMessage.validate({ 'kind': 'unknown-kind' }),
+      () => Validator.bridgeMessage.validate({ 'variant': 'unknown-kind' }),
       (err) => err instanceof Error,
     );
   });
 
   it('returns typed message for valid execute', () => {
     const msg = Validator.bridgeMessage.validate(validExecute);
-    assert.strictEqual(msg.kind, 'execute');
-    if (msg.kind === 'execute') {
+    assert.strictEqual(msg.variant, 'execute');
+    if (msg.variant === 'execute') {
       assert.strictEqual(msg.request.dagName, 'my-dag');
     }
   });

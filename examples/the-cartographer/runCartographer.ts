@@ -120,7 +120,7 @@ class CartographerCli {
 
   /**
    * Error-analysis section: total captured-exception count and a table of
-   * `source · kind · count · sample-message`, ordered by descending count so the
+   * `source · variant · count · sample-message`, ordered by descending count so the
    * dominant error source is first. This is the DAG-flow error collection made
    * visible — every captured exception folded by the gather is reported here.
    */
@@ -132,12 +132,12 @@ class CartographerCli {
     }
     logger.result(`  Total captured exceptions: ${rollup.total.toLocaleString('en-US')}\n`);
 
-    const COL_SOURCE = 18;
-    const COL_KIND   = 14;
-    const COL_COUNT  = 8;
+    const COL_SOURCE  = 18;
+    const COL_VARIANT = 14;
+    const COL_COUNT   = 8;
     const hdr =
       'Source'.padEnd(COL_SOURCE) +
-      'Kind'.padEnd(COL_KIND) +
+      'Variant'.padEnd(COL_VARIANT) +
       'Count'.padStart(COL_COUNT) +
       '  Sample message';
     logger.result(`  ${hdr}`);
@@ -146,7 +146,7 @@ class CartographerCli {
       const sample = group.samples[0] ?? '';
       logger.result(
         `  ${group.source.slice(0, COL_SOURCE - 1).padEnd(COL_SOURCE)}` +
-        `${group.kind.slice(0, COL_KIND - 1).padEnd(COL_KIND)}` +
+        `${group.variant.slice(0, COL_VARIANT - 1).padEnd(COL_VARIANT)}` +
         `${String(group.count).padStart(COL_COUNT)}  ${sample}`,
       );
     }
@@ -339,7 +339,7 @@ logger.result('');
 // ── (e) Error analysis — the DAG-flow error collection made visible ───────────
 // The geo transports and ingest parsers capture every caught exception into a
 // GeoErrorRecord on state.errors; the insights-fold gather folds them into
-// state.errorRollup (bounded, grouped by source+kind). Print the distribution.
+// state.errorRollup (bounded, grouped by source+variant). Print the distribution.
 CartographerCli.printErrorAnalysis(logger, state.errorRollup);
 
 // ── (a) Normalization sample — a multi-zone, multi-scan journey ───────────────

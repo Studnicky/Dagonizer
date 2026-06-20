@@ -31,6 +31,7 @@ const FALLBACK_CONFIG: OpenAiCompatibleConfigType = {
   'displayName': 'Test',
   'capabilities': PARTIAL_CAPS,
   'endpoint': 'https://example.test/v1/chat/completions',
+  'modelsEndpoint': 'https://example.test/v1/models',
   'defaultModel': 'test-model',
   'tokenField': 'max_tokens',
   'extraHeaders': {},
@@ -47,6 +48,7 @@ class InjectableAdapter extends OpenAiCompatibleAdapter {
       'displayName': 'Test',
       'capabilities': FULL_CAPS,
       'endpoint': 'https://example.com/v1/chat/completions',
+      'modelsEndpoint': 'https://example.com/v1/models',
       'defaultModel': 'test-model',
       'tokenField': 'max_tokens',
       'timeoutMs': 5_000,
@@ -78,7 +80,7 @@ function makeRequest(withTools: boolean): ChatRequestType {
       ? [{ 'name': 'test', 'description': 'd', 'inputSchema': {}, 'strict': false }]
       : [],
     'toolChoice': { 'type': 'auto' },
-    'outputSchema': { 'kind': 'none' },
+    'outputSchema': { 'variant': 'none' },
     'maxTokens': 64,
     'temperature': 0.2,
     'signal': new AbortController().signal,
@@ -127,8 +129,8 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
 
     const resp = await adapter.chat(makeRequest(false));
     assert.equal(resp.finishReason, 'stop');
-    assert.equal(resp.message.kind, 'text');
-    if (resp.message.kind === 'text') {
+    assert.equal(resp.message.variant, 'text');
+    if (resp.message.variant === 'text') {
       assert.equal(resp.message.content, 'Hello world');
     }
     assert.deepEqual(resp.usage, { 'promptTokens': 5, 'completionTokens': 3 });
@@ -152,8 +154,8 @@ void describe('OpenAiCompatibleAdapter — response parsing and tool-call handli
 
     const resp = await adapter.chat(makeRequest(true));
     assert.equal(resp.finishReason, 'tool_call');
-    assert.equal(resp.message.kind, 'tools');
-    if (resp.message.kind === 'tools') {
+    assert.equal(resp.message.variant, 'tools');
+    if (resp.message.variant === 'tools') {
       assert.equal(resp.message.toolCalls.length, 1);
       assert.deepEqual(resp.message.toolCalls[0]?.arguments, { 'query': 'cats' });
     }
@@ -320,8 +322,8 @@ void describe('OpenAiCompatibleAdapter shouldFallbackWithoutTools', () => {
     );
 
     assert.equal(fetchCallCount, 2, 'should make exactly 2 fetch calls');
-    assert.equal(resp.message.kind, 'text');
-    if (resp.message.kind === 'text') {
+    assert.equal(resp.message.variant, 'text');
+    if (resp.message.variant === 'text') {
       assert.equal(resp.message.content, 'fallback works');
     }
   });

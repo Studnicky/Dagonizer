@@ -1577,7 +1577,7 @@ export class FieldMappings {
  * on-the-wire source feeds (the multi-format fan-in showcase).
  *
  * The single raw feed (ShipmentEvents.buildRawScans) is partitioned by each
- * scan's assigned SourcePayload `kind`, then each partition is encoded in its
+ * scan's assigned SourcePayload `variant`, then each partition is encoded in its
  * source's native format under that source's field-name mapping:
  *   - position-ping        → JSON API array string         (RICH: carries geo)
  *   - facility-scan        → CSV string (header + rows)     (RAW PII)
@@ -1589,7 +1589,7 @@ export class FieldMappings {
  * reverses it (base64 → gunzip → text).
  *
  * Deterministic: a pure function of `n` (the raw feed is seeded; partitioning
- * is by SourcePayload kind; no Date.now/Math.random).
+ * is by SourcePayload variant; no Date.now/Math.random).
  */
 export class Sources {
   /** A CSV cell: quote and escape embedded quotes/commas/newlines. */
@@ -1778,7 +1778,7 @@ export class Sources {
 
     const mapKey = FORMAT_MAP_KEY[format] ?? 'json-position';
     const map = FieldMappings.forKey(mapKey);
-    const kind = eventType;
+    const eventVariant = eventType;
     const withGeo = format === 'json' || format === 'yaml';
 
     const rec = Sources.wireRecord(scan, withGeo);
@@ -1846,7 +1846,7 @@ export class Sources {
       'format':      format,
       'compression': compression,
       'mappingKey':  mapKey,
-      'eventType':   kind,
+      'eventType':   eventVariant,
       'payload':     payload,
     };
   }

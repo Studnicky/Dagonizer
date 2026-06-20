@@ -7,7 +7,7 @@
  *   (b) deadline timeout: pass deadlineMs to execute(); the dispatcher
  *       synthesizes an AbortSignal that fires after the deadline.
  *
- * Watch: lifecycle.kind records the terminal reason: 'cancelled' for an
+ * Watch: lifecycle.variant records the terminal reason: 'cancelled' for an
  * explicit abort, 'timed_out' for a deadline. The cursor is the next node
  * that would have run (useful for resume).
  *
@@ -44,7 +44,7 @@ const bResult = await dispatcher.execute('slow-dag', bState, { "deadlineMs": 25 
 // name of the next node that would have run; pass it to resume() to continue.
 if (aResult.cursor !== null) {
   process.stdout.write(`paused at node: ${aResult.cursor}\n`);
-  process.stdout.write(`lifecycle: ${aState.lifecycle.kind}\n`); // 'cancelled'
+  process.stdout.write(`lifecycle: ${aState.lifecycle.variant}\n`); // 'cancelled'
 }
 // #endregion cursor-check
 
@@ -76,9 +76,9 @@ userAbortController.abort(new Error('request scope ended')); // clean up
 // #endregion signal-composition
 
 process.stdout.write('\nCancellation shapes: AbortSignal vs deadlineMs\n');
-process.stdout.write(`  (a) AbortController: lifecycle=${aState.lifecycle.kind} cursor="${aResult.cursor}"\n`);
-process.stdout.write(`  (b) deadlineMs:      lifecycle=${bState.lifecycle.kind} cursor="${bResult.cursor}"\n`);
-process.stdout.write(`  (c) composed signal: lifecycle=${cState.lifecycle.kind} cursor="${cResult.cursor}"\n`);
+process.stdout.write(`  (a) AbortController: lifecycle=${aState.lifecycle.variant} cursor="${aResult.cursor}"\n`);
+process.stdout.write(`  (b) deadlineMs:      lifecycle=${bState.lifecycle.variant} cursor="${bResult.cursor}"\n`);
+process.stdout.write(`  (c) composed signal: lifecycle=${cState.lifecycle.variant} cursor="${cResult.cursor}"\n`);
 process.stdout.write('\nLesson: observe context.signal in every long-running operation.\n');
-process.stdout.write('        lifecycle.kind records the terminal reason;\n');
+process.stdout.write('        lifecycle.variant records the terminal reason;\n');
 process.stdout.write('        cursor records where resumption would begin.\n');

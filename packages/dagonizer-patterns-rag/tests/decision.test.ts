@@ -27,7 +27,7 @@ void test('DecisionNode routes by parsed choice + writes state', async () => {
   const node = new TestDecision();
   const state = new TestState();
   const mockResponse: ChatResponseType = {
-    'message': { 'kind': 'text', 'content': 'yes please' },
+    'message': { 'variant': 'text', 'content': 'yes please' },
     'finishReason': 'stop',
     'usage': { 'promptTokens': 0, 'completionTokens': 0 },
   };

@@ -71,7 +71,7 @@ export class WorkerObserver<
     const { phase, dagName, nodeName, output, message } = { ...EMIT_DEFAULTS, ...options };
     try {
       this.#channel.send({
-        'kind': 'instrumentation',
+        'variant': 'instrumentation',
         'correlationId': this.#correlationId,
         'hook': hook,
         'phase': phase,

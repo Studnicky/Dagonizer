@@ -25,6 +25,7 @@ import type {
   ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import type {
   GeminiNanoAvailabilityType,
@@ -35,6 +36,9 @@ import {
   languageModelSessionValidator,
   languageModelStaticValidator,
 } from './LanguageModelHost.js';
+
+/** Stable model identifier for the browser's built-in on-device model. */
+const GEMINI_NANO_MODEL_ID = 'gemini-nano';
 
 export type GeminiNanoAdapterOptionsType = {
   readonly maxAttempts?: number;
@@ -89,6 +93,15 @@ export class GeminiNanoAdapter extends BaseAdapter {
     return (await GeminiNanoAdapter.detect()) === 'available';
   }
 
+  /**
+   * Returns the single on-device model descriptor for Gemini Nano.
+   * No network or browser API is required to enumerate it. The
+   * returned Promise always resolves immediately.
+   */
+  override listModels(_options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
+    return Promise.resolve([{ 'name': GEMINI_NANO_MODEL_ID, 'variant': 'chat', 'cloud': false }]);
+  }
+
   protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     const lm = GeminiNanoAdapter.languageModel();
     if (lm === undefined) {
@@ -108,7 +121,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       const options: PromptOptionsType = {};
       if (request.tools.length > 0) {
         options.responseConstraint = this.#toolPlanSchema(request.tools);
-      } else if (request.outputSchema.kind === 'schema') {
+      } else if (request.outputSchema.variant === 'schema') {
         options.responseConstraint = request.outputSchema.schema;
       }
 

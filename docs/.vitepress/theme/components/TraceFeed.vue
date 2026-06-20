@@ -19,9 +19,9 @@ import { computed } from 'vue';
 import type { LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 
 type TraceEntry =
-  | { readonly kind: 'start'; readonly node: string; readonly ts: number }
-  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
-  | { readonly kind: 'error'; readonly node: string; readonly ts: number; readonly message: string };
+  | { readonly variant: 'start'; readonly node: string; readonly ts: number }
+  | { readonly variant: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
+  | { readonly variant: 'error'; readonly node: string; readonly ts: number; readonly message: string };
 
 /** Discriminated union for the merged feed. */
 type FeedItem =
@@ -67,17 +67,17 @@ function timeFor(ts: number): string {
         v-for="(item, i) in feed"
         :key="`${item.ts}-${i}`"
         :class="['tf-entry', item.feedKind === 'trace'
-          ? `tf-trace-${item.entry.kind}`
+          ? `tf-trace-${item.entry.variant}`
           : `tf-log-${item.event.level}`]"
       >
         <span class="tf-time">{{ timeFor(item.ts) }}</span>
 
         <!-- Node lifecycle event -->
         <template v-if="item.feedKind === 'trace'">
-          <span :class="['tf-kind', `tf-kind-${item.entry.kind}`]">{{ item.entry.kind }}</span>
+          <span :class="['tf-variant', `tf-variant-${item.entry.variant}`]">{{ item.entry.variant }}</span>
           <code class="tf-node tf-node-clickable" role="button" tabindex="0" @click="emit('node-click', item.entry.node)" @keydown.enter="emit('node-click', item.entry.node)">{{ item.entry.node }}</code>
-          <span v-if="item.entry.kind === 'end' && item.entry.output !== null" class="tf-output">→ {{ item.entry.output }}</span>
-          <span v-else-if="item.entry.kind === 'error'" class="tf-error-message">{{ item.entry.message }}</span>
+          <span v-if="item.entry.variant === 'end' && item.entry.output !== null" class="tf-output">→ {{ item.entry.output }}</span>
+          <span v-else-if="item.entry.variant === 'error'" class="tf-error-message">{{ item.entry.message }}</span>
           <span v-else class="tf-output"></span>
         </template>
 
@@ -172,8 +172,8 @@ function timeFor(ts: number): string {
   font-size: 0.66rem;
 }
 
-/* Trace node kind badges */
-.tf-kind {
+/* Trace node variant badges */
+.tf-variant {
   font-size: 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -184,9 +184,9 @@ function timeFor(ts: number): string {
   min-width: 38px;
   text-align: center;
 }
-.tf-kind-start { background: rgba(34, 232, 255, 0.14); color: var(--dagonizer-brand); }
-.tf-kind-end   { background: rgba(155, 81, 224, 0.14); color: var(--dagonizer-brand2); }
-.tf-kind-error { background: rgba(212, 166, 73, 0.18); color: var(--dagonizer-brand3); }
+.tf-variant-start { background: rgba(34, 232, 255, 0.14); color: var(--dagonizer-brand); }
+.tf-variant-end   { background: rgba(155, 81, 224, 0.14); color: var(--dagonizer-brand2); }
+.tf-variant-error { background: rgba(212, 166, 73, 0.18); color: var(--dagonizer-brand3); }
 
 .tf-node    { color: var(--vp-c-text-1); }
 .tf-error-message {

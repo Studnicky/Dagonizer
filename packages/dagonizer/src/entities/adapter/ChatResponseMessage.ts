@@ -23,24 +23,24 @@ export const ChatResponseMessageSchema = {
   'oneOf': [
     {
       'type': 'object',
-      'required': ['kind', 'content'],
-      'properties': { 'kind': { 'const': 'text' }, 'content': { 'type': 'string' } },
+      'required': ['variant', 'content'],
+      'properties': { 'variant': { 'const': 'text' }, 'content': { 'type': 'string' } },
       'additionalProperties': false,
     },
     {
       'type': 'object',
-      'required': ['kind', 'toolCalls'],
+      'required': ['variant', 'toolCalls'],
       'properties': {
-        'kind': { 'const': 'tools' },
+        'variant': { 'const': 'tools' },
         'toolCalls': { 'type': 'array', 'items': ToolCallSchema },
       },
       'additionalProperties': false,
     },
     {
       'type': 'object',
-      'required': ['kind', 'content', 'toolCalls'],
+      'required': ['variant', 'content', 'toolCalls'],
       'properties': {
-        'kind': { 'const': 'mixed' },
+        'variant': { 'const': 'mixed' },
         'content': { 'type': 'string' },
         'toolCalls': { 'type': 'array', 'items': ToolCallSchema },
       },

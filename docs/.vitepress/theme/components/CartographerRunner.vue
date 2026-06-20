@@ -58,9 +58,9 @@ class CartographerWorkerContainer extends WebWorkerContainer {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type TraceEvent =
-  | { readonly kind: 'start'; readonly node: string; readonly ts: number }
-  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
-  | { readonly kind: 'error'; readonly node: string; readonly ts: number; readonly message: string };
+  | { readonly variant: 'start'; readonly node: string; readonly ts: number }
+  | { readonly variant: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
+  | { readonly variant: 'error'; readonly node: string; readonly ts: number; readonly message: string };
 
 /** One line in the live stream feed (one gathered record per line). */
 interface StreamLine {
@@ -477,7 +477,7 @@ async function run(): Promise<void> {
         // Trace records top-level node events only; inner per-clone activity is
         // conveyed through the progress bar, feed, and throttled graph lighting.
         if (placementPath.length === 0) {
-          traceBuffer.push({ kind: 'start', node: fullId, ts: Date.now() });
+          traceBuffer.push({ variant: 'start', node: fullId, ts: Date.now() });
         }
         scheduleFlush();
       },
@@ -488,14 +488,14 @@ async function run(): Promise<void> {
         frameCompletedNodes.add(fullId);
         if (output !== null) frameTraversedEdges.add(`${fullId}|${output}`);
         if (placementPath.length === 0) {
-          traceBuffer.push({ kind: 'end', node: fullId, ts: Date.now(), output });
+          traceBuffer.push({ variant: 'end', node: fullId, ts: Date.now(), output });
         }
         scheduleFlush();
       },
       onError(nodeName: string, error: Error, _state: CartographerState, placementPath: readonly string[] = []) {
         const fullId = [...placementPath, nodeName].join('/');
         frameErroredNode = fullId;
-        traceBuffer.push({ kind: 'error', node: fullId, ts: Date.now(), message: error.message !== '' ? error.message : String(error) });
+        traceBuffer.push({ variant: 'error', node: fullId, ts: Date.now(), message: error.message !== '' ? error.message : String(error) });
         scheduleFlush();
       },
       onFlowEnd(_dagName: string, state: CartographerState) {
@@ -942,14 +942,14 @@ onMounted(() => {
               <div
                 v-for="(entry, idx) in trace"
                 :key="idx"
-                :class="['cr-trace-row', `cr-trace-row--${entry.kind}`]"
+                :class="['cr-trace-row', `cr-trace-row--${entry.variant}`]"
               >
-                <span class="cr-trace-kind">{{ entry.kind }}</span>
+                <span class="cr-trace-variant">{{ entry.variant }}</span>
                 <span class="cr-trace-node mono">{{ entry.node }}</span>
-                <template v-if="entry.kind === 'end' && entry.output !== null">
+                <template v-if="entry.variant === 'end' && entry.output !== null">
                   <span class="cr-trace-output">→ {{ entry.output }}</span>
                 </template>
-                <template v-else-if="entry.kind === 'error'">
+                <template v-else-if="entry.variant === 'error'">
                   <span class="cr-trace-error">{{ entry.message }}</span>
                 </template>
               </div>
@@ -1614,11 +1614,11 @@ onMounted(() => {
   border-bottom: 1px solid transparent;
 }
 
-.cr-trace-row--start  .cr-trace-kind { color: var(--dagonizer-brand); }
-.cr-trace-row--end    .cr-trace-kind { color: var(--dagonizer-brand2); }
-.cr-trace-row--error  .cr-trace-kind { color: #e06060; }
+.cr-trace-row--start  .cr-trace-variant { color: var(--dagonizer-brand); }
+.cr-trace-row--end    .cr-trace-variant { color: var(--dagonizer-brand2); }
+.cr-trace-row--error  .cr-trace-variant { color: #e06060; }
 
-.cr-trace-kind {
+.cr-trace-variant {
   flex: 0 0 36px;
   font-size: 0.67rem;
   font-weight: 700;

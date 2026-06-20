@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * NodeLegend: chip row labelling the two `NodeKind` values.
+ * NodeLegend: chip row labelling the two node variant values.
  *
  * Pure presentational. Mirrors the cytoscape stylesheet's selectors:
  * solid teal for deterministic, dashed violet for non-deterministic,
@@ -8,24 +8,24 @@
  */
 
 interface LegendChip {
-  readonly kind: 'deterministic' | 'non-deterministic';
+  readonly variant: 'deterministic' | 'non-deterministic';
   readonly label: string;
   readonly hint: string;
 }
 
 const chips: readonly LegendChip[] = [
-  { kind: 'deterministic',     label: 'deterministic',     hint: 'same inputs → same outputs' },
-  { kind: 'non-deterministic', label: 'non-deterministic', hint: 'LLM / web: output can vary' },
+  { variant: 'deterministic',     label: 'deterministic',     hint: 'same inputs → same outputs' },
+  { variant: 'non-deterministic', label: 'non-deterministic', hint: 'LLM / web: output can vary' },
 ];
 </script>
 
 <template>
-  <aside class="node-legend" aria-label="Node-kind legend">
-    <span class="node-legend-title">kinds</span>
+  <aside class="node-legend" aria-label="Node variant legend">
+    <span class="node-legend-title">variants</span>
     <span
       v-for="chip in chips"
-      :key="chip.kind"
-      :class="['chip', `chip-${chip.kind}`]"
+      :key="chip.variant"
+      :class="['chip', `chip-${chip.variant}`]"
       :title="chip.hint"
     >{{ chip.label }}</span>
   </aside>

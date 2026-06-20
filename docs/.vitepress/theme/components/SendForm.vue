@@ -20,7 +20,7 @@ import Spinner from './Spinner.vue';
 const props = defineProps<{
   query: string;
   running: boolean;
-  terminalKind: 'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
+  terminalVariant: 'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out';
 }>();
 
 const emit = defineEmits<{
@@ -83,9 +83,9 @@ function onActionClick(): void {
 
     <div class="send-footer">
       <span
-        v-if="terminalKind !== 'pending'"
-        :class="['send-status', `send-status-${terminalKind}`]"
-      >{{ terminalKind }}</span>
+        v-if="terminalVariant !== 'pending'"
+        :class="['send-status', `send-status-${terminalVariant}`]"
+      >{{ terminalVariant }}</span>
 
       <button
         class="send-reset"

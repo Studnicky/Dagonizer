@@ -29,7 +29,8 @@ export class OpenRouterApiAdapter extends OpenAiCompatibleAdapter {
         'displayName':   'OpenRouter (llama-3.3-70b free)',
         // ":free" routing can downgrade to non-tool endpoints; treat as partial.
         'capabilities':  { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
-        'endpoint':      'https://openrouter.ai/api/v1/chat/completions',
+        'endpoint':        'https://openrouter.ai/api/v1/chat/completions',
+        'modelsEndpoint':  'https://openrouter.ai/api/v1/models',
         'defaultModel':  'meta-llama/llama-3.3-70b-instruct:free',
         'tokenField':    'max_tokens',
         'extraHeaders':  {

@@ -76,6 +76,7 @@ export type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 // Entity-derived types (FromSchema-derived TypeScript shapes)
 // ---------------------------------------------------------------------------
 
+export type { LlmModelType } from '../entities/adapter/LlmModel.js';
 export type { DAGType } from '../entities/dag/DAG.js';
 export type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 export type { DAGNodeType } from '../entities/dag/Placement.js';
