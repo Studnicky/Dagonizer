@@ -33,7 +33,7 @@ void describe('Execution streaming (async-iterable)', () => {
     assert.deepEqual(seen, ['a', 'b', 'end']);
     // Awaiting the already-iterated Execution returns the cached final result.
     const final = await exec;
-    assert.equal(final.state.lifecycle.kind, 'completed');
+    assert.equal(final.state.lifecycle.variant, 'completed');
     assert.deepEqual(final.executedNodes, ['a', 'b', 'end']);
   });
 

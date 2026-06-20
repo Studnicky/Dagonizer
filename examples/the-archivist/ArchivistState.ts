@@ -126,10 +126,10 @@ export class ArchivistState extends NodeStateBase {
   failureCause = '';
   /**
    * Prior-context facts the recall node SELECTs out of memory before
-   * compose. Each entry has a `kind` (e.g. 'prior-query',
+   * compose. Each entry has a `variant` (e.g. 'prior-query',
    * 'prior-recommendation') and free-text content the LLM can cite.
    */
-  priorContext: ReadonlyArray<{ readonly kind: string; readonly text: string }> = [];
+  priorContext: ReadonlyArray<{ readonly variant: string; readonly text: string }> = [];
   /**
    * Structured context recalled from the unified memory graph by
    * `recallContext` (runs before `classifyIntent`). The `summary` field

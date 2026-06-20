@@ -626,7 +626,7 @@ function makeCycleRecordingNode(
 }
 
 // ===========================================================================
-// Size-1 parity — every placement kind reached by a size-1 batch produces the
+// Size-1 parity — every placement variant reached by a size-1 batch produces the
 // same executedNodes / outcome as the single-item path.
 // ===========================================================================
 
@@ -1341,7 +1341,7 @@ void describe('Batch walk — cycles and retry loops', () => {
     const result = await dispatcher.execute('cycle-size1', input);
 
     assert.equal(result.terminalOutcome, 'completed');
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
     assert.equal(result.cursor, null);
 
     // Node 'a' fires 4 times: attempts 1,2,3 route to `retry`, attempt 4 routes to `done`.

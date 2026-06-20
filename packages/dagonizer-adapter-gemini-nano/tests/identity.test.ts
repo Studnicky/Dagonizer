@@ -70,3 +70,34 @@ void test('GeminiNanoAdapter.probe does not throw when availability() rejects', 
     removeLanguageModel();
   }
 });
+
+void test('GeminiNanoAdapter.listModels returns single gemini-nano descriptor', async () => {
+  const a = new GeminiNanoAdapter();
+  const models = await a.listModels();
+  assert.equal(models.length, 1);
+  const [m] = models;
+  assert.ok(m !== undefined);
+  assert.equal(m.name, 'gemini-nano');
+  assert.equal(m.variant, 'chat');
+  assert.equal(m.cloud, false);
+});
+
+void test('GeminiNanoAdapter.listModels requires no window.LanguageModel', async () => {
+  removeLanguageModel();
+  const a = new GeminiNanoAdapter();
+  const models = await a.listModels();
+  assert.equal(models.length, 1);
+  assert.equal(models[0]?.name, 'gemini-nano');
+});
+
+void test('GeminiNanoAdapter.selectChatModel picks gemini-nano', async () => {
+  const a = new GeminiNanoAdapter();
+  const picked = await a.selectChatModel({ 'preferred': 'gemini-nano' });
+  assert.equal(picked, 'gemini-nano');
+});
+
+void test('GeminiNanoAdapter.selectChatModel with no preferred picks the single model', async () => {
+  const a = new GeminiNanoAdapter();
+  const picked = await a.selectChatModel();
+  assert.equal(picked, 'gemini-nano');
+});

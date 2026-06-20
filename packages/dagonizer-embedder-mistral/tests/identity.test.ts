@@ -57,3 +57,132 @@ void test('MistralEmbedder.embed extracts data[0].embedding from response body',
     restoreFetch();
   }
 });
+
+// ── listModels ────────────────────────────────────────────────────────────────
+
+void test('MistralEmbedder.listModels classifies embedding and chat models correctly', async () => {
+  const canned = {
+    'data': [
+      { 'id': 'mistral-embed' },
+      { 'id': 'codestral-embed' },
+      { 'id': 'mistral-small-latest' },
+      { 'id': 'mixtral-8x7b-instruct-v0.1' },
+    ],
+  };
+  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  const embedder = new MistralEmbedder('test-key');
+  try {
+    const models = await embedder.listModels();
+    assert.equal(models.length, 4);
+
+    const embeddingModels = models.filter((m) => m.variant === 'embedding');
+    const chatModels      = models.filter((m) => m.variant === 'chat');
+
+    assert.equal(embeddingModels.length, 2, 'embed-containing ids → embedding');
+    assert.equal(chatModels.length,      2, 'non-embed ids → chat');
+
+    assert.ok(embeddingModels.some((m) => m.name === 'mistral-embed'));
+    assert.ok(embeddingModels.some((m) => m.name === 'codestral-embed'));
+    assert.ok(chatModels.some((m) => m.name === 'mistral-small-latest'));
+
+    // All Mistral platform models are cloud
+    assert.ok(models.every((m) => m.cloud === true), 'Mistral platform models are cloud');
+  } finally {
+    restoreFetch();
+  }
+});
+
+void test('MistralEmbedder.listModels returns [] when apiKey is empty', async () => {
+  installFetch((async () => new Response('{}', { 'status': 200 })) as typeof fetch);
+  const embedder = new MistralEmbedder('');
+  try {
+    const models = await embedder.listModels();
+    assert.deepEqual(models, [], 'no key → no fetch → empty list');
+  } finally {
+    restoreFetch();
+  }
+});
+
+void test('MistralEmbedder.listModels returns [] on transport failure', async () => {
+  installFetch((async () => { throw new Error('fetch failed'); }) as typeof fetch);
+  const embedder = new MistralEmbedder('test-key');
+  try {
+    const models = await embedder.listModels();
+    assert.deepEqual(models, []);
+  } finally {
+    restoreFetch();
+  }
+});
+
+void test('MistralEmbedder.listModels returns [] when response fails schema validation', async () => {
+  installFetch((async () => new Response(JSON.stringify({ 'wrong': 'shape' }), { 'status': 200 })) as typeof fetch);
+  const embedder = new MistralEmbedder('test-key');
+  try {
+    const models = await embedder.listModels();
+    assert.deepEqual(models, []);
+  } finally {
+    restoreFetch();
+  }
+});
+
+void test('MistralEmbedder.listModels sends Authorization: Bearer header', async () => {
+  let capturedHeaders: Record<string, string> | undefined;
+  installFetch((async (_input: string | URL | Request, init?: RequestInit) => {
+    capturedHeaders = init?.headers as Record<string, string> | undefined;
+    return new Response(JSON.stringify({ 'data': [] }), { 'status': 200 });
+  }) as typeof fetch);
+  const embedder = new MistralEmbedder('my-api-key');
+  try {
+    await embedder.listModels();
+    assert.ok(capturedHeaders !== undefined, 'fetch was called');
+    assert.equal(capturedHeaders['Authorization'], 'Bearer my-api-key', 'Authorization header sent');
+  } finally {
+    restoreFetch();
+  }
+});
+
+void test('MistralEmbedder.selectEmbeddingModel picks an embedding model and skips chat models', async () => {
+  const canned = {
+    'data': [
+      { 'id': 'mistral-small-latest' },
+      { 'id': 'mistral-embed' },
+    ],
+  };
+  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  const embedder = new MistralEmbedder('test-key', {});
+  try {
+    const selected = await embedder.selectEmbeddingModel();
+    assert.equal(selected, 'mistral-embed', 'embedding model selected over chat');
+  } finally {
+    restoreFetch();
+  }
+});
+
+void test('MistralEmbedder.selectEmbeddingModel returns null when no embedding models found', async () => {
+  const canned = { 'data': [{ 'id': 'mistral-small-latest' }] };
+  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  const embedder = new MistralEmbedder('test-key', {});
+  try {
+    const selected = await embedder.selectEmbeddingModel();
+    assert.equal(selected, null, 'null when no embedding models');
+  } finally {
+    restoreFetch();
+  }
+});
+
+void test('MistralEmbedder.selectEmbeddingModel honors preferred model', async () => {
+  const canned = {
+    'data': [
+      { 'id': 'mistral-embed' },
+      { 'id': 'codestral-embed' },
+    ],
+  };
+  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  const embedder = new MistralEmbedder('test-key', {});
+  try {
+    const selected = await embedder.selectEmbeddingModel({ 'preferred': 'codestral-embed' });
+    assert.equal(selected, 'codestral-embed', 'preferred model honored');
+  } finally {
+    restoreFetch();
+  }
+});

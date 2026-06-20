@@ -28,14 +28,17 @@ import type {
   ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
+import { GeminiModelsResponseValidator } from './GeminiModelsResponse.js';
 import type { GeminiResponseBodyType } from './GeminiResponseBody.js';
 import { geminiResponseBodyValidator } from './GeminiResponseBody.js';
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
-const DEFAULT_MODEL = 'gemini-2.0-flash';
 /** Per-request timeout in ms before the adapter aborts and surfaces TIMEOUT. */
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+/** Short timeout for model discovery — no payload, just a list response. */
+const DISCOVERY_TIMEOUT_MS = 3_000;
 
 export type GeminiApiAdapterOptionsType = {
   readonly model?: string;
@@ -46,18 +49,22 @@ export type GeminiApiAdapterOptionsType = {
 
 export class GeminiApiAdapter extends BaseAdapter {
   readonly #apiKey:    string;
-  readonly #model:     string;
   readonly #timeoutMs: number;
 
   constructor(apiKey: string, options: GeminiApiAdapterOptionsType = {}) {
+    const coreOptions: { maxAttempts: number; model?: string } = {
+      'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+    };
+    if (options.model !== undefined) {
+      coreOptions.model = options.model;
+    }
     super(
       'gemini-api',
       'Gemini API (your AI Studio key)',
       { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
-      { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS },
+      coreOptions,
     );
     this.#apiKey    = apiKey;
-    this.#model     = options.model ?? DEFAULT_MODEL;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
@@ -72,8 +79,52 @@ export class GeminiApiAdapter extends BaseAdapter {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 
+  /**
+   * Query the Gemini v1beta/models endpoint and map each entry to `LlmModelType`.
+   *
+   * Name prefix `models/` is stripped (e.g. `models/gemini-2.0-flash` → `gemini-2.0-flash`).
+   * Variant is `'embedding'` when `supportedGenerationMethods` includes `embedContent`,
+   * `'chat'` when it includes `generateContent`, and `'unknown'` otherwise.
+   * All Gemini models are cloud-hosted (`cloud: true`).
+   *
+   * Never throws — returns `[]` on any failure (network error, non-2xx, malformed body,
+   * timeout). Composes `options.signal` with an internal discovery timeout via
+   * `AbortSignal.any`.
+   */
+  override async listModels(options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
+    const signal = options?.signal !== undefined
+      ? AbortSignal.any([options.signal, controller.signal])
+      : controller.signal;
+    try {
+      const res = await fetch(`${ENDPOINT}?key=${encodeURIComponent(this.#apiKey)}`, {
+        'method': 'GET',
+        signal,
+      });
+      if (!res.ok) return [];
+      const body: unknown = await res.json();
+      if (!GeminiModelsResponseValidator.is(body)) return [];
+      return body.models.map((entry): LlmModelType => {
+        const rawName = entry.name;
+        const name = rawName.startsWith('models/') ? rawName.slice('models/'.length) : rawName;
+        const methods = entry.supportedGenerationMethods ?? [];
+        const variant: LlmModelType['variant'] = methods.includes('embedContent')
+          ? 'embedding'
+          : methods.includes('generateContent')
+            ? 'chat'
+            : 'unknown';
+        return { name, variant, 'cloud': true };
+      });
+    } catch {
+      return [];
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
-    const url = `${ENDPOINT}/${encodeURIComponent(this.#model)}:generateContent?key=${encodeURIComponent(this.#apiKey)}`;
+    const url = `${ENDPOINT}/${encodeURIComponent(this.model)}:generateContent?key=${encodeURIComponent(this.#apiKey)}`;
     const body = this.#composeBody(request);
 
     // Compose a per-request timeout with the caller's signal so either
@@ -132,7 +183,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     if (request.tools.length > 0) {
       body['tools'] = [{ 'functionDeclarations': request.tools.map((t) => this.#toFunctionDeclaration(t)) }];
       body['toolConfig'] = { 'functionCallingConfig': this.#toGeminiToolConfig(request.toolChoice) };
-    } else if (request.outputSchema.kind === 'schema') {
+    } else if (request.outputSchema.variant === 'schema') {
       // Structured-output path: JSON Schema constrains the response
       // body to the requested shape. (Gemini honours `responseSchema` on
       // text models since v1beta.)

@@ -333,7 +333,7 @@ export abstract class DagContainerBase<
 
     const snapshot = [...this.#pool];
     for (const entry of snapshot) {
-      try { entry.channel.send({ 'kind': 'shutdown' }); } catch { /* suppress */ }
+      try { entry.channel.send({ 'variant': 'shutdown' }); } catch { /* suppress */ }
     }
 
     await Promise.allSettled(

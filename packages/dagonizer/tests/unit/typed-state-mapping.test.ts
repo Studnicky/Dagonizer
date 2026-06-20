@@ -226,7 +226,7 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
     dispatcher2.registerDAG(parentDag);
 
     const result = await dispatcher2.execute('parent', workState);
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
     // payload = 'hello' (5 chars), so result = 5 after embedded-DAG
     assert.equal(workState.result, 5);
   });
@@ -252,6 +252,6 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
     dispatcher.registerDAG(parentDag);
 
     const result = await dispatcher.execute('compat-parent', new NodeStateBase());
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
   });
 });

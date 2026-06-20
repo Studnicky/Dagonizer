@@ -27,7 +27,7 @@ import type { DagVizEvent } from './viz/DagVizMachine.ts';
 const props = defineProps<{
   dag: DAGType;
   embeddedDAGs?: ReadonlyMap<string, DAGType>;
-  nodeKinds?: Readonly<Record<string, string>>;
+  nodeVariants?: Readonly<Record<string, string>>;
   expandAll?: boolean;
   ariaLabel?: string;
 }>();
@@ -89,7 +89,7 @@ onMounted(async () => {
 
   const instance = new AnimatedDagGraph(container, props.dag, {
     ...(props.embeddedDAGs !== undefined ? { 'embeddedDAGs': props.embeddedDAGs } : {}),
-    ...(props.nodeKinds    !== undefined ? { 'nodeKinds':    props.nodeKinds    } : {}),
+    ...(props.nodeVariants    !== undefined ? { 'nodeVariants':    props.nodeVariants    } : {}),
     ...(props.expandAll    !== undefined ? { 'expandAll':    props.expandAll    } : {}),
     'onNodeClick':  (name) => { emit('node-click', name); },
     'onZoomChange': (level) => { zoomLevel.value = level; },

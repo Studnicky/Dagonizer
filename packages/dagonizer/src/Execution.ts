@@ -15,13 +15,13 @@
  * aborts, when a node throws, or when a node routes to an output
  * with no wiring, the iterator stops and the final `ExecutionResult`
  * carries the cursor (next node to run on resume). The state's
- * `lifecycle.kind` records what happened.
+ * `lifecycle.variant` records what happened.
  *
  * @example
  * ```ts
  * // Sync-style
  * const result = await dispatcher.execute('myFlow', initialState);
- * console.log(result.state.lifecycle.kind); // 'completed'
+ * console.log(result.state.lifecycle.variant); // 'completed'
  *
  * // Streaming
  * const execution = dispatcher.execute('myFlow', initialState);

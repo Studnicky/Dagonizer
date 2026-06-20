@@ -146,7 +146,7 @@ export class DagConformance {
         const state = harness.createState();
         const result = await dispatcher.execute(CONFORMANCE_DAG.law1, state);
 
-        assert.strictEqual(result.state.lifecycle.kind, 'completed', 'flow must complete');
+        assert.strictEqual(result.state.lifecycle.variant, 'completed', 'flow must complete');
         assert.ok(
           (result.state as ConformanceState).executedNodes.includes('recorder'),
           'recorder node must have executed and recorded through state',
@@ -185,9 +185,9 @@ export class DagConformance {
         // itself completed with the error routed to a terminal output. Either
         // way: no unhandled throw.
         assert.ok(
-          result.state.lifecycle.kind === 'completed' ||
-          result.state.lifecycle.kind === 'failed',
-          `flow must complete or fail, got ${result.state.lifecycle.kind}`,
+          result.state.lifecycle.variant === 'completed' ||
+          result.state.lifecycle.variant === 'failed',
+          `flow must complete or fail, got ${result.state.lifecycle.variant}`,
         );
 
         // The error-emitter node calls collectError with code 'TEST_ERROR'.
@@ -217,7 +217,7 @@ export class DagConformance {
 
         // Lifecycle must not be 'running' when execute() returns.
         assert.notStrictEqual(
-          result.state.lifecycle.kind,
+          result.state.lifecycle.variant,
           'running',
           'lifecycle must not still be running when execute() returns',
         );
@@ -225,16 +225,16 @@ export class DagConformance {
         // For the timeout path, the timeout fires at ~50ms (TIMEOUT_SLEEPER_TIMEOUT_MS).
         // Exclude 'failed' outcomes (may indicate a node execution error unrelated to
         // timeout timing) from the upper-bound check.
-        if (result.state.lifecycle.kind !== 'failed') {
+        if (result.state.lifecycle.variant !== 'failed') {
           assert.ok(elapsed < 2000, `timeout must fire within 2s, got ${elapsed}ms`);
         }
 
         assert.ok(
-          result.state.lifecycle.kind === 'completed' ||
-          result.state.lifecycle.kind === 'cancelled' ||
-          result.state.lifecycle.kind === 'timed_out' ||
-          result.state.lifecycle.kind === 'failed',
-          `lifecycle kind should reflect interruption, got ${result.state.lifecycle.kind}`,
+          result.state.lifecycle.variant === 'completed' ||
+          result.state.lifecycle.variant === 'cancelled' ||
+          result.state.lifecycle.variant === 'timed_out' ||
+          result.state.lifecycle.variant === 'failed',
+          `lifecycle variant should reflect interruption, got ${result.state.lifecycle.variant}`,
         );
       },
     };
@@ -269,9 +269,9 @@ export class DagConformance {
         // The sleeper resolves gracefully on abort (best-effort, not exception-based),
         // so lifecycle may be 'completed' or 'failed' — both are valid post-abort states.
         assert.notStrictEqual(
-          result.state.lifecycle.kind,
+          result.state.lifecycle.variant,
           'running',
-          `lifecycle must not be 'running' after abort; got ${result.state.lifecycle.kind}`,
+          `lifecycle must not be 'running' after abort; got ${result.state.lifecycle.variant}`,
         );
       },
     };
@@ -501,9 +501,9 @@ export class DagConformance {
 
         // The flow must complete without error.
         assert.strictEqual(
-          result.state.lifecycle.kind,
+          result.state.lifecycle.variant,
           'completed',
-          `Flow must complete after resume, got ${result.state.lifecycle.kind}`,
+          `Flow must complete after resume, got ${result.state.lifecycle.variant}`,
         );
 
         // Verify that acked items were not re-executed: the gatheredItems array

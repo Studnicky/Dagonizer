@@ -207,6 +207,6 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
     const result = await dispatcher.execute('hetero-all-empty', state);
 
     // any-success: all returned empty → 'error' route → fail terminal.
-    assert.equal(result.state.lifecycle.kind, 'failed', 'flow failed when all providers return empty');
+    assert.equal(result.state.lifecycle.variant, 'failed', 'flow failed when all providers return empty');
   });
 });

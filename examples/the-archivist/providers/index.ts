@@ -4,10 +4,10 @@
  *   gemini-nano  →  browser built-in Prompt API (LanguageModel global)
  *   gemini-api   →  Google AI Studio REST with a user-supplied key
  *   web-llm      →  fully in-browser inference via WebGPU + @mlc-ai/web-llm
- *   groq         →  Groq REST (llama-3.3-70b-versatile, ~30 RPM free tier)
- *   cerebras     →  Cerebras REST (llama-3.3-70b, free tier)
- *   mistral      →  Mistral AI REST (mistral-small-latest, free tier)
- *   openrouter   →  OpenRouter REST (llama-3.3-70b-instruct:free, free-tier models)
+ *   groq         →  Groq REST (~30 RPM free tier)
+ *   cerebras     →  Cerebras REST (free tier)
+ *   mistral      →  Mistral AI REST (free tier)
+ *   openrouter   →  OpenRouter REST (free-tier models)
  *
  * Every backend is one `LlmAdapterInterface` (transport + native tool format)
  * wrapped by `BaseLlmClient` (prompt choreography). The choice between
@@ -16,7 +16,9 @@
  *
  * `BackendMatrix.detect(inputs)` probes each one and returns rows for all.
  * Cloud adapters (groq/cerebras/mistral/openrouter/gemini-api) are runnable
- * when their key is present in `apiKeys`.
+ * when their key is present in `apiKeys`. Ollama model discovery uses the
+ * adapter instance contract: `adapter.selectChatModel()` queries `GET /api/tags`
+ * and selects the best available chat model automatically.
  *
  * `BackendMatrix.pickBest(backends, { isMobile })` excludes on-device backends
  * when `isMobile` is true, then ranks remaining runnable entries by
@@ -88,12 +90,6 @@ const PRIORITY_ORDER: readonly ProviderId[] = [
 const DESKTOP_ONLY: readonly ProviderId[] = ['gemini-nano', 'web-llm', 'ollama'];
 
 const OLLAMA_MODEL_KEY = 'dagonizer-ollama-model';
-
-/**
- * Substrings that mark an Ollama model as embedding-only, so the chat-model
- * picker skips them (an embedder cannot answer a chat prompt).
- */
-const OLLAMA_EMBED_MARKERS: readonly string[] = ['embed', 'bge', 'minilm', 'gte-'];
 
 export interface BackendAvailability {
   readonly id: ProviderId;
@@ -175,12 +171,18 @@ export class ApiKeyStore {
 }
 
 /**
- * OllamaModels: Ollama model selection and persistence utilities.
+ * OllamaModels: Ollama model persistence utilities.
+ *
+ * Model selection is delegated to the adapter instance contract:
+ * `OllamaApiAdapter.selectChatModel({ preferred })` discovers models from
+ * `GET /api/tags` and selects the best available chat model, honoring the
+ * visitor's `preferred` choice when installed. `loadModel` / `saveModel`
+ * persist the visitor's explicit model preference across sessions.
  */
 export class OllamaModels {
   /**
    * Load the visitor's explicitly-chosen Ollama model from localStorage, or the
-   * empty string when they have not chosen one. Empty means "auto": the picker
+   * empty string when they have not chosen one. Empty means "auto": the adapter
    * resolves an installed chat model from the daemon's tag list.
    */
   static loadModel(): string {
@@ -196,21 +198,6 @@ export class OllamaModels {
       return;
     }
     localStorage.setItem(OLLAMA_MODEL_KEY, model.trim());
-  }
-
-  /**
-   * Choose an installed Ollama chat model. Prefers `preferred` when the daemon
-   * has it pulled; otherwise returns the first installed model that is not an
-   * embedding-only model. Returns `null` when no chat model is installed.
-   */
-  static pickChat(installed: readonly string[], preferred?: string): string | null {
-    if (preferred !== undefined && preferred.length > 0 && installed.includes(preferred)) {
-      return preferred;
-    }
-    const chat = installed.filter(
-      (name) => !OLLAMA_EMBED_MARKERS.some((marker) => name.toLowerCase().includes(marker)),
-    );
-    return chat[0] ?? null;
   }
 }
 
@@ -295,12 +282,20 @@ export class BackendMatrix {
 
     // Ollama: local daemon detection. Browser hits 127.0.0.1:11434; if the
     // daemon is up and CORS-permissive, the version endpoint replies in <50 ms.
-    // No API key required. Model is whatever the user has pulled.
+    // No API key required. Model discovery uses the adapter instance contract:
+    // `selectChatModel` calls `GET /api/tags`, filters embedding models, and
+    // selects the best available chat model (honors `preferred` when installed,
+    // then prefers local-only models, then first chat model overall).
     const ollamaUp = await OllamaProbe.detect();
-    const ollamaModels = ollamaUp ? await OllamaProbe.listModels() : [];
-    const ollamaModel = ollamaUp
-      ? OllamaModels.pickChat(ollamaModels, inputs.preferredOllamaModel)
-      : null;
+    let ollamaModel: string | null = null;
+    if (ollamaUp) {
+      const ollamaAdapter = new OllamaApiAdapter();
+      ollamaModel = await ollamaAdapter.selectChatModel({
+        ...(inputs.preferredOllamaModel !== undefined && inputs.preferredOllamaModel.length > 0
+          ? { 'preferred': inputs.preferredOllamaModel }
+          : {}),
+      });
+    }
     out.push({
       'id': 'ollama',
       'displayName': ollamaModel !== null

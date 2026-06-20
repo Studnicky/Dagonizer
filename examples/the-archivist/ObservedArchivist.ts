@@ -64,7 +64,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
     const executed = result.executedNodes.length;
     const outcome  = result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none';
     this.#logger.info(
-      `[archivist:flow] end dag=${dagName} outcome=${outcome} executed=${String(executed)} lifecycle=${state.lifecycle.kind}`,
+      `[archivist:flow] end dag=${dagName} outcome=${outcome} executed=${String(executed)} lifecycle=${state.lifecycle.variant}`,
     );
     // StateProjection.capture(state) — flush state graph here
     // RdfProvObserver.recordFlowEnd(dagName) — close prov activity here

@@ -146,7 +146,7 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
     assert.deepEqual(seen.get('inc-core'),  ['embed-mid', 'embed-inner', 'embed-core']);
   });
 
-  void it('cannot construct a cross-kind cycle: the append-only registry refuses the closing re-registration', () => {
+  void it('cannot construct a cross-variant cycle: the append-only registry refuses the closing re-registration', () => {
     const dispatcher = new Dagonizer<CounterState>();
     dispatcher.registerNode(incNode('na', 1));
 
@@ -160,13 +160,13 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
       terminalNode('cyc-b'),
     ]));
 
-    // The only way to close a cross-kind cycle (a SCATTERS into b → b embeds a)
+    // The only way to close a cross-variant cycle (a SCATTERS into b → b embeds a)
     // is to re-register 'cyc-a' so it references 'cyc-b'. Because every sub-DAG
     // reference must resolve to an already-registered DAG, references are
     // backward-only; the sole route to a cycle is mutating an existing
     // registration. The registry is append-only, so this re-registration is
     // refused with 'already registered' before any cyclic state can install —
-    // a cross-kind cycle is structurally unconstructable through the registry.
+    // a cross-variant cycle is structurally unconstructable through the registry.
     const cyclicA = makeDAG('cyc-a', 'fork-b', [{
       '@id':    'urn:noocodex:dag:cyc-a/node/fork-b',
       '@type':  'ScatterNode',
@@ -306,7 +306,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
     registerLifecycleFixtures(dispatcher);
 
     const state = new NodeStateBase();
-    assert.equal(state.lifecycle.kind, 'pending');
+    assert.equal(state.lifecycle.variant, 'pending');
 
     const result = await dispatcher.execute('parent', state);
 
@@ -314,8 +314,8 @@ void describe('Embedded-DAG lifecycle scoping', () => {
     // running → completed. No spurious markRunning / markCompleted from the
     // embedded-DAG body re-entry (which would throw on a terminal → running
     // transition and leave the lifecycle in an invalid state).
-    assert.equal(result.state.lifecycle.kind, 'completed', 'run completed cleanly');
-    assert.equal(state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed', 'run completed cleanly');
+    assert.equal(state.lifecycle.variant, 'completed');
 
     // onFlowStart / onFlowEnd each fire exactly once per top-level execute().
     assert.equal(dispatcher.flowStartCount, 1, 'onFlowStart fired exactly once');
@@ -403,7 +403,7 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
     const result = await dispatcher.execute('parent', state);
 
     assert.equal(result.terminalOutcome, 'failed', 'parent terminal outcome is failed');
-    assert.equal(result.state.lifecycle.kind, 'failed', 'parent lifecycle is failed');
+    assert.equal(result.state.lifecycle.variant, 'failed', 'parent lifecycle is failed');
     assert.equal(result.state.errors.length, 0, 'no node errors collected');
     assert.ok(result.executedNodes.includes('end-bad'), 'parent routed through end-bad');
   });
@@ -429,7 +429,7 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
     const result = await dispatcher.execute('parent-ok', state);
 
     assert.equal(result.terminalOutcome, 'completed');
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
     assert.ok(result.executedNodes.includes('end-ok'));
   });
 
@@ -455,7 +455,7 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
     const result = await dispatcher.execute('parent-completed', state);
 
     // Inner TerminalNode(completed) + no errors → parent routes via success.
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
     assert.ok(result.executedNodes.includes('end-ok'));
   });
 
@@ -536,7 +536,7 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('null-parent', state);
-    assert.equal(result.state.lifecycle.kind, 'completed', 'flow completes cleanly');
+    assert.equal(result.state.lifecycle.variant, 'completed', 'flow completes cleanly');
   });
 
   void it('accepts embedded-DAG placement with mixed null and explicit-target routes', async () => {
@@ -587,7 +587,7 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('mixed-parent', state);
-    assert.equal(result.state.lifecycle.kind, 'completed', 'flow completes cleanly');
+    assert.equal(result.state.lifecycle.variant, 'completed', 'flow completes cleanly');
   });
 
   void it('accepts valid embedded-DAG placements where all outputs route to parent placements', () => {

@@ -33,7 +33,7 @@ class TestAdapter extends BaseAdapter {
 
   protected async performChat(_request: ChatRequestType): Promise<ChatResponseType> {
     return Promise.resolve({
-      'message':      { 'kind': 'text', 'content': '' },
+      'message':      { 'variant': 'text', 'content': '' },
       'finishReason': 'stop',
       'usage':        ZERO_TOKEN_USAGE,
     });
@@ -52,7 +52,7 @@ class DefaultProbeAdapter extends BaseAdapter {
 
   protected async performChat(_request: ChatRequestType): Promise<ChatResponseType> {
     return Promise.resolve({
-      'message':      { 'kind': 'text', 'content': '' },
+      'message':      { 'variant': 'text', 'content': '' },
       'finishReason': 'stop',
       'usage':        ZERO_TOKEN_USAGE,
     });

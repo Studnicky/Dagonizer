@@ -1,11 +1,11 @@
 /**
- * BridgeMessage: kind-discriminated protocol message for the parent ↔ DagHost channel.
+ * BridgeMessage: variant-discriminated protocol message for the parent ↔ DagHost channel.
  *
  * One oneOf schema with inline branches (DAG.ts DAGNodeEntrySchema style).
  * Every branch uses `additionalProperties: false`; every field is required
  * per branch so producers never emit absent fields.
  *
- * The `execute` branch carries a dag-only request: no `kind` discriminant
+ * The `execute` branch carries a dag-only request: no `variant` discriminant
  * on the request, no `nodeName`. A DagHost runs only whole DAGs.
  * The `result` branch carries a dag-only response using per-item `items`
  * (not a top-level `terminalOutput`). The inline shapes are structural copies
@@ -36,7 +36,7 @@ const InlineNodeErrorShape = {
 /**
  * Inline copy of the dag-only ExecutionRequest shape.
  * See ExecutionRequest.ts for the canonical schema.
- * No `kind` discriminant; no `nodeName`. DagHost runs only whole DAGs.
+ * No `variant` discriminant; no `nodeName`. DagHost runs only whole DAGs.
  * `items` carries one or more `{ id, snapshot }` pairs for batch execution.
  */
 const InlineExecutionRequestShape = {
@@ -123,9 +123,9 @@ export const BridgeMessageSchema = {
     // ── parent → host ────────────────────────────────────────────────────────
     {
       'type': 'object',
-      'required': ['kind', 'registryModule', 'registryVersion', 'servicesConfig'],
+      'required': ['variant', 'registryModule', 'registryVersion', 'servicesConfig'],
       'properties': {
-        'kind':            { 'type': 'string', 'const': 'init' },
+        'variant':         { 'type': 'string', 'const': 'init' },
         'registryModule':  { 'type': 'string', 'minLength': 1 },
         'registryVersion': { 'type': 'string', 'minLength': 1 },
         'servicesConfig':  { 'type': 'object' },
@@ -134,18 +134,18 @@ export const BridgeMessageSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'request'],
+      'required': ['variant', 'request'],
       'properties': {
-        'kind':    { 'type': 'string', 'const': 'execute' },
+        'variant': { 'type': 'string', 'const': 'execute' },
         'request': InlineExecutionRequestShape,
       },
       'additionalProperties': false,
     },
     {
       'type': 'object',
-      'required': ['kind', 'correlationId', 'reason'],
+      'required': ['variant', 'correlationId', 'reason'],
       'properties': {
-        'kind':          { 'type': 'string', 'const': 'abort' },
+        'variant':       { 'type': 'string', 'const': 'abort' },
         'correlationId': { 'type': 'string' },
         // R2: 'abort' = caller-initiated cancel; 'timeout' = run-level deadline expired.
         'reason':        { 'type': 'string', 'enum': ['abort', 'timeout'] },
@@ -154,18 +154,18 @@ export const BridgeMessageSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind'],
+      'required': ['variant'],
       'properties': {
-        'kind': { 'type': 'string', 'const': 'shutdown' },
+        'variant': { 'type': 'string', 'const': 'shutdown' },
       },
       'additionalProperties': false,
     },
     // ── host → parent ────────────────────────────────────────────────────────
     {
       'type': 'object',
-      'required': ['kind', 'registryVersion', 'capabilities'],
+      'required': ['variant', 'registryVersion', 'capabilities'],
       'properties': {
-        'kind':            { 'type': 'string', 'const': 'ready' },
+        'variant':         { 'type': 'string', 'const': 'ready' },
         'registryVersion': { 'type': 'string', 'minLength': 1 },
         'capabilities':    { 'type': 'array', 'items': { 'type': 'string' } },
       },
@@ -173,18 +173,18 @@ export const BridgeMessageSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'response'],
+      'required': ['variant', 'response'],
       'properties': {
-        'kind':     { 'type': 'string', 'const': 'result' },
+        'variant':  { 'type': 'string', 'const': 'result' },
         'response': InlineExecutionResponseShape,
       },
       'additionalProperties': false,
     },
     {
       'type': 'object',
-      'required': ['kind', 'correlationId', 'nodeName', 'output', 'placementPath'],
+      'required': ['variant', 'correlationId', 'nodeName', 'output', 'placementPath'],
       'properties': {
-        'kind':          { 'type': 'string', 'const': 'intermediate' },
+        'variant':       { 'type': 'string', 'const': 'intermediate' },
         'correlationId': { 'type': 'string' },
         'nodeName':      { 'type': 'string' },
         'output':        { 'type': ['string', 'null'] },
@@ -194,9 +194,9 @@ export const BridgeMessageSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'correlationId', 'hook', 'phase', 'dagName', 'nodeName', 'output', 'message', 'placementPath'],
+      'required': ['variant', 'correlationId', 'hook', 'phase', 'dagName', 'nodeName', 'output', 'message', 'placementPath'],
       'properties': {
-        'kind':          { 'type': 'string', 'const': 'instrumentation' },
+        'variant':       { 'type': 'string', 'const': 'instrumentation' },
         'correlationId': { 'type': 'string' },
         'hook':          { 'type': 'string', 'enum': ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error'] },
         // 'pre'/'post' for phaseEnter/phaseExit; '' for every other hook.
@@ -211,9 +211,9 @@ export const BridgeMessageSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'correlationId', 'code', 'message', 'recoverable'],
+      'required': ['variant', 'correlationId', 'code', 'message', 'recoverable'],
       'properties': {
-        'kind':          { 'type': 'string', 'const': 'error' },
+        'variant':       { 'type': 'string', 'const': 'error' },
         'correlationId': { 'type': ['string', 'null'] },
         'code':          { 'type': 'string' },
         'message':       { 'type': 'string' },
@@ -245,9 +245,9 @@ export class BridgeMessageBuilder {
    * Use when no specific request is in flight (e.g. init failures, transport
    * setup errors, invalid message receipts).
    */
-  static invalid(code: string, message: string): BridgeMessageType & { kind: 'error' } {
+  static invalid(code: string, message: string): BridgeMessageType & { variant: 'error' } {
     return {
-      'kind': 'error',
+      'variant': 'error',
       'correlationId': null,
       'code': code,
       'message': message,

@@ -30,7 +30,7 @@ const request = ChatRequestBuilder.from({
 });
 
 const response = await adapter.chat(request);
-const text = response.message.kind === 'tools' ? '(tool call)' : response.message.content;
+const text = response.message.variant === 'tools' ? '(tool call)' : response.message.content;
 
 process.stdout.write(`[chat] finishReason="${response.finishReason}"\n`);
 process.stdout.write(`[chat] response="${text}"\n\n`);

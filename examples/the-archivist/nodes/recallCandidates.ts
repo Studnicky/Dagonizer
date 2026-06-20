@@ -26,7 +26,7 @@
  * here, so it propagates; the node never fabricates a recall result.
  *
  * output: 'recalled': the prior-memory pre-load completed (possibly empty).
- * kind:   'deterministic': pure SPARQL pattern-match over a stable store.
+ * variant: 'deterministic': pure SPARQL pattern-match over a stable store.
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';

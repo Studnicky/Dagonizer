@@ -69,17 +69,17 @@ function buildHostPair(): { host: DagHost; parentSide: MessageChannelInterface }
 async function initHost(parentSide: MessageChannelInterface): Promise<void> {
   const readyPromise = new Promise<BridgeMessageType>((resolve) => {
     parentSide.onMessage((msg) => {
-      if (msg.kind === 'ready' || msg.kind === 'error') resolve(msg);
+      if (msg.variant === 'ready' || msg.variant === 'error') resolve(msg);
     });
   });
   parentSide.send({
-    'kind': 'init',
+    'variant': 'init',
     'registryModule': REGISTRY_MODULE_URL,
     'registryVersion': REGISTRY_VERSION,
     'servicesConfig': {},
   });
   const reply = await readyPromise;
-  assert.strictEqual(reply.kind, 'ready', `DagHost init must reply 'ready'; got '${reply.kind}'`);
+  assert.strictEqual(reply.variant, 'ready', `DagHost init must reply 'ready'; got '${reply.variant}'`);
 }
 
 // ---------------------------------------------------------------------------
@@ -105,19 +105,19 @@ void describe('DagHost — batch request: intermediates are empty, live messages
     const initialState = new NodeStateBase();
 
     const { result, intermediateMessages } = await new Promise<{
-      result: BridgeMessageType & { kind: 'result' };
-      intermediateMessages: (BridgeMessageType & { kind: 'intermediate' })[];
+      result: BridgeMessageType & { variant: 'result' };
+      intermediateMessages: (BridgeMessageType & { variant: 'intermediate' })[];
     }>((resolve) => {
-      const intermediateMessages: (BridgeMessageType & { kind: 'intermediate' })[] = [];
+      const intermediateMessages: (BridgeMessageType & { variant: 'intermediate' })[] = [];
       parentSide.onMessage((msg) => {
-        if (msg.kind === 'intermediate') intermediateMessages.push(msg);
-        if (msg.kind === 'result') {
-          resolve({ 'result': msg as BridgeMessageType & { kind: 'result' }, intermediateMessages });
+        if (msg.variant === 'intermediate') intermediateMessages.push(msg);
+        if (msg.variant === 'result') {
+          resolve({ 'result': msg as BridgeMessageType & { variant: 'result' }, intermediateMessages });
         }
       });
       // Send N items in a single batch request.
       parentSide.send({
-        'kind': 'execute',
+        'variant': 'execute',
         'request': {
           'dagName': 'conformance-body-law1',
           'placementPath': ['scatter', 'fan'],
@@ -131,7 +131,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
       });
     });
 
-    assert.strictEqual(result.kind, 'result');
+    assert.strictEqual(result.variant, 'result');
 
     // Core contract: batch response must carry an empty intermediates array.
     // Before the fix: length === N × M (all inner nodes buffered for all items).
@@ -184,12 +184,12 @@ void describe('DagHost — batch request: intermediates are empty, live messages
 
     const initialState = new NodeStateBase();
 
-    const singleResult = await new Promise<BridgeMessageType & { kind: 'result' }>((resolve) => {
+    const singleResult = await new Promise<BridgeMessageType & { variant: 'result' }>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.kind === 'result') resolve(msg as BridgeMessageType & { kind: 'result' });
+        if (msg.variant === 'result') resolve(msg as BridgeMessageType & { variant: 'result' });
       });
       parentSide.send({
-        'kind': 'execute',
+        'variant': 'execute',
         'request': {
           'dagName': 'conformance-body-law1',
           'placementPath': ['parent'],
@@ -200,7 +200,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
       });
     });
 
-    assert.strictEqual(singleResult.kind, 'result');
+    assert.strictEqual(singleResult.variant, 'result');
 
     // Single-item path: intermediates MUST be non-empty (top-level streaming depends on this).
     assert.ok(
@@ -222,12 +222,12 @@ void describe('DagHost — batch request: intermediates are empty, live messages
     const N = 50;
     const initialState = new NodeStateBase();
 
-    const batchResult = await new Promise<BridgeMessageType & { kind: 'result' }>((resolve) => {
+    const batchResult = await new Promise<BridgeMessageType & { variant: 'result' }>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.kind === 'result') resolve(msg as BridgeMessageType & { kind: 'result' });
+        if (msg.variant === 'result') resolve(msg as BridgeMessageType & { variant: 'result' });
       });
       parentSide.send({
-        'kind': 'execute',
+        'variant': 'execute',
         'request': {
           'dagName': 'conformance-body-law1',
           'placementPath': ['scatter', 'fan'],
@@ -241,7 +241,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
       });
     });
 
-    assert.strictEqual(batchResult.kind, 'result');
+    assert.strictEqual(batchResult.variant, 'result');
     assert.strictEqual(
       batchResult.response.intermediates.length,
       0,
@@ -300,10 +300,10 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
     for (let b = 0; b < NUM_BATCHES; b++) {
       await new Promise<void>((resolve) => {
         parentSide.onMessage((msg) => {
-          if (msg.kind === 'result') resolve();
+          if (msg.variant === 'result') resolve();
         });
         parentSide.send({
-          'kind': 'execute',
+          'variant': 'execute',
           'request': {
             'dagName': 'conformance-body-law1',
             'placementPath': ['scatter', 'fan'],

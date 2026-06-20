@@ -240,6 +240,6 @@ void describe('NodeStateBase clone semantics', () => {
     const clone = state.clone();
     assert.deepEqual(clone.getMetadata('foo'), { 'bar': 1 });
     assert.equal(clone.errors.length, 0);
-    assert.equal(clone.lifecycle.kind, 'pending');
+    assert.equal(clone.lifecycle.variant, 'pending');
   });
 });

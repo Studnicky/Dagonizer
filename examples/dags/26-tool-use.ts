@@ -111,7 +111,7 @@ export class CallLlmNode extends ScalarNode<ToolUseState, 'tool_call' | 'text'> 
 
     const response = await state.adapter.chat(request);
 
-    if (response.message.kind === 'tools') {
+    if (response.message.variant === 'tools') {
       // Native tool_calls channel: adapter returned structured ToolCall[]
       const firstCall = response.message.toolCalls[0];
       if (firstCall !== undefined) {
@@ -122,7 +122,7 @@ export class CallLlmNode extends ScalarNode<ToolUseState, 'tool_call' | 'text'> 
       }
     }
 
-    if (response.message.kind === 'text') {
+    if (response.message.variant === 'text') {
       // Text-channel fallback: adapter returned prose with embedded tool JSON.
       // ToolCallCodec.decode extracts { tool_calls: [...] } from arbitrary prose.
       state.toolCallRaw = response.message.content;
@@ -134,7 +134,7 @@ export class CallLlmNode extends ScalarNode<ToolUseState, 'tool_call' | 'text'> 
     }
 
     // No tool call produced — treat as plain text answer
-    state.finalAnswer = response.message.kind === 'text' ? response.message.content : '(no text)';
+    state.finalAnswer = response.message.variant === 'text' ? response.message.content : '(no text)';
     return NodeOutputBuilder.of('text');
   }
 }

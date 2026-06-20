@@ -79,7 +79,7 @@ async function sendInit(
 ): Promise<BridgeMessageType> {
   const reply = nextMessage(parentSide);
   parentSide.send({
-    'kind': 'init',
+    'variant': 'init',
     'registryModule': registryModule,
     'registryVersion': registryVersion,
     'servicesConfig': {},
@@ -96,8 +96,8 @@ void describe('DagHost — init handshake', () => {
     const { parentSide } = buildHostPair();
     const reply = await sendInit(parentSide);
 
-    assert.strictEqual(reply.kind, 'ready');
-    if (reply.kind === 'ready') {
+    assert.strictEqual(reply.variant, 'ready');
+    if (reply.variant === 'ready') {
       assert.strictEqual(reply.registryVersion, REGISTRY_VERSION);
       assert.ok(Array.isArray(reply.capabilities));
     }
@@ -107,8 +107,8 @@ void describe('DagHost — init handshake', () => {
     const { parentSide } = buildHostPair();
     const reply = await sendInit(parentSide, REGISTRY_MODULE_URL, '99.0.0');
 
-    assert.strictEqual(reply.kind, 'error');
-    if (reply.kind === 'error') {
+    assert.strictEqual(reply.variant, 'error');
+    if (reply.variant === 'error') {
       assert.strictEqual(reply.code, 'VERSION_MISMATCH');
       assert.strictEqual(reply.recoverable, false);
       assert.strictEqual(reply.correlationId, null);
@@ -119,8 +119,8 @@ void describe('DagHost — init handshake', () => {
     const { parentSide } = buildHostPair();
     const reply = await sendInit(parentSide, '/nonexistent/module-does-not-exist.js');
 
-    assert.strictEqual(reply.kind, 'error');
-    if (reply.kind === 'error') {
+    assert.strictEqual(reply.variant, 'error');
+    if (reply.variant === 'error') {
       assert.strictEqual(reply.code, 'INIT_FAILED');
       assert.strictEqual(reply.recoverable, false);
     }
@@ -130,8 +130,8 @@ void describe('DagHost — init handshake', () => {
     const { parentSide } = buildHostPair();
     const reply = await sendInit(parentSide, INVALID_MODULE_URL);
 
-    assert.strictEqual(reply.kind, 'error');
-    if (reply.kind === 'error') {
+    assert.strictEqual(reply.variant, 'error');
+    if (reply.variant === 'error') {
       assert.ok(
         reply.code === 'INVALID_REGISTRY_MODULE' || reply.code === 'INIT_FAILED',
         `expected INVALID_REGISTRY_MODULE or INIT_FAILED, got ${reply.code}`,
@@ -150,18 +150,18 @@ void describe('DagHost — execute returns result', () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
-    assert.strictEqual(ready.kind, 'ready');
+    assert.strictEqual(ready.variant, 'ready');
 
     // Collect messages until we see a 'result' (intermediates + instrumentation may arrive first).
     const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.kind === 'result') resolve(msg);
+        if (msg.variant === 'result') resolve(msg);
       });
     });
 
     const initialState = new NodeStateBase();
     parentSide.send({
-      'kind': 'execute',
+      'variant': 'execute',
       'request': {
         'dagName': 'conformance-body-law2',   // mutator: sets value=99
         'placementPath': ['parent'],
@@ -172,8 +172,8 @@ void describe('DagHost — execute returns result', () => {
     });
 
     const result = await resultPromise;
-    assert.strictEqual(result.kind, 'result');
-    if (result.kind === 'result') {
+    assert.strictEqual(result.variant, 'result');
+    if (result.variant === 'result') {
       assert.strictEqual(result.response.correlationId, 'req-exec-1');
       assert.ok(Array.isArray(result.response.items), 'items must be an array');
       assert.strictEqual(result.response.items.length, 1, 'single-item request must produce 1 item result');
@@ -190,19 +190,19 @@ void describe('DagHost — execute returns result', () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
-    assert.strictEqual(ready.kind, 'ready');
+    assert.strictEqual(ready.variant, 'ready');
 
     const intermediates: BridgeMessageType[] = [];
     const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.kind === 'intermediate') intermediates.push(msg);
-        if (msg.kind === 'result') resolve(msg);
+        if (msg.variant === 'intermediate') intermediates.push(msg);
+        if (msg.variant === 'result') resolve(msg);
       });
     });
 
     const initialState = new NodeStateBase();
     parentSide.send({
-      'kind': 'execute',
+      'variant': 'execute',
       'request': {
         'dagName': 'conformance-body-law1',   // recorder node → done
         'placementPath': ['host'],
@@ -218,7 +218,7 @@ void describe('DagHost — execute returns result', () => {
     assert.ok(intermediates.length > 0, 'must have forwarded at least 1 intermediate message');
     const first = intermediates[0];
     assert.ok(first !== undefined);
-    if (first.kind === 'intermediate') {
+    if (first.variant === 'intermediate') {
       assert.strictEqual(first.correlationId, 'req-exec-2');
       assert.ok(typeof first.nodeName === 'string');
     }
@@ -228,18 +228,18 @@ void describe('DagHost — execute returns result', () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
-    assert.strictEqual(ready.kind, 'ready');
+    assert.strictEqual(ready.variant, 'ready');
 
     const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.kind === 'result') resolve(msg);
+        if (msg.variant === 'result') resolve(msg);
       });
     });
 
     // Request a non-existent DAG name — should fail gracefully.
     const initialState = new NodeStateBase();
     parentSide.send({
-      'kind': 'execute',
+      'variant': 'execute',
       'request': {
         'dagName': 'dag-does-not-exist',
         'placementPath': [],
@@ -250,8 +250,8 @@ void describe('DagHost — execute returns result', () => {
     });
 
     const result = await resultPromise;
-    assert.strictEqual(result.kind, 'result');
-    if (result.kind === 'result') {
+    assert.strictEqual(result.variant, 'result');
+    if (result.variant === 'result') {
       assert.ok(Array.isArray(result.response.items), 'items must be an array');
       const item0 = result.response.items[0];
       assert.ok(item0 !== undefined, 'items[0] must exist');
@@ -270,17 +270,17 @@ void describe('DagHost — abort', () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
-    assert.strictEqual(ready.kind, 'ready');
+    assert.strictEqual(ready.variant, 'ready');
 
     const resultPromise = new Promise<BridgeMessageType>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.kind === 'result') resolve(msg);
+        if (msg.variant === 'result') resolve(msg);
       });
     });
 
     const initialState = new NodeStateBase();
     parentSide.send({
-      'kind': 'execute',
+      'variant': 'execute',
       'request': {
         'dagName': 'conformance-body-law5',   // abort-sleeper: waits until aborted
         'placementPath': ['host'],
@@ -295,7 +295,7 @@ void describe('DagHost — abort', () => {
 
     const start = Date.now();
     parentSide.send({
-      'kind': 'abort',
+      'variant': 'abort',
       'correlationId': 'req-abort',
       'reason': 'abort',
     });
@@ -303,7 +303,7 @@ void describe('DagHost — abort', () => {
     const result = await resultPromise;
     const elapsed = Date.now() - start;
 
-    assert.strictEqual(result.kind, 'result');
+    assert.strictEqual(result.variant, 'result');
     // Abort must cause the result to arrive within 2s (safety ceiling is 5s).
     assert.ok(elapsed < 2000, `abort must resolve within 2s; got ${elapsed}ms`);
   });
@@ -318,9 +318,9 @@ void describe('DagHost — shutdown', () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
-    assert.strictEqual(ready.kind, 'ready');
+    assert.strictEqual(ready.variant, 'ready');
 
-    parentSide.send({ 'kind': 'shutdown' });
+    parentSide.send({ 'variant': 'shutdown' });
 
     // Give the async shutdown time to process.
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
@@ -341,7 +341,7 @@ void describe('DagHost — execute before init (G8)', () => {
 
     const initialState = new NodeStateBase();
     parentSide.send({
-      'kind': 'execute',
+      'variant': 'execute',
       'request': {
         'dagName': 'conformance-body-law1',
         'placementPath': [],
@@ -353,8 +353,8 @@ void describe('DagHost — execute before init (G8)', () => {
 
     const reply = await replyPromise;
 
-    assert.strictEqual(reply.kind, 'error', `expected error, got ${reply.kind}`);
-    if (reply.kind === 'error') {
+    assert.strictEqual(reply.variant, 'error', `expected error, got ${reply.variant}`);
+    if (reply.variant === 'error') {
       assert.strictEqual(reply.code, 'NOT_INITIALIZED');
       assert.strictEqual(reply.recoverable, false);
       assert.strictEqual(reply.correlationId, 'req-no-init');
@@ -368,7 +368,7 @@ void describe('DagHost — execute before init (G8)', () => {
     const errorPromise = nextMessage(parentSide);
     const initialState = new NodeStateBase();
     parentSide.send({
-      'kind': 'execute',
+      'variant': 'execute',
       'request': {
         'dagName': 'conformance-body-law1',
         'placementPath': [],
@@ -378,10 +378,10 @@ void describe('DagHost — execute before init (G8)', () => {
       },
     });
     const errorReply = await errorPromise;
-    assert.strictEqual(errorReply.kind, 'error');
+    assert.strictEqual(errorReply.variant, 'error');
 
     // Then: init should still succeed — the host is not in a terminal state.
     const ready = await sendInit(parentSide);
-    assert.strictEqual(ready.kind, 'ready', `expected ready after recovery init, got ${ready.kind}`);
+    assert.strictEqual(ready.variant, 'ready', `expected ready after recovery init, got ${ready.variant}`);
   });
 });

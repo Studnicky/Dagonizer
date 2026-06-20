@@ -72,7 +72,7 @@ export const ProvIris = {
   agent(id: string): Term {
     return MemoryStore.iri(`urn:dagonizer:agent:${encodeURIComponent(id)}`);
   },
-  entity(kind: string, key: string): Term {
-    return MemoryStore.iri(`urn:dagonizer:entity:${kind}:${encodeURIComponent(key)}`);
+  entity(entityVariant: string, key: string): Term {
+    return MemoryStore.iri(`urn:dagonizer:entity:${entityVariant}:${encodeURIComponent(key)}`);
   },
 };

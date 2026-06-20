@@ -202,7 +202,7 @@ void describe('PhaseNode placements: pre-phase execution', () => {
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('pre-runs-first', new TrackingState());
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
     assert.deepEqual(result.state.trace, ['pre-setup', 'entry']);
   });
 
@@ -221,7 +221,7 @@ void describe('PhaseNode placements: pre-phase execution', () => {
 
     const state = new TrackingState();
     const result = await dispatcher.execute('pre-aborts', state);
-    assert.equal(result.state.lifecycle.kind, 'failed');
+    assert.equal(result.state.lifecycle.variant, 'failed');
     assert.equal(state.trace.includes('entry'), false, 'entrypoint must not run');
   });
 
@@ -264,7 +264,7 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('post-success', new TrackingState());
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
     assert.deepEqual(result.state.trace, ['entry', 'post-teardown']);
   });
 
@@ -314,7 +314,7 @@ void describe('PhaseNode placements: post-phase execution', () => {
     // Abort deterministically once the node body is provably suspended.
     nodeReady.then(() => { controller.abort(); });
     const result = await exec;
-    assert.equal(['cancelled', 'failed'].includes(result.state.lifecycle.kind), true);
+    assert.equal(['cancelled', 'failed'].includes(result.state.lifecycle.variant), true);
     assert.ok(state.trace.includes('post-teardown'), 'post-phase ran on abort path');
   });
 
@@ -332,7 +332,7 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('post-throws', new TrackingState());
-    assert.equal(result.state.lifecycle.kind, 'completed', 'lifecycle is unchanged');
+    assert.equal(result.state.lifecycle.variant, 'completed', 'lifecycle is unchanged');
     const warnings = result.state.warnings;
     assert.equal(warnings.length, 1);
     assert.equal(warnings[0]?.code, 'POST_PHASE_FAILED');

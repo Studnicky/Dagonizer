@@ -60,7 +60,7 @@ const result = await execution;
 // ---------------------------------------------------------------------------
 
 process.stdout.write(`\n  ${String(intermediateNodes.length)} stages received before completion.\n`);
-process.stdout.write(`  Final summary: lifecycle=${result.state.lifecycle.kind} executedNodes=[${result.executedNodes.join(', ')}]\n`);
+process.stdout.write(`  Final summary: lifecycle=${result.state.lifecycle.variant} executedNodes=[${result.executedNodes.join(', ')}]\n`);
 process.stdout.write(`  State items: [${state.items.join(', ')}]\n`);
 process.stdout.write('\nLesson: iterate with `for await` to consume intermediate NodeResults;\n');
 process.stdout.write('        `await` on the same Execution handle returns the cached final result.\n');

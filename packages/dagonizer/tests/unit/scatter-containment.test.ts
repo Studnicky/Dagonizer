@@ -264,7 +264,7 @@ function buildTestContainer(): DagContainerInterface<ScatterContainerState> {
         }
         const terminal = step.value;
         return {
-          'terminalOutput': terminal.state.lifecycle.kind === 'failed' ? 'failed' : 'completed',
+          'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
           'errors': [...terminal.state.errors],
           'stateSnapshot': terminal.state.snapshot(),
           'intermediates': intermediates,
@@ -305,7 +305,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     const result = await dispatcher.execute('scatter-inprocess', state);
 
-    assert.strictEqual(result.state.lifecycle.kind, 'completed', 'flow must complete');
+    assert.strictEqual(result.state.lifecycle.variant, 'completed', 'flow must complete');
     // No container was bound, so CONTAINER_ROLE is unbound. The in-process path ran.
     assert.strictEqual(result.cursor, null, 'cursor must be null after clean completion');
   });
@@ -340,7 +340,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     // result.state must be the same reference as the initial state object.
     assert.strictEqual(result.state, state, 'result.state must be the initial state object');
 
-    assert.strictEqual(result.state.lifecycle.kind, 'completed', 'flow must complete');
+    assert.strictEqual(result.state.lifecycle.variant, 'completed', 'flow must complete');
     assert.strictEqual(result.cursor, null, 'cursor must be null after clean completion');
   });
 
@@ -391,7 +391,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     // The inline node ran once per item.
     assert.strictEqual(inlineNodeCalls, 3, 'node-body worker must run 3 times inline');
 
-    assert.strictEqual(result.state.lifecycle.kind, 'completed', 'flow must complete');
+    assert.strictEqual(result.state.lifecycle.variant, 'completed', 'flow must complete');
   });
 
   // ── (d) Container error → collected error, not unhandled throw ───────────
@@ -429,8 +429,8 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     // Errors were collected and routing happened.
     assert.ok(
-      result.state.lifecycle.kind === 'completed' || result.state.lifecycle.kind === 'failed',
-      `lifecycle must be completed or failed, got ${result.state.lifecycle.kind}`,
+      result.state.lifecycle.variant === 'completed' || result.state.lifecycle.variant === 'failed',
+      `lifecycle must be completed or failed, got ${result.state.lifecycle.variant}`,
     );
     assert.ok(result.state.errors.length > 0, 'state must have collected errors from container failure');
   });

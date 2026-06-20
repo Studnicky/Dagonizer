@@ -41,14 +41,16 @@ import {
 } from './dags/26-tool-use.js';
 
 // ---------------------------------------------------------------------------
-// Discover an installed chat model from the running Ollama daemon instead of
-// hardcoding a tag the host may not have pulled (which yields empty output).
-// Override the choice with the OLLAMA_MODEL env var.
+// Discover an installed chat model via instance-based discovery. Construct the
+// adapter without a model, then call selectChatModel() on the live instance.
+// selectChatModel() lists installed models, skips embeddings, honors the
+// preferred tag when installed, sets the chosen model on the adapter, and
+// returns its name. Override the choice with the OLLAMA_MODEL env var.
 // ---------------------------------------------------------------------------
 
 const preferredModel = process.env['OLLAMA_MODEL'];
-const OLLAMA_MODEL = await OllamaApiAdapter.firstChatModel(
-  undefined,
+const adapter = new OllamaApiAdapter();
+const OLLAMA_MODEL = await adapter.selectChatModel(
   preferredModel !== undefined ? { 'preferred': preferredModel } : {},
 );
 
@@ -88,13 +90,11 @@ dispatcher.registerDAG(dag);
 // Run A: real OllamaApiAdapter — native tool_calls channel.
 //
 //   Sends the tool definition to llama3.2. When the model calls the tool,
-//   the adapter returns response.message.kind === 'tools' with a typed
+//   the adapter returns response.message.variant === 'tools' with a typed
 //   ToolCall[]. The CallLlmNode dispatches the call without codec decoding.
 // ---------------------------------------------------------------------------
 
 process.stdout.write('--- Run A: OllamaApiAdapter — native tool_calls channel ---\n');
-
-const adapter = new OllamaApiAdapter({ 'model': OLLAMA_MODEL });
 
 const stateA = new ToolUseState();
 stateA.question = 'What is 7 + 35?';
@@ -110,7 +110,7 @@ process.stdout.write(`  finalAnswer:   "${stateA.finalAnswer}"\n\n`);
 // ---------------------------------------------------------------------------
 // Run B: ToolCallCodec text-channel fallback demonstration.
 //
-//   No model call here. Feed a fixed assistant message string — the kind a
+//   No model call here. Feed a fixed assistant message string — the format a
 //   model that embeds tool calls in prose would return — to ToolCallCodec.decode.
 //   Decode extracts the { tool_calls: [...] } envelope from arbitrary prose,
 //   then dispatches the result to the CalculatorTool.

@@ -30,7 +30,7 @@ class FixedIntentLlm implements LlmClientInterface {
   }
   async chat(_request: ChatRequestType): Promise<ChatResponseType> {
     return {
-      message: { kind: 'text', content: this.#reply },
+      message: { variant: 'text', content: this.#reply },
       finishReason: 'stop',
       usage: { promptTokens: 0, completionTokens: 0 },
     };

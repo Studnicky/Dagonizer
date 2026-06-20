@@ -14,7 +14,7 @@
  *   running  + cancel(reason)→ cancelled (finishedAt, reason carried)
  *   running  + timeout       → timed_out (finishedAt)
  *
- * Terminal stickiness: every kind in {completed, failed, cancelled, timed_out}
+ * Terminal stickiness: every variant in {completed, failed, cancelled, timed_out}
  * ignores all events and returns itself unchanged (by reference).
  *
  * Illegal transitions return the input state by reference. `NodeStateBase`
@@ -26,10 +26,10 @@ import type {
   DAGLifecycleStateType,
 } from './DAGLifecycleState.js';
 
-type StateKind = DAGLifecycleStateType['kind'];
+type StateVariant = DAGLifecycleStateType['variant'];
 type EventType = DAGLifecycleEventType['type'];
-type Handler<K extends StateKind, T extends EventType> = (
-  state: Extract<DAGLifecycleStateType, { kind: K }>,
+type Handler<K extends StateVariant, T extends EventType> = (
+  state: Extract<DAGLifecycleStateType, { variant: K }>,
   event: Extract<DAGLifecycleEventType, { type: T }>,
 ) => DAGLifecycleStateType;
 
@@ -45,7 +45,7 @@ export class DAGLifecycleMachine {
   }
 
   static initial(): DAGLifecycleStateType {
-    return { 'kind': 'pending', 'startedAt': null, 'finishedAt': null, 'error': null, 'reason': null };
+    return { 'variant': 'pending', 'startedAt': null, 'finishedAt': null, 'error': null, 'reason': null };
   }
 
   static transition(
@@ -53,50 +53,50 @@ export class DAGLifecycleMachine {
     event: DAGLifecycleEventType,
   ): DAGLifecycleStateType {
     // Terminal stickiness: delegate to `isTerminal` — the single source of
-    // truth for which kinds are terminal so the two sites never diverge.
+    // truth for which variants are terminal so the two sites never diverge.
     if (DAGLifecycleMachine.isTerminal(state)) {
       return state;
     }
 
     // TypeScript's control-flow analysis cannot infer that `isTerminal`
     // eliminates the terminal variants; the cast to `ActiveState` is sound
-    // because the guard above returns early for every terminal kind.
-    type ActiveState = Extract<DAGLifecycleStateType, { kind: 'pending' | 'running' }>;
+    // because the guard above returns early for every terminal variant.
+    type ActiveState = Extract<DAGLifecycleStateType, { variant: 'pending' | 'running' }>;
     const activeState = state as ActiveState;
-    // The TRANSITION_TABLE is keyed on `ActiveState['kind']` × `EventType`,
+    // The TRANSITION_TABLE is keyed on `ActiveState['variant']` × `EventType`,
     // but the index signature returns `Handler<K,T> | undefined`. The wider
     // cast to a plain `(state, event) => DAGLifecycleStateType` is necessary
     // because the generic K/T are not propagatable through a dynamic index
     // lookup; the shape is structurally identical at runtime.
-    const transition = DAGLifecycleMachine.TRANSITION_TABLE[activeState.kind][event.type] as
+    const transition = DAGLifecycleMachine.TRANSITION_TABLE[activeState.variant][event.type] as
       | ((state: ActiveState, event: DAGLifecycleEventType) => DAGLifecycleStateType)
       | undefined;
     return transition ? transition(activeState, event) : state;
   }
 
-  /** True iff `state` has reached one of the four terminal kinds. */
+  /** True iff `state` has reached one of the four terminal variants. */
   static isTerminal(state: DAGLifecycleStateType): boolean {
     return (
-      state.kind === 'completed'
-      || state.kind === 'failed'
-      || state.kind === 'cancelled'
-      || state.kind === 'timed_out'
+      state.variant === 'completed'
+      || state.variant === 'failed'
+      || state.variant === 'cancelled'
+      || state.variant === 'timed_out'
     );
   }
 
   private static handlePendingStart(
-    _state: Extract<DAGLifecycleStateType, { kind: 'pending' }>,
+    _state: Extract<DAGLifecycleStateType, { variant: 'pending' }>,
     event: Extract<DAGLifecycleEventType, { type: 'start' }>,
   ): DAGLifecycleStateType {
-    return { 'kind': 'running', 'startedAt': event.at, 'finishedAt': null, 'error': null, 'reason': null };
+    return { 'variant': 'running', 'startedAt': event.at, 'finishedAt': null, 'error': null, 'reason': null };
   }
 
   private static handleRunningSucceed(
-    state: Extract<DAGLifecycleStateType, { kind: 'running' }>,
+    state: Extract<DAGLifecycleStateType, { variant: 'running' }>,
     event: Extract<DAGLifecycleEventType, { type: 'succeed' }>,
   ): DAGLifecycleStateType {
     return {
-      'kind': 'completed',
+      'variant': 'completed',
       'startedAt': state.startedAt,
       'finishedAt': event.at,
       'error': null,
@@ -105,11 +105,11 @@ export class DAGLifecycleMachine {
   }
 
   private static handleRunningFail(
-    state: Extract<DAGLifecycleStateType, { kind: 'running' }>,
+    state: Extract<DAGLifecycleStateType, { variant: 'running' }>,
     event: Extract<DAGLifecycleEventType, { type: 'fail' }>,
   ): DAGLifecycleStateType {
     return {
-      'kind': 'failed',
+      'variant': 'failed',
       'startedAt': state.startedAt,
       'finishedAt': event.at,
       'error': event.error,
@@ -118,11 +118,11 @@ export class DAGLifecycleMachine {
   }
 
   private static handleRunningCancel(
-    state: Extract<DAGLifecycleStateType, { kind: 'running' }>,
+    state: Extract<DAGLifecycleStateType, { variant: 'running' }>,
     event: Extract<DAGLifecycleEventType, { type: 'cancel' }>,
   ): DAGLifecycleStateType {
     return {
-      'kind': 'cancelled',
+      'variant': 'cancelled',
       'startedAt': state.startedAt,
       'finishedAt': event.at,
       'error': null,
@@ -131,11 +131,11 @@ export class DAGLifecycleMachine {
   }
 
   private static handleRunningTimeout(
-    state: Extract<DAGLifecycleStateType, { kind: 'running' }>,
+    state: Extract<DAGLifecycleStateType, { variant: 'running' }>,
     event: Extract<DAGLifecycleEventType, { type: 'timeout' }>,
   ): DAGLifecycleStateType {
     return {
-      'kind': 'timed_out',
+      'variant': 'timed_out',
       'startedAt': state.startedAt,
       'finishedAt': event.at,
       'error': null,
