@@ -283,7 +283,6 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./patterns` | `MonadicNode` base class, `LlmClient` and `TripleStore` service contracts for pattern plugins |
 | `./tool` | `Tool` interface, `ToolError`, `HttpTransport` shared fetch wrapper |
 | `./core` | `GatherStrategies`, `OutcomeReducers` extension registries |
-| `./derive` | `DAGDeriver.derive`, `OperationContractType`, `DAGDeriverAnnotationsType`, `ContractRegistryValidator` |
 | `./viz` | `MermaidRenderer`, `JsonLdRenderer`, `CytoscapeRenderer`, `CytoscapeGraph`, `CompositeLayout` |
 | `./store` | `Store` contract, `BaseStore`, `MemoryStore`, `TypedStore`, `StoreError` |
 | `./container` | `DagContainerBase`, `DagContainerOptions`, `PoolEntry`, `DagContainerError`, `DEFAULT_SHUTDOWN_GRACE_MS`, `DagHost`, `DagTask`, `DagOutcome`, `DAG_CONTAINER_TRANSPORT`, `DAG_CONTAINER_WORKER_DIED`, `TransportErrorCode` |

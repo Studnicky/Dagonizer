@@ -6,9 +6,6 @@ import type { Timeout } from '../entities/Timeout.js';
 import type { ValidationResultType } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-
-import type { OperationContractFragmentType } from './OperationContractFragment.js';
-
 /**
  * A discrete unit of work in a flow.
  * Nodes are stateless; all state flows through NodeStateInterface.
@@ -73,26 +70,6 @@ export interface NodeInterface<
    * Common outputs: 'success', 'error', 'skip', 'retry'
    */
   readonly 'outputs': readonly TOutput[];
-
-  /**
-   * Data-flow declaration for `DAGDeriver`. Every node carries a contract;
-   * nodes that do not participate in derivation use `EMPTY_CONTRACT_FRAGMENT`
-   * (both arrays empty). The deriver skips fragments where
-   * `hardRequired.length === 0 && produces.length === 0`, so these nodes
-   * contribute no derived edges.
-   *
-   * The node's own `name` and `outputs` fields complete the full
-   * `OperationContractType` surface; the fragment carries only the fields
-   * the deriver uses to wire edges.
-   *
-   * Concrete base class `MonadicNode` declares
-   * `readonly contract: OperationContractFragmentType = EMPTY_CONTRACT_FRAGMENT`
-   * as the V8-stable required-with-default. Implementors that do not extend
-   * `MonadicNode` must declare `contract` explicitly; import
-   * `EMPTY_CONTRACT_FRAGMENT` from `contracts/OperationContractFragmentType.js`
-   * for the no-derivation case.
-   */
-  readonly 'contract': OperationContractFragmentType;
 
   /**
    * Validate node configuration.

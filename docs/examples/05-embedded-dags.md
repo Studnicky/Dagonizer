@@ -82,15 +82,3 @@ A misspelled parent-state path is a compile error.
 
 `stateMapping` is the right tool when the relationship between parent and child is a pure field transfer at a single boundary. When multiple embedded-DAG placements accumulate to a single growing structure (agent memory, a ranked-results list, an audit log), thread a `Store` through the services bag instead. The store lives outside the DAG topology; every placement reads and writes to the same instance without threading values through stateMapping at every hop. See [Shared state](../guide/shared-state) for the decision matrix, the concurrency contract, and checkpoint integration.
 
-## Composing the same flow via `DAGDeriver.embeddedDAGs`
-
-The DAGBuilder `.embeddedDAG(...)` path above is the deterministic authoring surface. The same `EmbeddedDAGNode` can be produced declaratively via the `DAGDeriver` `embeddedDAGs` annotation when the surrounding flow is agent-style:
-
-<<< @/../examples/dags/derive.ts#derive
-
-- The contract's `produces` to `hardRequired` chain still drives topology; the `embeddedDAGs` annotation renders an `EmbeddedDAGNode`. `stateMapping.input` seeds the child; `stateMapping.output` copies child fields back.
-- Every port in `embeddedDAG.outputs` auto-wires to the next derived stage. `terminals` overrides individual ports if the error path needs a different target.
-- Body references resolve at `registerDAG` time; the dispatcher's existing cycle check rejects self-referential embedded-DAG bodies.
-- A runnable demonstration ships in [`examples/derive.ts`](https://github.com/Studnicky/Dagonizer/blob/main/examples/derive.ts) (`npm run example:derive`).
-
-See [Authoring DAGs](../guide/authoring) for the decision matrix between the imperative `.embeddedDAG()` path and the declarative `embeddedDAGs` annotation.

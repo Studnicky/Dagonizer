@@ -14,11 +14,6 @@ seeAlso:
     link: '../architecture'
     description: 'three-tier interface taxonomy'
 
-  - text: 'Contract-derived flows'
-
-    link: '../guide/derive'
-    description: 'generate the Archivist DAG from `OperationContractType`s'
-
   - text: 'Visualization'
 
     link: '../guide/visualization'

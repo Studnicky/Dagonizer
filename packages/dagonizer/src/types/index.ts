@@ -41,10 +41,7 @@ export type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
 export type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 export type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
-export type { ChainableType } from '../contracts/ChainableType.js';
 export type { NodeInterface } from '../contracts/NodeInterface.js';
-export type { OperationContractType } from '../contracts/OperationContract.js';
-export type { OperationContractFragmentType } from '../contracts/OperationContractFragment.js';
 export type { RegistryBundleInterface } from '../contracts/RegistryBundleInterface.js';
 export type { RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
 export type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
@@ -131,8 +128,6 @@ export type { GatherExecutionType, GatherRecordType } from '../contracts/GatherE
 export type { GatherStrategy } from '../core/GatherStrategies.js';
 export type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
 export type { OutcomeReducer } from '../core/OutcomeReducers.js';
-export type { DAGDeriverOptionsType } from '../derive/DAGDeriver.js';
-export type { DAGDeriverAnnotationsType, DAGDeriverEmitTerminalType, DAGDeriverEmbeddedDAGType, DAGDeriverScatterType, DAGDeriverTerminalType } from '../derive/DAGDeriverAnnotations.js';
 export type { DagJsonLdDocumentType, JsonLdGraphEntryType } from '../viz/JsonLdRenderer.js';
 export type {
   CytoscapeElementType,

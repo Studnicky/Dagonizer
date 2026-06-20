@@ -1,5 +1,5 @@
 /**
- * DAGBuilder: chainable authoring API for `DAG`.
+ * DAGBuilder: explicit fluent authoring API for `DAG`.
  *
  * Builds a JSON-LD canonical `DAG` document. Each node placement receives
  * `@id` (a URN scoped under the DAG name) and `@type` (the RDF class name).
@@ -13,9 +13,6 @@
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
-import { ContractRegistryValidator } from '../derive/ContractRegistryValidator.js';
-import { DAGDeriver } from '../derive/DAGDeriver.js';
-import type { DAGDeriverAnnotationsType } from '../derive/DAGDeriverAnnotations.js';
 import { DAGIdentity, DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
@@ -127,11 +124,15 @@ export type TypedEmbeddedDAGOptionsType<
 }
 
 /**
- * ChainableType authoring API that builds a `DAG` in JSON-LD canonical form.
+ * Explicit fluent API that builds a `DAG` in JSON-LD canonical form.
  *
  * Each node placement is assigned:
  *   - `@id`:   `urn:noocodex:dag:<dagName>/node/<placementName>`
  *   - `@type`: the RDF class name (`'SingleNode'`, `'ScatterNode'`, `'EmbeddedDAGNode'`, etc.)
+ *
+ * `DAGBuilder` is the single, compile-checked way to construct a DAG.
+ * Topology is declared explicitly via `.node()`, `.scatter()`, `.embeddedDAG()`,
+ * `.terminal()`, and `.phase()`. If the wiring does not type-check, it does not build.
  *
  * @example
  * ```ts
@@ -150,10 +151,6 @@ export class DAGBuilder {
   readonly #name: string;
   readonly #version: string;
   readonly #nodes: DAGNodeType[] = [];
-  // Generic erasure: stores type-erased NodeInterface<NodeStateInterface, string, unknown>; all
-  // callers retrieve and use the impl through the type-erased base. The explicit type annotation
-  // avoids `as` casts at every assignment site — widening happens once at the declaration.
-  readonly #nodeImpls: Map<string, NodeInterface<NodeStateInterface, string, unknown>> = new Map();
   #entrypoint: string | null = null;
 
   constructor(name: string, version: string) {
@@ -184,7 +181,6 @@ export class DAGBuilder {
       // Generic erasure: TOutput is narrower than string; the entity schema stores string keys.
       'outputs': routes as Record<string, string>,
     });
-    this.#nodeImpls.set(name, dagNode as NodeInterface<NodeStateInterface, string, unknown>);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
   }
@@ -247,10 +243,6 @@ export class DAGBuilder {
       // reservoir: left optional — absence means batch-size-1 (today's behavior unchanged).
       ...(resolved.reservoir !== undefined ? { 'reservoir': resolved.reservoir } : {}),
     };
-
-    if (!('dag' in body)) {
-      this.#nodeImpls.set(name, body as NodeInterface<NodeStateInterface, string, unknown>);
-    }
 
     this.#nodes.push(scatterNode);
     if (this.#entrypoint === null) this.#entrypoint = name;
@@ -352,8 +344,6 @@ export class DAGBuilder {
       phase,
     };
     this.#nodes.push(placement);
-    // Generic erasure: impl map stores type-erased base; callers retrieve it untyped.
-    this.#nodeImpls.set(name, dagNode as NodeInterface<NodeStateInterface, string, unknown>);
     // Intentionally does NOT set entrypoint; phase placements are
     // out-of-band and never the main-loop entry.
     return this;
@@ -362,10 +352,11 @@ export class DAGBuilder {
   /**
    * Materialize the accumulated nodes into a canonical JSON-LD `DAG` document.
    *
-   * When any placement registered via `.node()` or `.scatter()` carries a
-   * `contract` on its underlying `NodeInterface`, `build()` runs the same
-   * dangling-read / dead-write validation that `DAGDeriver` runs at derive
-   * time. Both dangling reads and dead writes throw `DAGError`.
+   * Validates that an entrypoint has been set, then assembles the `DAGType`
+   * from all registered placements and returns it. Both dangling-read and
+   * dead-write checks require explicit wiring — the fluent API is the
+   * compile-checked contract: if the routing does not type-check, the DAG
+   * does not build.
    */
   build(): DAGType {
     if (this.#entrypoint === null) {
@@ -381,50 +372,6 @@ export class DAGBuilder {
       'nodes':      [...this.#nodes] as DAGType['nodes'],
     };
 
-    // Run contract validation for the subset of placements registered via
-    // .node() / .scatter() whose underlying NodeInterface carries a contract.
-    // Placements not tracked in #nodeImpls are
-    // intentionally skipped; no false-positive dangling-read errors.
-    const contractNodes = [...this.#nodeImpls.values()].filter(
-      (impl) => impl.contract !== undefined,
-    );
-    if (contractNodes.length > 0) {
-      const contracts = DAGDeriver.extractContracts(contractNodes);
-      ContractRegistryValidator.validate(
-        contracts,
-        { 'entrypointName': this.#entrypoint },
-      );
-    }
-
     return dag;
-  }
-
-  /**
-   * Construct a DAG directly from a node registry; every node-with-contract
-   * participates in derivation; the linear topology follows
-   * produces ↔ hardRequired matching. Equivalent to calling
-   * `DAGDeriver.derive({ name, version, entrypoint, nodes })` and returning
-   * the resulting DAG. Use when your flow is linear and every node carries
-   * a contract; drop into the fluent `.node()` API when the shape requires
-   * manual placement (scatter, terminals, embedded-DAGs).
-   *
-   * @param name - DAG name.
-   * @param version - DAG version string.
-   * @param entrypoint - Name of the entrypoint node.
-   * @param nodes - Ordered registry of node implementations.
-   * @param options - Optional configuration.
-   * @param options.annotations - Optional deriver annotation overrides.
-   */
-  static derive(
-    name: string,
-    version: string,
-    entrypoint: string,
-    nodes: NodeInterface[],
-    options: { annotations?: DAGDeriverAnnotationsType } = {},
-  ): DAGType {
-    const deriveOpts = options.annotations !== undefined
-      ? { name, version, entrypoint, nodes, 'annotations': options.annotations }
-      : { name, version, entrypoint, nodes };
-    return DAGDeriver.derive(deriveOpts);
   }
 }
