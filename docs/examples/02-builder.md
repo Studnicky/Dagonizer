@@ -41,7 +41,7 @@ The complete `archivistDAG`, the parent DAG as a single `DAGBuilder` chain. The 
 
 ## What it demonstrates
 
-- **ChainableType authoring.** Every `.node()` and `.scatter()` returns `this` for fluent composition. The chain calls `build()` once at the end to produce the plain `DAG` object.
+- **Fluent chainable authoring.** Every `.node()` and `.scatter()` returns `this` for fluent composition. The chain calls `build()` once at the end to produce the plain `DAG` object.
 - **Compile-time route exhaustiveness.** The `routes` argument is typed as `Record<TOutput, null | string>`. TypeScript catches missing outputs (forgot `'error'`) and stray outputs (typo in output name) at compile time.
 - **Auto-entrypoint.** The first `.node()` call (`'recall-context'`) sets the DAG entrypoint automatically. Override with `.entrypoint(name)` if needed.
 - **Embedded-DAG placements via `.embeddedDAG()`.** `on-topic-search`, `author-search`, `similar-search`, and `compose-loop` are `EmbeddedDAGNode` placements. Each references a registered sub-DAG by name and declares its `stateMapping.outputs`.

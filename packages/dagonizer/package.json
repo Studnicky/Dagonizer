@@ -150,10 +150,6 @@
       "types": "./dist/core/index.d.ts",
       "default": "./dist/core/index.js"
     },
-    "./derive": {
-      "types": "./dist/derive/index.d.ts",
-      "default": "./dist/derive/index.js"
-    },
     "./viz": {
       "types": "./dist/viz/index.d.ts",
       "default": "./dist/viz/index.js"

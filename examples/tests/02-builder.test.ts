@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Dagonizer } from '@studnicky/dagonizer';
-import { ChatState, ClassifyNode, RespondNode, dag, contractErrorDemo } from '../dags/02-builder.topology.ts';
+import { ChatState, ClassifyNode, RespondNode, dag } from '../dags/02-builder.topology.ts';
 
 function makeDispatcher(): Dagonizer<ChatState> {
   const dispatcher = new Dagonizer<ChatState>();
@@ -52,7 +52,4 @@ describe('02-builder: DAGBuilder produces identical DAG shape', () => {
     assert.equal(dag.entrypoint, 'classify');
   });
 
-  it('contractErrorDemo() handles DAGError internally without throwing', () => {
-    assert.doesNotThrow(() => contractErrorDemo());
-  });
 });

@@ -147,7 +147,7 @@ export {};
 | `outputs` | `Record<'success' \| 'error', string \| null>` | yes | Routes for the child's terminal outcome |
 | `stateMapping` | `{ input?: Record<string, string>; output?: Record<string, string> }` | no | `input` copies parent fields into the child before it runs (child-key ← parent-path); `output` copies child fields back into the parent after it completes (parent-path ← child-key). |
 
-`EmbeddedDAGNode` invokes a registered sub-DAG exactly once (cardinality 1). It is the embedding primitive: the parent flow suspends, the child DAG runs to completion in an isolated state, and the parent routes on the child's terminal outcome (`success` when the child lifecycle is `completed`; `error` when `failed`). Authored via `.embeddedDAG(name, dagName, routes, { inputs, outputs })` on `DAGBuilder`, or via the `embeddedDAGs` annotation on `DAGDeriver.derive`.
+`EmbeddedDAGNode` invokes a registered sub-DAG exactly once (cardinality 1). It is the embedding primitive: the parent flow suspends, the child DAG runs to completion in an isolated state, and the parent routes on the child's terminal outcome (`success` when the child lifecycle is `completed`; `error` when `failed`). Authored via `.embeddedDAG(name, dagName, routes, { inputs, outputs })` on `DAGBuilder`.
 
 ---
 

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/index.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
@@ -280,7 +279,6 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode({
       'name': 'slow',
       'outputs': ['success'],
-      'contract': EMPTY_CONTRACT_FRAGMENT,
       'timeout': Timeout.none(),
       async execute(batch: Batch<TrackingState>, ctx): Promise<RoutedBatchType<string, TrackingState>> {
         const acc = new Map<string, ItemType<TrackingState>[]>();

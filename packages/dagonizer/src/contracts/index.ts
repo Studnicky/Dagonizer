@@ -51,16 +51,10 @@ export type { ClockProviderInterface } from './ClockProviderInterface.js';
 // Error construction and execution options.
 export type { ErrorConstructorType } from './ErrorConstructorType.js';
 export type { ExecuteOptionsType } from './ExecuteOptionsType.js';
-export type { ChainableType } from './ChainableType.js';
-
 // Nodes: the node contract and the back-into-the-engine invoker.
 export type { NodeInterface } from './NodeInterface.js';
 export type { NodeInvokerInterface } from './NodeInvokerInterface.js';
 
-// Data-flow derivation: full contract and the deriver-only fragment.
-export type { OperationContractType } from './OperationContract.js';
-export type { OperationContractFragmentType } from './OperationContractFragment.js';
-export { EMPTY_CONTRACT_FRAGMENT } from './OperationContractFragment.js';
 export type { OutcomeRecordType } from './OutcomeRecord.js';
 
 // Scatter execution: reservoir (buffered-batch) and worker-pool drivers.
