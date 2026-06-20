@@ -4,7 +4,7 @@ description: 'DAGBuilder is the chainable authoring API for deterministic workfl
 seeAlso:
   - text: 'Authoring DAGs'
     link: './authoring'
-    description: 'when to choose DAGBuilder, DAGDeriver, or raw DAG literals'
+    description: 'when to choose DAGBuilder or raw DAG literals'
   - text: 'Subclassing state'
     link: './subclassing'
     description: 'define the state class your nodes mutate'
@@ -14,9 +14,6 @@ seeAlso:
   - text: 'Schema and JSON loading'
     link: './schema'
     description: 'load DAGs from JSON instead of building them in code'
-  - text: 'Contract-derived flows'
-    link: './derive'
-    description: 'generate the same DAG shape from OperationContracts'
   - text: 'Visualization'
     link: './visualization'
     description: 'render the built DAG as Mermaid or Cytoscape'
@@ -34,7 +31,7 @@ import { dag as builderDag } from '../../examples/dags/02-builder.topology.ts';
 
 `DAGBuilder` is a chainable authoring API for deterministic workflows: ETL pipelines, transformation chains, fixed sequences where the order IS the spec. Each `.node()` call narrows the `routes` map from the node `TOutput` union, so misspelled or missing routes are compile errors before the DAG runs.
 
-If the flow is agent-shaped (operations declare data dependencies, topology falls out automatically), use [DAGDeriver](./derive) instead. See [Authoring DAGs](./authoring) for the decision matrix. Both surfaces produce the same canonical `DAG` JSON-LD object.
+See [Authoring DAGs](./authoring) for the decision matrix between DAGBuilder and raw `DAG` literals. Both surfaces produce the same canonical `DAG` JSON-LD object.
 
 ## Basic usage
 
@@ -59,36 +56,6 @@ The built DAG visualised:
 When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive routing at compile time:
 
 <<< @/../examples/dags/02-builder.topology.ts#type-safe-routing
-
-## Contract-aware authoring
-
-When the underlying `NodeInterface` carries a `contract` field (`hardRequired` plus `produces`), `build()` runs the same dangling-read and dead-write validation that `DAGDeriver` runs at derive time. Drift fails at build time, not run time.
-
-- **Dangling read**. A non-entrypoint node declares `hardRequired: ['foo']` but no upstream node produces `'foo'`. Throws `DAGError`.
-- **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Throws `DAGError`, exactly like a dangling read.
-
-<<< @/../examples/dags/02-builder.topology.ts#contract-error
-
-Placements added via `.scatter()` with a `{ dag }` body do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
-
-See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
-
-## `DAGBuilder.derive()`, the linear shortcut
-
-For the common case where the flow is linear and every node carries a contract, skip the fluent chain:
-
-<<< @/../examples/dags/02-builder.topology.ts#from-nodes
-
-Equivalent fluent form:
-
-<<< @/../examples/dags/02-builder.topology.ts#from-nodes-fluent
-
-`DAGBuilder.derive()` delegates to `DAGDeriver.derive({ nodes })`, the same deriver that powers contract-first topology. Use it when the shape is linear and all nodes carry contracts. Drop into the fluent `.node()` API when you need:
-
-- Scatter placements (node body or sub-DAG body)
-- Multiple named terminal placements with distinct outcomes
-- Explicit entrypoint overrides
-- Non-contract nodes that still appear in the placement list
 
 ## Scatter
 

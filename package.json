@@ -46,7 +46,6 @@
     "example:11": "tsx examples/11-handoff.ts",
     "example:12": "tsc -p examples/tsconfig.workers.json && node examples/dist/12-workers.js",
     "example:13": "tsc -p examples/tsconfig.multibackend.json && node examples/dist/13-multibackend.js",
-    "example:derive": "tsx examples/derive.ts",
     "example:custom-checkpoint-store": "tsx examples/custom-checkpoint-store.ts",
     "example:custom-adapter": "tsx examples/custom-adapter.ts",
     "example:pattern-node": "tsx examples/pattern-node.ts",

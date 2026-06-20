@@ -6,9 +6,6 @@ seeAlso:
   - text: 'Reference: Entities'
     link: './entities'
     description: '`DAG`'
-  - text: 'Reference: Derive'
-    link: './derive'
-    description: 'render the DAG `derive()` returned'
 ---
 
 # Viz
@@ -362,5 +359,4 @@ const y: number = pos.y;
 ## Related guides
 
 - [Visualization](../guide/visualization)
-- [Contract-derived flows](../guide/derive)
 - [DAGBuilder](../guide/builder)

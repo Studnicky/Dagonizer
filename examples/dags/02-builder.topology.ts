@@ -11,12 +11,10 @@
 // #region imports
 import {
   DAGBuilder,
-  DAGError,
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { OperationContractFragmentType } from '@studnicky/dagonizer/contracts';
 // #endregion imports
 
 // ---------------------------------------------------------------------------
@@ -97,97 +95,6 @@ export const typeSafeRoutingDag = new DAGBuilder('type-safe-demo', '1')
   .terminal('end')
   .build();
 // #endregion type-safe-routing
-
-// ---------------------------------------------------------------------------
-// Contract-aware authoring: dangling read → DAGError at build() time
-// ---------------------------------------------------------------------------
-
-class ContractFetchNode extends ScalarNode<ChatState, 'success'> {
-  readonly name = 'contract-fetch';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragmentType = { hardRequired: [], produces: ['raw'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-
-class ContractParseNode extends ScalarNode<ChatState, 'success'> {
-  readonly name = 'contract-parse';
-  readonly outputs = ['success'] as const;
-  // Deliberate mismatch: hardRequires 'data' but upstream only produces 'raw'.
-  override readonly contract: OperationContractFragmentType = { hardRequired: ['data'], produces: ['record'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-
-// #region contract-error
-// Nodes with mismatched contracts: ContractFetchNode produces 'raw';
-// ContractParseNode hardRequires 'data'. DAGBuilder.build() detects the
-// dangling read and throws DAGError at construction time, not run time.
-export function contractErrorDemo(): void {
-  try {
-    new DAGBuilder('pipeline', '1.0')
-      .node('contract-fetch', new ContractFetchNode(), { success: 'contract-parse' })
-      .node('contract-parse', new ContractParseNode(), { success: 'contract-end' })
-      .terminal('contract-end')
-      .build();
-  } catch (err) {
-    if (err instanceof DAGError) process.stdout.write(`DAGError: ${err.message}\n`);
-  }
-}
-// #endregion contract-error
-
-// ---------------------------------------------------------------------------
-// DAGBuilder.derive(): linear shortcut for contract-carrying node chains
-// ---------------------------------------------------------------------------
-
-class LinearFetchNode extends ScalarNode<ChatState, 'success'> {
-  readonly name = 'linear-fetch';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragmentType = { hardRequired: [], produces: ['raw'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-
-class LinearParseNode extends ScalarNode<ChatState, 'success'> {
-  readonly name = 'linear-parse';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragmentType = { hardRequired: ['raw'], produces: ['record'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-
-class LinearSaveNode extends ScalarNode<ChatState, 'success'> {
-  readonly name = 'linear-save';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragmentType = { hardRequired: ['record'], produces: [] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-
-// #region from-nodes
-// DAGBuilder.derive() delegates to DAGDeriver.derive. Use it when the flow
-// is linear and every node carries a contract. The deriver infers the topology
-// from hardRequired / produces declarations; no explicit routes are needed.
-// annotations.terminals declares the terminal node for the last operation's output.
-export const fromNodesDag = DAGBuilder.derive(
-  'linear-pipeline',
-  '1.0',
-  'linear-fetch',
-  [new LinearFetchNode(), new LinearParseNode(), new LinearSaveNode()],
-  {
-    annotations: {
-      terminals: {
-        'linear-save': [{ outcome: 'success', emit: { name: 'end', outcome: 'completed' } }],
-      },
-    },
-  },
-);
-// #endregion from-nodes
-
-// #region from-nodes-fluent
-// Equivalent fluent form using the explicit .node() chain:
-export const fromNodesFluent = new DAGBuilder('linear-pipeline', '1.0')
-  .node('linear-fetch', new LinearFetchNode(), { success: 'linear-parse' })
-  .node('linear-parse', new LinearParseNode(), { success: 'linear-save' })
-  .node('linear-save',  new LinearSaveNode(),  { success: 'linear-end'  })
-  .terminal('linear-end')
-  .build();
-// #endregion from-nodes-fluent
 
 // ---------------------------------------------------------------------------
 // Scatter: side-effect-only fan-out (strategy: 'discard')

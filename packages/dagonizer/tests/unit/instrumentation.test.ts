@@ -3,19 +3,16 @@ import { describe, it } from 'node:test';
 
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
-import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const makeNode             = TestNode.make;
-const makeNodeWithContract = TestNode.withContract;
+const makeNode = TestNode.make;
 
 // Recording Dagonizer subclass captures every hook invocation in order so
 // tests can assert on the full call sequence rather than aggregate counts.
@@ -250,33 +247,6 @@ void describe('Dagonizer subclass hooks contract', () => {
     // Top-level flow hook is scoped to the parent DAG name
     assert.equal(dispatcher.hooksOfType('flowStart')[0]?.args[0], 'inst-parent');
     assert.equal(dispatcher.hooksOfType('flowEnd')[0]?.args[0],   'inst-parent');
-  });
-
-  void it('throws DAGError when a contract-bearing DAG has a dead-write', () => {
-    const rootNode = makeNodeWithContract<NodeStateBase>('root', ['success'], { 'hardRequired': [], 'produces': ['input'] });
-    const aNode    = makeNodeWithContract<NodeStateBase>('a',    ['success'], { 'hardRequired': ['input'], 'produces': ['x', 'unused'] });
-    const bNode    = makeNodeWithContract<NodeStateBase>('b',    ['success'], { 'hardRequired': ['x'],     'produces': [] });
-
-    // 'unused' is produced by 'a' but no node hardRequires it → dead write → throw
-    // at derive-time preflight (the same check registerDAG runs).
-    assert.throws(
-      () => DAGDeriver.derive({
-        'name':       'inst-warn',
-        'version':    '1',
-        'entrypoint': 'root',
-        'nodes':      [rootNode, aNode, bNode],
-        'annotations': {
-          'terminals': {
-            'b': [{ 'outcome': 'success', 'emit': { 'name': 'inst-warn-end', 'outcome': 'completed' } }],
-          },
-        },
-      }),
-      (err: unknown) => {
-        assert.ok(err instanceof DAGError);
-        assert.ok(err.message.includes("'unused'"));
-        return true;
-      },
-    );
   });
 
   void it('onError fires when a node throws', async () => {

@@ -3,9 +3,8 @@
  * Nodes extend `ScalarNode` (per-item) or `MonadicNode` (batch-native).
  *
  * This test asserts the engine treats a hand-rolled `NodeInterface` identically
- * to the equivalent `ScalarNode`, and that a node's `contract` is readable
- * without execution. The taxonomy base classes add no semantics over the bare
- * `execute(batch) → RoutedBatchType` contract; they only reduce boilerplate.
+ * to the equivalent `ScalarNode`. The taxonomy base classes add no semantics over
+ * the bare `execute(batch) → RoutedBatchType` contract; they only reduce boilerplate.
  *
  * Extend `ScalarNode` or `MonadicNode` instead of hand-rolling `NodeInterface`.
  */
@@ -14,7 +13,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
@@ -57,10 +55,6 @@ void describe('Antipattern — hand-rolled raw NodeInterface', () => {
     const rawAntipatternNode: NodeInterface<TagState, 'tagged' | 'skip'> = {
       'name': 'tag-raw',
       'outputs': ['tagged', 'skip'] as const,
-      // A raw node carries `contract` as a plain field; a ScalarNode/MonadicNode
-      // supplies it as a required-with-default, so static readers like DAGDeriver
-      // work the same either way.
-      'contract': EMPTY_CONTRACT_FRAGMENT,
       'timeout': Timeout.none(),
       async execute(batch: Batch<TagState>): Promise<RoutedBatchType<'tagged' | 'skip', TagState>> {
         const acc = new Map<'tagged' | 'skip', ItemType<TagState>[]>();
@@ -90,10 +84,5 @@ void describe('Antipattern — hand-rolled raw NodeInterface', () => {
     assert.equal(rawResult.size, taxonomyResult.size);
     assert.deepEqual(rawResult.get('tagged')?.ids(), taxonomyResult.get('tagged')?.ids());
     assert.deepEqual(rawResult.get('skip')?.ids(), taxonomyResult.get('skip')?.ids());
-
-    // A static reader can inspect the contract field without running the node —
-    // true for the raw form and the taxonomy alike (so raw buys nothing here).
-    assert.deepEqual(rawAntipatternNode.contract, EMPTY_CONTRACT_FRAGMENT);
-    assert.deepEqual(new TagScalarNode().contract, EMPTY_CONTRACT_FRAGMENT);
   });
 });

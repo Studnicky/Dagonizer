@@ -1,13 +1,10 @@
 ---
 title: 'Authoring DAGs'
-description: 'Dagonizer ships one DAG type (JSON-LD canonical, schema-validated, dispatcher-consumed) and three authoring journeys to produce it: raw DAG literals, DAGBuilder for deterministic workflows, and DAGDeriver for agentic flows. Pick the journey that matches the mental model you use to describe the flow.'
+description: 'Dagonizer ships one DAG type (JSON-LD canonical, schema-validated, dispatcher-consumed) and two authoring journeys to produce it: DAGBuilder for deterministic workflows, and raw DAG literals for programmatic or JSON-based composition. Pick the journey that matches the mental model you use to describe the flow.'
 seeAlso:
   - text: 'DAGBuilder'
     link: './builder'
-    description: 'sugar for deterministic, ETL-shaped workflows'
-  - text: 'Contract-derived flows (DAGDeriver)'
-    link: './derive'
-    description: 'sugar for agentic, tool-driven flows'
+    description: 'chainable authoring API for deterministic workflows'
   - text: 'JSON-LD export and import'
     link: './json-ld'
     description: 'raw DAG literals via DAGDocument.serialize and DAGDocument.load'
@@ -18,9 +15,6 @@ nextSteps:
   - text: 'DAGBuilder'
     link: './builder'
     description: 'imperative authoring'
-  - text: 'DAGDeriver'
-    link: './derive'
-    description: 'declarative authoring from contract registries'
 ---
 
 # Authoring DAGs
@@ -36,21 +30,15 @@ The `DAG` type is the API. A `DAG` is a JSON-LD 1.1 document with `@context`, `@
                           ▲                  ▲
                           │                  │
               ┌───────────┴────────┐  ┌──────┴──────────┐
-              │     DAGBuilder     │  │   DAGDeriver    │
-              │                    │  │                 │
-              │  Sugar for         │  │  Sugar for      │
-              │  deterministic     │  │  agentic,       │
-              │  workflows         │  │  contract-      │
-              │                    │  │  driven flows   │
-              └────────────────────┘  └─────────────────┘
-                          ▲                  ▲
-                          │                  │
-                          └────── plus ──────┘
-                          raw `DAG` literals
-                          (always available)
+              │     DAGBuilder     │  │  Raw DAG literal │
+              │                    │  │                  │
+              │  Chainable API for │  │  Written by hand │
+              │  deterministic     │  │  or generated    │
+              │  workflows         │  │  from a template │
+              └────────────────────┘  └──────────────────┘
 ```
 
-Three authoring journeys, one API. Pick the journey that matches how you describe the flow to another engineer.
+Two authoring journeys, one API. Pick the journey that matches how you describe the flow to another engineer.
 
 ## DAGBuilder when you control the order
 
@@ -68,23 +56,6 @@ Choose DAGBuilder when:
 - Routes are unambiguous and you want them on the page next to the node reference.
 - The TypeScript compiler should verify every output is wired.
 - The flow is short-lived (one-off composition, generated from a template, etc.).
-
-## DAGDeriver when the topology should emerge
-
-DAGDeriver is for agentic flows where reaching the final state matters more than authoring the order. Tool-driven agents, exploratory pipelines, workflows where the operation set changes per deployment, systems where adding a capability is one new contract and the topology rewires itself.
-
-The mental model: *these operations declare what they need and what they produce; the system figures out the order.* Adding a new operation is a one-line registration; the data graph (`produces` paired with `hardRequired`) derives the edges.
-
-<<< @/../examples/dags/authoring-derive.topology.ts#research-agent
-
-Add a new candidate source: write one contract, the topology rewires automatically. The author cares about the operation set, not the order.
-
-Choose DAGDeriver when:
-
-- The flow is a registry of tools or capabilities. Adding one should auto-wire it.
-- Different deployments compose different subsets of operations.
-- The author thinks in terms of data dependencies, not control flow.
-- The flow is long-lived; topology may evolve.
 
 ## Raw `DAG` literals, always available
 
@@ -104,42 +75,36 @@ The same `classifyIntent` reference is registered with the dispatcher and refere
 
 ## Decision matrix
 
-| Question | DAGBuilder | DAGDeriver | Raw `DAG` |
-|---|---|---|---|
-| "I have a fixed sequence of steps." | yes | | |
-| "I'm writing an ETL pipeline." | yes | | |
-| "I want the compiler to verify every route is wired." | yes | | |
-| "I know the topology at authoring time and will not change it without rewriting." | yes | | |
-| "I'm building an agent, assistant, or tool-driven workflow." | | yes | |
-| "Adding a new operation should auto-rewire the flow." | | yes | |
-| "Operations are tools: they declare what they need and what they produce." | | yes | |
-| "I care about reaching some final state; the order can fall out." | | yes | |
-| "Different deployments may compose different subsets of operations." | | yes | |
-| "I'm loading the DAG from JSON or generating it from a template." | | | yes |
-| "I need the JSON-LD wire shape for cross-process transmission." | | | yes |
-| "I'm writing test fixtures and want zero indirection." | | | yes |
+| Question | DAGBuilder | Raw `DAG` |
+|---|---|---|
+| "I have a fixed sequence of steps." | yes | |
+| "I'm writing an ETL pipeline." | yes | |
+| "I want the compiler to verify every route is wired." | yes | |
+| "I know the topology at authoring time and will not change it without rewriting." | yes | |
+| "I'm loading the DAG from JSON or generating it from a template." | | yes |
+| "I need the JSON-LD wire shape for cross-process transmission." | | yes |
+| "I'm writing test fixtures and want zero indirection." | | yes |
 
 ## Capability matrix
 
-All three authoring journeys can produce any DAG the schema allows. The differences are ergonomic.
+Both authoring journeys can produce any DAG the schema allows. The differences are ergonomic.
 
-| Capability | Raw `DAG` | DAGBuilder | DAGDeriver |
-|---|---|---|---|
-| `SingleNode` placement | yes | yes | yes |
-| `ScatterNode` placement | yes | yes via `.scatter()` | yes via `DAGDeriverAnnotationsType.scatters` (node body) |
-| Gather strategy (`map` / `append` / `partition` / `custom` / `collect` / `discard`) | yes | yes via `options.gather` | yes via `DAGDeriverScatter.strategy` |
-| Outcome reducer (`aggregate` / `all-success` / `any-success` / custom) | yes | yes via `options.reducer` | (via scatter scatter outcomes) |
-| Scatter body kind (`node` or `dag`) | yes | yes via `body` argument | node body via `DAGDeriverScatter`; dag body via `embeddedDAGs` or raw `DAG` |
-| `EmbeddedDAGNode` placement | yes | yes via `.embeddedDAG()` | yes via `DAGDeriverAnnotationsType.embeddedDAGs` |
-| `TerminalNode` placement | yes | yes via `.terminal()` | (not a target, use DAGBuilder) |
-| `inputs` (parent → clone seed) | yes | yes via `options.inputs` | yes via `DAGDeriverScatter` |
-| Multi-port routing | yes | yes via `routes` map | yes via `contract.outputs` and `terminals` |
-| Compile-time route narrowing | | yes from `NodeInterface` `TOutput` | (not applicable, declarative) |
-| Topology derivation from data graph | | (not applicable, imperative) | yes from `produces` plus `hardRequired` |
-| Runtime-conditional topology | yes (build conditionally) | yes (chain conditionally) | partial (contracts at runtime, annotations static) |
-| Recursive / trampoline flows | yes via `services.dispatcher.execute` | yes, same pattern in node body | not a declarative target, use DAGBuilder |
+| Capability | Raw `DAG` | DAGBuilder |
+|---|---|---|
+| `SingleNode` placement | yes | yes |
+| `ScatterNode` placement | yes | yes via `.scatter()` |
+| Gather strategy (`map` / `append` / `partition` / `custom` / `collect` / `discard`) | yes | yes via `options.gather` |
+| Outcome reducer (`aggregate` / `all-success` / `any-success` / custom) | yes | yes via `options.reducer` |
+| Scatter body kind (`node` or `dag`) | yes | yes via `body` argument |
+| `EmbeddedDAGNode` placement | yes | yes via `.embeddedDAG()` |
+| `TerminalNode` placement | yes | yes via `.terminal()` |
+| `inputs` (parent → clone seed) | yes | yes via `options.inputs` |
+| Multi-port routing | yes | yes via `routes` map |
+| Compile-time route narrowing | | yes from `NodeInterface` `TOutput` |
+| Runtime-conditional topology | yes (build conditionally) | yes (chain conditionally) |
+| Recursive / trampoline flows | yes via `services.dispatcher.execute` | yes, same pattern in node body |
 
-The bottom two rows are imperative patterns. A node that recursively dispatches a sub-DAG via `services.dispatcher.execute(name, state.clone())` is a trampoline; it lives in node logic regardless of which authoring journey produced the DAG. DAGDeriver does not absorb these patterns into annotations.
+The last two rows are imperative patterns. A node that recursively dispatches a sub-DAG via `services.dispatcher.execute(name, state.clone())` is a trampoline; it lives in node logic regardless of which authoring journey produced the DAG.
 
 ## Terminal placements
 
@@ -164,10 +129,9 @@ See [DAGBuilder, `.terminal()`](./builder#terminal-name-outcome) and [Phase 09, 
 The output is the same JSON-LD `DAG`. A flow authored via DAGBuilder can be:
 
 - Serialized via `DAGDocument.serialize(dag)` to JSON and reloaded later via `DAGDocument.load`.
-- Compared against a DAGDeriver-derived DAG of the same flow (they match modulo `@id` URN choices).
-- Rewritten in the other authoring journey without changing the dispatcher contract.
+- Rewritten as a raw `DAG` literal without changing the dispatcher contract.
 
-There is no lock-in. The DAG object is the only API. The journeys are alternate ergonomic paths to it.
+There is no lock-in. The DAG object is the only API. Both journeys are ergonomic paths to it.
 
 ## When to drop down to raw `DAG`
 
