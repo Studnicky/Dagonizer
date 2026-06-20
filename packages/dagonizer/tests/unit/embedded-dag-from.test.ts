@@ -37,10 +37,8 @@ class RoutingState extends NodeStateBase {
   selectedDag = '';
   /** Execution counter threaded through the cardinality-1 embed via state mapping. */
   executed = 0;
-  /** Items to scatter over. */
-  items: string[] = ['a', 'b'];
-  /** Per-item dag selector read by the scatter dagFrom body. */
-  itemDag = 'scatter-child';
+  /** Scatter items: each names its own body dag (read by the scatter `dagFrom`). */
+  items: Array<{ dagName: string }> = [{ 'dagName': 'scatter-child' }, { 'dagName': 'scatter-child' }];
 }
 
 /** Increments `state.executed` (for state round-trip) and the shared probe. */
@@ -211,16 +209,15 @@ void describe('ScatterNode: dagFrom runtime resolution', () => {
     const incrNode = new IncrNode('incr', probe);
     const childDag = TestDag.child('scatter-child');
 
-    // The scatter seeds each clone's `itemDag` from the parent, then the
-    // dagFrom body reads it to pick the per-item child dag.
+    // Each scatter item names its own body dag; `dagFrom: 'dagName'` reads it
+    // from the item directly (not from the clone state).
     const parentDag = new DAGBuilder('scatter-parent', '1')
-      .scatter('scatter', 'items', { 'dagFrom': 'itemDag' }, {
+      .scatter('scatter', 'items', { 'dagFrom': 'dagName' }, {
         'all-success': 'end',
         'partial':     'end',
         'all-error':   'end',
         'empty':       'end',
       }, {
-        'inputs': { 'itemDag': 'itemDag' },
         'gather': { 'strategy': 'discard' },
       })
       .terminal('end')
@@ -232,7 +229,7 @@ void describe('ScatterNode: dagFrom runtime resolution', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
-    state.items = ['a', 'b', 'c'];
+    state.items = [{ 'dagName': 'scatter-child' }, { 'dagName': 'scatter-child' }, { 'dagName': 'scatter-child' }];
     const result = await dispatcher.execute('scatter-parent', state);
 
     assert.equal(result.terminalOutcome, 'completed');
@@ -244,13 +241,12 @@ void describe('ScatterNode: dagFrom runtime resolution', () => {
     const incrNode = new IncrNode('incr', probe);
 
     const parentDag = new DAGBuilder('scatter-bad', '1')
-      .scatter('scatter', 'items', { 'dagFrom': 'itemDag' }, {
+      .scatter('scatter', 'items', { 'dagFrom': 'dagName' }, {
         'all-success': 'end-ok',
         'partial':     'end-ok',
         'all-error':   'end-ok',
         'empty':       'end-ok',
       }, {
-        'inputs': { 'itemDag': 'itemDag' },
         'gather': { 'strategy': 'discard' },
       })
       .terminal('end-ok')
@@ -261,8 +257,7 @@ void describe('ScatterNode: dagFrom runtime resolution', () => {
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
-    state.items = ['x', 'y'];
-    state.itemDag = 'no-such-dag';
+    state.items = [{ 'dagName': 'no-such-dag' }, { 'dagName': 'no-such-dag' }];
     const result = await dispatcher.execute('scatter-bad', state);
 
     // All items routed to their error output; scatter still reaches its terminal.

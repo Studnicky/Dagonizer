@@ -15,13 +15,14 @@
  */
 
 import { DAGBuilder } from '../builder/DAGBuilder.js';
+import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
 import type { ToolDefinitionType } from '../entities/adapter/ToolDefinition.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { DAGError } from '../errors/DAGError.js';
 
 import type { ToolInterface } from './ToolInterface.js';
-import type { ToolInvocationState } from './ToolInvocationState.js';
+import { ToolInvocationState } from './ToolInvocationState.js';
 import { ToolInvokeNode } from './ToolInvokeNode.js';
 
 /** In-memory lookup result for a registered tool. Not a wire shape — no schema required. */
@@ -100,19 +101,26 @@ export class ToolRegistry {
   }
 
   /**
-   * All synthesized nodes + DAGs as a `DispatcherBundleType`.
-   * Pass to `dispatcher.registerBundle(registry.bundle())` to wire
-   * the full tool surface into the dispatcher in one call.
+   * All synthesized nodes + DAGs + child-state factories as a
+   * `DispatcherBundleType`. Pass to `dispatcher.registerBundle(registry.bundle())`
+   * to wire the full tool surface into the dispatcher in one call.
+   *
+   * Each `tool:<name>` DAG registers an isolation factory `() => new
+   * ToolInvocationState()`, so a tool runs on its OWN fresh state — args are
+   * seeded into the embed's `input`, the result read from `output`, and the
+   * parent's state is never mutated by the tool. A tool is a pure function.
    */
   bundle(): DispatcherBundleType<ToolInvocationState> {
     const nodes: ToolInvokeNode[] = [];
     const dags: DAGType[] = [];
+    const stateFactories: Record<string, ChildStateFactoryType> = {};
 
     for (const entry of this.#entries.values()) {
       nodes.push(entry['node']);
       dags.push(entry['dag']);
+      stateFactories[entry['dagName']] = () => new ToolInvocationState();
     }
 
-    return { 'nodes': nodes, 'dags': dags };
+    return { 'nodes': nodes, 'dags': dags, 'stateFactories': stateFactories };
   }
 }

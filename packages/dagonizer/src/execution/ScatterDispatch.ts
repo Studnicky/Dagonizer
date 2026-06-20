@@ -307,21 +307,21 @@ export class ScatterPoolDriver<TServices>
       // — no throw, so the item is acked, not re-queued).
       let bodyDagName: string;
       if ('dagFrom' in scatter.body) {
-        // Build a resolution clone (clone-parent) to resolve the dagFrom path.
-        // The clone that actually runs the body is built below with spawnChild.
-        const resolveClone = this.#adapter.stateMapper.cloneChild(
-          state,
-          ScatterNodeDefaults.inputMapping(scatter),
-        );
-        resolveClone.deleteMetadata(SCATTER_PROGRESS_KEY);
-        resolveClone.deleteMetadata(WORKSET_PROGRESS_KEY);
-        resolveClone.setMetadata(itemKey, item);
-        resolveClone.setMetadata('itemIndex', itemIndex);
-        const resolved = this.#adapter.accessor.get(resolveClone, scatter.body.dagFrom);
+        // Resolve the body dag name from the ITEM: each scatter item names its
+        // own body dag (e.g. a tool call carrying `dagName: 'tool:<name>'`). The
+        // item is available before any clone, so resolution precedes the
+        // isolation-factory child build. An unresolvable or unregistered name
+        // routes the item to `error` (no throw; the item is acked, not re-queued).
+        const resolved = (typeof item === 'object' && item !== null)
+          ? this.#adapter.accessor.get(item, scatter.body.dagFrom)
+          : null;
         if (typeof resolved !== 'string' || resolved.length === 0 || !this.#adapter.dags.has(resolved)) {
-          for (const err of resolveClone.errors) state.collectError(err);
-          for (const warn of resolveClone.warnings) state.collectWarning(warn);
-          return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': resolveClone };
+          const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
+          errorClone.deleteMetadata(SCATTER_PROGRESS_KEY);
+          errorClone.deleteMetadata(WORKSET_PROGRESS_KEY);
+          errorClone.setMetadata(itemKey, item);
+          errorClone.setMetadata('itemIndex', itemIndex);
+          return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone };
         }
         bodyDagName = resolved;
       } else {
@@ -528,21 +528,16 @@ export class ScatterPoolDriver<TServices>
 
     // ── Branch B / C: DAG body ────────────────────────────────────────────────
     // Resolve dag name: `dag` literal or `dagFrom` runtime path. For `dagFrom`,
-    // each item's clone state is the resolution scope — but at batch-execution
-    // time all items share the same body dag (reservoir batches group by key, not
-    // by dag). Resolve against the first clone's state as the representative.
+    // each ITEM names its own body dag — but at batch-execution time all items in
+    // a released batch share the same body dag (reservoir batches group by key,
+    // not by dag), so resolve against the first item as the representative.
     // An unresolvable or unregistered name routes every item in the batch to `error`.
     let batchBodyDagName: string;
     if ('dagFrom' in scatter.body) {
-      // Build a resolution clone (clone-parent, returns NodeStateInterface) to read the dagFrom path.
-      const firstClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
-      firstClone.deleteMetadata(SCATTER_PROGRESS_KEY);
-      firstClone.deleteMetadata(WORKSET_PROGRESS_KEY);
-      if (items[0] !== undefined) {
-        firstClone.setMetadata(itemKey, items[0].item);
-        firstClone.setMetadata('itemIndex', items[0].index);
-      }
-      const resolved = this.#adapter.accessor.get(firstClone, scatter.body.dagFrom);
+      const firstItem = items[0]?.item;
+      const resolved = (typeof firstItem === 'object' && firstItem !== null)
+        ? this.#adapter.accessor.get(firstItem, scatter.body.dagFrom)
+        : null;
       if (typeof resolved !== 'string' || resolved.length === 0 || !this.#adapter.dags.has(resolved)) {
         // Route all items to error without running any body (clone-parent for error path).
         const errorResults: ScatterItemResultType[] = items.map((buffered) => {

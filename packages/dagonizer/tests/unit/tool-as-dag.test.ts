@@ -191,6 +191,12 @@ void describe('ToolRegistry: a tool is an embeddable DAG (end-to-end)', () => {
     assert.equal(result.terminalOutcome, 'completed');
     // Tool ran: 3 + 7 = 10.
     assert.deepEqual(state.toolOutput, { 'result': 10 }, 'tool result must map back to parent state');
+    // Isolation: the tool ran on a fresh ToolInvocationState (registered via the
+    // bundle's isolation factory), NOT a clone of ParentState — so the child's
+    // `input`/`output` fields never leaked onto the parent (no shared-state
+    // mutation, no V8 shape violation). A tool is a pure function.
+    assert.ok(!Object.hasOwn(state, 'input'), 'child `input` field must not leak onto parent state');
+    assert.ok(!Object.hasOwn(state, 'output'), 'child `output` field must not leak onto parent state');
   });
 
   void it('routes to end-fail when the tool throws', async () => {
