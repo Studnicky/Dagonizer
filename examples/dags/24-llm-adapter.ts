@@ -7,7 +7,7 @@
  * instances (primary at an unreachable port, fallback at the default loopback).
  * The primary adapter's probe() returns false, so the cascade skips it and
  * selects the fallback. A ChatNode calls the selected adapter and routes on
- * the response kind.
+ * the response variant.
  */
 
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
@@ -45,12 +45,12 @@ export class ChatNode extends ScalarNode<ChatAdapterState, 'text' | 'tools'> {
     });
     const response = await state.adapter.chat(request);
     state.finishReason = response.finishReason;
-    if (response.message.kind === 'text') {
+    if (response.message.variant === 'text') {
       state.response = response.message.content;
       return NodeOutputBuilder.of('text');
     }
     // tools or mixed: surface the first tool call name as the response text
-    const calls = response.message.kind === 'mixed'
+    const calls = response.message.variant === 'mixed'
       ? response.message.toolCalls
       : response.message.toolCalls;
     state.response = `tool_call:${calls[0]?.name ?? 'unknown'}`;

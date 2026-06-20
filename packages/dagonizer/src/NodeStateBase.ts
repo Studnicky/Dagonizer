@@ -322,13 +322,13 @@ export class NodeStateBase implements NodeStateInterface {
 
   private dispatch(
     event: Parameters<typeof DAGLifecycleMachine.transition>[1],
-    targetKind: DAGLifecycleStateType['kind'],
+    targetVariant: DAGLifecycleStateType['variant'],
   ): void {
     const next = DAGLifecycleMachine.transition(this._lifecycle, event);
 
     if (next === this._lifecycle) {
       throw new DAGError(
-        `Cannot mark ${targetKind}: lifecycle is ${this._lifecycle.kind}`,
+        `Cannot mark ${targetVariant}: lifecycle is ${this._lifecycle.variant}`,
       );
     }
     this._lifecycle = next;

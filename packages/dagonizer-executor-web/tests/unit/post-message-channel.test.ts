@@ -108,13 +108,13 @@ void describe('PostMessageChannel', () => {
     workerChannel.onMessage((msg) => received.push(msg));
 
     const msg: BridgeMessageType = {
-      'kind': 'shutdown',
+      'variant': 'shutdown',
     };
     mainChannel.send(msg);
 
     await nextTick();
     assert.strictEqual(received.length, 1);
-    assert.strictEqual(received[0]?.kind, 'shutdown');
+    assert.strictEqual(received[0]?.variant, 'shutdown');
   });
 
   void it('delivers a message from worker side to main side', async () => {
@@ -126,7 +126,7 @@ void describe('PostMessageChannel', () => {
     mainChannel.onMessage((msg) => received.push(msg));
 
     const msg: BridgeMessageType = {
-      'kind': 'ready',
+      'variant': 'ready',
       'registryVersion': '1.0.0',
       'capabilities': [],
     };
@@ -134,7 +134,7 @@ void describe('PostMessageChannel', () => {
 
     await nextTick();
     assert.strictEqual(received.length, 1);
-    assert.strictEqual(received[0]?.kind, 'ready');
+    assert.strictEqual(received[0]?.variant, 'ready');
   });
 
   void it('round-trips an init message with all required fields', async () => {
@@ -146,7 +146,7 @@ void describe('PostMessageChannel', () => {
     workerChannel.onMessage((msg) => { received = msg; });
 
     const msg: BridgeMessageType = {
-      'kind': 'init',
+      'variant': 'init',
       'registryModule': '/path/to/registry.js',
       'registryVersion': '2.0.0',
       'servicesConfig': { 'timeout': 5000 },
@@ -155,8 +155,8 @@ void describe('PostMessageChannel', () => {
 
     await nextTick();
     assert.ok(received !== null);
-    assert.strictEqual((received as BridgeMessageType & { kind: 'init' }).kind, 'init');
-    assert.strictEqual((received as BridgeMessageType & { kind: 'init' }).registryVersion, '2.0.0');
+    assert.strictEqual((received as BridgeMessageType & { variant: 'init' }).variant, 'init');
+    assert.strictEqual((received as BridgeMessageType & { variant: 'init' }).registryVersion, '2.0.0');
   });
 
   // ── StructuredClone isolation ───────────────────────────────────────────────
@@ -170,7 +170,7 @@ void describe('PostMessageChannel', () => {
     workerChannel.onMessage((msg) => { received = msg; });
 
     const msg: BridgeMessageType = {
-      'kind': 'init',
+      'variant': 'init',
       'registryModule': '/original.js',
       'registryVersion': '1.0.0',
       'servicesConfig': {},
@@ -207,8 +207,8 @@ void describe('PostMessageChannel', () => {
       assert.strictEqual(received.length, 1, `payload ${JSON.stringify(badPayload)} yields exactly one message`);
       const msg = received[0];
       assert.ok(msg !== undefined);
-      assert.strictEqual(msg.kind, 'error');
-      if (msg.kind === 'error') {
+      assert.strictEqual(msg.variant, 'error');
+      if (msg.variant === 'error') {
         assert.strictEqual(msg.code, 'INVALID_MESSAGE');
         assert.strictEqual(msg.recoverable, false);
       }
@@ -226,7 +226,7 @@ void describe('PostMessageChannel', () => {
     workerChannel.onMessage((msg) => received.push(msg));
 
     mainChannel.close();
-    mainChannel.send({ 'kind': 'shutdown' });
+    mainChannel.send({ 'variant': 'shutdown' });
 
     await nextTick();
     assert.strictEqual(received.length, 0);
@@ -242,7 +242,7 @@ void describe('PostMessageChannel', () => {
 
     // Close worker side, then send from main side.
     workerChannel.close();
-    mainChannel.send({ 'kind': 'shutdown' });
+    mainChannel.send({ 'variant': 'shutdown' });
 
     await nextTick();
     assert.strictEqual(received.length, 0);
@@ -259,7 +259,7 @@ void describe('PostMessageChannel', () => {
     workerChannel.onMessage((msg) => first.push(msg));
     workerChannel.onMessage((msg) => second.push(msg));
 
-    mainChannel.send({ 'kind': 'shutdown' });
+    mainChannel.send({ 'variant': 'shutdown' });
 
     await nextTick();
     assert.strictEqual(first.length, 0, 'first handler must be replaced');

@@ -325,7 +325,7 @@ export const prompts = {
     language: string,
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
   ): string {
@@ -335,7 +335,7 @@ export const prompts = {
       : [
           '',
           directives.persistentMemoryHeader,
-          ...priorContext.map((p) => `- [${p.kind}] ${p.text}`),
+          ...priorContext.map((p) => `- [${p.variant}] ${p.text}`),
         ].join('\n');
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
@@ -363,7 +363,7 @@ export const prompts = {
     language: string,
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
   ): string {
@@ -373,7 +373,7 @@ export const prompts = {
       : [
           '',
           directives.persistentMemoryHeader,
-          ...priorContext.map((p) => `- [${p.kind}] ${p.text}`),
+          ...priorContext.map((p) => `- [${p.variant}] ${p.text}`),
         ].join('\n');
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
@@ -403,7 +403,7 @@ export const prompts = {
     language: string,
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
   ): string {
@@ -413,7 +413,7 @@ export const prompts = {
       : [
           '',
           directives.persistentMemoryHeader,
-          ...priorContext.map((p) => `- [${p.kind}] ${p.text}`),
+          ...priorContext.map((p) => `- [${p.variant}] ${p.text}`),
         ].join('\n');
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
@@ -443,7 +443,7 @@ export const prompts = {
     language: string,
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
   ): string {
@@ -453,7 +453,7 @@ export const prompts = {
       : [
           '',
           directives.persistentMemoryHeader,
-          ...priorContext.map((p) => `- [${p.kind}] ${p.text}`),
+          ...priorContext.map((p) => `- [${p.variant}] ${p.text}`),
         ].join('\n');
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
@@ -482,7 +482,7 @@ export const prompts = {
     language: string,
     query: string,
     shortlist: readonly CandidateType[],
-    priorContext?: readonly { kind: string; text: string }[],
+    priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
   ): string {
@@ -492,7 +492,7 @@ export const prompts = {
       : [
           '',
           directives.persistentMemoryAnchorHeader,
-          ...priorContext.map((p) => `- [${p.kind}] ${p.text}`),
+          ...priorContext.map((p) => `- [${p.variant}] ${p.text}`),
         ].join('\n');
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''

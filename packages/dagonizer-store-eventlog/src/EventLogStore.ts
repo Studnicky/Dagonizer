@@ -1,8 +1,8 @@
 /**
  * EventLogStore: append-only event-log implementation of BaseStore.
  *
- * Every `set` appends a `{ kind: 'set' }` event; every `delete` appends a
- * `{ kind: 'delete' }` tombstone. `get` resolves the latest value for a key
+ * Every `set` appends a `{ variant: 'set' }` event; every `delete` appends a
+ * `{ variant: 'delete' }` tombstone. `get` resolves the latest value for a key
  * by scanning the log in reverse (O(n) worst-case), suitable for low-churn
  * key sets typical of DAG state.
  *
@@ -36,9 +36,9 @@ export const EventLogEntrySchema = {
   'oneOf': [
     {
       'type': 'object',
-      'required': ['kind', 'at', 'key', 'value'],
+      'required': ['variant', 'at', 'key', 'value'],
       'properties': {
-        'kind':  { 'type': 'string', 'const': 'set' },
+        'variant':  { 'type': 'string', 'const': 'set' },
         'at':    { 'type': 'number' },
         'key':   { 'type': 'string' },
         'value': {},
@@ -47,9 +47,9 @@ export const EventLogEntrySchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'at', 'key'],
+      'required': ['variant', 'at', 'key'],
       'properties': {
-        'kind': { 'type': 'string', 'const': 'delete' },
+        'variant': { 'type': 'string', 'const': 'delete' },
         'at':   { 'type': 'number' },
         'key':  { 'type': 'string' },
       },
@@ -63,8 +63,8 @@ export const EventLogEntrySchema = {
 /**
  * Append-only log event. Each entry records one write operation.
  *
- * `kind: 'set'`: `value` carries the new value stored under `key`.
- * `kind: 'delete'`: a tombstone; the key is logically absent after this entry.
+ * `variant: 'set'`: `value` carries the new value stored under `key`.
+ * `variant: 'delete'`: a tombstone; the key is logically absent after this entry.
  *
  * The compile-time type is hand-written rather than derived from
  * `EventLogEntrySchema` via `FromSchema` because `JsonValueType` is a recursive
@@ -74,8 +74,8 @@ export const EventLogEntrySchema = {
  * consistent and are kept co-located.
  */
 export type EventLogEntryType =
-  | { readonly kind: 'set';    readonly at: number; readonly key: string; readonly value: JsonValueType }
-  | { readonly kind: 'delete'; readonly at: number; readonly key: string };
+  | { readonly variant: 'set';    readonly at: number; readonly key: string; readonly value: JsonValueType }
+  | { readonly variant: 'delete'; readonly at: number; readonly key: string };
 
 // ── Local validator ───────────────────────────────────────────────────────────
 
@@ -84,7 +84,7 @@ export type EventLogEntryType =
  * boundary. Compiled once at module load; no external runtime dependency.
  *
  * Performs the minimum structural check the discriminated union requires:
- *   - `kind` is `'set'` or `'delete'`
+ *   - `variant` is `'set'` or `'delete'`
  *   - `at` is a number
  *   - `key` is a string
  *   - `value` is present on `set` entries
@@ -97,8 +97,8 @@ const EventLogEntryValidator: EntityValidatorInterface<EventLogEntryType> = {
     const obj = value as Record<string, unknown>;
     if (typeof obj['at'] !== 'number') return false;
     if (typeof obj['key'] !== 'string') return false;
-    if (obj['kind'] === 'set') return 'value' in obj;
-    if (obj['kind'] === 'delete') return true;
+    if (obj['variant'] === 'set') return 'value' in obj;
+    if (obj['variant'] === 'delete') return true;
     return false;
   },
   validate(value): EventLogEntryType {
@@ -116,7 +116,7 @@ const EventLogEntryValidator: EntityValidatorInterface<EventLogEntryType> = {
   },
   errors(value): string[] | null {
     if (EventLogEntryValidator.is(value)) return null;
-    return [`invalid EventLogEntry shape: kind must be 'set' or 'delete', at must be number, key must be string`];
+    return [`invalid EventLogEntry shape: variant must be 'set' or 'delete', at must be number, key must be string`];
   },
 };
 
@@ -197,7 +197,7 @@ export class EventLogStore extends BaseStore {
     const qualified = this.qualifyKey(key);
     const current   = this.#latestAs<T>(qualified);
     const next      = fn(current);
-    await this.#append({ 'kind': 'set', 'at': Date.now(), 'key': qualified, 'value': next });
+    await this.#append({ 'variant': 'set', 'at': Date.now(), 'key': qualified, 'value': next });
     return next;
   }
 
@@ -208,7 +208,7 @@ export class EventLogStore extends BaseStore {
   }
 
   protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
-    await this.#append({ 'kind': 'set', 'at': Date.now(), 'key': key, 'value': value });
+    await this.#append({ 'variant': 'set', 'at': Date.now(), 'key': key, 'value': value });
   }
 
   protected async performHas(key: string): Promise<boolean> {
@@ -217,7 +217,7 @@ export class EventLogStore extends BaseStore {
 
   protected async performDelete(key: string): Promise<boolean> {
     if (!await this.performHas(key)) return false;
-    await this.#append({ 'kind': 'delete', 'at': Date.now(), 'key': key });
+    await this.#append({ 'variant': 'delete', 'at': Date.now(), 'key': key });
     return true;
   }
 
@@ -225,8 +225,8 @@ export class EventLogStore extends BaseStore {
     // Compact: project log forward to a last-write-wins map.
     const latest = new Map<string, JsonValueType>();
     for (const entry of this.#log) {
-      if (entry.kind === 'set') latest.set(entry.key, entry.value);
-      else                      latest.delete(entry.key);
+      if (entry.variant === 'set') latest.set(entry.key, entry.value);
+      else                        latest.delete(entry.key);
     }
     return [...latest.entries()].map(([key, value]) => ({ key, value }));
   }
@@ -235,7 +235,7 @@ export class EventLogStore extends BaseStore {
     this.#log.length = 0;
     const at = Date.now();
     for (const { key, value } of entries) {
-      this.#log.push({ 'kind': 'set', at, key, value });
+      this.#log.push({ 'variant': 'set', at, key, value });
     }
     // Restoring does NOT rewrite the backing file. Connect with a fresh
     // filePath to start a new persisted log from the restored state.
@@ -265,7 +265,7 @@ export class EventLogStore extends BaseStore {
     for (let i = this.#log.length - 1; i >= 0; i -= 1) {
       const entry = this.#log[i];
       if (entry === undefined || entry.key !== key) continue;
-      if (entry.kind === 'delete') return undefined;
+      if (entry.variant === 'delete') return undefined;
       return entry.value;
     }
     return undefined;

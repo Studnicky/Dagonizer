@@ -335,7 +335,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * Build the Cytoscape element array for this DAG.
    *
    * Default implementation delegates to `CytoscapeRenderer.render`. Subclasses
-   * may override to enrich elements (e.g. add `data.kind` from a node registry)
+   * may override to enrich elements (e.g. add `data.variant` from a node registry)
    * or replace them entirely.
    *
    * Returns `ReadonlyArray<CytoscapeElementType>` so the internal typed elements
@@ -490,13 +490,13 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
         'width':              1.4,
       } },
 
-      // ── Kind-tagged styles ────────────────────────────────────────────────
-      { "selector": 'node[kind="deterministic"]', "style": {
+      // ── Variant-tagged styles ─────────────────────────────────────────────
+      { "selector": 'node[variant="deterministic"]', "style": {
         'border-color': '#22e8ff',
         'border-style': 'solid',
         'border-width': 1.4,
       } },
-      { "selector": 'node[kind="non-deterministic"]', "style": {
+      { "selector": 'node[variant="non-deterministic"]', "style": {
         'border-color': '#8f6dff',
         'border-style': 'dashed',
         'border-width': 1.6,

@@ -21,9 +21,10 @@
 
 import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
 import type { EmbedderInterface } from '../contracts/EmbedderInterface.js';
+import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 import { SignalComposer } from '../runtime/SignalComposer.js';
 
-import { BaseAdapterCore, type BaseAdapterCoreOptionsType } from './BaseAdapterCore.js';
+import { BaseAdapterCore, type BaseAdapterCoreOptionsType, type SelectModelOptionsType } from './BaseAdapterCore.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 
 /**
@@ -54,6 +55,47 @@ export abstract class BaseEmbedder extends BaseAdapterCore implements EmbedderIn
   ) {
     super(id, displayName, options);
     this.dimensions = dimensions;
+  }
+
+  /**
+   * Return available model descriptors for this provider.
+   *
+   * Default: returns an empty array when no model was set at construction,
+   * or a single `{ name, variant: 'embedding', cloud: false }` descriptor
+   * when the constructor `model` option was provided. Concrete subclasses
+   * that can enumerate provider models override this method.
+   */
+  async listModels(): Promise<readonly LlmModelType[]> {
+    try {
+      const name = this.model;
+      return [{ 'name': name, 'variant': 'embedding', 'cloud': false }];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Select the best embedding model from `listModels()` and set it as the
+   * active model. Returns the selected model name, or `null` when no
+   * embedding model is available. Selection rules:
+   *   1. If `options.preferred` is in the embedding catalogue, pick it.
+   *   2. Else pick the first embedding model (local preferred).
+   *   3. Return `null` when the catalogue contains no embedding models.
+   */
+  async selectEmbeddingModel(options: SelectModelOptionsType = {}): Promise<string | null> {
+    const models = await this.listModels();
+    const embedModels = models.filter((m) => m.variant === 'embedding');
+    if (embedModels.length === 0) return null;
+    let selected: LlmModelType | undefined;
+    if (options.preferred !== undefined) {
+      selected = embedModels.find((m) => m.name === options.preferred);
+    }
+    if (selected === undefined) {
+      selected = embedModels.find((m) => !m.cloud) ?? embedModels[0];
+    }
+    if (selected === undefined) return null;
+    this.setModel(selected.name);
+    return selected.name;
   }
 
   async embed(text: string, options?: AbortableOptionsType): Promise<readonly number[]> {

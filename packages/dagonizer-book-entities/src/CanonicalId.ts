@@ -36,9 +36,9 @@ import type { BookAvailabilityType, BookIdentityType, BookPublicationType, BookT
 
 // ── Dispatch map types ─────────────────────────────────────────────────────────
 
-type LongestEntryType     = { readonly 'kind': 'longest';       readonly 'key': 'summary' };
-type FirstDefEntryType    = { readonly 'kind': 'first-defined'; readonly 'key': 'firstPublishYear' };
-type UniqueUnionEntryType = { readonly 'kind': 'unique-union';  readonly 'key': 'languages' | 'publishers' | 'subjects' };
+type LongestEntryType     = { readonly 'variant': 'longest';       readonly 'key': 'summary' };
+type FirstDefEntryType    = { readonly 'variant': 'first-defined'; readonly 'key': 'firstPublishYear' };
+type UniqueUnionEntryType = { readonly 'variant': 'unique-union';  readonly 'key': 'languages' | 'publishers' | 'subjects' };
 
 type PublicationMergeEntryType = LongestEntryType | FirstDefEntryType | UniqueUnionEntryType;
 
@@ -48,11 +48,11 @@ type PublicationMergeEntryType = LongestEntryType | FirstDefEntryType | UniqueUn
  * branch, eliminating all per-field ternary spreads.
  */
 const PUBLICATION_MERGE_MAP: readonly PublicationMergeEntryType[] = [
-  { 'kind': 'longest',       'key': 'summary'          },
-  { 'kind': 'first-defined', 'key': 'firstPublishYear'  },
-  { 'kind': 'unique-union',  'key': 'languages'         },
-  { 'kind': 'unique-union',  'key': 'publishers'        },
-  { 'kind': 'unique-union',  'key': 'subjects'          },
+  { 'variant': 'longest',       'key': 'summary'          },
+  { 'variant': 'first-defined', 'key': 'firstPublishYear'  },
+  { 'variant': 'unique-union',  'key': 'languages'         },
+  { 'variant': 'unique-union',  'key': 'publishers'        },
+  { 'variant': 'unique-union',  'key': 'subjects'          },
 ];
 
 export class CanonicalId {
@@ -174,7 +174,7 @@ export class CanonicalId {
     let subjects: string[] = [];
 
     for (const entry of PUBLICATION_MERGE_MAP) {
-      switch (entry.kind) {
+      switch (entry.variant) {
         case 'longest':
           summary = CanonicalId.longest(a.summary, b.summary);
           break;

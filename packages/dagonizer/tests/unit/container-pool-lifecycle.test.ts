@@ -232,13 +232,13 @@ void describe('DagContainerBase — pool waiters park/unpark (G1)', () => {
       // Run first DAG (occupies the pool slot for its duration).
       const state1 = new ConformanceState();
       const result1 = await dispatcher.execute(CONFORMANCE_DAG.law1, state1);
-      assert.strictEqual(result1.state.lifecycle.kind, 'completed');
+      assert.strictEqual(result1.state.lifecycle.variant, 'completed');
 
       // Pool slot is released by the first run; second run must park + unpark
       // under the covers and complete cleanly.
       const state2 = new ConformanceState();
       const result2 = await dispatcher.execute(CONFORMANCE_DAG.law1, state2);
-      assert.strictEqual(result2.state.lifecycle.kind, 'completed',
+      assert.strictEqual(result2.state.lifecycle.variant, 'completed',
         'second sequential run must complete (pool slot was released and reacquired)');
     } finally {
       await container.destroy();
@@ -270,7 +270,7 @@ void describe('DagContainerBase — onTransportDeath eviction + re-grow (G2)', (
       // Second execute — dead entry was evicted; a new entry must be grown.
       const state2 = new ConformanceState();
       const result2 = await dispatcher.execute(CONFORMANCE_DAG.law1, state2);
-      assert.strictEqual(result2.state.lifecycle.kind, 'completed', 'must complete after re-grow');
+      assert.strictEqual(result2.state.lifecycle.variant, 'completed', 'must complete after re-grow');
       assert.strictEqual(container.entriesCreated, 2, 'must create a new entry after eviction');
     } finally {
       await container.destroy();
@@ -470,8 +470,8 @@ void describe('Cross-container abort propagation (G5)', () => {
       `abort must resolve the execution within 2s (cross-container); elapsed=${elapsed}ms`);
 
     // After abort the lifecycle is non-running (completed or failed).
-    assert.notStrictEqual(result.state.lifecycle.kind, 'running',
-      `lifecycle must not be 'running' after abort; got '${result.state.lifecycle.kind}'`);
+    assert.notStrictEqual(result.state.lifecycle.variant, 'running',
+      `lifecycle must not be 'running' after abort; got '${result.state.lifecycle.variant}'`);
 
     await container.destroy();
   });

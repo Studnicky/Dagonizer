@@ -138,13 +138,13 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
     const container = new SingleChannelContainer(parentSide);
 
     hostSide.onMessage((msg) => {
-      if (msg.kind === 'init') {
-        hostSide.send({ 'kind': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
-      } else if (msg.kind === 'execute') {
+      if (msg.variant === 'init') {
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+      } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
         // Single-item N=1: respond with items[0] carrying terminalOutcome.
         hostSide.send({
-          'kind': 'result',
+          'variant': 'result',
           'response': {
             correlationId,
             'items': [{ 'id': correlationId, 'snapshot': { 'value': 7 }, 'terminalOutcome': 'completed' }],
@@ -172,12 +172,12 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
     const container = new SingleChannelContainer(parentSide);
 
     hostSide.onMessage((msg) => {
-      if (msg.kind === 'init') {
-        hostSide.send({ 'kind': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
-      } else if (msg.kind === 'execute') {
+      if (msg.variant === 'init') {
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+      } else if (msg.variant === 'execute') {
         const { correlationId } = msg.request;
         hostSide.send({
-          'kind': 'result',
+          'variant': 'result',
           'response': {
             correlationId,
             'items': [{ 'id': correlationId, 'snapshot': null, 'terminalOutcome': 'failed' }],
@@ -209,12 +209,12 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
     // FakeHost: handles multi-item execute by echoing one items-response with
     // one entry per item, each with a deterministic terminalOutcome.
     hostSide.onMessage((msg) => {
-      if (msg.kind === 'init') {
-        hostSide.send({ 'kind': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
-      } else if (msg.kind === 'execute') {
+      if (msg.variant === 'init') {
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+      } else if (msg.variant === 'execute') {
         const { correlationId, items } = msg.request;
         hostSide.send({
-          'kind': 'result',
+          'variant': 'result',
           'response': {
             correlationId,
             'items': items.map((item) => ({
@@ -271,13 +271,13 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
     const receivedRequests: BridgeMessageType[] = [];
 
     hostSide.onMessage((msg) => {
-      if (msg.kind === 'init') {
-        hostSide.send({ 'kind': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
-      } else if (msg.kind === 'execute') {
+      if (msg.variant === 'init') {
+        hostSide.send({ 'variant': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+      } else if (msg.variant === 'execute') {
         receivedRequests.push(msg);
         const { correlationId, items } = msg.request;
         hostSide.send({
-          'kind': 'result',
+          'variant': 'result',
           'response': {
             correlationId,
             'items': items.map((item) => ({
@@ -305,7 +305,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
     // Exactly one execute message sent (the batch round-trip).
     assert.strictEqual(receivedRequests.length, 1);
     const req = receivedRequests[0];
-    assert.ok(req !== undefined && req.kind === 'execute');
+    assert.ok(req !== undefined && req.variant === 'execute');
     assert.strictEqual(req.request.items.length, 2);
     assert.strictEqual(req.request.items[0]?.id, 'x1');
     assert.strictEqual(req.request.items[1]?.id, 'x2');
@@ -326,7 +326,7 @@ void describe('batch-container-transport: (d) send failure returns transport-err
 
       send(msg: BridgeMessageType): void {
         // Allow init/ready handshake to succeed; fail only execute messages.
-        if (msg.kind === 'execute') {
+        if (msg.variant === 'execute') {
           throw new Error('channel closed');
         }
         // No-op for other message types.
@@ -350,11 +350,11 @@ void describe('batch-container-transport: (d) send failure returns transport-err
     // We use a wrapper that intercepts the first 'init' send and fakes the ready.
     const realSend = failChannel.send.bind(failChannel);
     failChannel.send = (msg: BridgeMessageType): void => {
-      if (msg.kind === 'init') {
+      if (msg.variant === 'init') {
         // Queue the ready reply so the dispatch.init() resolves.
         setImmediate(() => {
           failChannel.sendToHandler({
-            'kind': 'ready',
+            'variant': 'ready',
             'registryVersion': msg.registryVersion,
             'capabilities': [],
           });

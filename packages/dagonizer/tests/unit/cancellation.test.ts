@@ -44,7 +44,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
     controller.abort(new Error('user aborted'));
     const state = new NodeStateBase();
     const result = await dispatcher.execute('cancel', state, { 'signal': controller.signal });
-    assert.equal(state.lifecycle.kind, 'cancelled');
+    assert.equal(state.lifecycle.variant, 'cancelled');
     assert.equal(result.cursor, 'slow');
     assert.deepEqual(result.interruptedAt, { 'nodeName': 'slow', 'reason': 'abort' });
   });
@@ -95,7 +95,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('mid-cancel', state, { 'signal': controller.signal });
-    assert.equal(state.lifecycle.kind, 'cancelled');
+    assert.equal(state.lifecycle.variant, 'cancelled');
     // The loop checks `signal.aborted` before running 'c', so the cursor and
     // interruptedAt.nodeName point at the node that would have run next.
     assert.equal(result.cursor, 'c');
@@ -135,7 +135,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('t', state, { 'deadlineMs': 25 });
-    assert.equal(state.lifecycle.kind, 'timed_out');
+    assert.equal(state.lifecycle.variant, 'timed_out');
     assert.equal(result.cursor, 'slow');
     assert.deepEqual(result.interruptedAt, { 'nodeName': 'slow', 'reason': 'timeout' });
   });
@@ -262,7 +262,7 @@ void describe('Dagonizer extension hooks', () => {
     });
     const result = await dispatcher.execute('err', new NodeStateBase());
     assert.equal(result.cursor, 's');
-    assert.equal(result.state.lifecycle.kind, 'failed');
+    assert.equal(result.state.lifecycle.variant, 'failed');
     // Node throws without abort signal; lifecycle is `failed`, not a
     // cancellation. interruptedAt MUST be null.
     assert.equal(result.interruptedAt, null);

@@ -21,8 +21,9 @@
 
 import type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
 import type { ChatMessageType } from '../entities/adapter/ChatMessage.js';
+import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 
-import { BaseAdapterCore, type BaseAdapterCoreOptionsType } from './BaseAdapterCore.js';
+import { BaseAdapterCore, type BaseAdapterCoreOptionsType, type SelectModelOptionsType } from './BaseAdapterCore.js';
 import type { AdapterCapabilitiesType, ChatRequestType, ChatResponseType } from './LlmAdapter.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 
@@ -51,6 +52,50 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
   ) {
     super(id, displayName, options);
     this.capabilities = capabilities;
+  }
+
+  /**
+   * Return available model descriptors for this provider.
+   *
+   * Default: returns an empty array when no model was set at construction,
+   * or a single `{ name, variant: 'chat', cloud: false }` descriptor when
+   * the constructor `model` option was provided. Concrete subclasses that
+   * can enumerate provider models override this method.
+   */
+  async listModels(): Promise<readonly LlmModelType[]> {
+    try {
+      const name = this.model;
+      return [{ 'name': name, 'variant': 'chat', 'cloud': false }];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Select the best chat model from `listModels()` and set it as the active
+   * model. Returns the selected model name, or `null` when no chat model
+   * is available. Selection rules:
+   *   1. If `options.preferred` is in the chat catalogue, pick it.
+   *   2. Else pick the first local (`cloud === false`) chat model.
+   *   3. Else pick the first chat model regardless of cloud.
+   *   4. Return `null` when the catalogue contains no chat models.
+   */
+  async selectChatModel(options: SelectModelOptionsType = {}): Promise<string | null> {
+    const models = await this.listModels();
+    // A chat-capable model is anything that is not an embedder: 'chat' or the
+    // provider-unclassified 'unknown' variant both route to chat.
+    const chatModels = models.filter((m) => m.variant !== 'embedding');
+    if (chatModels.length === 0) return null;
+    let selected: LlmModelType | undefined;
+    if (options.preferred !== undefined) {
+      selected = chatModels.find((m) => m.name === options.preferred);
+    }
+    if (selected === undefined) {
+      selected = chatModels.find((m) => !m.cloud) ?? chatModels[0];
+    }
+    if (selected === undefined) return null;
+    this.setModel(selected.name);
+    return selected.name;
   }
 
   async chat(request: ChatRequestType): Promise<ChatResponseType> {

@@ -20,9 +20,11 @@
     "contracts/**/*.ts",
     "embedded-dags/**/*.ts",
     "entities/**/*.ts",
+    "errors/**/*.ts",
     "nodes/**/*.ts",
     "services/**/*.ts",
     "data/**/*.ts",
-    "__smoke__/**/*.ts"
+    "__smoke__/**/*.ts",
+    "tests/**/*.ts"
   ]
 }

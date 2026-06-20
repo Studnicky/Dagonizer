@@ -13,7 +13,7 @@
  * Fields:
  *   - source  : which stage / transport caught the error
  *               ('reverse-geocode', 'ip-geolocate', 'parse-json', …).
- *   - kind    : the thrown error's class name ('RangeError', 'SyntaxError', …).
+ *   - variant : the thrown error's class name ('RangeError', 'SyntaxError', …).
  *   - message : the thrown error's message.
  *   - input   : a short summary of the offending input (coords / ip / payload id),
  *               bounded so a hot error source does not retain unbounded strings.
@@ -26,10 +26,10 @@ export const GeoErrorRecordSchema = {
   '$id': 'https://noocodex.dev/schemas/cartographer/GeoErrorRecord',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['source', 'kind', 'message', 'input'],
+  'required': ['source', 'variant', 'message', 'input'],
   'properties': {
     'source':  { 'type': 'string' },
-    'kind':    { 'type': 'string' },
+    'variant': { 'type': 'string' },
     'message': { 'type': 'string' },
     'input':   { 'type': 'string' },
   },
@@ -52,7 +52,7 @@ export class GeoErrorRecord {
    * string form. `input` is a short human summary of the offending input.
    */
   static capture(source: string, error: unknown, input: string): GeoErrorRecordType {
-    const kind = error instanceof Error ? error.constructor.name : 'UnknownError';
+    const errorVariant = error instanceof Error ? error.constructor.name : 'UnknownError';
     const message = error instanceof Error
       ? error.message
       : typeof error === 'string'
@@ -60,7 +60,7 @@ export class GeoErrorRecord {
         : String(error);
     return {
       'source':  source,
-      'kind':    kind,
+      'variant': errorVariant,
       'message': GeoErrorRecord.truncate(message, MAX_MESSAGE),
       'input':   GeoErrorRecord.truncate(input, MAX_INPUT_SUMMARY),
     };

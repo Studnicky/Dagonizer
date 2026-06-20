@@ -51,6 +51,9 @@ export type { ChatResponseMessageType } from '../entities/adapter/ChatResponseMe
 export { ChatResponseSchema } from '../entities/adapter/ChatResponse.js';
 export type { ChatResponseType } from '../entities/adapter/ChatResponse.js';
 
+export { LlmModelSchema } from '../entities/adapter/LlmModel.js';
+export type { LlmModelType } from '../entities/adapter/LlmModel.js';
+
 export type { ChatRequestType, LlmOutputSchemaType, PartialChatRequestType, ToolChoiceType } from '../entities/adapter/ChatRequest.js';
 
 // ── Defaults ─────────────────────────────────────────────────────────────
@@ -59,7 +62,7 @@ export type { ChatRequestType, LlmOutputSchemaType, PartialChatRequestType, Tool
 // see complete values and never have to coalesce `??`.
 
 export const DEFAULT_TOOL_CHOICE: ToolChoiceType = { 'type': 'auto' };
-export const DEFAULT_OUTPUT_SCHEMA: LlmOutputSchemaType = { 'kind': 'none' };
+export const DEFAULT_OUTPUT_SCHEMA: LlmOutputSchemaType = { 'variant': 'none' };
 export const DEFAULT_MAX_TOKENS = 512;
 export const DEFAULT_TEMPERATURE = 0.2;
 
@@ -110,9 +113,9 @@ export class ChatResponseMessageBuilder {
 
   /** Build the right discriminated variant from content + tool calls. */
   static from(content: string, toolCalls: readonly ToolCallType[]): ChatResponseMessageType {
-    if (toolCalls.length === 0) return { 'kind': 'text', content };
-    if (content.length === 0) return { 'kind': 'tools', 'toolCalls': [...toolCalls] };
-    return { 'kind': 'mixed', content, 'toolCalls': [...toolCalls] };
+    if (toolCalls.length === 0) return { 'variant': 'text', content };
+    if (content.length === 0) return { 'variant': 'tools', 'toolCalls': [...toolCalls] };
+    return { 'variant': 'mixed', content, 'toolCalls': [...toolCalls] };
   }
 }
 

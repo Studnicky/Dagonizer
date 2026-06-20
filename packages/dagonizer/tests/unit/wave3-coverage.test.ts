@@ -69,7 +69,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
 
     // Confirm the inline shape inside BridgeMessageType result.response.errors also accepts it.
     const resultMsg = {
-      'kind': 'result',
+      'variant': 'result',
       'response': {
         'correlationId': 'test-1',
         'items': [{ 'id': 'test-1', 'snapshot': null, 'terminalOutcome': 'completed' }],
@@ -98,7 +98,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
 
     // BridgeMessageType result branch must also reject it via inline shape.
     const resultMsg = {
-      'kind': 'result',
+      'variant': 'result',
       'response': {
         'correlationId': 'test-2',
         'items': [{ 'id': 'test-2', 'snapshot': null, 'terminalOutcome': 'completed' }],
@@ -124,7 +124,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'canonical NodeErrorSchema must reject missing timestamp');
 
     const resultMsg = {
-      'kind': 'result',
+      'variant': 'result',
       'response': {
         'correlationId': 'test-3',
         'items': [{ 'id': 'test-3', 'snapshot': null, 'terminalOutcome': 'completed' }],
@@ -151,7 +151,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'canonical ExecutionRequestSchema must accept the fixture');
 
     const executeMsg = {
-      'kind': 'execute',
+      'variant': 'execute',
       'request': validRequest,
     };
     assert.ok(Validator.bridgeMessage.is(executeMsg),
@@ -172,7 +172,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'canonical ExecutionRequestSchema must reject extra nodeName field');
 
     const executeMsg = {
-      'kind': 'execute',
+      'variant': 'execute',
       'request': withExtra,
     };
     assert.equal(Validator.bridgeMessage.is(executeMsg), false,
@@ -193,7 +193,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'canonical ExecutionResponseSchema must accept the fixture');
 
     const resultMsg = {
-      'kind': 'result',
+      'variant': 'result',
       'response': validResponse,
     };
     assert.ok(Validator.bridgeMessage.is(resultMsg),
@@ -217,7 +217,7 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
       'canonical ExecutionResponseSchema must reject extra field on intermediates item');
 
     const resultMsg = {
-      'kind': 'result',
+      'variant': 'result',
       'response': withExtra,
     };
     assert.equal(Validator.bridgeMessage.is(resultMsg), false,
@@ -231,8 +231,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
     // response.properties.errors.items is the InlineNodeErrorShape.
     const resultBranch = (BridgeMessageSchema.oneOf as readonly object[]).find(
       (b: object) => {
-        const node = b as { properties?: { kind?: { const?: unknown } } };
-        return node.properties?.kind?.const === 'result';
+        const node = b as { properties?: { variant?: { const?: unknown } } };
+        return node.properties?.variant?.const === 'result';
       },
     );
     assert.ok(resultBranch !== undefined, 'result branch must exist in BridgeMessageSchema.oneOf');
@@ -254,8 +254,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   void it('ExecutionRequestSchema and InlineExecutionRequestShape declare the same required fields', () => {
     const executeBranch = (BridgeMessageSchema.oneOf as readonly object[]).find(
       (b: object) => {
-        const node = b as { properties?: { kind?: { const?: unknown } } };
-        return node.properties?.kind?.const === 'execute';
+        const node = b as { properties?: { variant?: { const?: unknown } } };
+        return node.properties?.variant?.const === 'execute';
       },
     );
     assert.ok(executeBranch !== undefined, 'execute branch must exist in BridgeMessageSchema.oneOf');
@@ -277,8 +277,8 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   void it('ExecutionResponseSchema and InlineExecutionResponseShape declare the same required fields', () => {
     const resultBranch = (BridgeMessageSchema.oneOf as readonly object[]).find(
       (b: object) => {
-        const node = b as { properties?: { kind?: { const?: unknown } } };
-        return node.properties?.kind?.const === 'result';
+        const node = b as { properties?: { variant?: { const?: unknown } } };
+        return node.properties?.variant?.const === 'result';
       },
     );
     assert.ok(resultBranch !== undefined, 'result branch must exist in BridgeMessageSchema.oneOf');

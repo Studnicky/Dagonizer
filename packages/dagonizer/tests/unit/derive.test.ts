@@ -566,7 +566,7 @@ void describe('DAGDeriver.derive', () => {
     dispatcher.registerDAG(parentDAG);
 
     const result = await dispatcher.execute('parent', new NodeStateBase());
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
     assert.ok(result.executedNodes.includes('invoke-child'));
     assert.ok(result.executedNodes.includes('finalize'));
   });
@@ -809,7 +809,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
     );
   });
 
-  void it('execution: triggering the failing path marks state.lifecycle.kind as failed', async () => {
+  void it('execution: triggering the failing path marks state.lifecycle.variant as failed', async () => {
     const contracts: OperationContractType[] = [
       { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail'] },
       { 'name': 'plan',     'hardRequired': ['classification'], 'produces': [],  'outputs': ['success'] },
@@ -835,7 +835,7 @@ void describe('DAGDeriver: terminals with emit variant', () => {
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('emit-exec', new NodeStateBase());
-    assert.equal(result.state.lifecycle.kind, 'failed');
+    assert.equal(result.state.lifecycle.variant, 'failed');
     assert.ok(result.executedNodes.includes('end-fail'));
     assert.ok(!result.executedNodes.includes('plan'));
   });

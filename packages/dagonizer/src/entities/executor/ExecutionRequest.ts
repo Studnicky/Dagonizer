@@ -2,7 +2,7 @@
  * ExecutionRequest: wire-safe representation of a DAG execution unit
  * sent from the dispatcher to an isolating container backend.
  *
- * DAG-only: no `kind` discriminant, no `nodeName`. A container runs
+ * DAG-only: no `variant` discriminant, no `nodeName`. A container runs
  * only whole DAGs, never individual nodes.
  *
  * `items` carries one or more `{ id, snapshot }` pairs. Single-item

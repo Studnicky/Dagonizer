@@ -20,6 +20,7 @@
  * error signal, causing the adapter to retry the request without tools.
  */
 
+import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 import type { OpenAiResponseBodyType } from '../entities/adapter/OpenAiResponseBody.js';
 import { Validator } from '../validation/Validator.js';
 
@@ -48,8 +49,13 @@ export type OpenAiCompatibleConfigType = {
 
   /** Full chat-completions endpoint URL. */
   endpoint: string;
-  /** Default model id when the consumer doesn't override. */
-  defaultModel: string;
+  /** Full `GET` models-list endpoint URL for discovery (e.g.
+   *  `https://api.groq.com/openai/v1/models`). Each provider declares its own;
+   *  `listModels` reads it directly — no derivation from `endpoint`. */
+  modelsEndpoint: string;
+  /** Default model id when the consumer doesn't override. Optional: an
+   *  adapter may construct with no model and resolve one via `selectChatModel`. */
+  defaultModel?: string;
   /** Token-cap field name. OpenAI: `max_tokens`. Groq + Cerebras: `max_completion_tokens`. */
   tokenField: 'max_tokens' | 'max_completion_tokens';
   /** Extra headers beyond Authorization + Content-Type. */
@@ -61,6 +67,9 @@ export type OpenAiCompatibleConfigType = {
 
 /** Default per-request timeout (ms) applied when the config omits `timeoutMs`. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+
+/** Short timeout (ms) for the `GET /models` discovery call. */
+const DISCOVERY_TIMEOUT_MS = 2_000;
 
 /** Config with `timeoutMs` materialised from the default. */
 type ResolvedOpenAiCompatibleConfig = OpenAiCompatibleConfigType & { timeoutMs: number };
@@ -75,7 +84,6 @@ export type OpenAiCompatibleAdapterOptionsType = {
 
 export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   readonly #apiKey: string;
-  readonly #model: string;
   readonly #config: ResolvedOpenAiCompatibleConfig;
 
   protected constructor(
@@ -83,6 +91,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     config: OpenAiCompatibleConfigType,
     options: OpenAiCompatibleAdapterOptionsType = {},
   ) {
+    const resolvedModel = options.model ?? config.defaultModel;
     super(
       config.id,
       config.displayName,
@@ -90,20 +99,48 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       {
         'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
         'baseDelayMs': options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
+        ...(resolvedModel !== undefined ? { 'model': resolvedModel } : {}),
       },
     );
     this.#apiKey = apiKey;
-    this.#model = options.model ?? config.defaultModel;
     this.#config = { ...config, 'timeoutMs': config.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS };
   }
 
   /**
-   * The resolved model identifier for this adapter instance.
-   * Subclasses can read this to include the model name in request bodies
-   * or error messages without duplicating the resolution logic.
+   * Enumerate models from the provider's configured `modelsEndpoint`. Maps each
+   * entry to an `LlmModelType` with `variant: 'chat'` and `cloud: true` (these
+   * are all cloud-routed). Entries with an empty id are skipped.
+   *
+   * Returns `[]` on any transport failure, non-ok response, or schema
+   * violation — never throws (mirrors `probe` discipline).
    */
-  protected get model(): string {
-    return this.#model;
+  override async listModels(options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
+    const signals: AbortSignal[] = [controller.signal];
+    if (options?.signal !== undefined) signals.push(options.signal);
+    const signal = AbortSignal.any(signals);
+
+    try {
+      const res = await fetch(this.#config.modelsEndpoint, {
+        'method': 'GET',
+        'headers': {
+          'authorization': `Bearer ${this.#apiKey}`,
+          ...this.#config.extraHeaders,
+        },
+        signal,
+      });
+      if (!res.ok) return [];
+      const rawBody: unknown = await res.json();
+      if (!Validator.openAiModelsResponse.is(rawBody)) return [];
+      return rawBody.data
+        .filter((entry) => entry.id.length > 0)
+        .map((entry) => ({ 'name': entry.id, 'variant': 'chat' as const, 'cloud': true }));
+    } catch {
+      return [];
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
@@ -195,7 +232,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
 
   #composeBody(request: ChatRequestType, includeTools: boolean): Record<string, unknown> {
     const body: Record<string, unknown> = {
-      'model': this.#model,
+      'model': this.model,
       'messages': request.messages.map((m) => this.#toMessage(m)),
       'temperature': request.temperature,
       [this.#config.tokenField]: request.maxTokens,
@@ -204,7 +241,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     if (includeTools && request.tools.length > 0) {
       body['tools'] = request.tools.map((t) => this.#toTool(t));
       body['tool_choice'] = this.#toToolChoice(request.toolChoice);
-    } else if (request.outputSchema.kind === 'schema') {
+    } else if (request.outputSchema.variant === 'schema') {
       body['response_format'] = { 'type': 'json_object' };
     }
 

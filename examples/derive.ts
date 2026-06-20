@@ -57,6 +57,6 @@ const result = await dispatcher.execute('parent', state);
 
 process.stdout.write(`derived parent DAG: ${parentDAG.nodes.map(n => `${n['@type']}(${n.name})`).join(' → ')}\n`);
 process.stdout.write(`derived child  DAG: ${childDAG.nodes.map(n => `${n['@type']}(${n.name})`).join(' → ')}\n`);
-process.stdout.write(`lifecycle:  ${result.state.lifecycle.kind}\n`);
+process.stdout.write(`lifecycle:  ${result.state.lifecycle.variant}\n`);
 process.stdout.write(`final:      ${result.state.final}\n`);
 process.stdout.write(`executed:   ${result.executedNodes.join(' → ')}\n`);

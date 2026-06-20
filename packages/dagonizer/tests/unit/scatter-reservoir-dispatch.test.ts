@@ -386,7 +386,7 @@ function buildLoopbackContainer(
         }
         const terminal = step.value;
         return {
-          'terminalOutput': terminal.state.lifecycle.kind === 'failed' ? 'failed' : 'completed',
+          'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
           'errors': [...terminal.state.errors],
           'stateSnapshot': terminal.state.snapshot(),
           'intermediates': [],
@@ -659,7 +659,7 @@ class ExecuteCountingChannel implements MessageChannelInterface {
   }
 
   send(msg: BridgeMessageType): void {
-    if (msg.kind === 'execute') this.executeCount += 1;
+    if (msg.variant === 'execute') this.executeCount += 1;
     this.#inner.send(msg);
   }
 

@@ -10,3 +10,5 @@ export {
   geminiResponseBodyValidator,
 } from './GeminiResponseBody.js';
 export type { GeminiResponseBodyType } from './GeminiResponseBody.js';
+export { GeminiModelsResponseSchema, GeminiModelsResponseValidator } from './GeminiModelsResponse.js';
+export type { GeminiModelsResponseType } from './GeminiModelsResponse.js';

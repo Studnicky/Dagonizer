@@ -30,7 +30,7 @@
  * (recordFindings writes to the default graph; we query the per-run state
  * graphs that StateProjection maintains, since those are always in sync.)
  *
- * kind: 'non-deterministic': SPARQL output depends on accumulated memory.
+ * variant: 'non-deterministic': SPARQL output depends on accumulated memory.
  * output: 'recalled': always routes forward, even on empty recall.
  */
 

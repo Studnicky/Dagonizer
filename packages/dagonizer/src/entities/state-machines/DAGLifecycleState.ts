@@ -1,6 +1,6 @@
 /**
  * DAGLifecycleStateSchema: uniform single-object schema for the DAG lifecycle
- * wire shape. All six kinds share an identical 5-field shape; `kind` is the
+ * wire shape. All six variants share an identical 5-field shape; `variant` is the
  * discriminator.
  *
  * The `error` field is opaque (`{ type: ['object', 'null'] }`) because `Error`
@@ -18,9 +18,9 @@ export const DAGLifecycleStateSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/DAGLifecycleStateType',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['kind', 'startedAt', 'finishedAt', 'error', 'reason'],
+  'required': ['variant', 'startedAt', 'finishedAt', 'error', 'reason'],
   'properties': {
-    'kind': { 'type': 'string', 'enum': ['pending', 'running', 'completed', 'failed', 'cancelled', 'timed_out'] },
+    'variant': { 'type': 'string', 'enum': ['pending', 'running', 'completed', 'failed', 'cancelled', 'timed_out'] },
     'startedAt': { 'type': ['integer', 'null'], 'minimum': 0 },
     'finishedAt': { 'type': ['integer', 'null'], 'minimum': 0 },
     'error': { 'type': ['object', 'null'] },

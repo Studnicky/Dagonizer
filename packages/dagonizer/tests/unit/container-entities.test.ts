@@ -90,8 +90,8 @@ void describe('ExecutionRequest schema', () => {
     assert.equal(requestValidator({ ...validRequest, 'timeoutMs': 5000 }), true);
   });
 
-  void it('rejects additionalProperties (kind field from old reference schema)', () => {
-    assert.equal(requestValidator({ ...validRequest, 'kind': 'dag' }), false);
+  void it('rejects additionalProperties (variant field from old reference schema)', () => {
+    assert.equal(requestValidator({ ...validRequest, 'variant': 'dag' }), false);
   });
 
   void it('rejects additionalProperties (nodeName field from old reference schema)', () => {

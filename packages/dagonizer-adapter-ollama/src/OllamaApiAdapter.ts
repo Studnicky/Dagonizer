@@ -23,6 +23,7 @@
 
 import { Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
 import type { ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
+import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import { OllamaTagsResponseValidator } from './OllamaTagsResponse.js';
 
@@ -41,21 +42,21 @@ const EMBED_MARKERS: readonly string[] = ['embed', 'bge', 'minilm', 'gte-'];
  * local. Ollama spells the cloud variant two ways: a bare `:cloud` tag
  * (e.g. `glm-5.1:cloud`) and a size-qualified `-cloud` suffix on the tag
  * (e.g. `qwen3-coder:480b-cloud`). Either needs an Ollama account and a
- * network round-trip, so the discovery picker deprioritizes both.
+ * network round-trip, so the discovery picker deprioritises both.
  */
 const CLOUD_SUFFIXES: readonly string[] = [':cloud', '-cloud'];
 
 const DISCOVERY_TIMEOUT_MS = 1500;
-// No portable default model: Ollama models are pulled per-host.
-// Consumers name the model they've pulled; this fallback is a convenience
-// for bare `new OllamaApiAdapter()` in development only.
-const FALLBACK_MODEL = 'llama3.2:latest';
+
+const PROBE_TIMEOUT_MS = 500;
 
 /**
  * Options accepted at construction.
  *
- * `model` is required. Ollama models are pulled per-host and there is
- * no portable default; the consumer names the model they've pulled.
+ * `model` is optional. When omitted, call `selectChatModel()` before the
+ * first `chat()` call — `selectChatModel()` discovers available models via
+ * `listModels()` and sets the active model. Pass `model` only when the
+ * caller already knows which tag has been pulled.
  *
  * `baseUrl` defaults to the local loopback. Override when targeting a
  * remote Ollama daemon or a proxy.
@@ -70,14 +71,11 @@ export type OllamaApiAdapterOptionsType = {
   readonly maxAttempts?: number;
 };
 
-const PROBE_TIMEOUT_MS = 500;
-
 export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
   readonly #baseUrl: string;
 
   constructor(options: OllamaApiAdapterOptionsType = {}) {
     const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
-    const model = options.model ?? FALLBACK_MODEL;
     super(
       options.apiKey ?? 'ollama',
       {
@@ -88,13 +86,13 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
           'structuredOutput': true,
           'jsonMode': true
         },
-        'endpoint': `${baseUrl}/v1/chat/completions`,
-        'defaultModel': FALLBACK_MODEL,
+        'endpoint':       `${baseUrl}/v1/chat/completions`,
+        'modelsEndpoint': `${baseUrl}/v1/models`,
         'tokenField': 'max_tokens',
         'extraHeaders': {}
       },
       {
-        'model': model,
+        ...(options.model !== undefined ? { 'model': options.model } : {}),
         'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
       }
     );
@@ -105,69 +103,43 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
    * List the models the Ollama daemon has pulled, via `GET /api/tags`.
    *
    * The response body is validated against `OllamaTagsResponseSchema`
-   * through the framework's shared Ajv before any field is read; the names
-   * are returned exactly as the daemon reports them (e.g. `'llama3.2:3b'`,
-   * `'nomic-embed-text:latest'`). Consumers discover an installed model
-   * instead of hardcoding a tag the host may not have pulled.
+   * through the framework's shared Ajv before any field is read. Each
+   * model name is classified as `'embedding'` when it contains any
+   * `EMBED_MARKERS` substring (e.g. `nomic-embed-text`, `bge-*`), and
+   * as `'chat'` otherwise. The `cloud` flag is `true` when the tag ends
+   * with any `CLOUD_SUFFIXES` value (`:cloud`, `-cloud`).
    *
-   * `baseUrl` defaults to the adapter's loopback default
-   * (`http://127.0.0.1:11434`). Never throws: returns `[]` on any failure
-   * (daemon down, non-2xx, malformed body, timeout).
+   * Never throws — returns `[]` on any failure (daemon down, non-2xx,
+   * malformed body, timeout). Composes `options.signal` with an internal
+   * discovery timeout via `AbortSignal.any`.
    */
-  static async listModels(baseUrl: string = DEFAULT_BASE_URL): Promise<readonly string[]> {
+  override async listModels(options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
     const controller = new AbortController();
     const timer = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
+    const signal = options?.signal !== undefined
+      ? AbortSignal.any([options.signal, controller.signal])
+      : controller.signal;
     try {
-      const res = await fetch(`${baseUrl}/api/tags`, {
+      const res = await fetch(`${this.#baseUrl}/api/tags`, {
         'method': 'GET',
-        'signal': controller.signal,
+        signal,
       });
       if (!res.ok) return [];
       const body: unknown = await res.json();
       if (!OllamaTagsResponseValidator.is(body)) return [];
-      return body.models.map((entry) => entry.name);
+      return body.models.map((entry): LlmModelType => {
+        const lower = entry.name.toLowerCase();
+        const variant: LlmModelType['variant'] = EMBED_MARKERS.some((marker) => lower.includes(marker))
+          ? 'embedding'
+          : 'chat';
+        const cloud = CLOUD_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+        return { 'name': entry.name, variant, cloud };
+      });
     } catch {
       return [];
     } finally {
       clearTimeout(timer);
     }
-  }
-
-  /**
-   * Discover the first installed chat model the daemon can answer with,
-   * preferring a fully-local model over a `:cloud`-routed one.
-   *
-   * Lists installed models via `listModels`, drops embedding-only models
-   * (names containing `embed`/`bge`/`minilm`/`gte-`), and picks:
-   *   1. `options.preferred` when the daemon has that exact tag pulled, else
-   *   2. the first fully-local chat model (tag ends in neither `:cloud` nor
-   *      `-cloud`), else
-   *   3. the first cloud-routed chat model — used only when no fully-local
-   *      chat model is installed.
-   *
-   * A cloud-routed model needs an Ollama account and a network round-trip, so
-   * it is the wrong default for a runnable local example; local models win.
-   *
-   * `baseUrl` defaults to the adapter's loopback default. Returns `null`
-   * when no chat model is installed or the daemon is unreachable. Never
-   * throws.
-   */
-  static async firstChatModel(
-    baseUrl: string = DEFAULT_BASE_URL,
-    options: { readonly preferred?: string } = {},
-  ): Promise<string | null> {
-    const installed = await OllamaApiAdapter.listModels(baseUrl);
-    const preferred = options.preferred;
-    if (preferred !== undefined && preferred.length > 0 && installed.includes(preferred)) {
-      return preferred;
-    }
-    const chat = installed.filter(
-      (name) => !EMBED_MARKERS.some((marker) => name.toLowerCase().includes(marker)),
-    );
-    const local = chat.filter(
-      (name) => !CLOUD_SUFFIXES.some((suffix) => name.toLowerCase().endsWith(suffix)),
-    );
-    return local[0] ?? chat[0] ?? null;
   }
 
   /**

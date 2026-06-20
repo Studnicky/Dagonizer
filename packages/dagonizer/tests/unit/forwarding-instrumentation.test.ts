@@ -1,7 +1,7 @@
 /**
  * Verifies that WorkerObserver routes all five hook overrides
  * (onNodeStart, onNodeEnd, onPhaseEnter, onPhaseExit, onError) as
- * BridgeMessageType { kind: 'instrumentation' } messages over its channel. Also
+ * BridgeMessageType { variant: 'instrumentation' } messages over its channel. Also
  * confirms onFlowStart and onFlowEnd are suppressed (no message sent).
  *
  * Coverage target: G6.
@@ -48,8 +48,8 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
     assert.strictEqual(ch.sent.length, 1);
     const startMsg = ch.sent[0];
     assert.ok(startMsg !== undefined);
-    assert.strictEqual(startMsg.kind, 'instrumentation');
-    if (startMsg.kind === 'instrumentation') {
+    assert.strictEqual(startMsg.variant, 'instrumentation');
+    if (startMsg.variant === 'instrumentation') {
       assert.strictEqual(startMsg.hook, 'nodeStart');
       assert.strictEqual(startMsg.correlationId, CORR);
       assert.strictEqual(startMsg.nodeName, 'my-node');
@@ -62,8 +62,8 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
     ch.sent.length = 0;
     exposed.callNodeEnd('my-node', 'success', state, ['child']);
     assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
-    if (ch.sent[0]?.kind === 'instrumentation') {
+    assert.strictEqual(ch.sent[0]?.variant, 'instrumentation');
+    if (ch.sent[0]?.variant === 'instrumentation') {
       assert.strictEqual(ch.sent[0].hook, 'nodeEnd');
       assert.strictEqual(ch.sent[0].output, 'success');
       assert.deepStrictEqual(ch.sent[0].placementPath, ['parent-embed', 'child']);
@@ -73,8 +73,8 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
     ch.sent.length = 0;
     exposed.callPhaseEnter('dag', 'pre', 'placement', state, []);
     assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
-    if (ch.sent[0]?.kind === 'instrumentation') {
+    assert.strictEqual(ch.sent[0]?.variant, 'instrumentation');
+    if (ch.sent[0]?.variant === 'instrumentation') {
       assert.strictEqual(ch.sent[0].hook, 'phaseEnter');
       assert.strictEqual(ch.sent[0].phase, 'pre');
       assert.strictEqual(ch.sent[0].nodeName, 'placement');
@@ -84,8 +84,8 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
     ch.sent.length = 0;
     exposed.callPhaseExit('dag', 'post', 'placement', state, []);
     assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
-    if (ch.sent[0]?.kind === 'instrumentation') {
+    assert.strictEqual(ch.sent[0]?.variant, 'instrumentation');
+    if (ch.sent[0]?.variant === 'instrumentation') {
       assert.strictEqual(ch.sent[0].hook, 'phaseExit');
       assert.strictEqual(ch.sent[0].phase, 'post');
     }
@@ -94,8 +94,8 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
     ch.sent.length = 0;
     exposed.callError('node', new Error('test error'), state, ['inner']);
     assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
-    if (ch.sent[0]?.kind === 'instrumentation') {
+    assert.strictEqual(ch.sent[0]?.variant, 'instrumentation');
+    if (ch.sent[0]?.variant === 'instrumentation') {
       assert.strictEqual(ch.sent[0].hook, 'error');
       assert.strictEqual(ch.sent[0].message, 'test error');
       assert.deepStrictEqual(ch.sent[0].placementPath, ['parent-embed', 'inner']);
@@ -115,8 +115,8 @@ void describe('WorkerObserver — all-five-hook routing (G6)', () => {
 
     const msg = ch.sent[0];
     assert.ok(msg !== undefined);
-    assert.strictEqual(msg.kind, 'instrumentation');
-    if (msg.kind === 'instrumentation') {
+    assert.strictEqual(msg.variant, 'instrumentation');
+    if (msg.variant === 'instrumentation') {
       assert.deepStrictEqual(msg.placementPath, ['a', 'b', 'c']);
     }
   });

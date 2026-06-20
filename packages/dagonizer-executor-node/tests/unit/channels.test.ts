@@ -30,11 +30,11 @@ import { NdjsonChannel } from '../../src/NdjsonChannel.js';
 // ---------------------------------------------------------------------------
 
 function readyMessage(): BridgeMessageType {
-  return { 'kind': 'ready', 'registryVersion': '1.0.0', 'capabilities': [] };
+  return { 'variant': 'ready', 'registryVersion': '1.0.0', 'capabilities': [] };
 }
 
 function errorMessage(): BridgeMessageType {
-  return { 'kind': 'error', 'correlationId': null, 'code': 'TEST', 'message': 'hi', 'recoverable': false };
+  return { 'variant': 'error', 'correlationId': null, 'code': 'TEST', 'message': 'hi', 'recoverable': false };
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ void describe('NdjsonChannel.send', () => {
       const output = chunks.join('');
       assert.ok(output.endsWith('\n'), 'must end with newline');
       const parsed = JSON.parse(output.trimEnd()) as BridgeMessageType;
-      assert.strictEqual(parsed.kind, 'ready');
+      assert.strictEqual(parsed.variant, 'ready');
       done();
     });
 
@@ -141,7 +141,7 @@ void describe('NdjsonChannel.onMessage — framing', () => {
     });
 
     assert.strictEqual(messages.length, 1);
-    assert.strictEqual(messages[0]?.kind, 'ready');
+    assert.strictEqual(messages[0]?.variant, 'ready');
   });
 
   void it('assembles a message split across two chunks, emitting nothing before the newline', async () => {
@@ -157,7 +157,7 @@ void describe('NdjsonChannel.onMessage — framing', () => {
 
     await new Promise<void>((resolve) => { readable.write(full.slice(half), () => resolve()); });
     assert.strictEqual(messages.length, 1);
-    assert.strictEqual(messages[0]?.kind, 'ready');
+    assert.strictEqual(messages[0]?.variant, 'ready');
   });
 
   void it('dispatches multiple messages from a single chunk in order', async () => {
@@ -170,8 +170,8 @@ void describe('NdjsonChannel.onMessage — framing', () => {
     await new Promise<void>((resolve) => { readable.write(m1 + m2, () => resolve()); });
 
     assert.strictEqual(messages.length, 2);
-    assert.strictEqual(messages[0]?.kind, 'ready');
-    assert.strictEqual(messages[1]?.kind, 'error');
+    assert.strictEqual(messages[0]?.variant, 'ready');
+    assert.strictEqual(messages[1]?.variant, 'error');
   });
 
   void it('stops delivering messages after close', async () => {
@@ -206,7 +206,7 @@ void describe('NdjsonChannel.onMessage — ingest validation', () => {
 
     assert.strictEqual(messages.length, 1);
     const errMsg = messages[0];
-    assert.ok(errMsg?.kind === 'error');
+    assert.ok(errMsg?.variant === 'error');
     assert.strictEqual(errMsg.code, 'NDJSON_PARSE_ERROR');
     assert.strictEqual(errMsg.correlationId, null);
     assert.strictEqual(errMsg.recoverable, false);
@@ -216,12 +216,12 @@ void describe('NdjsonChannel.onMessage — ingest validation', () => {
     const { channel, readable } = makeNdjsonChannel();
     const messages = collectNdjsonMessages(channel);
 
-    const invalidMsg = JSON.stringify({ 'kind': 'not-a-real-kind', 'extra': 'data' });
+    const invalidMsg = JSON.stringify({ 'variant': 'not-a-real-variant', 'extra': 'data' });
     await new Promise<void>((resolve) => { readable.write(invalidMsg + '\n', () => resolve()); });
 
     assert.strictEqual(messages.length, 1);
     const errMsg = messages[0];
-    assert.ok(errMsg?.kind === 'error');
+    assert.ok(errMsg?.variant === 'error');
     assert.strictEqual(errMsg.code, 'NDJSON_VALIDATION_ERROR');
     assert.strictEqual(errMsg.correlationId, null);
     assert.strictEqual(errMsg.recoverable, false);
@@ -278,7 +278,7 @@ for (const { name, make } of ingestChannels) {
       transport.deliver(readyMessage());
 
       assert.strictEqual(received.length, 1);
-      assert.strictEqual(received[0]?.kind, 'ready');
+      assert.strictEqual(received[0]?.variant, 'ready');
     });
 
     void it('surfaces a malformed object payload as an INVALID_MESSAGE error, does not throw', () => {
@@ -286,11 +286,11 @@ for (const { name, make } of ingestChannels) {
       const received: BridgeMessageType[] = [];
       transport.onMessage((m) => received.push(m));
 
-      assert.doesNotThrow(() => transport.deliver({ 'kind': 'bogus', 'junk': true }));
+      assert.doesNotThrow(() => transport.deliver({ 'variant': 'bogus', 'junk': true }));
 
       assert.strictEqual(received.length, 1);
       const msg = received[0];
-      assert.ok(msg?.kind === 'error');
+      assert.ok(msg?.variant === 'error');
       assert.strictEqual(msg.code, 'INVALID_MESSAGE');
       assert.strictEqual(msg.correlationId, null);
       assert.strictEqual(msg.recoverable, false);
@@ -305,7 +305,7 @@ for (const { name, make } of ingestChannels) {
 
       assert.strictEqual(received.length, 1);
       const msg = received[0];
-      assert.ok(msg?.kind === 'error');
+      assert.ok(msg?.variant === 'error');
       assert.strictEqual(msg.code, 'INVALID_MESSAGE');
     });
 
@@ -318,7 +318,7 @@ for (const { name, make } of ingestChannels) {
 
       assert.strictEqual(received.length, 1);
       const msg = received[0];
-      assert.ok(msg?.kind === 'error');
+      assert.ok(msg?.variant === 'error');
       assert.strictEqual(msg.code, 'INVALID_MESSAGE');
     });
   });

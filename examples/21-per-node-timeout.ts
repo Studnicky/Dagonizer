@@ -58,12 +58,12 @@ const elapsed = Date.now() - start;
 process.stdout.write('\n21-per-node-timeout: engine-level per-node timeout budget\n\n');
 
 process.stdout.write('(a) Fast node (Timeout.ofMs(200), completes in ~0 ms):\n');
-process.stdout.write(`  lifecycle     = ${fastState.lifecycle.kind}\n`);
+process.stdout.write(`  lifecycle     = ${fastState.lifecycle.variant}\n`);
 process.stdout.write(`  interruptedAt = ${JSON.stringify(fastResult.interruptedAt)}\n`);
 process.stdout.write(`  output        = ${fastState.output}\n`);
 
 process.stdout.write('\n(b) Slow node (Timeout.ofMs(50), would take 5 s):\n');
-process.stdout.write(`  lifecycle     = ${slowState.lifecycle.kind}\n`);
+process.stdout.write(`  lifecycle     = ${slowState.lifecycle.variant}\n`);
 process.stdout.write(`  interruptedAt = ${JSON.stringify(slowResult.interruptedAt)}\n`);
 process.stdout.write(`  elapsed       = ~${String(Math.round(elapsed / 10) * 10)} ms (capped at budget)\n`);
 

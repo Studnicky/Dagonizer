@@ -198,7 +198,7 @@ export class InsightsFoldGather extends GatherStrategy {
       ErrorRollup.fold(this.errorRollup, error);
     }
     // Write the rollup back to parent state after folding. The rollup is bounded
-    // to O(distinct source+kind groups) regardless of event count.
+    // to O(distinct source+variant groups) regardless of event count.
     accessor.set(state, 'errorRollup', this.errorRollup);
   }
 

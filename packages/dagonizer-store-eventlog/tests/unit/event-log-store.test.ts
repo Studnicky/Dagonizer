@@ -276,9 +276,9 @@ void test('log: includes both set and delete events', async () => {
 
   const log = store.log();
   assert.equal(log.length, 3);
-  assert.equal(log[0]?.kind, 'set');
-  assert.equal(log[1]?.kind, 'set');
-  assert.equal(log[2]?.kind, 'delete');
+  assert.equal(log[0]?.variant, 'set');
+  assert.equal(log[1]?.variant, 'set');
+  assert.equal(log[2]?.variant, 'delete');
 });
 
 void test('log: returns the live internal log; reference identity is stable', async () => {
@@ -293,7 +293,7 @@ void test('log: returns the live internal log; reference identity is stable', as
   // The type is readonly: TypeScript prevents mutation at the call site.
   // Length matches the number of appended events.
   assert.equal(log1.length, 1);
-  assert.equal(log1[0]?.kind, 'set');
+  assert.equal(log1[0]?.variant, 'set');
 });
 
 void test('log: update() appends a set entry', async () => {
@@ -301,7 +301,7 @@ void test('log: update() appends a set entry', async () => {
   await store.update<number>('n', () => 42);
   const log = store.log();
   assert.equal(log.length, 1);
-  assert.equal(log[0]?.kind, 'set');
+  assert.equal(log[0]?.variant, 'set');
 });
 
 // ── 9. Namespace isolation ────────────────────────────────────────────────────
@@ -323,8 +323,8 @@ void test('connect: malformed log line throws StoreError INCOMPATIBLE_SNAPSHOT',
   const filePath = join(dir, 'malformed.log');
 
   // Write a log file with one valid line and one structurally invalid line.
-  const valid   = JSON.stringify({ 'kind': 'set', 'at': Date.now(), 'key': 'x', 'value': 1 });
-  const invalid = JSON.stringify({ 'kind': 'unknown', 'at': 'not-a-number', 'key': 42 });
+  const valid   = JSON.stringify({ 'variant': 'set', 'at': Date.now(), 'key': 'x', 'value': 1 });
+  const invalid = JSON.stringify({ 'variant': 'unknown', 'at': 'not-a-number', 'key': 42 });
   await writeFile(filePath, `${valid}\n${invalid}\n`);
 
   const store = new EventLogStore({ filePath });
@@ -344,8 +344,8 @@ void test('connect: missing required field (no key) throws StoreError INCOMPATIB
   const dir = await mkdtemp(join(tmpdir(), 'dagonizer-eventlog-'));
   const filePath = join(dir, 'missing-key.log');
 
-  // A line with kind + at but no key.
-  const line = JSON.stringify({ 'kind': 'set', 'at': Date.now(), 'value': 'v' });
+  // A line with variant + at but no key.
+  const line = JSON.stringify({ 'variant': 'set', 'at': Date.now(), 'value': 'v' });
   await writeFile(filePath, `${line}\n`);
 
   const store = new EventLogStore({ filePath });

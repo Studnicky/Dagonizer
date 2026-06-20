@@ -164,7 +164,7 @@ void describe('NodeStateBase snapshot/restore', () => {
     // state (metadata, retries, warnings, subclass fields) is what matters for
     // deterministic resume.
     assert.equal(restored.errors.length, 0);
-    assert.equal(restored.lifecycle.kind, 'pending');
+    assert.equal(restored.lifecycle.variant, 'pending');
   });
 
   void it('subclass snapshotData/restoreData round-trips domain fields', () => {

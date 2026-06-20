@@ -15,6 +15,10 @@
 
 import type { ErrorObject, ValidateFunction } from 'ajv';
 
+import type { LlmModelType } from '../entities/adapter/LlmModel.js';
+import { LlmModelSchema } from '../entities/adapter/LlmModel.js';
+import type { OpenAiModelsResponseType } from '../entities/adapter/OpenAiModelsResponse.js';
+import { OpenAiModelsResponseSchema } from '../entities/adapter/OpenAiModelsResponse.js';
 import type { OpenAiResponseBodyType } from '../entities/adapter/OpenAiResponseBody.js';
 import { OpenAiResponseBodySchema } from '../entities/adapter/OpenAiResponseBody.js';
 import { TextChannelToolCallEnvelopeSchema } from '../entities/adapter/TextChannelToolCallEnvelope.js';
@@ -240,6 +244,8 @@ export class Validator {
   static readonly gatherConfig: EntityValidatorInterface<GatherConfigType> = Validator.compileNamed('GatherConfig', GatherConfigSchema);
 
   // Adapter wire shapes
+  static readonly llmModel: EntityValidatorInterface<LlmModelType> = Validator.compileNamed('LlmModel', LlmModelSchema);
+  static readonly openAiModelsResponse: EntityValidatorInterface<OpenAiModelsResponseType> = Validator.compileNamed('OpenAiModelsResponse', OpenAiModelsResponseSchema);
   static readonly openAiResponseBody: EntityValidatorInterface<OpenAiResponseBodyType> = Validator.compileNamed('OpenAiResponseBody', OpenAiResponseBodySchema);
   static readonly textChannelToolCallEnvelope: EntityValidatorInterface<TextChannelToolCallEnvelopeType> = Validator.compileNamed('TextChannelToolCallEnvelope', TextChannelToolCallEnvelopeSchema);
 
