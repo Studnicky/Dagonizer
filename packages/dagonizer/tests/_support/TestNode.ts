@@ -8,7 +8,6 @@
  */
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import type { OperationContractFragmentType } from '../../src/contracts/OperationContractFragment.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
@@ -49,37 +48,5 @@ export class TestNode {
     }
 
     return new MakeNode();
-  }
-
-  /**
-   * Create a minimal `NodeInterface<TState>` with an `OperationContractFragmentType`
-   * attached. Nodes always return `outputs[0]`; the contract is the fixture under
-   * test (consumed by `DAGBuilder.contract()` validation).
-   *
-   * @param name     - Node name.
-   * @param outputs  - Declared output tokens; `outputs[0]` is the only route.
-   * @param contract - Contract fragment to attach.
-   */
-  static withContract<TState extends NodeStateInterface>(
-    name: string,
-    outputs: readonly string[],
-    contract: OperationContractFragmentType,
-  ): NodeInterface<TState, string> {
-    const defaultOutput = outputs[0] ?? 'success';
-
-    class WithContractNode extends ScalarNode<TState, string> {
-      override readonly name = name;
-      override readonly outputs = outputs as readonly string[];
-      override readonly contract: OperationContractFragmentType = contract;
-
-      override async executeOne(
-        _state: TState,
-        _context: NodeContextType,
-      ): Promise<NodeOutputType<string>> {
-        return NodeOutputBuilder.of(defaultOutput);
-      }
-    }
-
-    return new WithContractNode();
   }
 }

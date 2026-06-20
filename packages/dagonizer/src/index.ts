@@ -258,10 +258,7 @@ export type { DagContainerInterface } from './contracts/DagContainerInterface.js
 export type { DagOutcomeType } from './contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
 export type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
-export type { ChainableType } from './contracts/ChainableType.js';
 export type { NodeInterface } from './contracts/NodeInterface.js';
-export type { OperationContractFragmentType } from './contracts/OperationContractFragment.js';
-export { EMPTY_CONTRACT_FRAGMENT } from './contracts/OperationContractFragment.js';
 export type { RemoteStoreInterface } from './contracts/RemoteStoreInterface.js';
 export type { RemoteStoreEndpointType } from './contracts/RemoteStoreEndpoint.js';
 export type { RemoteStoreLeaseType } from './contracts/RemoteStoreLease.js';

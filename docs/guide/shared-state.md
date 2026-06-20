@@ -17,7 +17,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { DAGBuilder, NodeOutputBuilder, NodeStateBase, EMPTY_CONTRACT_FRAGMENT } from '@studnicky/dagonizer';
+import { DAGBuilder, NodeOutputBuilder, NodeStateBase } from '@studnicky/dagonizer';
 import type { NodeInterface } from '@studnicky/dagonizer/contracts';
 
 interface Services { log: { update: (k: string, fn: (c?: string) => string) => Promise<void> } }
@@ -25,21 +25,18 @@ interface Services { log: { update: (k: string, fn: (c?: string) => string) => P
 class StepANode implements NodeInterface<NodeStateBase, 'done', Services> {
   readonly name = 'step-a';
   readonly outputs = ['done'] as const;
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
   async execute() { return NodeOutputBuilder.of('done'); }
 }
 
 class StepBNode implements NodeInterface<NodeStateBase, 'done', Services> {
   readonly name = 'step-b';
   readonly outputs = ['done'] as const;
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
   async execute() { return NodeOutputBuilder.of('done'); }
 }
 
 class ChildStepNode implements NodeInterface<NodeStateBase, 'done', Services> {
   readonly name = 'child-step';
   readonly outputs = ['done'] as const;
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
   async execute() { return NodeOutputBuilder.of('done'); }
 }
 

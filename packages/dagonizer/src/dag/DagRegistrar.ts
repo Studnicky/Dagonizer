@@ -1,9 +1,7 @@
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
 import type { NodeInterface } from '../contracts/NodeInterface.js';
-import { ContractRegistryValidator } from '../derive/ContractRegistryValidator.js';
 import type { DAGType } from '../entities/dag/DAG.js';
-import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -18,7 +16,7 @@ import { Validator } from '../validation/Validator.js';
  * whole dispatcher.
  *
  * The registrar owns DAG/node/bundle registration and the validation passes
- * that gate it (schema, semantic, contract, container-role binding);
+ * that gate it (schema, semantic, container-role binding);
  * `Dagonizer` stays the composition root whose public `registerDAG` /
  * `registerNode` / `registerBundle` methods delegate here.
  */
@@ -48,15 +46,16 @@ export interface DagRegistrarSourceInterface<TState extends NodeStateInterface, 
  * registries are the dispatcher's own `dags` / `nodes` / `nodeIndex` maps, so
  * registration mutates the live registries the engine modules read.
  *
- * `registerDAG` runs four gates in order before mutating the registries:
+ * `registerDAG` runs three gates in order before mutating the registries:
  * 1. Duplicate-name throw (same name, different implementation).
  * 2. Schema pass: `Validator.dag.validate(dag)` checks structure.
  * 3. Semantic pass: `DAGValidator.validateDAGConfig` verifies the entrypoint
  *    exists, node references resolve, and output routing covers every output.
- * 4. Contract pass: `ContractRegistryValidator.validate` runs dangling-read /
- *    dead-write checks across every contract-bearing placement.
- * 5. Container-role binding: a dispatcher that opts into containers must bind
+ * 4. Container-role binding: a dispatcher that opts into containers must bind
  *    every role its placements declare.
+ *
+ * Every gate throws `DAGError` (or rethrows a thrown `Error`) before any
+ * registry mutation; a rejected DAG leaves no partial registration behind.
  *
  * Every gate throws `DAGError` (or rethrows a thrown `Error`) before any
  * registry mutation, so a rejected DAG leaves no partial registration behind.
@@ -74,8 +73,8 @@ export class DagRegistrar<TState extends NodeStateInterface, TServices> {
    * Throws `DAGError` immediately when a DAG with the same name is already
    * registered with a different implementation.
    *
-   * Runs the schema, semantic, contract, and container-role-binding passes
-   * before mutating the registries.
+   * Runs the schema, semantic, and container-role-binding passes before
+   * mutating the registries.
    */
   registerDAG(dag: DAGType): void {
     if (this.#source.dags.has(dag.name)) {
@@ -89,49 +88,6 @@ export class DagRegistrar<TState extends NodeStateInterface, TServices> {
     Validator.dag.validate(dag);
 
     DAGValidator.validateDAGConfig(dag, this.#source.nodes, this.#source.dags);
-
-    // Contract validation: for each placement whose backing operation node
-    // carries a co-located `contract`, run dangling-read / dead-write checks.
-    // Both dangling reads and dead writes throw DAGError.
-    //
-    // A `SingleNode` is keyed by its `node` field. An `EmbeddedDAGNode` or
-    // `ScatterNode` runs an operation registered under the placement's own
-    // name (the deriver names the placement after the operation), so its
-    // contract — and therefore its `produces` — is resolved by placement name.
-    // Without this, an operation rendered as an embedded/scatter placement
-    // would be dropped from the contract graph and a downstream node reading
-    // its output would be flagged as a dangling read.
-    // Contract validation: only nodes with non-empty contracts participate.
-    // `node.contract` is required on `NodeInterface`; nodes without derivation
-    // carry `EMPTY_CONTRACT_FRAGMENT` (both arrays empty). Filter those out so
-    // the validator only walks nodes that actually declare data-flow edges.
-    const contractBearingNodes = dag.nodes
-      .map((placement) => {
-        if (Placement.isSingle(placement)) return this.#source.nodes.get(placement.node);
-        if (Placement.isEmbeddedDAG(placement) || Placement.isScatter(placement)) return this.#source.nodes.get(placement.name);
-        return undefined;
-      })
-      .filter((node): node is NodeInterface<TState, string, TServices> =>
-        node !== undefined &&
-        (node.contract.hardRequired.length > 0 || node.contract.produces.length > 0),
-      );
-
-    if (contractBearingNodes.length > 0) {
-      const contracts = contractBearingNodes.map((node: NodeInterface<TState, string, TServices>) => ({
-        'name': node.name,
-        'outputs': [...node.outputs],
-        'hardRequired': node.contract.hardRequired,
-        'produces': node.contract.produces,
-      }));
-      try {
-        ContractRegistryValidator.validate(
-          contracts,
-          { 'entrypointName': dag.entrypoint },
-        );
-      } catch (err) {
-        throw err instanceof Error ? err : new DAGError(String(err));
-      }
-    }
 
     // Container-role binding check (D2 = throw). A dispatcher that opts into
     // container dispatch (a non-empty `containers` registry) must bind every

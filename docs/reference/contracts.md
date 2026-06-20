@@ -3,9 +3,6 @@ seeAlso:
   - text: 'Reference: Core'
     link: './core'
     description: '`GatherStrategy`, `OutcomeReducer` extension classes'
-  - text: 'Reference: Derive'
-    link: './derive'
-    description: 'uses `OperationContractType`'
   - text: 'Reference: Runtime'
     link: './runtime'
     description: 'default implementations of the runtime contracts'
@@ -38,8 +35,6 @@ import type {
   MessageChannelInterface,
   NodeInterface,
   NodeInvokerInterface,
-  OperationContractType,
-  OperationContractFragmentType,
   OutcomeRecordType,
   RegistryBundleInterface,
   RegistryModuleInterface,
@@ -63,12 +58,9 @@ import type {
 } from '@studnicky/dagonizer';
 ```
 
-`ChainableType` is exported from the root barrel but is not part of `./contracts`. Source: `src/contracts/NodeInterface.ts`.
-
 ## NodeInterface
 
 ```ts twoslash
-import type { OperationContractFragmentType } from '@studnicky/dagonizer/contracts';
 import type { NodeStateInterface, ValidationResultType, NodeContextType } from '@studnicky/dagonizer';
 import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 import { Timeout } from '@studnicky/dagonizer';
@@ -81,7 +73,6 @@ interface NodeInterface<
   readonly name: string;
   readonly outputs: readonly TOutput[];
   readonly timeout: Timeout;
-  readonly contract: OperationContractFragmentType;
   execute(batch: Batch<TState>, context: NodeContextType<TServices>): Promise<RoutedBatchType<TOutput, TState>>;
   destroy?(): Promise<void>;
   validate?(): ValidationResultType;
@@ -91,8 +82,6 @@ interface NodeInterface<
 The contract every consumer node implements. Nodes are stateless; they mutate state and route to a named output. They never throw: caught errors route to `'error'` (or whatever the consumer declared).
 
 `timeout` is an optional per-node wall-clock budget expressed as a `Timeout` value (`Timeout.ofMs(n)` or `Timeout.none()`). When set to a non-none value, the engine derives a child `AbortController` from the run's signal and schedules an abort after the budget. On expiry, `NodeTimeoutError` is thrown and the run is marked failed. The `MonadicNode` base class defaults to `Timeout.none()`; nodes that do not extend it should omit the field (treated as `Timeout.none()` by the engine).
-
-`contract` is a required `OperationContractFragmentType`. Nodes that do not participate in derivation set it to the `EMPTY_CONTRACT_FRAGMENT` constant (both arrays empty). `DAGDeriver.derive({ nodes })` projects the fragment plus the node's `name` and `outputs` into a full `OperationContractType`. `Dagonizer.registerDAG` runs `ContractRegistryValidator` against all contract-bearing nodes in the DAG.
 
 ## ExecuteOptionsType
 
@@ -196,59 +185,6 @@ Produces a fixed-dimensionality vector for a text input. Plugins implement this 
 | `embedBatch(texts)` | Batch convenience. Default in `BaseEmbedder` calls `embed()` in series |
 | `probe()` | Quick availability check. Must not throw; returns `false` so a cascade can route around the embedder |
 | `connect()` / `disconnect()` | Per-session lifecycle hooks |
-
-## OperationContractFragmentType
-
-```ts twoslash
-// ---cut---
-interface OperationContractFragmentType {
-  readonly hardRequired: readonly string[];
-  readonly produces:     readonly string[];
-}
-```
-
-The deriver-only fields of an `OperationContractType`. Lives on `NodeInterface.contract` so a node carries its own data-flow declaration. The node's `name` and `outputs` fields complete the full `OperationContractType` surface; the fragment carries only the fields `DAGDeriver` uses to wire edges.
-
-Use `OperationContractFragmentType` when co-locating the contract on a node. The deriver reads it from `node.contract` alongside `node.name` and `node.outputs` to derive the full `OperationContractType`.
-
-## OperationContractType
-
-```ts twoslash
-// ---cut---
-interface OperationContractFragmentType {
-  readonly hardRequired: readonly string[];
-  readonly produces:     readonly string[];
-}
-
-interface OperationContractType extends OperationContractFragmentType {
-  readonly name:    string;
-  readonly outputs: readonly string[];
-}
-```
-
-Per-operation contract consumed by `DAGDeriver.derive` to compute DAG topology automatically. Extends `OperationContractFragmentType` with `name` and `outputs`. `outputs` lists every port the node can emit; every port auto-wires to the next derived stage. `DAGDeriverAnnotationsType.terminals` overrides individual ports. A multi-port node like `['success', 'cached', 'skipped', 'error']` routes uniformly with one contract field instead of N terminal annotations.
-
-**Co-located pattern.** Declare the contract directly on the node so the node is the single source of truth. `DAGDeriver.derive({ nodes })` reads `node.contract` alongside `node.name` and `node.outputs`:
-
-```ts twoslash
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { OperationContractFragmentType } from '@studnicky/dagonizer/contracts';
-import type { NodeStateInterface } from '@studnicky/dagonizer';
-// ---cut---
-class FetchNode extends ScalarNode<NodeStateInterface, 'success' | 'cached' | 'error'> {
-  readonly name = 'fetch';
-  readonly outputs = ['success', 'cached', 'error'] as const;
-  override readonly contract: OperationContractFragmentType = {
-    hardRequired: ['url'],
-    produces:     ['raw'],
-  };
-  protected override async executeOne(_state: NodeStateInterface) {
-    return NodeOutputBuilder.of('success' as const);
-  }
-}
-```
-
-See [co-located contracts](../guide/derive.md#co-located-contracts) and [Reference: Derive](./derive).
 
 ## RetryPolicyOptionsType / ErrorConstructorType
 
@@ -460,6 +396,5 @@ Typed contract for dispatching a registered node back through the engine. Lives 
 - [Services](../guide/services)
 - [State accessors](../guide/state-accessor)
 - [Persistence](../guide/persistence)
-- [Contract-derived flows](../guide/derive)
 - [Shared state](../guide/shared-state)
 - [Observability](../guide/observability)

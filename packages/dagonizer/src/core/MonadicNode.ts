@@ -21,10 +21,10 @@
  * shared caches across it. To author a **per-item** node, extend `ScalarNode`
  * (which extends this) and implement `executeOne`; the base owns the batch loop.
  *
- * Supplies the fields a node needs but that don't vary by domain: `contract`
- * (defaults to `EMPTY_CONTRACT_FRAGMENT`), `timeout` (defaults to
- * `Timeout.none()`), and `validate`/`destroy` defaults. Subclasses declare
- * `abstract readonly name`, `abstract readonly outputs`, and `abstract execute`.
+ * Supplies the fields a node needs but that don't vary by domain: `timeout`
+ * (defaults to `Timeout.none()`), and `validate`/`destroy` defaults. Subclasses
+ * declare `abstract readonly name`, `abstract readonly outputs`, and
+ * `abstract execute`.
  *
  * @typeParam TState    the node state the dispatcher threads through the batch.
  * @typeParam TOutput   the literal union of output port names. Narrows the
@@ -34,8 +34,6 @@
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../contracts/OperationContractFragment.js';
-import type { OperationContractFragmentType } from '../contracts/OperationContractFragment.js';
 import type { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
@@ -54,14 +52,6 @@ export abstract class MonadicNode<
 
   /** Literal union of output port names. Narrows placement routing. */
   abstract readonly outputs: readonly TOutput[];
-
-  /**
-   * Data-flow declaration for `DAGDeriver`. The default `EMPTY_CONTRACT_FRAGMENT`
-   * (both arrays empty) means "no derivation edges" — the deriver skips this node.
-   * Subclasses that participate in contract-derived flow generation override this
-   * with a populated fragment.
-   */
-  readonly contract: OperationContractFragmentType = EMPTY_CONTRACT_FRAGMENT;
 
   /**
    * Per-node wall-clock budget. `Timeout.none()` means no time limit.

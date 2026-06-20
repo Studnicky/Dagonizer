@@ -125,7 +125,6 @@ const sidebar = [
     text: 'Examples — Patterns / Modules',
     collapsed: true,
     items: [
-      { text: 'Example: DAGDeriver',                  link: '/examples/derive' },
       { text: 'Example 22: Backoff strategies',       link: '/examples/22-backoff-strategies' },
       { text: 'Example 23: Checkpoint store',         link: '/examples/23-checkpoint-store' },
       { text: 'Example: Constants usage',             link: '/examples/constants-usage' },
@@ -147,7 +146,7 @@ const sidebar = [
     ],
   },
   {
-    // Dependency order: author, export, runtime, wiring, persistence, derive, viz.
+    // Dependency order: author, export, runtime, wiring, persistence, viz.
     text: 'Guide',
     collapsed: false,
     items: [
@@ -166,7 +165,6 @@ const sidebar = [
       { text: 'Shared state',              link: '/guide/shared-state' },
       { text: 'Checkpoint and resume',     link: '/guide/checkpoint' },
       { text: 'Checkpoint persistence',    link: '/guide/persistence' },
-      { text: 'Contract-derived flows',    link: '/guide/derive' },
       { text: 'Visualization',             link: '/guide/visualization' },
       { text: 'Distribution and cloud',    link: '/guide/distribution' },
     ],
@@ -190,7 +188,6 @@ const sidebar = [
       { text: 'Runtime',    link: '/reference/runtime' },
       { text: 'Contracts',  link: '/reference/contracts' },
       { text: 'Core',       link: '/reference/core' },
-      { text: 'Derive',     link: '/reference/derive' },
       { text: 'Viz',        link: '/reference/viz' },
       { text: 'Validation', link: '/reference/validation' },
       { text: 'Checkpoint', link: '/reference/checkpoint' },
@@ -214,7 +211,7 @@ const SITE_URL = `https://studnicky.github.io${SITE_BASE}`;
 const SITE_ICON = `${SITE_URL}dagonizer-icon.svg`;
 const SITE_OG_IMAGE = `${SITE_URL}og-image.png`;
 const SITE_THEME_COLOR = '#22e8ff';
-const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, scatter-gather, embedded-dag, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable, contract-derived flow';
+const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, scatter-gather, embedded-dag, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable';
 const SITE_AUTHOR_NAME = 'Andrew Studnicky';
 const SITE_AUTHOR_URL = 'https://github.com/Studnicky';
 const SITE_REPO       = 'https://github.com/Studnicky/Dagonizer';
@@ -572,7 +569,7 @@ export default withMermaid(defineConfig({
     // untouched. A type error in a tagged block fails the docs build, so
     // reference snippets cannot drift from the shipped types. Compiler
     // options mirror docs/tsconfig.json so the package's subpath exports
-    // (`@studnicky/dagonizer/derive`, `/contracts`, …) resolve.
+    // (`@studnicky/dagonizer/contracts`, `/entities`, …) resolve.
     codeTransformers: [
       transformerTwoslash({
         twoslashOptions: {

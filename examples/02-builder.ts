@@ -8,9 +8,7 @@
  * compile errors before the DAG ever runs.
  *
  * DAGBuilder is the right tool for: ETL pipelines, transformation chains,
- * fixed user-onboarding flows, anywhere the order IS the spec. If your flow
- * is agent-style (operations declare data dependencies and the topology
- * should fall out), use DAGDeriver (see examples/derive.ts).
+ * fixed user-onboarding flows, anywhere the order IS the spec.
  *
  * Watch: DAGBuilder.build() returns a fully-formed DAG including '@context',
  * '@id', and '@type'. Identical canonical output to 01-linear's hand-written
