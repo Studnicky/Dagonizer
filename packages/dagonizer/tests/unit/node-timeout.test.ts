@@ -133,7 +133,7 @@ void describe('per-node timeout', () => {
     assert.equal(receivedSignal.aborted, true, 'node signal should be aborted after timeout');
 
     // The run must be marked failed (node timeout surfaces as failure).
-    assert.equal(result.state.lifecycle.kind, 'failed');
+    assert.equal(result.state.lifecycle.variant, 'failed');
     // Cursor points back at the timed-out stage.
     assert.equal(result.cursor, 'stage');
     // Cancellation telemetry records the node + reason.
@@ -215,7 +215,7 @@ void describe('per-node timeout', () => {
     const state = new NodeStateBase();
     const result = await dispatcher.execute('fast-dag', state);
 
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
     assert.equal(result.cursor, null);
     assert.equal(result.interruptedAt, null);
   });
@@ -254,7 +254,7 @@ void describe('per-node timeout', () => {
     const result = await runPromise;
     await advancer;
 
-    assert.equal(result.state.lifecycle.kind, 'cancelled');
+    assert.equal(result.state.lifecycle.variant, 'cancelled');
     assert.deepEqual(result.interruptedAt, { 'nodeName': 'stage', 'reason': 'abort' });
   });
 });

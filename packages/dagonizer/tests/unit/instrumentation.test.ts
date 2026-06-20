@@ -182,7 +182,7 @@ void describe('Dagonizer subclass hooks contract', () => {
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('noop-default', new NodeStateBase());
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
   });
 
   void it('fires onNodeStart and onNodeEnd in order across a 3-node DAG', async () => {
@@ -194,7 +194,7 @@ void describe('Dagonizer subclass hooks contract', () => {
     dispatcher.registerDAG(linearDAG);
 
     const result = await dispatcher.execute('linear', new NodeStateBase());
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
 
     const nodeStartNames = dispatcher.hooksOfType('nodeStart').map((c) => c.args[0] as string);
     const nodeEndNames   = dispatcher.hooksOfType('nodeEnd').map((c) => c.args[0] as string);
@@ -305,7 +305,7 @@ void describe('Dagonizer subclass hooks contract', () => {
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('inst-err', new NodeStateBase());
-    assert.equal(result.state.lifecycle.kind, 'failed');
+    assert.equal(result.state.lifecycle.variant, 'failed');
 
     const errors = dispatcher.hooksOfType('error');
     assert.equal(errors.length, 1, 'onError fires exactly once');
@@ -366,7 +366,7 @@ void describe('Dagonizer subclass hooks contract', () => {
     dispatcher.registerDAG(placementParentDAG);
 
     const result = await dispatcher.execute('pp-parent', new NodeStateBase());
-    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.equal(result.state.lifecycle.variant, 'completed');
 
     // top-step ran at the root of pp-parent: path is empty
     assert.deepEqual(

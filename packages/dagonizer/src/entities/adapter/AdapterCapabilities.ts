@@ -23,7 +23,7 @@
  *                 the data the tools would have fetched.
  *
  *   structuredOutput:
- *     true: `outputSchema.kind === 'schema'` is honoured via native
+ *     true: `outputSchema.variant === 'schema'` is honoured via native
  *             `response_format` / `responseConstraint` / Nano `outputSchema`.
  *     false: schema is best-effort prose; downstream parsing must tolerate
  *             prose answers.

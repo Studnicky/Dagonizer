@@ -64,7 +64,7 @@ const result = await dispatcher.execute('phase-demo', state);
 // ---------------------------------------------------------------------------
 
 process.stdout.write('\n19-phase-nodes: pre/post phase wrapping\n\n');
-process.stdout.write(`  lifecycle     = ${state.lifecycle.kind}\n`);
+process.stdout.write(`  lifecycle     = ${state.lifecycle.variant}\n`);
 process.stdout.write(`  seedValue     = ${String(state.seedValue)}  (set by pre-setup)\n`);
 process.stdout.write(`  result        = ${state.result}  (set by compute)\n`);
 process.stdout.write(`  executedNodes = ${result.executedNodes.join(', ')}\n`);

@@ -13,7 +13,7 @@
  *      Two terminals: `end-ok` (completed) and `end-fail` (failed). A check
  *      node routes to one depending on state. The DAG runs twice, once
  *      triggering `end-ok` and once triggering `end-fail`, and the lifecycle
- *      kind is printed for each run.
+ *      variant is printed for each run.
  *
  *   3. EmbeddedDAGNode routing to explicit terminals: `.embeddedDAG('run',
  *      'child', { success: 'end-ok', error: 'end-fail' })`. A child
@@ -50,7 +50,7 @@ import {
   const state = new GateState();
   const result = await dispatcher.execute('demo-explicit-completed', state);
   process.stdout.write('\nPattern 1: explicit completed terminal:\n');
-  process.stdout.write(`  lifecycle.kind = ${result.state.lifecycle.kind}\n`);
+  process.stdout.write(`  lifecycle.variant = ${result.state.lifecycle.variant}\n`);
   // → completed
 }
 
@@ -64,7 +64,7 @@ import {
   statePass.shouldPass = true;
   const resultPass = await dispatcher.execute('demo-explicit-terminals', statePass);
   process.stdout.write('\nPattern 2a: check node routes to end-ok:\n');
-  process.stdout.write(`  lifecycle.kind = ${resultPass.state.lifecycle.kind}\n`);
+  process.stdout.write(`  lifecycle.variant = ${resultPass.state.lifecycle.variant}\n`);
   // → completed
 }
 
@@ -78,7 +78,7 @@ import {
   stateFail.shouldPass = false;
   const resultFail = await dispatcher.execute('demo-explicit-terminals', stateFail);
   process.stdout.write('\nPattern 2b: check node routes to end-fail:\n');
-  process.stdout.write(`  lifecycle.kind = ${resultFail.state.lifecycle.kind}\n`);
+  process.stdout.write(`  lifecycle.variant = ${resultFail.state.lifecycle.variant}\n`);
   // → failed
 }
 
@@ -93,7 +93,7 @@ import {
   stateOk.shouldPass = true;
   const resultOk = await dispatcher.execute('demo-embedded-dag-terminals', stateOk);
   process.stdout.write('\nPattern 3a: scatter child DAG succeeds -> end-ok:\n');
-  process.stdout.write(`  lifecycle.kind = ${resultOk.state.lifecycle.kind}\n`);
+  process.stdout.write(`  lifecycle.variant = ${resultOk.state.lifecycle.variant}\n`);
   // → completed
 }
 
@@ -108,6 +108,6 @@ import {
   stateErr.shouldPass = false;
   const resultErr = await dispatcher.execute('demo-embedded-dag-terminals', stateErr);
   process.stdout.write('\nPattern 3b: scatter child DAG errors -> end-fail:\n');
-  process.stdout.write(`  lifecycle.kind = ${resultErr.state.lifecycle.kind}\n`);
+  process.stdout.write(`  lifecycle.variant = ${resultErr.state.lifecycle.variant}\n`);
   // → failed
 }

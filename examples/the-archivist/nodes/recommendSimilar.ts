@@ -126,8 +126,8 @@ export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 
       if (priorTitle !== undefined) {
         state.priorContext = [
           ...state.priorContext,
-          { 'kind': 'anchor-title', 'text': priorTitle },
-          ...subjects.map((s) => ({ 'kind': 'anchor-subject', 'text': s })),
+          { 'variant': 'anchor-title', 'text': priorTitle },
+          ...subjects.map((s) => ({ 'variant': 'anchor-subject', 'text': s })),
         ];
       }
       return NodeOutputBuilder.of('seeded');

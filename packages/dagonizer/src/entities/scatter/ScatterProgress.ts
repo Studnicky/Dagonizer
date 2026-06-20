@@ -4,7 +4,7 @@
  *
  * Shape summary:
  *   ScatterInboxItem      — one item pulled from the source but not yet acked.
- *   ScatterAckedResult    — one successfully completed item; discriminated on `kind`.
+ *   ScatterAckedResult    — one successfully completed item; discriminated on `variant`.
  *   ScatterProgress       — per-placement resume bookkeeping; discriminated on `mode`:
  *                           'retained' (full acked results) or 'bounded' (watermark).
  *   StoredScatterProgress — map keyed by placement name stored in metadata.
@@ -52,9 +52,9 @@ export const ScatterAckedResultSchema = {
   'oneOf': [
     {
       'type': 'object',
-      'required': ['kind', 'index', 'item', 'output', 'mappingValues'],
+      'required': ['variant', 'index', 'item', 'output', 'mappingValues'],
       'properties': {
-        'kind':          { 'type': 'string', 'const': 'map' },
+        'variant':       { 'type': 'string', 'const': 'map' },
         'index':         { 'type': 'integer', 'minimum': 0 },
         'item':          {},
         'output':        { 'type': 'string' },
@@ -64,9 +64,9 @@ export const ScatterAckedResultSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'index', 'item', 'output', 'fieldValue'],
+      'required': ['variant', 'index', 'item', 'output', 'fieldValue'],
       'properties': {
-        'kind':       { 'type': 'string', 'const': 'field' },
+        'variant':    { 'type': 'string', 'const': 'field' },
         'index':      { 'type': 'integer', 'minimum': 0 },
         'item':       {},
         'output':     { 'type': 'string' },
@@ -76,12 +76,12 @@ export const ScatterAckedResultSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'index', 'item', 'output'],
+      'required': ['variant', 'index', 'item', 'output'],
       'properties': {
-        'kind':   { 'type': 'string', 'const': 'plain' },
-        'index':  { 'type': 'integer', 'minimum': 0 },
-        'item':   {},
-        'output': { 'type': 'string' },
+        'variant': { 'type': 'string', 'const': 'plain' },
+        'index':   { 'type': 'integer', 'minimum': 0 },
+        'item':    {},
+        'output':  { 'type': 'string' },
       },
       'additionalProperties': false,
     },
@@ -90,7 +90,7 @@ export const ScatterAckedResultSchema = {
 
 /**
  * One successfully completed scatter item.
- * Discriminated on `kind`:
+ * Discriminated on `variant`:
  *   `map`:   carries `mappingValues`, the resolved clone-field-to-parent-path mapping values.
  *   `field`: carries `fieldValue`, the value of `gather.field` read from the clone state.
  *   `plain`: carries only the routing `output`; used by `collect`, `discard`, and `partition` strategies.
@@ -118,9 +118,9 @@ const ackedResultInline = {
   'oneOf': [
     {
       'type': 'object',
-      'required': ['kind', 'index', 'item', 'output', 'mappingValues'],
+      'required': ['variant', 'index', 'item', 'output', 'mappingValues'],
       'properties': {
-        'kind':          { 'type': 'string', 'const': 'map' },
+        'variant':       { 'type': 'string', 'const': 'map' },
         'index':         { 'type': 'integer', 'minimum': 0 },
         'item':          {},
         'output':        { 'type': 'string' },
@@ -130,9 +130,9 @@ const ackedResultInline = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'index', 'item', 'output', 'fieldValue'],
+      'required': ['variant', 'index', 'item', 'output', 'fieldValue'],
       'properties': {
-        'kind':       { 'type': 'string', 'const': 'field' },
+        'variant':    { 'type': 'string', 'const': 'field' },
         'index':      { 'type': 'integer', 'minimum': 0 },
         'item':       {},
         'output':     { 'type': 'string' },
@@ -142,12 +142,12 @@ const ackedResultInline = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'index', 'item', 'output'],
+      'required': ['variant', 'index', 'item', 'output'],
       'properties': {
-        'kind':   { 'type': 'string', 'const': 'plain' },
-        'index':  { 'type': 'integer', 'minimum': 0 },
-        'item':   {},
-        'output': { 'type': 'string' },
+        'variant': { 'type': 'string', 'const': 'plain' },
+        'index':   { 'type': 'integer', 'minimum': 0 },
+        'item':    {},
+        'output':  { 'type': 'string' },
       },
       'additionalProperties': false,
     },

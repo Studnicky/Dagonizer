@@ -83,7 +83,7 @@ export class DagHost {
         const msg = err instanceof Error ? err.message : String(err);
         try {
           this.#channel.send({
-            'kind': 'error',
+            'variant': 'error',
             'correlationId': null,
             'code': 'INTERNAL_ERROR',
             'message': `DagHost internal error: ${msg}`,
@@ -104,7 +104,7 @@ export class DagHost {
       message = Validator.bridgeMessage.validate(raw);
     } catch {
       this.#channel.send({
-        'kind': 'error',
+        'variant': 'error',
         'correlationId': null,
         'code': 'INVALID_MESSAGE',
         'message': 'Received a message that does not conform to BridgeMessage schema',
@@ -113,13 +113,13 @@ export class DagHost {
       return;
     }
 
-    // Exhaustive typed switch: TypeScript narrows `message` on each `kind` arm,
+    // Exhaustive typed switch: TypeScript narrows `message` on each `variant` arm,
     // eliminating the need for `as` casts inside each handler. The R3
     // fire-and-forget pattern for 'execute' is preserved — the error is
     // captured and sent as a channel message rather than leaking an unhandled
-    // rejection. Unknown kinds (host→parent messages) are unexpected here but
+    // rejection. Unknown variants (host→parent messages) are unexpected here but
     // must not crash the host.
-    switch (message.kind) {
+    switch (message.variant) {
       case 'init':
         await this.#handleInit(message.registryModule, message.registryVersion, message.servicesConfig as JsonObjectType);
         break;
@@ -129,7 +129,7 @@ export class DagHost {
           const errMsg = err instanceof Error ? err.message : String(err);
           try {
             this.#channel.send({
-              'kind': 'error',
+              'variant': 'error',
               'correlationId': message.request.correlationId,
               'code': 'INTERNAL_ERROR',
               'message': `DagHost execute error: ${errMsg}`,
@@ -148,10 +148,10 @@ export class DagHost {
         // DagHost receives only parent→host messages; host→parent messages are
         // unexpected on this side but must not crash the host.
         this.#channel.send({
-          'kind': 'error',
+          'variant': 'error',
           'correlationId': null,
           'code': 'UNEXPECTED_MESSAGE',
-          'message': `DagHost received unexpected message kind: ${(message as { kind: string }).kind}`,
+          'message': `DagHost received unexpected message variant: ${(message as { variant: string }).variant}`,
           'recoverable': true,
         });
         break;
@@ -188,7 +188,7 @@ export class DagHost {
           typeof (registryInterface as Record<string, unknown>)['instantiate'] !== 'function'
         ) {
           this.#channel.send({
-            'kind': 'error',
+            'variant': 'error',
             'correlationId': null,
             'code': 'INVALID_REGISTRY_MODULE',
             'message': `Registry module default export does not implement RegistryModuleInterface (missing instantiate)`,
@@ -205,7 +205,7 @@ export class DagHost {
 
       if (bundle.registryVersion !== expectedVersion) {
         this.#channel.send({
-          'kind': 'error',
+          'variant': 'error',
           'correlationId': null,
           'code': 'VERSION_MISMATCH',
           'message': `Registry version mismatch: expected '${expectedVersion}', got '${bundle.registryVersion}'`,
@@ -217,14 +217,14 @@ export class DagHost {
       this.#bundle = bundle;
 
       this.#channel.send({
-        'kind': 'ready',
+        'variant': 'ready',
         'registryVersion': bundle.registryVersion,
         'capabilities': [],
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.#channel.send({
-        'kind': 'error',
+        'variant': 'error',
         'correlationId': null,
         'code': 'INIT_FAILED',
         'message': `DagHost init failed: ${message}`,
@@ -243,7 +243,7 @@ export class DagHost {
   ): Promise<void> {
     if (this.#bundle === null) {
       this.#channel.send({
-        'kind': 'error',
+        'variant': 'error',
         'correlationId': correlationId,
         'code': 'NOT_INITIALIZED',
         'message': 'DagHost has not been initialized; send init first',
@@ -325,7 +325,7 @@ export class DagHost {
           };
           intermediates.push(intermediate);
           this.#channel.send({
-            'kind': 'intermediate',
+            'variant': 'intermediate',
             'correlationId': correlationId,
             'nodeName': nodeResult.nodeName,
             'output': nodeResult.output,
@@ -336,16 +336,16 @@ export class DagHost {
         const lifecycle = item.state.lifecycle;
         const derivedTerminal = terminalOutcome !== null
           ? terminalOutcome
-          : lifecycle.kind === 'completed'
+          : lifecycle.variant === 'completed'
             ? 'completed'
             : 'failed';
 
         const collectedErrors = [
           ...item.state.errors,
-          ...(terminalOutcome === null && lifecycle.kind !== 'completed'
+          ...(terminalOutcome === null && lifecycle.variant !== 'completed'
             ? [NodeErrorBuilder.from(
               'DAG_EXECUTION_FAILED',
-              `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.kind})`,
+              `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.variant})`,
               request.dagName,
               false,
               new Date().toISOString(),
@@ -360,7 +360,7 @@ export class DagHost {
           intermediates,
         };
 
-        this.#channel.send({ 'kind': 'result', 'response': response });
+        this.#channel.send({ 'variant': 'result', 'response': response });
       } else {
         // Multi-item batch path: run each item sequentially through the same DAG.
         // The representative state (first item) is used for lifecycle/flow hooks
@@ -390,7 +390,7 @@ export class DagHost {
             // benefit. The `intermediates` array remains empty for the batch
             // path and is sent as `[]` in the ExecutionResponse below.
             this.#channel.send({
-              'kind': 'intermediate',
+              'variant': 'intermediate',
               'correlationId': correlationId,
               'nodeName': nodeResult.nodeName,
               'output': nodeResult.output,
@@ -401,7 +401,7 @@ export class DagHost {
           const lifecycle = item.state.lifecycle;
           const derivedTerminal = terminalOutcome !== null
             ? terminalOutcome
-            : lifecycle.kind === 'completed'
+            : lifecycle.variant === 'completed'
               ? 'completed'
               : 'failed';
 
@@ -424,7 +424,7 @@ export class DagHost {
           intermediates,
         };
 
-        this.#channel.send({ 'kind': 'result', 'response': response });
+        this.#channel.send({ 'variant': 'result', 'response': response });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -449,7 +449,7 @@ export class DagHost {
         'intermediates': [],
       };
 
-      this.#channel.send({ 'kind': 'result', 'response': response });
+      this.#channel.send({ 'variant': 'result', 'response': response });
     } finally {
       if (timeoutHandle !== null) {
         clearTimeout(timeoutHandle);
@@ -464,7 +464,7 @@ export class DagHost {
   #handleAbort(correlationId: string, reason: 'abort' | 'timeout'): void {
     const controller = this.#inflight.get(correlationId);
     if (controller !== undefined) {
-      // R2: reconstruct the appropriate error kind so lifecycle classification
+      // R2: reconstruct the appropriate error variant so lifecycle classification
       // ('timed_out' vs 'cancelled') is preserved inside the host.
       if (reason === 'timeout') {
         // A TimeoutError-named error is the signal that a run-level deadline

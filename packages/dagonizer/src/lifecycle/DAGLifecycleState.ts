@@ -1,13 +1,13 @@
 /**
- * DAGLifecycleStateType: discriminated union of the six kinds a DAG lifecycle
+ * DAGLifecycleStateType: discriminated union of the six variants a DAG lifecycle
  * machine can occupy.
  *
  * All six variants share an identical 5-field shape so V8 sees a single
- * hidden class regardless of which kind is live. Fields absent in a given
+ * hidden class regardless of which variant is live. Fields absent in a given
  * state carry `null`; never `undefined` or omitted.
  *
  * Field order (canonical; must be preserved in every object literal):
- *   kind · startedAt · finishedAt · error · reason
+ *   variant · startedAt · finishedAt · error · reason
  *
  * The reducer in `DAGLifecycleMachine.ts` is the source of truth on
  * legal transitions. The `error` payload on the `failed` branch carries the
@@ -17,15 +17,15 @@
 /**
  * Uniform 5-field discriminated union of the six DAG lifecycle states.
  * Timestamps are monotonic milliseconds from `Clock.monotonicMs()`.
- * Fields that are not meaningful for a given `kind` are `null`.
+ * Fields that are not meaningful for a given `variant` are `null`.
  */
 export type DAGLifecycleStateType =
-  | { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
-  | { kind: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
-  | { kind: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
-  | { kind: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
-  | { kind: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
-  | { kind: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null };
+  | { variant: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
+  | { variant: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
+  | { variant: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
+  | { variant: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
+  | { variant: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
+  | { variant: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null };
 
 /**
  * Events consumed by `DAGLifecycleMachine.transition()`. The `at` field

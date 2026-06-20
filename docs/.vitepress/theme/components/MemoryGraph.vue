@@ -57,7 +57,7 @@ const props = defineProps<{
 }>();
 
 /** Structured selection emitted on node click. */
-export type MemorySelection = { kind: 'iri'; iri: string } | { kind: 'literal'; value: string };
+export type MemorySelection = { variant: 'iri'; iri: string } | { variant: 'literal'; value: string };
 
 const emit = defineEmits<{
   (event: 'clear'): void;
@@ -108,9 +108,9 @@ const fitZoomLevel = ref<number | null>(null);
 const graph = shallowRef<GraphHandle | null>(null);
 interface PointMeta {
   readonly label: string;
-  readonly kind:  'iri' | 'literal';
+  readonly variant: 'iri' | 'literal';
   readonly layer: GraphLayer;
-  /** IRI string for kind='iri'; raw literal text for kind='literal'. */
+  /** IRI string for variant='iri'; raw literal text for variant='literal'. */
   readonly value: string;
 }
 let labelMeta: PointMeta[] = [];
@@ -225,10 +225,10 @@ function initCosmos(container: HTMLDivElement): void {
         if (index === undefined) { emit('select', null); return; }
         const meta = labelMeta[index];
         if (meta === undefined) return;
-        if (meta.kind === 'literal') {
-          emit('select', { kind: 'literal', value: meta.value });
+        if (meta.variant === 'literal') {
+          emit('select', { variant: 'literal', value: meta.value });
         } else {
-          emit('select', { kind: 'iri', iri: meta.value });
+          emit('select', { variant: 'iri', iri: meta.value });
         }
       },
     });
@@ -428,7 +428,7 @@ function paintLabels(): void {
 
     // Pill background: literals tinted slightly violet to keep visual
     // continuity with the prior styling; everything else is dark navy.
-    ctx.fillStyle = meta.kind === 'literal' ? 'rgba(28, 12, 36, 0.92)' : 'rgba(8, 22, 32, 0.92)';
+    ctx.fillStyle = meta.variant === 'literal' ? 'rgba(28, 12, 36, 0.92)' : 'rgba(8, 22, 32, 0.92)';
     roundRect(ctx, x, y, pillW, pillH, 4);
     ctx.fill();
 
@@ -436,7 +436,7 @@ function paintLabels(): void {
     // by colour-band (green = ontology, cyan = memory, gold = state,
     // violet = prov). Literals use the violet "value" tone regardless
     // of layer since they're leaf values, not first-class entities.
-    ctx.fillStyle = meta.kind === 'literal'
+    ctx.fillStyle = meta.variant === 'literal'
       ? '#c89bff'
       : (LAYER_LABEL_HEX[meta.layer] ?? '#eaf6ff');
     ctx.fillText(text, x + PAD_X, y + pillH / 2);
@@ -483,7 +483,7 @@ interface Buffers {
   readonly meta:      PointMeta[];
 }
 
-/** Layer → base RGBA (0..1). Tinted further by node-kind alpha. */
+/** Layer → base RGBA (0..1). Tinted further by node-variant alpha. */
 const LAYER_COLOR: Readonly<Record<GraphLayer, [number, number, number]>> = {
   'ontology': [0.13, 0.91, 0.60], // green-teal (TBox schema)
   'memory':   [0.13, 0.91, 1.00], // teal
@@ -511,20 +511,20 @@ function buildBuffers(
   const sizes:     number[] = [];
   const links:     number[] = [];
 
-  function intern(id: string, label: string, kind: 'iri' | 'literal', layer: GraphLayer, value: string): number {
+  function intern(id: string, label: string, nodeVariant: 'iri' | 'literal', layer: GraphLayer, value: string): number {
     const existing = indexById.get(id);
     if (existing !== undefined) return existing;
     const idx = meta.length;
     indexById.set(id, idx);
-    meta.push({ label, kind, layer, value });
+    meta.push({ label, variant: nodeVariant, layer, value });
     positions.push(
       4096 + (Math.random() - 0.5) * 4000,
       4096 + (Math.random() - 0.5) * 4000,
     );
     const [r, g, b] = LAYER_COLOR[layer];
-    const alpha = visible[layer] ? (kind === 'iri' ? 1.0 : 0.85) : 0.04;
+    const alpha = visible[layer] ? (nodeVariant === 'iri' ? 1.0 : 0.85) : 0.04;
     colors.push(r, g, b, alpha);
-    sizes.push(kind === 'iri' ? 18 : 12);
+    sizes.push(nodeVariant === 'iri' ? 18 : 12);
     return idx;
   }
 

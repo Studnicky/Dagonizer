@@ -7,7 +7,7 @@ import type { DAGLifecycleStateType } from '../../src/lifecycle/DAGLifecycleStat
 void describe('DAGLifecycleMachine', () => {
   void it('starts in pending', () => {
     const s = DAGLifecycleMachine.initial();
-    assert.equal(s.kind, 'pending');
+    assert.equal(s.variant, 'pending');
     assert.equal(DAGLifecycleMachine.isTerminal(s), false);
   });
 
@@ -16,8 +16,8 @@ void describe('DAGLifecycleMachine', () => {
       DAGLifecycleMachine.initial(),
       { 'type': 'start', 'at': 1000 },
     );
-    assert.equal(next.kind, 'running');
-    assert.equal((next as Extract<DAGLifecycleStateType, { kind: 'running' }>).startedAt, 1000);
+    assert.equal(next.variant, 'running');
+    assert.equal((next as Extract<DAGLifecycleStateType, { variant: 'running' }>).startedAt, 1000);
   });
 
   void it('running + succeed → completed', () => {
@@ -26,7 +26,7 @@ void describe('DAGLifecycleMachine', () => {
       { 'type': 'start', 'at': 1000 },
     );
     const next = DAGLifecycleMachine.transition(running, { 'type': 'succeed', 'at': 2000 });
-    assert.equal(next.kind, 'completed');
+    assert.equal(next.variant, 'completed');
     assert.equal(DAGLifecycleMachine.isTerminal(next), true);
   });
 
@@ -37,8 +37,8 @@ void describe('DAGLifecycleMachine', () => {
     );
     const error = new Error('boom');
     const next = DAGLifecycleMachine.transition(running, { 'type': 'fail', 'error': error, 'at': 2000 });
-    assert.equal(next.kind, 'failed');
-    assert.equal((next as Extract<DAGLifecycleStateType, { kind: 'failed' }>).error, error);
+    assert.equal(next.variant, 'failed');
+    assert.equal((next as Extract<DAGLifecycleStateType, { variant: 'failed' }>).error, error);
   });
 
   void it('terminal states are sticky (return same reference)', () => {
@@ -63,7 +63,7 @@ void describe('DAGLifecycleMachine', () => {
       { 'type': 'start', 'at': 1000 },
     );
     const cancelled = DAGLifecycleMachine.transition(running, { 'type': 'cancel', 'reason': 'user-abort', 'at': 1500 });
-    assert.equal(cancelled.kind, 'cancelled');
-    assert.equal((cancelled as Extract<DAGLifecycleStateType, { kind: 'cancelled' }>).reason, 'user-abort');
+    assert.equal(cancelled.variant, 'cancelled');
+    assert.equal((cancelled as Extract<DAGLifecycleStateType, { variant: 'cancelled' }>).reason, 'user-abort');
   });
 });

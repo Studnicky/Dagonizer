@@ -78,9 +78,9 @@ export class RecallPastVisitsNode extends ScalarNode<ArchivistState, 'recalled',
       if (titles.size >= MAX_PRIOR_TITLES) break;
     }
 
-    const priorContext: { kind: string; text: string }[] = [];
-    for (const q of recentQueries) priorContext.push({ 'kind': 'prior-query',          'text': q.text });
-    for (const t of titles)        priorContext.push({ 'kind': 'prior-recommendation', 'text': t });
+    const priorContext: { variant: string; text: string }[] = [];
+    for (const q of recentQueries) priorContext.push({ 'variant': 'prior-query',          'text': q.text });
+    for (const t of titles)        priorContext.push({ 'variant': 'prior-recommendation', 'text': t });
     state.priorContext = priorContext;
 
     if (priorContext.length > 0) {

@@ -54,7 +54,7 @@ export class ObservedCartographer extends Dagonizer<CartographerState, Cartograp
 
   /**
    * Fires after the execution loop drains (terminal node, error, or abort).
-   * Logs the outcome, executed-node count, and resolved lifecycle kind.
+   * Logs the outcome, executed-node count, and resolved lifecycle variant.
    */
   protected override onFlowEnd(
     dagName: string,
@@ -66,7 +66,7 @@ export class ObservedCartographer extends Dagonizer<CartographerState, Cartograp
     this.#logger.info(
       COMPONENT,
       'onFlowEnd',
-      `dag=${dagName} outcome=${outcome} executed=${String(executed)} lifecycle=${state.lifecycle.kind}`,
+      `dag=${dagName} outcome=${outcome} executed=${String(executed)} lifecycle=${state.lifecycle.variant}`,
     );
   }
 

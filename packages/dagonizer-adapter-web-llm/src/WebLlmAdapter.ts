@@ -17,6 +17,7 @@ import type {
   ErrorClassificationType,
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import type {
   WebLlmCompletionResultType,
@@ -34,6 +35,48 @@ const WEBLLM_MAX_ATTEMPTS = 2;
 const GPU_PROBE_TIMEOUT_MS = 1_500;
 
 /**
+ * Snapshot of the `@mlc-ai/web-llm` prebuilt model catalog
+ * (`prebuiltAppConfig.model_list`). The catalog is static data — no network
+ * call is needed and no WebGPU is required to enumerate it. This list is
+ * accurate as of web-llm 0.2.x; update when upstream adds new model IDs.
+ * All web-llm models are on-device chat models (`cloud: false`, `variant: 'chat'`).
+ */
+const PREBUILT_MODEL_IDS: readonly string[] = [
+  'Llama-3.2-1B-Instruct-q4f32_1-MLC',
+  'Llama-3.2-1B-Instruct-q4f16_1-MLC',
+  'Llama-3.2-3B-Instruct-q4f32_1-MLC',
+  'Llama-3.2-3B-Instruct-q4f16_1-MLC',
+  'Llama-3.1-8B-Instruct-q4f32_1-MLC',
+  'Llama-3.1-8B-Instruct-q4f16_1-MLC',
+  'Llama-3-8B-Instruct-q4f32_1-MLC',
+  'Llama-3-8B-Instruct-q4f16_1-MLC',
+  'Phi-3.5-mini-instruct-q4f16_1-MLC',
+  'Phi-3.5-mini-instruct-q4f32_1-MLC',
+  'Phi-3-mini-4k-instruct-q4f16_1-MLC',
+  'Phi-3-mini-4k-instruct-q4f32_1-MLC',
+  'Mistral-7B-Instruct-v0.3-q4f16_1-MLC',
+  'Mistral-7B-Instruct-v0.3-q4f32_1-MLC',
+  'gemma-2-2b-it-q4f16_1-MLC',
+  'gemma-2-2b-it-q4f32_1-MLC',
+  'gemma-2-9b-it-q4f16_1-MLC',
+  'gemma-2-9b-it-q4f32_1-MLC',
+  'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
+  'Qwen2.5-0.5B-Instruct-q4f32_1-MLC',
+  'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
+  'Qwen2.5-1.5B-Instruct-q4f32_1-MLC',
+  'Qwen2.5-3B-Instruct-q4f16_1-MLC',
+  'Qwen2.5-7B-Instruct-q4f16_1-MLC',
+  'SmolLM2-135M-Instruct-q4f16_1-MLC',
+  'SmolLM2-360M-Instruct-q4f16_1-MLC',
+  'SmolLM2-1.7B-Instruct-q4f16_1-MLC',
+  'TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC',
+];
+
+const PREBUILT_MODELS: readonly LlmModelType[] = PREBUILT_MODEL_IDS.map(
+  (id): LlmModelType => ({ 'name': id, 'variant': 'chat', 'cloud': false }),
+);
+
+/**
  * Pending-engine registry keyed on the adapter instance. Holding the lazy
  * boot promise here (rather than in a `Promise | null` instance field that
  * flips type after construction) keeps every `WebLlmAdapter` instance's
@@ -49,8 +92,6 @@ export type WebLlmAdapterOptionsType = {
 };
 
 export class WebLlmAdapter extends BaseAdapter {
-  readonly #model: string;
-
   /**
    * Resolve `navigator.gpu` from the global scope as `unknown`. The
    * standard lib `Navigator` typings predate WebGPU, so the WebGPU object
@@ -65,7 +106,7 @@ export class WebLlmAdapter extends BaseAdapter {
     return gpu;
   }
 
-  private static detectWebGpu(): boolean {
+  static detectWebGpu(): boolean {
     return WebLlmAdapter.gpu() !== undefined;
   }
 
@@ -76,9 +117,11 @@ export class WebLlmAdapter extends BaseAdapter {
       // Phi-3.5 supports structured output but tool-call format is
       // inconsistent across the small in-browser model class.
       { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
-      { 'maxAttempts': options.maxAttempts ?? WEBLLM_MAX_ATTEMPTS },
+      {
+        'maxAttempts': options.maxAttempts ?? WEBLLM_MAX_ATTEMPTS,
+        ...(options.model !== undefined ? { 'model': options.model } : {}),
+      },
     );
-    this.#model = options.model ?? DEFAULT_MODEL;
   }
 
   /**
@@ -89,6 +132,16 @@ export class WebLlmAdapter extends BaseAdapter {
    */
   protected onInitProgress(_report: WebLlmInitReportType): void {
     // no-op default — subclasses override to handle progress events
+  }
+
+  /**
+   * Returns the static prebuilt catalog shipped with `@mlc-ai/web-llm`.
+   * All entries are on-device chat models — no network call and no WebGPU
+   * required to enumerate them. The catalog is a constant; the returned
+   * Promise always resolves immediately.
+   */
+  override listModels(_options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
+    return Promise.resolve(PREBUILT_MODELS);
   }
 
   /**
@@ -123,7 +176,7 @@ export class WebLlmAdapter extends BaseAdapter {
     // tool-plan schema then ask for json_object.
     const messages = this.#composeMessages(request);
     const wantsJson = (request.tools.length > 0)
-      || request.outputSchema.kind === 'schema';
+      || request.outputSchema.variant === 'schema';
 
     const responseFormat: { type: 'json_object' | 'text' } = { 'type': wantsJson ? 'json_object' : 'text' };
     let result: WebLlmCompletionResultType;
@@ -171,7 +224,7 @@ export class WebLlmAdapter extends BaseAdapter {
         'role': 'system',
         'content': `You must respond with a JSON object of the form { "tool_calls": [{ "name": "...", "arguments": { ... } }] } using only these tool names: ${request.tools.map((t) => `"${t.name}"`).join(', ')}. Emit an empty array when no tool helps.`,
       });
-    } else if (request.outputSchema.kind === 'schema') {
+    } else if (request.outputSchema.variant === 'schema') {
       messages.push({
         'role': 'system',
         'content': `You must respond with a JSON object that satisfies this JSON Schema: ${JSON.stringify(request.outputSchema.schema)}`,
@@ -193,9 +246,10 @@ export class WebLlmAdapter extends BaseAdapter {
     if (!WebLlmAdapter.detectWebGpu()) {
       throw new LlmError('navigator.gpu unavailable', Classifications['MODEL_NOT_FOUND']);
     }
+    const selectedModel = this.modelOrEmpty !== '' ? this.modelOrEmpty : DEFAULT_MODEL;
     const rawModule: unknown = await import(/* @vite-ignore */ WEBLLM_ESM);
     const mod = webLlmModuleValidator.validate(rawModule);
-    const rawEngine: unknown = await mod.CreateMLCEngine(this.#model, {
+    const rawEngine: unknown = await mod.CreateMLCEngine(selectedModel, {
       'initProgressCallback': (report) => { this.onInitProgress(report); },
     });
     return webLlmEngineValidator.validate(rawEngine);

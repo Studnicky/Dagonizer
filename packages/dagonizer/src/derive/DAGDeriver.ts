@@ -362,7 +362,7 @@ export class DAGDeriver {
 
         if (scatter !== undefined && embeddedDAG !== undefined) {
           throw new DAGError(
-            `DAGDeriver: operation '${name}' appears in both annotations.scatters and annotations.embeddedDAGs; placement kind must be unambiguous`,
+            `DAGDeriver: operation '${name}' appears in both annotations.scatters and annotations.embeddedDAGs; placement variant must be unambiguous`,
           );
         }
 

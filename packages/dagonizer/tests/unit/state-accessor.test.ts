@@ -193,7 +193,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     assert.strictEqual(cloned.getMetadata('key'), 'value', 'metadata must be preserved in clone');
 
     // Lifecycle resets to pending.
-    assert.strictEqual(cloned.lifecycle.kind, 'pending', 'lifecycle must reset to pending');
+    assert.strictEqual(cloned.lifecycle.variant, 'pending', 'lifecycle must reset to pending');
 
     // Errors start empty.
     assert.strictEqual(cloned.errors.length, 0, 'errors must be empty in clone');

@@ -21,13 +21,13 @@ export type ToolChoiceType =
   | { type: 'tool'; name: string };
 
 /**
- * JSON-schema constraint on the model's text response. `kind: 'none'`
+ * JSON-schema constraint on the model's text response. `variant: 'none'`
  * means "no constraint"; keeps the union shape monomorphic instead of
  * `LlmOutputSchemaType | undefined`.
  */
 export type LlmOutputSchemaType =
-  | { kind: 'none' }
-  | { kind: 'schema'; schema: Record<string, unknown>; id: string };
+  | { variant: 'none' }
+  | { variant: 'schema'; schema: Record<string, unknown>; id: string };
 
 /** One adapter call; every field always present. */
 export type ChatRequestType = {

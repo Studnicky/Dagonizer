@@ -12,7 +12,7 @@
  *   2. Clear the prior-run draft so a resumed flow does not expose a
  *      stale response from a previous interrupted execution.
  *
- * kind: 'deterministic' — pure function of the wall clock; no LLM, no I/O.
+ * variant: 'deterministic' — pure function of the wall clock; no LLM, no I/O.
  * output: 'ready' — always routes forward; the `pre` phase never gates.
  *
  * Wiring (once enabled in dag.ts):

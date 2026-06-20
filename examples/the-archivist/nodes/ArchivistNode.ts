@@ -1,5 +1,5 @@
 /**
- * ArchivistNode: `NodeInterface` extended with a `kind` tag.
+ * ArchivistNode: `NodeInterface` extended with a `variant` tag.
  *
  *   deterministic:     pure computation; same input produces same output.
  *                       Memory writes, gates, ranking, formatting.
@@ -11,7 +11,7 @@
  * which can drift between runs. The practical difference between
  * symbolic and sub-symbolic reasoning, drawn on the graph.
  *
- * `kind` is the Dagonizer extension; everything else is plain
+ * `variant` is the Dagonizer extension; everything else is plain
  * `NodeInterface` and stays interchangeable with the engine.
  */
 
@@ -21,15 +21,15 @@ import type { ArchivistServices } from '../services.ts';
 
 import type { NodeInterface } from '@studnicky/dagonizer';
 
-export type NodeKind = 'deterministic' | 'non-deterministic';
+export type NodeVariant = 'deterministic' | 'non-deterministic';
 
 export interface ArchivistNode<TOutput extends string>
   extends NodeInterface<ArchivistState, TOutput, ArchivistServices> {
-  readonly kind: NodeKind;
+  readonly variant: NodeVariant;
 }
 
-/** Map node name → kind. Used by the cytoscape renderer to colour the graph. */
-export const NODE_KINDS: Readonly<Record<string, NodeKind>> = {
+/** Map node name → variant. Used by the cytoscape renderer to colour the graph. */
+export const NODE_VARIANTS: Readonly<Record<string, NodeVariant>> = {
   // Non-deterministic (added here so it sorts with its peers below)
   'recall-context':          'non-deterministic',
   'recall-memories':         'non-deterministic',
