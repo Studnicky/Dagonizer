@@ -507,8 +507,10 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
   panUp():    void { this.#markUserGesture(); this.cyInstance?.panBy({ x: 0,   y: -80 }); }
   panDown():  void { this.#markUserGesture(); this.cyInstance?.panBy({ x: 0,   y: 80 }); }
-  panLeft():  void { this.#markUserGesture(); this.cyInstance?.panBy({ x: -80, y: 0 }); }
-  panRight(): void { this.#markUserGesture(); this.cyInstance?.panBy({ x: 80,  y: 0 }); }
+  // Pressing left moves the view toward the left (reveals content on the left),
+  // i.e. pan the scene right — matching the memory graph's pan direction.
+  panLeft():  void { this.#markUserGesture(); this.cyInstance?.panBy({ x: 80,  y: 0 }); }
+  panRight(): void { this.#markUserGesture(); this.cyInstance?.panBy({ x: -80, y: 0 }); }
 
   centerView(): void { this.#markUserGesture(); this.cyInstance?.center(); }
   fitScreen():  void { this.applyFit(); }
