@@ -339,14 +339,18 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
         { cause },
       );
     }
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    if (!OpenAiCompatibleAdapter.#isJsonObject(parsed)) {
       throw new LlmError(
         `${this.#config.displayName}: tool-call arguments must be a JSON object — ${raw.slice(0, 120)}`,
         Classifications['SCHEMA_VIOLATION'],
       );
     }
-    // JSON object ingest boundary: parsed is object, non-null, non-array.
-    // String-keyed with unknown values — structurally Record<string, unknown>.
-    return parsed as Record<string, unknown>;
+    // The predicate narrows `parsed` to `Record<string, unknown>` — no cast.
+    return parsed;
+  }
+
+  /** A non-null, non-array object — the JSON-object ingest shape. */
+  static #isJsonObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }
