@@ -1,5 +1,23 @@
 # @studnicky/dagonizer
 
+## 0.25.0
+
+### Minor Changes
+
+- feba895: Adds `@studnicky/dagonizer-adapter-anthropic` — a first-class adapter for the Anthropic Messages API. `AnthropicApiAdapter` extends `BaseAdapter` directly (not `OpenAiCompatibleAdapter`) because Anthropic's wire format is distinct from OpenAI's: system prompts are a top-level `system` field, tool responses are `tool_result` content blocks inside user turns, tool definitions use `input_schema` instead of `parameters`, and the response payload is a typed `content[]` array with a `stop_reason` field. Full `tool_use` capability is supported including all tool-choice variants (`auto`, `required`/`any`, `none`, specific tool). The adapter ships with intercepted-fetch wire-format tests covering text responses, `tool_use` responses, and mixed responses.
+- ad70ba1: Harness recursion foundation: isolated child-state engine, per-port output contracts, and repo-wide cast elimination.
+
+  - **Isolated child-state harness.** Tool and subagent embeds run on a fresh child state produced by a factory seam, not a clone of the parent state. The engine is now honestly heterogeneous-state: a child DAG carries its own `NodeStateBase` subtype, decoupled from the parent's. Tool state is isolated; scatter `dagFrom` is item-scoped so each scattered item materialises its own child DAG.
+  - **Agent turn-loop + tool-execution node family.** New template-method pattern nodes for the agent turn-loop and tool-execution flow, extensible by subclass.
+  - **Mandatory per-port `outputSchema` node contract.** Every `NodeInterface` declares `readonly outputSchema: Record<TOutput, SchemaObjectType>`; `MonadicNode.outputSchema` is abstract with no passthrough default. Opt-in output validation runs as a dedicated `validateOutputs` lifecycle stage (`fire → validate → route`), gated by `DagonizerOptionsType.validateOutputs` (default `false`). Tool input/output contracts validate against `tool.definition.inputSchema`/`outputSchema`.
+  - **Tool-registry dispatch.** Tool invocation routes through the registry by name with route-to-error on miss; validators compile once at `ToolRegistry.register()`.
+  - **Non-generic `BaseStore` hooks** and repo-wide elimination of `as` casts in favour of static type-guard predicates, `filter*` builders, and membership checks. Zero sanctioned casts remain, including the JSON snapshot/restore boundary.
+
+- feba895: Visualization: `MermaidRenderer.render(dag, options?)` and a framework-agnostic `MermaidExplorer`.
+
+  - **`MermaidRenderer.render(dag, options?)`** gains a `MermaidRenderOptionsType` (`orientation` default `'TB'`, `sanitizeNodeIds` default `true`, `terminalAnnotations` default `'strip'`, and a concrete-colour `theme` with per-role `containerTints`). The renderer now emits parse-safe Mermaid by default: colon-bearing placement ids are sanitized to keyword-safe ids (labels keep their colons), `\n(outcome)` terminal annotations that break the lexer are stripped, and the orientation is configurable. Existing `render(dag)` callers get the safe output with no change.
+  - **`MermaidExplorer`** (`@studnicky/dagonizer/viz`) is a vanilla-TS, framework-agnostic enhancer that attaches the same D-pad (zoom · pan ×4 · centre · fit) and fullscreen-explore modal to rendered Mermaid SVGs that the interactive graph canvases use — one consistent navigation rule set across diagrams and live graphs. `MermaidExplorer.install(options?)` wires a `MutationObserver` for async-rendered diagrams; `MermaidExplorer.enhance(frame, options?)` upgrades one. A companion stylesheet ships at `@studnicky/dagonizer/viz/explorer.css`.
+
 ## [Unreleased]
 
 ### Added

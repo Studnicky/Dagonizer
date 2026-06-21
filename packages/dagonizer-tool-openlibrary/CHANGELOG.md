@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-tool-openlibrary
 
+## 0.25.0
+
+### Patch Changes
+
+- @studnicky/dagonizer-book-entities@0.25.0
+
 ## 0.24.0
 
 ### Patch Changes
