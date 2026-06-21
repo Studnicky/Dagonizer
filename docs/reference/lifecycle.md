@@ -26,18 +26,18 @@ Discriminated union of the six states a DAG lifecycle can occupy:
 ```ts twoslash
 import type { DAGLifecycleStateType } from '@studnicky/dagonizer/lifecycle';
 // DAGLifecycleStateType is:
-//   | { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
-//   | { kind: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
-//   | { kind: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
-//   | { kind: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
-//   | { kind: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
-//   | { kind: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null }
+//   | { variant: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
+//   | { variant: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
+//   | { variant: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
+//   | { variant: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
+//   | { variant: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
+//   | { variant: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null }
 const _check: DAGLifecycleStateType = {} as DAGLifecycleStateType;
 ```
 
 All timestamps are monotonic milliseconds from `Clock.monotonicMs()`. They are relative-time values suitable for duration math, not wall-clock display.
 
-Inspect via `state.lifecycle.kind`. Narrow to a terminal variant to access its payload:
+Inspect via `state.lifecycle.variant`. Narrow to a terminal variant to access its payload:
 
 <<< @/../examples/the-archivist/runArchivist.ts#lifecycle-state-switch
 
@@ -76,7 +76,7 @@ import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
 import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
 // ---cut---
 const initial = DAGLifecycleMachine.initial();
-// Returns: { kind: 'pending', startedAt: null, finishedAt: null, error: null, reason: null }
+// Returns: { variant: 'pending', startedAt: null, finishedAt: null, error: null, reason: null }
 ```
 
 Seed value for a new state object.

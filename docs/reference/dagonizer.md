@@ -41,7 +41,7 @@ const dispatcher2 = new Dagonizer<MyState, MyServices>({ services: { logger: con
 import { Dagonizer } from '@studnicky/dagonizer';
 import type { DagonizerOptionsType, NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-// constructor(options?: DagonizerOptionsType<TState, TServices>)
+// constructor(options?: DagonizerOptionsType<TServices>)
 declare const options: DagonizerOptionsType;
 const d = new Dagonizer(options);
 ```
@@ -62,19 +62,21 @@ import type { StateAccessorInterface } from '@studnicky/dagonizer/types';
 declare const _opts: DagonizerOptionsType;
 // accessor?: StateAccessorInterface
 // services?: TServices
-// containers?: Readonly<Record<string, DagContainerInterface<TState>>>
+// containers?: Readonly<Record<string, DagContainerInterface>>
 // channels?: Readonly<Record<string, HandoffChannelInterface>>
 // registryVersion?: string
+// validateOutputs?: boolean
 export {};
 ```
 
 | Field | Type | Description |
 |---|---|---|
-| `accessor` | `StateAccessor` | Path resolver for scatter source reads, gather writes, and state-mapping copies. Defaults to `DottedPathAccessor`. |
+| `accessor` | `StateAccessorInterface` | Path resolver for scatter source reads, gather writes, and state-mapping copies. Defaults to `DottedPathAccessor`. |
 | `services` | `TServices` | Typed services bag exposed to every node via `context.services`. Defaults to `undefined`. |
-| `containers` | `Readonly<Record<string, DagContainerInterface<TState>>>` | Named container backends keyed by logical role name. On a non-empty registry, a placement that declares a role this map does not bind throws `DAGError` at `registerDAG` time. Defaults to an empty registry, where declared roles are inert and all placements run in-process. |
+| `containers` | `Readonly<Record<string, DagContainerInterface>>` | Named container backends keyed by logical role name. On a non-empty registry, a placement that declares a role this map does not bind throws `DAGError` at `registerDAG` time. Defaults to an empty registry, where declared roles are inert and all placements run in-process. |
 | `channels` | `Readonly<Record<string, HandoffChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
 | `registryVersion` | `string` | Registry version string included in every `DAGHandoff` envelope for receiver version-handshake validation. Defaults to `'0'`. |
+| `validateOutputs` | `boolean` | When `true`, validates each node output against the node's declared `outputSchema` for that port after execution. On mismatch the item is re-routed to `'error'`. Default `false` — zero overhead in production. Enable in dev/test to catch contract violations early. |
 
 ---
 
@@ -92,7 +94,7 @@ d.registerNode(node);
 
 Registers a node in the dispatcher's node registry. If the node defines an optional `validate()` method, it is called immediately and throws `DAGError` if it returns `{ valid: false }`.
 
-Nodes are stored widened to `NodeInterface<TState, string, TServices>`. Narrow `TOutput` to wide `string` is sound covariantly.
+Nodes are stored widened to `NodeInterface<NodeStateInterface, string, TServices>`. `TState` is widened to `NodeStateInterface` so heterogeneous child-node states (whose concrete class may differ from `TState`) are stored without casts. Narrowing `TOutput` to wide `string` is sound covariantly.
 
 ---
 
@@ -130,19 +132,22 @@ Both arrays are required. Either may be empty (a node-only bundle uses `dags: []
 
 ---
 
-### `registerDAG(dag)`
+### `registerDAG(dag, stateFactory?)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, ChildStateFactoryType } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const dag: DAGType;
+declare const stateFactory: ChildStateFactoryType;
 const d = new Dagonizer<MyState>();
 d.registerDAG(dag);
+// With an explicit child-state factory:
+d.registerDAG(dag, stateFactory);
 ```
 
-Registers a DAG after two validation passes, followed by an optional contract check:
+Registers a DAG after two validation passes, followed by an optional contract check. The optional `stateFactory` argument overrides the default child-state constructor thunk for embedded-DAG and scatter executions within this DAG; when omitted, `ChildStateFactory.cloneParent` is stored.
 
 1. **Schema pass.** `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
 2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular embedded-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
@@ -159,7 +164,7 @@ Returns `DAG | undefined`. `undefined` when the DAG has not been registered.
 
 ### `getNode(name)`
 
-Returns `NodeInterface<TState, string, TServices> | undefined`. `undefined` when the node has not been registered.
+Returns `NodeInterface<NodeStateInterface, string, TServices> | undefined`. `undefined` when the node has not been registered.
 
 ### `listDAGs()`
 
@@ -297,11 +302,11 @@ Calls the optional `destroy()` method on every registered node, then clears all 
 
 ### Observability hooks
 
-Five protected no-op methods. Subclass `Dagonizer` and override to attach metrics, logging, or tracing.
+Seven protected no-op methods. Subclass `Dagonizer` and override to attach metrics, logging, or tracing.
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { ExecutionResultType } from '@studnicky/dagonizer';
+import type { ExecutionResultType, NodeStateInterface } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 class ObservableDagonizer extends Dagonizer<MyState> {
@@ -311,9 +316,11 @@ class ObservableDagonizer extends Dagonizer<MyState> {
   protected override onFlowEnd(dagName: string, state: MyState, result: ExecutionResultType<MyState>): void {
     console.log('end', dagName, result.terminalOutcome);
   }
-  protected override onNodeStart(nodeName: string, state: MyState, placementPath: readonly string[]): void {}
-  protected override onNodeEnd(nodeName: string, output: string | null, state: MyState, placementPath: readonly string[]): void {}
-  protected override onError(nodeName: string, error: Error, state: MyState, placementPath: readonly string[]): void {}
+  protected override onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
+  protected override onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void {}
+  protected override onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void {}
+  protected override onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
+  protected override onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {}
 }
 ```
 
@@ -324,6 +331,8 @@ class ObservableDagonizer extends Dagonizer<MyState> {
 | `onNodeStart` | Before `node.execute()` for each node entry point |
 | `onNodeEnd` | After each node resolves, before the result is yielded; `output` is `string \| null` (`null` = no route emitted) |
 | `onError` | When the signal fires or a node throws |
+| `onPhaseEnter` | Before a `pre` or `post` phase placement runs; signature `(dagName, phase: 'pre'\|'post', placementName, state, placementPath)` |
+| `onPhaseExit` | After a `pre` or `post` phase placement completes (success or collected error); same signature as `onPhaseEnter` |
 
 `placementPath` is the ordered array of parent embedded-DAG placement names leading to the current node. Top-level nodes receive `[]`; a node inside an `EmbeddedDAGNode` named `'search'` receives `['search']`. The full cytoscape-style node id is `[...placementPath, nodeName].join('/')`.
 
@@ -379,6 +388,20 @@ type StoredScatterProgress = Readonly<Record<string, ScatterProgress>>;
 
 export {};
 ```
+
+---
+
+## Const: `WORKSET_PROGRESS_KEY`
+
+```ts twoslash
+import { WORKSET_PROGRESS_KEY } from '@studnicky/dagonizer';
+// ---cut---
+// WORKSET_PROGRESS_KEY === '__dagonizer_workset_progress__'
+const key = WORKSET_PROGRESS_KEY; // type: "__dagonizer_workset_progress__"
+export {};
+```
+
+Reserved metadata key used by the work-set scheduler to persist the in-flight work set on interruption. Consumer nodes must not write to this key. The stored value is a `WorkSetProgress` blob serialised by `WorkSetCheckpoint.write` and read back by `WorkSetCheckpoint.read`. Absent for size-1 canonical runs where the cursor model handles state directly.
 
 ---
 

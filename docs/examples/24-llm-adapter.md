@@ -1,6 +1,6 @@
 ---
 title: 'Example 24: LLM adapter (registry, cascade, chat)'
-description: 'LLM adapter surface: register OllamaApiAdapter instances in an LlmAdapterRegistry, wire an LlmAdapterCascade that walks the preference list probing each adapter, and call .chat() inside a DAG node that routes on the response kind.'
+description: 'LLM adapter surface: register OllamaApiAdapter instances in an LlmAdapterRegistry, wire an LlmAdapterCascade that walks the preference list probing each adapter, and call .chat() inside a DAG node that routes on the response variant.'
 seeAlso:
   - text: 'The Archivist (in-browser demo)'
     link: './the-archivist'
@@ -24,7 +24,7 @@ The LLM adapter surface provides a provider-agnostic interface for chat completi
 2. **`OllamaApiAdapter` (fallback, local).** Points at the default loopback (`127.0.0.1:11434`). `probe()` returns `true` when Ollama is running — the cascade selects it.
 3. **`LlmAdapterRegistry`.** Registers both adapters under different `(provider, model)` keys.
 4. **`LlmAdapterCascade`.** Walks the preference list in order, probes each adapter, and selects the first available one.
-5. **DAG node calling `.chat()`.** Injects the selected adapter into state and routes on the response kind (`text` vs `tools`).
+5. **DAG node calling `.chat()`.** Injects the selected adapter into state and routes on the response variant (`text` vs `tools`).
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ Change `OLLAMA_MODEL` in the example to any model you have pulled.
 - **`probe()`.** Each adapter implementation overrides `probe()` to report availability. `OllamaApiAdapter.probe()` issues a `GET /api/tags` with a short timeout (500 ms); returns `true` when the daemon answers `2xx`, `false` on timeout or connection error. Never throws.
 - **`LlmAdapterRegistry`.** Stores adapters keyed by `(provider, model)` pairs. `registry.list()` returns all registered entries.
 - **`LlmAdapterCascade`.** Accepts a preference list and a registry. `cascade.select()` walks the list in order, calls `adapter.probe()` on each, and returns the first available adapter. Throws when no adapter is available.
-- **Response routing.** `response.message.kind` is `'text'` for a plain completion or `'tools'` when the model makes tool calls. The DAG node routes on `kind` to separate the two paths.
+- **Response routing.** `response.message.variant` is `'text'` for a plain completion or `'tools'` when the model makes tool calls. The DAG node routes on `variant` to separate the two paths.
 
 ## Run
 

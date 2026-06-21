@@ -21,8 +21,8 @@ Constants demonstrated:
 | `Output` | `'success'` and `'error'` — standard routing token names |
 | `NodeType` | `'SingleNode'`, `'ScatterNode'`, `'EmbeddedDAGNode'`, `'TerminalNode'`, `'PhaseNode'` |
 | `GatherStrategyName` | `'map'`, `'append'`, `'collect'`, `'partition'`, `'discard'`, `'custom'` |
-| `MetadataKey` | `'currentItem'` and `'currentIndex'` — keys the engine writes into `state.metadata` per scatter clone |
-| `ScatterOutput` | `'allSuccess'`, `'allError'`, `'partial'`, `'empty'` — outcome-reducer routing tokens |
+| `MetadataKey` | `'currentItem'`, `'itemIndex'`, and `'gatherResults'` — keys the engine writes into `state.metadata` |
+| `ScatterOutput` | `'all-success'`, `'all-error'`, `'partial'`, `'empty'` — outcome-reducer routing tokens |
 
 ## Code
 
@@ -33,7 +33,7 @@ Constants demonstrated:
 - **Frozen runtime objects.** `Object.values(GatherStrategyNames)` enumerates all valid gather strategy names. Use this for validation or for building a selector that accepts only known strategies.
 - **`MetadataKeys.CURRENT_ITEM`.** The key the engine writes per scatter clone so nodes can read `state.getMetadata<T>(MetadataKeys.CURRENT_ITEM)` without hardcoding strings.
 - **`NodeType` as a type guard.** `type === NodeTypes.SCATTER` narrows the node shape to `ScatterNode` in TypeScript.
-- **`ScatterOutput` routing tokens.** `any-success` and other outcome reducers route to one of the `ScatterOutputNames` values. The constant ensures consuming code references the same string the reducer emits.
+- **`ScatterOutput` routing tokens.** `all-success`, `all-error`, `partial`, and `empty` are the outcome-reducer routing tokens. The constant ensures consuming code references the same string the reducer emits.
 
 ## Run
 

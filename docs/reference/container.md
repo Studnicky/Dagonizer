@@ -41,19 +41,16 @@ import type {
 
 ---
 
-## Class: `DagContainerBase<TState, TWorker>`
+## Class: `DagContainerBase<TWorker>`
 
 Abstract pool-owning base for running DAG sub-DAGs in isolates (worker threads, forked child processes, Web Workers). Implements `DagContainerInterface`.
 
 ```ts twoslash
 import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
-import type { NodeStateInterface } from '@studnicky/dagonizer';
 import { DagContainerBase } from '@studnicky/dagonizer/container';
 // ---cut---
-// abstract class DagContainerBase<
-//   TState extends NodeStateInterface = NodeStateInterface,
-//   TWorker = unknown,
-// > implements DagContainerInterface<TState>
+// abstract class DagContainerBase<TWorker = unknown>
+//   implements DagContainerInterface
 const _check: typeof DagContainerBase = DagContainerBase;
 ```
 
@@ -72,7 +69,7 @@ declare function construct(options: DagContainerOptionsType): void;
 | Field | Type | Description |
 |-------|------|-------------|
 | `poolSize` | `number` | Maximum number of pool entries (workers) to maintain. |
-| `init` | `InitMessageShape` | Init payload forwarded to each `DagHost` on first channel use. |
+| `init` | `InitMessageShapeType` | Init payload forwarded to each `DagHost` on first channel use. |
 | `shutdownGraceMs` | `number` | Grace period in milliseconds before a shutting-down worker is force-terminated. Pass `DEFAULT_SHUTDOWN_GRACE_MS` (2000 ms) as a baseline. |
 
 `DagContainerBase.defaultOptions` provides an ergonomic default for `shutdownGraceMs`:
@@ -183,7 +180,7 @@ const _check: typeof DagTask = DagTask;
 | `placementPath` | `string[]` | Nesting path from the parent dispatcher. |
 | `correlationId` | `string` | Dispatcher-monotonic id (no randomness). |
 | `timeout` | `Timeout` | Execution budget (`Timeout.none()` when none applies). |
-| `state` | `TState` | Live seeded clone for in-process paths. |
+| `state` | `NodeStateInterface` | Live seeded clone for in-process paths (typed at the base contract; the concrete class may differ from the parent dispatcher's `TState`). |
 | `context` | `NodeContextType<TServices>` | Context from the parent execution. |
 
 `toRequest()` snapshots the clone into a wire-safe `ExecutionRequest` for cross-boundary transports.
@@ -207,7 +204,7 @@ const outcome: DagOutcomeType = DagOutcome.transportError('corr-1');
 | Field | Type | Description |
 |-------|------|-------------|
 | `terminalOutput` | `string` | Routing output the child resolved to. |
-| `errors` | `readonly NodeError[]` | Collected errors from the child run. |
+| `errors` | `readonly NodeErrorWireType[]` | Collected errors from the child run. |
 | `stateSnapshot` | `JsonObjectType \| null` | Terminal child state snapshot (`null` on transport failure). |
 | `intermediates` | `readonly ExecutorIntermediate[]` | Per-node results forwarded to the parent stream. |
 
@@ -238,17 +235,19 @@ Thrown when a container operation fails for infrastructure reasons (pool destroy
 
 ---
 
-## Enum: `TransportErrorCode`
+## Class: `TransportErrorCode`
 
 ```ts twoslash
-import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
-import type { TransportErrorCode } from '@studnicky/dagonizer/container';
+import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED, TransportErrorCode } from '@studnicky/dagonizer/container';
 // ---cut---
-const _transport: TransportErrorCode = DAG_CONTAINER_TRANSPORT;
-const _died: TransportErrorCode = DAG_CONTAINER_WORKER_DIED;
+const isTransport: boolean = TransportErrorCode.isInfrastructureFailure(DAG_CONTAINER_TRANSPORT);
+const isDied: boolean = TransportErrorCode.isInfrastructureFailure(DAG_CONTAINER_WORKER_DIED);
+const isOther: boolean = TransportErrorCode.isInfrastructureFailure('domain.someError');
 ```
 
-`TransportErrorCode` groups the two transport-level error codes. `DAG_CONTAINER_TRANSPORT` signals a serialization or message-bus failure; `DAG_CONTAINER_WORKER_DIED` signals an unexpected isolate crash.
+`TransportErrorCode` is a static class that groups the two transport-level error code constants and provides a membership predicate. `DAG_CONTAINER_TRANSPORT` signals a serialization or message-bus failure; `DAG_CONTAINER_WORKER_DIED` signals an unexpected isolate crash.
+
+`TransportErrorCode.isInfrastructureFailure(code: string): boolean` — returns `true` when `code` is either `DAG_CONTAINER_TRANSPORT` or `DAG_CONTAINER_WORKER_DIED`. The scatter and embedded-DAG execution branches use this to decide whether to retry (infrastructure failure: leave scatter item un-acked) or ack (the DAG ran to a terminal and routed to its `error` output).
 
 ---
 

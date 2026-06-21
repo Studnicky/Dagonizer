@@ -67,14 +67,16 @@ Runtime wiring is the standard `registerNode` plus `registerDAG` pair:
 
 ### `BackoffStrategy`
 
-| Value | Delay formula |
-|---|---|
-| `CONSTANT` | `baseDelay` (each attempt identical) |
-| `LINEAR` | `baseDelay × attempt` |
-| `EXPONENTIAL` | `baseDelay × multiplier^(attempt-1)` (default) |
-| `DECORRELATED_JITTER` | Random in `[baseDelay, baseDelay × 3]` |
+`BackoffStrategyType` is a string union: `'constant' | 'linear' | 'exponential' | 'decorrelated-jitter'`. Use the runtime string values directly, or reference the `BackoffStrategyNames` constants object (`CONSTANT`, `LINEAR`, `EXPONENTIAL`, `DECORRELATED_JITTER`) whose values resolve to those strings.
 
-All strategies apply `jitterFactor` (default `0.1`, plus or minus 10%) to spread retry traffic, except `DECORRELATED_JITTER` which is already random. The final delay is capped at `maxDelay` (default 30 s).
+| Constant key | Runtime string value | Delay formula |
+|---|---|---|
+| `CONSTANT` | `'constant'` | `baseDelay` (each attempt identical) |
+| `LINEAR` | `'linear'` | `baseDelay × attempt` |
+| `EXPONENTIAL` | `'exponential'` | `baseDelay × multiplier^(attempt-1)` (default) |
+| `DECORRELATED_JITTER` | `'decorrelated-jitter'` | Random in `[baseDelay, baseDelay × 3]` |
+
+All strategies apply `jitterFactor` (default `0.1`, plus or minus 10%) to spread retry traffic, except `'decorrelated-jitter'` which is already random. The final delay is capped at `maxDelay` (default 30 s).
 
 ### Error filtering
 

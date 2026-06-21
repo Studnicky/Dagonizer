@@ -126,6 +126,39 @@ The pattern with inputs and outputs field mapping is shown in the embedded DAG p
 
 Supply `TChildState` and `TParentState` to narrow path strings at compile time; both default to `NodeStateInterface`, which accepts any string.
 
+### Runtime DAG resolution: `dagFrom` and `from`
+
+Both `.scatter()` and `.embeddedDAG()` accept a runtime-resolved DAG name in addition to a build-time string literal. This is the engine's primitive for recursion and self-reference: the DAG to run is chosen from state at execution time rather than being hard-coded at authoring time.
+
+**`.embeddedDAG()` with `{ from: 'statePath' }`**
+
+Pass `{ from: 'statePath' }` as the `dag` argument. At execution time the engine reads the dotted state path and looks up the resulting string as a registered DAG name. If the resolved name is unregistered, the placement routes to `error` without throwing.
+
+```ts
+// The DAG to invoke is stored in state.selectedDag at runtime.
+builder.embeddedDAG(
+  'invoke',
+  { from: 'selectedDag' },   // resolved from state at execution time
+  { success: 'next', error: 'end-fail' },
+);
+```
+
+**`.scatter()` with `{ dagFrom: 'statePath' }` as the body**
+
+Pass `{ dagFrom: 'statePath' }` as the `body` argument. Each scatter clone resolves the state path to a DAG name and runs that DAG as its body. Unregistered names route the clone to `error`.
+
+```ts
+builder.scatter(
+  'fan-out',
+  'items',
+  { dagFrom: 'cloneConfig.targetDag' },  // resolved per-clone from state
+  { 'all-success': 'merge', 'all-error': 'end-fail', 'partial': 'merge', 'empty': 'end' },
+  { gather: { strategy: 'discard' } },
+);
+```
+
+Both variants are the engine's only recursive primitive: a node can write a DAG name into state (or inherit one from its placement's source item) and the engine resolves it at the point of invocation. This enables trampoline flows and polymorphic fan-out without hard-coded DAG names in the topology.
+
 ## `.terminal(name, options?)`
 
 <<< @/../examples/dags/09-terminals.ts#terminal-completed
@@ -146,7 +179,7 @@ When the child DAG exits with a failed terminal, the `error` output arrives at `
 
 <<< @/../examples/dags/09-terminals.ts#terminal-failed
 
-Running with `state.shouldPass = true` produces `lifecycle.kind = 'completed'`; running with `false` produces `'failed'`.
+Running with `state.shouldPass = true` produces `lifecycle.variant = 'completed'`; running with `false` produces `'failed'`.
 
 ## `.phase(name, phase, node)`
 

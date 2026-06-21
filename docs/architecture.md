@@ -19,12 +19,12 @@ seeAlso:
 
 <script setup lang="ts">
 import { DAG_CONTEXT } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 import DagGraph from './.vitepress/theme/components/DagGraph.vue';
 
 // Sample three-node DAG used to illustrate output routing.
 // validate → enrich → save, with explicit terminal routes.
-const sampleDAG: DAG = {
+const sampleDAG: DAGType = {
   '@context': DAG_CONTEXT,
   '@id': 'urn:noocodex:dag:sample',
   '@type': 'DAG',
@@ -73,13 +73,37 @@ When a top-level DAG completes at a terminal placement that is bound to a `Hando
 
 The engine is domain-agnostic. The Archivist (LLM-agent bibliographic assistant) and the Cartographer (streaming multi-format data-orchestration / ETL, no LLM) both run on the identical dispatcher, lifecycle FSM, scatter/gather machinery, and checkpoint/resume mechanism. The difference is entirely in the node implementations; the engine is the same.
 
+## Ports and adapters (hexagonal architecture)
+
+Dagonizer is structured as a **ports-and-adapters** (hexagonal) architecture. The distinction between what is inside the engine and what consumers supply is explicit and enforced by the module boundary.
+
+**The hexagon — engine core.** The dispatcher (`Dagonizer`), the lifecycle FSM (`DAGLifecycleMachine`), and the scatter/gather machinery are the application kernel. They implement all orchestration logic and depend on no external infrastructure. They are the only place where execution policy lives.
+
+**Ports — the adapter contracts.** Each boundary the engine crosses has a named interface in `src/contracts/`. These are the ports:
+
+| Port | Contract | Role |
+|------|----------|------|
+| Node execution | `NodeInterface<TState, TOutput, TServices>` | The step the dispatcher calls |
+| Clock | `ClockProviderInterface` | Monotonic time source |
+| Scheduler | `SchedulerProviderInterface` | Timer/sleep primitives |
+| State store | `StoreInterface` | Key-value persistence |
+| Checkpoint store | `CheckpointStoreInterface` | Cursor + state snapshot persistence |
+| DAG container | `DagContainerInterface` | Sub-DAG isolation (worker thread, fork, cluster) |
+| Channel | `HandoffChannelInterface` | Cross-host state hand-off |
+| Embedder | `EmbedderInterface` | Vector embedding backend |
+| LLM | `LlmAdapterInterface` | Chat-completion transport |
+
+**Adapters — consumer-supplied implementations.** Consumers wire their chosen backends to these ports at dispatcher construction time via `options.containers`, `options.channels`, and `Clock.configure()` / `Scheduler.configure()`. The engine does not import any infrastructure class directly — it only calls through the contract.
+
+This is why **class extension and contract implementation are the only extension mechanisms** in this package. There are no callbacks and no function-pass-in. Every behavior change attaches to a port (an interface the engine calls through) or a hook (a protected method the consumer overrides). The engine's internals remain testable in isolation; any backend can be swapped without touching the orchestration code.
+
 ## Core objects
 
 | Object | Role |
 |--------|------|
 | `Dagonizer<TState>` | Dispatcher. Holds the node and DAG registries. Executes DAGs. |
 | `DAG` | Plain-object graph definition: nodes plus entrypoint. |
-| `NodeInterface<TState, TOutput>` | Stateless unit of work. Receives node state and context; returns an output name. |
+| `NodeInterface<TState, TOutput, TServices>` | Stateless unit of work. Receives a `Batch<TState>` and a `NodeContextType<TServices>`; returns a `RoutedBatchType<TOutput, TState>`. |
 | `NodeStateInterface` | Lifecycle and error/warning accumulation surface. Travels through every node. |
 | `Execution<TState>` | Handle returned by `execute()` and `resume()`. AsyncIterable and PromiseLike. |
 
@@ -94,6 +118,19 @@ flowchart TB
     G[embedded] --> H[sub-DAG once, route on child outcome]
   end
 ```
+
+### Node taxonomy
+
+Two abstract base classes cover the authoring surface:
+
+- **`MonadicNode<TState, TOutput, TServices>`** — the root node base. Implements `NodeInterface` and supplies `name` / `outputs` / `outputSchema` / `timeout` / `validate` / `destroy`, leaving `execute(batch)` abstract. Extend directly for **batch-native** nodes — the hot path where one call processes the whole batch and shares caches across items.
+- **`ScalarNode<TState, TOutput, TServices>`** — extends `MonadicNode`. You implement `protected executeOne(state, context): Promise<NodeOutputType<TOutput>>`; the base loops it over the batch and groups items by returned port. This is the common per-item case.
+
+`MonadicNode` ships from `@studnicky/dagonizer/patterns` alongside the agent-flow template-method bases; `ScalarNode` ships from `@studnicky/dagonizer` (the root barrel).
+
+#### `dagFrom` — runtime DAG resolution
+
+A scatter or embedded placement body can declare `{ dagFrom: 'path.to.field' }` instead of a fixed `{ dag: 'name' }`. The dispatcher reads the dotted path from each item's state at runtime to resolve the DAG name. This is the recursion / self-reference primitive: a scatter where each clone's body is determined by the clone's own state, including the case where a flow dispatches back to itself.
 
 **`single`**, the fundamental unit. One registered node; output name selects the next node. Flows terminate at an explicit `TerminalNode`.
 
@@ -111,7 +148,7 @@ A validate node routes to an enrich step on `valid`; enrich routes to save on `s
 
 ## Lifecycle FSM
 
-Every DAG execution runs a lifecycle state machine. The dispatcher transitions it; nodes observe it via `state.lifecycle.kind`.
+Every DAG execution runs a lifecycle state machine. The dispatcher transitions it; nodes observe it via `state.lifecycle.variant`.
 
 ```mermaid
 stateDiagram-v2
@@ -131,7 +168,7 @@ Terminal states are sticky: once reached, all further events are silently ignore
 
 ### Lifecycle timestamps
 
-Narrowing `state.lifecycle.kind` unlocks the typed fields:
+Narrowing `state.lifecycle.variant` unlocks the typed fields:
 
 <<< @/../examples/18-observability.ts#lifecycle-state
 
@@ -242,7 +279,7 @@ Consumers extend these classes; the interface is what their subclasses implement
 
 What consumers implement to swap a backend or contribute behavior. Live at the root of `src/contracts/`. **Single source of truth**; never re-exported from sibling modules.
 
-Examples: `ClockProvider`, `SchedulerProvider`, `NodeInterface`, `ExecuteOptionsType`, `RetryPolicyOptionsType`, `ErrorConstructorType`, `DagContainerInterface`, `HandoffChannelInterface`, `RegistryModuleInterface`.
+Examples: `ClockProviderInterface`, `SchedulerProviderInterface`, `NodeInterface`, `ExecuteOptionsType`, `RetryPolicyOptionsType`, `ErrorConstructorType`, `DagContainerInterface`, `HandoffChannelInterface`, `RegistryModuleInterface`.
 
 A `runtime/` barrel re-exports an adapter contract for ergonomic co-import with the engine class. The source of the type stays in `contracts/`.
 
@@ -272,16 +309,16 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./contracts` | Every adapter contract |
 | `./entities` | Every JSON Schema and derived type |
 | `./errors` | `DAGError` and subclasses, `DAGErrorInterface` |
-| `./constants` | Constant value plus type pairs (values `GatherStrategyNames`, `MetadataKeys`, `NodeTypes`, `OutputNames`, `ScatterOutputNames`; types `GatherStrategyName`, `MetadataKey`, `NodeType`, `Output`, `ScatterOutput`) |
+| `./constants` | Constant value plus type pairs (values `GatherStrategyNames`, `MetadataKeys`, `NodeTypes`, `OutputNames`, `ScatterOutputNames`; types `GatherStrategyNameType`, `MetadataKeyType`, `NodeType`, `OutputType`, `ScatterOutputType`) |
 | `./lifecycle` | `DAGLifecycleMachine`, lifecycle types |
 | `./runtime` | `Clock`, `Scheduler`, `RetryPolicy`, `RealTimeScheduler`, `BackoffStrategy` |
 | `./builder` | `DAGBuilder` and its option interfaces |
-| `./validation` | `Validator` and `EntityValidator<T>` |
+| `./validation` | `Validator` and `EntityValidatorInterface<T>` |
 | `./checkpoint` | `Checkpoint`, `CheckpointRestoreAdapter` |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler` (test-only) |
-| `./adapter` | `LlmAdapter`, `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterCascade`, `LlmAdapterRegistry`, `BaseEmbedder`, `EmbedderCascade`, `EmbedderRegistry`, related types |
-| `./patterns` | `MonadicNode` base class, `LlmClient` and `TripleStore` service contracts for pattern plugins |
-| `./tool` | `Tool` interface, `ToolError`, `HttpTransport` shared fetch wrapper |
+| `./adapter` | `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterCascade`, `LlmAdapterRegistry`, `BaseEmbedder`, `EmbedderCascade`, `EmbedderRegistry`; type `LlmAdapterInterface`; chat/tool schemas and `FromSchema` types; capability descriptors |
+| `./patterns` | `MonadicNode` (root node base); `AgentServicesType`; agent-flow template-method node bases (`BuildChatRequestNode`, `CallModelNode`, `NormalizeResponseNode`, `DecodeTextToolCallsNode`, `AppendAssistantNode`, `NormalizeToolCallsNode`, `BuildToolWorksetsNode`, `CollectToolResultsNode`); `ToolCallScatterItemType`; `LlmClientInterface`; `TripleStoreInterface` |
+| `./tool` | `ToolInterface`, `ToolError`, `HttpTransport`, `OpenApiGuard`, `ToolRegistry`, `ToolInvokeNode`, `ToolInvocationState` |
 | `./core` | `GatherStrategies`, `OutcomeReducers` extension registries |
 | `./viz` | `MermaidRenderer`, `JsonLdRenderer`, `CytoscapeRenderer`, `CytoscapeGraph`, `CompositeLayout` |
 | `./store` | `Store` contract, `BaseStore`, `MemoryStore`, `TypedStore`, `StoreError` |
@@ -294,9 +331,9 @@ Consumers import from the narrowest subpath that gives them what they need. The 
 
 Class extension is the only extension mechanism. Zero callbacks. Zero function-pass-in.
 
-- **Observability**: subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`). Multi-observer composition is the consumer's responsibility; write it into the subclass.
+- **Observability**: subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`). Multi-observer composition is the consumer's responsibility; write it into the subclass.
 - **Domain state**: subclass `NodeStateBase`. Override `snapshotData()` and `restoreData()` for checkpointable fields.
-- **Nodes**: implement `NodeInterface<TState, TOutput>`. Nodes never throw; they route to a named output.
-- **Time and scheduling**: implement `ClockProvider` and `SchedulerProvider`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` and `VirtualScheduler` for deterministic time.
+- **Nodes**: implement `NodeInterface<TState, TOutput, TServices>`. Nodes never throw; they return a routed batch. Extend `ScalarNode` and implement `executeOne` for the per-item case.
+- **Time and scheduling**: implement `ClockProviderInterface` and `SchedulerProviderInterface`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` and `VirtualScheduler` for deterministic time.
 - **Isolating compute**: implement `DagContainerInterface` to run an embedded DAG or scatter-dag-body in any isolate. Bind roles to backend instances at dispatcher construction via `options.containers`. The `@studnicky/dagonizer-executor-node` package ships `WorkerThreadContainer`, `ForkContainer`, `ClusterContainer`, and `SpawnContainer` for Node.js deployments.
 - **Cross-host egress**: implement `HandoffChannelInterface` to publish `DAGHandoff` envelopes to any transport (queue, message bus, HTTP endpoint). Bind to terminal names at construction via `options.channels`. `InMemoryChannel` (from `./channels`) is the reference implementation for tests and demos.

@@ -51,15 +51,15 @@ import { NodeStateBase } from '@studnicky/dagonizer';
 export class TripState extends NodeStateBase {
   conversationId: string = '';
   preferences: Partial<{ budget: number; duration: string }> = {};
-  handoff: HandoffState = { kind: 'empty' };
+  handoff: HandoffState = { variant: 'empty' };
   // ... other fields
 }
 
 // HandoffState.ts — conversation machine
 export type HandoffState =
-  | { kind: 'empty' }
-  | { kind: 'awaiting_slots'; nextQuestion: string }
-  | { kind: 'ready'; normalizedPreferences: Record<string, unknown> };
+  | { variant: 'empty' }
+  | { variant: 'awaitingSlots'; nextQuestion: string }
+  | { variant: 'ready'; normalizedPreferences: Record<string, unknown> };
 
 // HandoffMachine.ts — reducer
 export class HandoffMachine {
@@ -68,12 +68,12 @@ export class HandoffMachine {
     event: { type: 'firstTurnExtracted' | 'slotsUpdated' | 'reset' },
     context: { extractedPreferences: Record<string, unknown> }
   ): HandoffState {
-    if (state.kind === 'empty' && event.type === 'firstTurnExtracted') {
+    if (state.variant === 'empty' && event.type === 'firstTurnExtracted') {
       const missing = Object.keys(context.extractedPreferences).length < 2;
       if (missing) {
-        return { kind: 'awaiting_slots', nextQuestion: 'How long do you want to travel?' };
+        return { variant: 'awaitingSlots', nextQuestion: 'How long do you want to travel?' };
       }
-      return { kind: 'ready', normalizedPreferences: context.extractedPreferences };
+      return { variant: 'ready', normalizedPreferences: context.extractedPreferences };
     }
     // ... more transitions
     return state;
@@ -81,7 +81,9 @@ export class HandoffMachine {
 }
 
 // IntakeNode.ts — the interactive node
-import type { NodeInterface, NodeOutputInterface } from '@studnicky/dagonizer';
+import type { NodeInterface } from '@studnicky/dagonizer';
+import type { NodeOutputType } from '@studnicky/dagonizer/entities';
+import { NodeOutputBuilder } from '@studnicky/dagonizer/entities';
 
 export class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'success'> {
   readonly name = 'intake';
@@ -89,7 +91,11 @@ export class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'succ
 
   constructor(private readonly llm: LLMAdapter) {}
 
-  async execute(state: TripState): Promise<NodeOutputInterface<'incomplete' | 'success'>> {
+  async execute(batch: Batch<TripState>, context: NodeContextType): Promise<RoutedBatchType<'incomplete' | 'success', TripState>> {
+    // Nodes implement execute over a Batch; this shows the per-item pattern for clarity.
+    // In practice, extend ScalarNode and implement executeOne instead.
+    const state = batch.items[0].state;
+
     // Read inbound message from orchestrator
     const userMessage = state.getMetadata<string>('userMessage') ?? '';
 
@@ -107,13 +113,13 @@ export class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'succ
     });
 
     // Write outbound message
-    if (state.handoff.kind === 'awaiting_slots') {
+    if (state.handoff.variant === 'awaitingSlots') {
       state.setMetadata('assistantMessage', {
         role: 'assistant',
         content: state.handoff.nextQuestion,
       });
       // Return 'incomplete' → route to 'incomplete' terminal → HTTP turn ends
-      return { output: 'incomplete' };
+      return NodeOutputBuilder.of('incomplete');
     }
 
     // All slots filled; continue to specialist nodes
@@ -121,7 +127,7 @@ export class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'succ
       role: 'assistant',
       content: 'Got it! Finding options for you...',
     });
-    return { output: 'success' };
+    return NodeOutputBuilder.of('success');
   }
 }
 ```
@@ -130,33 +136,34 @@ export class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'succ
 
 ```typescript
 // Orchestrator.ts
-import { Dagonizer, DagBlueprint } from '@studnicky/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer/builder';
 
 export class TripOrchestrator {
-  private dagonizer: Dagonizer<TripState>;
+  private dispatcher: Dagonizer<TripState>;
   private stateStore: StateStore;
 
-  async assemble() {
+  assemble() {
     // Wire nodes with constructor injection (no services bag needed)
     const intake = new IntakeNode(this.llm);
     const retrieve = new RetrievalNode(this.searchEngine);
     const propose = new ProposalNode(this.templateEngine);
 
-    // Build the DAG
-    const blueprint = DagBlueprint.create<TripState>('trip-planner')
-      .route('intake', 'success', 'retrieve')
-      .route('intake', 'incomplete', 'incomplete')  // terminal
-      .route('retrieve', 'success', 'propose')
-      .route('propose', 'success', 'respond')
-      .terminal('incomplete')
-      .terminal('success');
+    // Build the DAG using DAGBuilder
+    const dag = new DAGBuilder('trip-planner', '1.0')
+      .node('intake',    intake,    { success: 'retrieve', incomplete: 'end-incomplete' })
+      .node('retrieve',  retrieve,  { success: 'propose' })
+      .node('propose',   propose,   { success: 'end-success' })
+      .terminal('end-incomplete')
+      .terminal('end-success')
+      .build();
 
     // Construct dispatcher with no services (optional; could use context.services too)
-    this.dagonizer = new Dagonizer<TripState>(blueprint);
-    this.dagonizer.register('intake', intake);
-    this.dagonizer.register('retrieve', retrieve);
-    this.dagonizer.register('propose', propose);
-    // ... register other nodes
+    this.dispatcher = new Dagonizer<TripState>();
+    this.dispatcher.registerNode(intake);
+    this.dispatcher.registerNode(retrieve);
+    this.dispatcher.registerNode(propose);
+    this.dispatcher.registerDAG(dag);
   }
 
   async runTurn(conversationId: string, userMessage: string): Promise<string> {
@@ -171,7 +178,7 @@ export class TripOrchestrator {
     state.setMetadata('userMessage', userMessage);
 
     // Execute the DAG
-    const result = await this.dagonizer.execute('trip-planner', state);
+    await this.dispatcher.execute('trip-planner', state);
 
     // Read response from metadata
     const reply = state.getMetadata<AssistantMessage>('assistantMessage');
@@ -275,19 +282,22 @@ export class EventBus {
 }
 
 // EscalateForDecisionNode.ts — the HITL node
-import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { NodeInterface } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer/entities';
+import { NodeOutputBuilder } from '@studnicky/dagonizer/entities';
 
 export class EscalateForDecisionNode
-  implements NodeInterface<RefundAgentState, 'queued'>
+  implements NodeInterface<RefundAgentState, 'queued', RefundAgentServices>
 {
   readonly name = 'escalate-for-decision';
   readonly outputs = ['queued'] as const;
 
   async execute(
-    state: RefundAgentState,
-    context: NodeContextInterface<RefundAgentServices>
-  ): Promise<NodeOutputInterface<'queued'>> {
+    batch: Batch<RefundAgentState>,
+    context: NodeContextType<RefundAgentServices>
+  ): Promise<RoutedBatchType<'queued', RefundAgentState>> {
     const { escalations, eventBus } = context.services;
+    const state = batch.items[0].state;
 
     // Enqueue the decision for a human
     const item = escalations.enqueue(
@@ -299,16 +309,16 @@ export class EscalateForDecisionNode
     );
 
     // Publish to admin SSE stream
-    eventBus.publish('escalations', { kind: 'queued', item });
+    eventBus.publish('escalations', { variant: 'queued', item });
 
     // Also publish to the customer's SSE stream (tell them to wait)
     eventBus.publish(`conversation:${state.customerId}`, {
-      kind: 'pending',
+      variant: 'pending',
       message: 'Your request is under review. You will be notified shortly.',
     });
 
     state.escalation = item;
-    return { output: 'queued' };
+    return NodeOutputBuilder.of('queued');
   }
 }
 ```
@@ -334,7 +344,8 @@ export class ConversationEngine {
       store: this.store,
     };
 
-    // Create dispatcher with services
+    // Create dispatcher with services (nodes and DAG registered once at startup,
+    // then re-used across turns; shown inline here for clarity)
     const dispatcher = new Dagonizer<RefundAgentState, RefundAgentServices>({
       services: turnServices,
     });
@@ -359,7 +370,7 @@ export class ConversationEngine {
 
     return {
       reply: reply?.content ?? 'Something went wrong.',
-      resolutionKind: state.resolutionKind, // 'approved', 'denied', or 'pending'
+      resolution: state.resolution, // 'approved', 'denied', or 'pending'
     };
   }
 }
@@ -376,13 +387,13 @@ export async function handleEscalationApprove(escalationId: string, decision: 'a
 
     // Notify customer via EventBus → SSE stream
     eventBus.publish(`conversation:${item.customerId}`, {
-      kind: 'resolved',
+      variant: 'resolved',
       decision: 'approved',
       reply,
     });
   } else {
     eventBus.publish(`conversation:${item.customerId}`, {
-      kind: 'resolved',
+      variant: 'resolved',
       decision: 'denied',
       reply: 'Unfortunately, your request does not qualify.',
     });
@@ -392,7 +403,7 @@ export async function handleEscalationApprove(escalationId: string, decision: 'a
   escalations.remove(escalationId);
 
   // Notify admin stream
-  eventBus.publish('escalations', { kind: 'resolved', itemId: escalationId, decision });
+  eventBus.publish('escalations', { variant: 'resolved', itemId: escalationId, decision });
 
   return { ok: true };
 }
@@ -450,16 +461,15 @@ export function makeSseStream(eventBus: EventBus, customerId: string) {
 ```typescript
 class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'success'> {
   constructor(private readonly llm: LLMAdapter) {}
-  async execute(state: TripState) { /* uses this.llm */ }
+  // implements execute(batch, context) — uses this.llm
 }
 
-orchestrator.assemble();
 const intake = new IntakeNode(this.llm);
-dagonizer.register('intake', intake);
+dispatcher.registerNode(intake);
 ```
 
 **Pros**: Simple, testable in isolation, no framework container.  
-**Cons**: Must wire all dependencies at `assemble()` time.
+**Cons**: Must wire all dependencies at assembly time.
 
 ### Option B: context.services (better for per-turn variation)
 
@@ -470,7 +480,10 @@ interface MyServices {
 }
 
 class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'success', MyServices> {
-  async execute(state: TripState, context: NodeContextInterface<MyServices>) {
+  readonly name = 'intake';
+  readonly outputs = ['incomplete', 'success'] as const;
+
+  async execute(batch: Batch<TripState>, context: NodeContextType<MyServices>): Promise<RoutedBatchType<'incomplete' | 'success', TripState>> {
     const { llm } = context.services;
     // uses context.services.llm
   }

@@ -79,6 +79,33 @@ Services live on the dispatcher instance. There is no per-execution scope; the s
 
 If a service needs per-execution state (such as a request ID), put the per-execution data in `state` instead. The bag is for things that outlive any one execution.
 
+## `AgentServicesType`
+
+`AgentServicesType` is the canonical services bag for agent-flow dispatchers. It is exported from `@studnicky/dagonizer/contracts` and typed as:
+
+```ts
+import type { LlmAdapterInterface } from '@studnicky/dagonizer/contracts';
+import type { ToolRegistry } from '@studnicky/dagonizer/tool';
+
+type AgentServicesType = {
+  readonly llm: LlmAdapterInterface;
+  readonly tools: ToolRegistry;
+};
+```
+
+Wire it at dispatcher construction time:
+
+```ts
+import { Dagonizer } from '@studnicky/dagonizer';
+import type { AgentServicesType } from '@studnicky/dagonizer/contracts';
+
+const dispatcher = new Dagonizer<MyState, AgentServicesType>({
+  services: { llm: myLlmAdapter, tools: myToolRegistry },
+});
+```
+
+Nodes receive `context.services.llm` (the `LlmAdapterInterface` for chat calls) and `context.services.tools` (the `ToolRegistry` for tool dispatch). No `dispatcher` field exists on this bag; the engine wires the dispatcher internally and it is not exposed through the services surface.
+
 ## Related reference
 
 - [Reference: Dagonizer](../reference/dagonizer)

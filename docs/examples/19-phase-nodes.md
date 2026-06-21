@@ -34,7 +34,7 @@ Execution order:
 - **`DAGBuilder.phase(name, 'pre', node)`.** Registers a pre-phase placement. The node runs before the entrypoint. Multiple pre-phases run in declaration order. A throw in any pre-phase aborts the run.
 - **`DAGBuilder.phase(name, 'post', node)`.** Registers a post-phase placement. The node runs after every exit path — success, abort, timeout, or failed terminal. Errors in post-phase nodes are appended as warnings on state (`state.warnings`), not re-thrown.
 - **Phase nodes do not route.** Phase placements have no outputs map. The node's return value is ignored for routing; only the side-effect (state mutation, metrics flush, lock release) matters.
-- **Lifecycle is set before post-phase runs.** The post-phase node reads `state.lifecycle.kind` to see whether the main loop completed, aborted, or failed — useful for conditional cleanup.
+- **Lifecycle is set before post-phase runs.** The post-phase node reads `state.lifecycle.variant` to see whether the main loop completed, aborted, or failed — useful for conditional cleanup.
 - **`executionLog` ordering guarantee.** The example verifies that the log is `['pre-setup', 'compute', 'post-audit']` — pre runs first, post runs last, regardless of the main loop's exit path.
 
 ## Run
