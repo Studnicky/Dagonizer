@@ -1,5 +1,14 @@
 # @studnicky/dagonizer-executor-node
 
+## 0.25.0
+
+### Patch Changes
+
+- Updated dependencies [feba895]
+- Updated dependencies [ad70ba1]
+- Updated dependencies [feba895]
+  - @studnicky/dagonizer@0.25.0
+
 ## 0.24.0
 
 ### Patch Changes
