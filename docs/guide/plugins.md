@@ -23,7 +23,7 @@ The plugin packages are GitHub-only and not yet published to npm. Install via th
 | Tier | Subpath consumed | Packages | Shape |
 |------|------------------|----------|-------|
 | **Adapters** | `@studnicky/dagonizer/adapter` | `@studnicky/dagonizer-adapter-*` (8) | Concrete drop-in classes |
-| **Tools** | `@studnicky/dagonizer/tool` (+ `/adapter`) | `@studnicky/dagonizer-tool-*` (3) | Concrete classes implementing `Tool<TInput, TOutput>` |
+| **Tools** | `@studnicky/dagonizer/tool` (+ `/adapter`) | `@studnicky/dagonizer-tool-*` (3) | Concrete classes implementing `ToolInterface<TInput, TOutput>` |
 | **Patterns** | `@studnicky/dagonizer/patterns` (+ `/adapter`, `/tool`) | `@studnicky/dagonizer-patterns-*` (3) | Abstract base classes consumers extend |
 
 ## `@studnicky/dagonizer/adapter`
@@ -32,12 +32,12 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 
 | Symbol | Role |
 |--------|------|
-| `LlmAdapter` | The contract every adapter implements (`chat(ChatRequestType): Promise<ChatResponse>`) |
+| `LlmAdapterInterface` | The contract every adapter implements (`chat(ChatRequestType): Promise<ChatResponseType>`) |
 | `BaseAdapter` | Abstract base with retry, error classification, request normalization |
 | `OpenAiCompatibleAdapter` | Concrete base for OpenAI-shaped HTTP backends |
 | `LlmAdapterCascade`, `LlmAdapterRegistry`, `AdapterDescriptor` | Multi-adapter routing |
 | `EmbedderCascade`, `EmbedderRegistry`, `BaseEmbedder` | Embedding model cascade |
-| `ChatRequestType`, `ChatResponse`, `ChatRequestBuilder`, `ChatResponseMessageBuilder` | Wire types and value factories |
+| `ChatRequestType`, `ChatResponseType`, `ChatRequestBuilder`, `ChatResponseMessageBuilder` | Wire types and value factories |
 | `LlmError`, `Classifications` | Error taxonomy — `LlmError.classifyHttp(status, body)` and `LlmError.ofNetworkError(err)` are static methods on `LlmError` |
 | `ToolCallCodec` | JSON envelope decoder for models that emit tool calls as text (Gemini Nano, WebLLM) |
 | `AdapterCapabilitiesType`, `ToolCall`, `ToolChoiceType`, `ToolDefinition`, `TokenUsage` | Capability metadata |
@@ -60,7 +60,7 @@ The tool subpath exposes a small surface for external-service wrappers:
 
 | Symbol | Role |
 |--------|------|
-| `Tool<TInput, TOutput>` | Contract: `definition` (the JSON-Schema LLM-facing surface) + `execute(input, options?)` |
+| `ToolInterface<TInput, TOutput>` | Contract: `definition` (the JSON-Schema LLM-facing surface) + `execute(input, options?)` |
 | `ToolError` | Error type with `classification.reason` |
 | `HttpTransport` | Built-in retry, timeout, abort propagation, JSON parsing for HTTP-backed tools |
 
@@ -81,9 +81,9 @@ The patterns subpath exposes the abstract `MonadicNode` root plus the service co
 | Symbol | Role |
 |--------|------|
 | `MonadicNode<TState, TOutput, TServices>` | Abstract base class. Owns the dispatch loop; subclasses inject domain pieces via abstract methods |
-| `LlmClient` | Service contract: `chat(ChatRequestType): Promise<ChatResponse>` (subset of `LlmAdapter`) |
-| `TripleStore` | Service contract: `assert`, `ask`, `select`, `count`, `clearGraph`, `triples` |
-| `Binding`, `Quad`, `SlotPattern`, `Term` | RDF value types used by `TripleStore` |
+| `LlmClientInterface` | Service contract: `chat(ChatRequestType): Promise<ChatResponseType>` (subset of `LlmAdapterInterface`) |
+| `TripleStoreInterface` | Service contract: `assert`, `ask`, `select`, `count`, `clearGraph`, `triples` |
+| `Binding`, `Quad`, `SlotPattern`, `Term` | RDF value types used by `TripleStoreInterface` |
 
 ### Pattern taxonomy
 

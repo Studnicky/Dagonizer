@@ -129,31 +129,36 @@ The stored shape is a record keyed by the scatter placement's `name`, so multipl
 import type { ScatterProgressType, StoredScatterProgressType } from '@studnicky/dagonizer/entities';
 // ---cut---
 // ScatterProgress is a discriminated union on `mode`.
-// `retained` mode stores full per-item results; `bounded` stores a watermark.
+// `retained` mode stores full per-item acked results (used by map/append/collect strategies).
+// `bounded` mode stores a watermark + ahead-acked indices (used by partition/discard strategies).
 declare const stored: StoredScatterProgressType;
 declare const progress: ScatterProgressType;
 
 // Fields common to both branches:
 const name: string = progress.placementName;
+const inbox = progress.inbox;   // ScatterInboxItemType[] — items pulled but not yet acked
 
-// Narrow to access mode-specific fields:
+// Narrow on `mode` to access branch-specific fields:
 if (progress.mode === 'retained') {
-  const results = progress.ackedResults;   // ScatterAckedResult[]
+  const results = progress.ackedResults;   // ScatterAckedResultType[] — completed items
   void results;
 } else {
-  const mark: number = progress.watermark; // bounded watermark index
-  void mark;
+  // progress.mode === 'bounded'
+  const mark: number = progress.watermark;  // highest contiguously-acked index
+  const ahead = progress.aheadAcked;        // { index, output }[] — acked items above watermark
+  const tally = progress.outcomeTally;      // Record<string, number> — per-output counts
+  void mark; void ahead; void tally;
 }
 
-void name;
+void name; void inbox;
 void stored;
 export {};
 ```
 
 ### Lifecycle
 
-1. **On entry**: `executeScatter` reads `state.metadata[SCATTER_PROGRESS_KEY]?.[scatter.name]`. Items whose indices appear in `completedIndices` are skipped; their recorded outputs rehydrate the gather accumulator.
-2. **Per-batch write**: after each `Promise.all(batchPromises)` resolves, the dispatcher updates the placement's entry with the batch's completed indices. Writes happen once per batch (not per item) to keep the metadata update serialised across concurrent item promises.
+1. **On entry**: `executeScatter` reads `state.metadata[SCATTER_PROGRESS_KEY]?.[scatter.name]`. Items already recorded in `ackedResults` (retained mode) or at or below `watermark` (bounded mode) are skipped; their recorded outputs rehydrate the gather accumulator without re-executing the body.
+2. **Per-batch write**: after each `Promise.all(batchPromises)` resolves, the dispatcher updates the placement's entry with the batch's completed item records. Writes happen once per batch (not per item) to keep the metadata update serialised across concurrent item promises.
 3. **Pre-gather clear**: once every batch drains, the placement's entry is removed before the gather strategy runs. Gather always starts from a clean slate; subsequent re-runs of the same `ScatterNode` (such as inside a loop) do not see stale bookkeeping.
 
 ### Index semantics on resume

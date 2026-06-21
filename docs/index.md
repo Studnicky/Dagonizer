@@ -41,14 +41,20 @@ features:
     details: 'RetryPolicy provides constant, linear, exponential, and decorrelated-jitter strategies. Filter by error type. Cooperates with the abort signal so retries stop on cancellation.'
   - icon: ⊨
     title: JSON-LD Canonical Wire Format
-    details: 'DAG definitions are validated against DAGSchema (Ajv 2020-12) at the ingest boundary. Dagonizer.load is the single entry point for external JSON; everything inside is typed.'
+    details: 'DAG definitions are validated against DAGSchema (Ajv 2020-12) at the ingest boundary. DAGDocument.load(json) parses and validates a JSON string; DAGDocument.ofValue(value) validates an already-decoded object. Register the result with dispatcher.registerDAG(dag); everything inside is typed.'
   - icon: ◉
     title: Observability Hooks
-    details: 'Subclass Dagonizer and override onFlowStart, onFlowEnd, onNodeStart, onNodeEnd, and onError for structured metrics, tracing, and audit trails.'
+    details: 'Subclass Dagonizer and override onFlowStart, onFlowEnd, onNodeStart, onNodeEnd, onError, onPhaseEnter, and onPhaseExit for structured metrics, tracing, and audit trails.'
   - icon: ⏱
     title: Deterministic Testing
     details: 'VirtualClockProvider and VirtualScheduler replace platform timers in tests. Step through retry delays and deadlines with scheduler.advance(ms).'
 ---
+
+## ⦿ What problem it solves
+
+When work has multiple steps that depend on each other — classify, then fetch, then compose, then save — you need a way to express those dependencies, track shared state as work moves through them, stop safely when something goes wrong, and pick up where you left off if the process crashes. `@studnicky/dagonizer` is that infrastructure. You declare each step as a typed node and connect nodes in a DAG (a **D**irected **A**cyclic **G**raph — a graph where each step points forward to the next, with no cycles). The dispatcher runs the graph, routes between steps based on the output each step returns, and handles retries, cancellation, and checkpoint/resume without your nodes knowing about any of it.
+
+A **DAG** is therefore a graph of steps where each step's output drives the routing decision for the next step. Non-technical readers can think of it as a flowchart where each box is a typed function and the arrows are labelled with the outcomes.
 
 ## ⦿ One engine, two applications
 
@@ -56,7 +62,7 @@ features:
 
 ## ⦿ What it is
 
-A **node** is a typed, stateless unit of work that receives shared state and a context (including an `AbortSignal`) and returns a named output. The dispatcher routes on that output to the next node. Five placement kinds cover the composition space.
+A **node** is a typed, stateless unit of work that receives a batch of state items and a context (including an `AbortSignal` and an optional services bag) and returns a routed batch — each item mapped to a named output port. The dispatcher routes items to the next node based on their port. Implement `NodeInterface<TState, TOutput, TServices>` for full batch control, or extend `ScalarNode` and implement `executeOne` for the common per-item case. Five placement kinds cover the composition space.
 
 | Kind | What it does |
 |------|-------------|
@@ -80,7 +86,7 @@ pending ──start──▶ running ──succeed──▶ completed
 
 ## ⦿ No external runtime
 
-Dagonizer runs in-process. No worker pool, no external state store, no IPC. DAG definitions are plain JSON objects: store them in files, databases, or configuration services and load them at runtime via `Dagonizer.load`. The framework is browser-runnable; no Node.js-only primitives in the core engine.
+Dagonizer runs in-process. No worker pool, no external state store, no IPC. DAG definitions are plain JSON objects: store them in files, databases, or configuration services and load them at runtime via `DAGDocument.load(json)` (or `DAGDocument.ofValue(value)` for already-decoded objects), then register with `dispatcher.registerDAG(dag)`. The framework is browser-runnable; no Node.js-only primitives in the core engine.
 
 ## ⦿ See it in action
 

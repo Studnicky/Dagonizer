@@ -21,7 +21,7 @@ seeAlso:
 The tool-use surface provides typed tool definitions that the adapter forwards to the model's tool channel. This example demonstrates both dispatch paths with a real Ollama backend:
 
 1. **`Tool<TInput, TOutput>`.** A `calculator` tool with a JSON-Schema `ToolDefinition` that the adapter forwards to the model's `tools` parameter.
-2. **`OllamaApiAdapter` driving the native tools channel.** Sends the tool definition to `llama3.2`. When the model calls the tool, the adapter returns `response.message.kind === 'tools'` with a typed `ToolCall[]`. The DAG node dispatches the call directly.
+2. **`OllamaApiAdapter` driving the native tools channel.** Sends the tool definition to `llama3.2`. When the model calls the tool, the adapter returns `response.message.variant === 'tools'` with a typed `ToolCall[]`. The DAG node dispatches the call directly.
 3. **`ToolCallCodec.decode` text-channel fallback.** Fed a fixed assistant message string with embedded tool-call JSON — the format emitted by models that encode tool calls in prose. The codec extracts the `{ tool_calls: [...] }` envelope from arbitrary surrounding text. This path requires no model call and demonstrates the codec independently.
 4. **Dispatch to a registered `Tool`.** The DAG node dispatches to the matching `Tool` instance and routes on whether the call succeeded or failed.
 
@@ -43,7 +43,7 @@ Change `OLLAMA_MODEL` in the example to any tool-capable model you have pulled.
 
 - **`Tool<TInput, TOutput>`.** Declares `name`, a JSON-Schema `ToolDefinition` (forwarded to the model via the adapter's `tools` parameter), and an `execute(input)` method that returns `TOutput`. The type parameters enforce that the decoded call input matches the schema.
 - **`ToolDefinition`.** JSON Schema–compatible object forwarded to the LLM's `tools` parameter. The schema describes the tool's input shape so the model can emit a valid call.
-- **Native tools channel.** When the adapter receives a tool-call completion from the model, it returns `{ message: { kind: 'tools', toolCalls: ToolCall[] } }`. The DAG node receives a typed array directly with no string parsing required.
+- **Native tools channel.** When the adapter receives a tool-call completion from the model, it returns `{ message: { variant: 'tools', toolCalls: ToolCall[] } }`. The DAG node receives a typed array directly with no string parsing required.
 - **`ToolCallCodec.decode(text, context)`.** When a model embeds tool calls in prose rather than using the structured channel, `ToolCallCodec.decode` extracts the `{ tool_calls: [...] }` envelope. Tolerant of surrounding text before and after the JSON object. Useful for nano models and WebLLM.
 - **Tool dispatch.** After decoding, the node looks up the matching `Tool` by name in a registry, calls `tool.execute(input)`, and routes the DAG on success or failure.
 

@@ -59,45 +59,46 @@ visible in the routing table.
 
 ## Architecture
 
-Four DAGs, two scatters, and three embedded sub-DAGs:
+One top-level scatter and a tree of per-type embedded pipeline DAGs:
 
 ```
 cartographer (top-level)
-  phase('seed')                         ← pre-phase: build multi-format source feeds
-  scatter('ingest-sources', 'sources')  ← FAN-IN: one run of ingest-source per feed
-    └─ ingest-source                    ← per-source: decompress → parse → map → validate
-  merge-events                          ← flatten per-source buckets → canonicalEvents
-  scatter('process-events', 'canonicalEvents', concurrency=16)  ← STREAMING
-    └─ event-pipeline                   ← per-event: BRANCHING enrichment
-         ├─ route-geo (skip or run geo-resolve sub-DAG)
-         │    └─ geo-resolve            ← reverse-geocode ∥ ip-geolocate → fuse-geo
-         ├─ normalize → classify → route-kind (geo-only | sensor | order | customs)
-         ├─ route-redaction (skip or run gdpr-compliance sub-DAG)
-         │    └─ gdpr-compliance        ← consent-gate → classify-pii → redact-pii
-         └─ aggregate-event
+  phase('seed')                              ← pre-phase: build state.sources (array or AsyncIterable)
+  scatter('process-stream', 'sources',       ← STREAMING: one run of stream-event per source payload
+          { dag: 'stream-event' },
+          gather: insights-fold,             ← O(1) fold into state.insights / state.journeys / state.sampleRecords
+          concurrency: 16,
+          container: 'cpu',                  ← browser demo: WorkerThreadContainer (real OS threads)
+          reservoir: { keyField: 'eventType', capacity })
+    └─ stream-event                          ← decode-payload → route-event-type-variant
+         ├─ position-ping       ──► pipeline-position-ping    (parse → geo-pipeline → enrich-leg → aggregate)
+         ├─ sensor-reading      ──► pipeline-sensor-reading   (parse → geo-pipeline → cold-chain → enrich-leg → aggregate)
+         ├─ customs-event       ──► pipeline-customs-event    (parse → geo-pipeline → customs-dwell → enrich-leg → aggregate)
+         ├─ facility-scan       ──► pipeline-facility-scan    (parse → geo-pipeline → canonicalize-facility
+         │                                                      → order-enrichment → gdpr-compliance → aggregate)
+         └─ delivery-confirmation ► pipeline-delivery-confirmation (parse → geo-pipeline → canonicalize-recipient
+                                                                    → confirm-delivery → gdpr-compliance → aggregate)
+         Each per-type pipeline embeds:
+           geo-pipeline  ←  route-geo → geo-resolve (reverse-geocode ∥ ip-geolocate → fuse-geo) | apply-geo
+           gdpr-compliance  ←  consent-gate → classify-pii → redact-pii
   summarize → done
 ```
 
-The top-level `cartographer` DAG uses **two streaming scatters**:
+The `insights-fold` gather accumulates each clone's `state.enriched` into three bounded
+accumulators (`state.insights`, `state.journeys`, `state.sampleRecords`) as clones
+complete. Memory is O(1) regardless of event count — the parent state never holds a
+full copy of every record at once.
 
-1. **Ingestion fan-in** (`ingest-sources`): source feeds across five event types
-   (position-ping, facility-scan, sensor-reading, customs-event, delivery-confirmation),
-   each encoded across a configurable format mix (csv/json/ndjson/yaml with per-format
-   weights and compression), each run their own `ingest-source` sub-DAG in an isolated
-   clone. The `append` gather concatenates each clone's decoded `ingestedEvents` into one
-   `ingestBuckets` array; `merge-events` flattens it into the unified `canonicalEvents`
-   collection. Shared transform nodes (`decompress`, `parse-csv`, `parse-json`,
-   `parse-ndjson`, `map-fields`, `coerce-types`, `validate-event`) are reused across
-   every source — the format only changes which subset runs.
-
-2. **Streaming enrichment** (`process-events`): processes the merged canonical events
-   at concurrency 16. Each event clone runs the full `event-pipeline` branching DAG and
-   produces one compact `EnrichedShipment`. The `append` gather collects all enriched
-   records into `state.records`.
+The browser demo runs the `process-stream` scatter body in real OS threads via
+`CartographerWorkersDag.build(capacity)` (which binds `container: 'cpu'` on the scatter).
+`CartographerWorkerContainer` extends `WebWorkerContainer` to spawn a statically-bundled
+worker entry so Vite can chunk the registry. The reservoir `capacity` is a UI-controlled
+knob: the runner calls `CartographerWorkersDag.bundle(clampedBatchCapacity)` on each run
+so the batch size tracks the visitor's setting without mutating shared constants.
 
 ## Branching conditional routing
 
-The `event-pipeline` DAG routes each event only through the nodes it needs. Two
+Each per-type pipeline DAG routes the event only through the nodes it needs. Two
 skip conditions are the headline:
 
 - **`route-geo`**: a position-ping that already carries resolved geo (country,
@@ -195,9 +196,15 @@ shipping/ETA figures all land here.
 
 <<< ../../examples/the-cartographer/nodes/aggregateEvent.ts#aggregate-event-node
 
-### `summarizeInsights` — fold into two views
+### `summarizeInsights` — finalize insight views
 
-After all scatter clones complete, `summarizeInsights` folds `state.records` into:
+In the streaming path (the browser demo and any caller using `insights-fold`) the
+`insights-fold` gather accumulates `state.insights`, `state.journeys`, and
+`state.sampleRecords` incrementally as each clone completes, so `summarizeInsights`
+is a pure pass-through — it detects the pre-populated maps and routes `success`
+immediately. The records-based fold (iterating `state.records`) is retained as a
+fallback for callers that use the array path without the `insights-fold` gather.
+Either way the final state exposes:
 
 - **Per-continent rollup** (`state.insights`): counts, on-time rate, revenue (USD), distance.
 - **Per-journey rollup** (`state.journeys`): grouped by `shipmentId`, ordered by epoch;

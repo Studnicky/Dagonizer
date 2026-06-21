@@ -55,7 +55,7 @@ Once the signal fires:
 
 - The iterator stops without starting the next node.
 - `result.cursor` holds the node that would have run next. Pass it to `dispatcher.resume()` to continue from that point.
-- `result.state.lifecycle.kind` is `'cancelled'` (caller signal) or `'timed_out'` (deadline).
+- `result.state.lifecycle.variant` is `'cancelled'` (caller signal) or `'timed_out'` (deadline).
 
 <<< @/../examples/06-cancellation.ts#cursor-check
 

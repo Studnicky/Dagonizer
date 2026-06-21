@@ -95,7 +95,7 @@ Both authoring journeys can produce any DAG the schema allows. The differences a
 | `ScatterNode` placement | yes | yes via `.scatter()` |
 | Gather strategy (`map` / `append` / `partition` / `custom` / `collect` / `discard`) | yes | yes via `options.gather` |
 | Outcome reducer (`aggregate` / `all-success` / `any-success` / custom) | yes | yes via `options.reducer` |
-| Scatter body kind (`node` or `dag`) | yes | yes via `body` argument |
+| Scatter body variant (`node` or `dag`) | yes | yes via `body` argument |
 | `EmbeddedDAGNode` placement | yes | yes via `.embeddedDAG()` |
 | `TerminalNode` placement | yes | yes via `.terminal()` |
 | `inputs` (parent → clone seed) | yes | yes via `options.inputs` |
@@ -123,6 +123,44 @@ An `EmbeddedDAGNode` placement targets named terminals directly. This is the idi
 <<< @/../examples/dags/09-terminals.ts#embedded-terminals
 
 See [DAGBuilder, `.terminal()`](./builder#terminal-name-outcome) and [Phase 09, Terminal placements](../examples/09-terminals) for runnable examples.
+
+## Error-routing contract
+
+Nodes never throw past the node boundary. An error condition is a **flow decision**: the node returns `NodeOutputBuilder.of('error', { errors: [...] })` and the DAG routes the `'error'` output to a recovery node or an error terminal. The engine does not intercept throws and reroute them.
+
+This means every node that can fail must:
+1. Declare `'error'` (or a domain-specific name like `'salvage'`) as one of its output ports.
+2. Return `NodeOutputBuilder.of('error', ...)` when the failure condition is met.
+3. Have that output wired to a downstream placement in the DAG.
+
+```ts
+// Correct: declare the error port, return it on failure
+class FetchNode extends ScalarNode<MyState, 'success' | 'error'> {
+  readonly name = 'fetch';
+  readonly outputs = ['success', 'error'] as const;
+
+  protected async executeOne(state: MyState, context: NodeContextType): Promise<NodeOutputType<'success' | 'error'>> {
+    try {
+      state.result = await fetchData(context.signal);
+      return NodeOutputBuilder.of('success');
+    } catch (err) {
+      return NodeOutputBuilder.of('error', {
+        errors: [NodeErrorBuilder.from('fetchFailed', String(err), 'fetch', false, new Date().toISOString())],
+      });
+    }
+  }
+}
+
+// Wire the error output in the DAG
+const dag = new DAGBuilder('pipeline', '1.0')
+  .node('fetch', fetchNode, { success: 'process', error: 'end-fail' })
+  .node('process', processNode, { success: 'end-ok' })
+  .terminal('end-ok')
+  .terminal('end-fail', { outcome: 'failed' })
+  .build();
+```
+
+If a node truly throws (an unexpected bug, not a handled error condition), the exception propagates as an engine-level failure and the lifecycle transitions to `failed`. This is distinct from routing to an `'error'` port, which is a deliberate flow decision the DAG topology controls.
 
 ## Switching journeys mid-project
 

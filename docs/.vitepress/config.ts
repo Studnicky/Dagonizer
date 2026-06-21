@@ -62,6 +62,17 @@ const sidebar = [
     ],
   },
   {
+    // Vocabulary and theory: read before or alongside the demos.
+    text: 'Concepts',
+    collapsed: false,
+    items: [
+      { text: 'Concepts',                link: '/concepts' },
+      { text: 'Plural-native execution', link: '/guide/plural-native' },
+      { text: 'Architecture',            link: '/architecture' },
+      { text: 'Lifecycle phases',        link: '/guide/lifecycle-phases' },
+    ],
+  },
+  {
     // Live demo first, then phase walk-throughs in dependency order.
     text: 'Demos',
     collapsed: false,
@@ -78,6 +89,7 @@ const sidebar = [
       { text: 'Phase 02: DAGBuilder',                  link: '/examples/02-builder' },
       { text: 'Phase 03: Tool schemas',                link: '/examples/03-schema' },
       { text: 'Phase 05: EmbeddedDAGNode composition', link: '/examples/05-embedded-dags' },
+      { text: 'Example 27: Recursion via dagFrom',     link: '/examples/27-recursion' },
       { text: 'Phase 06: Cancellation',                link: '/examples/06-cancellation' },
       { text: 'Phase 07: Retry',                       link: '/examples/07-retry' },
       { text: 'Phase 08: Checkpoint + resume',         link: '/examples/08-checkpoint' },
@@ -135,17 +147,6 @@ const sidebar = [
     ],
   },
   {
-    // Vocabulary and theory: read after the demo.
-    text: 'Concepts',
-    collapsed: false,
-    items: [
-      { text: 'Concepts',           link: '/concepts' },
-      { text: 'Plural-native execution', link: '/guide/plural-native' },
-      { text: 'Architecture',       link: '/architecture' },
-      { text: 'Lifecycle phases',   link: '/guide/lifecycle-phases' },
-    ],
-  },
-  {
     // Dependency order: author, export, runtime, wiring, persistence, viz.
     text: 'Guide',
     collapsed: false,
@@ -161,6 +162,7 @@ const sidebar = [
       { text: 'Migrating to batch',        link: '/guide/migrating-to-batch' },
       { text: 'Services container',        link: '/guide/services' },
       { text: 'Observability',             link: '/guide/observability' },
+      { text: 'Conversational agents',     link: '/guide/conversational' },
       { text: 'State accessors',           link: '/guide/state-accessor' },
       { text: 'Shared state',              link: '/guide/shared-state' },
       { text: 'Checkpoint and resume',     link: '/guide/checkpoint' },
