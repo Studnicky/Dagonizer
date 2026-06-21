@@ -23,7 +23,7 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { CartographerServices } from '../../../../examples/the-cartographer/CartographerServices.ts';
-import { cartographerWorkersDAG, buildCartographerWorkersBundle, eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
+import { cartographerWorkersDAG, CartographerWorkersDag, eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
 import { ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
 import { geoResolveBundle } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
 import { gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
@@ -525,7 +525,7 @@ async function run(): Promise<void> {
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
     dispatcher.registerBundle(ingestSourceBundle);
-    dispatcher.registerBundle(buildCartographerWorkersBundle(clampedBatchCapacity.value));
+    dispatcher.registerBundle(CartographerWorkersDag.bundle(clampedBatchCapacity.value));
 
     const state = new CartographerState();
 

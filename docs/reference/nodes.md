@@ -120,7 +120,9 @@ import type { EmbeddedDAGNodeType } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const placement: EmbeddedDAGNodeType;
 const name: string = placement.name;
-const dag: string = placement.dag;
+// Exactly one of `dag` (build-time literal) or `dagFrom` (state path) is present.
+const dag: string | undefined = placement.dag;
+const dagFrom: string | undefined = placement.dagFrom;
 export {};
 ```
 
@@ -143,11 +145,12 @@ export {};
 | `@id` | `string` | yes | Placement URN |
 | `@type` | `'EmbeddedDAGNode'` | yes | Discriminator |
 | `name` | `string` | yes | Placement name |
-| `dag` | `string` | yes | Registered sub-DAG name to invoke (cardinality 1) |
+| `dag` | `string` | one of `dag`/`dagFrom` | Build-time literal: registered sub-DAG name to invoke (cardinality 1) |
+| `dagFrom` | `string` | one of `dag`/`dagFrom` | Dotted state path resolved at execution time to the registered sub-DAG name; the item-scoped form used by scatter bodies |
 | `outputs` | `Record<'success' \| 'error', string \| null>` | yes | Routes for the child's terminal outcome |
 | `stateMapping` | `{ input?: Record<string, string>; output?: Record<string, string> }` | no | `input` copies parent fields into the child before it runs (child-key ← parent-path); `output` copies child fields back into the parent after it completes (parent-path ← child-key). |
 
-`EmbeddedDAGNode` invokes a registered sub-DAG exactly once (cardinality 1). It is the embedding primitive: the parent flow suspends, the child DAG runs to completion in an isolated state, and the parent routes on the child's terminal outcome (`success` when the child lifecycle is `completed`; `error` when `failed`). Authored via `.embeddedDAG(name, dagName, routes, { inputs, outputs })` on `DAGBuilder`.
+`EmbeddedDAGNode` invokes a registered sub-DAG exactly once (cardinality 1). It is the embedding primitive: the parent flow suspends, the child DAG runs to completion in an isolated state (a fresh child clone, not a shared parent reference), and the parent routes on the child's terminal outcome (`success` when the child lifecycle is `completed`; `error` when `failed`). The target sub-DAG is named either by the build-time literal `dag` or by `dagFrom`, a dotted state path resolved per execution — the item-scoped form a scatter body uses to invoke a different child per item. Exactly one of the two is present, enforced by the DAG validator. Authored via `.embeddedDAG(name, dagName, routes, { inputs, outputs })` on `DAGBuilder`.
 
 ---
 

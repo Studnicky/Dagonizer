@@ -236,10 +236,10 @@ See [Reference: Store](./store#interface-remotestore) for the full interface and
 ## DagContainerInterface
 
 ```ts twoslash
-import type { NodeStateInterface, DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer';
+import type { DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer';
 // ---cut---
-interface DagContainerInterface<TState extends NodeStateInterface = NodeStateInterface> {
-  runDag(task: DagTaskInterface<TState, unknown>): Promise<DagOutcomeType>;
+interface DagContainerInterface {
+  runDag(task: DagTaskInterface<unknown>): Promise<DagOutcomeType>;
   destroy?(): Promise<void>;
 }
 ```
@@ -320,20 +320,20 @@ Result returned by `DagContainerInterface.runDag()` after an embedded DAG comple
 ## DagTaskInterface
 
 ```ts twoslash
-import type { NodeStateInterface, NodeContextType, ExecutionRequestType } from '@studnicky/dagonizer';
+import type { NodeStateInterface, NodeContextType, ExecutionRequestType, Timeout } from '@studnicky/dagonizer';
 // ---cut---
-interface DagTaskInterface<TState extends NodeStateInterface = NodeStateInterface, TServices = undefined> {
-  readonly dagName:        string;
-  readonly placementPath:  readonly string[];
-  readonly correlationId:  string;
-  readonly timeoutMs:      number | null;
-  readonly state:          TState;
-  readonly context:        NodeContextType<TServices>;
+interface DagTaskInterface<TServices = undefined> {
+  dagName:        string;
+  placementPath:  string[];
+  correlationId:  string;
+  timeout:        Timeout;
+  state:          NodeStateInterface;
+  context:        NodeContextType<TServices>;
   toRequest(): ExecutionRequestType;
 }
 ```
 
-Engine-side descriptor of a contained DAG execution. Carries a live seeded child clone (`state`) for the in-process path. Isolating containers call `toRequest()` to snapshot the clone into a wire-safe `ExecutionRequest`. `correlationId` is a dispatcher-monotonic id (no randomness). `timeoutMs` is `null` when no budget applies.
+Engine-side descriptor of a contained DAG execution. Carries a live seeded child clone (`state`, typed at the `NodeStateInterface` contract because the engine is heterogeneous-state) for the in-process path. Isolating containers call `toRequest()` to snapshot the clone into a wire-safe `ExecutionRequest`. `correlationId` is a dispatcher-monotonic id (no randomness). `timeout` is a `Timeout`; `Timeout.none()` means no per-task budget applies.
 
 ## SystemInfoInterface
 

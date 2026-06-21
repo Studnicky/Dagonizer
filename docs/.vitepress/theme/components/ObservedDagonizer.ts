@@ -28,7 +28,7 @@ export interface DispatcherObserver<TState extends NodeStateInterface> {
   readonly onError?:      (nodeName: string, error: Error, state: TState, placementPath: readonly string[]) => void;
 }
 
-export interface ObservedDagonizerOptions<TState extends NodeStateInterface, TServices> extends DagonizerOptionsType<TState, TServices> {
+export interface ObservedDagonizerOptions<TState extends NodeStateInterface, TServices> extends DagonizerOptionsType<TServices> {
   readonly observer?: DispatcherObserver<TState>;
 }
 

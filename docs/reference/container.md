@@ -111,9 +111,8 @@ const container = new MyContainer({
 
 ```ts twoslash
 import type { DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer/contracts';
-import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-declare function runDag(task: DagTaskInterface<NodeStateInterface, unknown>): Promise<DagOutcomeType>;
+declare function runDag(task: DagTaskInterface<unknown>): Promise<DagOutcomeType>;
 ```
 
 Acquired a pool slot, sends the task to the isolate, and waits for the outcome. Must not throw: transport failures and host crashes return collected errors in `DagOutcomeType.errors` with `recoverable: false`.
@@ -173,10 +172,8 @@ Value class for `DagTaskInterface`. Constructed by the dispatcher for each conta
 
 ```ts twoslash
 import { DagTask } from '@studnicky/dagonizer/container';
-import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-// DagTask<TState extends NodeStateInterface, TServices = undefined>
-//   implements DagTaskInterface<TState, TServices>
+// DagTask<TServices = undefined> implements DagTaskInterface<TServices>
 const _check: typeof DagTask = DagTask;
 ```
 
