@@ -259,8 +259,10 @@ export class MermaidRenderer {
     const masked = line
       // triple-bracket subroutine: [[...]]
       .replace(/\[\[([^\]]*)\]\]/gu, (_m, inner) => mask(`[[${inner}]]`))
-      // triple-paren double-circle: (((...)))
-      .replace(/\(\(\(([^)]*(?:\)[^)]+)*)\)\)\)/gu, (_m, inner) => mask(`(((${inner})))`))
+      // triple-paren double-circle: (((...))). Interior excludes ')' — a single
+      // negated class (no nested quantifier) so the match is linear and not a
+      // polynomial-ReDoS risk on adversarial DAG names.
+      .replace(/\(\(\(([^)]*)\)\)\)/gu, (_m, inner) => mask(`(((${inner})))`))
       // asymmetric flag: >...]
       .replace(/>([^\]]*)\]/gu, (_m, inner) => mask(`>${inner}]`))
       // trapezoid: [/.../]
