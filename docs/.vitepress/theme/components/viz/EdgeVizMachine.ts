@@ -50,6 +50,14 @@ export class EdgeVizMachine {
   get state(): EdgeVizState { return this.#state; }
 
   dispatch(event: EdgeVizEvent): EdgeVizState {
+    // Re-traversing an already-traversed edge re-flashes it without a state
+    // change. A scatter routes many items through the same edge; without this
+    // the same-state guard below swallows every traversal after the first and
+    // the edge flashes go static mid-run.
+    if (event.type === 'traverse' && this.#state === 'traversed') {
+      this.#adapter.flash();
+      return this.#state;
+    }
     const next = TRANSITIONS[this.#state][event.type];
     if (next === undefined || next === this.#state) return this.#state;
     if (next === 'idle') {
