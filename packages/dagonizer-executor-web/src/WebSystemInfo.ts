@@ -57,13 +57,14 @@ export type WebSystemInfoProbesType = {
 
 /**
  * Production default: reads `navigator.hardwareConcurrency` once.
- * Accessed via `globalThis` to avoid a DOM-lib type dependency.
+ * Accessed via `Reflect.get(globalThis, …)` to avoid a DOM-lib type dependency;
+ * `Reflect.get` returns `unknown`, so no cast is required.
  * Returns 1 when the property is absent or non-positive (restricted contexts).
  */
 function readNavigatorHardwareConcurrency(): number {
-  const nav = (globalThis as Record<string, unknown>)['navigator'];
-  if (nav === null || nav === undefined) { return 1; }
-  const hc = (nav as Record<string, unknown>)['hardwareConcurrency'];
+  const nav: unknown = Reflect.get(globalThis, 'navigator');
+  if (nav === null || nav === undefined || typeof nav !== 'object') { return 1; }
+  const hc: unknown = Reflect.get(nav, 'hardwareConcurrency');
   return (typeof hc === 'number' && hc > 0) ? hc : 1;
 }
 

@@ -24,11 +24,18 @@ import type { CartographerServices } from '../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region summarize-insights-node
 export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'success', CartographerServices> {
   readonly 'name' = 'summarize';
   readonly 'outputs' = ['success'] as const;
+
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return {
+      'success': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'success'>> {
     // Streaming path: insights-fold gather already produced state.insights,

@@ -20,6 +20,8 @@ import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
 import type { ToolDefinitionType } from '../entities/adapter/ToolDefinition.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { DAGError } from '../errors/DAGError.js';
+import type { EntityValidatorInterface } from '../validation/Validator.js';
+import { Validator } from '../validation/Validator.js';
 
 import type { ToolInterface } from './ToolInterface.js';
 import { ToolInvocationState } from './ToolInvocationState.js';
@@ -39,6 +41,8 @@ type RegistryEntry = {
   readonly 'nodeName': string;
   readonly 'dag': DAGType;
   readonly 'dagName': string;
+  readonly 'inputValidator': EntityValidatorInterface<unknown>;
+  readonly 'outputValidator': EntityValidatorInterface<unknown>;
 };
 
 export class ToolRegistry {
@@ -66,17 +70,22 @@ export class ToolRegistry {
     const nodeName = `tool-invoke:${toolName}`;
     const dagName  = `tool:${toolName}`;
 
+    // Compile validators once at registration time; `Validator.compile` routes
+    // through the shared Ajv instance and caches by `$id` — no new Ajv instances.
+    const inputValidator  = Validator.compile<unknown>(tool.definition.inputSchema);
+    const outputValidator = Validator.compile<unknown>(tool.definition.outputSchema);
+
     // Build the synthesized DAG from a default-typed node (the builder reads its
     // `name`). The registered node instances are constructed per `bundle()` call,
     // typed to the consumer's services — so the synthesized DAG carries no
     // services type and the node is discarded after the DAG is built.
     const dag = new DAGBuilder(dagName, '1')
-      .node('invoke', new ToolInvokeNode(nodeName, tool), { 'done': 'end', 'error': 'end-fail' })
+      .node('invoke', new ToolInvokeNode(nodeName, tool, inputValidator, outputValidator), { 'done': 'end', 'error': 'end-fail' })
       .terminal('end')
       .terminal('end-fail', { 'outcome': 'failed' })
       .build();
 
-    this.#entries.set(toolName, { 'definition': tool.definition, 'tool': tool, 'nodeName': nodeName, 'dag': dag, 'dagName': dagName });
+    this.#entries.set(toolName, { 'definition': tool.definition, 'tool': tool, 'nodeName': nodeName, 'dag': dag, 'dagName': dagName, 'inputValidator': inputValidator, 'outputValidator': outputValidator });
   }
 
   /**
@@ -122,8 +131,9 @@ export class ToolRegistry {
       // Construct each node typed to the consumer's `TServices` (inferred from
       // the `registerBundle` call site). The node ignores services — it gets its
       // tool via the constructor — so it is services-polymorphic, but its type is
-      // the dispatcher's, which keeps registration cast-free.
-      nodes.push(new ToolInvokeNode<TServices>(entry['nodeName'], entry['tool']));
+      // the dispatcher's, which keeps registration cast-free. Validators compiled
+      // once at `register()` time are passed through here; no recompilation.
+      nodes.push(new ToolInvokeNode<TServices>(entry['nodeName'], entry['tool'], entry['inputValidator'], entry['outputValidator']));
       dags.push(entry['dag']);
       stateFactories[entry['dagName']] = () => new ToolInvocationState();
     }

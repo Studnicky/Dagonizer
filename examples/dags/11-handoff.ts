@@ -25,7 +25,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
 import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
 
@@ -66,6 +66,9 @@ export class PipelineState extends NodeStateBase {
 export class CollectANode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'collectA';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: PipelineState) {
     state.items.push('alpha');
@@ -76,6 +79,9 @@ export class CollectANode extends ScalarNode<PipelineState, 'done'> {
 export class CollectBNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'collectB';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: PipelineState) {
     state.items.push('beta');
@@ -86,6 +92,9 @@ export class CollectBNode extends ScalarNode<PipelineState, 'done'> {
 export class CollectCNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'collectC';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: PipelineState) {
     state.items.push('gamma');
@@ -99,6 +108,9 @@ export class CollectCNode extends ScalarNode<PipelineState, 'done'> {
 export class SummarizeNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'summarize';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: PipelineState) {
     state.summary = `processed ${state.items.length} item(s): ${state.items.join(', ')}`;

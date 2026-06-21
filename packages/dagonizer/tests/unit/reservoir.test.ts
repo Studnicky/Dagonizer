@@ -14,7 +14,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import type { NodeInterface, SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { ReservoirDriverInterface, ScatterItemBatchResultType } from '../../src/contracts/ReservoirDriver.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
@@ -26,8 +26,10 @@ import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.j
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
+import { JsonValue } from '../../src/entities/JsonValue.js';
 import { ReservoirBuffer } from '../../src/execution/ReservoirBuffer.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 
@@ -48,8 +50,8 @@ class ReservoirState extends NodeStateBase {
 
   protected override snapshotData(): JsonObjectType {
     return {
-      'items':    this.items as unknown as JsonObjectType,
-      'gathered': this.gathered as unknown as JsonObjectType,
+      'items':    JsonValue.from(this.items),
+      'gathered': JsonValue.from(this.gathered),
     };
   }
 
@@ -58,16 +60,16 @@ class ReservoirState extends NodeStateBase {
     if (Array.isArray(items)) {
       this.items = items.filter(
         (x): x is ReservoirItem =>
-          typeof x === 'object' && x !== null && 'key' in x && 'value' in x &&
-          typeof (x as ReservoirItem).key === 'string' &&
-          typeof (x as ReservoirItem).value === 'number',
+          typeof x === 'object' && x !== null && !Array.isArray(x) &&
+          typeof x['key'] === 'string' && typeof x['value'] === 'number',
       );
     }
     const gathered = snap['gathered'];
     if (Array.isArray(gathered)) {
       this.gathered = gathered.filter(
         (x): x is ReservoirItem =>
-          typeof x === 'object' && x !== null && 'key' in x && 'value' in x,
+          typeof x === 'object' && x !== null && !Array.isArray(x) &&
+          typeof x['key'] === 'string' && typeof x['value'] === 'number',
       );
     }
   }
@@ -114,14 +116,18 @@ function makeReservoirDag(dagName: string, keyField: string, capacity: number): 
  * The node does NOT write to `gathered` — the gather strategy handles that.
  */
 class BatchTrackingNode extends MonadicNode<ReservoirState, string> {
-  readonly name = 'worker';
-  readonly outputs: readonly string[] = ['success'];
+  override readonly name = 'worker';
+  override readonly outputs: readonly string[] = ['success'];
+
+  override get outputSchema(): Record<string, SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   constructor(private readonly batchSizes: number[]) {
     super();
   }
 
-  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
+  override async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
     this.batchSizes.push(batch.size);
     return new Map([['success', batch]]);
   }
@@ -133,10 +139,14 @@ function makeBatchTrackingNode(batchSizes: number[]): NodeInterface<ReservoirSta
 
 /** Passthrough node — routes everything to 'success'. No state mutation. */
 class PassthroughNode extends MonadicNode<ReservoirState, string> {
-  readonly name = 'worker';
-  readonly outputs: readonly string[] = ['success'];
+  override readonly name = 'worker';
+  override readonly outputs: readonly string[] = ['success'];
 
-  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
+  override get outputSchema(): Record<string, SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
+
+  override async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
     return new Map([['success', batch]]);
   }
 }
@@ -177,14 +187,18 @@ void describe('Reservoir scatter — capacity release', () => {
 // ---------------------------------------------------------------------------
 
 class KeyedPartitionNode extends MonadicNode<ReservoirState, string> {
-  readonly name = 'worker';
-  readonly outputs: readonly string[] = ['success'];
+  override readonly name = 'worker';
+  override readonly outputs: readonly string[] = ['success'];
+
+  override get outputSchema(): Record<string, SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   constructor(private readonly batchesByKey: Map<string, ReservoirItem[][]>) {
     super();
   }
 
-  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
+  override async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
     // Collect the items from this batch to verify no cross-key mixing.
     const keys = new Set<string>();
     const batchItems: ReservoirItem[] = [];
@@ -197,7 +211,8 @@ class KeyedPartitionNode extends MonadicNode<ReservoirState, string> {
     }
     // All items in one reservoir batch must share the same key.
     assert.equal(keys.size, 1, `batch contained mixed keys: ${[...keys].join(', ')}`);
-    const batchKey = [...keys][0] as string;
+    const batchKey = [...keys][0];
+    assert.ok(batchKey !== undefined, 'batch must contain at least one key');
     const existing = this.batchesByKey.get(batchKey);
     if (existing !== undefined) {
       existing.push(batchItems);
@@ -230,7 +245,7 @@ void describe('Reservoir scatter — keyed partitioning', () => {
     assert.equal(batchesByKey.size, 3);
     for (const [, batches] of batchesByKey) {
       assert.equal(batches.length, 1, 'expected exactly 1 capacity release per key');
-      assert.equal((batches[0] as ReservoirItem[]).length, 100);
+      assert.equal(batches[0]?.length, 100);
     }
     assert.equal(result.state.gathered.length, 300);
   });
@@ -241,14 +256,18 @@ void describe('Reservoir scatter — keyed partitioning', () => {
 // ---------------------------------------------------------------------------
 
 class ExecuteCounterNode extends MonadicNode<ReservoirState, string> {
-  readonly name = 'worker';
-  readonly outputs: readonly string[] = ['success'];
+  override readonly name = 'worker';
+  override readonly outputs: readonly string[] = ['success'];
+
+  override get outputSchema(): Record<string, SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   constructor(private readonly calls: { n: number }) {
     super();
   }
 
-  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
+  override async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
     this.calls.n++;
     return new Map([['success', batch]]);
   }
@@ -313,14 +332,18 @@ void describe('Reservoir scatter — gather exactly-once', () => {
 // ---------------------------------------------------------------------------
 
 class CrashingNode extends MonadicNode<ReservoirState, string> {
-  readonly name = 'worker';
-  readonly outputs: readonly string[] = ['success'];
+  override readonly name = 'worker';
+  override readonly outputs: readonly string[] = ['success'];
+
+  override get outputSchema(): Record<string, SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   constructor(private readonly crash: { n: number }) {
     super();
   }
 
-  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
+  override async execute(batch: Batch<ReservoirState>): Promise<RoutedBatchType<string, ReservoirState>> {
     this.crash.n++;
     if (this.crash.n === 3) throw new Error('simulated crash on third batch');
     return new Map([['success', batch]]);
@@ -500,17 +523,7 @@ function makeFakeDriver(releases: { size: number; key: string }[]): ReservoirDri
 }
 
 /** Simple `StateAccessorInterface` that reads/writes a top-level property on a plain object. */
-const accessor: StateAccessorInterface = {
-  get<T = unknown>(state: object, path: string): T | null {
-    if (path in (state as Record<string, unknown>)) {
-      return (state as Record<string, T>)[path] ?? null;
-    }
-    return null;
-  },
-  set(state: object, path: string, value: unknown): void {
-    (state as Record<string, unknown>)[path] = value;
-  },
-};
+const accessor: StateAccessorInterface = new DottedPathAccessor();
 
 // ---------------------------------------------------------------------------
 // Test 7 — idle releases a partial buffer

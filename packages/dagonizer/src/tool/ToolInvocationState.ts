@@ -10,12 +10,21 @@
  */
 
 import type { JsonObjectType } from '../entities/json.js';
+import { JsonValue } from '../entities/JsonValue.js';
 import { NodeStateBase } from '../NodeStateBase.js';
 
 export class ToolInvocationState extends NodeStateBase {
-  /** Arguments passed to the tool. Set before the embedded DAG runs. */
-  input: Record<string, unknown>;
-  /** Return value from the tool. Written by `ToolInvokeNode`. */
+  /**
+   * Arguments passed to the tool. Set before the embedded DAG runs. Typed
+   * `JsonObjectType` because tool arguments are JSON (they cross the scatter /
+   * checkpoint boundary) — so the snapshot needs no cast.
+   */
+  input: JsonObjectType;
+  /**
+   * Return value from the tool. Written by `ToolInvokeNode`. Genuinely
+   * `unknown` — the registry erases each tool's concrete output type — so it is
+   * narrowed to JSON via `JsonValue.from` at the snapshot boundary, not cast.
+   */
   output: unknown;
 
   constructor() {
@@ -36,17 +45,18 @@ export class ToolInvocationState extends NodeStateBase {
 
   protected override snapshotData(): JsonObjectType {
     return {
-      // Shallow-copy; caller contract: `input` values are JSON-safe primitives/objects.
-      // The cast is the single permitted ingest point — identical to `setMetadata`.
-      'input':  { ...this.input } as JsonObjectType,
-      // output may be any JSON-safe value. Cast as with `setMetadata` in NodeStateBase.
-      'output': (this.output !== undefined ? this.output : null) as JsonObjectType[string],
+      // `input` is already `JsonObjectType`; a shallow copy stays JSON-typed.
+      'input':  { ...this.input },
+      // `output` is genuinely `unknown` (generic tool return) — coerce to a real
+      // `JsonValueType` field-wise rather than asserting it.
+      'output': JsonValue.from(this.output),
     };
   }
 
   protected override restoreData(snapshot: JsonObjectType): void {
     const rawInput = snapshot['input'];
-    if (ToolInvocationState.isArgumentRecord(rawInput)) {
+    // `rawInput` is `JsonValueType`; narrow to a JSON object before assigning.
+    if (typeof rawInput === 'object' && rawInput !== null && !Array.isArray(rawInput)) {
       this.input = rawInput;
     }
 

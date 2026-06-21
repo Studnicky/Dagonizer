@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/index.js';
+import type { SchemaObjectType, NodeInterface  } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
@@ -13,33 +14,12 @@ import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 class TrackingState extends NodeStateBase {
   trace: string[] = [];
-}
-
-class PhaseMakeNode extends ScalarNode<TrackingState, string> {
-  readonly name: string;
-  readonly outputs: readonly string[];
-  private readonly side: ((state: TrackingState) => void | Promise<void>) | undefined;
-
-  constructor(name: string, outputs: readonly string[], side?: (state: TrackingState) => void | Promise<void>) {
-    super();
-    this.name = name;
-    this.outputs = outputs;
-    this.side = side ?? undefined;
-  }
-
-  protected async executeOne(state: TrackingState): Promise<NodeOutputType<string>> {
-    if (this.side) {
-      await this.side(state);
-    } else {
-      state.trace.push(this.name);
-    }
-    return { 'errors': [], 'output': this.outputs[0] as string };
-  }
 }
 
 class PhaseThrowingNode extends ScalarNode<TrackingState, string> {
@@ -53,6 +33,8 @@ class PhaseThrowingNode extends ScalarNode<TrackingState, string> {
     this.message = message;
   }
 
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
+
   protected async executeOne(): Promise<NodeOutputType<string>> {
     throw new Error(this.message);
   }
@@ -64,8 +46,21 @@ class TestPhaseNode {
     name: string,
     outputs: readonly string[] = ['success'],
     side?: (state: TrackingState) => void | Promise<void>,
-  ): PhaseMakeNode {
-    return new PhaseMakeNode(name, outputs, side);
+  ): NodeInterface<TrackingState> {
+    if (side !== undefined) {
+      return TestNode.make<TrackingState>(name, outputs, async (state) => {
+        await side(state);
+        const first = outputs[0];
+        if (first === undefined) throw new Error('outputs must be non-empty');
+        return first;
+      });
+    }
+    return TestNode.make<TrackingState>(name, outputs, (state) => {
+      state.trace.push(name);
+      const first = outputs[0];
+      if (first === undefined) throw new Error('outputs must be non-empty');
+      return first;
+    });
   }
 }
 
@@ -287,10 +282,11 @@ void describe('PhaseNode placements: post-phase execution', () => {
 
     dispatcher.registerNode({
       'name': 'slow',
-      'outputs': ['success'],
+      'outputs': ['success'] as const,
       'timeout': Timeout.none(),
-      async execute(batch: Batch<TrackingState>, ctx): Promise<RoutedBatchType<string, TrackingState>> {
-        const acc = new Map<string, ItemType<TrackingState>[]>();
+      'outputSchema': { 'success': { 'type': 'object' as const } },
+      async execute(batch: Batch<TrackingState>, ctx): Promise<RoutedBatchType<'success', TrackingState>> {
+        const acc = new Map<'success', ItemType<TrackingState>[]>();
         for (const item of batch) {
           resolveNodeReady();
           await new Promise<void>((_resolve, reject) => {
@@ -301,7 +297,7 @@ void describe('PhaseNode placements: post-phase execution', () => {
           const bucket = acc.get('success');
           if (bucket !== undefined) { bucket.push(item); } else { acc.set('success', [item]); }
         }
-        const routed = new Map<string, Batch<TrackingState>>();
+        const routed = new Map<'success', Batch<TrackingState>>();
         for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
         return routed;
       },

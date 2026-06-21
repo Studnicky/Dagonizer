@@ -49,6 +49,7 @@ import type { CheckpointRestoreAdapterInterface } from '../../src/contracts/Chec
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from '../../src/contracts/DispatcherBundle.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import type { RegistryBundleInterface } from '../../src/contracts/RegistryBundleInterface.js';
 import type { RegistryModuleInterface } from '../../src/contracts/RegistryModuleInterface.js';
@@ -61,6 +62,7 @@ import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
+import { JsonValue } from '../../src/entities/JsonValue.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
@@ -78,8 +80,8 @@ class ReservoirDispatchState extends NodeStateBase {
   protected override snapshotData(): JsonObjectType {
     return {
       'counter': this.counter,
-      'items': this.items as unknown as JsonObjectType,
-      'outputByValue': this.outputByValue as unknown as JsonObjectType,
+      'items': JsonValue.from(this.items),
+      'outputByValue': JsonValue.from(this.outputByValue),
     };
   }
 
@@ -87,11 +89,19 @@ class ReservoirDispatchState extends NodeStateBase {
     if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
     const items = snap['items'];
     if (Array.isArray(items)) {
-      this.items = items as Array<{ group: string; value: number }>;
+      this.items = items.filter(
+        (x): x is { group: string; value: number } =>
+          typeof x === 'object' && x !== null && !Array.isArray(x) &&
+          typeof x['group'] === 'string' && typeof x['value'] === 'number',
+      );
     }
     const recorded = snap['outputByValue'];
     if (recorded !== null && typeof recorded === 'object' && !Array.isArray(recorded)) {
-      this.outputByValue = recorded as Record<string, string>;
+      const safe: Record<string, string> = {};
+      for (const [k, v] of Object.entries(recorded)) {
+        if (typeof v === 'string') safe[k] = v;
+      }
+      this.outputByValue = safe;
     }
   }
 }
@@ -155,12 +165,22 @@ GatherStrategies.register(new ReservoirRecordingGather());
 /**
  * RouterNode: reads `currentItem` metadata and routes `value % 2 === 0`
  * → 'even', otherwise → 'odd'.
+ *
+ * Extends ScalarNode<NodeStateBase> so the node is structurally compatible
+ * with NodeInterface<NodeStateInterface> — required for Suite D's bundle
+ * (DispatcherBundleType<NodeStateInterface, unknown>) without casting.
+ * getMetadata is declared on NodeStateBase, so narrowing via the base type
+ * is safe.
  */
-class RouterNode extends ScalarNode<ReservoirDispatchState, 'even' | 'odd'> {
-  readonly name = 'router';
-  readonly outputs = ['even', 'odd'] as const;
+class RouterNode extends ScalarNode<NodeStateBase, 'even' | 'odd'> {
+  override readonly name = 'router';
+  override readonly outputs = ['even', 'odd'] as const;
 
-  protected async executeOne(state: ReservoirDispatchState): Promise<NodeOutputType<'even' | 'odd'>> {
+  override get outputSchema(): Record<'even' | 'odd', SchemaObjectType> {
+    return { 'even': { 'type': 'object' }, 'odd': { 'type': 'object' } };
+  }
+
+  protected override async executeOne(state: NodeStateBase): Promise<NodeOutputType<'even' | 'odd'>> {
     const item = state.getMetadata<{ group: string; value: number }>('currentItem');
     const output: 'even' | 'odd' = (item !== undefined && item.value % 2 === 0) ? 'even' : 'odd';
     return { 'errors': [], output };
@@ -279,10 +299,14 @@ const reservoirDagBodyContainerDag: DAGType = Validator.dag.validate({
 // ── Suite C: node body regression ─────────────────────────────────────────────
 
 class PassThroughNode extends ScalarNode<ReservoirDispatchState, 'done'> {
-  readonly name = 'pass-through';
-  readonly outputs = ['done'] as const;
+  override readonly name = 'pass-through';
+  override readonly outputs = ['done'] as const;
 
-  protected async executeOne(): Promise<NodeOutputType<'done'>> {
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
+
+  protected override async executeOne(): Promise<NodeOutputType<'done'>> {
     return { 'errors': [], 'output': 'done' };
   }
 }
@@ -376,9 +400,13 @@ function buildLoopbackContainer(
       _options?: { readonly relay?: ObserverRelayInterface },
     ): Promise<DagOutcomeType> {
       callCounter.count++;
-      const cloneState = task.state;
+      const rawState = task.state;
+      if (!(rawState instanceof ReservoirDispatchState)) {
+        throw new Error(`buildLoopbackContainer: expected ReservoirDispatchState, got ${rawState.constructor.name}`);
+      }
+      const cloneState = rawState;
       try {
-        const exec = innerDispatcher.execute(task.dagName, cloneState as ReservoirDispatchState);
+        const exec = innerDispatcher.execute(task.dagName, cloneState);
         const iter = exec[Symbol.asyncIterator]();
         let step = await iter.next();
         while (!step.done) {
@@ -626,11 +654,10 @@ const suiteDRestoreAdapter: CheckpointRestoreAdapterInterface<NodeStateInterface
   });
 
 const suiteDBundle: DispatcherBundleType<NodeStateInterface, unknown> = {
-  // The router node is typed for ReservoirDispatchState; the host bundle is
-  // typed for the NodeStateInterface base. NodeInterface is invariant in TState
-  // through its method parameters, so the array is widened to the base type —
-  // the same pattern ConformanceRegistry's CONFORMANCE_NODES uses.
-  'nodes': [new RouterNode()] as unknown as DispatcherBundleType<NodeStateInterface, unknown>['nodes'],
+  // RouterNode extends ScalarNode<NodeStateBase, ...> which is structurally
+  // compatible with NodeInterface<NodeStateInterface, string, unknown> —
+  // no cast required.
+  'nodes': [new RouterNode()],
   'dags': [routeBodyDDag],
 };
 

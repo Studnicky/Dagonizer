@@ -32,26 +32,22 @@ void test('OllamaEmbedder constructed without model uses default dimensions plac
   assert.equal(embedder.id, 'ollama');
 });
 
-interface MutableGlobal {
-  fetch?: unknown;
-}
+const originalFetch: typeof fetch | undefined = globalThis.fetch;
 
-const originalFetch = (globalThis as MutableGlobal).fetch;
-
-function installFetch(impl: typeof fetch): void {
-  (globalThis as MutableGlobal).fetch = impl;
+function installFetch(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): void {
+  Object.assign(globalThis, { 'fetch': impl });
 }
 
 function restoreFetch(): void {
-  (globalThis as MutableGlobal).fetch = originalFetch;
+  Object.assign(globalThis, { 'fetch': originalFetch });
 }
 
 void test('OllamaEmbedder.probe returns true when /api/tags answers 200', async () => {
-  installFetch((async (input: string | URL | Request) => {
+  installFetch(async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     assert.ok(url.endsWith('/api/tags'));
     return new Response('{"models":[]}', { 'status': 200 });
-  }) as typeof fetch);
+  });
   const embedder = new OllamaEmbedder({ 'model': 'nomic-embed-text', 'baseUrl': 'http://127.0.0.1:11434' });
   try {
     assert.equal(await embedder.probe(), true);
@@ -61,7 +57,7 @@ void test('OllamaEmbedder.probe returns true when /api/tags answers 200', async 
 });
 
 void test('OllamaEmbedder.probe returns false on transport failure', async () => {
-  installFetch((async () => { throw new Error('ECONNREFUSED'); }) as typeof fetch);
+  installFetch(async () => { throw new Error('ECONNREFUSED'); });
   const embedder = new OllamaEmbedder({ 'model': 'nomic-embed-text' });
   try {
     assert.equal(await embedder.probe(), false);
@@ -71,7 +67,7 @@ void test('OllamaEmbedder.probe returns false on transport failure', async () =>
 });
 
 void test('OllamaEmbedder.embed returns the embedding vector from /api/embeddings', async () => {
-  installFetch((async () => new Response(JSON.stringify({ 'embedding': [0.1, 0.2, 0.3] }), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify({ 'embedding': [0.1, 0.2, 0.3] }), { 'status': 200 }));
   const embedder = new OllamaEmbedder({ 'model': 'nomic-embed-text' });
   try {
     const vec = await embedder.embed('hello');
@@ -82,32 +78,38 @@ void test('OllamaEmbedder.embed returns the embedding vector from /api/embedding
 });
 
 void test('OllamaEmbedder without apiKey sends no Authorization header', async () => {
-  let capturedHeaders: Record<string, string> | undefined;
-  installFetch((async (_input: string | URL | Request, init?: RequestInit) => {
-    capturedHeaders = init?.headers as Record<string, string> | undefined;
+  let capturedHeaders: RequestInit['headers'];
+  installFetch(async (_input: string | URL | Request, init?: RequestInit) => {
+    capturedHeaders = init?.headers;
     return new Response(JSON.stringify({ 'embedding': [0.1, 0.2, 0.3] }), { 'status': 200 });
-  }) as typeof fetch);
+  });
   const embedder = new OllamaEmbedder({ 'model': 'nomic-embed-text' });
   try {
     await embedder.embed('hello');
     assert.ok(capturedHeaders !== undefined, 'fetch was called');
-    assert.equal(Object.prototype.hasOwnProperty.call(capturedHeaders, 'Authorization'), false, 'no Authorization header for local usage');
+    assert.ok(
+      typeof capturedHeaders === 'object' && !Array.isArray(capturedHeaders) && !(capturedHeaders instanceof Headers) && !Object.prototype.hasOwnProperty.call(capturedHeaders, 'Authorization'),
+      'no Authorization header for local usage',
+    );
   } finally {
     restoreFetch();
   }
 });
 
 void test('OllamaEmbedder with apiKey sends Authorization: Bearer header', async () => {
-  let capturedHeaders: Record<string, string> | undefined;
-  installFetch((async (_input: string | URL | Request, init?: RequestInit) => {
-    capturedHeaders = init?.headers as Record<string, string> | undefined;
+  let capturedHeaders: RequestInit['headers'];
+  installFetch(async (_input: string | URL | Request, init?: RequestInit) => {
+    capturedHeaders = init?.headers;
     return new Response(JSON.stringify({ 'embedding': [0.4, 0.5, 0.6] }), { 'status': 200 });
-  }) as typeof fetch);
+  });
   const embedder = new OllamaEmbedder({ 'apiKey': 'test-cloud-key', 'baseUrl': 'https://api.ollama.ai', 'model': 'nomic-embed-text' });
   try {
     await embedder.embed('hello');
     assert.ok(capturedHeaders !== undefined, 'fetch was called');
-    assert.equal(capturedHeaders['Authorization'], 'Bearer test-cloud-key', 'Authorization header sent for cloud usage');
+    assert.ok(
+      typeof capturedHeaders === 'object' && !Array.isArray(capturedHeaders) && !(capturedHeaders instanceof Headers) && capturedHeaders['Authorization'] === 'Bearer test-cloud-key',
+      'Authorization header sent for cloud usage',
+    );
   } finally {
     restoreFetch();
   }
@@ -126,7 +128,7 @@ void test('OllamaEmbedder.listModels classifies embedding and chat models correc
       { 'name': 'mistral:latest' },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new OllamaEmbedder({ 'model': 'nomic-embed-text' });
   try {
     const models = await embedder.listModels();
@@ -159,7 +161,7 @@ void test('OllamaEmbedder.listModels sets cloud=true for :cloud / -cloud suffix'
       { 'name': 'llama3.2-cloud' },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new OllamaEmbedder({ 'model': 'nomic-embed-text' });
   try {
     const models = await embedder.listModels();
@@ -170,7 +172,7 @@ void test('OllamaEmbedder.listModels sets cloud=true for :cloud / -cloud suffix'
 });
 
 void test('OllamaEmbedder.listModels returns [] on transport failure', async () => {
-  installFetch((async () => { throw new Error('ECONNREFUSED'); }) as typeof fetch);
+  installFetch(async () => { throw new Error('ECONNREFUSED'); });
   const embedder = new OllamaEmbedder({ 'model': 'nomic-embed-text' });
   try {
     const models = await embedder.listModels();
@@ -181,7 +183,7 @@ void test('OllamaEmbedder.listModels returns [] on transport failure', async () 
 });
 
 void test('OllamaEmbedder.listModels returns [] when response fails schema validation', async () => {
-  installFetch((async () => new Response(JSON.stringify({ 'wrong': 'shape' }), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify({ 'wrong': 'shape' }), { 'status': 200 }));
   const embedder = new OllamaEmbedder({ 'model': 'nomic-embed-text' });
   try {
     const models = await embedder.listModels();
@@ -198,7 +200,7 @@ void test('OllamaEmbedder.selectEmbeddingModel picks an embedding model and skip
       { 'name': 'nomic-embed-text:latest' },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new OllamaEmbedder();
   try {
     const selected = await embedder.selectEmbeddingModel();
@@ -210,7 +212,7 @@ void test('OllamaEmbedder.selectEmbeddingModel picks an embedding model and skip
 
 void test('OllamaEmbedder.selectEmbeddingModel returns null when no embedding models available', async () => {
   const canned = { 'models': [{ 'name': 'llama3.2:3b' }] };
-  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new OllamaEmbedder();
   try {
     const selected = await embedder.selectEmbeddingModel();
@@ -227,7 +229,7 @@ void test('OllamaEmbedder.selectEmbeddingModel honors preferred model', async ()
       { 'name': 'mxbai-embed-large:latest' },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new OllamaEmbedder();
   try {
     const selected = await embedder.selectEmbeddingModel({ 'preferred': 'mxbai-embed-large:latest' });

@@ -16,7 +16,7 @@
 
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -28,6 +28,11 @@ const EMPTY_RETRY_BUDGET = 2;
 export class RespondToVisitorNode extends ScalarNode<ArchivistState, 'success', ArchivistServices> {
   readonly name = 'respond-to-visitor';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return {
+      'success': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(_state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     return NodeOutputBuilder.of('success');
@@ -37,6 +42,11 @@ export class RespondToVisitorNode extends ScalarNode<ArchivistState, 'success', 
 export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success', ArchivistServices> {
   readonly name = 'decline-off-topic';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return {
+      'success': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     state.draft = "I only help with finding and identifying books. What title or topic interests you?";
@@ -61,6 +71,13 @@ export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success', A
 export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'compose-empty';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'drafted' | 'retry' | 'salvage', SchemaObjectType> {
+    return {
+      'drafted': { 'type': 'object' },
+      'retry':   { 'type': 'object' },
+      'salvage': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.collectWarning({

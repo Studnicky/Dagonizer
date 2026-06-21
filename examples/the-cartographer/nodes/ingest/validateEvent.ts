@@ -27,11 +27,18 @@ import { IDENTITY_EXTRAS_BY_TYPE } from '../../services.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region validate-event-node
 export class ValidateEventNode extends ScalarNode<CartographerState, 'validated', CartographerServices> {
   readonly 'name' = 'validate-event';
   readonly 'outputs' = ['validated'] as const;
+
+  override get outputSchema(): Record<'validated', SchemaObjectType> {
+    return {
+      'validated': { 'type': 'object' },
+    };
+  }
 
   private static str(value: unknown): string {
     return typeof value === 'string' ? value : '';

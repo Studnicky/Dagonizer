@@ -24,6 +24,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
@@ -57,7 +58,7 @@ class EmbedMemState extends NodeStateBase {
 
   protected override restoreData(snap: JsonObjectType): void {
     if (typeof snap['value'] === 'number')   this.value   = snap['value'];
-    if (Array.isArray(snap['items']))        this.items   = snap['items'] as number[];
+    if (Array.isArray(snap['items']))        this.items   = snap['items'].filter((e): e is number => typeof e === 'number');
     if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
   }
 }
@@ -67,6 +68,7 @@ class EmbedMemState extends NodeStateBase {
 class IncValueNode extends ScalarNode<EmbedMemState, 'done'> {
   readonly name: string;
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   private readonly delta: number;
 
   constructor(name: string, delta: number) {
@@ -84,6 +86,7 @@ class IncValueNode extends ScalarNode<EmbedMemState, 'done'> {
 class IncCounterNode extends ScalarNode<EmbedMemState, 'done'> {
   readonly name = 'inc-counter';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
   protected async executeOne(state: EmbedMemState): Promise<NodeOutputType<'done'>> {
     state.counter += 1;
@@ -316,13 +319,16 @@ void describe('EmbeddedDAG: bounded-memory invariant (no inner-node buffering in
 
     // Correctness: counter == N proves every item ran inc-counter exactly once.
     // The iteration yield is typed `NodeStateInterface`; this scatter runs on
-    // `EmbedMemState` (no isolation factory), so read its domain `counter` field
-    // through a single local consumer downcast.
-    const scatterState = scatterResult.state as EmbedMemState;
+    // `EmbedMemState` (no isolation factory), so narrow via instanceof.
+    assert.ok(
+      scatterResult.state instanceof EmbedMemState,
+      'scatter state must be an EmbedMemState instance',
+    );
+    const scatterCounter = scatterResult.state.counter;
     assert.equal(
-      scatterState.counter,
+      scatterCounter,
       N,
-      `counter must equal N=${N} (one inc-counter per scatter item); got ${scatterState.counter}`,
+      `counter must equal N=${N} (one inc-counter per scatter item); got ${scatterCounter}`,
     );
   });
 });

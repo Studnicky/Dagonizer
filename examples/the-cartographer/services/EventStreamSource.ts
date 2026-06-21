@@ -165,14 +165,14 @@ export class EventStreamSource {
           const localIndices = new Array<number>(config.length).fill(0);
 
           return {
-            async next(): Promise<IteratorResult<SourcePayload>> {
+            async next(): Promise<IteratorResult<SourcePayload, undefined>> {
               if (globalIndex >= effective) {
-                return { value: undefined as unknown as SourcePayload, done: true };
+                return { value: undefined, done: true };
               }
 
               const step = generator.next();
               if (step.done === true) {
-                return { value: undefined as unknown as SourcePayload, done: true };
+                return { value: undefined, done: true };
               }
 
               const scan = step.value;
@@ -252,11 +252,11 @@ export class EventStreamSource {
         }
 
         return {
-          async next(): Promise<IteratorResult<SourcePayload>> {
+          async next(): Promise<IteratorResult<SourcePayload, undefined>> {
             // Advance to the next cycle when the current one is exhausted.
             while (cycleGenerator === null || cycleYielded >= cycleTotal) {
               if (remaining <= 0) {
-                return { value: undefined as unknown as SourcePayload, done: true };
+                return { value: undefined, done: true };
               }
               startNextCycle();
             }
@@ -264,7 +264,7 @@ export class EventStreamSource {
             const step = cycleGenerator.next();
             // Guard against an unexpectedly exhausted generator (mis-scaled config).
             if (step.done === true) {
-              return { value: undefined as unknown as SourcePayload, done: true };
+              return { value: undefined, done: true };
             }
 
             const scan = step.value;

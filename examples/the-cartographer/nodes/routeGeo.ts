@@ -18,11 +18,19 @@ import type { CartographerServices } from '../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-geo-node
 export class RouteGeoNode extends ScalarNode<CartographerState, 'has-geo' | 'needs-geo', CartographerServices> {
   readonly 'name' = 'route-geo';
   readonly 'outputs' = ['has-geo', 'needs-geo'] as const;
+
+  override get outputSchema(): Record<'has-geo' | 'needs-geo', SchemaObjectType> {
+    return {
+      'has-geo':   { 'type': 'object' },
+      'needs-geo': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'has-geo' | 'needs-geo'>> {
     const geo = state.canonical.geo;

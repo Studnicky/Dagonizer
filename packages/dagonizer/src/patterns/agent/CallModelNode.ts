@@ -15,6 +15,7 @@
 
 import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
 import type { LlmAdapterInterface } from '../../contracts/LlmAdapterInterface.js';
+import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ChatRequestType } from '../../entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../../entities/adapter/ChatResponse.js';
@@ -28,6 +29,15 @@ export abstract class CallModelNode<
   TState extends NodeStateInterface,
 > extends ScalarNode<TState, 'text' | 'tools' | 'mixed' | 'error', AgentServicesType> {
   readonly outputs = ['text', 'tools', 'mixed', 'error'] as const;
+
+  override get outputSchema(): Record<'text' | 'tools' | 'mixed' | 'error', SchemaObjectType> {
+    return {
+      'text':  { 'type': 'object' },
+      'tools': { 'type': 'object' },
+      'mixed': { 'type': 'object' },
+      'error': { 'type': 'object' },
+    };
+  }
 
   /**
    * Resolve the LLM adapter to use. Default: `context.services.llm`.

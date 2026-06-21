@@ -18,11 +18,18 @@ import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region merge-events-node
 export class MergeEventsNode extends ScalarNode<CartographerState, 'merged', CartographerServices> {
   readonly 'name' = 'merge-events';
   readonly 'outputs' = ['merged'] as const;
+
+  override get outputSchema(): Record<'merged', SchemaObjectType> {
+    return {
+      'merged': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'merged'>> {
     const merged: CanonicalEventVariant[] = [];

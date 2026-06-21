@@ -29,7 +29,7 @@ class PassThroughStore extends BaseStore {
 
   protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
     const value = this.#backing[key];
-    return value === undefined ? null : (value as T);
+    return value === undefined ? null : value as T;
   }
 
   protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
@@ -95,7 +95,7 @@ class MockRemoteStore extends BaseStore implements RemoteStoreInterface {
 
   protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
     const value = this.#backing.get(key);
-    return value === undefined ? null : (value as T);
+    return value === undefined ? null : value as T;
   }
 
   protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {

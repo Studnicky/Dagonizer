@@ -26,6 +26,7 @@
  */
 
 import { ScalarNode } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 import type {
   RegistryBundleInterface,
   RegistryModuleInterface,
@@ -47,6 +48,10 @@ export const KILL_ITEM = 20;
 class ScatterKillerNode extends ScalarNode<ConformanceState, 'done'> {
   readonly 'name' = 'scatter-counter';
   readonly 'outputs' = ['done'] as const;
+
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
     const current = state.getMetadata<number>('currentItem');

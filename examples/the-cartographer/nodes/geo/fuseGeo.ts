@@ -22,11 +22,18 @@ import { TimeZoneResolver } from '../../services.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region fuse-geo-node
 export class FuseGeoNode extends ScalarNode<CartographerState, 'fused', CartographerServices> {
   readonly 'name' = 'fuse-geo';
   readonly 'outputs' = ['fused'] as const;
+
+  override get outputSchema(): Record<'fused', SchemaObjectType> {
+    return {
+      'fused': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'fused'>> {
     const lat = state.raw.latitude;

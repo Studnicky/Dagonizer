@@ -216,10 +216,10 @@ class Harness {
           container = Container.build(factory, perLaw, factoryCreated);
         }
 
-        const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
-        const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
+        const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
+        const dispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
         dispatcher.registerBundle(bundle);
-        return dispatcher as unknown as DagonizerInterface<NodeStateInterface, undefined>;
+        return dispatcher;
       },
 
       // Law 7: build a dispatcher WITHOUT the container role bound so
@@ -227,9 +227,9 @@ class Harness {
       createInProcessDispatcher(
         bundle: DispatcherBundleType<NodeStateInterface, undefined>,
       ): DagonizerInterface<NodeStateInterface, undefined> {
-        const dispatcher = new Dagonizer<NodeStateInterface, undefined>();
+        const dispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>();
         dispatcher.registerBundle(bundle);
-        return dispatcher as unknown as DagonizerInterface<NodeStateInterface, undefined>;
+        return dispatcher;
       },
 
       createState(): ConformanceState {
@@ -287,8 +287,8 @@ void describe('DAG Container Conformance — WorkerThreadContainer (Laws 1–9)'
     });
     allContainers.push(innerForKill);
 
-    const failingContainer = new KillAfterOneContainer(innerForKill);
-    allContainers.push(failingContainer as unknown as Destroyable);
+    const failingContainer: KillAfterOneContainer & Destroyable = new KillAfterOneContainer(innerForKill);
+    allContainers.push(failingContainer);
 
     const freshContainer = new WorkerThreadContainer({
       'registryModule': registryUrl(),
@@ -305,8 +305,10 @@ void describe('DAG Container Conformance — WorkerThreadContainer (Laws 1–9)'
   // Plain spread `{ ...Harness.of(factory) }` evaluates the getter once and copies
   // the value — the sentinel container becomes the same destroyed instance for all laws.
   const baseHarness = Harness.of(factory);
-  const harness = Object.defineProperties(
-    Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
+  // Object.create(null) returns `any`; the variable annotation provides the
+  // concrete type — `any` is assignable to any type without an explicit `as` cast.
+  const harness: DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter } = Object.defineProperties(
+    Object.create(null),
     {
       ...Object.getOwnPropertyDescriptors(baseHarness),
       'interruptMidScatter': { 'value': interruptMidScatter, 'writable': true, 'enumerable': true, 'configurable': true },
@@ -359,14 +361,14 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     });
     allContainers.push(killing);
 
-    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
+    const bundle = ConformanceRegistry.bundle().bundle;
     const state = new ConformanceState();
     state.scatterItems = [10, 20, 30];
 
-    const killingContainers = {
+    const killingContainers: Readonly<Record<string, DagContainerInterface>> = {
       [CONFORMANCE_CONTAINER_ROLE]: killing,
-    } as Readonly<Record<string, DagContainerInterface>>;
-    const killingDispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': killingContainers });
+    };
+    const killingDispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': killingContainers });
     killingDispatcher.registerBundle(bundle);
 
     // EMPIRICAL no-hang proof: bound the whole phase-1 run. If the pending
@@ -415,15 +417,16 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     });
     allContainers.push(fresh);
 
-    const freshContainers = {
+    const freshContainers: Readonly<Record<string, DagContainerInterface>> = {
       [CONFORMANCE_CONTAINER_ROLE]: fresh,
-    } as Readonly<Record<string, DagContainerInterface>>;
-    const freshDispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': freshContainers });
+    };
+    const freshDispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': freshContainers });
     freshDispatcher.registerBundle(bundle);
 
     const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state, 'fan');
 
-    const finalItems = (result.state as ConformanceState).gatheredItems;
+    assert.ok(result.state instanceof ConformanceState, 'result.state must be a ConformanceState');
+    const finalItems = result.state.gatheredItems;
     assert.strictEqual(
       finalItems.length, 3,
       `all 3 items must be gathered after resume (no loss), got ${finalItems.length}`,
@@ -483,8 +486,10 @@ void describe('DAG Container Conformance — ForkContainer (Laws 1–9 including
   // Plain spread `{ ...Harness.of(factory) }` evaluates the getter once and copies
   // the value — the sentinel container becomes the same destroyed instance for all laws.
   const baseHarness = Harness.of(factory);
-  const harness = Object.defineProperties(
-    Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
+  // Object.create(null) returns `any`; the variable annotation provides the
+  // concrete type — `any` is assignable to any type without an explicit `as` cast.
+  const harness: DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter } = Object.defineProperties(
+    Object.create(null),
     {
       ...Object.getOwnPropertyDescriptors(baseHarness),
       'interruptMidScatter': { 'value': interruptMidScatter, 'writable': true, 'enumerable': true, 'configurable': true },
@@ -554,8 +559,10 @@ void describe('DAG Container Conformance — SpawnContainer (Laws 1–9 includin
   // Plain spread `{ ...Harness.of(factory) }` evaluates the getter once and copies
   // the value — the sentinel container becomes the same destroyed instance for all laws.
   const baseHarness = Harness.of(factory);
-  const harness = Object.defineProperties(
-    Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
+  // Object.create(null) returns `any`; the variable annotation provides the
+  // concrete type — `any` is assignable to any type without an explicit `as` cast.
+  const harness: DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter } = Object.defineProperties(
+    Object.create(null),
     {
       ...Object.getOwnPropertyDescriptors(baseHarness),
       'interruptMidScatter': { 'value': interruptMidScatter, 'writable': true, 'enumerable': true, 'configurable': true },
@@ -638,8 +645,10 @@ void describe('DAG Container Conformance — ClusterContainer (Laws 1–9 includ
   // Plain spread `{ ...Harness.of(factory) }` evaluates the getter once and copies
   // the value — the sentinel container becomes the same destroyed instance for all laws.
   const baseHarness = Harness.of(factory);
-  const harness = Object.defineProperties(
-    Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
+  // Object.create(null) returns `any`; the variable annotation provides the
+  // concrete type — `any` is assignable to any type without an explicit `as` cast.
+  const harness: DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter } = Object.defineProperties(
+    Object.create(null),
     {
       ...Object.getOwnPropertyDescriptors(baseHarness),
       'interruptMidScatter': { 'value': interruptMidScatter, 'writable': true, 'enumerable': true, 'configurable': true },

@@ -79,7 +79,7 @@ class TestRequest {
     return {
       'messages': [{ 'role': 'user', 'content': 'hi' }],
       'tools': withTools
-        ? [{ 'name': 'test', 'description': 'd', 'inputSchema': {}, 'strict': false }]
+        ? [{ 'name': 'test', 'description': 'd', 'inputSchema': {}, 'outputSchema': {}, 'strict': false }]
         : [],
       'toolChoice': { 'type': 'auto' },
       'outputSchema': { 'variant': 'none' },

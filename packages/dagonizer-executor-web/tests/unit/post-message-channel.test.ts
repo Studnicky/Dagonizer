@@ -22,6 +22,24 @@ import type {
 } from '../../src/WebWorkerLike.js';
 
 // ---------------------------------------------------------------------------
+// ListenerGuard: type predicates for addEventListener overload dispatch.
+//
+// Connects the discriminant `type === 'message'` to the listener's function
+// type, enabling zero-cast overload implementation in FakeWorkerPair.
+// ---------------------------------------------------------------------------
+
+class ListenerGuard {
+  private constructor() {}
+
+  static isMessage(
+    type: 'message' | 'error',
+    _listener: ((event: { 'data': unknown }) => void) | ((event: { 'message'?: string }) => void),
+  ): _listener is (event: { 'data': unknown }) => void {
+    return type === 'message';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // FakeWorker: in-process WebWorkerLikeInterface with structuredClone isolation
 // ---------------------------------------------------------------------------
 
@@ -56,8 +74,8 @@ class FakeWorkerPair {
         type: 'message' | 'error',
         listener: ((event: { 'data': unknown }) => void) | ((event: { 'message'?: string }) => void),
       ): void => {
-        if (type === 'message') {
-          this.#mainListeners.push(listener as (event: { 'data': unknown }) => void);
+        if (ListenerGuard.isMessage(type, listener)) {
+          this.#mainListeners.push(listener);
         }
         // 'error' listeners are unused by these PostMessageChannel tests.
       },
@@ -142,8 +160,8 @@ void describe('PostMessageChannel', () => {
     const mainChannel = new PostMessageChannel(pair.mainSide);
     const workerChannel = new PostMessageChannel(pair.workerSide);
 
-    let received: BridgeMessageType | null = null;
-    workerChannel.onMessage((msg) => { received = msg; });
+    const received: BridgeMessageType[] = [];
+    workerChannel.onMessage((msg) => { received.push(msg); });
 
     const msg: BridgeMessageType = {
       'variant': 'init',
@@ -154,9 +172,13 @@ void describe('PostMessageChannel', () => {
     mainChannel.send(msg);
 
     await nextTick();
-    assert.ok(received !== null);
-    assert.strictEqual((received as BridgeMessageType & { variant: 'init' }).variant, 'init');
-    assert.strictEqual((received as BridgeMessageType & { variant: 'init' }).registryVersion, '2.0.0');
+    assert.strictEqual(received.length, 1, 'must have received exactly one message');
+    const msg2 = received[0];
+    assert.ok(msg2 !== undefined, 'received[0] must exist');
+    assert.strictEqual(msg2.variant, 'init');
+    if (msg2.variant === 'init') {
+      assert.strictEqual(msg2.registryVersion, '2.0.0');
+    }
   });
 
   // ── StructuredClone isolation ───────────────────────────────────────────────

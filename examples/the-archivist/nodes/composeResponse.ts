@@ -20,7 +20,7 @@
 
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { CandidateType } from '../entities/Book.ts';
@@ -34,6 +34,13 @@ export const COMPOSE_TIMEOUT_MS = 60_000;
 export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'compose-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'drafted' | 'retry' | 'salvage', SchemaObjectType> {
+    return {
+      'drafted': { 'type': 'object' },
+      'retry':   { 'type': 'object' },
+      'salvage': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.recordAttempt('compose');
@@ -193,6 +200,13 @@ export class ValidateResponseNode extends ScalarNode<
 > {
   readonly name = 'validate-response';
   readonly outputs = ['approved', 'retry', 'exhausted'] as const;
+  override get outputSchema(): Record<'approved' | 'retry' | 'exhausted', SchemaObjectType> {
+    return {
+      'approved':  { 'type': 'object' },
+      'retry':     { 'type': 'object' },
+      'exhausted': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     // ── Deterministic anti-hallucination pre-check ───────────────────────

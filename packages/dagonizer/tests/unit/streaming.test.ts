@@ -6,7 +6,7 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const node = (name: string, outputs: readonly string[]) => TestNode.make<NodeStateBase>(name, outputs, () => outputs[0] as string);
+const node = (name: string, outputs: readonly string[]) => TestNode.make<NodeStateBase>(name, outputs, () => outputs[0] ?? '');
 
 void describe('Execution streaming (async-iterable)', () => {
   void it('yields each node stage incrementally, then resolves to the final result', async () => {

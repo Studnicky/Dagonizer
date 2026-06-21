@@ -12,8 +12,7 @@ import {
   RetryPolicy,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
-import type { NodeContextType, RetryPolicyOptionsType } from '@studnicky/dagonizer';
+import type { DAGType, NodeContextType, RetryPolicyOptionsType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Simulated flaky downstream: class encapsulates mutable attempt counter
@@ -51,6 +50,9 @@ export class FetchState extends NodeStateBase {
 export class FetchNode extends ScalarNode<FetchState, 'success' | 'error'> {
   readonly name = 'fetch';
   readonly outputs = ['success', 'error'] as const;
+  override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
+    return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: FetchState, context: NodeContextType) {
     // #region policy-config

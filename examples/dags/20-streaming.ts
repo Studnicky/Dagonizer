@@ -10,6 +10,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -26,6 +27,9 @@ export class PipelineState extends NodeStateBase {
 export class IngestNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'ingest';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: PipelineState) {
     state.items.push('raw-data');
     return NodeOutputBuilder.of('done');
@@ -35,6 +39,9 @@ export class IngestNode extends ScalarNode<PipelineState, 'done'> {
 export class EnrichNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'enrich';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: PipelineState) {
     state.items.push('enriched-data');
     return NodeOutputBuilder.of('done');
@@ -44,6 +51,9 @@ export class EnrichNode extends ScalarNode<PipelineState, 'done'> {
 export class PersistNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'persist';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: PipelineState) {
     state.items.push('persisted');
     return NodeOutputBuilder.of('done');

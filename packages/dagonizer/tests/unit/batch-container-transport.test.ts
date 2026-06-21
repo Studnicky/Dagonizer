@@ -29,7 +29,7 @@ import { Batch } from '../../src/entities/batch/Batch.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
@@ -76,12 +76,7 @@ function makeTask(
     correlationId,
     'timeout': Timeout.none(),
     state,
-    'context': {
-      'dagName': 'test-dag',
-      'nodeName': 'test-node',
-      signal,
-      'services': undefined,
-    } as NodeContextType<undefined>,
+    'context': NodeContextBuilder.of('test-dag', 'test-node', signal, undefined),
     toRequest(): ExecutionRequestType {
       return {
         'dagName': 'test-dag',

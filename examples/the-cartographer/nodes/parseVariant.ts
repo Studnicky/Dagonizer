@@ -15,11 +15,19 @@ import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-variant-node
 export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | 'invalid', CartographerServices> {
   readonly 'name' = 'parse-variant';
   readonly 'outputs' = ['parsed', 'invalid'] as const;
+
+  override get outputSchema(): Record<'parsed' | 'invalid', SchemaObjectType> {
+    return {
+      'parsed':  { 'type': 'object' },
+      'invalid': { 'type': 'object' },
+    };
+  }
 
   /** A non-empty status for event types whose source status string may be sparse. */
   private static statusFor(variant: CanonicalEventVariant): string {

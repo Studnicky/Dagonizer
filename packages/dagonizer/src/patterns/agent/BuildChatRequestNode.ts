@@ -9,6 +9,7 @@
  */
 
 import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
+import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ChatRequestType } from '../../entities/adapter/ChatRequest.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
@@ -21,6 +22,13 @@ export abstract class BuildChatRequestNode<
   TState extends NodeStateInterface,
 > extends ScalarNode<TState, 'ready' | 'error', AgentServicesType> {
   readonly outputs = ['ready', 'error'] as const;
+
+  override get outputSchema(): Record<'ready' | 'error', SchemaObjectType> {
+    return {
+      'ready': { 'type': 'object' },
+      'error': { 'type': 'object' },
+    };
+  }
 
   /**
    * Build the chat request from the current state.

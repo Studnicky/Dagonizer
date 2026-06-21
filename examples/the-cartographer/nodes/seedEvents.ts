@@ -30,20 +30,28 @@ import { EventStreamSource } from '../services/EventStreamSource.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region seed-events-node
-export class SeedEventsNode extends ScalarNode<CartographerState, never, CartographerServices> {
+export class SeedEventsNode extends ScalarNode<CartographerState, 'done', CartographerServices> {
   readonly 'name' = 'seed';
-  readonly 'outputs' = [] as const;
+  // A `PhaseNode('pre')` runs before the entrypoint and never appears in the
+  // routing graph, so this output token is never consumed — but the node still
+  // needs a concrete, inhabited port to return rather than an empty `never`.
+  readonly 'outputs' = ['done'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<never>> {
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
+
+  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'done'>> {
     if (state.useStreamingSource) {
       const count = state.streamCount > 0 ? state.streamCount : undefined;
       state.sources = EventStreamSource.streamTyped(state.eventConfig, count);
     } else {
       state.sources = await Sources.buildTypedFeed(state.eventConfig);
     }
-    return NodeOutputBuilder.of(undefined as never);
+    return NodeOutputBuilder.of('done');
   }
 }
 

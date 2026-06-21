@@ -12,6 +12,7 @@
  */
 
 import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
+import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ChatResponseType } from '../../entities/adapter/ChatResponse.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
@@ -24,6 +25,16 @@ export abstract class NormalizeResponseNode<
   TState extends NodeStateInterface,
 > extends ScalarNode<TState, 'text' | 'tools' | 'mixed' | 'empty' | 'error', AgentServicesType> {
   readonly outputs = ['text', 'tools', 'mixed', 'empty', 'error'] as const;
+
+  override get outputSchema(): Record<'text' | 'tools' | 'mixed' | 'empty' | 'error', SchemaObjectType> {
+    return {
+      'text':  { 'type': 'object' },
+      'tools': { 'type': 'object' },
+      'mixed': { 'type': 'object' },
+      'empty': { 'type': 'object' },
+      'error': { 'type': 'object' },
+    };
+  }
 
   /** Read the stored chat response from state. Return `null` when absent. */
   protected abstract getResponse(

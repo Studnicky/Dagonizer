@@ -29,7 +29,7 @@
  */
 
 import { NodeErrorBuilder, NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
@@ -160,6 +160,13 @@ interface ScoredEntry {
 export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'rank-candidates';
   readonly outputs = ['ranked', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'ranked' | 'retry' | 'salvage', SchemaObjectType> {
+    return {
+      'ranked':  { 'type': 'object' },
+      'retry':   { 'type': 'object' },
+      'salvage': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {

@@ -10,6 +10,7 @@
  */
 
 import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
+import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ChatResponseType } from '../../entities/adapter/ChatResponse.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
@@ -22,6 +23,13 @@ export abstract class AppendAssistantNode<
   TState extends NodeStateInterface,
 > extends ScalarNode<TState, 'done' | 'error', AgentServicesType> {
   readonly outputs = ['done', 'error'] as const;
+
+  override get outputSchema(): Record<'done' | 'error', SchemaObjectType> {
+    return {
+      'done':  { 'type': 'object' },
+      'error': { 'type': 'object' },
+    };
+  }
 
   /** Read the stored model response from state. Return `null` when absent. */
   protected abstract getResponse(

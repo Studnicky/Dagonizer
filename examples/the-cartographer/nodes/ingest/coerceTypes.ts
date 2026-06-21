@@ -24,6 +24,7 @@ import type { GeoErrorRecordType } from '../../errors/GeoErrorRecord.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region coerce-types-node
 const NUMERIC_FIELDS = [
@@ -37,6 +38,12 @@ const BOOLEAN_FIELDS = ['marketingConsent', 'delivered'] as const;
 export class CoerceTypesNode extends ScalarNode<CartographerState, 'validate-event', CartographerServices> {
   readonly 'name' = 'coerce-types';
   readonly 'outputs' = ['validate-event'] as const;
+
+  override get outputSchema(): Record<'validate-event', SchemaObjectType> {
+    return {
+      'validate-event': { 'type': 'object' },
+    };
+  }
 
   private static toNumber(value: unknown): number {
     if (typeof value === 'number') return value;

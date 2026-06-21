@@ -37,6 +37,7 @@
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
+import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import { OllamaEmbedResponseValidator } from './OllamaEmbedResponse.js';
@@ -247,7 +248,7 @@ export class OllamaEmbedder extends BaseEmbedder {
       if (!res.ok) {
         return [];
       }
-      const body: unknown = await res.json() as unknown;
+      const body = JsonValue.from(await res.json());
       if (!OllamaTagsResponseValidator.is(body)) {
         return [];
       }

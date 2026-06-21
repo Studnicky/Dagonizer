@@ -18,6 +18,7 @@ import { PassThrough } from 'node:stream';
 import { describe, it } from 'node:test';
 
 import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer/validation';
 
 import { IpcChannel } from '../../src/IpcChannel.js';
 import type { IpcEndpointInterface } from '../../src/IpcChannel.js';
@@ -121,7 +122,7 @@ void describe('NdjsonChannel.send', () => {
     writable.on('end', () => {
       const output = chunks.join('');
       assert.ok(output.endsWith('\n'), 'must end with newline');
-      const parsed = JSON.parse(output.trimEnd()) as BridgeMessageType;
+      const parsed: BridgeMessageType = Validator.bridgeMessage.validate(JSON.parse(output.trimEnd()));
       assert.strictEqual(parsed.variant, 'ready');
       done();
     });

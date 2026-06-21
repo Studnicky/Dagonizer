@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 
 import type { ChildStateFactoryType } from '../../src/contracts/ChildStateFactoryType.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import type { GatherRecordType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
@@ -94,6 +95,7 @@ let bodyReceivedClass: string = '';
 class EmbedBodyNode extends ScalarNode<EmbedChildState, 'success'> {
   readonly name = 'embedBody';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
 
   protected async executeOne(state: EmbedChildState, _ctx: NodeContextType): Promise<NodeOutputType<'success'>> {
     bodyReceivedClass = state.constructor.name;
@@ -216,13 +218,16 @@ void describe('Isolated child state: embedded DAG', () => {
     assert.ok(child instanceof EmbedParentState,
       'DEFAULT factory must produce a clone of the same class');
 
+    // Narrow the type so TypeScript can access EmbedParentState fields.
+    if (!(child instanceof EmbedParentState)) throw new Error('unreachable: instanceof check above');
+
     // clone() produces a fresh instance with domain fields at their declared defaults
     // (not copied from parent). This is the existing clone semantics.
-    assert.equal((child as EmbedParentState).shared, 0,
+    assert.equal(child.shared, 0,
       'clone() starts domain fields at declared defaults, not copied from parent');
 
     // Mutation on clone must not bleed to parent.
-    (child as EmbedParentState).shared = 99;
+    child.shared = 99;
     assert.equal(parent.shared, 42, 'mutating clone must not change parent');
   });
 
@@ -287,8 +292,8 @@ class ScatterParentState extends NodeStateBase {
   }
 
   protected override restoreData(snap: JsonObjectType): void {
-    if (Array.isArray(snap['items']))   this.items   = snap['items']   as number[];
-    if (Array.isArray(snap['results'])) this.results = snap['results'] as number[];
+    if (Array.isArray(snap['items']))   this.items   = snap['items'].filter((e): e is number => typeof e === 'number');
+    if (Array.isArray(snap['results'])) this.results = snap['results'].filter((e): e is number => typeof e === 'number');
   }
 }
 
@@ -301,6 +306,7 @@ let scatterBodyClassSeen: Set<string>;
 class ScatterBodyNode extends ScalarNode<ScatterItemState, 'success'> {
   readonly name = 'scatterBody';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
 
   protected async executeOne(state: ScatterItemState, _ctx: NodeContextType): Promise<NodeOutputType<'success'>> {
     scatterBodyClassSeen.add(state.constructor.name);
@@ -465,8 +471,10 @@ void describe('Isolated child state: scatter with isolation factory', () => {
     // `itemResult` must NOT have been written to the parent state.
     // ScatterParentState does not have this field; isolation is working if
     // the parent instance has no `itemResult` property after the scatter.
-    const parentAsRecord = result.state as unknown as Record<string, unknown>;
-    assert.equal(parentAsRecord['itemResult'], undefined,
-      'itemResult must not appear on the ScatterParentState instance (field isolation)');
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(result.state, 'itemResult'),
+      false,
+      'itemResult must not appear on the ScatterParentState instance (field isolation)',
+    );
   });
 });

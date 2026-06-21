@@ -23,6 +23,11 @@ import { EventStreamSource } from '../services/EventStreamSource.ts';
 let failures = 0;
 
 class SmokeRunner {
+  /** Narrows `unknown` to `Record<string, unknown>` via structural runtime checks. */
+  static isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
   static async check(name: string, fn: () => Promise<void> | void): Promise<void> {
     try {
       await fn();
@@ -140,9 +145,10 @@ await SmokeRunner.check('customs-event payloads carry customsStatus in the wire 
   const customsPayloads = payloads.filter((p) => p.eventType === 'customs-event' && p.format === 'json' && p.compression === 'none');
   assert.ok(customsPayloads.length > 0, `Expected >=1 customs-event json/none payload`);
   for (const p of customsPayloads) {
-    const arr = JSON.parse(p.payload) as Array<Record<string, unknown>>;
-    assert.ok(Array.isArray(arr) && arr.length > 0, `Expected non-empty JSON array`);
-    const rec = arr[0]!;
+    const parsed: unknown = JSON.parse(p.payload);
+    assert.ok(Array.isArray(parsed) && parsed.length > 0, `Expected non-empty JSON array`);
+    const rec = parsed[0];
+    assert.ok(SmokeRunner.isRecord(rec), `Expected first element to be an object`);
     assert.ok('customs_status' in rec || 'customsStatus' in rec, `Expected customsStatus field in wire record, keys: ${Object.keys(rec).join(', ')}`);
     const status = rec['customs_status'] ?? rec['customsStatus'];
     assert.ok(['held', 'cleared', 'inspection'].includes(String(status)), `Expected valid customsStatus, got ${String(status)}`);
@@ -154,9 +160,10 @@ await SmokeRunner.check('delivery-confirmation payloads carry delivered and podS
   const delPayloads = payloads.filter((p) => p.eventType === 'delivery-confirmation' && p.format === 'json' && p.compression === 'none');
   assert.ok(delPayloads.length > 0, `Expected >=1 delivery-confirmation json/none payload`);
   for (const p of delPayloads) {
-    const arr = JSON.parse(p.payload) as Array<Record<string, unknown>>;
-    assert.ok(Array.isArray(arr) && arr.length > 0, `Expected non-empty JSON array`);
-    const rec = arr[0]!;
+    const parsed: unknown = JSON.parse(p.payload);
+    assert.ok(Array.isArray(parsed) && parsed.length > 0, `Expected non-empty JSON array`);
+    const rec = parsed[0];
+    assert.ok(SmokeRunner.isRecord(rec), `Expected first element to be an object`);
     // delivered and podSignature should be present (set on wire record by buildPayloadFromScan).
     assert.ok('delivered' in rec || 'pod_signature' in rec || 'podSignature' in rec,
       `Expected delivered or podSignature field in wire record, keys: ${Object.keys(rec).join(', ')}`);

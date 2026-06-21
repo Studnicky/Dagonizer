@@ -59,6 +59,7 @@ import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
+import { ToolRegistry } from '@studnicky/dagonizer/tool';
 
 import {
   EmbedderCascade,
@@ -282,6 +283,20 @@ const services: ArchivistServices = {
 // observability surface). The driver reads `dispatcher.logger` for its own
 // stage / result display so both streams share one console sink.
 const dispatcher = new ObservedArchivist({ services });
+
+// ── Tool registry (molecular pattern) ────────────────────────────────────
+// Register each book-search tool as an embeddable `tool:<name>` DAG.
+// ToolRegistry.bundle() returns the synthesized nodes + DAGs so the
+// dispatcher resolves `tool:web_search_books`, `tool:google_books_search`,
+// `tool:subject_search`, and `tool:wikipedia_summary` by name at scatter time.
+// Register BEFORE bookSearchScatterBundle so the embedded-DAG references
+// from the scatter body are resolvable when the parent DAG is validated.
+const toolRegistry = new ToolRegistry();
+toolRegistry.register(new OpenLibrarySearchTool());
+toolRegistry.register(new GoogleBooksTool());
+toolRegistry.register(new SubjectSearchTool());
+toolRegistry.register(new WikipediaSummaryTool());
+dispatcher.registerBundle(toolRegistry.bundle<ArchivistServices>());
 
 // ── Bundle registration (molecular pattern) ──────────────────────────────
 // Each bundle packages its nodes + DAG. Embedded-DAG bundles register first

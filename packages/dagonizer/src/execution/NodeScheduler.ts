@@ -3,11 +3,12 @@ import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.j
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 import type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
-import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import { PlacementRank } from '../core/PlacementRank.js';
 import { WorkSet } from '../core/WorkSet.js';
 import { Batch } from '../entities/batch/Batch.js';
+import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
@@ -26,6 +27,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 import { SignalComposer } from '../runtime/SignalComposer.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
 
+import { OutputContractApplier } from './OutputContractApplier.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './ScatterDispatch.js';
 
 /**
@@ -56,6 +58,8 @@ export interface NodeSchedulerSourceInterface<TServices> {
   readonly registryVersion: string;
   /** State path accessor — used to resolve `dagFrom` paths on `EmbeddedDAGNode` at execution time. */
   readonly accessor: StateAccessorInterface;
+  /** Output-schema validator injected when validateOutputs is true; null otherwise. */
+  readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
 
   /** Relay a flow-start event into the dispatcher's `onFlowStart` hook. */
   relayFlowStart(dagName: string, state: NodeStateInterface): void;
@@ -406,11 +410,17 @@ export class NodeScheduler<TServices> {
           continue scheduleLoop;
         }
 
-        // SingleNode: batch-native path.
+        // SingleNode: batch-native path. Three named lifecycle stages run in
+        // strict order — fire (execute the node) → validate (apply the
+        // output-schema contract) → route (push each port's sub-batch into
+        // pending). Validation is a dedicated stage between fire and route, never
+        // folded into execute; it is a no-op when the toggle is off.
         if (Placement.isSingle(node)) {
           let nodeResult: NodeResultType<NodeStateInterface>;
           try {
-            nodeResult = await this.#fireSinglePlacement(node, batch, dagName, signal, pending);
+            const fired = await this.#fireSinglePlacement(node, batch, dagName, signal);
+            const validated = this.#validateOutputContract(fired.dagNode, fired.routed);
+            nodeResult = this.#routeToPending(node, fired.dagNode, validated, batch, pending);
           } catch (caughtError) {
             const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
             this.#source.relayError(currentPlacementName, error, repState, placementPath);
@@ -900,28 +910,18 @@ export class NodeScheduler<TServices> {
   /**
    * Fire a SingleNode placement over a batch in the work-set scheduler.
    *
-   * Calls `node.execute(batch, context)` via `withNodeTimeout`, adds each output
-   * port's sub-batch to the downstream node's pending work, and returns a
-   * representative `NodeResultType` for the firing.
+   * Stage 1 — FIRE. Calls `node.execute(batch, context)` via `withNodeTimeout`
+   * and returns the firing node together with its raw `RoutedBatchType`. No
+   * validation and no routing happen here; those are the two stages that follow.
    *
-   * For a size-1 batch: exactly one route is produced with exactly one item, so
-   * `output` equals the single port key and `state` equals the single item.
-   *
-   * For a multi-item batch: items may split across multiple output ports.
-   * `output` is `null` (no single representative output) and `state` is the
-   * representative state (`batch.row(0).state`). Each sub-batch is added to the
-   * work set for downstream placement processing.
-   *
-   * Throws `DAGError` when the placement routing map has no entry for a returned
-   * output port.
+   * Throws `DAGError` when the placement names an unregistered node.
    */
   async #fireSinglePlacement(
     nodeConfig: SingleNodePlacementType,
     batch: Batch<NodeStateInterface>,
     dagName: string,
     signal: AbortSignal | null,
-    pending: WorkSet<NodeStateInterface>,
-  ): Promise<NodeResultType<NodeStateInterface>> {
+  ): Promise<{ 'dagNode': NodeInterface<NodeStateInterface, string, TServices>; 'routed': RoutedBatchType<string, NodeStateInterface> }> {
     const dagNode = this.#source.nodes.get(nodeConfig.node);
 
     if (!dagNode) {
@@ -933,6 +933,51 @@ export class NodeScheduler<TServices> {
       return dagNode.execute(batch, context);
     });
 
+    return { 'dagNode': dagNode, 'routed': routed };
+  }
+
+  /**
+   * Stage 2 — VALIDATE. Applies the node's output-schema contract to the routed
+   * output via `OutputContractApplier`. Covers BOTH ScalarNode and MonadicNode
+   * subclasses uniformly. Zero overhead when `validateOutputs` is off
+   * (`outputSchemaValidator` is null) — returns the routed map unchanged. On a
+   * violation, the offending item is re-routed to `'error'` with a collected
+   * `outputContractViolation` NodeError.
+   */
+  #validateOutputContract(
+    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    routed: RoutedBatchType<string, NodeStateInterface>,
+  ): RoutedBatchType<string, NodeStateInterface> {
+    return OutputContractApplier.applyToRouted(
+      dagNode.name,
+      dagNode.outputSchema,
+      routed,
+      this.#source.outputSchemaValidator,
+    );
+  }
+
+  /**
+   * Stage 3 — ROUTE. Pushes each output port's sub-batch into the downstream
+   * node's pending work and returns a representative `NodeResultType` for the
+   * firing.
+   *
+   * For a size-1 batch: exactly one route is produced with exactly one item, so
+   * `output` equals the single port key and `state` equals the single item.
+   *
+   * For a multi-item batch: items may split across multiple output ports.
+   * `output` is `null` (no single representative output) and `state` is the
+   * representative state (`batch.row(0).state`).
+   *
+   * Throws `DAGError` when the placement routing map has no entry for a returned
+   * output port.
+   */
+  #routeToPending(
+    nodeConfig: SingleNodePlacementType,
+    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    routed: RoutedBatchType<string, NodeStateInterface>,
+    batch: Batch<NodeStateInterface>,
+    pending: WorkSet<NodeStateInterface>,
+  ): NodeResultType<NodeStateInterface> {
     // Add each output port's sub-batch to the downstream node's pending work.
     for (const [outputPort, subBatch] of routed.entries()) {
       const nextPlacement = nodeConfig.outputs[outputPort];
@@ -948,7 +993,7 @@ export class NodeScheduler<TServices> {
     // For size-1 batches: exactly one route, one item → single representative output.
     // For multi-item batches: items may split → null representative output.
     const repState = batch.row(0).state;
-    const output = routed.size === 1 ? (routed.keys().next().value as string) : null;
+    const output = routed.size === 1 ? (routed.keys().next().value ?? null) : null;
 
     return {
       output,

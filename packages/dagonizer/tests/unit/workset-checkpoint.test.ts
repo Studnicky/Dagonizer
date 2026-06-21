@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
@@ -49,7 +50,7 @@ class WalkState extends NodeStateBase {
   }
 
   override clone(): this {
-    const copy = new WalkState() as this;
+    const copy = super.clone();
     // NodeStateBase.clone() copies _metadata; we additionally copy domain fields.
     copy.value = this.value;
     copy.log = [...this.log];
@@ -98,6 +99,10 @@ class FanNode extends MonadicNode<WalkState, 'out'> {
 
   constructor(name: string, n: number) { super(); this.name = name; this.n = n; }
 
+  override get outputSchema(): Record<'out', SchemaObjectType> {
+    return { 'out': { 'type': 'object' } };
+  }
+
   override async execute(batch: Batch<WalkState>): Promise<RoutedBatchType<'out', WalkState>> {
     const src = batch.row(0).state;
     const items: Array<{ 'id': string; 'state': WalkState }> = [];
@@ -119,6 +124,10 @@ class ProcNode extends ScalarNode<WalkState, 'done'> {
 
   constructor(name: string) { super(); this.name = name; }
 
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
+
   protected async executeOne(state: WalkState): Promise<NodeOutputType<'done'>> {
     state.log.push(`proc:${state.value}`);
     return { 'errors': [], 'output': 'done' };
@@ -132,6 +141,10 @@ class CollectNode extends MonadicNode<WalkState, 'done'> {
   private readonly collected: WalkState[];
 
   constructor(name: string, collected: WalkState[]) { super(); this.name = name; this.collected = collected; }
+
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   override async execute(batch: Batch<WalkState>): Promise<RoutedBatchType<'done', WalkState>> {
     for (const item of batch) {
@@ -261,7 +274,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       // Capture, round-trip, restore, resume.
       const ckpt = await Checkpoint.capture('fan-proc-collect', run1Result);
       const raw = ckpt.toJson();
-      const parsed = JSON.parse(raw) as unknown;
+      const parsed: unknown = JSON.parse(raw);
       const ckpt2 = Checkpoint.load(parsed);
       const { 'state': restoredState, dagName, cursor } = ckpt2.restoreState(
         CheckpointRestoreAdapter.wrap(restoreWalkState),
@@ -337,28 +350,33 @@ void describe('WorkSet checkpoint — blob shape', () => {
         meta !== null && typeof meta === 'object' && !Array.isArray(meta),
         'snapshot must have a metadata object',
       );
-      const metaRecord = meta as Record<string, unknown>;
+      // After the narrowing above, TypeScript knows meta is JsonObjectType.
       assert.ok(
-        WORKSET_PROGRESS_KEY in metaRecord,
+        WORKSET_PROGRESS_KEY in meta,
         `snapshot metadata must contain ${WORKSET_PROGRESS_KEY}`,
       );
 
-      const blob = metaRecord[WORKSET_PROGRESS_KEY];
+      const blob = meta[WORKSET_PROGRESS_KEY];
       assert.ok(
         blob !== null && typeof blob === 'object' && !Array.isArray(blob),
         'blob must be an object',
       );
-      const blobObj = blob as Record<string, unknown>;
-      assert.ok(Array.isArray(blobObj['entries']), 'blob must have an entries array');
+      // blob is narrowed to JsonObjectType; entries is JsonValueType, narrowed to array below.
+      const entriesValue = blob['entries'];
+      assert.ok(Array.isArray(entriesValue), 'blob must have an entries array');
 
-      const entries = blobObj['entries'] as Array<Record<string, unknown>>;
-      // After fan fires and items are pending at proc-node, the blob must have
-      // exactly one entry for proc-node.
-      assert.equal(entries.length, 1, 'blob must have exactly one placement entry');
-      const entry = entries[0] as Record<string, unknown>;
-      assert.equal(entry['placement'], 'proc-node', 'blob entry placement must be proc-node');
-      const items = entry['items'] as unknown[];
-      assert.equal(items.length, FAN_N, `blob entry must have ${FAN_N} items`);
+      // entriesValue narrowed to JsonArrayType (JsonValueType[]); each item is JsonValueType.
+      assert.equal(entriesValue.length, 1, 'blob must have exactly one placement entry');
+      const entryValue = entriesValue[0];
+      assert.ok(
+        entryValue !== null && typeof entryValue === 'object' && !Array.isArray(entryValue),
+        'blob entry must be an object',
+      );
+      // entryValue narrowed to JsonObjectType.
+      assert.equal(entryValue['placement'], 'proc-node', 'blob entry placement must be proc-node');
+      const itemsValue = entryValue['items'];
+      assert.ok(Array.isArray(itemsValue), 'blob entry must have an items array');
+      assert.equal(itemsValue.length, FAN_N, `blob entry must have ${FAN_N} items`);
     },
   );
 
@@ -378,9 +396,9 @@ void describe('WorkSet checkpoint — blob shape', () => {
       const snap = result.state.snapshot();
       const meta = snap['metadata'];
       if (meta !== null && typeof meta === 'object' && !Array.isArray(meta)) {
-        const metaRecord = meta as Record<string, unknown>;
+        // meta narrowed to JsonObjectType; no cast needed.
         assert.ok(
-          !(WORKSET_PROGRESS_KEY in metaRecord),
+          !(WORKSET_PROGRESS_KEY in meta),
           `completed run snapshot must NOT contain ${WORKSET_PROGRESS_KEY}`,
         );
       }
@@ -407,7 +425,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
         count = 0;
 
         override clone(): this {
-          const copy = new CountState() as this;
+          const copy = super.clone();
           copy.count = this.count;
           return copy;
         }
@@ -430,6 +448,10 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
         readonly outputs: readonly ['next'] = ['next'];
 
         constructor(name: string) { super(); this.name = name; }
+
+        override get outputSchema(): Record<'next', SchemaObjectType> {
+          return { 'next': { 'type': 'object' } };
+        }
 
         protected async executeOne(state: CountState): Promise<NodeOutputType<'next'>> {
           state.count++;
@@ -476,8 +498,9 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
 
       // Assert: NO work-set blob in snapshot (size-1 canonical path).
       const snap1 = partial.state.snapshot();
-      const meta1 = snap1['metadata'] as Record<string, unknown> | undefined;
-      if (meta1 !== undefined) {
+      const meta1 = snap1['metadata'];
+      if (meta1 !== null && typeof meta1 === 'object' && !Array.isArray(meta1)) {
+        // meta1 narrowed to JsonObjectType.
         assert.ok(
           !(WORKSET_PROGRESS_KEY in meta1),
           'size-1 abort must NOT write a work-set blob',
@@ -487,7 +510,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       // Checkpoint → round-trip → restore → resume.
       const ckpt = await Checkpoint.capture('size1-ckpt', partial);
       const raw = ckpt.toJson();
-      const parsed = JSON.parse(raw) as unknown;
+      const parsed: unknown = JSON.parse(raw);
       const ckpt2 = Checkpoint.load(parsed);
       const { state, dagName, cursor } = ckpt2.restoreState(
         CheckpointRestoreAdapter.wrap((snap) => CountState.restore(snap)),

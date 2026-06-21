@@ -17,13 +17,12 @@ import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import type { GatherRecordType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -51,10 +50,19 @@ class HeterogeneousState extends NodeStateBase {
   }
 
   protected override restoreData(snap: JsonObjectType): void {
-    if (Array.isArray(snap['providers']))              this.providers     = snap['providers'] as string[];
-    if (typeof snap['providerResult'] === 'string')    this.providerResult = snap['providerResult'];
-    if (Array.isArray(snap['results']))                this.results        = snap['results'] as string[];
-    if (Array.isArray(snap['failMessages']))           this.failMessages   = snap['failMessages'] as string[];
+    const providers = snap['providers'];
+    if (Array.isArray(providers)) {
+      this.providers = providers.filter((x): x is string => typeof x === 'string');
+    }
+    if (typeof snap['providerResult'] === 'string') this.providerResult = snap['providerResult'];
+    const results = snap['results'];
+    if (Array.isArray(results)) {
+      this.results = results.filter((x): x is string => typeof x === 'string');
+    }
+    const failMessages = snap['failMessages'];
+    if (Array.isArray(failMessages)) {
+      this.failMessages = failMessages.filter((x): x is string => typeof x === 'string');
+    }
   }
 }
 
@@ -62,37 +70,20 @@ class HeterogeneousState extends NodeStateBase {
 // Reads currentItem (the provider descriptor) and produces a per-provider
 // result. Three providers succeed, one returns 'empty'.
 
-class DispatchNode extends ScalarNode<HeterogeneousState, 'success' | 'empty'> {
-  readonly name = 'dispatch';
-  readonly outputs = ['success', 'empty'] as const;
-  protected async executeOne(state: HeterogeneousState): Promise<NodeOutputType<'success' | 'empty'>> {
+const dispatchNode = TestNode.make<HeterogeneousState>(
+  'dispatch',
+  ['success', 'empty'],
+  (state) => {
     const provider = state.getMetadata<string>('currentItem') ?? 'unknown';
-    switch (provider) {
-      case 'alpha': {
-        state.providerResult = 'result-from-alpha';
-        return { 'errors': [], 'output': 'success' };
-      }
-      case 'beta': {
-        state.providerResult = 'result-from-beta';
-        return { 'errors': [], 'output': 'success' };
-      }
-      case 'gamma': {
-        state.providerResult = 'result-from-gamma';
-        return { 'errors': [], 'output': 'success' };
-      }
-      case 'delta': {
-        // delta returns empty — no results from this provider.
-        state.failMessages = [...state.failMessages, 'delta: no results'];
-        return { 'errors': [], 'output': 'empty' };
-      }
-      default: {
-        return { 'errors': [], 'output': 'empty' };
-      }
-    }
-  }
-}
-
-const dispatchNode = new DispatchNode();
+    const dispatch: Record<string, () => string> = {
+      'alpha': () => { state.providerResult = 'result-from-alpha'; return 'success'; },
+      'beta':  () => { state.providerResult = 'result-from-beta';  return 'success'; },
+      'gamma': () => { state.providerResult = 'result-from-gamma'; return 'success'; },
+      'delta': () => { state.failMessages = [...state.failMessages, 'delta: no results']; return 'empty'; },
+    };
+    return (dispatch[provider] ?? (() => 'empty'))();
+  },
+);
 
 // ── custom gather strategy ───────────────────────────────────────────────────
 // Flat-merges each clone's `providerResult` into the parent `results` array
@@ -175,14 +166,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
   void it('routes error when all providers return empty', async () => {
     const dispatcher = new Dagonizer<HeterogeneousState>();
 
-    class EmptyDispatchNode extends ScalarNode<HeterogeneousState, 'success' | 'empty'> {
-      readonly name = 'empty-dispatch';
-      readonly outputs = ['success', 'empty'] as const;
-      protected async executeOne(_state: HeterogeneousState): Promise<NodeOutputType<'success' | 'empty'>> {
-        return { 'errors': [], 'output': 'empty' };
-      }
-    }
-    const emptyDispatch = new EmptyDispatchNode();
+    const emptyDispatch = TestNode.make<HeterogeneousState>('empty-dispatch', ['success', 'empty'], () => 'empty');
     dispatcher.registerNode(emptyDispatch);
 
     const dag = new DAGBuilder('hetero-all-empty', '1.0')

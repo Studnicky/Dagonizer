@@ -20,7 +20,7 @@ import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 type IntentOutput =
   | 'lookup-author'
@@ -42,6 +42,19 @@ const RETRY_BUDGET = 2;
 export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput, ArchivistServices> {
   readonly name = 'classify-intent';
   readonly outputs = ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'off-topic', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'lookup-author' | 'find-reviews' | 'describe-book' | 'recommend-similar' | 'recall-memories' | 'on-topic' | 'off-topic' | 'retry' | 'salvage', SchemaObjectType> {
+    return {
+      'lookup-author':     { 'type': 'object' },
+      'find-reviews':      { 'type': 'object' },
+      'describe-book':     { 'type': 'object' },
+      'recommend-similar': { 'type': 'object' },
+      'recall-memories':   { 'type': 'object' },
+      'on-topic':          { 'type': 'object' },
+      'off-topic':         { 'type': 'object' },
+      'retry':             { 'type': 'object' },
+      'salvage':           { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const summary = state.recalledContext.summary.length > 0

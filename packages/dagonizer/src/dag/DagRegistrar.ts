@@ -159,6 +159,15 @@ export class DagRegistrar<TServices> {
         throw new DAGError(`Invalid node ${node.name}: ${result.errors.join(', ')}`);
       }
     }
+    // Structural enforcement: every declared output port must have a schema entry.
+    // This check is ALWAYS active (cheap, structural — independent of validateOutputs).
+    for (const port of node.outputs) {
+      if (!(port in node.outputSchema)) {
+        throw new DAGError(
+          `Node '${node.name}' declares output port '${String(port)}' but outputSchema has no entry for it`,
+        );
+      }
+    }
     this.#source.nodes.set(node.name, node);
   }
 

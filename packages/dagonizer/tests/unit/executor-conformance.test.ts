@@ -21,22 +21,9 @@ import { resolve } from 'node:path';
 import { describe, it, afterEach } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { DagContainerBase } from '../../src/container/DagContainerBase.js';
-import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
-import { DagHost } from '../../src/container/DagHost.js';
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
-import type { DagTaskInterface } from '../../src/container/DagTask.js';
-import { DAG_CONTAINER_TRANSPORT } from '../../src/container/TransportErrorCode.js';
-import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { DispatcherBundleType } from '../../src/contracts/DispatcherBundle.js';
-import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
-import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
-import { Dagonizer } from '../../src/Dagonizer.js';
-import type { ScatterProgressType } from '../../src/Dagonizer.js';
-import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeErrorWireType } from '../../src/entities/node/NodeError.js';
-import type { NodeStateInterface } from '../../src/NodeStateBase.js';
+// Engine imports come from the PUBLIC package entry (dist), not `../../src`, so
+// this conformance test's type identity matches the dist-compiled `testing/`
+// harness and `ConformanceRegistry` bundle it drives — no src↔dist brand bridge.
 import {
   ConformanceRegistry,
   ConformanceState,
@@ -44,10 +31,23 @@ import {
   CONFORMANCE_REGISTRY_VERSION,
   CONFORMANCE_DAG,
 } from '../../testing/ConformanceRegistry.js';
-import {
-  DagConformance,
-} from '../../testing/DagConformance.js';
+import { DagConformance } from '../../testing/DagConformance.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
+
+import { Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
+import type {
+  DagContainerOptionsType,
+  DagOutcomeType,
+  DagTaskInterface,
+  DagContainerInterface,
+  DispatcherBundleType,
+  ScatterProgressType,
+  NodeStateInterface,
+} from '@studnicky/dagonizer';
+import { DagContainerBase, DagHost, DAG_CONTAINER_TRANSPORT } from '@studnicky/dagonizer/container';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
+import type { MessageChannelInterface, ObserverRelayInterface } from '@studnicky/dagonizer/contracts';
+import type { JsonObjectType, NodeErrorWireType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // Registry module URL
@@ -80,7 +80,7 @@ class LoopbackContainer extends DagContainerBase<LoopbackWorker> {
       'init': {
         'registryModule': registryModuleUrl,
         'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-        'servicesConfig': {} as JsonObjectType,
+        'servicesConfig': {} satisfies JsonObjectType,
       },
       ...(options.shutdownGraceMs !== undefined ? { 'shutdownGraceMs': options.shutdownGraceMs } : {}),
     });
@@ -143,7 +143,7 @@ function createDispatcherForLaw(
   const container = new LoopbackContainer(REGISTRY_MODULE_URL);
   perLawContainers.push(container);
 
-  const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
+  const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
   const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ containers });
   dispatcher.registerBundle(bundle);
   return dispatcher;
@@ -165,9 +165,14 @@ type LazyLoopbackContainer = LoopbackContainer;
 let sentinelContainer: LazyLoopbackContainer | null = null;
 
 // The harness is passed to DagConformance.laws(). DagConformanceHarnessInterface
-// lives in testing/ which compiles against dist/ types. We bridge via unknown
-// cast because the src/ and dist/ Execution<T> private-field brands diverge
-// in the dual-compilation world. The runtime shapes are identical.
+// lives in testing/ which compiles against dist/ types. The src/ Dagonizer class
+// and the dist/ DagonizerInterface are structurally identical at runtime but are
+// distinct type identities in the dual-compilation build: private fields from the
+// Execution<T> class create a brand divergence that prevents direct structural
+// assignment. The single `as unknown` + `as` here is the minimal bridge between
+// the two compilation units; it cannot be eliminated without making the test
+// import Dagonizer from dist/ (which would lose access to src/ coverage) or
+// without changing the DagConformanceHarnessInterface signature in testing/.
 const harnessRaw = {
   'containerRole': CONFORMANCE_CONTAINER_ROLE,
 
@@ -201,10 +206,7 @@ const harnessRaw = {
     await teardownPerLawContainers();
   },
 };
-
-// Constructs intentionally-invalid input (at the type level): harnessRaw's src/ Execution<T> brand
-// diverges from the dist/-compiled DagConformanceHarnessInterface brand; runtime shapes are identical.
-const laws = DagConformance.laws(harnessRaw as unknown as Parameters<typeof DagConformance.laws>[0]);
+const laws = DagConformance.laws(harnessRaw);
 
 // ---------------------------------------------------------------------------
 // Conformance test suite
@@ -233,8 +235,14 @@ describe('LoopbackContainer — state round-trip fixed point (Law 9 direct)', ()
     const container = new LoopbackContainer(REGISTRY_MODULE_URL);
 
     try {
-      const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundleType<NodeStateInterface, undefined>;
-      const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
+      // RegistryBundleInterface.bundle is typed DispatcherBundleType<NodeStateInterface, unknown>
+      // src/ test ↔ dist/ testing-harness brand bridge (see the FIXME on the
+      // DagConformance.laws call): the bundle comes from the dist-compiled
+      // `testing/` module; the src-compiled `Batch`/`NodeInterface` it must
+      // register into carry a divergent `#private` brand, so the structural
+      // assignment fails. Part of the same dual-compilation decision.
+      const bundle = ConformanceRegistry.bundle().bundle;
+      const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
       const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ containers });
       dispatcher.registerBundle(bundle);
 
@@ -244,8 +252,9 @@ describe('LoopbackContainer — state round-trip fixed point (Law 9 direct)', ()
       const result = await dispatcher.execute(CONFORMANCE_DAG.law9, initialState);
 
       assert.strictEqual(result.state, initialState, 'state identity must be preserved');
+      assert.ok(result.state instanceof ConformanceState, 'result.state must be a ConformanceState');
       assert.strictEqual(
-        (result.state as ConformanceState).value, 99,
+        result.state.value, 99,
         'mutator must have set value=99 through snapshot round-trip',
       );
     } finally {
@@ -318,7 +327,8 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     const failing = new ReturnTransportErrorAfterOneContainer(inner);
     perLawContainers.push(failing);
 
-    const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundleType<NodeStateInterface, undefined>;
+    // src/ test ↔ dist/ testing-harness brand bridge (see the FIXME above).
+    const bundle = ConformanceRegistry.bundle().bundle;
 
     // Phase 1: scatter through the failing container. Item 0 acks; item 1
     // returns a transport error → scatter throws (poolError) → item 1 stays
@@ -326,9 +336,9 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     const state = new ConformanceState();
     state.scatterItems = [10, 20, 30];
 
-    const failingContainers = {
+    const failingContainers: Readonly<Record<string, DagContainerInterface>> = {
       [CONFORMANCE_CONTAINER_ROLE]: failing,
-    } as Readonly<Record<string, DagContainerInterface>>;
+    };
     const failingDispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': failingContainers });
     failingDispatcher.registerBundle(bundle);
 
@@ -361,16 +371,17 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     // Phase 2: resume through a healthy container. Un-acked items reprocess.
     const fresh = new LazyLoopbackContainer(REGISTRY_MODULE_URL);
     perLawContainers.push(fresh);
-    const freshContainers = {
+    const freshContainers: Readonly<Record<string, DagContainerInterface>> = {
       [CONFORMANCE_CONTAINER_ROLE]: fresh,
-    } as Readonly<Record<string, DagContainerInterface>>;
+    };
     const freshDispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': freshContainers });
     freshDispatcher.registerBundle(bundle);
 
     const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state, 'fan');
 
     // All 3 items gathered: no loss, no double-ack (acked item not reprocessed).
-    const finalItems = (result.state as ConformanceState).gatheredItems;
+    assert.ok(result.state instanceof ConformanceState, 'result.state must be a ConformanceState');
+    const finalItems = result.state.gatheredItems;
     assert.strictEqual(
       finalItems.length, 3,
       `all 3 items must be gathered after resume (no loss, no double-ack), got ${finalItems.length}`,

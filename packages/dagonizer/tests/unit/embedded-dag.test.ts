@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -33,6 +34,12 @@ class IncNode extends ScalarNode<CounterState, string> {
     this.name = name;
     this.outputs = outputs;
     this.delta = delta;
+  }
+
+  override get outputSchema(): Record<string, SchemaObjectType> {
+    const schema: Record<string, SchemaObjectType> = {};
+    for (const port of this.outputs) schema[port] = { 'type': 'object' };
+    return schema;
   }
 
   protected async executeOne(
@@ -345,6 +352,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
 class PassNode extends ScalarNode<NodeStateBase, 'ok'> {
   readonly name = 'pass';
   readonly outputs = ['ok'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'ok': { 'type': 'object' } }; }
   protected async executeOne(): Promise<NodeOutputType<'ok'>> { return { 'errors': [], 'output': 'ok' as const }; }
 }
 

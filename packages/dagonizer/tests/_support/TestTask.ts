@@ -22,7 +22,7 @@
 
 import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
 import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
-import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.js';
 
@@ -45,24 +45,16 @@ export class TestTask {
    * @param signal        - AbortSignal forwarded on the task context.
    * @param state         - Live state instance (caller supplies its typed state).
    */
-  static of<
-    TState extends NodeStateInterface = NodeStateBase,
-    TServices = undefined,
-  >(
+  static of<TState extends NodeStateInterface = NodeStateBase>(
     correlationId: string,
     signal: AbortSignal,
     state: TState,
-  ): DagTaskInterface<TServices> {
+  ): DagTaskInterface<undefined> {
     const dagName = 'test-dag';
 
-    const context: NodeContextType<TServices> = {
-      'signal':    signal,
-      'dagName':   dagName,
-      'nodeName':  'test-node',
-      'services':  undefined as TServices,
-    };
+    const context = NodeContextBuilder.of<undefined>(dagName, 'test-node', signal, undefined);
 
-    const task: DagTaskInterface<TServices> = {
+    const task: DagTaskInterface<undefined> = {
       'dagName':       dagName,
       'placementPath': [],
       correlationId,

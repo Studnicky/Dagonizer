@@ -14,6 +14,7 @@
  */
 
 import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
+import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
@@ -25,6 +26,14 @@ export abstract class CollectToolResultsNode<
   TState extends NodeStateInterface,
 > extends ScalarNode<TState, 'done' | 'empty' | 'error', AgentServicesType> {
   readonly outputs = ['done', 'empty', 'error'] as const;
+
+  override get outputSchema(): Record<'done' | 'empty' | 'error', SchemaObjectType> {
+    return {
+      'done':  { 'type': 'object' },
+      'empty': { 'type': 'object' },
+      'error': { 'type': 'object' },
+    };
+  }
 
   /**
    * Read the gather-folded result collection from parent state.

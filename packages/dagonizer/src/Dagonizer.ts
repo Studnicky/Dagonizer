@@ -3,7 +3,7 @@ import type { DagContainerInterface } from './contracts/DagContainerInterface.js
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 import type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
 import type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
-import type { NodeInterface } from './contracts/NodeInterface.js';
+import type { NodeInterface, OutputSchemaValidatorInterface, SchemaObjectType } from './contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
 import type { DagRegistrar, DagRegistrarSourceInterface } from './dag/DagRegistrar.js';
@@ -32,9 +32,34 @@ import { DottedPathAccessor } from './runtime/DottedPathAccessor.js';
 import { Scheduler } from './runtime/Scheduler.js';
 import { SignalComposer } from './runtime/SignalComposer.js';
 import { StateMapper } from './runtime/StateMapper.js';
+import { Validator } from './validation/Validator.js';
 
 /** Default state accessor: installed when the dispatcher is constructed without one. */
 const DEFAULT_STATE_ACCESSOR: StateAccessorInterface = new DottedPathAccessor();
+
+/**
+ * Concrete `OutputSchemaValidatorInterface` implementation backed by
+ * `Validator.compile`. Built once per dispatcher instance when `validateOutputs`
+ * is true; passed as `context.outputSchemaValidator` to every node execution.
+ * When `validateOutputs` is false, `null` is passed instead — zero overhead.
+ *
+ * Caches compiled validators by schema object reference so the same schema
+ * object (the literal returned by `MonadicNode.outputSchema`) is only compiled
+ * once per dispatcher lifetime. `WeakMap` keeps the cache from holding schema
+ * objects alive beyond their natural lifetime.
+ */
+class DispatcherOutputSchemaValidator implements OutputSchemaValidatorInterface {
+  readonly #cache = new WeakMap<SchemaObjectType, ReturnType<typeof Validator.compile>>();
+
+  validatePort(_portKey: string, schema: SchemaObjectType, state: unknown): string[] | null {
+    let validator = this.#cache.get(schema);
+    if (validator === undefined) {
+      validator = Validator.compile<unknown>(schema);
+      this.#cache.set(schema, validator);
+    }
+    return validator.errors(state);
+  }
+}
 
 /** Registry version used when the dispatcher is constructed without one. */
 const DEFAULT_REGISTRY_VERSION = '0';
@@ -52,6 +77,7 @@ const DAGONIZER_OPTION_DEFAULTS = {
   'containers': {} as Readonly<Record<string, never>>,
   'channels': {} as Readonly<Record<string, never>>,
   'registryVersion': DEFAULT_REGISTRY_VERSION,
+  'validateOutputs': false,
 } as const;
 
 // Scatter progress types originate in entities/scatter/ScatterProgress.ts;
@@ -108,6 +134,13 @@ export type DagonizerOptionsType<TServices = undefined> = {
    * `DEFAULT_REGISTRY_VERSION` ('0') when not supplied.
    */
   registryVersion?: string;
+  /**
+   * When `true`, every node output is validated against the node's declared
+   * `outputSchema` for that port after execution. On mismatch the item is
+   * re-routed to `'error'`. Default `false` — zero overhead in production.
+   * Enable in dev/test to catch contract violations early.
+   */
+  validateOutputs?: boolean;
 }
 
 
@@ -288,6 +321,13 @@ implements
   readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
   // Read by NodeScheduler via NodeSchedulerSourceInterface (hand-off envelope).
   readonly registryVersion: string;
+  /** Threaded into every `NodeContextType.validateOutputs` field. */
+  readonly validateOutputs: boolean;
+  /**
+   * Injected into every `NodeContextType.outputSchemaValidator` field.
+   * `null` when `validateOutputs` is false — zero overhead in production.
+   */
+  readonly #outputSchemaValidator: OutputSchemaValidatorInterface | null;
   /**
    * Stable `DispatcherHooksInterface` adapter bound to this instance's protected
    * hooks. Created once in the constructor and reused by every `relayFor` call
@@ -341,6 +381,8 @@ implements
     this.containers = resolved.containers;
     this.channels = resolved.channels;
     this.registryVersion = resolved.registryVersion;
+    this.validateOutputs = resolved.validateOutputs;
+    this.#outputSchemaValidator = resolved.validateOutputs ? new DispatcherOutputSchemaValidator() : null;
     // Construct the engine module graph in one place. `EngineComposer.compose`
     // owns the dependency ordering (bodyExecutor before its consumers, the three
     // executors before placementDispatch); `this` satisfies `EngineHostType`
@@ -498,6 +540,16 @@ implements
   }
 
   /**
+   * Output-schema validator for this dispatcher instance. Non-null when
+   * `validateOutputs` is true; `null` otherwise. Exposed as a public getter
+   * to satisfy `NodeSchedulerSourceInterface` and `ScatterDispatchSourceInterface`
+   * without making the private field accessible to subclasses.
+   */
+  get outputSchemaValidator(): OutputSchemaValidatorInterface | null {
+    return this.#outputSchemaValidator;
+  }
+
+  /**
    * Build a node context for a sub-DAG body invocation. Forwards to
    * `NodeContextBuilder.of`, substituting a never-firing signal when the run
    * has none. Satisfies both `BodyRunPortInterface` (the embedded/scatter DAG
@@ -505,7 +557,7 @@ implements
    * where the dispatcher's `services` field is otherwise out of scope.
    */
   bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices> {
-    return NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.services);
+    return NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.services, this.validateOutputs, this.#outputSchemaValidator);
   }
 
   /**
@@ -515,7 +567,7 @@ implements
    * contexts without importing `SignalComposer` directly.
    */
   nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType<TServices> {
-    return NodeContextBuilder.of(dagName, placementName, signal ?? SignalComposer.never(), this.services);
+    return NodeContextBuilder.of(dagName, placementName, signal ?? SignalComposer.never(), this.services, this.validateOutputs, this.#outputSchemaValidator);
   }
 
   /**
@@ -884,6 +936,7 @@ implements
     containers: Readonly<Record<string, DagContainerInterface>>;
     channels: Readonly<Record<string, HandoffChannelInterface>>;
     registryVersion: string;
+    validateOutputs: boolean;
   }> {
     return {
       'accessor':        partial.accessor ?? DEFAULT_STATE_ACCESSOR,
@@ -891,6 +944,7 @@ implements
       'containers':      partial.containers ?? (DAGONIZER_OPTION_DEFAULTS.containers as Readonly<Record<string, DagContainerInterface>>),
       'channels':        partial.channels ?? DAGONIZER_OPTION_DEFAULTS.channels,
       'registryVersion': partial.registryVersion ?? DEFAULT_REGISTRY_VERSION,
+      'validateOutputs': partial.validateOutputs ?? false,
     };
   }
 

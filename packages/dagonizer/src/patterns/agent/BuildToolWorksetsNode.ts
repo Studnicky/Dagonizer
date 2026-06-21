@@ -15,6 +15,7 @@
  */
 
 import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
+import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ToolCallType } from '../../entities/adapter/ToolCall.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
@@ -39,6 +40,14 @@ export abstract class BuildToolWorksetsNode<
   TState extends NodeStateInterface,
 > extends ScalarNode<TState, 'ready' | 'empty' | 'error', AgentServicesType> {
   readonly outputs = ['ready', 'empty', 'error'] as const;
+
+  override get outputSchema(): Record<'ready' | 'empty' | 'error', SchemaObjectType> {
+    return {
+      'ready': { 'type': 'object' },
+      'empty': { 'type': 'object' },
+      'error': { 'type': 'object' },
+    };
+  }
 
   /** Read the validated tool calls from state. */
   protected abstract getToolCalls(

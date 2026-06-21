@@ -16,7 +16,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import { MemoryStore } from '../memory/MemoryStore.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -28,6 +28,12 @@ const dagInShortlist = MemoryStore.dagIri('inShortlist');
 export class HasCitationsGateNode extends ScalarNode<ArchivistState, 'pass' | 'fail', ArchivistServices> {
   readonly name = 'has-citations-gate';
   readonly outputs = ['pass', 'fail'] as const;
+  override get outputSchema(): Record<'pass' | 'fail', SchemaObjectType> {
+    return {
+      'pass': { 'type': 'object' },
+      'fail': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory = context.services.memory;

@@ -19,10 +19,10 @@ import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
 import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { ScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoffType } from '../../src/entities/handoff/DAGHandoff.js';
@@ -36,6 +36,7 @@ import { SignalComposer } from '../../src/runtime/SignalComposer.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── TST-16: NodeStateBase.restoreData with malformed snapshot ─────────────────
 
@@ -139,12 +140,6 @@ void describe('TST-17: DAGHandoffType stateSnapshotRef publishing path', () => {
       }
     }
 
-    class NoopNode extends ScalarNode<NodeStateBase, 'done'> {
-      readonly name = 'noop';
-      readonly outputs = ['done'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
-    }
-
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id': 'urn:noocodex:dag:ref-handoff',
@@ -172,7 +167,7 @@ void describe('TST-17: DAGHandoffType stateSnapshotRef publishing path', () => {
     const dispatcher = new Dagonizer<NodeStateBase>({
       'channels': { 'done-terminal': new ByRefChannel() },
     });
-    dispatcher.registerNode(new NoopNode());
+    dispatcher.registerNode(TestNode.make('noop', ['done']));
     dispatcher.registerDAG(dag);
 
     await dispatcher.execute('ref-handoff', new NodeStateBase());
@@ -209,12 +204,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
   void it('registers a node-body scatter (no container declared) without throwing', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
 
-    class NoopBundleNode extends ScalarNode<NodeStateBase, 'done'> {
-      readonly name = 'noop-bundle';
-      readonly outputs = ['done'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
-    }
-    const noop = new NoopBundleNode();
+    const noop = TestNode.make('noop-bundle', ['done']);
 
     // DAG with a scatter placement declaring an unbound container role.
     const dag: DAGType = Validator.dag.validate({
@@ -257,12 +247,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
       'containers': { 'bound-worker-role': fakeContainer },
     });
 
-    class NoopUnboundNode extends ScalarNode<NodeStateBase, 'done'> {
-      readonly name = 'noop-unbound';
-      readonly outputs = ['done'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
-    }
-    dispatcher.registerNode(new NoopUnboundNode());
+    dispatcher.registerNode(TestNode.make('noop-unbound', ['done']));
 
     // Register a minimal inner DAG so the semantic validator accepts the dag-body reference.
     const innerDag: DAGType = {
@@ -478,6 +463,9 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     class CounterNode extends ScalarNode<ScatterAbortState, 'done'> {
       readonly name = 'counter';
       readonly outputs = ['done'] as const;
+      override get outputSchema(): Record<'done', SchemaObjectType> {
+        return { 'done': { 'type': 'object' } };
+      }
       protected async executeOne(state: ScatterAbortState, context: NodeContextType): Promise<NodeOutputType<'done'>> {
         callCount++;
         const item = state.getMetadata<number>('item') ?? 0;
@@ -569,8 +557,8 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
       'SCATTER_PROGRESS_KEY must be preserved after abort (checkpoint must survive)');
 
     // (c) Fewer than all items were acked.
-    const entry = progress['fan'] as ScatterProgressType | undefined;
-    assert.ok(entry !== undefined, 'progress must have an entry for placement "fan"');
+    assert.ok(progress['fan'] !== undefined, 'progress must have an entry for placement "fan"');
+    const entry = Validator.scatterProgress.validate(progress['fan']);
     const ackedCount = entry.mode === 'bounded'
       ? entry.watermark + entry.aheadAcked.length
       : entry.ackedResults.length;

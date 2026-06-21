@@ -109,6 +109,7 @@ export {
   ExecutionRequestSchema,
   ExecutionResponseSchema,
   DAGHandoffSchema,
+  JsonValue,
 } from './entities/index.js';
 export type {
   BackoffStrategyType,
@@ -281,7 +282,7 @@ export type { DagContainerInterface } from './contracts/DagContainerInterface.js
 export type { DagOutcomeType } from './contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
 export type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
-export type { NodeInterface } from './contracts/NodeInterface.js';
+export type { NodeInterface, SchemaObjectType } from './contracts/NodeInterface.js';
 export type { RemoteStoreInterface } from './contracts/RemoteStoreInterface.js';
 export type { RemoteStoreEndpointType } from './contracts/RemoteStoreEndpoint.js';
 export type { RemoteStoreLeaseType } from './contracts/RemoteStoreLease.js';

@@ -16,6 +16,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
@@ -24,6 +25,7 @@ import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.j
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestBatchNode } from '../_support/TestBatchNode.js';
 import { TestDag } from '../_support/TestDag.js';
 
 // ===========================================================================
@@ -81,7 +83,7 @@ class ValueState extends NodeStateBase {
   }
 
   override clone(): this {
-    const copy = new ValueState() as this;
+    const copy = super.clone();
     copy.value = this.value;
     copy.log = [...this.log];
     return copy;
@@ -95,75 +97,14 @@ class ValueState extends NodeStateBase {
     const v = snap['value'];
     if (typeof v === 'number') this.value = v;
     const l = snap['log'];
-    if (Array.isArray(l)) this.log = l as string[];
+    if (Array.isArray(l)) this.log = l.filter((e): e is string => typeof e === 'string');
   }
 }
 
 // ===========================================================================
-// Shared node helpers
+// Shared node helpers — TestBatchNode.fanOut / TestBatchNode.accumulator
+// imported from ../_support/TestBatchNode.js
 // ===========================================================================
-
-class TestBatchNode {
-  private constructor() { /* static class */ }
-
-  // Fan-out node: takes a size-1 batch and emits N items with the given values.
-  static fanOut(name: string, values: number[]): MonadicNode<ValueState, 'out'> {
-    class FanOutNode extends MonadicNode<ValueState, 'out'> {
-      readonly name: string;
-      readonly outputs = ['out'] as const;
-
-      constructor(
-        nodeName: string,
-        private readonly values: number[],
-      ) {
-        super();
-        this.name = nodeName;
-      }
-
-      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', ValueState>> {
-        const source = batch.row(0).state;
-        const items: Array<ItemType<ValueState>> = [];
-        for (let i = 0; i < this.values.length; i++) {
-          const clone = source.clone();
-          const v = this.values[i] as number;
-          clone.value = v;
-          clone.log.push(`fan:${v}`);
-          items.push({ 'id': String(i), 'state': clone });
-        }
-        const result = new Map<'out', Batch<ValueState>>();
-        result.set('out', Batch.from(items));
-        return result;
-      }
-    }
-    return new FanOutNode(name, values);
-  }
-
-  // Accumulator node: collects all items into an external array, passes through.
-  static accumulator(name: string, collected: ValueState[]): MonadicNode<ValueState, 'done'> {
-    class AccumulatorNode extends MonadicNode<ValueState, 'done'> {
-      readonly name: string;
-      readonly outputs = ['done'] as const;
-
-      constructor(
-        nodeName: string,
-        private readonly collected: ValueState[],
-      ) {
-        super();
-        this.name = nodeName;
-      }
-
-      override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
-        for (const item of batch) {
-          this.collected.push(item.state);
-        }
-        const result = new Map<'done', Batch<ValueState>>();
-        result.set('done', batch);
-        return result;
-      }
-    }
-    return new AccumulatorNode(name, collected);
-  }
-}
 
 // ===========================================================================
 // Test (a): Multi-item batch splits and re-converges at one terminal
@@ -184,6 +125,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     class DispatchNode extends MonadicNode<ValueState, 'high' | 'low'> {
       readonly name = 'dispatch';
       readonly outputs = ['high', 'low'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'high': { 'type': 'object' }, 'low': { 'type': 'object' } }; }
 
       override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'high' | 'low', ValueState>> {
         const high: Array<ItemType<ValueState>> = [];
@@ -206,6 +148,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     class HighBranchNode extends MonadicNode<ValueState, 'done'> {
       readonly name = 'high-branch';
       readonly outputs = ['done'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
       override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
         for (const item of batch) {
@@ -222,6 +165,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     class LowBranchNode extends MonadicNode<ValueState, 'done'> {
       readonly name = 'low-branch';
       readonly outputs = ['done'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
       override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
         for (const item of batch) {
@@ -239,6 +183,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     class ConvergeNode extends MonadicNode<ValueState, 'done'> {
       readonly name = 'converge';
       readonly outputs = ['done'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
       override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
         convergeFirings.push(batch.size);
@@ -265,12 +210,29 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
-    dispatcher.registerNode(TestBatchNode.fanOut('fanout', [5, -3, 7]));
+    dispatcher.registerNode(TestBatchNode.of<ValueState, 'out'>('fanout', ['out'], (batch) => {
+      const source = batch.row(0).state;
+      const values = [5, -3, 7];
+      const items: Array<ItemType<ValueState>> = values.map((v, i) => {
+        const clone = source.clone();
+        clone.value = v;
+        clone.log.push(`fan:${v}`);
+        return { 'id': String(i), 'state': clone };
+      });
+      const r = new Map<'out', Batch<ValueState>>();
+      r.set('out', Batch.from(items));
+      return r;
+    }));
     dispatcher.registerNode(new DispatchNode());
     dispatcher.registerNode(new HighBranchNode());
     dispatcher.registerNode(new LowBranchNode());
     dispatcher.registerNode(new ConvergeNode());
-    dispatcher.registerNode(TestBatchNode.accumulator('acc', collected));
+    dispatcher.registerNode(TestBatchNode.of<ValueState, 'done'>('acc', ['done'], (batch) => {
+      for (const item of batch) { collected.push(item.state); }
+      const r = new Map<'done', Batch<ValueState>>();
+      r.set('done', batch);
+      return r;
+    }));
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('bne-converge', new ValueState());
@@ -316,6 +278,7 @@ void describe('Batch-native executor — Fix 1: multi-item batch reaches differe
     class RouterNode extends MonadicNode<ValueState, 'success-path' | 'failure-path'> {
       readonly name = 'router';
       readonly outputs = ['success-path', 'failure-path'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'success-path': { 'type': 'object' }, 'failure-path': { 'type': 'object' } }; }
 
       override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'success-path' | 'failure-path', ValueState>> {
         const success: Array<ItemType<ValueState>> = [];
@@ -345,7 +308,19 @@ void describe('Batch-native executor — Fix 1: multi-item batch reaches differe
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
-    dispatcher.registerNode(TestBatchNode.fanOut('fanout', [1, -1]));
+    dispatcher.registerNode(TestBatchNode.of<ValueState, 'out'>('fanout', ['out'], (batch) => {
+      const source = batch.row(0).state;
+      const values = [1, -1];
+      const items: Array<ItemType<ValueState>> = values.map((v, i) => {
+        const clone = source.clone();
+        clone.value = v;
+        clone.log.push(`fan:${v}`);
+        return { 'id': String(i), 'state': clone };
+      });
+      const r = new Map<'out', Batch<ValueState>>();
+      r.set('out', Batch.from(items));
+      return r;
+    }));
     dispatcher.registerNode(new RouterNode());
     dispatcher.registerDAG(dag);
 
@@ -385,6 +360,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     class IncNode extends MonadicNode<ValueState, 'done'> {
       readonly name = 'inc';
       readonly outputs = ['done'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
       constructor(private readonly seen: number[]) {
         super();
@@ -425,9 +401,26 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
-    dispatcher.registerNode(TestBatchNode.fanOut('fanout', [1, 2, 3]));
+    dispatcher.registerNode(TestBatchNode.of<ValueState, 'out'>('fanout', ['out'], (batch) => {
+      const source = batch.row(0).state;
+      const values = [1, 2, 3];
+      const items: Array<ItemType<ValueState>> = values.map((v, i) => {
+        const clone = source.clone();
+        clone.value = v;
+        clone.log.push(`fan:${v}`);
+        return { 'id': String(i), 'state': clone };
+      });
+      const r = new Map<'out', Batch<ValueState>>();
+      r.set('out', Batch.from(items));
+      return r;
+    }));
     dispatcher.registerNode(new IncNode(childItemsSeen));
-    dispatcher.registerNode(TestBatchNode.accumulator('acc', collected));
+    dispatcher.registerNode(TestBatchNode.of<ValueState, 'done'>('acc', ['done'], (batch) => {
+      for (const item of batch) { collected.push(item.state); }
+      const r = new Map<'done', Batch<ValueState>>();
+      r.set('done', batch);
+      return r;
+    }));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
@@ -454,6 +447,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     class IncNode42 extends MonadicNode<ValueState, 'done'> {
       readonly name = 'inc42';
       readonly outputs = ['done'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
       override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', ValueState>> {
         for (const item of batch) {
@@ -488,6 +482,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     class EntryNode extends MonadicNode<ValueState, 'ok'> {
       readonly name = 'entry-node';
       readonly outputs = ['ok'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'ok': { 'type': 'object' } }; }
 
       override async execute(batch: Batch<ValueState>, _ctx: NodeContextType): Promise<RoutedBatchType<'ok', ValueState>> {
         const result = new Map<'ok', Batch<ValueState>>();

@@ -32,7 +32,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -218,6 +218,14 @@ const RETRY_BUDGET = 2;
 export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-tools' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'decide-tools';
   readonly outputs = ['tools', 'no-tools', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'tools' | 'no-tools' | 'retry' | 'salvage', SchemaObjectType> {
+    return {
+      'tools':    { 'type': 'object' },
+      'no-tools': { 'type': 'object' },
+      'retry':    { 'type': 'object' },
+      'salvage':  { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     // ── Deterministic shortcut prelude ────────────────────────────────────

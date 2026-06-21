@@ -53,7 +53,7 @@
 
 
 
-import type { NodeInterface } from '../dist/contracts/NodeInterface.js';
+import type { NodeInterface, SchemaObjectType } from '../dist/contracts/NodeInterface.js';
 import type { RegistryBundleInterface } from '../dist/contracts/RegistryBundleInterface.js';
 import type { RegistryModuleInterface } from '../dist/contracts/RegistryModuleInterface.js';
 import type { DAGType } from '../dist/entities/dag/DAG.js';
@@ -163,6 +163,7 @@ function sleepUntilAborted(signal: AbortSignal, ceilingMs: number): Promise<void
 class RecorderNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'recorder';
   override readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'done'>> {
     state.executedNodes.push('recorder');
     return { 'errors': [], 'output': 'done' };
@@ -172,6 +173,7 @@ class RecorderNode extends ScalarNode<ConformanceState, 'done'> {
 class MutatorNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'mutator';
   override readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'done'>> {
     state.value = 99;
     return { 'errors': [], 'output': 'done' };
@@ -181,6 +183,7 @@ class MutatorNode extends ScalarNode<ConformanceState, 'done'> {
 class ErrorEmitterNode extends ScalarNode<ConformanceState, 'error'> {
   override readonly name = 'error-emitter';
   override readonly outputs = ['error'] as const;
+  override get outputSchema(): Record<'error', SchemaObjectType> { return { 'error': { 'type': 'object' } }; }
   protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'error'>> {
     state.collectError({
       'code': 'TEST_ERROR',
@@ -198,6 +201,7 @@ class TimeoutSleeperNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'timeout-sleeper';
   override readonly outputs = ['done'] as const;
   override readonly timeout = Timeout.ofMs(TIMEOUT_SLEEPER_TIMEOUT_MS);
+  override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   protected override async executeOne(
     _state: ConformanceState,
     context: NodeContextType<undefined>,
@@ -210,6 +214,7 @@ class TimeoutSleeperNode extends ScalarNode<ConformanceState, 'done'> {
 class AbortSleeperNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'abort-sleeper';
   override readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   protected override async executeOne(
     state: ConformanceState,
     context: NodeContextType<undefined>,
@@ -229,6 +234,7 @@ class AbortSleeperNode extends ScalarNode<ConformanceState, 'done'> {
 class ScatterCounterNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'scatter-counter';
   override readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'done'>> {
     state.value += 1;
     return { 'errors': [], 'output': 'done' };
@@ -508,7 +514,7 @@ export class ConformanceRegistry {
   private constructor() { /* static class */ }
 
   /** Build a fresh RegistryBundleInterface (new array references each call). */
-  static bundle(): RegistryBundleInterface {
+  static bundle(): RegistryBundleInterface<undefined> {
     return {
       'bundle': {
         'nodes': [...CONFORMANCE_NODES],
@@ -516,7 +522,7 @@ export class ConformanceRegistry {
       },
       'services': undefined,
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'restoreState': CheckpointRestoreAdapter.wrap((snap: JsonObjectType) => restoreConformanceState(snap) as NodeStateInterface),
+      'restoreState': CheckpointRestoreAdapter.wrap((snap: JsonObjectType) => restoreConformanceState(snap)),
     };
   }
 }
@@ -526,7 +532,7 @@ export class ConformanceRegistry {
 // ---------------------------------------------------------------------------
 
 const registryModule: RegistryModuleInterface = {
-  async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface<undefined>> {
     return ConformanceRegistry.bundle();
   },
 };

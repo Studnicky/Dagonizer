@@ -47,7 +47,7 @@ describe('08-checkpoint: capture, persist, restore, resume', () => {
     const persisted = checkpoint.toJson();
 
     // Parse, restore, resume
-    const ckpt = Checkpoint.load(JSON.parse(persisted) as unknown);
+    const ckpt = Checkpoint.load(JSON.parse(persisted));
     const { state, dagName, cursor } = ckpt.restoreState(
       CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)),
     );

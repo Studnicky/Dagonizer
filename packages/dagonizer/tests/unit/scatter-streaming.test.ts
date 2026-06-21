@@ -18,6 +18,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgressType } from '../../src/Dagonizer.js';
@@ -29,6 +30,7 @@ import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ─── shared test state ───────────────────────────────────────────────────────
 
@@ -111,12 +113,7 @@ void describe('Scatter: array source backward compatibility', () => {
   void it('produces the same gathered result as before for a plain array', async () => {
     const dispatcher = new Dagonizer<StreamState>();
     let calls = 0;
-    class ArrCompatWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { calls++; return { 'errors': [], 'output': 'success' as const }; }
-    }
-    dispatcher.registerNode(new ArrCompatWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], () => { calls++; return 'success'; }));
     dispatcher.registerDAG(TestScatterDag.streaming('arr-compat',
       { 'strategy': 'append', 'target': 'processed' }));
 
@@ -134,19 +131,14 @@ void describe('Scatter: array source backward compatibility', () => {
     let peakConcurrent = 0;
     let current = 0;
 
-    class BoundedWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> {
-        current++;
-        if (current > peakConcurrent) peakConcurrent = current;
-        // Yield to allow other workers to start before decrementing.
-        await new Promise<void>((r) => setImmediate(r));
-        current--;
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new BoundedWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], async () => {
+      current++;
+      if (current > peakConcurrent) peakConcurrent = current;
+      // Yield to allow other workers to start before decrementing.
+      await new Promise<void>((r) => setImmediate(r));
+      current--;
+      return 'success';
+    }));
     // concurrency=2 on 6 items: peak should never exceed 2.
     dispatcher.registerDAG(TestScatterDag.streaming('arr-bounded',
       { 'strategy': 'append', 'target': 'processed' },
@@ -164,12 +156,7 @@ void describe('Scatter: array source backward compatibility', () => {
 void describe('Scatter: AsyncIterable source', () => {
   void it('drains an async-iterable source and produces the same result as an array', async () => {
     const dispatcher = new Dagonizer<StreamState>();
-    class AsyncSourceWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-    }
-    dispatcher.registerNode(new AsyncSourceWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success']));
     dispatcher.registerDAG(TestScatterDag.streaming('async-source',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
@@ -205,20 +192,15 @@ void describe('Scatter: AsyncIterable source', () => {
       }
     }
 
-    class BackpressureWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
-        const item = state.getMetadata<number>('item') ?? 0;
-        log.push({ 'event': 'process', 'item': item });
-        // Yield to the event loop so the pull loop can advance if backpressure
-        // is broken; with correct backpressure the next pull happens only AFTER
-        // this item completes.
-        await new Promise<void>((r) => setImmediate(r));
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new BackpressureWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], async (state) => {
+      const item = state.getMetadata<number>('item') ?? 0;
+      log.push({ 'event': 'process', 'item': item });
+      // Yield to the event loop so the pull loop can advance if backpressure
+      // is broken; with correct backpressure the next pull happens only AFTER
+      // this item completes.
+      await new Promise<void>((r) => setImmediate(r));
+      return 'success';
+    }));
     // concurrency=1: only one item in-flight at a time.
     dispatcher.registerDAG(TestScatterDag.streaming('bp-test',
       { 'strategy': 'append', 'target': 'processed' },
@@ -257,16 +239,11 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     const dispatcher = new Dagonizer<StreamState>();
     let calls = 0;
     const seenItems: number[] = [];
-    class ResumeArrWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
-        calls++;
-        seenItems.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new ResumeArrWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+      calls++;
+      seenItems.push(state.getMetadata<number>('item') ?? -1);
+      return 'success';
+    }));
     dispatcher.registerDAG(TestScatterDag.streaming('resume-arr',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
@@ -307,15 +284,10 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     // Resume must reprocess them; they must appear in the final result.
     const dispatcher = new Dagonizer<StreamState>();
     const processedItems: number[] = [];
-    class ResumeInboxWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
-        processedItems.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new ResumeInboxWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+      processedItems.push(state.getMetadata<number>('item') ?? -1);
+      return 'success';
+    }));
     dispatcher.registerDAG(TestScatterDag.streaming('resume-inbox',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
@@ -361,16 +333,11 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
     const dispatcher = new Dagonizer<StreamState>();
     let calls = 0;
     const processedValues: number[] = [];
-    class ResumeAsyncWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
-        calls++;
-        processedValues.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new ResumeAsyncWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+      calls++;
+      processedValues.push(state.getMetadata<number>('item') ?? -1);
+      return 'success';
+    }));
     dispatcher.registerDAG(TestScatterDag.streaming('resume-async',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
@@ -429,16 +396,11 @@ void describe('Scatter: incremental gather', () => {
     const dispatcher = new Dagonizer<StreamState>();
     const foldsAfterEachItem: number[] = [];
 
-    class IncrMapWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
-        const item = state.getMetadata<number>('item') ?? 0;
-        state.produced = item * 2;
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new IncrMapWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+      const item = state.getMetadata<number>('item') ?? 0;
+      state.produced = item * 2;
+      return 'success';
+    }));
 
     const dagName = 'incr-map';
     const dag: DAGType = {
@@ -493,12 +455,7 @@ void describe('Scatter: incremental gather', () => {
     const dispatcher = new Dagonizer<StreamState>();
     const foldsAfterEachAck: number[] = [];
 
-    class IncrAppendWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-    }
-    dispatcher.registerNode(new IncrAppendWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success']));
     dispatcher.registerDAG(TestScatterDag.streaming('incr-append',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
@@ -526,15 +483,10 @@ void describe('Scatter: incremental gather', () => {
     const errorFoldsAfterAck: number[] = [];
 
     // Items 1,3,5 → 'success'; items 2,4 → 'error'.
-    class IncrPartitionWorkerNode extends ScalarNode<StreamState, 'success' | 'error'> {
-      readonly name = 'worker';
-      readonly outputs = ['success', 'error'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success' | 'error'>> {
-        const item = state.getMetadata<number>('item') ?? 0;
-        return { 'errors': [], 'output': item % 2 === 1 ? 'success' as const : 'error' as const };
-      }
-    }
-    dispatcher.registerNode(new IncrPartitionWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success', 'error'], (state) => {
+      const item = state.getMetadata<number>('item') ?? 0;
+      return item % 2 === 1 ? 'success' : 'error';
+    }));
 
     const dagName = 'incr-partition';
     const dag: DAGType = {
@@ -586,26 +538,16 @@ void describe('Scatter: incremental gather', () => {
     const dispatcher = new Dagonizer<StreamState>();
     let customNodeCalls = 0;
 
-    class CustomBatchWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-    }
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success']));
     // Custom gather node: reads gatherResults from metadata.
-    class CustomGatherNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'customGather';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
-        customNodeCalls++;
-        const records = state.getMetadata<Array<{ item: unknown }>>('gatherResults') ?? [];
-        for (const r of records) {
-          if (typeof r.item === 'number') state.processed.push(r.item);
-        }
-        return { 'errors': [], 'output': 'success' as const };
+    dispatcher.registerNode(TestNode.make<StreamState>('customGather', ['success'], (state) => {
+      customNodeCalls++;
+      const records = state.getMetadata<Array<{ item: unknown }>>('gatherResults') ?? [];
+      for (const r of records) {
+        if (typeof r.item === 'number') state.processed.push(r.item);
       }
-    }
-    dispatcher.registerNode(new CustomBatchWorkerNode());
-    dispatcher.registerNode(new CustomGatherNode());
+      return 'success';
+    }));
 
     const dagName = 'custom-batch';
     const dag: DAGType = {
@@ -654,19 +596,15 @@ void describe('Scatter: progress shape (inbox model)', () => {
     st.setMetadata = (key: string, value: unknown): void => {
       origSet(key, value);
       if (key === SCATTER_PROGRESS_KEY) {
-        const stored = value as Record<string, ScatterProgressType>;
-        if (stored['fan'] !== undefined) {
-          progressSnapshots.push({ ...stored['fan'] });
+        const isStoredProgress = (v: unknown): v is Record<string, ScatterProgressType> =>
+          typeof v === 'object' && v !== null;
+        if (isStoredProgress(value) && value['fan'] !== undefined) {
+          progressSnapshots.push({ ...value['fan'] });
         }
       }
     };
 
-    class ProgressShapeWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-    }
-    dispatcher.registerNode(new ProgressShapeWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success']));
     dispatcher.registerDAG(TestScatterDag.streaming('progress-shape',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));
@@ -720,9 +658,10 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     const dispatcher = new Dagonizer<StreamState>();
 
     class WorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
+      override readonly name = 'worker';
+      override readonly outputs = ['success'] as const;
+      override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
+      protected override async executeOne(state: StreamState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         // Simulate some async work.
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 2);
@@ -785,15 +724,10 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     //    dispatcher gets a fresh array source of the same total size; it skips
     //    already-acked indices via seenIndices and completes the rest.
     const resumeDispatcher = new Dagonizer<StreamState>();
-    class ResumeWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
-        state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    resumeDispatcher.registerNode(new ResumeWorkerNode());
+    resumeDispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+      state.processed.push(state.getMetadata<number>('item') ?? -1);
+      return 'success';
+    }));
     resumeDispatcher.registerDAG(TestScatterDag.streaming('abort-async-resume',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 2 }));
@@ -830,15 +764,10 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
   void it('pre-aborted signal: pull-loop exits before processing any items', async () => {
     const dispatcher = new Dagonizer<StreamState>();
 
-    class PreAbortWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
-        state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new PreAbortWorkerNode());
+    dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+      state.processed.push(state.getMetadata<number>('item') ?? -1);
+      return 'success';
+    }));
     dispatcher.registerDAG(TestScatterDag.streaming('pre-aborted',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 2 }));
@@ -875,9 +804,10 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
 
     const dispatcher = new Dagonizer<StreamState>();
     class ExactlyOnceWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
+      override readonly name = 'worker';
+      override readonly outputs = ['success'] as const;
+      override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
+      protected override async executeOne(state: StreamState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 1);
           context.signal.addEventListener('abort', () => {
@@ -910,17 +840,12 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     // Resume with a fresh dispatcher.
     const resumeItems: number[] = [];
     const resumeDispatcher = new Dagonizer<StreamState>();
-    class ExactlyOnceResumeWorkerNode extends ScalarNode<StreamState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: StreamState): Promise<NodeOutputType<'success'>> {
-        const item = state.getMetadata<number>('item') ?? -1;
-        resumeItems.push(item);
-        state.processed.push(item);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    resumeDispatcher.registerNode(new ExactlyOnceResumeWorkerNode());
+    resumeDispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
+      const item = state.getMetadata<number>('item') ?? -1;
+      resumeItems.push(item);
+      state.processed.push(item);
+      return 'success';
+    }));
     resumeDispatcher.registerDAG(TestScatterDag.streaming('exactly-once-abort',
       { 'strategy': 'append', 'target': 'processed' },
       { 'concurrency': 1 }));

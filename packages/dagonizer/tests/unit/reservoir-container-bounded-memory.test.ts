@@ -47,7 +47,7 @@ import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 //   dist-test/tests/unit/reservoir-container-bounded-memory.test.js
 // The conformance registry is at:
 //   dist-testing/ConformanceRegistry.js
-// PACKAGE_ROOT = four levels up from the test file.
+// PACKAGE_ROOT = three levels up from the test file (tests/unit/ → tests/ → dagonizer/).
 // ---------------------------------------------------------------------------
 
 const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
@@ -115,7 +115,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
       parentSide.onMessage((msg) => {
         if (msg.variant === 'intermediate') intermediateMessages.push(msg);
         if (msg.variant === 'result') {
-          resolve({ 'result': msg as BridgeMessageType & { variant: 'result' }, intermediateMessages });
+          resolve({ 'result': msg, intermediateMessages });
         }
       });
       // Send N items in a single batch request.
@@ -189,7 +189,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
 
     const singleResult = await new Promise<BridgeMessageType & { variant: 'result' }>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.variant === 'result') resolve(msg as BridgeMessageType & { variant: 'result' });
+        if (msg.variant === 'result') resolve(msg);
       });
       parentSide.send({
         'variant': 'execute',
@@ -227,7 +227,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
 
     const batchResult = await new Promise<BridgeMessageType & { variant: 'result' }>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.variant === 'result') resolve(msg as BridgeMessageType & { variant: 'result' });
+        if (msg.variant === 'result') resolve(msg);
       });
       parentSide.send({
         'variant': 'execute',
@@ -284,11 +284,14 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
    * not with total event count.
    */
   void it('heap delta per batch is O(1) not O(batch_size × nodes) when GC is available', async () => {
-    if (typeof (globalThis as unknown as { gc?: () => void }).gc !== 'function') {
+    const maybeGc: unknown = Reflect.get(globalThis, 'gc');
+    if (typeof maybeGc !== 'function') {
       // Not running with --expose-gc — skip heap assertion.
       return;
     }
-    const gc = (globalThis as unknown as { gc: () => void }).gc;
+    // After typeof guard, maybeGc is Function. Wrap in a () => void closure
+    // so call sites read as gc() without needing a cast at every invocation.
+    const gc = (): void => { maybeGc.call(null); };
 
     const { parentSide } = TestHostPair.create();
     await initHost(parentSide);

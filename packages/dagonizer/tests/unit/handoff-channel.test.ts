@@ -19,15 +19,14 @@ import { describe, it } from 'node:test';
 
 import { InMemoryChannel } from '../../src/channels/InMemoryChannel.js';
 import type { HandoffChannelInterface } from '../../src/contracts/HandoffChannelInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoffType } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
+import { JsonValue } from '../../src/entities/JsonValue.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -37,7 +36,7 @@ class HandoffState extends NodeStateBase {
   counter = 0;
 
   override clone(): this {
-    const cloned = new (this.constructor as new () => this)();
+    const cloned = super.clone();
     cloned.counter = this.counter;
     return cloned;
   }
@@ -56,25 +55,12 @@ class HandoffState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-class IncrementNode extends ScalarNode<HandoffState, 'next'> {
-  readonly name = 'increment';
-  readonly outputs = ['next'] as const;
-  protected async executeOne(state: HandoffState): Promise<NodeOutputType<'next'>> {
-    state.counter += 1;
-    return { 'errors': [], 'output': 'next' as const };
-  }
-}
+const incrementNode = TestNode.make<HandoffState>('increment', ['next'], (state) => {
+  state.counter += 1;
+  return 'next';
+});
 
-class NoopNode extends ScalarNode<HandoffState, 'done'> {
-  readonly name = 'noop';
-  readonly outputs = ['done'] as const;
-  protected async executeOne(_state: HandoffState): Promise<NodeOutputType<'done'>> {
-    return { 'errors': [], 'output': 'done' as const };
-  }
-}
-
-const incrementNode = new IncrementNode();
-const noopNode = new NoopNode();
+const noopNode = TestNode.make<HandoffState>('noop', ['done']);
 
 // ---------------------------------------------------------------------------
 // DAG helpers
@@ -130,7 +116,8 @@ void describe('handoff-channel: bound terminal', () => {
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(channel.published.length, 1);
 
-    const envelope = channel.published[0] as DAGHandoffType;
+    const envelope = channel.published[0];
+    if (envelope === undefined) throw new Error('expected envelope at index 0');
     assert.equal(envelope.dagName, 'handoff-bound');
     assert.equal(envelope.terminalName, 'done');
     assert.equal(envelope.terminalOutput, 'completed');
@@ -141,8 +128,12 @@ void describe('handoff-channel: bound terminal', () => {
     assert.ok(!('stateSnapshotRef' in envelope), 'envelope should not have stateSnapshotRef');
 
     // Round-trip fixed point: restore → snapshot must equal original snapshot
-    const byValueEnvelope = envelope as { stateSnapshot: JsonObjectType };
-    const originalSnapshot = byValueEnvelope.stateSnapshot;
+    if (!('stateSnapshot' in envelope)) throw new Error('expected stateSnapshot variant');
+    const originalSnapshot = JsonValue.from(envelope.stateSnapshot);
+    assert.ok(
+      originalSnapshot !== null && typeof originalSnapshot === 'object' && !Array.isArray(originalSnapshot),
+      'stateSnapshot must be a JSON object',
+    );
     const restored = HandoffState.restore(originalSnapshot);
     const restoredSnapshot = restored.snapshot();
     assert.deepEqual(restoredSnapshot, originalSnapshot);
@@ -161,10 +152,12 @@ void describe('handoff-channel: bound terminal', () => {
     await dispatcher.execute('handoff-counter', state);
 
     assert.equal(channel.published.length, 1);
-    const envelope = channel.published[0] as DAGHandoffType;
+    const envelope = channel.published[0];
+    if (envelope === undefined) throw new Error('expected envelope at index 0');
     assert.ok('stateSnapshot' in envelope);
-    const snap = (envelope as { stateSnapshot: JsonObjectType }).stateSnapshot;
-    assert.equal((snap as { counter?: number }).counter, 1);
+    if (!('stateSnapshot' in envelope)) throw new Error('expected stateSnapshot variant');
+    const snap = envelope.stateSnapshot;
+    assert.equal(snap['counter'], 1);
   });
 });
 
@@ -314,7 +307,9 @@ void describe('handoff-channel: embedded child does not publish', () => {
     // Only ONE publish: the top-level parent-done terminal.
     // The embedded child-done terminal must not publish.
     assert.equal(channel.published.length, 1);
-    assert.equal((channel.published[0] as DAGHandoffType).terminalName, 'parent-done');
+    const parentEnvelope = channel.published[0];
+    if (parentEnvelope === undefined) throw new Error('expected envelope at index 0');
+    assert.equal(parentEnvelope.terminalName, 'parent-done');
   });
 });
 
@@ -441,7 +436,11 @@ void describe('InMemoryChannel: onPublished hook', () => {
     assert.equal(channel.published.length, 1);
     assert.equal(received.length, 1);
     // The hook receives the same deep-cloned envelope stored in published
-    assert.deepEqual(received[0] as DAGHandoffType, channel.published[0] as DAGHandoffType);
+    const hookEnvelope = received[0];
+    const publishedEnvelope = channel.published[0];
+    if (hookEnvelope === undefined) throw new Error('expected received[0]');
+    if (publishedEnvelope === undefined) throw new Error('expected published[0]');
+    assert.deepEqual(hookEnvelope, publishedEnvelope);
   });
 
   void it('publishErrors collects errors thrown by onPublished; envelope still recorded', async () => {

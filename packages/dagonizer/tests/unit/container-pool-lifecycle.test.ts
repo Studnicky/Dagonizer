@@ -21,20 +21,9 @@ import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { DagContainerBase } from '../../src/container/DagContainerBase.js';
-import type { DagContainerOptionsType, PoolEntryType } from '../../src/container/DagContainerBase.js';
-import { DagHost } from '../../src/container/DagHost.js';
-import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
-import type { DagTaskInterface } from '../../src/container/DagTask.js';
-import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { DispatcherBundleType } from '../../src/contracts/DispatcherBundle.js';
-import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
-import { Dagonizer } from '../../src/Dagonizer.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import { Timeout } from '../../src/entities/Timeout.js';
-import { NodeStateBase } from '../../src/NodeStateBase.js';
-import type { NodeStateInterface } from '../../src/NodeStateBase.js';
+// Engine imports come from the PUBLIC package entry (dist) so this test's type
+// identity matches the dist-compiled `testing/` harness + `ConformanceRegistry`
+// bundle it drives — no src↔dist brand bridge.
 import {
   ConformanceRegistry,
   ConformanceState,
@@ -43,6 +32,20 @@ import {
   CONFORMANCE_DAG,
 } from '../../testing/ConformanceRegistry.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
+
+import { Dagonizer, Timeout, NodeStateBase } from '@studnicky/dagonizer';
+import type {
+  DagContainerOptionsType,
+  DagOutcomeType,
+  DagTaskInterface,
+  DagContainerInterface,
+  NodeContextType,
+  NodeStateInterface,
+} from '@studnicky/dagonizer';
+import { DagContainerBase, DagHost } from '@studnicky/dagonizer/container';
+import type { PoolEntryType } from '@studnicky/dagonizer/container';
+import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
+import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // Registry module URL
@@ -70,7 +73,7 @@ class TestLoopbackContainer extends DagContainerBase<TestWorker> {
       'init': {
         'registryModule': REGISTRY_MODULE_URL,
         'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-        'servicesConfig': {} as JsonObjectType,
+        'servicesConfig': {},
       },
       ...options,
     });
@@ -133,19 +136,14 @@ class MinimalTask implements DagTaskInterface<undefined> {
     this.correlationId = correlationId;
     this.timeout = Timeout.none();
     this.state = new NodeStateBase();
-    this.context = {
-      'dagName': CONFORMANCE_DAG.law1,
-      'nodeName': '',
-      'services': undefined,
-      'signal': new AbortController().signal,
-    };
+    this.context = NodeContextBuilder.of(CONFORMANCE_DAG.law1, '', new AbortController().signal, undefined);
   }
 
   toRequest() {
     return {
       'dagName': this.dagName,
       'placementPath': this.placementPath,
-      'items': [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() as { [key: string]: unknown } }],
+      'items': [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() }],
       'timeoutMs': this.timeout.toWire(),
       'correlationId': this.correlationId,
     };
@@ -159,7 +157,7 @@ class MinimalTask implements DagTaskInterface<undefined> {
 function buildDispatcher(
   container: TestLoopbackContainer,
 ): Dagonizer<NodeStateInterface, undefined> {
-  const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundleType<NodeStateInterface, undefined>;
+  const bundle = ConformanceRegistry.bundle().bundle;
   const containers: Readonly<Record<string, DagContainerInterface>> = {
     [CONFORMANCE_CONTAINER_ROLE]: container,
   };
@@ -329,17 +327,12 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
         'correlationId': 'con1-abort',
         'timeout': Timeout.none(),
         'state': new AbortableTask(),
-        'context': {
-          'dagName': CONFORMANCE_DAG.law1,
-          'nodeName': '',
-          'services': undefined,
-          'signal': controller.signal,
-        },
+        'context': NodeContextBuilder.of(CONFORMANCE_DAG.law1, '', controller.signal, undefined),
         toRequest() {
           return {
             'dagName': this.dagName,
             'placementPath': this.placementPath,
-            'items': [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() as { [key: string]: unknown } }],
+            'items': [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() }],
             'timeoutMs': this.timeout.toWire(),
             'correlationId': this.correlationId,
           };

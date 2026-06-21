@@ -40,6 +40,11 @@ class CalculatorTool implements ToolInterface<Record<string, unknown>, { 'result
         'b': { 'type': 'number' },
       },
     },
+    'outputSchema': {
+      'type': 'object' as const,
+      'required': ['result'],
+      'properties': { 'result': { 'type': 'number' } },
+    },
     'strict': true,
   };
 
@@ -58,6 +63,7 @@ class AlwaysFailTool implements ToolInterface<Record<string, unknown>, never> {
     'name': 'alwaysFail',
     'description': 'Always throws.',
     'inputSchema': { 'type': 'object' as const },
+    'outputSchema': { 'type': 'object' as const },
     'strict': false,
   };
 

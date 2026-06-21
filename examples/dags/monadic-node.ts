@@ -16,7 +16,7 @@
 
 // #region execute-contract
 import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeStateInterface, RoutedBatchType } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeStateInterface, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 import { Batch } from '@studnicky/dagonizer';
 
 // The execute signature: consume Batch<TState>, return RoutedBatchType<TOutput, TState>.
@@ -24,6 +24,9 @@ import { Batch } from '@studnicky/dagonizer';
 export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
   readonly name    = 'echo';
   readonly outputs = ['out'] as const;
+  override get outputSchema(): Record<'out', SchemaObjectType> {
+    return { 'out': { 'type': 'object' } };
+  }
   async execute(batch: Batch<NodeStateInterface>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', NodeStateInterface>> {
     return RoutedBatchBuilder.of('out', batch);
   }
@@ -69,6 +72,9 @@ abstract class LoggingNode<
 export class SearchCatalogueNode extends LoggingNode<CatalogueState, 'success' | 'empty' | 'error'> {
   readonly name    = 'search-catalogue';
   readonly outputs = ['success', 'empty', 'error'] as const;
+  override get outputSchema(): Record<'success' | 'empty' | 'error', SchemaObjectType> {
+    return { 'success': { 'type': 'object' }, 'empty': { 'type': 'object' }, 'error': { 'type': 'object' } };
+  }
 
   protected async run(state: CatalogueState): Promise<NodeOutputType<'success' | 'empty' | 'error'>> {
     if (state.query.trim() === '') {
@@ -103,6 +109,9 @@ const geoCache = {
 export class GeoNode extends ScalarNode<EventState, 'has-geo' | 'needs-geo'> {
   readonly name    = 'geo';
   readonly outputs = ['has-geo', 'needs-geo'] as const;
+  override get outputSchema(): Record<'has-geo' | 'needs-geo', SchemaObjectType> {
+    return { 'has-geo': { 'type': 'object' }, 'needs-geo': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: EventState) {
     if (state.coords === null) {
@@ -117,6 +126,9 @@ export class GeoNode extends ScalarNode<EventState, 'has-geo' | 'needs-geo'> {
 export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
   readonly name    = 'enrich';
   readonly outputs = ['enriched'] as const;
+  override get outputSchema(): Record<'enriched', SchemaObjectType> {
+    return { 'enriched': { 'type': 'object' } };
+  }
 
   async execute(batch: Batch<EventState>, _ctx: NodeContextType): Promise<RoutedBatchType<'enriched', EventState>> {
     for (const item of batch) {

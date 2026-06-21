@@ -1,29 +1,24 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
 void describe('Dagonizer AbortSignal cancellation', () => {
   void it('marks state cancelled when caller aborts before DAG starts', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'slow';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
-        await new Promise<void>((resolve, reject) => {
-          const t = setTimeout(resolve, 1000);
-          context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
-        });
-        return { 'errors': [], 'output': 'success' };
-      }
-    }
-    const slowNode = new SlowNode();
-    dispatcher.registerNode(slowNode);
+    dispatcher.registerNode(TestNode.make('slow', ['success'], async (_state, context) => {
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, 1000);
+        context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
+      });
+      return 'success';
+    }));
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:cancel',
@@ -52,29 +47,14 @@ void describe('Dagonizer AbortSignal cancellation', () => {
   void it('records interruptedAt when caller aborts mid-flow at a downstream node', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     const controller = new AbortController();
-    class FirstNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'first';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' }; }
-    }
-    class SecondNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'second';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> {
-        // Trip the controller before this node returns so the next iteration
-        // observes `signal.aborted` BEFORE running the downstream stage.
-        controller.abort(new Error('mid-flow cancel'));
-        return { 'errors': [], 'output': 'success' };
-      }
-    }
-    class ThirdNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'third';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' }; }
-    }
-    dispatcher.registerNode(new FirstNode());
-    dispatcher.registerNode(new SecondNode());
-    dispatcher.registerNode(new ThirdNode());
+    dispatcher.registerNode(TestNode.make('first', ['success'], () => 'success'));
+    dispatcher.registerNode(TestNode.make('second', ['success'], () => {
+      // Trip the controller before this node returns so the next iteration
+      // observes `signal.aborted` BEFORE running the downstream stage.
+      controller.abort(new Error('mid-flow cancel'));
+      return 'success';
+    }));
+    dispatcher.registerNode(TestNode.make('third', ['success'], () => 'success'));
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:mid-cancel',
@@ -104,19 +84,13 @@ void describe('Dagonizer AbortSignal cancellation', () => {
 
   void it('marks state timed_out when deadlineMs elapses', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class SlowTimeoutNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'slow';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
-        await new Promise<void>((resolve, reject) => {
-          const t = setTimeout(resolve, 5000);
-          context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
-        });
-        return { 'errors': [], 'output': 'success' };
-      }
-    }
-    const slowNode = new SlowTimeoutNode();
-    dispatcher.registerNode(slowNode);
+    dispatcher.registerNode(TestNode.make('slow', ['success'], async (_state, context) => {
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, 5000);
+        context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
+      });
+      return 'success';
+    }));
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:t',
@@ -143,16 +117,11 @@ void describe('Dagonizer AbortSignal cancellation', () => {
   void it('passes dagName/nodeName through NodeContext', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     const seen: { dag: string; node: string } = { 'dag': '', 'node': '' };
-    class InspectNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'inspect';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
-        seen.dag = context.dagName;
-        seen.node = context.nodeName;
-        return { 'errors': [], 'output': 'success' };
-      }
-    }
-    dispatcher.registerNode(new InspectNode());
+    dispatcher.registerNode(TestNode.make('inspect', ['success'], (_state, context) => {
+      seen.dag = context.dagName;
+      seen.node = context.nodeName;
+      return 'success';
+    }));
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:inspect-dag',
@@ -195,12 +164,7 @@ void describe('Dagonizer extension hooks', () => {
     }
 
     const dispatcher = new TracedDagonizer();
-    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'op';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' }; }
-    }
-    dispatcher.registerNode(new OpNode());
+    dispatcher.registerNode(TestNode.make('op', ['success'], () => 'success'));
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:hooked',
@@ -242,6 +206,7 @@ void describe('Dagonizer extension hooks', () => {
     class BoomNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'boom';
       readonly outputs = ['success'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { throw new Error('kaboom'); }
     }
     dispatcher.registerNode(new BoomNode());

@@ -21,15 +21,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
-import type { ItemType } from '../../src/entities/batch/Item.js';
-import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestBatchNode } from '../_support/TestBatchNode.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -88,124 +86,76 @@ class WalkState extends NodeStateBase {
   }
 
   override clone(): this {
-    const copy = new WalkState() as this;
+    const copy = super.clone();
     copy.count = this.count;
     copy.log = [...this.log];
     return copy;
   }
 }
 
-// Fan-out node — takes a size-1 batch and emits N items on port 'out'.
-// On the single input item, clones `n` states (each with `count = i` identifying
-// which item it is) and routes all N to port 'out'.
-class FanOutNode extends MonadicNode<WalkState, 'out'> {
-  readonly name: string;
-  readonly outputs: readonly ['out'] = ['out'];
-  private readonly n: number;
-
-  constructor(name: string, n: number) {
-    super();
-    this.name = name;
-    this.n = n;
-  }
-
-  override async execute(batch: Batch<WalkState>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', WalkState>> {
-    const sourceState = batch.row(0).state;
-    const items: Array<{ 'id': string; 'state': WalkState }> = [];
-    for (let i = 0; i < this.n; i++) {
-      const clone = sourceState.clone();
-      clone.count = i;
-      clone.log.push(`fan:${i}`);
-      items.push({ 'id': String(i), 'state': clone });
-    }
-    const result = new Map<'out', Batch<WalkState>>();
-    result.set('out', Batch.from(items));
-    return result;
-  }
-}
-
-
-// Partition node — splits items across two ports by even/odd count.
-class PartitionNode extends MonadicNode<WalkState, 'even' | 'odd'> {
-  readonly name: string;
-  readonly outputs: readonly ['even', 'odd'] = ['even', 'odd'];
-
-  constructor(name: string) {
-    super();
-    this.name = name;
-  }
-
-  override async execute(batch: Batch<WalkState>, _ctx: NodeContextType): Promise<RoutedBatchType<'even' | 'odd', WalkState>> {
-    const partitioned = batch.partition((s) => s.count % 2 === 0 ? 'even' : 'odd');
-    const result = new Map<'even' | 'odd', Batch<WalkState>>();
-    for (const [key, b] of partitioned) {
-      result.set(key, b);
-    }
-    return result;
-  }
-}
-
-
-// Recording node — stamps each item's log and records the size of every batch
-// it fires over (one entry per invocation).
-class RecordingNode extends MonadicNode<WalkState, 'done'> {
-  readonly name: string;
-  readonly outputs: readonly ['done'] = ['done'];
-  private readonly firings: number[];
-
-  constructor(name: string, firings: number[]) {
-    super();
-    this.name = name;
-    this.firings = firings;
-  }
-
-  override async execute(batch: Batch<WalkState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', WalkState>> {
-    this.firings.push(batch.size);
-    const items: Array<{ 'id': string; 'state': WalkState }> = [];
-    for (const item of batch) {
-      item.state.log.push(`${this.name}:run`);
-      items.push({ 'id': item.id, 'state': item.state });
-    }
-    const result = new Map<'done', Batch<WalkState>>();
-    result.set('done', Batch.from(items));
-    return result;
-  }
-}
-
-
-// Accumulator node — merges all items into an external array and routes them
-// through to 'done'.
-class AccumulatorNode extends MonadicNode<WalkState, 'done'> {
-  readonly name: string;
-  readonly outputs: readonly ['done'] = ['done'];
-  private readonly collected: WalkState[];
-
-  constructor(name: string, collected: WalkState[]) {
-    super();
-    this.name = name;
-    this.collected = collected;
-  }
-
-  override async execute(batch: Batch<WalkState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', WalkState>> {
-    for (const item of batch) {
-      this.collected.push(item.state);
-    }
-    const result = new Map<'done', Batch<WalkState>>();
-    result.set('done', batch);
-    return result;
-  }
-}
-
 // ===========================================================================
-// TestWalkNode: static factory for WalkState node instances
+// WalkState node factories via TestBatchNode
 // ===========================================================================
 
 class TestWalkNode {
   private constructor() {}
-  static fanOut(name: string, n: number): FanOutNode { return new FanOutNode(name, n); }
-  static partition(name: string): PartitionNode { return new PartitionNode(name); }
-  static recording(name: string, firings: number[]): RecordingNode { return new RecordingNode(name, firings); }
-  static accumulator(name: string, collected: WalkState[]): AccumulatorNode { return new AccumulatorNode(name, collected); }
+
+  /** Fan-out: takes a size-1 batch and emits N items on port 'out'.
+   *  Clones state n times, setting count=i and pushing fan:i to log. */
+  static fanOut(name: string, n: number): ReturnType<typeof TestBatchNode.of<WalkState, 'out'>> {
+    return TestBatchNode.of<WalkState, 'out'>(name, ['out'], (batch) => {
+      const sourceState = batch.row(0).state;
+      const items: Array<{ 'id': string; 'state': WalkState }> = [];
+      for (let i = 0; i < n; i++) {
+        const clone = sourceState.clone();
+        clone.count = i;
+        clone.log.push(`fan:${i}`);
+        items.push({ 'id': String(i), 'state': clone });
+      }
+      const result = new Map<'out', Batch<WalkState>>();
+      result.set('out', Batch.from(items));
+      return result;
+    });
+  }
+
+  /** Partition: splits items across two ports by even/odd count. */
+  static partition(name: string): ReturnType<typeof TestBatchNode.of<WalkState, 'even' | 'odd'>> {
+    return TestBatchNode.of<WalkState, 'even' | 'odd'>(name, ['even', 'odd'], (batch) => {
+      const partitioned = batch.partition((s) => s.count % 2 === 0 ? 'even' : 'odd');
+      const result = new Map<'even' | 'odd', Batch<WalkState>>();
+      for (const [key, b] of partitioned) {
+        result.set(key, b);
+      }
+      return result;
+    });
+  }
+
+  /** Recording: stamps each item's log and records the batch size on each invocation. */
+  static recording(name: string, firings: number[]): ReturnType<typeof TestBatchNode.of<WalkState, 'done'>> {
+    return TestBatchNode.of<WalkState, 'done'>(name, ['done'], (batch) => {
+      firings.push(batch.size);
+      const items: Array<{ 'id': string; 'state': WalkState }> = [];
+      for (const item of batch) {
+        item.state.log.push(`${name}:run`);
+        items.push({ 'id': item.id, 'state': item.state });
+      }
+      const result = new Map<'done', Batch<WalkState>>();
+      result.set('done', Batch.from(items));
+      return result;
+    });
+  }
+
+  /** Accumulator: merges all items into an external array and routes them through to 'done'. */
+  static accumulator(name: string, collected: WalkState[]): ReturnType<typeof TestBatchNode.of<WalkState, 'done'>> {
+    return TestBatchNode.of<WalkState, 'done'>(name, ['done'], (batch) => {
+      for (const item of batch) {
+        collected.push(item.state);
+      }
+      const result = new Map<'done', Batch<WalkState>>();
+      result.set('done', batch);
+      return result;
+    });
+  }
 }
 
 // ===========================================================================
@@ -223,86 +173,58 @@ class CompositeState extends NodeStateBase {
   }
 
   override clone(): this {
-    const copy = new CompositeState() as this;
+    const copy = super.clone();
     copy.value = this.value;
     copy.log = [...this.log];
     return copy;
   }
 }
 
-class CompositeFanOutNode extends MonadicNode<CompositeState, 'out'> {
-  readonly name: string;
-  readonly outputs = ['out'] as const;
-
-  constructor(name: string, private readonly n: number) {
-    super();
-    this.name = name;
-  }
-
-  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', CompositeState>> {
-    const source = batch.row(0).state;
-    const items: Array<ItemType<CompositeState>> = [];
-    for (let i = 0; i < this.n; i++) {
-      const clone = source.clone();
-      clone.value = i;
-      clone.log.push(`fan:${i}`);
-      items.push({ 'id': String(i), 'state': clone });
-    }
-    const result = new Map<'out', Batch<CompositeState>>();
-    result.set('out', Batch.from(items));
-    return result;
-  }
-}
-
-
-class CompositeAccumulatorNode extends MonadicNode<CompositeState, 'done'> {
-  readonly name: string;
-  readonly outputs = ['done'] as const;
-
-  constructor(name: string, private readonly collected: CompositeState[]) {
-    super();
-    this.name = name;
-  }
-
-  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', CompositeState>> {
-    for (const item of batch) {
-      this.collected.push(item.state);
-    }
-    const result = new Map<'done', Batch<CompositeState>>();
-    result.set('done', batch);
-    return result;
-  }
-}
-
-
-class CompositeRecordingNode extends MonadicNode<CompositeState, 'done'> {
-  readonly name: string;
-  readonly outputs = ['done'] as const;
-
-  constructor(name: string, private readonly firings: number[]) {
-    super();
-    this.name = name;
-  }
-
-  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextType): Promise<RoutedBatchType<'done', CompositeState>> {
-    this.firings.push(batch.size);
-    const result = new Map<'done', Batch<CompositeState>>();
-    result.set('done', batch);
-    return result;
-  }
-}
-
 // ===========================================================================
-// TestWalkNode: composite (CompositeState) static factories
+// CompositeState node factories via TestBatchNode
 // ===========================================================================
 
-// (added as methods on TestWalkNode below the WalkState ones — placed here
-// to keep the class definition close to the composite class definitions)
 class TestCompositeWalkNode {
   private constructor() {}
-  static fanOut(name: string, n: number): CompositeFanOutNode { return new CompositeFanOutNode(name, n); }
-  static accumulator(name: string, collected: CompositeState[]): CompositeAccumulatorNode { return new CompositeAccumulatorNode(name, collected); }
-  static recording(name: string, firings: number[]): CompositeRecordingNode { return new CompositeRecordingNode(name, firings); }
+
+  /** Fan-out: takes a size-1 batch and emits N CompositeState items on port 'out'. */
+  static fanOut(name: string, n: number): ReturnType<typeof TestBatchNode.of<CompositeState, 'out'>> {
+    return TestBatchNode.of<CompositeState, 'out'>(name, ['out'], (batch) => {
+      const source = batch.row(0).state;
+      const items: Array<{ 'id': string; 'state': CompositeState }> = [];
+      for (let i = 0; i < n; i++) {
+        const clone = source.clone();
+        clone.value = i;
+        clone.log.push(`fan:${i}`);
+        items.push({ 'id': String(i), 'state': clone });
+      }
+      const result = new Map<'out', Batch<CompositeState>>();
+      result.set('out', Batch.from(items));
+      return result;
+    });
+  }
+
+  /** Accumulator: collects all items into an external array and routes to 'done'. */
+  static accumulator(name: string, collected: CompositeState[]): ReturnType<typeof TestBatchNode.of<CompositeState, 'done'>> {
+    return TestBatchNode.of<CompositeState, 'done'>(name, ['done'], (batch) => {
+      for (const item of batch) {
+        collected.push(item.state);
+      }
+      const result = new Map<'done', Batch<CompositeState>>();
+      result.set('done', batch);
+      return result;
+    });
+  }
+
+  /** Recording: stamps firings array with batch size and passes items through. */
+  static recording(name: string, firings: number[]): ReturnType<typeof TestBatchNode.of<CompositeState, 'done'>> {
+    return TestBatchNode.of<CompositeState, 'done'>(name, ['done'], (batch) => {
+      firings.push(batch.size);
+      const result = new Map<'done', Batch<CompositeState>>();
+      result.set('done', batch);
+      return result;
+    });
+  }
 }
 
 // ScatterParentState — source array, gather target, parent id. Drives the
@@ -318,12 +240,12 @@ class ScatterParentState extends NodeStateBase {
   constructor() {
     super();
     this.items = [];
-    this.gathered = [] as number[];
+    this.gathered = [];
     this.parentId = 0;
   }
 
   override clone(): this {
-    const copy = new ScatterParentState() as this;
+    const copy = super.clone();
     copy.items = [...this.items];
     copy.gathered = [...this.gathered];
     copy.parentId = this.parentId;
@@ -350,7 +272,7 @@ class CycleState extends NodeStateBase {
   }
 
   override clone(): this {
-    const copy = new CycleState() as this;
+    const copy = super.clone();
     copy.exitAt = this.exitAt;
     copy.attempts = this.attempts;
     return copy;
@@ -358,233 +280,126 @@ class CycleState extends NodeStateBase {
 }
 
 // ===========================================================================
-// CycleState node classes (hoisted from inner-class factories)
-// ===========================================================================
-
-// Fan-out node — emits N items where item i receives `exitAt = i`, so item 0
-// exits immediately, item 1 after one retry, item 4 after four retries, etc.
-class CycleFanOutNode extends MonadicNode<CycleState, 'out'> {
-  readonly name: string;
-  readonly outputs = ['out'] as const;
-
-  constructor(
-    name: string,
-    private readonly n: number,
-  ) {
-    super();
-    this.name = name;
-  }
-
-  override async execute(
-    batch: Batch<CycleState>,
-    _ctx: NodeContextType,
-  ): Promise<RoutedBatchType<'out', CycleState>> {
-    const sourceState = batch.row(0).state;
-    const items: Array<{ 'id': string; 'state': CycleState }> = [];
-    for (let i = 0; i < this.n; i++) {
-      const clone = sourceState.clone();
-      clone.exitAt = i;
-      clone.attempts = 0;
-      items.push({ 'id': String(i), 'state': clone });
-    }
-    const result = new Map<'out', Batch<CycleState>>();
-    result.set('out', Batch.from(items));
-    return result;
-  }
-}
-
-// Fan-out with uniform exitAt — all N items exit after the same number of
-// attempts. Used for the homogeneous lockstep walk.
-class HomogeneousFanOutNode extends MonadicNode<CycleState, 'out'> {
-  readonly name: string;
-  readonly outputs = ['out'] as const;
-
-  constructor(
-    name: string,
-    private readonly n: number,
-    private readonly exitAt: number,
-  ) {
-    super();
-    this.name = name;
-  }
-
-  override async execute(
-    batch: Batch<CycleState>,
-    _ctx: NodeContextType,
-  ): Promise<RoutedBatchType<'out', CycleState>> {
-    const sourceState = batch.row(0).state;
-    const items: Array<{ 'id': string; 'state': CycleState }> = [];
-    for (let i = 0; i < this.n; i++) {
-      const clone = sourceState.clone();
-      clone.exitAt = this.exitAt;
-      clone.attempts = 0;
-      items.push({ 'id': String(i), 'state': clone });
-    }
-    const result = new Map<'out', Batch<CycleState>>();
-    result.set('out', Batch.from(items));
-    return result;
-  }
-}
-
-// Retry node — increments `attempts` per item; routes items whose attempt count
-// has reached `exitAt` to `done`, others to `retry`. Hard cap at 50 iterations
-// prevents an infinite loop if a scheduler bug stops items from exiting — the
-// test then fails on the wrong `executedNodes` assertion rather than hanging.
-class RetryNode extends MonadicNode<CycleState, 'retry' | 'done'> {
-  readonly name: string;
-  readonly outputs = ['retry', 'done'] as const;
-
-  constructor(
-    name: string,
-    private readonly firings: number[],
-  ) {
-    super();
-    this.name = name;
-  }
-
-  override async execute(
-    batch: Batch<CycleState>,
-    _ctx: NodeContextType,
-  ): Promise<RoutedBatchType<'retry' | 'done', CycleState>> {
-    this.firings.push(batch.size);
-
-    const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
-    const doneItems: Array<{ 'id': string; 'state': CycleState }> = [];
-
-    for (const item of batch) {
-      item.state.attempts += 1;
-      // Safety cap: treat items that have been around too long as done to
-      // prevent hangs; a real engine regression surfaces as a wrong assertion.
-      if (item.state.attempts > 50 || item.state.attempts > item.state.exitAt) {
-        doneItems.push({ 'id': item.id, 'state': item.state });
-      } else {
-        retryItems.push({ 'id': item.id, 'state': item.state });
-      }
-    }
-
-    const result = new Map<'retry' | 'done', Batch<CycleState>>();
-    if (retryItems.length > 0) {
-      result.set('retry', Batch.from(retryItems));
-    }
-    if (doneItems.length > 0) {
-      result.set('done', Batch.from(doneItems));
-    }
-    return result;
-  }
-}
-
-// Budget-based retry node — uses `withinRetryBudget` to decide routing. Items
-// within budget go to `retry`; exhausted items go to `salvage`; items with
-// `exitAt = 0` succeed immediately and go to `done`.
-class BudgetRetryNode extends MonadicNode<CycleState, 'retry' | 'done' | 'salvage'> {
-  readonly name: string;
-  readonly outputs = ['retry', 'done', 'salvage'] as const;
-
-  constructor(
-    name: string,
-    private readonly maxAttempts: number,
-    private readonly firings: number[],
-  ) {
-    super();
-    this.name = name;
-  }
-
-  override async execute(
-    batch: Batch<CycleState>,
-    _ctx: NodeContextType,
-  ): Promise<RoutedBatchType<'retry' | 'done' | 'salvage', CycleState>> {
-    this.firings.push(batch.size);
-
-    const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
-    const doneItems: Array<{ 'id': string; 'state': CycleState }> = [];
-    const salvageItems: Array<{ 'id': string; 'state': CycleState }> = [];
-
-    for (const item of batch) {
-      // Items with `exitAt = 0` succeed immediately (do not consume budget).
-      if (item.state.exitAt === 0) {
-        item.state.attempts += 1;
-        doneItems.push({ 'id': item.id, 'state': item.state });
-      } else if (item.state.withinRetryBudget('loop', this.maxAttempts)) {
-        // Within budget — loop again.
-        item.state.attempts += 1;
-        retryItems.push({ 'id': item.id, 'state': item.state });
-      } else {
-        // Budget exhausted.
-        item.state.attempts += 1;
-        salvageItems.push({ 'id': item.id, 'state': item.state });
-      }
-    }
-
-    const result = new Map<'retry' | 'done' | 'salvage', Batch<CycleState>>();
-    if (retryItems.length > 0) result.set('retry', Batch.from(retryItems));
-    if (doneItems.length > 0) result.set('done', Batch.from(doneItems));
-    if (salvageItems.length > 0) result.set('salvage', Batch.from(salvageItems));
-    return result;
-  }
-}
-
-// Accumulator node — collects all items for post-run inspection.
-class CycleAccumulatorNode extends MonadicNode<CycleState, 'done'> {
-  readonly name: string;
-  readonly outputs = ['done'] as const;
-
-  constructor(
-    name: string,
-    private readonly collected: CycleState[],
-  ) {
-    super();
-    this.name = name;
-  }
-
-  override async execute(
-    batch: Batch<CycleState>,
-    _ctx: NodeContextType,
-  ): Promise<RoutedBatchType<'done', CycleState>> {
-    for (const item of batch) {
-      this.collected.push(item.state);
-    }
-    const result = new Map<'done', Batch<CycleState>>();
-    result.set('done', batch);
-    return result;
-  }
-}
-
-// Recording node — stamps firings array and passes items through.
-class CycleRecordingNode extends MonadicNode<CycleState, 'done'> {
-  readonly name: string;
-  readonly outputs = ['done'] as const;
-
-  constructor(
-    name: string,
-    private readonly firings: number[],
-  ) {
-    super();
-    this.name = name;
-  }
-
-  override async execute(
-    batch: Batch<CycleState>,
-    _ctx: NodeContextType,
-  ): Promise<RoutedBatchType<'done', CycleState>> {
-    this.firings.push(batch.size);
-    const result = new Map<'done', Batch<CycleState>>();
-    result.set('done', batch);
-    return result;
-  }
-}
-
-// ===========================================================================
-// TestCycleWalkNode: static factory for CycleState node instances
+// CycleState node factories via TestBatchNode
 // ===========================================================================
 
 class TestCycleWalkNode {
   private constructor() {}
-  static fanOut(name: string, n: number): CycleFanOutNode { return new CycleFanOutNode(name, n); }
-  static homogeneousFanOut(name: string, n: number, exitAt: number): HomogeneousFanOutNode { return new HomogeneousFanOutNode(name, n, exitAt); }
-  static retry(name: string, firings: number[]): RetryNode { return new RetryNode(name, firings); }
-  static budgetRetry(name: string, maxAttempts: number, firings: number[]): BudgetRetryNode { return new BudgetRetryNode(name, maxAttempts, firings); }
-  static accumulator(name: string, collected: CycleState[]): CycleAccumulatorNode { return new CycleAccumulatorNode(name, collected); }
-  static recording(name: string, firings: number[]): CycleRecordingNode { return new CycleRecordingNode(name, firings); }
+
+  /** Fan-out: emits N items where item i receives `exitAt = i`. */
+  static fanOut(name: string, n: number): ReturnType<typeof TestBatchNode.of<CycleState, 'out'>> {
+    return TestBatchNode.of<CycleState, 'out'>(name, ['out'], (batch) => {
+      const sourceState = batch.row(0).state;
+      const items: Array<{ 'id': string; 'state': CycleState }> = [];
+      for (let i = 0; i < n; i++) {
+        const clone = sourceState.clone();
+        clone.exitAt = i;
+        clone.attempts = 0;
+        items.push({ 'id': String(i), 'state': clone });
+      }
+      const result = new Map<'out', Batch<CycleState>>();
+      result.set('out', Batch.from(items));
+      return result;
+    });
+  }
+
+  /** Homogeneous fan-out: all N items exit after the same number of attempts. */
+  static homogeneousFanOut(name: string, n: number, exitAt: number): ReturnType<typeof TestBatchNode.of<CycleState, 'out'>> {
+    return TestBatchNode.of<CycleState, 'out'>(name, ['out'], (batch) => {
+      const sourceState = batch.row(0).state;
+      const items: Array<{ 'id': string; 'state': CycleState }> = [];
+      for (let i = 0; i < n; i++) {
+        const clone = sourceState.clone();
+        clone.exitAt = exitAt;
+        clone.attempts = 0;
+        items.push({ 'id': String(i), 'state': clone });
+      }
+      const result = new Map<'out', Batch<CycleState>>();
+      result.set('out', Batch.from(items));
+      return result;
+    });
+  }
+
+  /** Retry: increments attempts; routes items whose attempt count reached exitAt to 'done',
+   *  others to 'retry'. Hard cap at 50 prevents infinite loops. */
+  static retry(name: string, firings: number[]): ReturnType<typeof TestBatchNode.of<CycleState, 'retry' | 'done'>> {
+    return TestBatchNode.of<CycleState, 'retry' | 'done'>(name, ['retry', 'done'], (batch) => {
+      firings.push(batch.size);
+
+      const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
+      const doneItems: Array<{ 'id': string; 'state': CycleState }> = [];
+
+      for (const item of batch) {
+        item.state.attempts += 1;
+        if (item.state.attempts > 50 || item.state.attempts > item.state.exitAt) {
+          doneItems.push({ 'id': item.id, 'state': item.state });
+        } else {
+          retryItems.push({ 'id': item.id, 'state': item.state });
+        }
+      }
+
+      const result = new Map<'retry' | 'done', Batch<CycleState>>();
+      if (retryItems.length > 0) {
+        result.set('retry', Batch.from(retryItems));
+      }
+      if (doneItems.length > 0) {
+        result.set('done', Batch.from(doneItems));
+      }
+      return result;
+    });
+  }
+
+  /** Budget-based retry: uses `withinRetryBudget`; routes to 'retry', 'done', or 'salvage'. */
+  static budgetRetry(name: string, maxAttempts: number, firings: number[]): ReturnType<typeof TestBatchNode.of<CycleState, 'retry' | 'done' | 'salvage'>> {
+    return TestBatchNode.of<CycleState, 'retry' | 'done' | 'salvage'>(name, ['retry', 'done', 'salvage'], (batch) => {
+      firings.push(batch.size);
+
+      const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
+      const doneItems: Array<{ 'id': string; 'state': CycleState }> = [];
+      const salvageItems: Array<{ 'id': string; 'state': CycleState }> = [];
+
+      for (const item of batch) {
+        if (item.state.exitAt === 0) {
+          item.state.attempts += 1;
+          doneItems.push({ 'id': item.id, 'state': item.state });
+        } else if (item.state.withinRetryBudget('loop', maxAttempts)) {
+          item.state.attempts += 1;
+          retryItems.push({ 'id': item.id, 'state': item.state });
+        } else {
+          item.state.attempts += 1;
+          salvageItems.push({ 'id': item.id, 'state': item.state });
+        }
+      }
+
+      const result = new Map<'retry' | 'done' | 'salvage', Batch<CycleState>>();
+      if (retryItems.length > 0) result.set('retry', Batch.from(retryItems));
+      if (doneItems.length > 0) result.set('done', Batch.from(doneItems));
+      if (salvageItems.length > 0) result.set('salvage', Batch.from(salvageItems));
+      return result;
+    });
+  }
+
+  /** Accumulator: collects all items for post-run inspection. */
+  static accumulator(name: string, collected: CycleState[]): ReturnType<typeof TestBatchNode.of<CycleState, 'done'>> {
+    return TestBatchNode.of<CycleState, 'done'>(name, ['done'], (batch) => {
+      for (const item of batch) {
+        collected.push(item.state);
+      }
+      const result = new Map<'done', Batch<CycleState>>();
+      result.set('done', batch);
+      return result;
+    });
+  }
+
+  /** Recording: stamps firings array and passes items through. */
+  static recording(name: string, firings: number[]): ReturnType<typeof TestBatchNode.of<CycleState, 'done'>> {
+    return TestBatchNode.of<CycleState, 'done'>(name, ['done'], (batch) => {
+      firings.push(batch.size);
+      const result = new Map<'done', Batch<CycleState>>();
+      result.set('done', batch);
+      return result;
+    });
+  }
 }
 
 // ===========================================================================
@@ -707,18 +522,15 @@ void describe('Batch walk — size-1 parity', () => {
     singleParentState.items = [7, 14];
     singleParentState.gathered = [];
 
-    class ParityBodyNode extends MonadicNode<ScatterParentState, 'success'> {
-      readonly name = 'parity-body';
-      readonly outputs = ['success'] as const;
-
-      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatchType<'success', ScatterParentState>> {
+    const bodyNode = TestBatchNode.of<ScatterParentState, 'success'>(
+      'parity-body',
+      ['success'],
+      (batch) => {
         const result = new Map<'success', Batch<ScatterParentState>>();
         result.set('success', batch);
         return result;
-      }
-    }
-
-    const bodyNode = new ParityBodyNode();
+      },
+    );
 
     const parity1Dag = TestDag.of('parity-scatter-1', 'parity-scatter', [
       {
@@ -932,27 +744,20 @@ void describe('Batch walk — multi-item composites', () => {
     // records how many items it sees.
     const childItemsSeen: number[] = [];
 
-    class ChildIncrNode extends MonadicNode<CompositeState, 'done'> {
-      readonly name = 'child-incr';
-      readonly outputs = ['done'] as const;
-
-      constructor(private readonly childItemsSeen: number[]) {
-        super();
-      }
-
-      override async execute(batch: Batch<CompositeState>): Promise<RoutedBatchType<'done', CompositeState>> {
+    const childIncrNode = TestBatchNode.of<CompositeState, 'done'>(
+      'child-incr',
+      ['done'],
+      (batch) => {
         for (const item of batch) {
-          this.childItemsSeen.push(item.state.value);
+          childItemsSeen.push(item.state.value);
           item.state.value += 10;
           item.state.log.push(`child-incr:${item.state.value}`);
         }
         const result = new Map<'done', Batch<CompositeState>>();
         result.set('done', batch);
         return result;
-      }
-    }
-
-    const childIncrNode = new ChildIncrNode(childItemsSeen);
+      },
+    );
 
     // Child DAG: child-incr → child-end (success terminal).
     const childDAG = TestDag.of('embed-uniform-child', 'child-incr', [
@@ -1024,28 +829,25 @@ void describe('Batch walk — multi-item composites', () => {
     // EmbeddedDAGNode.outputs: success → 'even-acc', error → 'odd-acc'.
 
     // Child routing node: even value → 'success', odd value → 'failure'.
-    class ChildRouterNode extends MonadicNode<CompositeState, 'success' | 'failure'> {
-      readonly name = 'child-router';
-      readonly outputs = ['success', 'failure'] as const;
-
-      override async execute(batch: Batch<CompositeState>): Promise<RoutedBatchType<'success' | 'failure', CompositeState>> {
-        const even: Array<ItemType<CompositeState>> = [];
-        const odd: Array<ItemType<CompositeState>> = [];
+    const childRouterNode = TestBatchNode.of<CompositeState, 'success' | 'failure'>(
+      'child-router',
+      ['success', 'failure'],
+      (batch) => {
+        const even: Array<{ 'id': string; 'state': CompositeState }> = [];
+        const odd: Array<{ 'id': string; 'state': CompositeState }> = [];
         for (const item of batch) {
           if (item.state.value % 2 === 0) {
-            even.push(item);
+            even.push({ 'id': item.id, 'state': item.state });
           } else {
-            odd.push(item);
+            odd.push({ 'id': item.id, 'state': item.state });
           }
         }
         const result = new Map<'success' | 'failure', Batch<CompositeState>>();
         if (even.length > 0) result.set('success', Batch.from(even));
         if (odd.length > 0) result.set('failure', Batch.from(odd));
         return result;
-      }
-    }
-
-    const childRouterNode = new ChildRouterNode();
+      },
+    );
 
     // Child DAG: router → success-terminal or failure-terminal.
     // success terminal outcome = 'completed', failure terminal outcome = 'failed'.
@@ -1119,13 +921,12 @@ void describe('Batch walk — multi-item composites', () => {
     // Each parent goes through a ScatterNode (node body, append gather into
     // `gathered`). The gather result for each parent must reflect only that
     // parent's source, proving no cross-parent mixing.
-    class ParentFanOutNode extends MonadicNode<ScatterParentState, 'out'> {
-      readonly name = 'parent-fan';
-      readonly outputs = ['out'] as const;
-
-      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatchType<'out', ScatterParentState>> {
+    const fanOutNode = TestBatchNode.of<ScatterParentState, 'out'>(
+      'parent-fan',
+      ['out'],
+      (batch) => {
         const source = batch.row(0).state;
-        const items: Array<ItemType<ScatterParentState>> = [];
+        const items: Array<{ 'id': string; 'state': ScatterParentState }> = [];
         for (let i = 0; i < 3; i++) {
           const clone = source.clone();
           clone.parentId = i;
@@ -1137,49 +938,37 @@ void describe('Batch walk — multi-item composites', () => {
         const result = new Map<'out', Batch<ScatterParentState>>();
         result.set('out', Batch.from(items));
         return result;
-      }
-    }
-
-    const fanOutNode = new ParentFanOutNode();
+      },
+    );
 
     // Body node: runs once per scatter item; the append gather strategy (target:
     // `gathered`, itemKey: 'currentItem') reads the clone's currentItem metadata
     // and appends it to the parent's `gathered` array. The body node itself does
     // nothing to `gathered` — that is the gather strategy's job.
-    class ScatterBodyNode extends MonadicNode<ScatterParentState, 'success'> {
-      readonly name = 'scatter-body';
-      readonly outputs = ['success'] as const;
-
-      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatchType<'success', ScatterParentState>> {
+    const scatterBodyNode = TestBatchNode.of<ScatterParentState, 'success'>(
+      'scatter-body',
+      ['success'],
+      (batch) => {
         const result = new Map<'success', Batch<ScatterParentState>>();
         result.set('success', batch);
         return result;
-      }
-    }
-
-    const scatterBodyNode = new ScatterBodyNode();
+      },
+    );
 
     // Downstream accumulator collects all parent states after scatter+gather.
     const downstreamCollected: ScatterParentState[] = [];
-    class DownstreamNode extends MonadicNode<ScatterParentState, 'done'> {
-      readonly name = 'downstream';
-      readonly outputs = ['done'] as const;
-
-      constructor(private readonly downstreamCollected: ScatterParentState[]) {
-        super();
-      }
-
-      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatchType<'done', ScatterParentState>> {
+    const downstreamNode = TestBatchNode.of<ScatterParentState, 'done'>(
+      'downstream',
+      ['done'],
+      (batch) => {
         for (const item of batch) {
-          this.downstreamCollected.push(item.state);
+          downstreamCollected.push(item.state);
         }
         const result = new Map<'done', Batch<ScatterParentState>>();
         result.set('done', batch);
         return result;
-      }
-    }
-
-    const downstreamNode = new DownstreamNode(downstreamCollected);
+      },
+    );
 
     const dag = TestDag.of('scatter-per-parent', 'fan', [
       {
@@ -1528,14 +1317,10 @@ void describe('Batch walk — cycles and retry loops', () => {
     const MAX_ATTEMPTS = 3;
 
     // Custom fan-out: 2 items with exitAt=0 (succeed fast), 2 items with exitAt=255 (exhaust).
-    class MixedFanOutNode extends MonadicNode<CycleState, 'out'> {
-      readonly name = 'mix-fan';
-      readonly outputs = ['out'] as const;
-
-      override async execute(
-        batch: Batch<CycleState>,
-        _ctx: NodeContextType,
-      ): Promise<RoutedBatchType<'out', CycleState>> {
+    const mixedFanOut = TestBatchNode.of<CycleState, 'out'>(
+      'mix-fan',
+      ['out'],
+      (batch) => {
         const sourceState = batch.row(0).state;
         const s0 = sourceState.clone(); s0.exitAt = 0; s0.attempts = 0;
         const s1 = sourceState.clone(); s1.exitAt = 0; s1.attempts = 0;
@@ -1550,9 +1335,8 @@ void describe('Batch walk — cycles and retry loops', () => {
         const result = new Map<'out', Batch<CycleState>>();
         result.set('out', Batch.from(items));
         return result;
-      }
-    }
-    const mixedFanOut = new MixedFanOutNode();
+      },
+    );
 
     dispatcher.registerNode(mixedFanOut);
     dispatcher.registerNode(TestCycleWalkNode.budgetRetry('budget-retrier', MAX_ATTEMPTS, firings));
@@ -1642,14 +1426,10 @@ void describe('Batch walk — cycles and retry loops', () => {
     const collected: CycleState[] = [];
 
     // Fan-out: 3 loop items (exitAt 0,1,1) + 2 straight items.
-    class CycleJoinFanNode extends MonadicNode<CycleState, 'loop-out' | 'straight-out'> {
-      readonly name = 'cycle-join-fan';
-      readonly outputs = ['loop-out', 'straight-out'] as const;
-
-      override async execute(
-        batch: Batch<CycleState>,
-        _ctx: NodeContextType,
-      ): Promise<RoutedBatchType<'loop-out' | 'straight-out', CycleState>> {
+    const fanNode = TestBatchNode.of<CycleState, 'loop-out' | 'straight-out'>(
+      'cycle-join-fan',
+      ['loop-out', 'straight-out'],
+      (batch, _ctx: NodeContextType) => {
         const sourceState = batch.row(0).state;
 
         const l0 = sourceState.clone(); l0.exitAt = 0;
@@ -1672,9 +1452,8 @@ void describe('Batch walk — cycles and retry loops', () => {
         result.set('loop-out', Batch.from(loopItems));
         result.set('straight-out', Batch.from(straightItems));
         return result;
-      }
-    }
-    const fanNode = new CycleJoinFanNode();
+      },
+    );
 
     dispatcher.registerNode(fanNode);
     dispatcher.registerNode(TestCycleWalkNode.retry('cycle-retrier', []));

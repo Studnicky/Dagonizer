@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/index.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -45,6 +46,7 @@ class TestErrorNode {
     class ErrorNode extends ScalarNode<NodeStateBase, 'done'> {
       readonly name = nodeName;
       readonly outputs = ['done'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
       protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'done'>> {
         state.collectError({
           'code':        'ERR',

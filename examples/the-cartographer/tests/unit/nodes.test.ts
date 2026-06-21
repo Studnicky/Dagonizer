@@ -20,6 +20,8 @@ import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer/types
 import { CartographerState } from '../../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
+import type { IpGeolocator } from '../../contracts/IpGeolocator.ts';
+import type { ReverseGeocoder } from '../../contracts/ReverseGeocoder.ts';
 
 import { ValidateCoordsNode } from '../../nodes/validateCoords.ts';
 import { RouteGeoNode } from '../../nodes/routeGeo.ts';
@@ -96,8 +98,25 @@ class PublicAggregateEventNode extends AggregateEventNode {
   }
 }
 
-// Minimal stub context — nodes don't call services through context in unit tests
-const CTX = {} as NodeContextType<CartographerServices>;
+// Minimal stub service implementations — nodes under test use state only, not context.services
+class StubReverseGeocoder implements ReverseGeocoder {
+  async lookup(_lat: number, _lng: number, _signal: AbortSignal) {
+    return { candidate: { modality: 'gps' as const, resolved: false, country: '', countryName: '', continent: '', region: '', locality: '', lat: 0, lng: 0, water: false }, error: null };
+  }
+}
+class StubIpGeolocator implements IpGeolocator {
+  async lookup(_ip: string, _signal: AbortSignal) {
+    return { candidate: { modality: 'ip' as const, resolved: false, country: '', countryName: '', continent: '', region: '', locality: '', lat: 0, lng: 0, water: false }, error: null };
+  }
+}
+const CTX: NodeContextType<CartographerServices> = {
+  'dagName': 'test',
+  'nodeName': 'test',
+  'signal': new AbortController().signal,
+  'services': { 'reverseGeocoder': new StubReverseGeocoder(), 'ipGeolocator': new StubIpGeolocator() },
+  'validateOutputs': false,
+  'outputSchemaValidator': null,
+};
 
 // ── ValidateCoordsNode ─────────────────────────────────────────────────────────
 

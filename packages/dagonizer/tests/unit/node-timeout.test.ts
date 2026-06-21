@@ -31,7 +31,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import type { NodeInterface, SchemaObjectType  } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -42,6 +42,7 @@ import { NodeTimeoutError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,6 +98,7 @@ void describe('per-node timeout', () => {
       readonly name = 'slow';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(500);
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         receivedSignal = context.signal;
         // Suspend indefinitely; the per-node deadline race wins.
@@ -159,6 +161,7 @@ void describe('per-node timeout', () => {
       readonly name = 'tardy';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(200);
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
@@ -189,28 +192,18 @@ void describe('per-node timeout', () => {
     assert.equal(errors.length, 1, 'onError should fire exactly once');
     const [entry] = errors;
     assert.ok(entry !== undefined);
-    assert.ok(
-      entry.error instanceof NodeTimeoutError,
-      `expected NodeTimeoutError, got ${entry.error.constructor.name}`,
-    );
-    const tErr = entry.error as NodeTimeoutError;
-    assert.equal(tErr.nodeName, 'tardy');
-    assert.equal(tErr.timeoutMs, 200);
+    if (!(entry.error instanceof NodeTimeoutError)) {
+      throw new Error(`expected NodeTimeoutError, got ${entry.error.constructor.name}`);
+    }
+    assert.equal(entry.error.nodeName, 'tardy');
+    assert.equal(entry.error.timeoutMs, 200);
   });
 
   void it('nodes without timeout complete normally', async () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
 
-    class FastNode extends ScalarNode<NodeStateBase, 'done'> {
-      readonly name = 'fast';
-      readonly outputs = ['done'] as const;
-      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'done'>> {
-        return { 'errors': [], 'output': 'done' };
-      }
-    }
-
-    const fastNode = new FastNode();
+    const fastNode = TestNode.make<NodeStateBase>('fast', ['done'], () => 'done');
 
     const dispatcher = new Dagonizer<NodeStateBase>();
     TestHarness.singleNodeDag(dispatcher, fastNode, 'fast-dag', 'done');
@@ -231,6 +224,7 @@ void describe('per-node timeout', () => {
       readonly name = 'slow-cancel';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(60_000); // very long node budget; run-level cancel wins
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });

@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -19,6 +20,7 @@ import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Validator } from '../../src/validation/Validator.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -45,6 +47,7 @@ class RoutingState extends NodeStateBase {
 class IncrNode extends ScalarNode<RoutingState, 'success' | 'error'> {
   readonly name: string;
   readonly outputs = ['success', 'error'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } }; }
   readonly #probe: ExecutionProbe;
 
   constructor(name: string, probe: ExecutionProbe) {
@@ -67,6 +70,7 @@ class IncrNode extends ScalarNode<RoutingState, 'success' | 'error'> {
 class SetDagNode extends ScalarNode<RoutingState, 'success'> {
   readonly name: string;
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
   readonly #dagName: string;
 
   constructor(name: string, dagName: string) {
@@ -280,7 +284,9 @@ void describe('DAGValidator: embedded dag exactly-one-of constraint', () => {
     dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
     dispatcher.registerDAG(TestDag.child('some-child'));
 
-    const bogus: DAGType = {
+    // Build the raw wire object as unknown, validate through the schema
+    // (schema allows both dag + dagFrom coexisting; semantic rejection is in registerDAG).
+    const bogusRaw: unknown = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:bogus-both',
       '@type':    'DAG',
@@ -296,10 +302,11 @@ void describe('DAGValidator: embedded dag exactly-one-of constraint', () => {
           'dag':     'some-child',
           'dagFrom': 'selectedDag',
           'outputs': { 'success': 'end', 'error': 'end' },
-        } as unknown as DAGType['nodes'][number],
+        },
         TestDag.terminal('bogus-both'),
       ],
     };
+    const bogus = Validator.dag.validate(bogusRaw);
 
     assert.throws(() => dispatcher.registerDAG(bogus));
   });
@@ -307,7 +314,10 @@ void describe('DAGValidator: embedded dag exactly-one-of constraint', () => {
   void it('registerDAG rejects a node with neither dag nor dagFrom set', () => {
     const dispatcher = new Dagonizer<RoutingState>();
 
-    const bogus: DAGType = {
+    // Build raw wire object — both dag and dagFrom are optional in schema,
+    // so neither being present passes schema validation; semantic rejection
+    // fires in registerDAG.
+    const bogusRaw: unknown = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:bogus-neither',
       '@type':    'DAG',
@@ -321,10 +331,11 @@ void describe('DAGValidator: embedded dag exactly-one-of constraint', () => {
           'name':   'embed',
           // Neither dag nor dagFrom — invalid.
           'outputs': { 'success': 'end', 'error': 'end' },
-        } as unknown as DAGType['nodes'][number],
+        },
         TestDag.terminal('bogus-neither'),
       ],
     };
+    const bogus = Validator.dag.validate(bogusRaw);
 
     assert.throws(() => dispatcher.registerDAG(bogus));
   });

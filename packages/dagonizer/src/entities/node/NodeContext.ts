@@ -7,6 +7,8 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import type { OutputSchemaValidatorInterface } from '../../contracts/NodeInterface.js';
+
 export const NodeContextSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/NodeContext',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
@@ -51,6 +53,20 @@ export type NodeContextType<TServices = undefined> = NodeContextWireType & {
    * when the dispatcher was constructed without a services option.
    */
   'services': TServices;
+  /**
+   * When `true`, `ScalarNode.execute` validates each item's state against
+   * `this.outputSchema[port]` after `executeOne` returns. On mismatch the
+   * item is re-routed to `'error'` with code `outputContractViolation`.
+   * Set from `DagonizerOptionsType.validateOutputs`; default `false`.
+   */
+  'validateOutputs': boolean;
+  /**
+   * Validator service injected by the dispatcher when `validateOutputs` is
+   * `true`. `null` when validation is off (default) — zero overhead. `core/`
+   * reads this via the `OutputSchemaValidatorInterface` contract (defined in
+   * `contracts/`) without importing `validation/` directly.
+   */
+  'outputSchemaValidator': OutputSchemaValidatorInterface | null;
 };
 
 /**
@@ -59,8 +75,9 @@ export type NodeContextType<TServices = undefined> = NodeContextWireType & {
  * type occupies that identifier). The `*Builder` pattern follows the same
  * convention used elsewhere in this codebase where the type name is taken.
  *
- * Key order (signal, dagName, nodeName, services) is fixed for V8 shape
- * stability: every instance has the same hidden class regardless of call site.
+ * Key order (signal, dagName, nodeName, services, validateOutputs) is fixed
+ * for V8 shape stability: every instance has the same hidden class regardless
+ * of call site.
  */
 export class NodeContextBuilder {
   static of<TServices>(
@@ -68,7 +85,9 @@ export class NodeContextBuilder {
     nodeName: string,
     signal: AbortSignal,
     services: TServices,
+    validateOutputs: boolean = false,
+    outputSchemaValidator: OutputSchemaValidatorInterface | null = null,
   ): NodeContextType<TServices> {
-    return { signal, dagName, nodeName, services };
+    return { signal, dagName, nodeName, services, validateOutputs, outputSchemaValidator };
   }
 }

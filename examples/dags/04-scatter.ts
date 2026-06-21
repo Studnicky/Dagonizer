@@ -12,7 +12,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { Batch, GatherExecutionType, GatherRecordType, NodeStateInterface } from '@studnicky/dagonizer';
+import type { Batch, GatherExecutionType, GatherRecordType, NodeStateInterface, SchemaObjectType } from '@studnicky/dagonizer';
 import type { GatherConfigType } from '@studnicky/dagonizer/entities';
 import type { DAGType } from '@studnicky/dagonizer';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
@@ -30,6 +30,9 @@ export class ScrapeState extends NodeStateBase {
 export class ProbeNode extends ScalarNode<ScrapeState, 'ok' | 'fail'> {
   readonly name = 'probe';
   readonly outputs = ['ok', 'fail'] as const;
+  override get outputSchema(): Record<'ok' | 'fail', SchemaObjectType> {
+    return { 'ok': { 'type': 'object' }, 'fail': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ScrapeState) {
     // Each item is written to state under the itemKey ('url') before execute.

@@ -35,7 +35,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { RecalledContext } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -62,6 +62,11 @@ const JACCARD_THRESHOLD_CONTEXT = 0.35;
 export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled', ArchivistServices> {
   readonly name = 'recall-context';
   readonly outputs = ['recalled'] as const;
+  override get outputSchema(): Record<'recalled', SchemaObjectType> {
+    return {
+      'recalled': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory = context.services.memory;

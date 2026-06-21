@@ -14,6 +14,7 @@
 
 import { ToolCallCodec } from '../../adapter/ToolCallCodec.js';
 import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
+import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ToolCallType } from '../../entities/adapter/ToolCall.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
@@ -26,6 +27,14 @@ export abstract class DecodeTextToolCallsNode<
   TState extends NodeStateInterface,
 > extends ScalarNode<TState, 'decoded' | 'empty' | 'error', AgentServicesType> {
   readonly outputs = ['decoded', 'empty', 'error'] as const;
+
+  override get outputSchema(): Record<'decoded' | 'empty' | 'error', SchemaObjectType> {
+    return {
+      'decoded': { 'type': 'object' },
+      'empty':   { 'type': 'object' },
+      'error':   { 'type': 'object' },
+    };
+  }
 
   /**
    * Prefix for synthesized tool call ids. Default: `'agent'`.

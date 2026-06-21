@@ -20,17 +20,12 @@ import {
   SCATTER_REDUCER_DEFAULT,
   ScatterOptions,
 } from '../../src/builder/ScatterOptions.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
+import { Placement } from '../../src/entities/dag/Placement.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestNode } from '../_support/TestNode.js';
 
-class NoopNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name = 'noop';
-  readonly outputs = ['success'] as const;
-  protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-}
-const noop = new NoopNode();
+const noop = TestNode.make<NodeStateBase>('noop', ['success']);
 
 void describe('ScatterOptions.resolve — static factory', () => {
   void it('fills itemKey and reducer with their default constants when omitted', () => {
@@ -68,10 +63,10 @@ void describe('DAGBuilder.scatter — placement defaults', () => {
       .terminal('end')
       .build();
 
-    const scatter = dag.nodes.find((n) => n['@type'] === 'ScatterNode');
-    assert.ok(scatter !== undefined, 'ScatterNode present');
-    assert.equal((scatter as Record<string, unknown>)['itemKey'], 'currentItem');
-    assert.equal((scatter as Record<string, unknown>)['reducer'], 'aggregate');
+    const scatterNode = dag.nodes.find(Placement.isScatter);
+    assert.ok(scatterNode !== undefined, 'ScatterNode present');
+    assert.equal(scatterNode.itemKey, 'currentItem');
+    assert.equal(scatterNode.reducer, 'aggregate');
   });
 
   void it('emits caller-supplied itemKey and reducer unchanged', () => {
@@ -84,10 +79,10 @@ void describe('DAGBuilder.scatter — placement defaults', () => {
       .terminal('end')
       .build();
 
-    const scatter = dag.nodes.find((n) => n['@type'] === 'ScatterNode');
-    assert.ok(scatter !== undefined, 'ScatterNode present');
-    assert.equal((scatter as Record<string, unknown>)['itemKey'], 'task');
-    assert.equal((scatter as Record<string, unknown>)['reducer'], 'any-success');
+    const scatterNode = dag.nodes.find(Placement.isScatter);
+    assert.ok(scatterNode !== undefined, 'ScatterNode present');
+    assert.equal(scatterNode.itemKey, 'task');
+    assert.equal(scatterNode.reducer, 'any-success');
   });
 
   void it('omits concurrency, container, and stateMapping from produced ScatterNode when caller omits them', () => {
@@ -99,10 +94,10 @@ void describe('DAGBuilder.scatter — placement defaults', () => {
       .terminal('end')
       .build();
 
-    const scatter = dag.nodes.find((n) => n['@type'] === 'ScatterNode');
-    assert.ok(scatter !== undefined, 'ScatterNode present');
-    assert.equal('concurrency' in scatter, false, 'concurrency absent when not provided');
-    assert.equal('stateMapping' in scatter, false, 'stateMapping absent when inputs not provided');
+    const scatterNode = dag.nodes.find(Placement.isScatter);
+    assert.ok(scatterNode !== undefined, 'ScatterNode present');
+    assert.equal('concurrency' in scatterNode, false, 'concurrency absent when not provided');
+    assert.equal('stateMapping' in scatterNode, false, 'stateMapping absent when inputs not provided');
 
     // Dag-body scatter omitting container: container key must be absent.
     const dagBodyDag = new DAGBuilder('no-container', '1')
@@ -112,7 +107,7 @@ void describe('DAGBuilder.scatter — placement defaults', () => {
       .terminal('end')
       .build();
 
-    const dagBodyScatter = dagBodyDag.nodes.find((n) => n['@type'] === 'ScatterNode');
+    const dagBodyScatter = dagBodyDag.nodes.find(Placement.isScatter);
     assert.ok(dagBodyScatter !== undefined, 'ScatterNode present');
     assert.equal('container' in dagBodyScatter, false, 'container absent when not provided');
   });
@@ -131,12 +126,13 @@ void describe('DAGBuilder.scatter — placement defaults', () => {
       .terminal('end', { 'outcome': 'completed' })
       .build();
 
-    const scatterNode = dag.nodes.find((n) => n['@type'] === 'ScatterNode');
+    const scatterNode = dag.nodes.find(Placement.isScatter);
     assert.ok(scatterNode !== undefined, 'ScatterNode present in built DAG');
     assert.equal(scatterNode.name, 'fan-out');
     // body is a node reference (the noop node).
     assert.ok('node' in scatterNode.body, 'body is a node reference');
-    assert.equal((scatterNode.body as { node: string }).node, 'noop');
+    if (!('node' in scatterNode.body)) throw new Error('unreachable — asserted above');
+    assert.equal(scatterNode.body.node, 'noop');
     assert.equal(scatterNode.source, 'providers');
     assert.equal(scatterNode.concurrency, 4);
     assert.equal(scatterNode.gather.strategy, 'discard');
@@ -156,13 +152,13 @@ void describe('DAGBuilder.scatter — reservoir option', () => {
       .terminal('end')
       .build();
 
-    const scatter = dag.nodes.find((n) => n['@type'] === 'ScatterNode') as Record<string, unknown>;
-    assert.ok(scatter !== undefined, 'ScatterNode present');
-    const reservoir = scatter['reservoir'] as Record<string, unknown>;
+    const scatterNode = dag.nodes.find(Placement.isScatter);
+    assert.ok(scatterNode !== undefined, 'ScatterNode present');
+    const reservoir = scatterNode.reservoir;
     assert.ok(reservoir !== undefined, 'reservoir present');
-    assert.equal(reservoir['keyField'], 'user.id');
-    assert.equal(reservoir['capacity'], 100);
-    assert.equal(reservoir['idleMs'], 500);
+    assert.equal(reservoir.keyField, 'user.id');
+    assert.equal(reservoir.capacity, 100);
+    assert.equal(reservoir.idleMs, 500);
   });
 
   void it('emits reservoir without idleMs when caller omits it', () => {
@@ -176,12 +172,12 @@ void describe('DAGBuilder.scatter — reservoir option', () => {
       .terminal('end')
       .build();
 
-    const scatter = dag.nodes.find((n) => n['@type'] === 'ScatterNode') as Record<string, unknown>;
-    assert.ok(scatter !== undefined, 'ScatterNode present');
-    const reservoir = scatter['reservoir'] as Record<string, unknown>;
+    const scatterNode = dag.nodes.find(Placement.isScatter);
+    assert.ok(scatterNode !== undefined, 'ScatterNode present');
+    const reservoir = scatterNode.reservoir;
     assert.ok(reservoir !== undefined, 'reservoir present');
-    assert.equal(reservoir['keyField'], 'tenantId');
-    assert.equal(reservoir['capacity'], 50);
+    assert.equal(reservoir.keyField, 'tenantId');
+    assert.equal(reservoir.capacity, 50);
     assert.equal('idleMs' in reservoir, false, 'idleMs absent when not provided');
   });
 
@@ -193,9 +189,9 @@ void describe('DAGBuilder.scatter — reservoir option', () => {
       .terminal('end')
       .build();
 
-    const scatter = dag.nodes.find((n) => n['@type'] === 'ScatterNode');
-    assert.ok(scatter !== undefined, 'ScatterNode present');
-    assert.equal('reservoir' in scatter, false, 'reservoir key absent when not provided');
+    const scatterNode = dag.nodes.find(Placement.isScatter);
+    assert.ok(scatterNode !== undefined, 'ScatterNode present');
+    assert.equal('reservoir' in scatterNode, false, 'reservoir key absent when not provided');
   });
 
   void it('Validator.scatterNode accepts a scatter with a reservoir', () => {
@@ -214,7 +210,7 @@ void describe('DAGBuilder.scatter — reservoir option', () => {
     // Must not throw.
     const result = Validator.scatterNode.validate(node);
     assert.ok(result !== undefined, 'validated ScatterNode returned');
-    assert.equal((result as Record<string, unknown>)['@type'], 'ScatterNode');
+    assert.equal(result['@type'], 'ScatterNode');
   });
 
   void it('Validator.scatterNode rejects a reservoir with capacity 0', () => {

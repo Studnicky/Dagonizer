@@ -10,6 +10,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State: tracks execution order so the example proves ordering guarantees
@@ -33,6 +34,9 @@ export class PhaseState extends NodeStateBase {
 export class PreSetupNode extends ScalarNode<PhaseState, 'ready'> {
   readonly name = 'pre-setup';
   readonly outputs = ['ready'] as const;
+  override get outputSchema(): Record<'ready', SchemaObjectType> {
+    return { 'ready': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: PhaseState) {
     state.executionLog.push('pre-setup');
@@ -49,6 +53,9 @@ export class PreSetupNode extends ScalarNode<PhaseState, 'ready'> {
 export class ComputeNode extends ScalarNode<PhaseState, 'done'> {
   readonly name = 'compute';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: PhaseState) {
     state.executionLog.push('compute');
@@ -67,6 +74,9 @@ export class ComputeNode extends ScalarNode<PhaseState, 'done'> {
 export class PostAuditNode extends ScalarNode<PhaseState, 'audited'> {
   readonly name = 'post-audit';
   readonly outputs = ['audited'] as const;
+  override get outputSchema(): Record<'audited', SchemaObjectType> {
+    return { 'audited': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: PhaseState) {
     state.executionLog.push('post-audit');

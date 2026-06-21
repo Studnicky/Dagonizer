@@ -26,8 +26,8 @@ import type { GeoCandidate } from '../entities/GeoCandidate.ts';
 import { GeoErrorRecord } from '../errors/GeoErrorRecord.ts';
 import { GeoLookupOutcome, type GeoLookupOutcomeType } from '../errors/GeoLookupOutcome.ts';
 
-// Static JSON import: assert the shape with a narrow cast at the boundary only.
-const CONTINENT_MAP = CONTINENT_MAP_RAW as Record<string, string>;
+// Static JSON import: validate the shape at the boundary with satisfies, then annotate.
+const CONTINENT_MAP: Record<string, string> = CONTINENT_MAP_RAW satisfies Record<string, string>;
 
 // #region offline-geo
 const ERROR_SOURCE = 'reverse-geocode';

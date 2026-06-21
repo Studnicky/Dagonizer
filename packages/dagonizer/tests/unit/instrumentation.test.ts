@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -48,7 +49,11 @@ class RecordingDagonizer extends Dagonizer<NodeStateBase> {
     const pathIndex = hook === 'nodeStart' ? 2 : 3;
     return this.calls
       .filter((call) => call.hook === hook && call.args[0] === nodeName)
-      .map((call) => [...(call.args[pathIndex] as readonly string[])]);
+      .map((call) => {
+        const raw = call.args[pathIndex];
+        assert.ok(Array.isArray(raw), `args[${String(pathIndex)}] must be an array`);
+        return raw.filter((e): e is string => typeof e === 'string');
+      });
   }
 }
 
@@ -189,8 +194,8 @@ void describe('Dagonizer subclass hooks contract', () => {
     const result = await dispatcher.execute('linear', new NodeStateBase());
     assert.equal(result.state.lifecycle.variant, 'completed');
 
-    const nodeStartNames = dispatcher.hooksOfType('nodeStart').map((c) => c.args[0] as string);
-    const nodeEndNames   = dispatcher.hooksOfType('nodeEnd').map((c) => c.args[0] as string);
+    const nodeStartNames = dispatcher.hooksOfType('nodeStart').map((c) => c.args[0]).filter((x): x is string => typeof x === 'string');
+    const nodeEndNames   = dispatcher.hooksOfType('nodeEnd').map((c) => c.args[0]).filter((x): x is string => typeof x === 'string');
     assert.deepEqual(nodeStartNames, ['a', 'b', 'c', 'end']);
     assert.deepEqual(nodeEndNames,   ['a', 'b', 'c', 'end']);
   });
@@ -251,6 +256,9 @@ void describe('Dagonizer subclass hooks contract', () => {
     class BoomNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'boom';
       readonly outputs = ['success'] as const;
+      override get outputSchema(): Record<'success', SchemaObjectType> {
+        return { 'success': { 'type': 'object' } };
+      }
       protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { throw new Error('boom went off'); }
     }
     dispatcher.registerNode(new BoomNode());
@@ -276,8 +284,9 @@ void describe('Dagonizer subclass hooks contract', () => {
     const errors = dispatcher.hooksOfType('error');
     assert.equal(errors.length, 1, 'onError fires exactly once');
     assert.equal(errors[0]?.args[0], 'boom');
-    assert.ok(errors[0]?.args[1] instanceof Error);
-    assert.match((errors[0]?.args[1] as Error).message, /boom went off/);
+    const errorArg = errors[0]?.args[1];
+    assert.ok(errorArg instanceof Error);
+    assert.match(errorArg.message, /boom went off/);
   });
 
   void it('a throwing hook propagates and aborts the flow (hooks MUST NOT throw)', async () => {

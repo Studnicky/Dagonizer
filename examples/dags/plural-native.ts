@@ -6,13 +6,16 @@
 
 // #region execute-contract
 import { MonadicNode, RoutedBatchBuilder, Batch } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeStateInterface, RoutedBatchType } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeStateInterface, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // The execute signature: consume Batch<TState>, return RoutedBatchType<TOutput, TState>.
 // Items are partitioned across output ports — routing IS partitioning.
 export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
   readonly name    = 'echo';
   readonly outputs = ['out'] as const;
+  override get outputSchema(): Record<'out', SchemaObjectType> {
+    return { 'out': { 'type': 'object' } };
+  }
 
   async execute(batch: Batch<NodeStateInterface>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', NodeStateInterface>> {
     return RoutedBatchBuilder.of('out', batch);
@@ -40,6 +43,9 @@ const geoCache = {
 export class GeoNode extends ScalarNode<EventState, 'has-geo' | 'needs-geo'> {
   readonly name    = 'geo';
   readonly outputs = ['has-geo', 'needs-geo'] as const;
+  override get outputSchema(): Record<'has-geo' | 'needs-geo', SchemaObjectType> {
+    return { 'has-geo': { 'type': 'object' }, 'needs-geo': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: EventState) {
     if (state.coords === null) {
@@ -54,6 +60,9 @@ export class GeoNode extends ScalarNode<EventState, 'has-geo' | 'needs-geo'> {
 export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
   readonly name    = 'enrich';
   readonly outputs = ['enriched'] as const;
+  override get outputSchema(): Record<'enriched', SchemaObjectType> {
+    return { 'enriched': { 'type': 'object' } };
+  }
 
   async execute(batch: Batch<EventState>, _ctx: NodeContextType): Promise<RoutedBatchType<'enriched', EventState>> {
     for (const item of batch) {
@@ -80,6 +89,9 @@ export class ScoreState extends NodeStateBase {
 export class ScoreNode extends ScalarNode<ScoreState, 'scored'> {
   readonly name    = 'score';
   readonly outputs = ['scored'] as const;
+  override get outputSchema(): Record<'scored', SchemaObjectType> {
+    return { 'scored': { 'type': 'object' } };
+  }
 
   protected override async executeOne(_state: ScoreState) {
     return NodeOutputBuilder.of('scored');

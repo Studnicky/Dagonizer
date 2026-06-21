@@ -72,6 +72,7 @@ export class GoogleBooksTool implements ToolInterface<GoogleBooksInputType, read
       },
       'required': ['query'],
     },
+    'outputSchema': { 'type': 'array', 'items': { 'type': 'object' } },
     'strict': true,
   };
 

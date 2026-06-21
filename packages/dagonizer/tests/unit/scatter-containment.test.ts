@@ -21,17 +21,15 @@ import { describe, it } from 'node:test';
 import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -77,18 +75,13 @@ class ScatterContainerState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-/** Reads currentItem from metadata and sets value on the clone. */
-class CounterNode extends ScalarNode<ScatterContainerState, 'done'> {
-  readonly name = 'counter';
-  readonly outputs = ['done'] as const;
-  protected async executeOne(state: ScatterContainerState): Promise<NodeOutputType<'done'>> {
-    const item = state.getMetadata<number>('item') ?? 0;
-    // value is a declared field on ScatterContainerState; no cast required.
-    state.value = item;
-    return { 'errors': [], 'output': 'done' as const };
-  }
-}
-const counterNode = new CounterNode();
+/** Reads item from metadata and sets value on the clone. */
+const counterNode = TestNode.make<ScatterContainerState>('counter', ['done'], (state) => {
+  const item = state.getMetadata<number>('item') ?? 0;
+  // value is a declared field on ScatterContainerState; no cast required.
+  state.value = item;
+  return 'done';
+});
 
 // ---------------------------------------------------------------------------
 // Minimal DAG body (runs inside each scatter item clone)
@@ -238,7 +231,7 @@ const nodeBodyRunnerDag: DAGType = Validator.dag.validate({
 
 function buildTestContainer(): DagContainerInterface {
   const innerDispatcher = new Dagonizer<ScatterContainerState>();
-  innerDispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
+  innerDispatcher.registerNode(counterNode);
   innerDispatcher.registerDAG(bodyDag);
 
   return {
@@ -246,11 +239,27 @@ function buildTestContainer(): DagContainerInterface {
       const cloneState = task.state;
       const intermediates: Array<{ output: string | null; skipped: boolean; nodeName: string }> = [];
 
+      if (!(cloneState instanceof ScatterContainerState)) {
+        return {
+          'terminalOutput': 'failed',
+          'errors': [{
+            'code': 'UNEXPECTED_STATE_TYPE',
+            'context': {},
+            'message': 'expected ScatterContainerState',
+            'operation': 'runDag',
+            'recoverable': false,
+            'timestamp': new Date().toISOString(),
+          }],
+          'stateSnapshot': null,
+          'intermediates': [],
+        };
+      }
+
       try {
         // Drain the execution iterator: collect intermediates and capture the
         // terminal result. Execution is a PromiseLike AND AsyncIterable;
         // iterate manually so we capture both.
-        const exec = innerDispatcher.execute(task.dagName, cloneState as ScatterContainerState);
+        const exec = innerDispatcher.execute(task.dagName, cloneState);
         const iter = exec[Symbol.asyncIterator]();
         let step = await iter.next();
         while (!step.done) {
@@ -296,7 +305,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
   // ── (a) No container: scatter dag-body runs in-process ───────────────────
   void it('scatter dag-body without container runs inline (in-process path)', async () => {
     const dispatcher = new Dagonizer<ScatterContainerState>();
-    dispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
+    dispatcher.registerNode(counterNode);
     dispatcher.registerDAG(bodyDag);
     dispatcher.registerDAG(inProcessRunnerDag);
 
@@ -325,7 +334,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     const dispatcher = new Dagonizer<ScatterContainerState>({
       'containers': { [CONTAINER_ROLE]: trackingContainer },
     });
-    dispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
+    dispatcher.registerNode(counterNode);
     dispatcher.registerDAG(bodyDag);
     dispatcher.registerDAG(runnerDag);
 
@@ -363,21 +372,16 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     // Counting node-body node — uses a closure counter since node-body
     // scatter runs inline (no snapshot/restore boundary).
-    class CountingNodeBodyNode extends ScalarNode<ScatterContainerState, 'done'> {
-      readonly name = 'node-body-worker';
-      readonly outputs = ['done'] as const;
-      protected async executeOne(_state: ScatterContainerState): Promise<NodeOutputType<'done'>> {
-        inlineNodeCalls++;
-        return { 'errors': [], 'output': 'done' as const };
-      }
-    }
-    const countingNodeBody = new CountingNodeBodyNode();
+    const countingNodeBody = TestNode.make<ScatterContainerState>('node-body-worker', ['done'], () => {
+      inlineNodeCalls++;
+      return 'done';
+    });
 
     const dispatcher = new Dagonizer<ScatterContainerState>({
       // Container is bound but node-body scatter must NOT use it.
       'containers': { [CONTAINER_ROLE]: container },
     });
-    dispatcher.registerNode(countingNodeBody as NodeInterface<ScatterContainerState>);
+    dispatcher.registerNode(countingNodeBody);
     dispatcher.registerDAG(nodeBodyRunnerDag);
 
     const state = new ScatterContainerState();
@@ -417,7 +421,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     const dispatcher = new Dagonizer<ScatterContainerState>({
       'containers': { [CONTAINER_ROLE]: failContainer },
     });
-    dispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
+    dispatcher.registerNode(counterNode);
     dispatcher.registerDAG(bodyDag);
     dispatcher.registerDAG(runnerDag);
 
@@ -459,7 +463,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
           })
         : new Dagonizer<ScatterContainerState>();
 
-      dispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
+      dispatcher.registerNode(counterNode);
       dispatcher.registerDAG(bodyDag);
       dispatcher.registerDAG(useContainer ? runnerDag : inProcessRunnerDag);
 
@@ -508,8 +512,12 @@ void describe('Scatter dag-body container seam (W4)', () => {
     // Final gathered state must also be identical across both runs.
     // With gather:'discard' the parent state is unchanged by gather; both
     // runs over the same items produce the same final snapshot.
-    const inProcessData = (inProcess.finalSnapshot as Record<string, unknown>)['data'] as Record<string, unknown> | undefined;
-    const containedData = (contained.finalSnapshot as Record<string, unknown>)['data'] as Record<string, unknown> | undefined;
+    const isJsonObject = (v: unknown): v is Record<string, unknown> =>
+      typeof v === 'object' && v !== null && !Array.isArray(v);
+    const inProcessSnap = isJsonObject(inProcess.finalSnapshot) ? inProcess.finalSnapshot : undefined;
+    const containedSnap = isJsonObject(contained.finalSnapshot) ? contained.finalSnapshot : undefined;
+    const inProcessData = isJsonObject(inProcessSnap?.['data']) ? inProcessSnap['data'] : undefined;
+    const containedData = isJsonObject(containedSnap?.['data']) ? containedSnap['data'] : undefined;
     assert.deepStrictEqual(
       inProcessData?.['processed'],
       containedData?.['processed'],

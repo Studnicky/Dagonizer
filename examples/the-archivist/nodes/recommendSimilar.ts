@@ -18,7 +18,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { Binding } from '../memory/MemoryStore.ts';
 import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
@@ -36,6 +36,12 @@ const MAX_TERMS = 6;
 export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 'empty', ArchivistServices> {
   readonly name = 'recommend-similar';
   readonly outputs = ['seeded', 'empty'] as const;
+  override get outputSchema(): Record<'seeded' | 'empty', SchemaObjectType> {
+    return {
+      'seeded': { 'type': 'object' },
+      'empty':  { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory = context.services.memory;

@@ -33,7 +33,7 @@
  *                      no service.
  */
 
-import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { NodeInterface, SchemaObjectType } from '../contracts/NodeInterface.js';
 import type { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
@@ -58,6 +58,17 @@ export abstract class MonadicNode<
    * Subclasses override to set a concrete budget via `Timeout.ofMs(n)`.
    */
   readonly timeout: Timeout = Timeout.none();
+
+  /**
+   * Per-port output contract: a JSON Schema fragment for each declared output
+   * port describing the state delta the node writes when it routes to that port.
+   * `abstract` — there is no passthrough default. Every concrete node MUST
+   * declare its return shapes; a node that omits this does not compile. This is
+   * the engine's enforcement of the mandatory-contract rule (the compiler is the
+   * check), and it keeps the node's data-flow statically legible to consumers
+   * and to the opt-in `validateOutputs` lifecycle stage.
+   */
+  abstract get outputSchema(): Record<TOutput, SchemaObjectType>;
 
   /**
    * The one node contract: consume a batch and partition its items across the

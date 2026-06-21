@@ -14,11 +14,18 @@ import type { CartographerServices } from '../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region confirm-delivery-node
 export class ConfirmDeliveryNode extends ScalarNode<CartographerState, 'confirmed', CartographerServices> {
   readonly 'name' = 'confirm-delivery';
   readonly 'outputs' = ['confirmed'] as const;
+
+  override get outputSchema(): Record<'confirmed', SchemaObjectType> {
+    return {
+      'confirmed': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'confirmed'>> {
     const v = state.canonicalVariant;

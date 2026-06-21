@@ -485,7 +485,7 @@ export class CartographerState extends NodeStateBase {
     copy.eventCount = this.eventCount;
     copy.eventConfig = this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ ...m })) }));
     if (Array.isArray(this.sources)) {
-      copy.sources = (this.sources as SourcePayload[]).map((s) => ({ ...s }));
+      copy.sources = this.sources.map((s) => ({ ...s }));
     } else {
       // AsyncIterable — shared by reference
       copy.sources = this.sources;
@@ -587,7 +587,7 @@ export class CartographerState extends NodeStateBase {
       // re-seeds them on resume using eventConfig + streamCount. Snapshot as
       // empty array so restoreData leaves sources = [] (re-seeded by pre-phase).
       'sources':    Array.isArray(this.sources)
-        ? (this.sources as SourcePayload[]).map((s) => CartographerState.sourceToJson(s))
+        ? this.sources.map((s) => CartographerState.sourceToJson(s))
         : [],
       'useStreamingSource': this.useStreamingSource,
       'streamCount': this.streamCount,
@@ -617,14 +617,14 @@ export class CartographerState extends NodeStateBase {
       this.canonicalEvents = snap['canonicalEvents'].map((e) => CartographerState.variantFromJson(CartographerState.asObject(e) ?? {}));
     }
     if (Array.isArray(snap['eventConfig'])) {
-      const loadedEvtCfg: EventTypeConfig = (snap['eventConfig'] as unknown[])
+      const loadedEvtCfg: EventTypeConfig = snap['eventConfig']
         .map((e) => CartographerState.asObject(e))
-        .filter((e): e is Record<string, unknown> => e !== null)
+        .filter((e): e is JsonObjectType => e !== null)
         .map((e) => {
           const mixRaw = Array.isArray(e['formatMix']) ? e['formatMix'] : [];
           const formatMix = mixRaw
             .map((m) => CartographerState.asObject(m))
-            .filter((m): m is Record<string, unknown> => m !== null)
+            .filter((m): m is JsonObjectType => m !== null)
             .map((m): { readonly format: 'csv' | 'json' | 'ndjson' | 'yaml'; readonly compression: 'none' | 'gzip'; readonly weight: number } => ({
               'format':      CartographerState.sourceFormat(m['format']),
               'compression': m['compression'] === 'gzip' ? 'gzip' : 'none',
@@ -651,11 +651,14 @@ export class CartographerState extends NodeStateBase {
 
   // #region snapshot-helpers
   // ── Scalar narrowing helpers (no blanket `as unknown as` casts) ────────────
-  private static asObject(value: unknown): Record<string, unknown> | null {
-    if (value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-    return null;
+
+  /** Type predicate: narrows `unknown` to `JsonObjectType` via structural runtime checks. */
+  private static isJsonObject(value: unknown): value is JsonObjectType {
+    return value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  private static asObject(value: unknown): JsonObjectType | null {
+    return CartographerState.isJsonObject(value) ? value : null;
   }
 
   private static str(value: unknown, fallback: string = ''): string {
@@ -1027,7 +1030,7 @@ export class CartographerState extends NodeStateBase {
     if (!Array.isArray(value)) return [{ 'productId': '', 'quantity': 1 }];
     const items = value
       .map((li) => CartographerState.asObject(li))
-      .filter((li): li is Record<string, unknown> => li !== null)
+      .filter((li): li is JsonObjectType => li !== null)
       .map((li) => ({
         'productId': CartographerState.str(li['productId']),
         'quantity':  CartographerState.num(li['quantity'], 1),

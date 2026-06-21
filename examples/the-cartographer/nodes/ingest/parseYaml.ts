@@ -21,11 +21,24 @@ import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-yaml-node
 export class ParseYamlNode extends ScalarNode<CartographerState, 'normalized' | 'invalid', CartographerServices> {
   readonly 'name' = 'parse-yaml';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
+
+  /** Narrows `unknown` to `Record<string, unknown>` via structural runtime checks. */
+  private static isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  override get outputSchema(): Record<'normalized' | 'invalid', SchemaObjectType> {
+    return {
+      'normalized': { 'type': 'object' },
+      'invalid':    { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized' | 'invalid'>> {
     // Use decompressed text when available (gzip path), else the raw payload.
@@ -43,8 +56,8 @@ export class ParseYamlNode extends ScalarNode<CartographerState, 'normalized' | 
     }
     const records: Array<Record<string, unknown>> = [];
     for (const row of parsed) {
-      if (row !== null && typeof row === 'object' && !Array.isArray(row)) {
-        records.push(row as Record<string, unknown>);
+      if (ParseYamlNode.isRecord(row)) {
+        records.push(row);
       }
     }
     if (records.length === 0) {

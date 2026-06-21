@@ -21,6 +21,7 @@ import type { ChatRequestType } from '../../src/entities/adapter/ChatRequest.js'
 import type { ChatResponseType } from '../../src/entities/adapter/ChatResponse.js';
 import type { ToolCallType } from '../../src/entities/adapter/ToolCall.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
+import { JsonValue } from '../../src/entities/JsonValue.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { AppendAssistantNode } from '../../src/patterns/agent/AppendAssistantNode.js';
@@ -66,20 +67,36 @@ class HarnessState extends NodeStateBase {
     return {
       'prompt': this.prompt,
       'assistantText': this.assistantText,
-      'decodedCalls': this.decodedCalls as JsonObjectType[string],
-      'safeWorkset': this.safeWorkset as JsonObjectType[string],
-      'exclusiveWorkset': this.exclusiveWorkset as JsonObjectType[string],
-      'toolOutputs': this.toolOutputs as JsonObjectType[string],
-      'collectedResults': this.collectedResults as JsonObjectType[string],
+      'decodedCalls': JsonValue.from(this.decodedCalls),
+      'safeWorkset': JsonValue.from(this.safeWorkset),
+      'exclusiveWorkset': JsonValue.from(this.exclusiveWorkset),
+      'toolOutputs': JsonValue.from(this.toolOutputs),
+      'collectedResults': JsonValue.from(this.collectedResults),
     };
   }
 
   protected override restoreData(snapshot: JsonObjectType): void {
     if (typeof snapshot['prompt'] === 'string') this.prompt = snapshot['prompt'];
     if (typeof snapshot['assistantText'] === 'string') this.assistantText = snapshot['assistantText'];
-    if (Array.isArray(snapshot['decodedCalls'])) this.decodedCalls = snapshot['decodedCalls'] as ToolCallType[];
-    if (Array.isArray(snapshot['safeWorkset'])) this.safeWorkset = snapshot['safeWorkset'] as ToolCallScatterItemType[];
-    if (Array.isArray(snapshot['exclusiveWorkset'])) this.exclusiveWorkset = snapshot['exclusiveWorkset'] as ToolCallScatterItemType[];
+    // Each Array.isArray guard narrows snapshot[key] to JsonValueType[].
+    // JsonValueType is assignable to unknown, so we widen to unknown[] first
+    // so the type-predicate's produced type (ToolCallType / ToolCallScatterItemType)
+    // is assignable to the parameter type (unknown), satisfying TS2677.
+    const rawCalls: unknown[] = Array.isArray(snapshot['decodedCalls']) ? snapshot['decodedCalls'] : [];
+    this.decodedCalls = rawCalls.filter(
+      (e): e is ToolCallType =>
+        typeof e === 'object' && e !== null && 'id' in e && 'name' in e && 'arguments' in e,
+    );
+    const rawSafe: unknown[] = Array.isArray(snapshot['safeWorkset']) ? snapshot['safeWorkset'] : [];
+    this.safeWorkset = rawSafe.filter(
+      (e): e is ToolCallScatterItemType =>
+        typeof e === 'object' && e !== null && 'id' in e && 'name' in e && 'arguments' in e && 'dagName' in e,
+    );
+    const rawExclusive: unknown[] = Array.isArray(snapshot['exclusiveWorkset']) ? snapshot['exclusiveWorkset'] : [];
+    this.exclusiveWorkset = rawExclusive.filter(
+      (e): e is ToolCallScatterItemType =>
+        typeof e === 'object' && e !== null && 'id' in e && 'name' in e && 'arguments' in e && 'dagName' in e,
+    );
     if (Array.isArray(snapshot['toolOutputs'])) this.toolOutputs = snapshot['toolOutputs'];
     if (Array.isArray(snapshot['collectedResults'])) this.collectedResults = snapshot['collectedResults'];
   }
@@ -130,6 +147,11 @@ class CalculatorTool implements ToolInterface<Record<string, unknown>, { result:
         'a': { 'type': 'number' },
         'b': { 'type': 'number' },
       },
+    },
+    'outputSchema': {
+      'type': 'object' as const,
+      'required': ['result'],
+      'properties': { 'result': { 'type': 'number' } },
     },
     'strict': true,
   };

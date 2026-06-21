@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -86,23 +87,18 @@ void describe('Dagonizer single-node routing', () => {
 
 void describe('Dagonizer scatter (source-based fork)', () => {
   void it('executes the node once per item and appends results', async () => {
-    interface FanState extends NodeStateBase {
-      items: number[];
-      doubled: number[];
+    class FanState extends NodeStateBase {
+      items: number[] = [];
+      doubled: number[] = [];
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
     const seen: number[] = [];
-    class DoubleNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'double';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'success'>> {
-        const item = state.getMetadata<number>('item');
-        if (item === undefined) throw new Error('no item');
-        seen.push(item);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new DoubleNode());
+    dispatcher.registerNode(TestNode.make('double', ['success'], (state) => {
+      const item = state.getMetadata<number>('item');
+      if (item === undefined) throw new Error('no item');
+      seen.push(item);
+      return 'success';
+    }));
 
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -123,7 +119,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
     };
     dispatcher.registerDAG(dag);
 
-    const state = new NodeStateBase() as FanState;
+    const state = new FanState();
     state.items = [1, 2, 3, 4];
     state.doubled = [];
     await dispatcher.execute('fan', state);
@@ -161,22 +157,16 @@ void describe('Dagonizer scatter (source-based fork)', () => {
 
 void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
   void it('maps node state into and out of nested DAG via stateMapping', async () => {
-    interface NestState extends NodeStateBase {
-      parentValue: number;
-      childValue: number;
-      result: number;
+    class NestState extends NodeStateBase {
+      parentValue: number = 0;
+      childValue: number = 0;
+      result: number = 0;
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class IncNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'inc';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'success'>> {
-        const s = state as NestState;
-        s.result = (s.childValue ?? 0) + 1;
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new IncNode());
+    dispatcher.registerNode(TestNode.make<NestState>('inc', ['success'], (state) => {
+      state.result = (state.childValue ?? 0) + 1;
+      return 'success';
+    }));
     dispatcher.registerNode(TestNode.make('done', ['success'], () => 'success'));
 
     const child: DAGType = {
@@ -218,7 +208,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
     dispatcher.registerDAG(child);
     dispatcher.registerDAG(parent);
 
-    const state = new NodeStateBase() as NestState;
+    const state = new NestState();
     state.parentValue = 41;
     await dispatcher.execute('parent', state);
     assert.equal(state.parentValue, 42);
@@ -300,6 +290,7 @@ void describe('Dagonizer validation', () => {
     class BadNode extends ScalarNode<NodeStateBase, string> {
       readonly name = 'bad';
       readonly outputs = ['success'] as const;
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       protected override async executeOne(): Promise<NodeOutputType<string>> { return { 'errors': [], 'output': 'success' as const }; }
       override validate() { return { 'valid': false, 'errors': ['bad config'] }; }
     }

@@ -227,19 +227,13 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   // ── Schema property/required keys are identical ──────────────────────────
 
   void it('NodeErrorSchema and InlineNodeErrorShape declare the same required fields', () => {
-    // Extract inline shape from BridgeMessageSchema. The result branch's
-    // response.properties.errors.items is the InlineNodeErrorShape.
-    const resultBranch = (BridgeMessageSchema.oneOf as readonly object[]).find(
-      (b: object) => {
-        const node = b as { properties?: { variant?: { const?: unknown } } };
-        return node.properties?.variant?.const === 'result';
-      },
-    );
+    // Extract inline shape from BridgeMessageSchema. The result branch is at
+    // index 5 in the oneOf tuple; access by index gives the exact literal type.
+    const resultBranch = BridgeMessageSchema.oneOf[5];
     assert.ok(resultBranch !== undefined, 'result branch must exist in BridgeMessageSchema.oneOf');
+    assert.equal(resultBranch.properties.variant.const, 'result', 'index 5 must be the result branch');
 
-    const inlineErrShape = (resultBranch as {
-      properties: { response: { properties: { errors: { items: { required: readonly string[] } } } } };
-    }).properties.response.properties.errors.items;
+    const inlineErrShape = resultBranch.properties.response.properties.errors.items;
 
     const canonicalRequired = [...NodeErrorSchema.required].sort();
     const inlineRequired    = [...inlineErrShape.required].sort();
@@ -252,17 +246,12 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   });
 
   void it('ExecutionRequestSchema and InlineExecutionRequestShape declare the same required fields', () => {
-    const executeBranch = (BridgeMessageSchema.oneOf as readonly object[]).find(
-      (b: object) => {
-        const node = b as { properties?: { variant?: { const?: unknown } } };
-        return node.properties?.variant?.const === 'execute';
-      },
-    );
+    // The execute branch is at index 1 in the oneOf tuple.
+    const executeBranch = BridgeMessageSchema.oneOf[1];
     assert.ok(executeBranch !== undefined, 'execute branch must exist in BridgeMessageSchema.oneOf');
+    assert.equal(executeBranch.properties.variant.const, 'execute', 'index 1 must be the execute branch');
 
-    const inlineReqShape = (executeBranch as {
-      properties: { request: { required: readonly string[] } };
-    }).properties.request;
+    const inlineReqShape = executeBranch.properties.request;
 
     const canonicalRequired = [...ExecutionRequestSchema.required].sort();
     const inlineRequired    = [...inlineReqShape.required].sort();
@@ -275,17 +264,12 @@ void describe('TST-W3-1: BridgeMessageType inline shapes — structural identity
   });
 
   void it('ExecutionResponseSchema and InlineExecutionResponseShape declare the same required fields', () => {
-    const resultBranch = (BridgeMessageSchema.oneOf as readonly object[]).find(
-      (b: object) => {
-        const node = b as { properties?: { variant?: { const?: unknown } } };
-        return node.properties?.variant?.const === 'result';
-      },
-    );
+    // The result branch is at index 5 in the oneOf tuple.
+    const resultBranch = BridgeMessageSchema.oneOf[5];
     assert.ok(resultBranch !== undefined, 'result branch must exist in BridgeMessageSchema.oneOf');
+    assert.equal(resultBranch.properties.variant.const, 'result', 'index 5 must be the result branch');
 
-    const inlineRespShape = (resultBranch as {
-      properties: { response: { required: readonly string[] } };
-    }).properties.response;
+    const inlineRespShape = resultBranch.properties.response;
 
     const canonicalRequired = [...ExecutionResponseSchema.required].sort();
     const inlineRequired    = [...inlineRespShape.required].sort();
@@ -532,8 +516,9 @@ void describe('TST-W3-5: DAGIdentity.id and DAGIdentity.placementId URN helpers'
     // values are unchanged.
     const originalId = DAGIdentity.id;
     try {
-      // This assignment will throw in strict mode; catch it so the test continues.
-      (DAGIdentity as Record<string, unknown>)['id'] = 'mutated';
+      // Reflect.set on a frozen object returns false in strict mode or silently
+      // ignores the assignment. Using Reflect.set avoids casting the frozen object.
+      Reflect.set(DAGIdentity, 'id', 'mutated');
     } catch {
       // Expected in strict mode.
     }

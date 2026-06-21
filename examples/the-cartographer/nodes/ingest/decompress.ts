@@ -21,11 +21,19 @@ import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region decompress-node
 export class DecompressNode extends ScalarNode<CartographerState, 'route-format' | 'invalid', CartographerServices> {
   readonly 'name' = 'decompress';
   readonly 'outputs' = ['route-format', 'invalid'] as const;
+
+  override get outputSchema(): Record<'route-format' | 'invalid', SchemaObjectType> {
+    return {
+      'route-format': { 'type': 'object' },
+      'invalid':      { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'route-format' | 'invalid'>> {
     try {

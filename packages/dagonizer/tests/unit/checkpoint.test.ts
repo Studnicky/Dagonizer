@@ -6,6 +6,7 @@ import {
   CheckpointRestoreAdapter,
   MemoryCheckpointStore,
 } from '../../src/checkpoint/index.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { SnapshottableInterface, StoreSnapshotType } from '../../src/contracts/SnapshottableInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
@@ -22,6 +23,7 @@ import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── State fixtures ───────────────────────────────────────────────────────────
 
@@ -63,6 +65,9 @@ class SlowNode extends ScalarNode<NodeStateBase, 'done'> {
   readonly outputs = ['done'] as const;
   readonly #onReady: () => void;
   constructor(onReady: () => void) { super(); this.#onReady = onReady; }
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'done'>> {
     this.#onReady();
     await new Promise<void>((_resolve, reject) => {
@@ -188,12 +193,7 @@ void describe('NodeStateBase snapshot/restore', () => {
 void describe('cursor on ExecutionResultType', () => {
   void it('is null on a clean completion', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'op';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-    }
-    dispatcher.registerNode(new OpNode());
+    dispatcher.registerNode(TestNode.make('op', ['success']));
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:clean',
@@ -219,6 +219,9 @@ void describe('cursor on ExecutionResultType', () => {
     class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
+      override get outputSchema(): Record<'success', SchemaObjectType> {
+        return { 'success': { 'type': 'object' } };
+      }
       protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         resolveNodeReady();
         await new Promise<void>((_resolve, reject) => {
@@ -262,16 +265,11 @@ void describe('Checkpoint round-trip', () => {
     Scheduler.configure(new VirtualScheduler(0));
 
     const dispatcher = new Dagonizer<CountingState>();
-    class IncNode extends ScalarNode<CountingState, 'success'> {
-      readonly name = 'inc';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: CountingState): Promise<NodeOutputType<'success'>> {
-        state.count++;
-        state.log.push(`tick:${state.count}`);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new IncNode());
+    dispatcher.registerNode(TestNode.make<CountingState>('inc', ['success'], (state) => {
+      state.count++;
+      state.log.push(`tick:${state.count}`);
+      return 'success';
+    }));
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:count',
@@ -310,7 +308,7 @@ void describe('Checkpoint round-trip', () => {
     // Checkpoint → persist → load → restoreState → resume.
     const ckpt = await Checkpoint.capture('count', partial);
     const round = ckpt.toJson();
-    const parsed = JSON.parse(round) as unknown;
+    const parsed: unknown = JSON.parse(round);
     const ckpt2 = Checkpoint.load(parsed);
     const { state, dagName, cursor } = ckpt2.restoreState(CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)));
     assert.equal(state.count, 1);
@@ -323,12 +321,7 @@ void describe('Checkpoint round-trip', () => {
 
   void it('rejects checkpointing a completed DAG', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'op';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-    }
-    dispatcher.registerNode(new OpNode());
+    dispatcher.registerNode(TestNode.make('op', ['success']));
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:done',
@@ -471,7 +464,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
 
     const json1 = await cpStore.load('run:1');
     assert.ok(json1 !== null, 'Expected persisted checkpoint to be retrievable');
-    const raw = JSON.parse(json1) as unknown;
+    const raw: unknown = JSON.parse(json1);
     const recalled = Checkpoint.load(raw);
 
     const freshMemory = new MemoryStore();
@@ -495,7 +488,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
 
     const json2 = await cpStore.load('run:2');
     assert.ok(json2 !== null, 'Expected persisted checkpoint to be retrievable');
-    const raw = JSON.parse(json2) as unknown;
+    const raw: unknown = JSON.parse(json2);
     const recalled = Checkpoint.load(raw);
 
     const freshMemory = new MemoryStore();
@@ -624,7 +617,8 @@ void describe('Checkpoint.capture + restoreStores', () => {
 
     const json = await cpStore.load('run:nonkv');
     assert.ok(json !== null, 'Expected persisted checkpoint to be retrievable');
-    const recalled = Checkpoint.load(JSON.parse(json) as unknown);
+    const parsedJson: unknown = JSON.parse(json);
+    const recalled = Checkpoint.load(parsedJson);
 
     const freshLog = new FactLog();
     await recalled.restoreStores({ 'log': freshLog });

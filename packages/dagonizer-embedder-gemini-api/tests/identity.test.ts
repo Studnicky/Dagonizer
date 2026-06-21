@@ -31,24 +31,20 @@ void test('GeminiApiEmbedder.probe returns false when apiKey is empty', async ()
   assert.equal(await embedder.probe(), false);
 });
 
-interface MutableGlobal {
-  fetch?: unknown;
-}
+const originalFetch: typeof fetch | undefined = globalThis.fetch;
 
-const originalFetch = (globalThis as MutableGlobal).fetch;
-
-function installFetch(impl: typeof fetch): void {
-  (globalThis as MutableGlobal).fetch = impl;
+function installFetch(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): void {
+  Object.assign(globalThis, { 'fetch': impl });
 }
 
 function restoreFetch(): void {
-  (globalThis as MutableGlobal).fetch = originalFetch;
+  Object.assign(globalThis, { 'fetch': originalFetch });
 }
 
 void test('GeminiApiEmbedder.embed extracts embedding.values from response body', async () => {
-  installFetch((async () => new Response(JSON.stringify({
+  installFetch(async () => new Response(JSON.stringify({
     'embedding': { 'values': [0.5, 0.25, 0.125] },
-  }), { 'status': 200 })) as typeof fetch);
+  }), { 'status': 200 }));
   const embedder = new GeminiApiEmbedder('k');
   try {
     const vec = await embedder.embed('hello');
@@ -95,7 +91,7 @@ void test('GeminiModelsResponseValidator rejects model entry missing name', () =
 // ── GeminiApiEmbedder.listModels ─────────────────────────────────────────────
 
 void test('GeminiApiEmbedder.listModels returns [] when fetch rejects', async () => {
-  installFetch((() => Promise.reject(new Error('network failure'))) as typeof fetch);
+  installFetch(() => Promise.reject(new Error('network failure')));
   const embedder = new GeminiApiEmbedder('k');
   try {
     const models = await embedder.listModels();
@@ -106,7 +102,7 @@ void test('GeminiApiEmbedder.listModels returns [] when fetch rejects', async ()
 });
 
 void test('GeminiApiEmbedder.listModels returns [] on non-ok response', async () => {
-  installFetch((async () => new Response('Unauthorized', { 'status': 403 })) as typeof fetch);
+  installFetch(async () => new Response('Unauthorized', { 'status': 403 }));
   const embedder = new GeminiApiEmbedder('k');
   try {
     const models = await embedder.listModels();
@@ -117,7 +113,7 @@ void test('GeminiApiEmbedder.listModels returns [] on non-ok response', async ()
 });
 
 void test('GeminiApiEmbedder.listModels returns [] when response body fails schema validation', async () => {
-  installFetch((async () => new Response(JSON.stringify({ 'notModels': [] }), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify({ 'notModels': [] }), { 'status': 200 }));
   const embedder = new GeminiApiEmbedder('k');
   try {
     const models = await embedder.listModels();
@@ -136,7 +132,7 @@ void test('GeminiApiEmbedder.listModels returns embedding models with variant em
       },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(body), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(body), { 'status': 200 }));
   const embedder = new GeminiApiEmbedder('k');
   try {
     const models = await embedder.listModels();
@@ -157,7 +153,7 @@ void test('GeminiApiEmbedder.listModels strips models/ prefix from name', async 
       },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(body), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(body), { 'status': 200 }));
   const embedder = new GeminiApiEmbedder('k');
   try {
     const models = await embedder.listModels();
@@ -176,7 +172,7 @@ void test('GeminiApiEmbedder.listModels assigns variant chat for generateContent
       },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(body), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(body), { 'status': 200 }));
   const embedder = new GeminiApiEmbedder('k');
   try {
     const models = await embedder.listModels();
@@ -195,7 +191,7 @@ void test('GeminiApiEmbedder.listModels assigns variant unknown when no generati
       },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(body), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(body), { 'status': 200 }));
   const embedder = new GeminiApiEmbedder('k');
   try {
     const models = await embedder.listModels();
@@ -213,7 +209,7 @@ void test('GeminiApiEmbedder.listModels handles mixed model types in one respons
       { 'name': 'models/mystery', 'supportedGenerationMethods': [] },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(body), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(body), { 'status': 200 }));
   const embedder = new GeminiApiEmbedder('k');
   try {
     const models = await embedder.listModels();
@@ -235,7 +231,7 @@ void test('GeminiApiEmbedder.listModels passes name through unchanged when no mo
       { 'name': 'text-embedding-004', 'supportedGenerationMethods': ['embedContent'] },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(body), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(body), { 'status': 200 }));
   const embedder = new GeminiApiEmbedder('k');
   try {
     const models = await embedder.listModels();

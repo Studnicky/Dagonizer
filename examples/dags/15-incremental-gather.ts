@@ -24,8 +24,8 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
-import type { GatherExecutionType, GatherRecordType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { GatherExecutionType } from '@studnicky/dagonizer';
 import type { GatherConfigType } from '@studnicky/dagonizer';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
@@ -54,6 +54,9 @@ export class IncrementalState extends NodeStateBase {
 export class ShoutNode extends ScalarNode<IncrementalState, 'done'> {
   readonly name = 'shout';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: IncrementalState) {
     const word = state.getMetadata<string>('word') ?? '?';
@@ -95,7 +98,7 @@ export class LoggingMapStrategy extends GatherStrategy {
   ): void {
     const mapping = config.mapping ?? {};
     for (const item of batch) {
-      const record = item.state as GatherRecordType;
+      const record = item.state;
       for (const [clonePath, parentPath] of Object.entries(mapping)) {
         const value = accessor.get(record.cloneState, clonePath);
         const existing = accessor.get<readonly unknown[]>(state, parentPath) ?? [];

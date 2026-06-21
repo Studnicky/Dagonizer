@@ -7,13 +7,14 @@ import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.j
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
-import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { ReservoirDriverInterface, ScatterItemBatchResultType } from '../contracts/ReservoirDriver.js';
 import type { ScatterItemResultType, ScatterPoolDriverInterface } from '../contracts/ScatterPoolDriver.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { GatherStrategy } from '../core/GatherStrategies.js';
 import { Batch } from '../entities/batch/Batch.js';
+import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
@@ -28,6 +29,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
+import { OutputContractApplier } from './OutputContractApplier.js';
 import { PlacementRouter } from './PlacementRouter.js';
 
 /** Engine-private result envelope returned by every node executor method. */
@@ -76,6 +78,7 @@ export interface ScatterDispatchAdapterInterface<TServices> {
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
+  readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
   context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
   runNodes(
     dagName: string,
@@ -110,6 +113,7 @@ export interface ScatterDispatchSourceInterface<TServices> {
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
+  readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
   bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
   runScatterNodes(
     dagName: string,
@@ -144,6 +148,7 @@ export class ScatterDispatchAdapter<TServices>
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
+  readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
   readonly #source: ScatterDispatchSourceInterface<TServices>;
 
   constructor(source: ScatterDispatchSourceInterface<TServices>) {
@@ -152,6 +157,7 @@ export class ScatterDispatchAdapter<TServices>
     this.dags = source.dags;
     this.accessor = source.accessor;
     this.stateFactories = source.stateFactories;
+    this.outputSchemaValidator = source.outputSchemaValidator;
     this.#source = source;
   }
 
@@ -247,6 +253,25 @@ export class ScatterPoolDriver<TServices>
     this.#bodyExecutor = bodyExecutor;
   }
 
+  /**
+   * VALIDATE stage. The scatter analogue of the scheduler's output-contract
+   * stage: applied to each body firing's routed output before the item is
+   * routed and emitted into the gather. Zero overhead when `validateOutputs` is
+   * off (`outputSchemaValidator` is null). On a violation, the item is re-routed
+   * to `'error'` with a collected `outputContractViolation` NodeError.
+   */
+  #validateOutputContract(
+    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    routed: RoutedBatchType<string, NodeStateInterface>,
+  ): RoutedBatchType<string, NodeStateInterface> {
+    return OutputContractApplier.applyToRouted(
+      dagNode.name,
+      dagNode.outputSchema,
+      routed,
+      this.#adapter.outputSchemaValidator,
+    );
+  }
+
   async executeItem(itemIndex: number, item: unknown): Promise<ScatterItemResultType> {
     const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
 
@@ -286,9 +311,12 @@ export class ScatterPoolDriver<TServices>
         return dagNode.execute(batch, context);
       });
 
+      // VALIDATE stage — between the body firing and the per-item emit/route.
+      const validatedRouted = this.#validateOutputContract(dagNode, routed);
+
       // Derive output from the single routed entry.
       let output = 'error';
-      for (const [routeKey, routeBatch] of routed.entries()) {
+      for (const [routeKey, routeBatch] of validatedRouted.entries()) {
         for (const batchEntry of routeBatch) {
           if (batchEntry.id === String(itemIndex)) {
             output = routeKey;
@@ -498,9 +526,12 @@ export class ScatterPoolDriver<TServices>
         return dagNode.execute(batch, context);
       });
 
+      // VALIDATE stage — between the body firing and the per-item emit/route.
+      const validatedRouted = this.#validateOutputContract(dagNode, routed);
+
       // Map item id → route key.
       const outputById = new Map<string, string>();
-      for (const [routeKey, routeBatch] of routed.entries()) {
+      for (const [routeKey, routeBatch] of validatedRouted.entries()) {
         for (const batchEntry of routeBatch) {
           outputById.set(batchEntry.id, routeKey);
         }
