@@ -256,21 +256,23 @@ export class MermaidRenderer {
     // Mask bracketed label regions (capture shapes + edge labels) so their
     // interior colons are not touched. Process greedily from most-specific
     // (triple-bracket) to least-specific (single-bracket).
+    // Each interior negated class excludes its OWN opening delimiter char(s), not
+    // only the closing one. That removes overlapping start positions (e.g. a
+    // second '[[' inside a '[[...]]' match), so every pattern is linear — no
+    // polynomial ReDoS on adversarial DAG names (CodeQL js/polynomial-redos).
     const masked = line
       // triple-bracket subroutine: [[...]]
-      .replace(/\[\[([^\]]*)\]\]/gu, (_m, inner) => mask(`[[${inner}]]`))
-      // triple-paren double-circle: (((...))). Interior excludes ')' — a single
-      // negated class (no nested quantifier) so the match is linear and not a
-      // polynomial-ReDoS risk on adversarial DAG names.
-      .replace(/\(\(\(([^)]*)\)\)\)/gu, (_m, inner) => mask(`(((${inner})))`))
+      .replace(/\[\[([^[\]]*)\]\]/gu, (_m, inner) => mask(`[[${inner}]]`))
+      // triple-paren double-circle: (((...)))
+      .replace(/\(\(\(([^()]*)\)\)\)/gu, (_m, inner) => mask(`(((${inner})))`))
       // asymmetric flag: >...]
-      .replace(/>([^\]]*)\]/gu, (_m, inner) => mask(`>${inner}]`))
-      // trapezoid: [/.../]
-      .replace(/\[\/([^/]*)\//gu, (_m, inner) => mask(`[/${inner}/`))
+      .replace(/>([^>\]]*)\]/gu, (_m, inner) => mask(`>${inner}]`))
+      // trapezoid: [/.../
+      .replace(/\[\/([^[/]*)\//gu, (_m, inner) => mask(`[/${inner}/`))
       // stadium: ([...])
-      .replace(/\(\[([^\]]*)\]\)/gu, (_m, inner) => mask(`([${inner}])`))
+      .replace(/\(\[([^([\]]*)\]\)/gu, (_m, inner) => mask(`([${inner}])`))
       // rectangle: [...] (must come after [[ and [/ variants)
-      .replace(/\[([^\]]*)\]/gu, (_m, inner) => mask(`[${inner}]`))
+      .replace(/\[([^[\]]*)\]/gu, (_m, inner) => mask(`[${inner}]`))
       // pipe-delimited edge label: |...|
       .replace(/\|([^|]*)\|/gu, (_m, inner) => mask(`|${inner}|`));
 
