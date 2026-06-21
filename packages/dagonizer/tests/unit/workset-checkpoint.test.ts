@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
@@ -49,7 +50,7 @@ class WalkState extends NodeStateBase {
   }
 
   override clone(): this {
-    const copy = new WalkState() as this;
+    const copy = super.clone();
     // NodeStateBase.clone() copies _metadata; we additionally copy domain fields.
     copy.value = this.value;
     copy.log = [...this.log];
@@ -98,6 +99,10 @@ class FanNode extends MonadicNode<WalkState, 'out'> {
 
   constructor(name: string, n: number) { super(); this.name = name; this.n = n; }
 
+  override get outputSchema(): Record<'out', SchemaObjectType> {
+    return { 'out': { 'type': 'object' } };
+  }
+
   override async execute(batch: Batch<WalkState>): Promise<RoutedBatchType<'out', WalkState>> {
     const src = batch.row(0).state;
     const items: Array<{ 'id': string; 'state': WalkState }> = [];
@@ -112,8 +117,6 @@ class FanNode extends MonadicNode<WalkState, 'out'> {
     return result;
   }
 }
-function makeFanNode(name: string, n: number): FanNode { return new FanNode(name, n); }
-
 /** Process node: stamps each item's log. */
 class ProcNode extends ScalarNode<WalkState, 'done'> {
   readonly name: string;
@@ -121,12 +124,15 @@ class ProcNode extends ScalarNode<WalkState, 'done'> {
 
   constructor(name: string) { super(); this.name = name; }
 
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
+
   protected async executeOne(state: WalkState): Promise<NodeOutputType<'done'>> {
     state.log.push(`proc:${state.value}`);
     return { 'errors': [], 'output': 'done' };
   }
 }
-function makeProcNode(name: string): ProcNode { return new ProcNode(name); }
 
 /** Accumulator node: pushes all items into `collected`, routes 'done'. */
 class CollectNode extends MonadicNode<WalkState, 'done'> {
@@ -135,6 +141,10 @@ class CollectNode extends MonadicNode<WalkState, 'done'> {
   private readonly collected: WalkState[];
 
   constructor(name: string, collected: WalkState[]) { super(); this.name = name; this.collected = collected; }
+
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   override async execute(batch: Batch<WalkState>): Promise<RoutedBatchType<'done', WalkState>> {
     for (const item of batch) {
@@ -145,58 +155,65 @@ class CollectNode extends MonadicNode<WalkState, 'done'> {
     return result;
   }
 }
-function makeCollectNode(name: string, collected: WalkState[]): CollectNode {
-  return new CollectNode(name, collected);
+
+class TestWorksetNode {
+  private constructor() {}
+  static fan(name: string, n: number): FanNode { return new FanNode(name, n); }
+  static proc(name: string): ProcNode { return new ProcNode(name); }
+  static collect(name: string, collected: WalkState[]): CollectNode { return new CollectNode(name, collected); }
 }
 
-/** Build and register the fan→proc→collect DAG. */
-function buildFanDAG(
-  dispatcher: Dagonizer<WalkState>,
-  collected: WalkState[],
-): DAGType {
-  dispatcher.registerNode(makeFanNode('fan', FAN_N));
-  dispatcher.registerNode(makeProcNode('proc'));
-  dispatcher.registerNode(makeCollectNode('collect', collected));
+class TestWorksetDag {
+  private constructor() {}
+  /** Build and register the fan→proc→collect DAG. */
+  static fan(
+    dispatcher: Dagonizer<WalkState>,
+    collected: WalkState[],
+  ): DAGType {
+    dispatcher.registerNode(TestWorksetNode.fan('fan', FAN_N));
+    dispatcher.registerNode(TestWorksetNode.proc('proc'));
+    dispatcher.registerNode(TestWorksetNode.collect('collect', collected));
 
-  const dag: DAGType = {
-    '@context': DAG_CONTEXT,
-    '@id': 'urn:noocodex:dag:fan-proc-collect',
-    '@type': 'DAG',
-    'name': 'fan-proc-collect',
-    'version': '1',
-    'entrypoint': 'fan-node',
-    'nodes': [
-      {
-        '@id': 'urn:noocodex:dag:fan-proc-collect/node/fan-node',
-        '@type': 'SingleNode',
-        'name': 'fan-node',
-        'node': 'fan',
-        'outputs': { 'out': 'proc-node' },
-      },
-      {
-        '@id': 'urn:noocodex:dag:fan-proc-collect/node/proc-node',
-        '@type': 'SingleNode',
-        'name': 'proc-node',
-        'node': 'proc',
-        'outputs': { 'done': 'collect-node' },
-      },
-      {
-        '@id': 'urn:noocodex:dag:fan-proc-collect/node/collect-node',
-        '@type': 'SingleNode',
-        'name': 'collect-node',
-        'node': 'collect',
-        'outputs': { 'done': 'end' },
-      },
-      {
-        '@id': 'urn:noocodex:dag:fan-proc-collect/node/end',
-        '@type': 'TerminalNode',
-        'name': 'end',
-        'outcome': 'completed',
-      },
-    ],
-  };
-  dispatcher.registerDAG(dag);
-  return dag;
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': 'urn:noocodex:dag:fan-proc-collect',
+      '@type': 'DAG',
+      'name': 'fan-proc-collect',
+      'version': '1',
+      'entrypoint': 'fan-node',
+      'nodes': [
+        {
+          '@id': 'urn:noocodex:dag:fan-proc-collect/node/fan-node',
+          '@type': 'SingleNode',
+          'name': 'fan-node',
+          'node': 'fan',
+          'outputs': { 'out': 'proc-node' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:fan-proc-collect/node/proc-node',
+          '@type': 'SingleNode',
+          'name': 'proc-node',
+          'node': 'proc',
+          'outputs': { 'done': 'collect-node' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:fan-proc-collect/node/collect-node',
+          '@type': 'SingleNode',
+          'name': 'collect-node',
+          'node': 'collect',
+          'outputs': { 'done': 'end' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:fan-proc-collect/node/end',
+          '@type': 'TerminalNode',
+          'name': 'end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+    dispatcher.registerDAG(dag);
+    return dag;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +232,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       // ── Reference run ──────────────────────────────────────────────────────
       const refCollected: WalkState[] = [];
       const refDispatcher = new Dagonizer<WalkState>();
-      buildFanDAG(refDispatcher, refCollected);
+      TestWorksetDag.fan(refDispatcher, refCollected);
 
       const refResult = await refDispatcher.execute('fan-proc-collect', new WalkState());
       assert.equal(refResult.cursor, null, 'reference run must complete');
@@ -235,7 +252,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       let stagesYielded = 0;
 
       const run1Dispatcher = new Dagonizer<WalkState>();
-      buildFanDAG(run1Dispatcher, run1Collected);
+      TestWorksetDag.fan(run1Dispatcher, run1Collected);
 
       const initialState = new WalkState();
       const execution = run1Dispatcher.execute('fan-proc-collect', initialState, {
@@ -257,7 +274,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       // Capture, round-trip, restore, resume.
       const ckpt = await Checkpoint.capture('fan-proc-collect', run1Result);
       const raw = ckpt.toJson();
-      const parsed = JSON.parse(raw) as unknown;
+      const parsed: unknown = JSON.parse(raw);
       const ckpt2 = Checkpoint.load(parsed);
       const { 'state': restoredState, dagName, cursor } = ckpt2.restoreState(
         CheckpointRestoreAdapter.wrap(restoreWalkState),
@@ -266,7 +283,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       // ── Run 2: resume ────────────────────────────────────────────────────
       const run2Collected: WalkState[] = [];
       const run2Dispatcher = new Dagonizer<WalkState>();
-      buildFanDAG(run2Dispatcher, run2Collected);
+      TestWorksetDag.fan(run2Dispatcher, run2Collected);
 
       const run2Result = await run2Dispatcher.resume(dagName, restoredState, cursor);
       assert.equal(run2Result.cursor, null, 'run 2 must complete');
@@ -309,7 +326,7 @@ void describe('WorkSet checkpoint — blob shape', () => {
 
       const dispatcher = new Dagonizer<WalkState>();
       const collected: WalkState[] = [];
-      buildFanDAG(dispatcher, collected);
+      TestWorksetDag.fan(dispatcher, collected);
 
       const initialState = new WalkState();
       const execution = dispatcher.execute('fan-proc-collect', initialState, {
@@ -333,28 +350,33 @@ void describe('WorkSet checkpoint — blob shape', () => {
         meta !== null && typeof meta === 'object' && !Array.isArray(meta),
         'snapshot must have a metadata object',
       );
-      const metaRecord = meta as Record<string, unknown>;
+      // After the narrowing above, TypeScript knows meta is JsonObjectType.
       assert.ok(
-        WORKSET_PROGRESS_KEY in metaRecord,
+        WORKSET_PROGRESS_KEY in meta,
         `snapshot metadata must contain ${WORKSET_PROGRESS_KEY}`,
       );
 
-      const blob = metaRecord[WORKSET_PROGRESS_KEY];
+      const blob = meta[WORKSET_PROGRESS_KEY];
       assert.ok(
         blob !== null && typeof blob === 'object' && !Array.isArray(blob),
         'blob must be an object',
       );
-      const blobObj = blob as Record<string, unknown>;
-      assert.ok(Array.isArray(blobObj['entries']), 'blob must have an entries array');
+      // blob is narrowed to JsonObjectType; entries is JsonValueType, narrowed to array below.
+      const entriesValue = blob['entries'];
+      assert.ok(Array.isArray(entriesValue), 'blob must have an entries array');
 
-      const entries = blobObj['entries'] as Array<Record<string, unknown>>;
-      // After fan fires and items are pending at proc-node, the blob must have
-      // exactly one entry for proc-node.
-      assert.equal(entries.length, 1, 'blob must have exactly one placement entry');
-      const entry = entries[0] as Record<string, unknown>;
-      assert.equal(entry['placement'], 'proc-node', 'blob entry placement must be proc-node');
-      const items = entry['items'] as unknown[];
-      assert.equal(items.length, FAN_N, `blob entry must have ${FAN_N} items`);
+      // entriesValue narrowed to JsonArrayType (JsonValueType[]); each item is JsonValueType.
+      assert.equal(entriesValue.length, 1, 'blob must have exactly one placement entry');
+      const entryValue = entriesValue[0];
+      assert.ok(
+        entryValue !== null && typeof entryValue === 'object' && !Array.isArray(entryValue),
+        'blob entry must be an object',
+      );
+      // entryValue narrowed to JsonObjectType.
+      assert.equal(entryValue['placement'], 'proc-node', 'blob entry placement must be proc-node');
+      const itemsValue = entryValue['items'];
+      assert.ok(Array.isArray(itemsValue), 'blob entry must have an items array');
+      assert.equal(itemsValue.length, FAN_N, `blob entry must have ${FAN_N} items`);
     },
   );
 
@@ -366,7 +388,7 @@ void describe('WorkSet checkpoint — blob shape', () => {
 
       const dispatcher = new Dagonizer<WalkState>();
       const collected: WalkState[] = [];
-      buildFanDAG(dispatcher, collected);
+      TestWorksetDag.fan(dispatcher, collected);
 
       const result = await dispatcher.execute('fan-proc-collect', new WalkState());
       assert.equal(result.cursor, null, 'run must complete');
@@ -374,9 +396,9 @@ void describe('WorkSet checkpoint — blob shape', () => {
       const snap = result.state.snapshot();
       const meta = snap['metadata'];
       if (meta !== null && typeof meta === 'object' && !Array.isArray(meta)) {
-        const metaRecord = meta as Record<string, unknown>;
+        // meta narrowed to JsonObjectType; no cast needed.
         assert.ok(
-          !(WORKSET_PROGRESS_KEY in metaRecord),
+          !(WORKSET_PROGRESS_KEY in meta),
           `completed run snapshot must NOT contain ${WORKSET_PROGRESS_KEY}`,
         );
       }
@@ -403,7 +425,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
         count = 0;
 
         override clone(): this {
-          const copy = new CountState() as this;
+          const copy = super.clone();
           copy.count = this.count;
           return copy;
         }
@@ -427,14 +449,17 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
 
         constructor(name: string) { super(); this.name = name; }
 
+        override get outputSchema(): Record<'next', SchemaObjectType> {
+          return { 'next': { 'type': 'object' } };
+        }
+
         protected async executeOne(state: CountState): Promise<NodeOutputType<'next'>> {
           state.count++;
           return { 'errors': [], 'output': 'next' };
         }
       }
-      function makeIncNode(name: string): IncNode { return new IncNode(name); }
 
-      dispatcher.registerNode(makeIncNode('inc'));
+      dispatcher.registerNode(new IncNode('inc'));
 
       const dag: DAGType = {
         '@context': DAG_CONTEXT,
@@ -473,8 +498,9 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
 
       // Assert: NO work-set blob in snapshot (size-1 canonical path).
       const snap1 = partial.state.snapshot();
-      const meta1 = snap1['metadata'] as Record<string, unknown> | undefined;
-      if (meta1 !== undefined) {
+      const meta1 = snap1['metadata'];
+      if (meta1 !== null && typeof meta1 === 'object' && !Array.isArray(meta1)) {
+        // meta1 narrowed to JsonObjectType.
         assert.ok(
           !(WORKSET_PROGRESS_KEY in meta1),
           'size-1 abort must NOT write a work-set blob',
@@ -484,7 +510,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       // Checkpoint → round-trip → restore → resume.
       const ckpt = await Checkpoint.capture('size1-ckpt', partial);
       const raw = ckpt.toJson();
-      const parsed = JSON.parse(raw) as unknown;
+      const parsed: unknown = JSON.parse(raw);
       const ckpt2 = Checkpoint.load(parsed);
       const { state, dagName, cursor } = ckpt2.restoreState(
         CheckpointRestoreAdapter.wrap((snap) => CountState.restore(snap)),

@@ -22,6 +22,7 @@ import type { SourcePayload } from '../../entities/SourcePayload.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-format-node
 const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'csv' | 'json' | 'ndjson' | 'yaml'>> = {
@@ -34,6 +35,16 @@ const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'csv' | 'json' | 'n
 export class RouteFormatNode extends ScalarNode<CartographerState, 'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid', CartographerServices> {
   readonly 'name' = 'route-format';
   readonly 'outputs' = ['csv', 'json', 'ndjson', 'yaml', 'invalid'] as const;
+
+  override get outputSchema(): Record<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid', SchemaObjectType> {
+    return {
+      'csv':     { 'type': 'object' },
+      'json':    { 'type': 'object' },
+      'ndjson':  { 'type': 'object' },
+      'yaml':    { 'type': 'object' },
+      'invalid': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'>> {
     const route = FORMAT_ROUTE[state.currentSource.format];

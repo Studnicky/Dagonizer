@@ -11,7 +11,7 @@
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { EmbedderInterface } from '@studnicky/dagonizer/adapter';
 
 // ---------------------------------------------------------------------------
@@ -56,6 +56,9 @@ export class VectorSimilarity {
 export class EmbedNode extends ScalarNode<EmbedderState, 'done'> {
   readonly name = 'embed';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: EmbedderState) {
     if (state.embedder === null) throw new Error('embed: embedder not set');
     const [vecA, vecB] = await Promise.all([
@@ -72,6 +75,9 @@ export class EmbedNode extends ScalarNode<EmbedderState, 'done'> {
 export class ReportNode extends ScalarNode<EmbedderState, 'done'> {
   readonly name = 'report';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: EmbedderState) {
     process.stdout.write(`  similarity("${state.textA}", "${state.textB}") = ${state.similarity.toFixed(4)}\n`);
     return NodeOutputBuilder.of('done');

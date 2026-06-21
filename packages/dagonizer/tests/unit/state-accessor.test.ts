@@ -2,15 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
 import { StateMapper } from '../../src/runtime/StateMapper.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -80,8 +79,9 @@ void describe('DottedPathAccessor', () => {
     accessor.set({}, '__proto__.polluted', 'yes');
     accessor.set({}, 'a.__proto__.polluted', 'yes');
     accessor.set({}, 'constructor.prototype.polluted', 'yes');
-    assert.equal(({} as Record<string, unknown>)['polluted'], undefined);
-    assert.equal((Object.prototype as Record<string, unknown>)['polluted'], undefined);
+    const freshObj: Record<string, unknown> = {};
+    assert.equal(freshObj['polluted'], undefined);
+    assert.equal(Reflect.get(Object.prototype, 'polluted'), undefined);
   });
 
   void it('returns null for a path that walks a prototype key', () => {
@@ -111,18 +111,12 @@ void describe('Dagonizer accepts a custom StateAccessorInterface', () => {
       results: number[] = [];
     }
 
-    class HandlerNode extends ScalarNode<ScatterState, 'success'> {
-      readonly name = 'handler';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: ScatterState): Promise<NodeOutputType<'success'>> {
-        const item = state.getMetadata<number>('item') ?? 0;
-        state.results.push(item * 2);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-
     const dispatcher = new Dagonizer<ScatterState>({ 'accessor': trackingAccessor });
-    dispatcher.registerNode(new HandlerNode());
+    dispatcher.registerNode(TestNode.make<ScatterState>('handler', ['success'], (state) => {
+      const item = state.getMetadata<number>('item') ?? 0;
+      state.results.push(item * 2);
+      return 'success';
+    }));
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:fan-test',
@@ -170,7 +164,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     const state = new DomainState();
     state.domainValue = 99;
 
-    const cloned = state.clone() as DomainState;
+    const cloned = state.clone();
     // Domain field starts at default (0) in the fresh clone — it hasn't been
     // populated yet. After applySnapshot with the original snapshot, restoreData
     // runs and restores the field.
@@ -187,7 +181,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
     state.setMetadata('key', 'value');
     state.domainValue = 7;
 
-    const cloned = state.clone() as DomainState;
+    const cloned = state.clone();
 
     // Metadata crosses the clone boundary.
     assert.strictEqual(cloned.getMetadata('key'), 'value', 'metadata must be preserved in clone');
@@ -200,7 +194,7 @@ void describe('NodeStateBase.clone() subclass identity', () => {
   });
 
   void it('StateMapper.cloneChild produces a correctly-typed subclass instance with mapped metadata', () => {
-    const mapper = new StateMapper<DomainState>(metadataAccessor);
+    const mapper = new StateMapper(metadataAccessor);
     const parent = new DomainState();
     parent.domainValue = 55;
     parent.setMetadata('item', 3);

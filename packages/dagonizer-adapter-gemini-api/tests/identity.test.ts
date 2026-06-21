@@ -65,13 +65,11 @@ void test('GeminiModelsResponseSchema carries the expected $id', () => {
 // listModels — fetch stubbing helpers
 // ---------------------------------------------------------------------------
 
-type MutableGlobal = typeof globalThis & { fetch: typeof fetch };
-
-function stubFetch(impl: typeof fetch): () => void {
-  const original = (globalThis as MutableGlobal).fetch;
-  (globalThis as MutableGlobal).fetch = impl;
+function stubFetch(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): () => void {
+  const original: typeof fetch | undefined = globalThis.fetch;
+  Object.assign(globalThis, { 'fetch': impl });
   return () => {
-    (globalThis as MutableGlobal).fetch = original;
+    Object.assign(globalThis, { 'fetch': original });
   };
 }
 

@@ -14,11 +14,18 @@ import { EventClassifier, Units } from '../services.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region canonicalize-facility-node
 export class CanonicalizeFacilityNode extends ScalarNode<CartographerState, 'done', CartographerServices> {
   readonly 'name' = 'canonicalize-facility';
   readonly 'outputs' = ['done'] as const;
+
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return {
+      'done': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'done'>> {
     if (state.canonicalVariant.eventType !== 'facility-scan') {

@@ -24,7 +24,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -37,6 +37,12 @@ const SHORTLIST_LIMIT = 5;
 export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'empty', ArchivistServices> {
   readonly name = 'merge-candidates';
   readonly outputs = ['ranked', 'empty'] as const;
+  override get outputSchema(): Record<'ranked' | 'empty', SchemaObjectType> {
+    return {
+      'ranked': { 'type': 'object' },
+      'empty':  { 'type': 'object' },
+    };
+  }
 
   /** Public per-item entry point for tests and dispatch delegation. */
   public async runItem(state: ArchivistState, context: NodeContextType<ArchivistServices>): Promise<NodeOutputType<'ranked' | 'empty'>> {

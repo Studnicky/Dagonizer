@@ -1,5 +1,5 @@
 /**
- * BookSearchScatterDAG: reusable query-extract + 4-source scatter scout cluster.
+ * BookSearchScatterDAG: reusable query-extract + tool-registry scatter cluster.
  *
  * Internal flow:
  *
@@ -8,10 +8,12 @@
  *   decide-tools
  *     └─ (tools | no-tools) ──► recall-candidates
  *   recall-candidates
- *     └─ recalled ──► book-search-scatter (scatter over scoutProviders, concurrency 4)
- *          body: scoutDispatch (reads currentItem, routes to matching scout logic)
- *          gather: scout-merge (flat-merges candidates + failureCause from clones)
- *          reducer: any-success (routes 'success' if any clone found results)
+ *     └─ recalled ──► build-book-worksets
+ *   build-book-worksets
+ *     └─ ready ──► book-search-scatter (scatter over bookWorksets, concurrency 4)
+ *          body: { dagFrom: 'dagName' } (resolves tool:<name> DAG per item at runtime)
+ *          gather: tool-candidate-merge (reads clone output via accessor, no cast)
+ *          reducer: any-success (routes 'success' if any tool found results)
  *     └─ rank-candidates
  *     └─ merge-candidates
  *          ├─ ranked ──► record-findings
@@ -30,6 +32,7 @@
  *
  * Molecular import pattern:
  *   import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
+ *   dispatcher.registerBundle(toolRegistry.bundle<ArchivistServices>());
  *   dispatcher.registerBundle(bookSearchScatterBundle);
  *
  * The sub-DAG reads `state.query` directly (no input stateMapping; the field
@@ -63,9 +66,7 @@ import {
   extractQuerySalvage,
   rankCandidatesSalvage,
 } from '../nodes/salvage.ts';
-import {
-  scoutDispatch,
-} from '../nodes/scouts.ts';
+import { buildBookWorksets }  from '../nodes/buildBookWorksets.ts';
 import type { ArchivistServices } from '../services.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
@@ -112,24 +113,34 @@ export const BookSearchScatterDAG: DAGType = new DAGBuilder('book-search-scatter
   // runs whose visitor query has Jaccard >= 0.35 overlap with the current
   // query. Cap 10. Always routes 'recalled', even when no prior runs match.
   .node('recall-candidates', recallCandidates, {
-    'recalled': 'book-search-scatter',
+    'recalled': 'build-book-worksets',
+  })
+
+  // ── 2c. build-book-worksets ──────────────────────────────────────────────
+  // Converts state.toolPlan into a bookWorksets array where each entry
+  // carries { dagName: 'tool:<name>', arguments: {...} }. The scatter
+  // placement reads dagName via { dagFrom: 'dagName' } to resolve the body
+  // DAG at runtime — each item dispatches to its own tool:<name> embedded DAG.
+  .node('build-book-worksets', buildBookWorksets, {
+    'ready': 'book-search-scatter',
   })
 
   // ── 3. book-search-scatter ───────────────────────────────────────────────
-  // Heterogeneous scatter: four provider descriptors fan out concurrently.
-  // scoutDispatch reads state.scoutProviders items via the currentItem
-  // metadata key and routes to the matching scout logic.
-  // scout-merge gather flat-merges candidates + failureCause from all four
-  // clones. any-success reducer: 'success' → rank-candidates (at least one
-  // hit); 'error' → rank-candidates (proceed even when all scouts return
-  // empty — rank handles the empty-candidates case gracefully).
-  .scatter('book-search-scatter', 'scoutProviders', scoutDispatch, {
+  // Tool-registry scatter: bookWorksets items fan out concurrently. Each item
+  // names its own tool:<name> embedded DAG via dagName; { dagFrom: 'dagName' }
+  // resolves the body DAG at runtime from the item. ToolInvokeNode reads the
+  // item's arguments field and calls the bound tool. tool-candidate-merge
+  // gather reads each clone's ToolInvocationState.output (via accessor, no cast)
+  // and folds the CandidateType[] into the parent state's candidates.
+  // any-success reducer: 'success' → rank-candidates when at least one tool hit;
+  // 'error' → rank-candidates to allow graceful empty-candidates handling.
+  .scatter('book-search-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
     'success': 'rank-candidates',
     'error':   'rank-candidates',
     'empty':   'rank-candidates',
   }, {
     'concurrency': 4,
-    'gather': { 'strategy': 'scout-merge' },
+    'gather': { 'strategy': 'tool-candidate-merge' },
     'reducer': 'any-success',
   })
 
@@ -195,7 +206,7 @@ export const BookSearchScatterDAG: DAGType = new DAGBuilder('book-search-scatter
  */
 export const bookSearchScatterBundle: DispatcherBundleType<ArchivistState, ArchivistServices> = {
   'nodes': [
-    extractQuery, decideTools, recallCandidates, scoutDispatch,
+    extractQuery, decideTools, recallCandidates, buildBookWorksets,
     rankCandidates, mergeCandidates, recordFindings, hasCitationsGate,
     recallPastVisits, extractQuerySalvage, decideToolsSalvage,
     rankCandidatesSalvage,

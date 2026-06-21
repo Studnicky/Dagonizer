@@ -3,17 +3,19 @@ import assert from 'node:assert/strict';
 import { Dagonizer } from '@studnicky/dagonizer';
 import { ChatState, ClassifyNode, RespondNode, dag } from '../dags/01-linear.ts';
 
-function makeDispatcher(): Dagonizer<ChatState> {
-  const dispatcher = new Dagonizer<ChatState>();
-  dispatcher.registerNode(new ClassifyNode());
-  dispatcher.registerNode(new RespondNode());
-  dispatcher.registerDAG(dag);
-  return dispatcher;
+class Harness {
+  static dispatcher(): Dagonizer<ChatState> {
+    const dispatcher = new Dagonizer<ChatState>();
+    dispatcher.registerNode(new ClassifyNode());
+    dispatcher.registerNode(new RespondNode());
+    dispatcher.registerDAG(dag);
+    return dispatcher;
+  }
 }
 
 describe('01-linear: classify → respond', () => {
   it('on_topic input echoes the input and sets topic', async () => {
-    const dispatcher = makeDispatcher();
+    const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'TypeScript generics';
     const result = await dispatcher.execute('chat', state);
@@ -25,7 +27,7 @@ describe('01-linear: classify → respond', () => {
   });
 
   it('off_topic input (weather) sets topic and produces coding reply', async () => {
-    const dispatcher = makeDispatcher();
+    const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'what is the weather today?';
     const result = await dispatcher.execute('chat', state);
@@ -40,7 +42,7 @@ describe('01-linear: classify → respond', () => {
   });
 
   it('executedNodes includes classify and respond', async () => {
-    const dispatcher = makeDispatcher();
+    const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'TypeScript';
     const result = await dispatcher.execute('chat', state);

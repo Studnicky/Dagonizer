@@ -63,7 +63,7 @@ const persisted  = checkpoint.toJson();  // → JSON string (store in DB, file, 
 // Step 3: restore + resume (simulating a process restart)
 // #region recall
 // Parse the persisted JSON back to an unknown value, then load into a Checkpoint.
-const ckpt = Checkpoint.load(JSON.parse(persisted) as unknown);
+const ckpt = Checkpoint.load(JSON.parse(persisted));
 
 // restoreState maps the snapshot back to a typed CountingState instance.
 // Consumers supply their own restore fn so the checkpoint module never

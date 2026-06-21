@@ -21,7 +21,7 @@ import {
   ScalarNode,
 } from '@studnicky/dagonizer';
 import { CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // #region full-example
@@ -44,6 +44,9 @@ class CountState extends NodeStateBase {
 class TickNode extends ScalarNode<CountState, 'success'> {
   readonly name    = 'tick';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: CountState) {
     state.count++;
@@ -90,7 +93,7 @@ if (partial.cursor === null) {
   process.stdout.write(`  after abort:  count=${partial.state.count} cursor="${partial.cursor}"\n`);
 
   const ckpt  = await Checkpoint.capture('count', partial);
-  const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()) as unknown);
+  const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()));
 
   const { state: s2, dagName, cursor } = ckpt2.restoreState(
     CheckpointRestoreAdapter.wrap((snap) => CountState.restore(snap)),

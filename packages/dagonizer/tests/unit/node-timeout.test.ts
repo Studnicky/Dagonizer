@@ -31,7 +31,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import type { NodeInterface, SchemaObjectType  } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -42,6 +42,7 @@ import { NodeTimeoutError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -50,31 +51,34 @@ import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 /** Yield to the microtask queue (one setImmediate cycle). */
 const tick = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
 
-/** Build a minimal single-node DAG wired to a single registered node. */
-function buildSingleNodeDag(
-  dispatcher: Dagonizer<NodeStateBase>,
-  node: NodeInterface<NodeStateBase, string>,
-  dagName: string,
-  output: string,
-): void {
-  dispatcher.registerNode(node);
-  dispatcher.registerDAG({
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${dagName}`,
-    '@type':    'DAG',
-    'name': dagName,
-    'version': '1',
-    'entrypoint': 'stage',
-    'nodes': [{
-      '@id':   `urn:noocodex:dag:${dagName}/node/stage`,
-      '@type': 'SingleNode',
-      'name':  'stage',
-      'node':  node.name,
-      'outputs': { [output]: 'end' },
-    },
-    { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
-    ],
-  });
+class TestHarness {
+  private constructor() {}
+  /** Build a minimal single-node DAG wired to a single registered node. */
+  static singleNodeDag(
+    dispatcher: Dagonizer<NodeStateBase>,
+    node: NodeInterface<NodeStateBase, string>,
+    dagName: string,
+    output: string,
+  ): void {
+    dispatcher.registerNode(node);
+    dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@type':    'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoint': 'stage',
+      'nodes': [{
+        '@id':   `urn:noocodex:dag:${dagName}/node/stage`,
+        '@type': 'SingleNode',
+        'name':  'stage',
+        'node':  node.name,
+        'outputs': { [output]: 'end' },
+      },
+      { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +98,7 @@ void describe('per-node timeout', () => {
       readonly name = 'slow';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(500);
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         receivedSignal = context.signal;
         // Suspend indefinitely; the per-node deadline race wins.
@@ -109,7 +114,7 @@ void describe('per-node timeout', () => {
     const slowNode = new SlowNode();
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    buildSingleNodeDag(dispatcher, slowNode, 'timeout-dag', 'success');
+    TestHarness.singleNodeDag(dispatcher, slowNode, 'timeout-dag', 'success');
 
     const state = new NodeStateBase();
     const runPromise = dispatcher.execute('timeout-dag', state);
@@ -156,6 +161,7 @@ void describe('per-node timeout', () => {
       readonly name = 'tardy';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(200);
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
@@ -167,7 +173,7 @@ void describe('per-node timeout', () => {
     const slowNode = new TardyNode();
 
     const dispatcher = new ObservingDagonizer();
-    buildSingleNodeDag(dispatcher, slowNode, 'err-dag', 'success');
+    TestHarness.singleNodeDag(dispatcher, slowNode, 'err-dag', 'success');
 
     const state = new NodeStateBase();
     const runPromise = dispatcher.execute('err-dag', state);
@@ -186,31 +192,21 @@ void describe('per-node timeout', () => {
     assert.equal(errors.length, 1, 'onError should fire exactly once');
     const [entry] = errors;
     assert.ok(entry !== undefined);
-    assert.ok(
-      entry.error instanceof NodeTimeoutError,
-      `expected NodeTimeoutError, got ${entry.error.constructor.name}`,
-    );
-    const tErr = entry.error as NodeTimeoutError;
-    assert.equal(tErr.nodeName, 'tardy');
-    assert.equal(tErr.timeoutMs, 200);
+    if (!(entry.error instanceof NodeTimeoutError)) {
+      throw new Error(`expected NodeTimeoutError, got ${entry.error.constructor.name}`);
+    }
+    assert.equal(entry.error.nodeName, 'tardy');
+    assert.equal(entry.error.timeoutMs, 200);
   });
 
   void it('nodes without timeout complete normally', async () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
 
-    class FastNode extends ScalarNode<NodeStateBase, 'done'> {
-      readonly name = 'fast';
-      readonly outputs = ['done'] as const;
-      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'done'>> {
-        return { 'errors': [], 'output': 'done' };
-      }
-    }
-
-    const fastNode = new FastNode();
+    const fastNode = TestNode.make<NodeStateBase>('fast', ['done'], () => 'done');
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    buildSingleNodeDag(dispatcher, fastNode, 'fast-dag', 'done');
+    TestHarness.singleNodeDag(dispatcher, fastNode, 'fast-dag', 'done');
 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('fast-dag', state);
@@ -228,6 +224,7 @@ void describe('per-node timeout', () => {
       readonly name = 'slow-cancel';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(60_000); // very long node budget; run-level cancel wins
+      override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
       protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
@@ -239,7 +236,7 @@ void describe('per-node timeout', () => {
     const slowNode = new SlowCancelNode();
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    buildSingleNodeDag(dispatcher, slowNode, 'cancel-dag', 'success');
+    TestHarness.singleNodeDag(dispatcher, slowNode, 'cancel-dag', 'success');
 
     const state = new NodeStateBase();
     const ctrl = new AbortController();

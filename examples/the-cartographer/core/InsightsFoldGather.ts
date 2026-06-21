@@ -104,7 +104,7 @@ export class InsightsFoldGather extends GatherStrategy {
     accessor: StateAccessorInterface,
   ): void {
     for (const item of batch) {
-      const record: GatherRecordType<NodeStateInterface> = item.state;
+      const record: GatherRecordType = item.state;
 
       // Fold this clone's captured errors into the parent rollup FIRST — errors
       // flow scatter→gather as data, independent of whether the clone produced a

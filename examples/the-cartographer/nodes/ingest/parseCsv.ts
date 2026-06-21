@@ -17,11 +17,19 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-csv-node
 export class ParseCsvNode extends ScalarNode<CartographerState, 'normalized' | 'invalid', CartographerServices> {
   readonly 'name' = 'parse-csv';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
+
+  override get outputSchema(): Record<'normalized' | 'invalid', SchemaObjectType> {
+    return {
+      'normalized': { 'type': 'object' },
+      'invalid':    { 'type': 'object' },
+    };
+  }
 
   /** Split one CSV line into cells, honouring double-quoted fields. */
   private static splitCsvLine(line: string): string[] {

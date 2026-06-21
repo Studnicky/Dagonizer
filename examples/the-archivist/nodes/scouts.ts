@@ -1,73 +1,38 @@
 /**
- * scouts: data-acquisition nodes for the Archivist's multi-source scatter.
+ * scouts: utility helpers and gather strategy for the Archivist's
+ * ToolRegistry-based multi-source scatter.
  *
- * Four scouts, each wrapping one external tool:
+ * ScoutUtils: pure static helpers for query shaping (unquote, filterByLanguage,
+ * pickSubjectTerm, pickWikipediaQuery). Consumed by BuildBookWorksetsNode.
  *
- *   openLibraryScout:  OpenLibrary `web_search_books` call; LLM-gated
- *                       via `state.toolPlan` (tool name: web_search_books).
- *   googleBooksScout:  Google Books `google_books_search` call; LLM-gated
- *                       via `state.toolPlan` (tool name: google_books_search).
- *   subjectScout:      OpenLibrary subject search; LLM-gated via
- *                       `state.toolPlan` (tool name: subject_search).
- *   wikipediaScout:    Wikipedia `page/summary` enrichment; runs even
- *                       without a toolPlan entry, using `state.terms` as the
- *                       query, unless terms is empty.
- *
- * Scatter dispatch:
- *   `scoutDispatch` is the single scatter body node. The DAG seeds
- *   `state.scoutProviders = ['openlibrary','googlebooks','subject','wikipedia']`
- *   as the scatter source. Each clone receives one descriptor under the
- *   `currentItem` metadata key; `scoutDispatch` reads it and calls the
- *   matching scout logic. Concurrency 4 runs all four scouts concurrently.
- *
- *   `ScoutGatherStrategy` ('scout-merge') flat-merges each clone's
- *   `candidates` array and concatenates `failureCause` strings into the
- *   parent state after all four clones complete.
- *
- * All four are non-deterministic (network + possible model-supplied args).
- * Each appends to `state.candidates` so the downstream merge step can
- * dedupe across sources via `CanonicalId.dedupe`.
- *
- * Query sanitisation:
- *   Every scout applies `ScoutUtils.unquote()` to the LLM-supplied query before
- *   passing it to the tool. This strips the outer matching quote pair
- *   that some models emit (e.g. `"strange house neil gaiman"` becomes
- *   `strange house neil gaiman`), which otherwise causes OpenLibrary to
- *   return zero hits for AND-matching against the literal quotes.
- *
- * Failure accumulation:
- *   When a scout errors or returns zero hits, it appends a sanitized
- *   one-liner to `state.failureCause`. `composeEmptyResponse` uses this
- *   to produce an in-character message that acknowledges what was tried.
+ * ToolCandidateGatherStrategy ('tool-candidate-merge'): folds each tool clone's
+ * output array into the parent state's `candidates` and `failureCause` fields.
+ * Each clone runs a `tool:<name>` embedded DAG via ToolInvokeNode; this strategy
+ * reads `cloneState.output` (via StateAccessor, no cast) to retrieve the
+ * CandidateType[] the tool returned, then filters by visitor language, and
+ * appends to the parent's candidates.
  */
 
 import {
   GatherStrategies,
   GatherStrategy,
-  NodeErrorBuilder,
-  NodeOutputBuilder,
-  ScalarNode,
 } from '@studnicky/dagonizer';
 import type {
   GatherConfigType,
   GatherRecordType,
-  NodeContextType,
-  NodeOutputType,
-  NodeStateInterface,
 } from '@studnicky/dagonizer';
 import type { Batch } from '@studnicky/dagonizer';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 
-import type { ArchivistState } from '../ArchivistState.ts';
 import type { CandidateType } from '../entities/Book.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
-import type { ArchivistServices } from '../services.ts';
 
 /**
  * ScoutUtils: pure helper methods for scout query shaping and sanitisation.
  * Static methods only; no instance state.
  */
-class ScoutUtils {
+export class ScoutUtils {
   /**
    * Filter scout-returned candidates down to those in the visitor's
    * language. Candidates with no language metadata pass through (the
@@ -151,354 +116,72 @@ class ScoutUtils {
   }
 }
 
-// #region scout-timeout
-// Per-scout wall-clock budget. A scout is a flow decision, not a resilience
-// layer: it contributes candidates or it doesn't. On its own timeout or a
-// network error it routes 'empty' (contributed nothing); the four scouts run
-// in parallel, so a dropped source degrades coverage, not the run. Transient
-// network retry, if wanted, belongs in the tool, not the node.
-const SCOUT_TIMEOUT_MS = 60_000;
-// #endregion scout-timeout
-
-// #region signal-scout
-// ── OpenLibrary scout ────────────────────────────────────────────────────────
-// Gates on `state.toolPlan` for a `web_search_books` call. Writes to
-// `state.candidates`. Non-deterministic (live network).
-
-export class OpenLibraryScoutNode extends ScalarNode<ArchivistState, 'success' | 'empty', ArchivistServices> {
-  readonly name = 'open-library-scout';
-  readonly outputs = ['success', 'empty'] as const;
-
-  async runItem(
-    state: ArchivistState,
-    context: NodeContextType<ArchivistServices>,
-  ): Promise<NodeOutputType<'success' | 'empty'>> {
-    return this.executeOne(state, context);
-  }
-
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    const planned = state.toolPlan.find((call) => call.name === 'web_search_books');
-    if (planned === undefined) return NodeOutputBuilder.of('empty');
-    const args = planned.arguments as {
-      query?: string;
-      isbn?: string;
-      author?: string;
-      subject?: string;
-      limit?: number;
-    };
-
-    const limit = args.limit ?? 8;
-    const lang = UserLanguage.toIso6392(state.userLanguage);
-    const tool = context.services.webSearch;
-
-    // Determine which OpenLibrary search axis to use and build the log label.
-    // Priority: isbn > author > subject > keyword query.
-    let toolInput: Record<string, unknown>;
-    let logDimension: string;
-
-    if (typeof args.isbn === 'string' && args.isbn.length > 0) {
-      toolInput = { "isbn": args.isbn, limit, lang };
-      logDimension = `isbn=${args.isbn}`;
-    } else if (typeof args.author === 'string' && args.author.length > 0) {
-      toolInput = { "author": args.author, limit, lang };
-      logDimension = `author="${args.author}"`;
-    } else if (typeof args.subject === 'string' && args.subject.length > 0) {
-      toolInput = { "subject": args.subject, limit, lang };
-      logDimension = `subject=${args.subject}`;
-    } else {
-      const rawQuery = typeof args.query === 'string' && args.query.length > 0
-        ? args.query
-        : state.terms.join(' ');
-      const query = ScoutUtils.unquote(rawQuery);
-      if (query.length === 0) return NodeOutputBuilder.of('empty');
-      toolInput = { "query": query, limit, lang };
-      logDimension = `q=${encodeURIComponent(query)}`;
-    }
-
-    const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
-    const signal = AbortSignal.any([context.signal, controller.signal]);
-    try {
-      const rawCandidates = await tool.execute(toolInput as Parameters<typeof tool.execute>[0], { signal });
-      const candidates = ScoutUtils.filterByLanguage(rawCandidates, state.userLanguage);
-      state.candidates = [...state.candidates, ...candidates];
-      if (candidates.length === 0) {
-        state.failureCause += `OpenLibrary: 0 hits for (${logDimension}). `;
-      }
-      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
-    } catch (error) {
-      // External cancellation propagates; own timeout / network error → 'empty'
-      // (this scout contributed nothing; the parallel siblings still run).
-      if (context.signal.aborted) throw error;
-      const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError(NodeErrorBuilder.from(
-        'OPEN_LIBRARY_FAILED',
-        error instanceof Error ? error.message : String(error),
-        'open-library-scout',
-        true,
-        new Date().toISOString(),
-      ));
-      state.failureCause += `OpenLibrary: error: ${msg}. `;
-      return NodeOutputBuilder.of('empty');
-    } finally {
-      clearTimeout(handle);
-    }
-  }
-}
-// #endregion signal-scout
-
-// ── Google Books scout ───────────────────────────────────────────────────────
-// Gates on `state.toolPlan` for a `google_books_search` call. Writes to
-// `state.candidates`. Non-deterministic (live network).
-
-export class GoogleBooksScoutNode extends ScalarNode<ArchivistState, 'success' | 'empty', ArchivistServices> {
-  readonly name = 'google-books-scout';
-  readonly outputs = ['success', 'empty'] as const;
-
-  async runItem(
-    state: ArchivistState,
-    context: NodeContextType<ArchivistServices>,
-  ): Promise<NodeOutputType<'success' | 'empty'>> {
-    return this.executeOne(state, context);
-  }
-
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    const planned = state.toolPlan.find((call) => call.name === 'google_books_search');
-    if (planned === undefined) return NodeOutputBuilder.of('empty');
-    const args = planned.arguments as { query?: string; maxResults?: number };
-    const rawQuery = typeof args.query === 'string' && args.query.length > 0
-      ? args.query
-      : state.terms.join(' ');
-    const query = ScoutUtils.unquote(rawQuery);
-    if (query.length === 0) return NodeOutputBuilder.of('empty');
-    const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
-    const signal = AbortSignal.any([context.signal, controller.signal]);
-    try {
-      const tool = context.services.googleBooks;
-      const langRestrict = UserLanguage.normalize(state.userLanguage);
-      const rawCandidates = await tool.execute({ query, "maxResults": args.maxResults ?? 8, "langRestrict": langRestrict }, { signal });
-      const candidates = ScoutUtils.filterByLanguage(rawCandidates, state.userLanguage);
-      state.candidates = [...state.candidates, ...candidates];
-      if (candidates.length === 0) {
-        state.failureCause += `Google Books: 0 hits for "${query}". `;
-      }
-      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
-    } catch (error) {
-      // External cancellation propagates; own timeout / network error → 'empty'.
-      if (context.signal.aborted) throw error;
-      const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError(NodeErrorBuilder.from(
-        'GOOGLE_BOOKS_FAILED',
-        error instanceof Error ? error.message : String(error),
-        'google-books-scout',
-        true,
-        new Date().toISOString(),
-      ));
-      state.failureCause += `Google Books: error: ${msg}. `;
-      return NodeOutputBuilder.of('empty');
-    } finally {
-      clearTimeout(handle);
-    }
-  }
-}
-
-// ── Subject search scout ─────────────────────────────────────────────────
-// Gates on `state.toolPlan` for a `subject_search` call. Writes to
-// `state.candidates`. Non-deterministic (live network + LLM-supplied args).
-
-export class SubjectScoutNode extends ScalarNode<ArchivistState, 'success' | 'empty', ArchivistServices> {
-  readonly name = 'subject-scout';
-  readonly outputs = ['success', 'empty'] as const;
-
-  async runItem(
-    state: ArchivistState,
-    context: NodeContextType<ArchivistServices>,
-  ): Promise<NodeOutputType<'success' | 'empty'>> {
-    return this.executeOne(state, context);
-  }
-
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    const planned = state.toolPlan.find((call) => call.name === 'subject_search');
-    if (planned === undefined) return NodeOutputBuilder.of('empty');
-    const args = planned.arguments as { subject?: string; limit?: number };
-    // Subject shaping: LCSH subject facet performs best with a single focused
-    // term. Pick the longest term from state.terms (most-specific heuristic).
-    // Falls back to args.subject if the LLM supplied one (already focused).
-    const rawSubject = typeof args.subject === 'string' && args.subject.length > 0
-      ? args.subject
-      : ScoutUtils.pickSubjectTerm(state.terms);
-    const subject = ScoutUtils.unquote(rawSubject);
-    if (subject.length === 0) return NodeOutputBuilder.of('empty');
-    const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
-    const signal = AbortSignal.any([context.signal, controller.signal]);
-    try {
-      const tool = context.services.subjectSearch;
-      const lang = UserLanguage.toIso6392(state.userLanguage);
-      const rawCandidates = await tool.execute({ subject, "limit": args.limit ?? 8, "lang": lang }, { signal });
-      const candidates = ScoutUtils.filterByLanguage(rawCandidates, state.userLanguage);
-      state.candidates = [...state.candidates, ...candidates];
-      if (candidates.length === 0) {
-        state.failureCause += `Subject search: 0 hits for "${subject}". `;
-      }
-      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
-    } catch (error) {
-      // External cancellation propagates; own timeout / network error → 'empty'.
-      if (context.signal.aborted) throw error;
-      const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError(NodeErrorBuilder.from(
-        'SUBJECT_SEARCH_FAILED',
-        error instanceof Error ? error.message : String(error),
-        'subject-scout',
-        true,
-        new Date().toISOString(),
-      ));
-      state.failureCause += `Subject search: error: ${msg}. `;
-      return NodeOutputBuilder.of('empty');
-    } finally {
-      clearTimeout(handle);
-    }
-  }
-}
-
-// ── Wikipedia scout ──────────────────────────────────────────────────────────
-// Enrichment-only. Runs even without a toolPlan entry; uses `state.terms`
-// as the query. Skips only when terms is empty. Non-deterministic (live network).
-
-export class WikipediaScoutNode extends ScalarNode<ArchivistState, 'success' | 'empty', ArchivistServices> {
-  readonly name = 'wikipedia-scout';
-  readonly outputs = ['success', 'empty'] as const;
-
-  async runItem(
-    state: ArchivistState,
-    context: NodeContextType<ArchivistServices>,
-  ): Promise<NodeOutputType<'success' | 'empty'>> {
-    return this.executeOne(state, context);
-  }
-
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    // Wikipedia shaping: the REST summary endpoint resolves exact article
-    // titles best. Prefer the first capitalised term (proper noun heuristic
-    // e.g. "Neuromancer", "Philip K. Dick". Fall back to joining all terms.
-    const query = ScoutUtils.pickWikipediaQuery(state.terms).trim();
-    if (query.length === 0) return NodeOutputBuilder.of('empty');
-    const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
-    const signal = AbortSignal.any([context.signal, controller.signal]);
-    try {
-      const tool = context.services.wikipediaSummary;
-      const lang = UserLanguage.normalize(state.userLanguage);
-      const rawCandidates = await tool.execute({ query, "lang": lang }, { signal });
-      const candidates = ScoutUtils.filterByLanguage(rawCandidates, state.userLanguage);
-      state.candidates = [...state.candidates, ...candidates];
-      if (candidates.length === 0) {
-        state.failureCause += `Wikipedia: 0 hits for "${query}". `;
-      }
-      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
-    } catch (error) {
-      // External cancellation propagates; own timeout / network error → 'empty'.
-      if (context.signal.aborted) throw error;
-      const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError(NodeErrorBuilder.from(
-        'WIKIPEDIA_FAILED',
-        error instanceof Error ? error.message : String(error),
-        'wikipedia-scout',
-        true,
-        new Date().toISOString(),
-      ));
-      state.failureCause += `Wikipedia: error: ${msg}. `;
-      return NodeOutputBuilder.of('empty');
-    } finally {
-      clearTimeout(handle);
-    }
-  }
-}
-
-/** Provider descriptor type used as scatter source items. */
-export type ScoutProvider = 'openlibrary' | 'googlebooks' | 'subject' | 'wikipedia';
-
-// #region scout-dispatch
-// ── Scout dispatch: single scatter body ─────────────────────────────────────
-// Reads the provider descriptor from the `currentItem` metadata key (written
-// by the scatter engine per clone) and dispatches to the matching scout logic.
-// This is the heterogeneous-fan-out-as-data pattern: the four providers become
-// a source array on state; the body branches on the item value. The four
-// individual scout implementations above remain the underlying logic.
-
-const openLibraryScoutNode = new OpenLibraryScoutNode();
-const googleBooksScoutNode = new GoogleBooksScoutNode();
-const subjectScoutNode = new SubjectScoutNode();
-const wikipediaScoutNode = new WikipediaScoutNode();
-
-export class ScoutDispatchNode extends ScalarNode<ArchivistState, 'success' | 'empty', ArchivistServices> {
-  readonly name = 'scout-dispatch';
-  readonly outputs = ['success', 'empty'] as const;
-
-  protected override async executeOne(
-    state: ArchivistState,
-    context: NodeContextType<ArchivistServices>,
-  ): Promise<NodeOutputType<'success' | 'empty'>> {
-    const provider = state.getMetadata<ScoutProvider>('currentItem');
-    switch (provider) {
-      case 'openlibrary': return openLibraryScoutNode.runItem(state, context);
-      case 'googlebooks': return googleBooksScoutNode.runItem(state, context);
-      case 'subject':     return subjectScoutNode.runItem(state, context);
-      case 'wikipedia':   return wikipediaScoutNode.runItem(state, context);
-      default:
-        return NodeOutputBuilder.of('empty');
-    }
-  }
-}
-// #endregion scout-dispatch
-
-// #region scout-gather-strategy
-// ── ScoutGatherStrategy ('scout-merge') ─────────────────────────────────────
-// Flat-merges each clone's `candidates` array and concatenates `failureCause`
-// strings into the parent state after all four scatter clones complete.
+// #region tool-candidate-gather-strategy
+// ── ToolCandidateGatherStrategy ('tool-candidate-merge') ─────────────────────
+// Folds each tool clone's output (a CandidateType[] returned by the tool) into
+// the parent state's `candidates` array. Reads clone output via StateAccessor
+// so there are no unsafe casts — the strategy never knows the parent state's
+// concrete class, only the state path names.
 //
-// Each scatter clone is isolated and accumulates its own `candidates` and
-// `failureCause`; this gather strategy folds the clones into the parent at
-// gather time, with defined ordering (source-index order).
+// Each scatter clone ran a `tool:<name>` embedded DAG on a fresh
+// ToolInvocationState. On success, ToolInvokeNode sets `toolState.output` to
+// the tool's return value (a CandidateType[]). On error the clone's output
+// is the empty array at the default value, so the strategy safely no-ops.
 
-class ScoutGatherStrategy extends GatherStrategy {
-  readonly name = 'scout-merge';
+class ToolCandidateGatherStrategy extends GatherStrategy {
+  readonly name = 'tool-candidate-merge';
+
+  /**
+   * Type predicate: narrows an element to CandidateType without a cast.
+   * A CandidateType must carry a `book` object with an `identity` sub-object.
+   */
+  static isCandidateType(el: unknown): el is CandidateType {
+    return (
+      typeof el === 'object' &&
+      el !== null &&
+      'book' in el &&
+      typeof el.book === 'object' &&
+      el.book !== null
+    );
+  }
 
   override reduce(
     _config: GatherConfigType,
-    batch: Batch<GatherRecordType<NodeStateInterface>>,
+    batch: Batch<GatherRecordType>,
     state: NodeStateInterface,
-    _accessor: StateAccessorInterface,
+    accessor: StateAccessorInterface,
   ): void {
-    // This strategy is registered for use with ArchivistState exclusively;
-    // the cast is safe because only ArchivistState DAGs register 'scout-merge'.
-    const parentState = state as ArchivistState;
+    const userLanguage = accessor.get<string>(state, 'userLanguage') ?? 'en';
+    const existing = accessor.get<CandidateType[]>(state, 'candidates') ?? [];
+    const merged: CandidateType[] = [...existing];
 
-    const merged: CandidateType[] = [...parentState.candidates];
     for (const item of batch) {
       const record = item.state;
-      const cloneState = record.cloneState as ArchivistState;
-      // Flat-merge the clone's candidates into parent (order is source-index order
-      // because GatherExecutionType.records is guaranteed source-index ordered).
-      for (const candidate of cloneState.candidates) {
+      const rawOutput = accessor.get<unknown>(record.cloneState, 'output');
+      if (!Array.isArray(rawOutput)) continue;
+
+      const toolCandidates = rawOutput.filter(ToolCandidateGatherStrategy.isCandidateType);
+      const filtered = ScoutUtils.filterByLanguage(toolCandidates, userLanguage);
+
+      if (filtered.length === 0 && toolCandidates.length > 0) {
+        // All candidates were language-filtered out; note the loss but don't log the source name
+        // (the strategy doesn't know which tool produced this clone).
+        const current = accessor.get<string>(state, 'failureCause') ?? '';
+        accessor.set(state, 'failureCause', `${current}Tool scout: 0 hits after language filter. `);
+      } else if (filtered.length === 0) {
+        const current = accessor.get<string>(state, 'failureCause') ?? '';
+        accessor.set(state, 'failureCause', `${current}Tool scout: 0 results. `);
+      }
+
+      for (const candidate of filtered) {
         merged.push(candidate);
       }
-      // Concatenate failure text (empty when the scout succeeded).
-      if (cloneState.failureCause.length > 0) {
-        parentState.failureCause += cloneState.failureCause;
-      }
     }
-    parentState.candidates = merged;
+
+    accessor.set(state, 'candidates', merged);
   }
 }
 
-GatherStrategies.register(new ScoutGatherStrategy());
-// GatherStrategies.resolve('scout-merge') now works in any scatter placement.
-// #endregion scout-gather-strategy
-
-/** Singleton node instances referenced by the DAG wiring. */
-export const openLibraryScout = openLibraryScoutNode;
-export const googleBooksScout = googleBooksScoutNode;
-export const subjectScout = subjectScoutNode;
-export const wikipediaScout = wikipediaScoutNode;
-export const scoutDispatch = new ScoutDispatchNode();
+GatherStrategies.register(new ToolCandidateGatherStrategy());
+// GatherStrategies.resolve('tool-candidate-merge') now works in any scatter placement.
+// #endregion tool-candidate-gather-strategy

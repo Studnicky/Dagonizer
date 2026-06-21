@@ -78,7 +78,7 @@ class AverageGather extends GatherStrategy {
   readonly name = 'average';
   reduce(
     config: GatherConfigType,
-    batch: Batch<GatherRecordType<NodeStateInterface>>,
+    batch: Batch<GatherRecordType>,
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {

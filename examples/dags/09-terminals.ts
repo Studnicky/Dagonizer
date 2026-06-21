@@ -12,7 +12,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -29,6 +29,9 @@ export class GateState extends NodeStateBase {
 export class StepANode extends ScalarNode<GateState, 'ok'> {
   readonly name = 'step-a';
   readonly outputs = ['ok'] as const;
+  override get outputSchema(): Record<'ok', SchemaObjectType> {
+    return { 'ok': { 'type': 'object' } };
+  }
 
   protected override async executeOne(_state: GateState) {
     return NodeOutputBuilder.of('ok');
@@ -38,6 +41,9 @@ export class StepANode extends ScalarNode<GateState, 'ok'> {
 export class CheckNode extends ScalarNode<GateState, 'pass' | 'fail'> {
   readonly name = 'check';
   readonly outputs = ['pass', 'fail'] as const;
+  override get outputSchema(): Record<'pass' | 'fail', SchemaObjectType> {
+    return { 'pass': { 'type': 'object' }, 'fail': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: GateState) {
     return NodeOutputBuilder.of(state.shouldPass ? 'pass' : 'fail');
@@ -51,6 +57,9 @@ export class CheckNode extends ScalarNode<GateState, 'pass' | 'fail'> {
 export class ChildWorkNode extends ScalarNode<GateState, 'done'> {
   readonly name = 'child-work';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: GateState) {
     if (!state.shouldPass) {

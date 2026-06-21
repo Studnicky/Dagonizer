@@ -28,7 +28,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
@@ -78,6 +78,9 @@ export class MultiBackendState extends NodeStateBase {
 export class SquareNode extends ScalarNode<MultiBackendState, 'done'> {
   readonly name = 'squareNode';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: MultiBackendState) {
     const task = state.getMetadata<number>('task') ?? 0;
@@ -90,6 +93,9 @@ export class SquareNode extends ScalarNode<MultiBackendState, 'done'> {
 export class SumNode extends ScalarNode<MultiBackendState, 'done'> {
   readonly name = 'sumNode';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: MultiBackendState) {
     state.total = state.results.reduce((acc, n) => acc + n, 0);

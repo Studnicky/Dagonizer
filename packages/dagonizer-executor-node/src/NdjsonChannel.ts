@@ -133,7 +133,9 @@ export class NdjsonChannel extends BaseMessageChannel {
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(line) as unknown;
+      // JSON.parse returns `any`; assigning to a typed `unknown` variable
+      // narrows at the ingest boundary without a cast.
+      parsed = JSON.parse(line);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.dispatch(BridgeMessageBuilder.invalid(

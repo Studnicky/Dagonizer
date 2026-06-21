@@ -26,6 +26,7 @@
  */
 
 import { ScalarNode } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 import type {
   RegistryBundleInterface,
   RegistryModuleInterface,
@@ -48,6 +49,10 @@ class ScatterKillerNode extends ScalarNode<ConformanceState, 'done'> {
   readonly 'name' = 'scatter-counter';
   readonly 'outputs' = ['done'] as const;
 
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
+
   protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
     const current = state.getMetadata<number>('currentItem');
     if (current === KILL_ITEM) {
@@ -66,24 +71,28 @@ class ScatterKillerNode extends ScalarNode<ConformanceState, 'done'> {
  * replaced by scatter-killer. Same DAGs (law8 runner, scatter-item-body) and
  * the same restoreState/version so the parent and the worker agree on shapes.
  */
-function buildKillBundle(): RegistryBundleInterface {
-  const base = ConformanceRegistry.bundle();
-  const nodes = base.bundle.nodes.filter((n) => n.name !== 'scatter-counter');
-  nodes.push(new ScatterKillerNode() as (typeof base.bundle.nodes)[number]);
-  return {
-    'bundle': {
-      'nodes': nodes,
-      'dags': base.bundle.dags,
-    },
-    'services': base.services,
-    'registryVersion': base.registryVersion,
-    'restoreState': base.restoreState,
-  };
+class KillBundle {
+  private constructor() {}
+
+  static of(): RegistryBundleInterface {
+    const base = ConformanceRegistry.bundle();
+    const nodes = base.bundle.nodes.filter((n) => n.name !== 'scatter-counter');
+    nodes.push(new ScatterKillerNode() as (typeof base.bundle.nodes)[number]);
+    return {
+      'bundle': {
+        'nodes': nodes,
+        'dags': base.bundle.dags,
+      },
+      'services': base.services,
+      'registryVersion': base.registryVersion,
+      'restoreState': base.restoreState,
+    };
+  }
 }
 
 const registry: RegistryModuleInterface = {
   async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
-    return buildKillBundle();
+    return KillBundle.of();
   },
 };
 

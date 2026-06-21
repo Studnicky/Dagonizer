@@ -18,6 +18,7 @@ import { PassThrough } from 'node:stream';
 import { describe, it } from 'node:test';
 
 import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer/validation';
 
 import { IpcChannel } from '../../src/IpcChannel.js';
 import type { IpcEndpointInterface } from '../../src/IpcChannel.js';
@@ -41,11 +42,15 @@ function errorMessage(): BridgeMessageType {
 // NdjsonChannel fixtures
 // ---------------------------------------------------------------------------
 
-function makeNdjsonChannel(): { channel: NdjsonChannel; readable: PassThrough; writable: PassThrough } {
-  const readable = new PassThrough();
-  const writable = new PassThrough();
-  const channel = new NdjsonChannel(readable, writable);
-  return { 'channel': channel, 'readable': readable, 'writable': writable };
+class NdjsonChannelFixture {
+  private constructor() {}
+
+  static of(): { channel: NdjsonChannel; readable: PassThrough; writable: PassThrough } {
+    const readable = new PassThrough();
+    const writable = new PassThrough();
+    const channel = new NdjsonChannel(readable, writable);
+    return { 'channel': channel, 'readable': readable, 'writable': writable };
+  }
 }
 
 function collectNdjsonMessages(channel: NdjsonChannel): BridgeMessageType[] {
@@ -111,13 +116,13 @@ class FakeEndpoint implements IpcEndpointInterface {
 
 void describe('NdjsonChannel.send', () => {
   void it('encodes message as JSON line terminated with newline', (_, done) => {
-    const { channel, writable } = makeNdjsonChannel();
+    const { channel, writable } = NdjsonChannelFixture.of();
     const chunks: string[] = [];
     writable.on('data', (chunk: Buffer) => { chunks.push(chunk.toString('utf8')); });
     writable.on('end', () => {
       const output = chunks.join('');
       assert.ok(output.endsWith('\n'), 'must end with newline');
-      const parsed = JSON.parse(output.trimEnd()) as BridgeMessageType;
+      const parsed: BridgeMessageType = Validator.bridgeMessage.validate(JSON.parse(output.trimEnd()));
       assert.strictEqual(parsed.variant, 'ready');
       done();
     });
@@ -133,7 +138,7 @@ void describe('NdjsonChannel.send', () => {
 
 void describe('NdjsonChannel.onMessage — framing', () => {
   void it('dispatches a single message from one complete line', async () => {
-    const { channel, readable } = makeNdjsonChannel();
+    const { channel, readable } = NdjsonChannelFixture.of();
     const messages = collectNdjsonMessages(channel);
 
     await new Promise<void>((resolve) => {
@@ -145,7 +150,7 @@ void describe('NdjsonChannel.onMessage — framing', () => {
   });
 
   void it('assembles a message split across two chunks, emitting nothing before the newline', async () => {
-    const { channel, readable } = makeNdjsonChannel();
+    const { channel, readable } = NdjsonChannelFixture.of();
     const messages = collectNdjsonMessages(channel);
 
     const full = JSON.stringify(readyMessage()) + '\n';
@@ -161,7 +166,7 @@ void describe('NdjsonChannel.onMessage — framing', () => {
   });
 
   void it('dispatches multiple messages from a single chunk in order', async () => {
-    const { channel, readable } = makeNdjsonChannel();
+    const { channel, readable } = NdjsonChannelFixture.of();
     const messages = collectNdjsonMessages(channel);
 
     const m1 = JSON.stringify(readyMessage()) + '\n';
@@ -175,7 +180,7 @@ void describe('NdjsonChannel.onMessage — framing', () => {
   });
 
   void it('stops delivering messages after close', async () => {
-    const { channel, readable } = makeNdjsonChannel();
+    const { channel, readable } = NdjsonChannelFixture.of();
     const messages = collectNdjsonMessages(channel);
 
     channel.close();
@@ -199,7 +204,7 @@ void describe('NdjsonChannel.onMessage — framing', () => {
 
 void describe('NdjsonChannel.onMessage — ingest validation', () => {
   void it('surfaces a malformed JSON line as an NDJSON_PARSE_ERROR error message', async () => {
-    const { channel, readable } = makeNdjsonChannel();
+    const { channel, readable } = NdjsonChannelFixture.of();
     const messages = collectNdjsonMessages(channel);
 
     await new Promise<void>((resolve) => { readable.write('not-json\n', () => resolve()); });
@@ -213,7 +218,7 @@ void describe('NdjsonChannel.onMessage — ingest validation', () => {
   });
 
   void it('surfaces a valid-JSON-but-invalid-BridgeMessageType line as an NDJSON_VALIDATION_ERROR', async () => {
-    const { channel, readable } = makeNdjsonChannel();
+    const { channel, readable } = NdjsonChannelFixture.of();
     const messages = collectNdjsonMessages(channel);
 
     const invalidMsg = JSON.stringify({ 'variant': 'not-a-real-variant', 'extra': 'data' });

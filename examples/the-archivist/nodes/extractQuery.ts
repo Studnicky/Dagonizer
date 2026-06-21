@@ -21,7 +21,7 @@ import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 /** Per-node timeout: generous for Gemini Nano's constrained-output path (20-60 s typical). */
 const NODE_TIMEOUT_MS = 30_000;
@@ -33,6 +33,13 @@ const RETRY_BUDGET = 2;
 export class ExtractQueryNode extends ScalarNode<ArchivistState, 'success' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'extract-query';
   readonly outputs = ['success', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'success' | 'retry' | 'salvage', SchemaObjectType> {
+    return {
+      'success': { 'type': 'object' },
+      'retry':   { 'type': 'object' },
+      'salvage': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const controller = new AbortController();

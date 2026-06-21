@@ -20,11 +20,18 @@ import type { CartographerServices } from '../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region aggregate-event-node
 export class AggregateEventNode extends ScalarNode<CartographerState, 'done', CartographerServices> {
   readonly 'name' = 'aggregate-event';
   readonly 'outputs' = ['done'] as const;
+
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return {
+      'done': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'done'>> {
     const norm = state.normalized;

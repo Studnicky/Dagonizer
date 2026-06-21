@@ -107,7 +107,16 @@ export class DAGValidator {
     nodeNames: Set<string>,
     errors: string[],
   ): void {
-    if (!dags.has(placement.dag)) {
+    // Exactly one of `dag` (build-time literal) or `dagFrom` (runtime path) must be set.
+    if (placement.dag !== undefined && placement.dagFrom !== undefined) {
+      errors.push(`EmbeddedDAGNode '${placement.name}': requires exactly one of dag or dagFrom, not both`);
+    } else if (placement.dag === undefined && placement.dagFrom === undefined) {
+      errors.push(`EmbeddedDAGNode '${placement.name}': requires exactly one of dag or dagFrom`);
+    }
+
+    // `dag` is the build-time literal name; validate it against the registry.
+    // `dagFrom` resolves at runtime from state — no static validation is possible.
+    if (placement.dag !== undefined && !dags.has(placement.dag)) {
       errors.push(`EmbeddedDAGNode '${placement.name}': unknown registered DAG '${placement.dag}'`);
     }
 
@@ -137,11 +146,12 @@ export class DAGValidator {
       if (!nodes.has(scatter.body.node)) {
         errors.push(`ScatterNode '${scatter.name}': unknown registered node '${scatter.body.node}'`);
       }
-    } else {
+    } else if ('dag' in scatter.body) {
       if (!dags.has(scatter.body.dag)) {
         errors.push(`ScatterNode '${scatter.name}': unknown registered DAG '${scatter.body.dag}'`);
       }
     }
+    // 'dagFrom' bodies reference a runtime-resolved DAG name; not validated at registration time.
 
     const gather = scatter.gather;
     if (gather.strategy === 'custom' && gather.customNode !== undefined && !nodes.has(gather.customNode)) {

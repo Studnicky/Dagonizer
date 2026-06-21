@@ -19,7 +19,6 @@ import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeOutputType } from '../entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-
 import { MonadicNode } from './MonadicNode.js';
 
 export abstract class ScalarNode<
@@ -39,7 +38,9 @@ export abstract class ScalarNode<
   /**
    * Iterates items in order, calls `executeOne` for each, forwards errors via
    * `state.collectError`, groups items by the returned output port, and returns
-   * a `RoutedBatchType`.
+   * a `RoutedBatchType`. Output-schema validation is applied at the engine
+   * dispatch funnel (`OutputContractApplier.applyToRouted`) after this method
+   * returns, covering both `ScalarNode` and `MonadicNode` subclasses uniformly.
    */
   override async execute(
     batch: Batch<TState>,
@@ -49,8 +50,6 @@ export abstract class ScalarNode<
 
     for (const item of batch) {
       const result = await this.executeOne(item.state, context);
-      // Forward errors to state — identical to the legacy engine path:
-      // `for (const err of result.errors) state.collectError(err);`
       for (const err of result.errors) {
         item.state.collectError(err);
       }

@@ -10,7 +10,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { NodeContextType} from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import { MemoryStore } from '@studnicky/dagonizer/store';
 import type { StoreInterface } from '@studnicky/dagonizer/contracts';
 
@@ -31,6 +31,9 @@ export interface Services {
 export class StepANode extends ScalarNode<NodeStateBase, 'done', Services> {
   readonly name = 'step-a';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(_state: NodeStateBase, context: NodeContextType<Services>) {
     await context.services.log.update<string>('entries', (current) => {
@@ -44,6 +47,9 @@ export class StepANode extends ScalarNode<NodeStateBase, 'done', Services> {
 export class StepBNode extends ScalarNode<NodeStateBase, 'done', Services> {
   readonly name = 'step-b';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(_state: NodeStateBase, context: NodeContextType<Services>) {
     await context.services.log.update<string>('entries', (current) => {
@@ -57,6 +63,9 @@ export class StepBNode extends ScalarNode<NodeStateBase, 'done', Services> {
 export class ChildStepNode extends ScalarNode<NodeStateBase, 'done', Services> {
   readonly name = 'child-step';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(_state: NodeStateBase, context: NodeContextType<Services>) {
     await context.services.log.update<string>('entries', (current) => {
@@ -182,6 +191,9 @@ interface AppServices {
 export class DbFetchNode extends ScalarNode<NodeStateBase, 'success' | 'error', AppServices> {
   readonly name    = 'db-fetch';
   readonly outputs = ['success', 'error'] as const;
+  override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
+    return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
+  }
 
   protected override async executeOne(_state: NodeStateBase, context: NodeContextType<AppServices>): Promise<ReturnType<typeof NodeOutputBuilder.of<'success' | 'error'>>> {
     context.services.logger.info('fetch start');

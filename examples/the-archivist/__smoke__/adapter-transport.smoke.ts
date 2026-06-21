@@ -28,13 +28,34 @@ interface CapturedRequest {
   readonly body: Record<string, unknown>;
 }
 
+interface OpenAiToolEntry {
+  readonly type: string;
+  readonly function: { readonly name: string };
+}
+
+/** Returns true when `value` is an array of objects with `type` string and `function.name` string. */
+class SmokeAssert {
+  static isOpenAiToolEntry(entry: unknown): entry is OpenAiToolEntry {
+    if (entry === null || typeof entry !== 'object') return false;
+    if (!('type' in entry) || typeof (entry as { type: unknown }).type !== 'string') return false;
+    if (!('function' in entry)) return false;
+    const fn: unknown = (entry as { function: unknown }).function;
+    if (fn === null || typeof fn !== 'object') return false;
+    return 'name' in fn && typeof (fn as { name: unknown }).name === 'string';
+  }
+
+  static isOpenAiToolArray(value: unknown): value is readonly OpenAiToolEntry[] {
+    return Array.isArray(value) && value.every((entry) => SmokeAssert.isOpenAiToolEntry(entry));
+  }
+}
+
 /** Smoke test runner: fetch interception and named check execution. */
 class SmokeRunner {
   static captureNextFetch(response: unknown): Promise<CapturedRequest> {
     return new Promise((resolveCaptured) => {
       const original = globalThis.fetch;
-      globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
-        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as { url: string }).url;
+      const stub: typeof fetch = async (input, init) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
         const headers: Record<string, string> = {};
         const rawHeaders = init?.headers ?? {};
         if (rawHeaders instanceof Headers) {
@@ -44,14 +65,16 @@ class SmokeRunner {
         } else {
           for (const [k, v] of Object.entries(rawHeaders)) headers[k.toLowerCase()] = String(v);
         }
-        const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+        // JSON.parse returns `any`; the explicit type annotation binds it to the CapturedRequest shape.
+        const body: Record<string, unknown> = JSON.parse(String(init?.body ?? '{}'));
         globalThis.fetch = original;
         resolveCaptured({ url, headers, body });
         return new Response(JSON.stringify(response), {
           'status': 200,
           'headers': { 'content-type': 'application/json' },
         });
-      }) as typeof fetch;
+      };
+      globalThis.fetch = stub;
     });
   }
 
@@ -102,9 +125,10 @@ await SmokeRunner.check('Groq: POSTs to api.groq.com with max_completion_tokens 
   assert.equal(c.headers['authorization'], 'Bearer sk-test');
   assert.ok('max_completion_tokens' in c.body, 'must use max_completion_tokens, not max_tokens');
   assert.ok(!('max_tokens' in c.body), 'must NOT send max_tokens');
-  const tools = c.body['tools'] as Array<{ type: string; function: { name: string } }>;
-  assert.equal(tools[0]?.type, 'function');
-  assert.equal(tools[0]?.function.name, 'web_search_books');
+  const rawGroqTools = c.body['tools'];
+  if (!SmokeAssert.isOpenAiToolArray(rawGroqTools)) throw new Error('tools must be an OpenAI-shape tool array');
+  assert.equal(rawGroqTools[0]?.type, 'function');
+  assert.equal(rawGroqTools[0]?.function.name, 'web_search_books');
   assert.equal(c.body['tool_choice'], 'auto');
 });
 
@@ -126,8 +150,9 @@ await SmokeRunner.check('Mistral: POSTs to api.mistral.ai with max_tokens and Op
   const c = await captured;
   assert.equal(c.url, 'https://api.mistral.ai/v1/chat/completions');
   assert.ok('max_tokens' in c.body, 'Mistral uses max_tokens (not max_completion_tokens)');
-  const tools = c.body['tools'] as Array<{ type: string; function: { name: string } }>;
-  assert.equal(tools[0]?.type, 'function');
+  const rawMistralTools = c.body['tools'];
+  if (!SmokeAssert.isOpenAiToolArray(rawMistralTools)) throw new Error('tools must be an OpenAI-shape tool array');
+  assert.equal(rawMistralTools[0]?.type, 'function');
 });
 
 await SmokeRunner.check('OpenRouter: POSTs with HTTP-Referer + X-Title headers and OpenAI tools', async () => {

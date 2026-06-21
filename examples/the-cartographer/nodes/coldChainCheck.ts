@@ -15,11 +15,18 @@ import { ColdChain } from '../services.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region cold-chain-check-node
 export class ColdChainCheckNode extends ScalarNode<CartographerState, 'checked', CartographerServices> {
   readonly 'name' = 'cold-chain-check';
   readonly 'outputs' = ['checked'] as const;
+
+  override get outputSchema(): Record<'checked', SchemaObjectType> {
+    return {
+      'checked': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'checked'>> {
     const v = state.canonicalVariant;

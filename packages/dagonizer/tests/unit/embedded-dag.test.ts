@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -11,6 +12,7 @@ import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ── Deep-nesting fixtures ───────────────────────────────────────────────────
@@ -32,6 +34,12 @@ class IncNode extends ScalarNode<CounterState, string> {
     this.name = name;
     this.outputs = outputs;
     this.delta = delta;
+  }
+
+  override get outputSchema(): Record<string, SchemaObjectType> {
+    const schema: Record<string, SchemaObjectType> = {};
+    for (const port of this.outputs) schema[port] = { 'type': 'object' };
+    return schema;
   }
 
   protected async executeOne(
@@ -68,15 +76,6 @@ const embedNode = (dag: string, name: string, childDag: string): DAGType['nodes'
   'outputs': { 'success': 'end', 'error': 'end' },
 });
 
-const makeDAG = (name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType => ({
-  '@context': DAG_CONTEXT,
-  '@id':      `urn:noocodex:dag:${name}`,
-  '@type':    'DAG',
-  name,
-  'version':  '1',
-  entrypoint,
-  nodes,
-});
 
 const terminalNode = (dag: string): DAGType['nodes'][number] => ({
   '@id':     `urn:noocodex:dag:${dag}/node/end`,
@@ -86,21 +85,21 @@ const terminalNode = (dag: string): DAGType['nodes'][number] => ({
 });
 
 // core ← inner ← mid ← outer  (three levels of embedding: nested in nested in nested)
-const coreDAG  = makeDAG('deep-core',  'inc-core',  [
+const coreDAG  = TestDag.of('deep-core',  'inc-core',  [
   singleNode('deep-core', 'inc-core', { 'success': 'end' }),
   terminalNode('deep-core'),
 ]);
-const innerDAG = makeDAG('deep-inner', 'inc-inner', [
+const innerDAG = TestDag.of('deep-inner', 'inc-inner', [
   singleNode('deep-inner', 'inc-inner', { 'success': 'embed-core' }),
   embedNode('deep-inner', 'embed-core', 'deep-core'),
   terminalNode('deep-inner'),
 ]);
-const midDAG = makeDAG('deep-mid', 'inc-mid', [
+const midDAG = TestDag.of('deep-mid', 'inc-mid', [
   singleNode('deep-mid', 'inc-mid', { 'success': 'embed-inner' }),
   embedNode('deep-mid', 'embed-inner', 'deep-inner'),
   terminalNode('deep-mid'),
 ]);
-const outerDAG = makeDAG('deep-outer', 'inc-outer', [
+const outerDAG = TestDag.of('deep-outer', 'inc-outer', [
   singleNode('deep-outer', 'inc-outer', { 'success': 'embed-mid' }),
   embedNode('deep-outer', 'embed-mid', 'deep-mid'),
   terminalNode('deep-outer'),
@@ -151,11 +150,11 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
     dispatcher.registerNode(incNode('na', 1));
 
     // a (standalone) ← b embeds a. Acyclic.
-    dispatcher.registerDAG(makeDAG('cyc-a', 'na', [
+    dispatcher.registerDAG(TestDag.of('cyc-a', 'na', [
       singleNode('cyc-a', 'na', { 'success': 'end' }),
       terminalNode('cyc-a'),
     ]));
-    dispatcher.registerDAG(makeDAG('cyc-b', 'embed-a', [
+    dispatcher.registerDAG(TestDag.of('cyc-b', 'embed-a', [
       embedNode('cyc-b', 'embed-a', 'cyc-a'),
       terminalNode('cyc-b'),
     ]));
@@ -167,7 +166,7 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
     // registration. The registry is append-only, so this re-registration is
     // refused with 'already registered' before any cyclic state can install —
     // a cross-variant cycle is structurally unconstructable through the registry.
-    const cyclicA = makeDAG('cyc-a', 'fork-b', [{
+    const cyclicA = TestDag.of('cyc-a', 'fork-b', [{
       '@id':    'urn:noocodex:dag:cyc-a/node/fork-b',
       '@type':  'ScatterNode',
       'name':   'fork-b',
@@ -207,27 +206,6 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
     this.nodeEndNames.push(nodeName);
   }
 }
-
-class MakeNode extends ScalarNode<NodeStateBase, string> {
-  readonly name: string;
-  readonly outputs: readonly string[];
-
-  constructor(name: string, outputs: readonly string[]) {
-    super();
-    this.name = name;
-    this.outputs = outputs;
-  }
-
-  protected async executeOne(
-    _state: NodeStateBase,
-    _ctx: NodeContextType,
-  ): Promise<NodeOutputType<string>> {
-    return { 'errors': [], 'output': this.outputs[0] as string };
-  }
-}
-
-const makeNode = (name: string, outputs: readonly string[]): MakeNode =>
-  new MakeNode(name, outputs);
 
 // Child DAG (two nodes: start → finish).
 const childDAG: DAGType = {
@@ -292,10 +270,10 @@ const parentDAG: DAGType = {
 
 // Register the shared lifecycle node set + both DAGs on a fresh dispatcher.
 const registerLifecycleFixtures = (dispatcher: CountingDagonizer<NodeStateBase>): void => {
-  dispatcher.registerNode(makeNode('child-start',  ['done']));
-  dispatcher.registerNode(makeNode('child-finish', ['done']));
-  dispatcher.registerNode(makeNode('parent-entry', ['next']));
-  dispatcher.registerNode(makeNode('parent-end',   ['done']));
+  dispatcher.registerNode(TestNode.make('child-start',  ['done']));
+  dispatcher.registerNode(TestNode.make('child-finish', ['done']));
+  dispatcher.registerNode(TestNode.make('parent-entry', ['next']));
+  dispatcher.registerNode(TestNode.make('parent-end',   ['done']));
   dispatcher.registerDAG(childDAG);
   dispatcher.registerDAG(parentDAG);
 };
@@ -374,6 +352,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
 class PassNode extends ScalarNode<NodeStateBase, 'ok'> {
   readonly name = 'pass';
   readonly outputs = ['ok'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'ok': { 'type': 'object' } }; }
   protected async executeOne(): Promise<NodeOutputType<'ok'>> { return { 'errors': [], 'output': 'ok' as const }; }
 }
 

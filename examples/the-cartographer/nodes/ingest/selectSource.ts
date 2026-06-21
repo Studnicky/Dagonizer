@@ -19,11 +19,20 @@ import type { SourcePayload } from '../../entities/SourcePayload.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region select-source-node
 export class SelectSourceNode extends ScalarNode<CartographerState, 'compressed' | 'plain' | 'invalid', CartographerServices> {
   readonly 'name' = 'select-source';
   readonly 'outputs' = ['compressed', 'plain', 'invalid'] as const;
+
+  override get outputSchema(): Record<'compressed' | 'plain' | 'invalid', SchemaObjectType> {
+    return {
+      'compressed': { 'type': 'object' },
+      'plain':      { 'type': 'object' },
+      'invalid':    { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'compressed' | 'plain' | 'invalid'>> {
     const item = state.getMetadata<SourcePayload>('source');

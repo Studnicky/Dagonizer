@@ -13,7 +13,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -25,6 +25,13 @@ const RETRY_BUDGET = 3;
 export class ComposeMemoryResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'compose-memory-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'drafted' | 'retry' | 'salvage', SchemaObjectType> {
+    return {
+      'drafted': { 'type': 'object' },
+      'retry':   { 'type': 'object' },
+      'salvage': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const recalledSummary = state.recalledContext.summary.length > 0

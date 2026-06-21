@@ -14,7 +14,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -30,6 +30,9 @@ const MAX_NAIVE_TERMS = 6;
 export class ExtractQuerySalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
   readonly name = 'extract-query-salvage';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     state.terms = state.query
@@ -49,6 +52,9 @@ export class ExtractQuerySalvageNode extends ScalarNode<ArchivistState, 'done', 
 export class DecideToolsSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
   readonly name = 'decide-tools-salvage';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
@@ -64,6 +70,9 @@ export class DecideToolsSalvageNode extends ScalarNode<ArchivistState, 'done', A
 export class ClassifyIntentSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
   readonly name = 'classify-intent-salvage';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     state.intent = 'search';
@@ -79,6 +88,9 @@ export class ClassifyIntentSalvageNode extends ScalarNode<ArchivistState, 'done'
 export class RankCandidatesSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
   readonly name = 'rank-candidates-salvage';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(_state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     return NodeOutputBuilder.of('done');
@@ -97,6 +109,9 @@ const COMPOSE_SALVAGE_DRAFT =
 export class ComposeResponseSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
   readonly name = 'compose-salvage';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     state.draft = COMPOSE_SALVAGE_DRAFT;
@@ -116,6 +131,9 @@ const EMPTY_SALVAGE_DRAFT =
 export class ComposeEmptyResponseSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
   readonly name = 'compose-empty-salvage';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     state.draft = EMPTY_SALVAGE_DRAFT;
@@ -134,6 +152,9 @@ const MEMORY_SALVAGE_DRAFT =
 export class ComposeMemoryResponseSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
   readonly name = 'compose-memory-salvage';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     state.draft = MEMORY_SALVAGE_DRAFT;

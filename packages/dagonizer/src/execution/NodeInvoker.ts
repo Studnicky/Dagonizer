@@ -7,13 +7,13 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * gather invoker is a named class with a stable shape rather than an inline
  * object literal that captures the dispatcher in a closure.
  */
-export interface NodeInvokerSourceInterface<TState extends NodeStateInterface> {
+export interface NodeInvokerSourceInterface {
   /**
    * Run the named registered node over `state` as a size-1 batch. Throws
    * `DAGError` when the node is not registered. No-op when the lookup races to
    * `undefined` after the existence check.
    */
-  invokeRegisteredNode(nodeName: string, state: TState, dagName: string, signal: AbortSignal | null): Promise<void>;
+  invokeRegisteredNode(nodeName: string, state: NodeStateInterface, dagName: string, signal: AbortSignal | null): Promise<void>;
 }
 
 /**
@@ -25,15 +25,15 @@ export interface NodeInvokerSourceInterface<TState extends NodeStateInterface> {
  * forwarding method delegates to `Dagonizer.invokeRegisteredNode`, where the
  * private registry and node-on-state machinery are in scope.
  */
-export class NodeInvoker<TState extends NodeStateInterface> implements NodeInvokerInterface {
-  readonly #source: NodeInvokerSourceInterface<TState>;
-  readonly #state: TState;
+export class NodeInvoker implements NodeInvokerInterface {
+  readonly #source: NodeInvokerSourceInterface;
+  readonly #state: NodeStateInterface;
   readonly #dagName: string;
   readonly #signal: AbortSignal | null;
 
   constructor(
-    source: NodeInvokerSourceInterface<TState>,
-    state: TState,
+    source: NodeInvokerSourceInterface,
+    state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal | null,
   ) {

@@ -142,7 +142,8 @@ export class PlacementUtils {
    * pass here.
    */
   private static isPlacementEntry(node: object): node is PlacementEntryType {
-    const type = (node as Record<string, unknown>)['@type'];
+    if (!('@type' in node)) return false;
+    const type = (node as { '@type': unknown })['@type'];
     return typeof type === 'string' && PlacementUtils.PLACEMENT_TYPES.has(type);
   }
 
@@ -155,7 +156,7 @@ export class PlacementUtils {
    *   - `ScatterNode` with dag body → `placement.body.dag`
    */
   static embeddedDagName(placement: PlacementEntryType): string | null {
-    if (placement['@type'] === 'EmbeddedDAGNode') return placement.dag;
+    if (placement['@type'] === 'EmbeddedDAGNode') return placement.dag ?? null;
     if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) return placement.body.dag;
     return null;
   }

@@ -1,9 +1,11 @@
 /**
  * DagTask: engine-side task object implementing `DagTaskInterface`.
  *
- * Carries the live seeded child clone so the in-process path can execute
- * against it directly. Isolating containers call `toRequest()` to snapshot
- * the clone into a wire-safe `ExecutionRequest`.
+ * Carries the live seeded child clone (`state: NodeStateInterface`) so the
+ * in-process path can execute against it directly. Isolating containers call
+ * `toRequest()` to snapshot the clone into a wire-safe `ExecutionRequest`.
+ *
+ * `TServices` parameterises the services bag on the composed `NodeContext`.
  *
  * Constructor args are required positional in declaration order (V8 shape
  * stability). All fields are readonly and initialized in the constructor.
@@ -17,15 +19,14 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 
 export type { DagTaskInterface };
 
-export class DagTask<
-  TState extends NodeStateInterface = NodeStateInterface,
-  TServices = undefined,
-> implements DagTaskInterface<TState, TServices> {
+export class DagTask<TServices = undefined>
+  implements DagTaskInterface<TServices>
+{
   readonly dagName: string;
   readonly placementPath: string[];
   readonly correlationId: string;
   readonly timeout: Timeout;
-  readonly state: TState;
+  readonly state: NodeStateInterface;
   readonly context: NodeContextType<TServices>;
 
   constructor(
@@ -33,7 +34,7 @@ export class DagTask<
     placementPath: readonly string[],
     correlationId: string,
     timeout: Timeout,
-    state: TState,
+    state: NodeStateInterface,
     context: NodeContextType<TServices>,
   ) {
     this.dagName = dagName;

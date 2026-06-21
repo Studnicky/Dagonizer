@@ -1,11 +1,14 @@
 import { WorkSetCheckpoint } from '../checkpoint/WorkSetCheckpoint.js';
+import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 import type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
-import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
+import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import { PlacementRank } from '../core/PlacementRank.js';
 import { WorkSet } from '../core/WorkSet.js';
 import { Batch } from '../entities/batch/Batch.js';
+import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
@@ -24,6 +27,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 import { SignalComposer } from '../runtime/SignalComposer.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
 
+import { OutputContractApplier } from './OutputContractApplier.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './ScatterDispatch.js';
 
 /**
@@ -37,49 +41,55 @@ import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './Sca
  * stays the orchestration layer that wires this source and owns the protected
  * observability hooks the relay forwarders fan into.
  */
-export interface NodeSchedulerSourceInterface<TState extends NodeStateInterface, TServices> {
+export interface NodeSchedulerSourceInterface<TServices> {
   /** Registered DAGs keyed by name. */
   readonly dags: ReadonlyMap<string, DAGType>;
-  /** Registered nodes keyed by name. */
-  readonly nodes: ReadonlyMap<string, NodeInterface<TState, string, TServices>>;
+  /** Registered nodes keyed by name. Typed at the base so heterogeneous child-node states store without casts. */
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
   /** Placement index keyed by `${dagName}:${placementName}`. */
   readonly nodeIndex: ReadonlyMap<string, DAGNodeType>;
   /** Child-state cloning + output mapping for the in-process embedded-DAG path. */
-  readonly stateMapper: StateMapper<TState>;
+  readonly stateMapper: StateMapper;
+  /** Per-DAG child-state factories keyed by DAG name. Used to spawn isolated child state. */
+  readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   /** Egress channels keyed by terminal placement name. */
   readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
   /** Registry version stamped into every `DAGHandoff` envelope. */
   readonly registryVersion: string;
+  /** State path accessor — used to resolve `dagFrom` paths on `EmbeddedDAGNode` at execution time. */
+  readonly accessor: StateAccessorInterface;
+  /** Output-schema validator injected when validateOutputs is true; null otherwise. */
+  readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
 
   /** Relay a flow-start event into the dispatcher's `onFlowStart` hook. */
-  relayFlowStart(dagName: string, state: TState): void;
+  relayFlowStart(dagName: string, state: NodeStateInterface): void;
   /** Relay a flow-end event into the dispatcher's `onFlowEnd` hook. */
-  relayFlowEnd(dagName: string, state: TState, result: ExecutionResultType<TState>): void;
+  relayFlowEnd(dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>): void;
   /** Relay a node-start event into the dispatcher's `onNodeStart` hook. */
-  relayNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void;
+  relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
   /** Relay a node-end event into the dispatcher's `onNodeEnd` hook. */
-  relayNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void;
+  relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void;
   /** Relay an error event into the dispatcher's `onError` hook. */
-  relayError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void;
+  relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void;
   /** Relay a phase-enter event into the dispatcher's `onPhaseEnter` hook. */
-  relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
+  relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
   /** Relay a phase-exit event into the dispatcher's `onPhaseExit` hook. */
-  relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
+  relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
 
   /** Dispatch a composite (`ScatterNode` / `EmbeddedDAGNode`) placement for one item. */
   executeDAGNode(
     entry: DAGNodeType,
-    state: TState,
+    state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal | null,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
-  ): Promise<RunNodeResultType<TState>>;
+  ): Promise<RunNodeResultType>;
   /** Resolve a bound container by role, or `null` to run the body in-process. */
-  resolveContainer(role: string | undefined): DagContainerInterface<TState> | null;
+  resolveContainer(role: string | undefined): DagContainerInterface | null;
   /** Wrap a node execute call with its per-node timeout budget. */
   withNodeTimeout<TResult>(
-    node: NodeInterface<TState, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string, TServices>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
@@ -104,10 +114,10 @@ export interface NodeSchedulerSourceInterface<TState extends NodeStateInterface,
  * embedded re-entry recurses into `this.run` so the same generator drives every
  * nesting level.
  */
-export class NodeScheduler<TState extends NodeStateInterface, TServices> {
-  readonly #source: NodeSchedulerSourceInterface<TState, TServices>;
+export class NodeScheduler<TServices> {
+  readonly #source: NodeSchedulerSourceInterface<TServices>;
 
-  constructor(source: NodeSchedulerSourceInterface<TState, TServices>) {
+  constructor(source: NodeSchedulerSourceInterface<TServices>) {
     this.#source = source;
   }
 
@@ -123,15 +133,15 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
    * `resume()` call). Node hooks (`onNodeStart`, `onNodeEnd`, `onError`) still
    * fire for every child node.
    */
-  async *run(
+  async *run<TReturn extends NodeStateInterface = NodeStateInterface>(
     dagName: string,
-    state: TState,
+    state: TReturn,
     fromStage: string | null,
     options: ExecuteOptionsType,
     runOptions: RunOptionsType = { 'embedded': false },
     placementPath: readonly string[] = [],
-    batch: RunNodesBatchType<TState> = {},
-  ): AsyncGenerator<NodeResultType<TState>, ExecutionResultType<TState>, void> {
+    batch: RunNodesBatchType = {},
+  ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TReturn>, void> {
     const { inputBatch, terminalByItemId } = batch;
     const dag = this.#source.dags.get(dagName);
 
@@ -144,7 +154,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
       if (!runOptions.embedded) {
         try { state.markFailed(error); } catch { /* state may already be terminal */ }
       }
-      const result: ExecutionResultType<TState> = {
+      const result: ExecutionResultType<TReturn> = {
         'cursor': null, 'executedNodes': [], 'skippedNodes': [], state, 'terminalOutcome': null,
         'interruptedAt': null,
       };
@@ -218,13 +228,15 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
       const rankMap = PlacementRank.compute(dag);
       const declIndex = new Map<string, number>();
       for (let i = 0; i < dag.nodes.length; i++) {
-        declIndex.set((dag.nodes[i] as DAGNodeType).name, i);
+        const placement = dag.nodes[i];
+        if (placement === undefined) continue;
+        declIndex.set(placement.name, i);
       }
 
       const rankOf = (name: string): number => rankMap.get(name) ?? Number.MAX_SAFE_INTEGER;
       const declIndexOf = (name: string): number => declIndex.get(name) ?? Number.MAX_SAFE_INTEGER;
 
-      const pending = new WorkSet<TState>();
+      const pending = new WorkSet<NodeStateInterface>();
 
       // Resume: when fromStage is provided and this is a top-level run, check
       // for a persisted work-set blob. If present, rebuild `pending` from it so
@@ -241,7 +253,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
           // but `applySnapshot` resets metadata and repopulates from the item
           // snapshot, so reconstructed item states do not carry the parent blob.
           for (const entry of workSetBlob.entries) {
-            const items: Array<{ 'id': string; 'state': TState }> = [];
+            const items: Array<{ 'id': string; 'state': NodeStateInterface }> = [];
             for (const workItem of entry.items) {
               const itemState = state.clone();
               // workItem.snapshot is typed as `{}` by json-schema-to-ts for
@@ -274,7 +286,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
       // reaching terminal nodes are processed before outcome is determined.
       // For size-1 batches this is a map with exactly one entry of size 1,
       // and the behaviour is byte-identical to the prior break-on-first path.
-      const terminalAccumulator = new Map<string, { 'outcome': 'completed' | 'failed'; 'batch': Batch<TState> }>();
+      const terminalAccumulator = new Map<string, { 'outcome': 'completed' | 'failed'; 'batch': Batch<NodeStateInterface> }>();
 
       // Work-set scheduling loop.
       // For size-1 input: exactly one placement holds exactly one item at all
@@ -311,7 +323,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
           // (multi-item or a cloned item state), write the blob.
           if (!runOptions.embedded) {
             let totalItems = 0;
-            let canonicalState: TState | undefined;
+            let canonicalState: NodeStateInterface | undefined;
             for (const [, batch] of pending.entries()) {
               for (const item of batch) {
                 totalItems++;
@@ -340,8 +352,9 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
           return result;
         }
 
-        // Take the batch pending at this placement.
-        const batch = pending.take(currentPlacementName) as Batch<TState>;
+        // Take the batch pending at this placement. nextReady returned this
+        // name from the live #entries map, so takeExpected() is safe here.
+        const batch = pending.takeExpected(currentPlacementName);
 
         const node = this.#source.nodeIndex.get(`${dagName}:${currentPlacementName}`);
 
@@ -374,7 +387,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
             terminalAccumulator.set(terminal.name, { 'outcome': terminal.outcome, 'batch': batch });
           } else {
             // Same terminal reached by items in separate work-set turns; merge.
-            const merged: Array<{ 'id': string; 'state': TState }> = [];
+            const merged: Array<{ 'id': string; 'state': NodeStateInterface }> = [];
             for (const item of existing.batch) merged.push({ 'id': item.id, 'state': item.state });
             for (const item of batch) merged.push({ 'id': item.id, 'state': item.state });
             terminalAccumulator.set(terminal.name, { 'outcome': terminal.outcome, 'batch': Batch.from(merged) });
@@ -387,7 +400,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
             }
           }
           executedNodes.push(terminal.name);
-          const terminalResult: NodeResultType<TState> = {
+          const terminalResult: NodeResultType<NodeStateInterface> = {
             'output': terminal.outcome,
             'skipped': false,
             'nodeName': terminal.name,
@@ -399,11 +412,17 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
           continue scheduleLoop;
         }
 
-        // SingleNode: batch-native path.
+        // SingleNode: batch-native path. Three named lifecycle stages run in
+        // strict order — fire (execute the node) → validate (apply the
+        // output-schema contract) → route (push each port's sub-batch into
+        // pending). Validation is a dedicated stage between fire and route, never
+        // folded into execute; it is a no-op when the toggle is off.
         if (Placement.isSingle(node)) {
-          let nodeResult: NodeResultType<TState>;
+          let nodeResult: NodeResultType<NodeStateInterface>;
           try {
-            nodeResult = await this.#fireSinglePlacement(node, batch, dagName, signal, pending);
+            const fired = await this.#fireSinglePlacement(node, batch, dagName, signal);
+            const validated = this.#validateOutputContract(fired.dagNode, fired.routed);
+            nodeResult = this.#routeToPending(node, fired.dagNode, validated, batch, pending);
           } catch (caughtError) {
             const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
             this.#source.relayError(currentPlacementName, error, repState, placementPath);
@@ -445,11 +464,35 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
           const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(node);
           const innerPath: readonly string[] = [...placementPath, node.name];
 
-          // Build child batch: one clone per parent item, seeded via inputMapping.
           const parentItems = [...batch];
-          const childItems: Array<{ 'id': string; 'state': TState }> = [];
+
+          // Resolve the child dag name. `dag` is a build-time literal; `dagFrom`
+          // is resolved from the representative state at execution time. A null
+          // result means the path did not resolve to a string; an unregistered
+          // name means dagFrom resolved to a string not in the registry.
+          // Both cases route all items to their error outputs without executing.
+          const childDagName = EmbeddedDAGNodeDefaults.resolveDagName(node, repState, this.#source.accessor);
+          if (childDagName === null || !this.#source.dags.has(childDagName)) {
+            for (const item of parentItems) {
+              const routeOutput = 'error';
+              const nextPlacement = node.outputs[routeOutput] ?? null;
+              if (nextPlacement !== null) {
+                pending.add(nextPlacement, Batch.of(item.state, item.id));
+              }
+            }
+            continue scheduleLoop;
+          }
+
+          // Build child batch: one clone per parent item, seeded via inputMapping.
+          // Use the registered isolation factory for this DAG when one is present
+          // (spawnChild returns NodeStateInterface; isolation factory may produce a
+          // different class). cloneChild also returns NodeStateInterface.
+          const childFactory = this.#source.stateFactories.get(childDagName);
+          const childItems: Array<{ 'id': string; 'state': NodeStateInterface }> = [];
           for (const item of parentItems) {
-            const childClone = this.#source.stateMapper.cloneChild(item.state, inputMapping);
+            const childClone: NodeStateInterface = childFactory !== undefined
+              ? this.#source.stateMapper.spawnChild(item.state, inputMapping, childFactory)
+              : this.#source.stateMapper.cloneChild(item.state, inputMapping);
             childItems.push({ 'id': item.id, 'state': childClone });
           }
           const childBatch = Batch.from(childItems);
@@ -463,8 +506,9 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
           // required by the run signature; the actual items are in childBatch.
           const childRepState = repState.clone();
           const childOptions: ExecuteOptionsType = { ...(signal !== null && { 'signal': signal }) };
-          const intermediateResults: Array<NodeResultType<TState>> = [];
-          const iter = this.run(node.dag, childRepState, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': childBatch, 'terminalByItemId': childTerminalByItemId });
+          const intermediateResults: Array<NodeResultType<NodeStateInterface>> = [];
+
+          const iter = this.run(childDagName, childRepState, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': childBatch, 'terminalByItemId': childTerminalByItemId });
 
           // Collect inner intermediates when streaming (top-level only); at nested
           // or composite scale, drain without buffering to avoid O(N*M*L) heap.
@@ -555,7 +599,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
         // iteration; the sub-walk / scatter machinery is reused unchanged). For
         // a size-1 batch this is byte-identical to the prior single dispatch:
         // one item, one executeDAGNode call, one route.
-        const composite: Array<{ 'state': TState; 'nextStage': string | null; 'result': NodeResultType<TState> }> = [];
+        const composite: Array<{ 'state': NodeStateInterface; 'nextStage': string | null; 'result': NodeResultType<NodeStateInterface> }> = [];
         for (const item of batch) {
           try {
             // bufferIntermediates: only accumulate inner-node results when
@@ -594,10 +638,19 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
         }
 
         // Stream every item's composite intermediates, in item order, before
-        // the firing's own result.
+        // the firing's own result. The dispatch chain (executeDAGNode → the
+        // NodeStateInterface-typed executors) returns NodeResultType<NodeStateInterface>;
+        // entry.state is NodeStateInterface, so we use it as the state for each
+        // intermediate — the parent state that flowed into executeDAGNode.
         for (const entry of composite) {
           for (const intermediate of entry.result.intermediateResults) {
-            yield intermediate;
+            yield {
+              'output': intermediate.output,
+              'skipped': intermediate.skipped,
+              'nodeName': intermediate.nodeName,
+              'state': entry.state,
+              'intermediateResults': [],
+            };
           }
         }
 
@@ -614,7 +667,13 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
             executedNodes.push(soleResult.nodeName);
           }
           this.#source.relayNodeEnd(node.name, soleResult.output, repState, placementPath);
-          yield soleResult;
+          yield {
+            'output': soleResult.output,
+            'skipped': soleResult.skipped,
+            'nodeName': soleResult.nodeName,
+            'state': repState,
+            'intermediateResults': [],
+          };
         } else {
           executedNodes.push(node.name);
           let repOutput: string | null = composite[0]?.result.output ?? null;
@@ -681,18 +740,18 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
 
   /**
    * Shared result-object constructor. Centralises the
-   * `ExecutionResultType<TState>` shape so every exit branch in `run` returns an
+   * `ExecutionResultType<NodeStateInterface>` shape so every exit branch in `run` returns an
    * identically-shaped object (same key order, same field set), keeping V8
    * hidden classes stable across success and error paths.
    */
-  #composeResult(
+  #composeResult<TReturn extends NodeStateInterface>(
     cursor: string | null,
     executedNodes: string[],
     skippedNodes: string[],
     terminalOutcome: 'completed' | 'failed' | null,
     interruptedAt: InterruptionInfoType | null,
-    state: TState,
-  ): ExecutionResultType<TState> {
+    state: TReturn,
+  ): ExecutionResultType<TReturn> {
     return {
       cursor,
       executedNodes,
@@ -716,8 +775,8 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
   async #runPostPhasesAndFinalize(
     dag: DAGType,
     dagName: string,
-    state: TState,
-    result: ExecutionResultType<TState>,
+    state: NodeStateInterface,
+    result: ExecutionResultType<NodeStateInterface>,
     runOptions: RunOptionsType,
     terminalNodeName: string | null,
     placementPath: readonly string[] = [],
@@ -795,7 +854,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
    */
   async #executePhasePlacement(
     phase: PhaseNodeType,
-    state: TState,
+    state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal | null,
   ): Promise<void> {
@@ -826,8 +885,8 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
    * one route with exactly one item (invariant violation for size-1 dispatch).
    */
   async #runNodeOnState(
-    node: NodeInterface<TState, string, TServices>,
-    state: TState,
+    node: NodeInterface<NodeStateInterface, string, TServices>,
+    state: NodeStateInterface,
     context: NodeContextType<TServices>,
   ): Promise<string> {
     const batch = Batch.of(state);
@@ -853,28 +912,18 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
   /**
    * Fire a SingleNode placement over a batch in the work-set scheduler.
    *
-   * Calls `node.execute(batch, context)` via `withNodeTimeout`, adds each output
-   * port's sub-batch to the downstream node's pending work, and returns a
-   * representative `NodeResultType` for the firing.
+   * Stage 1 — FIRE. Calls `node.execute(batch, context)` via `withNodeTimeout`
+   * and returns the firing node together with its raw `RoutedBatchType`. No
+   * validation and no routing happen here; those are the two stages that follow.
    *
-   * For a size-1 batch: exactly one route is produced with exactly one item, so
-   * `output` equals the single port key and `state` equals the single item.
-   *
-   * For a multi-item batch: items may split across multiple output ports.
-   * `output` is `null` (no single representative output) and `state` is the
-   * representative state (`batch.row(0).state`). Each sub-batch is added to the
-   * work set for downstream placement processing.
-   *
-   * Throws `DAGError` when the placement routing map has no entry for a returned
-   * output port.
+   * Throws `DAGError` when the placement names an unregistered node.
    */
   async #fireSinglePlacement(
     nodeConfig: SingleNodePlacementType,
-    batch: Batch<TState>,
+    batch: Batch<NodeStateInterface>,
     dagName: string,
     signal: AbortSignal | null,
-    pending: WorkSet<TState>,
-  ): Promise<NodeResultType<TState>> {
+  ): Promise<{ 'dagNode': NodeInterface<NodeStateInterface, string, TServices>; 'routed': RoutedBatchType<string, NodeStateInterface> }> {
     const dagNode = this.#source.nodes.get(nodeConfig.node);
 
     if (!dagNode) {
@@ -886,6 +935,51 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
       return dagNode.execute(batch, context);
     });
 
+    return { 'dagNode': dagNode, 'routed': routed };
+  }
+
+  /**
+   * Stage 2 — VALIDATE. Applies the node's output-schema contract to the routed
+   * output via `OutputContractApplier`. Covers BOTH ScalarNode and MonadicNode
+   * subclasses uniformly. Zero overhead when `validateOutputs` is off
+   * (`outputSchemaValidator` is null) — returns the routed map unchanged. On a
+   * violation, the offending item is re-routed to `'error'` with a collected
+   * `outputContractViolation` NodeError.
+   */
+  #validateOutputContract(
+    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    routed: RoutedBatchType<string, NodeStateInterface>,
+  ): RoutedBatchType<string, NodeStateInterface> {
+    return OutputContractApplier.applyToRouted(
+      dagNode.name,
+      dagNode.outputSchema,
+      routed,
+      this.#source.outputSchemaValidator,
+    );
+  }
+
+  /**
+   * Stage 3 — ROUTE. Pushes each output port's sub-batch into the downstream
+   * node's pending work and returns a representative `NodeResultType` for the
+   * firing.
+   *
+   * For a size-1 batch: exactly one route is produced with exactly one item, so
+   * `output` equals the single port key and `state` equals the single item.
+   *
+   * For a multi-item batch: items may split across multiple output ports.
+   * `output` is `null` (no single representative output) and `state` is the
+   * representative state (`batch.row(0).state`).
+   *
+   * Throws `DAGError` when the placement routing map has no entry for a returned
+   * output port.
+   */
+  #routeToPending(
+    nodeConfig: SingleNodePlacementType,
+    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    routed: RoutedBatchType<string, NodeStateInterface>,
+    batch: Batch<NodeStateInterface>,
+    pending: WorkSet<NodeStateInterface>,
+  ): NodeResultType<NodeStateInterface> {
     // Add each output port's sub-batch to the downstream node's pending work.
     for (const [outputPort, subBatch] of routed.entries()) {
       const nextPlacement = nodeConfig.outputs[outputPort];
@@ -901,7 +995,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
     // For size-1 batches: exactly one route, one item → single representative output.
     // For multi-item batches: items may split → null representative output.
     const repState = batch.row(0).state;
-    const output = routed.size === 1 ? (routed.keys().next().value as string) : null;
+    const output = routed.size === 1 ? (routed.keys().next().value ?? null) : null;
 
     return {
       output,
@@ -928,7 +1022,7 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
    * `InterruptionInfo.reason` discriminant ('abort' vs 'timeout') so the caller
    * can populate `ExecutionResultType.interruptedAt`.
    */
-  #handleAbort(state: TState, signal: AbortSignal): { 'error': Error; 'reason': 'abort' | 'timeout' } {
+  #handleAbort(state: NodeStateInterface, signal: AbortSignal): { 'error': Error; 'reason': 'abort' | 'timeout' } {
     const reason = signal.reason;
     const isTimeout = reason instanceof Error && reason.name === 'TimeoutError';
     if (isTimeout) {
@@ -944,4 +1038,5 @@ export class NodeScheduler<TState extends NodeStateInterface, TServices> {
       'reason': 'abort',
     };
   }
+
 }

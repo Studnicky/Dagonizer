@@ -11,6 +11,7 @@ import {
   ScalarNode,
 } from '@studnicky/dagonizer';
 import { DAGDocument } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node
@@ -19,6 +20,9 @@ import { DAGDocument } from '@studnicky/dagonizer';
 export class EchoNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'echo';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: NodeStateBase) {
     state.setMetadata('seen', true);

@@ -97,8 +97,10 @@ describe('CartographerState#clone', () => {
       { 'sourceId': 'a', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' },
     ];
     const c = s.clone();
-    (c.sources as unknown[]).push({ 'sourceId': 'b', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' });
-    assert.equal((s.sources as unknown[]).length, 1);
+    assert.ok(Array.isArray(c.sources), 'clone.sources should be an array');
+    assert.ok(Array.isArray(s.sources), 's.sources should be an array');
+    c.sources.push({ 'sourceId': 'b', 'format': 'json', 'compression': 'none', 'mappingKey': 'k', 'eventType': 'position-ping', 'payload': '' });
+    assert.equal(s.sources.length, 1);
   });
 
   it('clone.raw lineItems are a separate array', () => {

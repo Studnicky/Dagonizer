@@ -83,20 +83,27 @@ interface CarrierRate {
   readonly 'handlingHours': number;
 }
 
-interface JurisdictionEntry {
+export interface JurisdictionEntry {
   readonly 'jurisdiction': GeoContext['jurisdiction'];
   readonly 'strictness': GdprResult['strictness'];
   readonly 'baseRetentionDays': number;
 }
-interface JurisdictionTable {
-  readonly 'byCountry': Record<string, JurisdictionEntry>;
-  readonly 'default': JurisdictionEntry;
+
+/** Raw shape as inferred by TypeScript from the JSON import (string not narrowed to union). */
+interface RawJurisdictionEntry {
+  readonly 'jurisdiction': string;
+  readonly 'strictness': string;
+  readonly 'baseRetentionDays': number;
+}
+interface RawJurisdictionTable {
+  readonly 'byCountry': Record<string, RawJurisdictionEntry>;
+  readonly 'default': RawJurisdictionEntry;
 }
 
-const CATALOG = CATALOG_RAW as CatalogEntry[];
-const CARRIER_RATES = CARRIER_RATES_RAW as Record<string, CarrierRate>;
-const FX_TABLE = FX_RATES_RAW as Record<string, number>;
-const JURISDICTION_TABLE = JURISDICTION_TABLE_RAW as JurisdictionTable;
+const CATALOG: ReadonlyArray<CatalogEntry> = CATALOG_RAW satisfies ReadonlyArray<CatalogEntry>;
+const CARRIER_RATES: Record<string, CarrierRate> = CARRIER_RATES_RAW satisfies Record<string, CarrierRate>;
+const FX_TABLE: Record<string, number> = FX_RATES_RAW satisfies Record<string, number>;
+const JURISDICTION_TABLE_RAW_TYPED: RawJurisdictionTable = JURISDICTION_TABLE_RAW satisfies RawJurisdictionTable;
 
 // #region timezone-resolver-service
 /**
@@ -167,8 +174,29 @@ const ISO2_TO_ISO3: Record<string, string> = {
 };
 
 export class Jurisdictions {
+  private static narrowJurisdiction(value: string): GeoContext['jurisdiction'] {
+    return value === 'GDPR' || value === 'UK-GDPR' || value === 'CCPA'
+      || value === 'LGPD' || value === 'APPI' || value === 'baseline'
+      || value === 'international-waters'
+      ? value
+      : 'baseline';
+  }
+
+  private static narrowStrictness(value: string): GdprResult['strictness'] {
+    return value === 'strict' || value === 'moderate' || value === 'light' ? value : 'light';
+  }
+
+  private static parseEntry(raw: RawJurisdictionEntry): JurisdictionEntry {
+    return {
+      'jurisdiction':     Jurisdictions.narrowJurisdiction(raw.jurisdiction),
+      'strictness':       Jurisdictions.narrowStrictness(raw.strictness),
+      'baseRetentionDays': raw.baseRetentionDays,
+    };
+  }
+
   static forCountry(countryIso3: string): JurisdictionEntry {
-    return JURISDICTION_TABLE.byCountry[countryIso3] ?? JURISDICTION_TABLE.default;
+    const raw = JURISDICTION_TABLE_RAW_TYPED.byCountry[countryIso3] ?? JURISDICTION_TABLE_RAW_TYPED.default;
+    return Jurisdictions.parseEntry(raw);
   }
 
   /** Resolve the privacy regime from an ISO-2 country code (the geo API format). */

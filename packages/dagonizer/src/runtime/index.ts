@@ -18,3 +18,8 @@ export type { SchedulerProviderInterface } from '../contracts/SchedulerProviderI
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
 export type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
 export type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+
+// Child-state factory: class with default clone-parent factory constant.
+export { ChildStateFactory } from './ChildStateFactory.js';
+// ChildStateFactoryType lives in contracts/ (single source of truth).
+export type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';

@@ -21,25 +21,35 @@ import { GeoLookupOutcome, type GeoLookupOutcomeType } from '../errors/GeoLookup
 const FREEIPAPI_ENDPOINT = 'https://freeipapi.com/api/json';
 const ERROR_SOURCE = 'ip-geolocate';
 
-interface FreeIpApiResponse {
-  readonly 'countryCode': string;
-  readonly 'countryName': string;
-  readonly 'continent': string;
-  readonly 'regionName': string;
-  readonly 'cityName': string;
-  readonly 'latitude': number;
-  readonly 'longitude': number;
-}
-
 export class LiveIpGeolocator implements IpGeolocator {
   readonly #cache = new Map<string, GeoCandidate>();
 
-  private static str(value: string | undefined): string {
+  private static str(value: unknown): string {
     return typeof value === 'string' ? value : '';
   }
 
-  private static num(value: number | undefined): number {
+  private static num(value: unknown): number {
     return typeof value === 'number' ? value : 0;
+  }
+
+  /** Parse an `unknown` API response body into a `GeoCandidate`, or return `null` when unresolvable. */
+  private static parseBody(body: unknown): GeoCandidate | null {
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) return null;
+    // `body` is narrowed to `object` — use Reflect.get for cast-free property access.
+    const countryCode = LiveIpGeolocator.str(Reflect.get(body, 'countryCode'));
+    if (countryCode.length === 0) return null;
+    return {
+      'modality':    'ip',
+      'resolved':    true,
+      'country':     countryCode,
+      'countryName': LiveIpGeolocator.str(Reflect.get(body, 'countryName')),
+      'continent':   LiveIpGeolocator.str(Reflect.get(body, 'continent')),
+      'region':      LiveIpGeolocator.str(Reflect.get(body, 'regionName')),
+      'locality':    LiveIpGeolocator.str(Reflect.get(body, 'cityName')),
+      'lat':         LiveIpGeolocator.num(Reflect.get(body, 'latitude')),
+      'lng':         LiveIpGeolocator.num(Reflect.get(body, 'longitude')),
+      'water':       false,
+    };
   }
 
   async lookup(ipAddress: string, signal: AbortSignal): Promise<GeoLookupOutcomeType> {
@@ -63,10 +73,8 @@ export class LiveIpGeolocator implements IpGeolocator {
         );
         return GeoLookupOutcome.failed(candidateUnresolved, error);
       }
-      const body = await res.json() as Partial<FreeIpApiResponse>;
-      candidate = (body.countryCode !== undefined && body.countryCode.length > 0)
-        ? LiveIpGeolocator.fromResponse(body as FreeIpApiResponse)
-        : LiveIpGeolocator.unresolved();
+      const rawBody: unknown = await res.json();
+      candidate = LiveIpGeolocator.parseBody(rawBody) ?? LiveIpGeolocator.unresolved();
     } catch (caught) {
       // A network / abort / JSON-parse failure is a real fault: surface it as
       // data. The candidate still degrades to unresolved so the flow continues.
@@ -78,21 +86,6 @@ export class LiveIpGeolocator implements IpGeolocator {
 
     this.#cache.set(ipAddress, candidate);
     return GeoLookupOutcome.resolved(candidate);
-  }
-
-  private static fromResponse(body: FreeIpApiResponse): GeoCandidate {
-    return {
-      'modality':    'ip',
-      'resolved':    true,
-      'country':     LiveIpGeolocator.str(body.countryCode),
-      'countryName': LiveIpGeolocator.str(body.countryName),
-      'continent':   LiveIpGeolocator.str(body.continent),
-      'region':      LiveIpGeolocator.str(body.regionName),
-      'locality':    LiveIpGeolocator.str(body.cityName),
-      'lat':         LiveIpGeolocator.num(body.latitude),
-      'lng':         LiveIpGeolocator.num(body.longitude),
-      'water':       false,
-    };
   }
 
   private static unresolved(): GeoCandidate {

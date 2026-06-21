@@ -61,6 +61,32 @@ function conformanceRegistryUrl(): string {
 }
 
 // ---------------------------------------------------------------------------
+// WorkerListenerGuard: type predicates for addEventListener overload dispatch.
+//
+// Connects the discriminant `type === 'message'/'error'` to the listener's
+// function type, enabling zero-cast overload implementation in FakeWorker and
+// ZombieWorker.
+// ---------------------------------------------------------------------------
+
+class WorkerListenerGuard {
+  private constructor() {}
+
+  static isMessage(
+    type: 'message' | 'error',
+    _listener: ((event: { 'data': unknown }) => void) | ((event: { 'message'?: string }) => void),
+  ): _listener is (event: { 'data': unknown }) => void {
+    return type === 'message';
+  }
+
+  static isError(
+    type: 'message' | 'error',
+    _listener: ((event: { 'data': unknown }) => void) | ((event: { 'message'?: string }) => void),
+  ): _listener is (event: { 'message'?: string }) => void {
+    return type === 'error';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // FakeWorker: in-process WebWorkerLikeInterface
 //
 // Pairs a main-side (WebWorkerLikeInterface) with a worker-side
@@ -95,9 +121,8 @@ class FakeWorker implements WebWorkerLikeInterface {
 
     // Boot the DagHost inside the fake worker immediately.
     // This mirrors what a real worker file does on load.
-    const scope = this.#workerScope as unknown as WorkerScopeLikeInterface;
     void Promise.resolve().then(() => {
-      WebWorkerEntry.start(scope);
+      WebWorkerEntry.start(this.#workerScope);
     });
   }
 
@@ -115,10 +140,10 @@ class FakeWorker implements WebWorkerLikeInterface {
     type: 'message' | 'error',
     listener: ((event: { 'data': unknown }) => void) | ((event: { 'message'?: string }) => void),
   ): void {
-    if (type === 'message') {
-      this.#mainListeners.push(listener as (event: { 'data': unknown }) => void);
-    } else {
-      this.#errorListeners.push(listener as (event: { 'message'?: string }) => void);
+    if (WorkerListenerGuard.isMessage(type, listener)) {
+      this.#mainListeners.push(listener);
+    } else if (WorkerListenerGuard.isError(type, listener)) {
+      this.#errorListeners.push(listener);
     }
   }
 
@@ -150,7 +175,7 @@ class FakeWorker implements WebWorkerLikeInterface {
  * Implements WorkerScopeLikeInterface. Has an additional `deliverFromMain`
  * method that FakeWorker calls to push messages inward.
  */
-class FakeWorkerScope {
+class FakeWorkerScope implements WorkerScopeLikeInterface {
   readonly #postToMain: (message: unknown) => void;
   #listeners: Array<(event: { 'data': unknown }) => void>;
 
@@ -194,18 +219,21 @@ class FakeWebWorkerContainer extends WebWorkerContainer {
 }
 
 // ---------------------------------------------------------------------------
-// buildContainer: factory for per-law FakeWebWorkerContainer
+// ContainerFixture: factory for per-law FakeWebWorkerContainer
 //
 // Creates a fresh container with a FakeWorker pool size of 1.
 // ---------------------------------------------------------------------------
 
-function buildContainer(): FakeWebWorkerContainer {
-  const opts: WebWorkerContainerOptionsType = {
-    'registryModule': conformanceRegistryUrl(),
-    'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-    'poolSize': 1,
-  };
-  return new FakeWebWorkerContainer(opts);
+class ContainerFixture {
+  private constructor() {}
+  static of(): FakeWebWorkerContainer {
+    const opts: WebWorkerContainerOptionsType = {
+      'registryModule': conformanceRegistryUrl(),
+      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+      'poolSize': 1,
+    };
+    return new FakeWebWorkerContainer(opts);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -225,19 +253,19 @@ const harness: DagConformanceHarnessInterface = {
   ): DagonizerInterface<NodeStateInterface, undefined> {
     // Create a fresh per-law container. Ignore the incoming _containers arg —
     // the sentinel harness.container is only a placeholder.
-    const container = buildContainer();
+    const container = ContainerFixture.of();
     perLawContainers.push(container);
-    const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
-    const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
+    const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
+    const dispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
     dispatcher.registerBundle(bundle);
-    return dispatcher as DagonizerInterface<NodeStateInterface, undefined>;
+    return dispatcher;
   },
   'createState'(): ConformanceState {
     return new ConformanceState();
   },
   'containerRole': CONFORMANCE_CONTAINER_ROLE,
   // Sentinel container accessed only by laws that bypass createDispatcher (none currently).
-  'container': buildContainer(),
+  'container': ContainerFixture.of(),
   async teardown(): Promise<void> {
     for (const c of perLawContainers.splice(0)) {
       await c.destroy();
@@ -272,9 +300,9 @@ void describe('WebWorkerContainer pool behavior', () => {
       'poolSize': 2,
     });
 
-    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
-    const containers = { [CONFORMANCE_CONTAINER_ROLE]: container as DagContainerInterface };
-    const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
+    const bundle = ConformanceRegistry.bundle().bundle;
+    const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
+    const dispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
     dispatcher.registerBundle(bundle);
 
     const state1 = new ConformanceState();
@@ -336,11 +364,13 @@ class ZombieWorker implements WebWorkerLikeInterface {
   postMessage(message: unknown): void {
     if (this.#terminated) return;
     // Respond to init with `ready`; silently drop everything else.
-    const msg = message as Record<string, unknown>;
-    if (msg['variant'] === 'init') {
+    // Narrow to object, then use Reflect.get for zero-cast property access.
+    if (typeof message !== 'object' || message === null) { return; }
+    const variant: unknown = Reflect.get(message, 'variant');
+    if (variant === 'init') {
       const readyMsg = {
         'variant': 'ready',
-        'registryVersion': msg['registryVersion'],
+        'registryVersion': Reflect.get(message, 'registryVersion'),
         'capabilities': [],
       };
       setImmediate(() => {
@@ -358,10 +388,10 @@ class ZombieWorker implements WebWorkerLikeInterface {
     type: 'message' | 'error',
     listener: ((event: { 'data': unknown }) => void) | ((event: { 'message'?: string }) => void),
   ): void {
-    if (type === 'message') {
-      this.#mainListeners.push(listener as (event: { 'data': unknown }) => void);
-    } else {
-      this.#errorListeners.push(listener as (event: { 'message'?: string }) => void);
+    if (WorkerListenerGuard.isMessage(type, listener)) {
+      this.#mainListeners.push(listener);
+    } else if (WorkerListenerGuard.isError(type, listener)) {
+      this.#errorListeners.push(listener);
     }
   }
 
@@ -410,12 +440,14 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
     const abortController = new AbortController();
     const context = {
       'signal': abortController.signal,
-      'services': undefined as undefined,
-      'placementPath': [] as readonly string[],
+      'services': undefined,
+      'placementPath': [] as const,
       'dagName': 'test-dag',
       'nodeName': 'test-node',
       'correlationId': 'test-correlation',
-      'timeoutMs': null as null,
+      'timeoutMs': null,
+      'validateOutputs': false,
+      'outputSchemaValidator': null,
     };
 
     const task1 = new DagTask(
@@ -505,9 +537,9 @@ void describe('WebWorkerContainer destroy() — terminate on all workers', () =>
     });
     const spawnedWorkers = container.spawned;
 
-    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
-    const containers = { [CONFORMANCE_CONTAINER_ROLE]: container as DagContainerInterface };
-    const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
+    const bundle = ConformanceRegistry.bundle().bundle;
+    const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
+    const dispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
     dispatcher.registerBundle(bundle);
 
     // Run 3 executes to spawn all pool workers.

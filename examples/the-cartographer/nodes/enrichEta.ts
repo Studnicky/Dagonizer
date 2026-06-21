@@ -19,7 +19,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { EtaEstimator } from '../services.ts';
 
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
 import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 
@@ -27,6 +27,12 @@ import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 export class EnrichEtaNode extends MonadicNode<CartographerState, 'eta-estimated', CartographerServices> {
   readonly 'name' = 'enrich-eta';
   readonly 'outputs' = ['eta-estimated'] as const;
+
+  override get outputSchema(): Record<'eta-estimated', SchemaObjectType> {
+    return {
+      'eta-estimated': { 'type': 'object' },
+    };
+  }
 
   override async execute(
     batch: Batch<CartographerState>,

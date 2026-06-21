@@ -77,6 +77,7 @@ export class SubjectSearchTool implements ToolInterface<SubjectSearchInputType, 
       },
       'required': ['subject'],
     },
+    'outputSchema': { 'type': 'array', 'items': { 'type': 'object' } },
     'strict': true,
   };
 

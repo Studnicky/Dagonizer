@@ -18,7 +18,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { ShippingCalculator } from '../services.ts';
 
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
 import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 
@@ -26,6 +26,12 @@ import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 export class EnrichShippingNode extends MonadicNode<CartographerState, 'shipping-quoted', CartographerServices> {
   readonly 'name' = 'enrich-shipping';
   readonly 'outputs' = ['shipping-quoted'] as const;
+
+  override get outputSchema(): Record<'shipping-quoted', SchemaObjectType> {
+    return {
+      'shipping-quoted': { 'type': 'object' },
+    };
+  }
 
   override async execute(
     batch: Batch<CartographerState>,

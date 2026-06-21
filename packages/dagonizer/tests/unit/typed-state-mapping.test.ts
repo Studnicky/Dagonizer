@@ -18,12 +18,15 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { TypedEmbeddedDAGOptionsType } from '../../src/builder/DAGBuilder.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { EmbeddedDAGNodeType } from '../../src/entities/dag/EmbeddedDAGNode.js';
+import { Placement } from '../../src/entities/index.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── Domain child state ────────────────────────────────────────────────────────
 
@@ -41,12 +44,20 @@ class ParentState extends NodeStateBase {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-class TerminalNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name = 'terminal';
-  readonly outputs = ['success'] as const;
-  protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+const terminal = TestNode.make('terminal', ['success']);
+
+/** Narrows the first node in a DAG to EmbeddedDAGNodeType, failing the test if it isn't. */
+class PlacementAssert {
+  private constructor() {}
+
+  static embeddedFirst(dag: DAGType): EmbeddedDAGNodeType {
+    const node = dag.nodes[0];
+    if (node === undefined || !Placement.isEmbeddedDAG(node)) {
+      assert.fail('first node must be an EmbeddedDAGNode');
+    }
+    return node;
+  }
 }
-const terminal = new TerminalNode();
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -97,7 +108,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       .node('end', terminal, { 'success': 'end' })
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
+    const embeddedPlacement = PlacementAssert.embeddedFirst(dag);
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.deepEqual(embeddedPlacement.stateMapping?.input,  { 'payload': 'payload' });
     assert.deepEqual(embeddedPlacement.stateMapping?.output, { 'result': 'result' });
@@ -114,7 +125,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       )
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
+    const embeddedPlacement = PlacementAssert.embeddedFirst(dag);
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.deepEqual(embeddedPlacement.stateMapping?.input,  { 'payload': 'user.age' });
     assert.deepEqual(embeddedPlacement.stateMapping?.output, { 'user.age': 'result' });
@@ -128,7 +139,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       )
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
+    const embeddedPlacement = PlacementAssert.embeddedFirst(dag);
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.deepEqual(embeddedPlacement.stateMapping?.input, { 'result': 'result' });
     assert.equal(embeddedPlacement.stateMapping?.output, undefined);
@@ -142,7 +153,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       )
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
+    const embeddedPlacement = PlacementAssert.embeddedFirst(dag);
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.equal(embeddedPlacement.stateMapping?.input, undefined);
     assert.deepEqual(embeddedPlacement.stateMapping?.output, { 'result': 'result' });
@@ -153,7 +164,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       .embeddedDAG('invoke', 'child-dag', { 'success': 'end', 'error': 'end' })
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
+    const embeddedPlacement = PlacementAssert.embeddedFirst(dag);
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.equal(embeddedPlacement.stateMapping, undefined);
   });
@@ -166,7 +177,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
       )
       .build();
 
-    const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNodeType;
+    const embeddedPlacement = PlacementAssert.embeddedFirst(dag);
     assert.equal(embeddedPlacement['@type'], 'EmbeddedDAGNode');
     assert.equal(embeddedPlacement.stateMapping, undefined);
   });
@@ -174,21 +185,31 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
 
 void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () => {
   void it('inputs + outputs mappings propagate state correctly across the embedded-DAG boundary', async () => {
-    // Child node reads cloneState.payload and writes cloneState.result.
-    class ChildNode extends ScalarNode<ChildState, 'success'> {
+    // State carrying the fields both child and parent access.
+    class WorkState extends NodeStateBase {
+      payload = 'hello';
+      result  = 0;
+    }
+
+    // Child node reads state.payload and writes state.result.
+    class WorkChildNode extends ScalarNode<WorkState, 'success'> {
       readonly name = 'child-node';
       readonly outputs = ['success'] as const;
-      protected async executeOne(state: ChildState): Promise<NodeOutputType<'success'>> {
+      override get outputSchema(): Record<'success', SchemaObjectType> {
+        return { 'success': { 'type': 'object' } };
+      }
+      protected async executeOne(state: WorkState): Promise<NodeOutputType<'success'>> {
         // result = length of payload (deterministic, easy to assert)
         state.result = state.payload.length;
         return { 'errors': [], 'output': 'success' as const };
       }
     }
-    const childNode = new ChildNode();
+    const childNode = new WorkChildNode();
+    const terminalNode = TestNode.make<WorkState>('terminal', ['success']);
 
-    const dispatcher = new Dagonizer<NodeStateBase>();
+    const dispatcher = new Dagonizer<WorkState>();
     dispatcher.registerNode(childNode);
-    dispatcher.registerNode(terminal);
+    dispatcher.registerNode(terminalNode);
 
     // Child DAG: just runs child-node and terminates.
     const childDag = new DAGBuilder('child', '1')
@@ -201,7 +222,7 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
     //   inputs:  { payload: 'payload' } → child.payload ← parent.payload
     //   outputs: { result: 'result' }   → parent.result ← child.result
     const parentDag = new DAGBuilder('parent', '1')
-      .embeddedDAG<ChildState, ChildState>('invoke', 'child',
+      .embeddedDAG<WorkState, WorkState>('invoke', 'child',
         { 'success': 'end', 'error': 'end' },
         {
           'inputs':  { 'payload': 'payload' },
@@ -212,20 +233,8 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
       .build();
     dispatcher.registerDAG(parentDag);
 
-    // Use a state subclass that declares the fields we need.
-    class WorkState extends NodeStateBase {
-      payload = 'hello';
-      result  = 0;
-    }
-
     const workState = new WorkState();
-    const dispatcher2 = new Dagonizer<WorkState>();
-    dispatcher2.registerNode(childNode as unknown as NodeInterface<WorkState, 'success'>);
-    dispatcher2.registerNode(terminal as unknown as NodeInterface<WorkState, 'success'>);
-    dispatcher2.registerDAG(childDag);
-    dispatcher2.registerDAG(parentDag);
-
-    const result = await dispatcher2.execute('parent', workState);
+    const result = await dispatcher.execute('parent', workState);
     assert.equal(result.state.lifecycle.variant, 'completed');
     // payload = 'hello' (5 chars), so result = 5 after embedded-DAG
     assert.equal(workState.result, 5);

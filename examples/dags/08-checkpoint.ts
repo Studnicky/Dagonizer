@@ -10,7 +10,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
@@ -50,6 +50,9 @@ export class CountingState extends NodeStateBase {
 export class IncNode extends ScalarNode<CountingState, 'success'> {
   readonly name = 'inc';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: CountingState) {
     state.count++;

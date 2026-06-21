@@ -19,11 +19,18 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region ip-geolocate-node
 export class IpGeolocateNode extends ScalarNode<CartographerState, 'geolocated', CartographerServices> {
   readonly 'name' = 'ip-geolocate';
   readonly 'outputs' = ['geolocated'] as const;
+
+  override get outputSchema(): Record<'geolocated', SchemaObjectType> {
+    return {
+      'geolocated': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'geolocated'>> {
     const outcome = await context.services.ipGeolocator.lookup(

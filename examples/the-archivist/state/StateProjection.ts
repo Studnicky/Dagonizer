@@ -18,12 +18,12 @@
  * unwind to one triple per element so SPARQL can `?run dag:term ?t`.
  */
 
-import type { Term } from 'n3';
+import type { NamedNode } from 'n3';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import { MemoryStore } from '../memory/MemoryStore.ts';
 
-const dag     = (local: string): Term => MemoryStore.dagIri(local);
+const dag     = (local: string): NamedNode => MemoryStore.dagIri(local);
 const rdfType = MemoryStore.iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type');
 const dagBook = MemoryStore.dagIri('Book');
 const dagRun  = MemoryStore.dagIri('Run');

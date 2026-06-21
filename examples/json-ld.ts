@@ -25,6 +25,7 @@ import {
   ScalarNode,
 } from '@studnicky/dagonizer';
 import { DAGDocument } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node: a minimal transform node for the demo DAG
@@ -33,6 +34,9 @@ import { DAGDocument } from '@studnicky/dagonizer';
 class TransformNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'transform';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: NodeStateBase) {
     state.setMetadata('transformed', true);

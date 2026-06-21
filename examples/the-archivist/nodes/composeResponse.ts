@@ -20,7 +20,7 @@
 
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { CandidateType } from '../entities/Book.ts';
@@ -34,6 +34,13 @@ export const COMPOSE_TIMEOUT_MS = 60_000;
 export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'compose-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'drafted' | 'retry' | 'salvage', SchemaObjectType> {
+    return {
+      'drafted': { 'type': 'object' },
+      'retry':   { 'type': 'object' },
+      'salvage': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     state.recordAttempt('compose');
@@ -55,17 +62,16 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     // (the retry loop and validate-response wiring stays one
     // implementation), and dispatches to the intent-flavoured prompt
     // builder so the LLM gets the right directives + framing.
-    const composeCall = (): Promise<string> => {
-      switch (state.intent) {
-        case 'lookup-author':     return llm.composeAuthor(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-        case 'find-reviews':      return llm.composeReviews(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-        case 'describe-book':     return llm.describeBook(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-        case 'recommend-similar': return llm.composeSimilar(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-        default:                  return llm.compose(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-      }
-    };
+    let draftPromise: Promise<string>;
+    switch (state.intent) {
+      case 'lookup-author':     draftPromise = llm.composeAuthor(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
+      case 'find-reviews':      draftPromise = llm.composeReviews(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
+      case 'describe-book':     draftPromise = llm.describeBook(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
+      case 'recommend-similar': draftPromise = llm.composeSimilar(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
+      default:                  draftPromise = llm.compose(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
+    }
     try {
-      state.draft = await composeCall();
+      state.draft = await draftPromise;
       if (state.priorContext.length > 0) {
       }
       return NodeOutputBuilder.of('drafted');
@@ -194,6 +200,13 @@ export class ValidateResponseNode extends ScalarNode<
 > {
   readonly name = 'validate-response';
   readonly outputs = ['approved', 'retry', 'exhausted'] as const;
+  override get outputSchema(): Record<'approved' | 'retry' | 'exhausted', SchemaObjectType> {
+    return {
+      'approved':  { 'type': 'object' },
+      'retry':     { 'type': 'object' },
+      'exhausted': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     // ── Deterministic anti-hallucination pre-check ───────────────────────

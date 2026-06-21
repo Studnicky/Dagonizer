@@ -18,8 +18,14 @@ import type { DispatcherBundleType } from './DispatcherBundle.js';
  * version handshake, and the state restore factory.
  */
 export interface RegistryBundleInterface<TServices = unknown> {
-  /** Nodes and DAGs to register in the host dispatcher. */
-  bundle: DispatcherBundleType<NodeStateInterface, unknown>;
+  /**
+   * Nodes and DAGs to register in the host dispatcher. Typed to the bundle's
+   * own `TServices` so a registry that knows its services shape (e.g. a
+   * services-free conformance registry, `TServices = undefined`) registers into
+   * a matching dispatcher without a cast. Defaults to `unknown`, so existing
+   * call sites are unaffected.
+   */
+  bundle: DispatcherBundleType<NodeStateInterface, TServices>;
   /**
    * Locally constructed services bag. Opaque to the protocol; `TServices`
    * defaults to `unknown` so existing call sites stay source-compatible,

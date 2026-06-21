@@ -24,11 +24,19 @@ import { TypedPayloadDecoder } from '../services.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region decode-payload-node
 export class DecodePayloadNode extends ScalarNode<CartographerState, 'decoded' | 'invalid', CartographerServices> {
   readonly 'name' = 'decode-payload';
   readonly 'outputs' = ['decoded', 'invalid'] as const;
+
+  override get outputSchema(): Record<'decoded' | 'invalid', SchemaObjectType> {
+    return {
+      'decoded': { 'type': 'object' },
+      'invalid': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'decoded' | 'invalid'>> {
     const payload = state.getMetadata<SourcePayload>('source-payload');

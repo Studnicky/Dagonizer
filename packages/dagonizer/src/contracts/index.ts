@@ -52,7 +52,7 @@ export type { ClockProviderInterface } from './ClockProviderInterface.js';
 export type { ErrorConstructorType } from './ErrorConstructorType.js';
 export type { ExecuteOptionsType } from './ExecuteOptionsType.js';
 // Nodes: the node contract and the back-into-the-engine invoker.
-export type { NodeInterface } from './NodeInterface.js';
+export type { NodeInterface, SchemaObjectType } from './NodeInterface.js';
 export type { NodeInvokerInterface } from './NodeInvokerInterface.js';
 
 export type { OutcomeRecordType } from './OutcomeRecord.js';
@@ -79,3 +79,6 @@ export type { RemoteStoreLeaseType } from './RemoteStoreLease.js';
 // Key-value store: snapshottable, cross-embedded-DAG shared state.
 export type { SnapshottableInterface, StoreSnapshotType, StoreSnapshotEntryType } from './SnapshottableInterface.js';
 export type { StoreInterface } from './StoreInterface.js';
+
+// Child-state factory: constructor thunk for isolated sub-DAG child states.
+export type { ChildStateFactoryType } from './ChildStateFactoryType.js';

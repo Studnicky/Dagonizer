@@ -13,7 +13,7 @@
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
 import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 
@@ -35,6 +35,9 @@ export class ChatAdapterState extends NodeStateBase {
 export class ChatNode extends ScalarNode<ChatAdapterState, 'text' | 'tools'> {
   readonly name = 'chat';
   readonly outputs = ['text', 'tools'] as const;
+  override get outputSchema(): Record<'text' | 'tools', SchemaObjectType> {
+    return { 'text': { 'type': 'object' }, 'tools': { 'type': 'object' } };
+  }
   protected override async executeOne(state: ChatAdapterState) {
     if (state.adapter === null) throw new Error('chat: adapter not set');
     const request = ChatRequestBuilder.from({
@@ -61,6 +64,9 @@ export class ChatNode extends ScalarNode<ChatAdapterState, 'text' | 'tools'> {
 export class HandleTextNode extends ScalarNode<ChatAdapterState, 'done'> {
   readonly name = 'handleText';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: ChatAdapterState) {
     // Slot for downstream text-processing logic; identity pass-through here
     process.stdout.write(`  [handleText] response="${state.response}"\n`);
@@ -71,6 +77,9 @@ export class HandleTextNode extends ScalarNode<ChatAdapterState, 'done'> {
 export class HandleToolsNode extends ScalarNode<ChatAdapterState, 'done'> {
   readonly name = 'handleTools';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: ChatAdapterState) {
     process.stdout.write(`  [handleTools] tool dispatched: ${state.response}\n`);
     return NodeOutputBuilder.of('done');

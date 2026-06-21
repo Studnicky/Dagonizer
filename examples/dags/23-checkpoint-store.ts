@@ -12,7 +12,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
@@ -48,6 +48,9 @@ export class PipelineState extends NodeStateBase {
 export class IngestNode extends ScalarNode<PipelineState, 'success'> {
   readonly name = 'ingest';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
   protected override async executeOne(state: PipelineState) {
     state.stage = 'ingest';
     state.tally++;
@@ -59,6 +62,9 @@ export class IngestNode extends ScalarNode<PipelineState, 'success'> {
 export class ProcessNode extends ScalarNode<PipelineState, 'success'> {
   readonly name = 'process';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
   protected override async executeOne(state: PipelineState) {
     state.stage = 'process';
     state.tally++;
@@ -70,6 +76,9 @@ export class ProcessNode extends ScalarNode<PipelineState, 'success'> {
 export class ExportNode extends ScalarNode<PipelineState, 'success'> {
   readonly name = 'export';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
   protected override async executeOne(state: PipelineState) {
     state.stage = 'export';
     state.tally++;

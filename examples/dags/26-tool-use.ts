@@ -11,7 +11,7 @@
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { LlmAdapterInterface, ToolCallType, ToolDefinitionType } from '@studnicky/dagonizer/adapter';
 import { ChatRequestBuilder, ToolCallCodec } from '@studnicky/dagonizer/adapter';
 import type { ToolInterface } from '@studnicky/dagonizer/tool';
@@ -43,6 +43,9 @@ export class CalculatorTool implements ToolInterface<CalcInput, CalcOutput> {
         'a': { 'type': 'number' as const },
         'b': { 'type': 'number' as const },
       },
+    },
+    'outputSchema': {
+      'type': 'object' as const,
     },
     'strict': true,
   };
@@ -97,6 +100,9 @@ export class ToolUseState extends NodeStateBase {
 export class CallLlmNode extends ScalarNode<ToolUseState, 'tool_call' | 'text'> {
   readonly name = 'callLlm';
   readonly outputs = ['tool_call', 'text'] as const;
+  override get outputSchema(): Record<'tool_call' | 'text', SchemaObjectType> {
+    return { 'tool_call': { 'type': 'object' }, 'text': { 'type': 'object' } };
+  }
   protected override async executeOne(state: ToolUseState) {
     if (state.adapter === null) throw new Error('callLlm: adapter not set');
 
@@ -143,16 +149,18 @@ export class CallLlmNode extends ScalarNode<ToolUseState, 'tool_call' | 'text'> 
 export class DispatchToolNode extends ScalarNode<ToolUseState, 'done' | 'error'> {
   readonly name = 'dispatchTool';
   readonly outputs = ['done', 'error'] as const;
+  override get outputSchema(): Record<'done' | 'error', SchemaObjectType> {
+    return { 'done': { 'type': 'object' }, 'error': { 'type': 'object' } };
+  }
   protected override async executeOne(state: ToolUseState) {
     // Decode from raw text (works for both native JSON and prose-wrapped)
     const calls: ToolCallType[] = ToolCallCodec.decode(state.toolCallRaw, 'dispatch');
 
-    if (calls.length === 0) {
+    const [call] = calls;
+    if (call === undefined) {
       state.finalAnswer = 'Error: could not decode tool call from adapter response.';
       return NodeOutputBuilder.of('error');
     }
-
-    const call = calls[0] as ToolCallType;
     const tool = state.registry.resolve(call.name);
     if (tool === null) {
       state.finalAnswer = `Error: unknown tool "${call.name}"`;
@@ -169,6 +177,9 @@ export class DispatchToolNode extends ScalarNode<ToolUseState, 'done' | 'error'>
 export class OnTextNode extends ScalarNode<ToolUseState, 'done'> {
   readonly name = 'onText';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: ToolUseState) {
     process.stdout.write(`  [onText] direct answer: "${state.finalAnswer}"\n`);
     return NodeOutputBuilder.of('done');
@@ -178,6 +189,9 @@ export class OnTextNode extends ScalarNode<ToolUseState, 'done'> {
 export class OnToolDoneNode extends ScalarNode<ToolUseState, 'done'> {
   readonly name = 'onToolDone';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: ToolUseState) {
     process.stdout.write(`  [onToolDone] tool="${state.dispatchedTool}" result=${JSON.stringify(state.toolResult)}\n`);
     return NodeOutputBuilder.of('done');
@@ -187,6 +201,9 @@ export class OnToolDoneNode extends ScalarNode<ToolUseState, 'done'> {
 export class OnToolErrorNode extends ScalarNode<ToolUseState, 'done'> {
   readonly name = 'onToolError';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: ToolUseState) {
     process.stdout.write(`  [onToolError] ${state.finalAnswer}\n`);
     return NodeOutputBuilder.of('done');

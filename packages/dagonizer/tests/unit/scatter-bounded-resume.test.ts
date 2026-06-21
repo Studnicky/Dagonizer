@@ -18,6 +18,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgressType } from '../../src/Dagonizer.js';
@@ -28,6 +29,7 @@ import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -40,56 +42,55 @@ class BoundedState extends NodeStateBase {
   }
 
   protected override restoreData(snap: JsonObjectType): void {
-    if (Array.isArray(snap['items'])) this.items = snap['items'] as number[];
-    if (Array.isArray(snap['processed'])) this.processed = snap['processed'] as number[];
+    const rawItems = snap['items'];
+    if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
+    const rawProcessed = snap['processed'];
+    if (Array.isArray(rawProcessed)) this.processed = rawProcessed.filter((x): x is number => typeof x === 'number');
   }
 }
 
 // ── worker node ──────────────────────────────────────────────────────────────
 
-class BoundedWorkerNode extends ScalarNode<BoundedState, 'success'> {
-  readonly name = 'worker';
-  readonly outputs = ['success'] as const;
-  protected async executeOne(): Promise<NodeOutputType<'success'>> {
-    return { 'errors': [], 'output': 'success' };
-  }
-}
+const boundedWorkerNode = TestNode.make<BoundedState>('worker', ['success']);
 
 // ── minimal scatter DAG ──────────────────────────────────────────────────────
 
-function makeScatterDag(name: string, concurrency: number): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    'name':     name,
-    'version':  '1',
-    'entrypoint': 'fan',
-    'nodes': [
-      {
-        '@id':         `urn:noocodex:dag:${name}/node/fan`,
-        '@type':       'ScatterNode',
-        'name':        'fan',
-        'body':        { 'node': 'worker' },
-        'source':      'items',
-        'itemKey':     'item',
-        'concurrency': concurrency,
-        'gather':      { 'strategy': 'append', 'target': 'processed' },
-        'outputs':     {
-          'all-success': 'end',
-          'partial':     'end',
-          'all-error':   'end',
-          'empty':       'end',
+class TestScatterDag {
+  private constructor() {}
+  static ofConcurrency(name: string, concurrency: number): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@type':       'ScatterNode',
+          'name':        'fan',
+          'body':        { 'node': 'worker' },
+          'source':      'items',
+          'itemKey':     'item',
+          'concurrency': concurrency,
+          'gather':      { 'strategy': 'append', 'target': 'processed' },
+          'outputs':     {
+            'all-success': 'end',
+            'partial':     'end',
+            'all-error':   'end',
+            'empty':       'end',
+          },
         },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  };
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+  }
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -103,10 +104,13 @@ function captureProgressSnapshots(
   state.setMetadata = (key: string, value: unknown): void => {
     orig(key, value);
     if (key === SCATTER_PROGRESS_KEY) {
-      const stored = value as Record<string, ScatterProgressType> | undefined;
-      const entry = stored?.['fan'];
-      if (entry?.mode === 'bounded') {
-        snapshots.push({ ...entry });
+      const isStoredProgress = (v: unknown): v is Record<string, ScatterProgressType> =>
+        typeof v === 'object' && v !== null;
+      if (isStoredProgress(value)) {
+        const entry = value['fan'];
+        if (entry?.mode === 'bounded') {
+          snapshots.push({ ...entry });
+        }
       }
     }
   };
@@ -121,8 +125,8 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     const TOTAL = 20;
 
     const dispatcher = new Dagonizer<BoundedState>();
-    dispatcher.registerNode(new BoundedWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('bounded-ahead-cap', CONCURRENCY));
+    dispatcher.registerNode(boundedWorkerNode);
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-ahead-cap', CONCURRENCY));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => i + 1);
@@ -146,8 +150,8 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     const TOTAL = 10;
 
     const dispatcher = new Dagonizer<BoundedState>();
-    dispatcher.registerNode(new BoundedWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('bounded-watermark-mono', 2));
+    dispatcher.registerNode(boundedWorkerNode);
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-watermark-mono', 2));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => (i + 1) * 10);
@@ -170,8 +174,8 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     const TOTAL = 8;
 
     const dispatcher = new Dagonizer<BoundedState>();
-    dispatcher.registerNode(new BoundedWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('bounded-tally', 2));
+    dispatcher.registerNode(boundedWorkerNode);
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-tally', 2));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => i);
@@ -182,7 +186,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     for (let i = 0; i < snapshots.length; i++) {
       const snap = snapshots[i];
       assert.ok(snap !== undefined);
-      const tallyTotal = Object.values(snap.outcomeTally as Record<string, number>).reduce((s: number, n: number) => s + n, 0);
+      const tallyTotal = Object.values(snap.outcomeTally).reduce((s: number, n: number) => s + n, 0);
       const expectedTotal = snap.watermark + snap.aheadAcked.length;
       assert.equal(
         tallyTotal,
@@ -197,19 +201,13 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     // (watermark=2), item 2 was in inbox. Resume must process items 2, 3, 4.
     const processedItems: number[] = [];
 
-    class ResumeTrackingNode extends ScalarNode<BoundedState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: BoundedState): Promise<NodeOutputType<'success'>> {
-        const item = state.getMetadata<number>('item') ?? -1;
-        processedItems.push(item);
-        return { 'errors': [], 'output': 'success' };
-      }
-    }
-
     const dispatcher = new Dagonizer<BoundedState>();
-    dispatcher.registerNode(new ResumeTrackingNode());
-    dispatcher.registerDAG(makeScatterDag('bounded-resume', 2));
+    dispatcher.registerNode(TestNode.make<BoundedState>('worker', ['success'], (state) => {
+      const item = state.getMetadata<number>('item') ?? -1;
+      processedItems.push(item);
+      return 'success';
+    }));
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-resume', 2));
 
     const state = new BoundedState();
     state.items = [10, 20, 30, 40, 50];
@@ -266,21 +264,16 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     // ── baseline: uninterrupted run ──────────────────────────────────────────
 
     const baselineDispatcher = new Dagonizer<BoundedState>();
-    baselineDispatcher.registerNode(new BoundedWorkerNode());
-    baselineDispatcher.registerDAG(makeScatterDag('byte-identity-baseline', 2));
+    baselineDispatcher.registerNode(boundedWorkerNode);
+    baselineDispatcher.registerDAG(TestScatterDag.ofConcurrency('byte-identity-baseline', 2));
 
-    class BaselineTrackingNode extends ScalarNode<BoundedState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: BoundedState): Promise<NodeOutputType<'success'>> {
-        const item = state.getMetadata<number>('item') ?? -1;
-        state.processed.push(item);
-        return { 'errors': [], 'output': 'success' };
-      }
-    }
     const baselineDispatcher2 = new Dagonizer<BoundedState>();
-    baselineDispatcher2.registerNode(new BaselineTrackingNode());
-    baselineDispatcher2.registerDAG(makeScatterDag('byte-identity-baseline', 2));
+    baselineDispatcher2.registerNode(TestNode.make<BoundedState>('worker', ['success'], (state) => {
+      const item = state.getMetadata<number>('item') ?? -1;
+      state.processed.push(item);
+      return 'success';
+    }));
+    baselineDispatcher2.registerDAG(TestScatterDag.ofConcurrency('byte-identity-baseline', 2));
 
     const baselineState = new BoundedState();
     baselineState.items = Array.from({ 'length': N }, (_, i) => i + 1);
@@ -296,9 +289,10 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     const interruptedDispatcher = new Dagonizer<BoundedState>();
 
     class InterruptedWorkerNode extends ScalarNode<BoundedState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: BoundedState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
+      override readonly name = 'worker';
+      override readonly outputs = ['success'] as const;
+      override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
+      protected override async executeOne(state: BoundedState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 1);
           context.signal.addEventListener('abort', () => {
@@ -315,7 +309,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
       }
     }
     interruptedDispatcher.registerNode(new InterruptedWorkerNode());
-    interruptedDispatcher.registerDAG(makeScatterDag('byte-identity-interrupted', 2));
+    interruptedDispatcher.registerDAG(TestScatterDag.ofConcurrency('byte-identity-interrupted', 2));
 
     const interruptedState = new BoundedState();
     interruptedState.items = Array.from({ 'length': N }, (_, i) => i + 1);
@@ -332,17 +326,12 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const resumeDispatcher = new Dagonizer<BoundedState>();
 
-    class ResumeTrackingNode extends ScalarNode<BoundedState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: BoundedState): Promise<NodeOutputType<'success'>> {
-        const item = state.getMetadata<number>('item') ?? -1;
-        state.processed.push(item);
-        return { 'errors': [], 'output': 'success' };
-      }
-    }
-    resumeDispatcher.registerNode(new ResumeTrackingNode());
-    resumeDispatcher.registerDAG(makeScatterDag('byte-identity-interrupted', 2));
+    resumeDispatcher.registerNode(TestNode.make<BoundedState>('worker', ['success'], (state) => {
+      const item = state.getMetadata<number>('item') ?? -1;
+      state.processed.push(item);
+      return 'success';
+    }));
+    resumeDispatcher.registerDAG(TestScatterDag.ofConcurrency('byte-identity-interrupted', 2));
 
     const resumeState = new BoundedState();
     // Carry the bounded checkpoint metadata from the partial run.
@@ -391,9 +380,10 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
       const dispatcher = new Dagonizer<BoundedState>();
 
       class SizeWorkerNode extends ScalarNode<BoundedState, 'success'> {
-        readonly name = 'worker';
-        readonly outputs = ['success'] as const;
-        protected async executeOne(state: BoundedState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
+        override readonly name = 'worker';
+        override readonly outputs = ['success'] as const;
+        override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
+        protected override async executeOne(state: BoundedState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
           await new Promise<void>((resolve, reject) => {
             const handle = setTimeout(resolve, 1);
             context.signal.addEventListener('abort', () => {
@@ -412,7 +402,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
       dispatcher.registerNode(new SizeWorkerNode());
 
       const dagName = `size-bound-n${n}`;
-      dispatcher.registerDAG(makeScatterDag(dagName, 2));
+      dispatcher.registerDAG(TestScatterDag.ofConcurrency(dagName, 2));
 
       const st = new BoundedState();
       st.items = Array.from({ 'length': n }, (_, i) => i + 1);
@@ -442,8 +432,8 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
   void it('final checkpoint after clean run uses bounded mode with watermark = item count', async () => {
     const TOTAL = 5;
     const dispatcher = new Dagonizer<BoundedState>();
-    dispatcher.registerNode(new BoundedWorkerNode());
-    dispatcher.registerDAG(makeScatterDag('bounded-final', 2));
+    dispatcher.registerNode(boundedWorkerNode);
+    dispatcher.registerDAG(TestScatterDag.ofConcurrency('bounded-final', 2));
 
     const state = new BoundedState();
     state.items = Array.from({ 'length': TOTAL }, (_, i) => i + 1);
@@ -460,7 +450,7 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
     assert.equal(last.mode, 'bounded');
     assert.equal(last.watermark, TOTAL, `final watermark must equal total items (${TOTAL})`);
     assert.equal(last.aheadAcked.length, 0, 'aheadAcked must be empty after all contiguous acks');
-    const tallyTotal = Object.values(last.outcomeTally as Record<string, number>).reduce((s: number, n: number) => s + n, 0);
+    const tallyTotal = Object.values(last.outcomeTally).reduce((s: number, n: number) => s + n, 0);
     assert.equal(tallyTotal, TOTAL, `outcomeTally total must equal ${TOTAL}`);
   });
 });

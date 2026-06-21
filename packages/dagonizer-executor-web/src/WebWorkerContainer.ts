@@ -37,7 +37,6 @@ import type {
 } from '@studnicky/dagonizer/container';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
-import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { PostMessageChannel } from './PostMessageChannel.js';
 import { DEFAULT_WEB_PROBES, WebSystemInfo } from './WebSystemInfo.js';
@@ -75,7 +74,7 @@ export type WebWorkerContainerOptionsType = {
 // WebWorkerContainer
 // ---------------------------------------------------------------------------
 
-export class WebWorkerContainer extends DagContainerBase<NodeStateInterface, WebWorkerLikeInterface> {
+export class WebWorkerContainer extends DagContainerBase<WebWorkerLikeInterface> {
 
   constructor(options: WebWorkerContainerOptionsType) {
     const poolSize = options.poolSize ?? WebWorkerContainer.#resolvePoolSize();

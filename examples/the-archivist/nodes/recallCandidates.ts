@@ -30,7 +30,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import { BookBuilder } from '../entities/Book.ts';
@@ -75,6 +75,11 @@ class EmbeddingParser {
 export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled', ArchivistServices> {
   readonly name = 'recall-candidates';
   readonly outputs = ['recalled'] as const;
+  override get outputSchema(): Record<'recalled', SchemaObjectType> {
+    return {
+      'recalled': { 'type': 'object' },
+    };
+  }
 
   /** Public per-item entry point for tests and dispatch delegation. */
   public async runItem(state: ArchivistState, context: NodeContextType<ArchivistServices>): Promise<NodeOutputType<'recalled'>> {

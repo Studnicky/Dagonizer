@@ -40,8 +40,7 @@ import type { MessageChannelInterface } from '../../src/contracts/MessageChannel
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
-import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
@@ -87,24 +86,19 @@ class MinimalState extends NodeStateBase {}
 // MinimalDagTask: minimal DagTaskInterface implementation
 // ---------------------------------------------------------------------------
 
-function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<MinimalState, undefined> {
+function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<undefined> {
   return {
     'dagName': 'test-dag',
     'placementPath': [],
     'correlationId': correlationId,
     'timeout': Timeout.none(),
     'state': new MinimalState(),
-    'context': {
-      'dagName': 'test-dag',
-      'nodeName': 'test-node',
-      'signal': signal,
-      'services': undefined,
-    } as NodeContextType<undefined>,
+    'context': NodeContextBuilder.of('test-dag', 'test-node', signal, undefined),
     toRequest(): ExecutionRequestType {
       return {
         'dagName': 'test-dag',
         'placementPath': [],
-        'items': [{ 'id': correlationId, 'snapshot': {} as JsonObjectType }],
+        'items': [{ 'id': correlationId, 'snapshot': new MinimalState().snapshot() }],
         'timeoutMs': null,
         'correlationId': correlationId,
       };
@@ -128,7 +122,7 @@ const NOOP_INIT: DagContainerOptionsType['init'] = {
   'servicesConfig': {},
 };
 
-class SingleChannelContainer extends DagContainerBase<MinimalState, null> {
+class SingleChannelContainer extends DagContainerBase<null> {
   readonly #channel: MessageChannelInterface;
 
   constructor(channel: MessageChannelInterface, _options: Partial<DagContainerOptionsType> = {}) {

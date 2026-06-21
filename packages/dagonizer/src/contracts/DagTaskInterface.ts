@@ -12,7 +12,7 @@
  *                   this execution (for instrumentation/observability).
  * `correlationId` — dispatcher-monotonic correlation id; no randomness.
  * `timeout`       — per-task execution budget; `Timeout.none()` = no limit.
- * `state`         — live seeded child clone (TState).
+ * `state`         — live seeded child clone.
  * `context`       — composed NodeContext including the abort signal.
  */
 
@@ -21,10 +21,7 @@ import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { Timeout } from '../entities/Timeout.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-export interface DagTaskInterface<
-  TState extends NodeStateInterface = NodeStateInterface,
-  TServices = undefined,
-> {
+export interface DagTaskInterface<TServices = undefined> {
   /** Name of the registered DAG to run. */
   dagName: string;
   /** Nesting path of embedded-DAG placement names leading to this execution, for observability. */
@@ -34,7 +31,7 @@ export interface DagTaskInterface<
   /** Per-task execution budget. `Timeout.none()` means no per-task limit. */
   timeout: Timeout;
   /** Live seeded child clone. In-process containers execute against this directly. */
-  state: TState;
+  state: NodeStateInterface;
   /** Composed `NodeContext` carrying the abort signal and services bag for this task. */
   context: NodeContextType<TServices>;
   /**

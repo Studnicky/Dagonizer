@@ -26,7 +26,7 @@ import {
   SCATTER_PROGRESS_KEY,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
@@ -79,23 +79,31 @@ export class ResumeState extends NodeStateBase {
  * Using a mutable object (not a bare `let`) so ESM live bindings allow
  * the entry-point to update fields without a setter function.
  */
-export const observable = {
+export const observable: {
   /** Every job body invocation across all runs, in call order. */
-  execLog: [] as string[],
+  execLog: string[];
   /** Current run number (1 = initial, 2 = resume). Set by the entry-point. */
-  run: 1,
+  run: number;
   /**
    * Abort after this many body invocations in run 1. The node fires the
    * abort itself so the signal is in effect before the next item is pulled.
    */
-  abortAfter: 0,
+  abortAfter: number;
   /** The AbortController for the current run. Set by the entry-point. */
-  controller: null as AbortController | null,
+  controller: AbortController | null;
+} = {
+  execLog: [],
+  run: 1,
+  abortAfter: 0,
+  controller: null,
 };
 
 export class ProcessJobNode extends ScalarNode<ResumeState, 'done'> {
   readonly name = 'process-job';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ResumeState) {
     const job   = state.getMetadata<string>('job') ?? '?';

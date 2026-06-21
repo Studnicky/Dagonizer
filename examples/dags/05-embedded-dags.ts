@@ -11,7 +11,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State: fields live on the same class; inputs / outputs control which
@@ -32,6 +32,9 @@ export class IncrementState extends NodeStateBase {
 export class IncrementNode extends ScalarNode<IncrementState, 'success'> {
   readonly name = 'increment';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: IncrementState) {
     state.payload = state.payload + 1;

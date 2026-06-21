@@ -78,7 +78,7 @@ export type { StoreSnapshotEntryWireType, StoreSnapshotWireType } from './checkp
 export { NodeSchema } from './node/Node.js';
 export type { NodeUnionType } from './node/Node.js';
 
-export { NodeContextSchema } from './node/NodeContext.js';
+export { NodeContextSchema, NodeContextBuilder } from './node/NodeContext.js';
 export type { NodeContextWireType, NodeContextType } from './node/NodeContext.js';
 
 export { NodeErrorBuilder, NodeErrorProperties, NodeErrorSchema } from './node/NodeError.js';
@@ -256,6 +256,7 @@ export type {
   JsonPrimitiveType,
   JsonValueType,
 } from './json.js';
+export { JsonValue } from './JsonValue.js';
 
 export type {
   JsonSchemaType,

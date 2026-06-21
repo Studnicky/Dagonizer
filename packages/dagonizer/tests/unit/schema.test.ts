@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { DAGDocument } from '../../src/dag/DAGDocument.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // validDAG: a minimal well-formed DAG — SingleNode routes to an explicit TerminalNode.
 const validDAG: DAGType = {
@@ -35,7 +34,7 @@ void describe('Validator.dag', () => {
 
   void it('rejects DAG with missing entrypoint field', () => {
     const bad = { ...validDAG };
-    delete (bad as Partial<DAGType>).entrypoint;
+    Reflect.deleteProperty(bad, 'entrypoint');
     assert.equal(Validator.dag.is(bad), false);
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
   });
@@ -61,7 +60,7 @@ void describe('Validator.dag', () => {
   });
 
   void it('rejects a SingleNode whose output value is null', () => {
-    const bad = {
+    const bad: unknown = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
@@ -70,13 +69,13 @@ void describe('Validator.dag', () => {
         '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op',
         'outputs': { 'success': null },
       }],
-    } as unknown as DAGType;
+    };
     assert.equal(Validator.dag.is(bad), false, 'null route must fail schema validation');
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
 
     // A single null route and multiple null routes both fail schema validation:
     // null is never a valid output target, regardless of how many appear.
-    const oneNull = {
+    const oneNull: unknown = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:test',
       '@type':    'DAG',
@@ -90,10 +89,10 @@ void describe('Validator.dag', () => {
         'node':  'start',
         'outputs': { 'done': null },
       }],
-    } as unknown as DAGType;
+    };
     assert.equal(Validator.dag.is(oneNull), false, 'null output must not satisfy the schema');
 
-    const multiNull = {
+    const multiNull: unknown = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:test',
       '@type':    'DAG',
@@ -107,7 +106,7 @@ void describe('Validator.dag', () => {
         'node':  'start',
         'outputs': { 'ok': null, 'fail': null },
       }],
-    } as unknown as DAGType;
+    };
     assert.equal(Validator.dag.is(multiNull), false, 'null outputs must not satisfy the schema');
   });
 
@@ -186,32 +185,31 @@ void describe('DAGDocument.ofValue', () => {
 void describe('Dagonizer.registerDAG schema pre-pass', () => {
   void it('rejects schema-invalid DAGs with ValidationError, not DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'op';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-    }
-    dispatcher.registerNode(new OpNode());
+    dispatcher.registerNode(TestNode.make('op', ['success']));
 
-    // Constructs intentionally-invalid input: missing @context, @id, @type so the
-    // schema pre-pass rejects it before the semantic check. The cast is necessary
-    // because the object deliberately omits required DAG fields.
-    const bad = { 'name': 'x', 'entrypoint': 's', 'nodes': [
-      { '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': { 'success': 'done' } },
-      { '@id': 'urn:x/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' },
-    ] } as unknown as DAGType;
+    // Structurally a DAGType (every required field present, every TS type
+    // satisfied) but schema-invalid at runtime: the empty `name` violates the
+    // schema's `minLength: 1`, which the schema pre-pass rejects before the
+    // semantic check ever runs.
+    const bad: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:x',
+      '@type':    'DAG',
+      'name': '', 'version': '1', 'entrypoint': 's',
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:x/node/s', '@type': 'SingleNode',
+          'name': 's', 'node': 'op', 'outputs': { 'success': 'done' } },
+        { '@id': 'urn:noocodex:dag:x/node/done', '@type': 'TerminalNode',
+          'name': 'done', 'outcome': 'completed' },
+      ],
+    };
 
     assert.throws(() => dispatcher.registerDAG(bad), ValidationError);
   });
 
   void it('semantic errors still surface as DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'op';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-    }
-    dispatcher.registerNode(new OpNode());
+    dispatcher.registerNode(TestNode.make('op', ['success']));
 
     // Schema-valid but references unknown node; semantic tier rejects.
     // Uses a TerminalNode so the schema passes; DAGValidator catches the unknown node reference.

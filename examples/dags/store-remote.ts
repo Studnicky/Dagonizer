@@ -65,12 +65,11 @@ export class GrpcStore extends BaseStore implements RemoteStoreInterface {
   protected get snapshotType(): string    { return 'grpc-store'; }
   protected get snapshotVersion(): number { return 1; }
 
-  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
-    const value = this.#data.get(key);
-    return value === undefined ? null : (value as T);
+  protected async performGet(key: string): Promise<JsonValueType | null> {
+    return this.#data.get(key) ?? null;
   }
 
-  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
+  protected async performSet(key: string, value: JsonValueType): Promise<void> {
     this.#data.set(key, value);
   }
 
@@ -96,7 +95,8 @@ export class GrpcStore extends BaseStore implements RemoteStoreInterface {
   // Override update for atomic RMW — in-memory direct access is safe.
   override async update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     const qualified = this.qualifyKey(key);
-    const current   = this.#data.get(qualified) as T | undefined;
+    const stored    = this.#data.get(qualified) ?? null;
+    const current   = this.narrowStored<T>(stored) ?? undefined;
     const next      = fn(current);
     this.#data.set(qualified, next);
     return next;

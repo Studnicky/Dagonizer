@@ -19,11 +19,24 @@ import type { GeoErrorRecordType } from '../../errors/GeoErrorRecord.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-ndjson-node
 export class ParseNdjsonNode extends ScalarNode<CartographerState, 'normalized' | 'invalid', CartographerServices> {
   readonly 'name' = 'parse-ndjson';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
+
+  /** Narrows `unknown` to `Record<string, unknown>` via structural runtime checks. */
+  private static isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  override get outputSchema(): Record<'normalized' | 'invalid', SchemaObjectType> {
+    return {
+      'normalized': { 'type': 'object' },
+      'invalid':    { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized' | 'invalid'>> {
     // Use decompressed text when available (gzip path), else the raw payload.
@@ -34,8 +47,8 @@ export class ParseNdjsonNode extends ScalarNode<CartographerState, 'normalized' 
     for (const line of lines) {
       try {
         const parsed: unknown = JSON.parse(line);
-        if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          records.push(parsed as Record<string, unknown>);
+        if (ParseNdjsonNode.isRecord(parsed)) {
+          records.push(parsed);
         }
       } catch (caught) {
         // Capture the malformed line as data; the rest of the source still ingests.

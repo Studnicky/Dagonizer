@@ -14,8 +14,6 @@ import type { DAGType } from '../../src/entities/index.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const makeNode = TestNode.make;
-
 void describe('GatherStrategies registry', () => {
   afterEach(() => { GatherStrategies.reset(); });
 
@@ -260,7 +258,7 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
 
   void it('snapshots return registered DAGs and nodes', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const node = makeNode('greet', ['done'], () => 'done');
+    const node = TestNode.make('greet', ['done'], () => 'done');
     dispatcher.registerNode(node);
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -287,9 +285,9 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
 
   void it('list snapshots are independent of the registry', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    dispatcher.registerNode(makeNode('a', ['done'], () => 'done'));
+    dispatcher.registerNode(TestNode.make('a', ['done'], () => 'done'));
     const before = dispatcher.listNodes();
-    dispatcher.registerNode(makeNode('b', ['done'], () => 'done'));
+    dispatcher.registerNode(TestNode.make('b', ['done'], () => 'done'));
     assert.equal(before.length, 1);
     assert.equal(dispatcher.listNodes().length, 2);
   });
@@ -297,31 +295,36 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
   // No shared state: each test creates its own Dagonizer instance.
 });
 
-const makeSingleNodeDAG = (dagName: string, nodeName: string): DAGType => ({
-  '@context': DAG_CONTEXT,
-  '@id':      `urn:noocodex:dag:${dagName}`,
-  '@type':    'DAG',
-  'name':       dagName,
-  'version':    '1',
-  'entrypoint': nodeName,
-  'nodes': [{
-    '@id':     `urn:noocodex:dag:${dagName}/node/${nodeName}`,
-    '@type':   'SingleNode',
-    'name':    nodeName,
-    'node':    nodeName,
-    'outputs': { 'done': 'end' },
-  },
-        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+class TestRegistryDag {
+  private constructor() {}
+  static singleNode(dagName: string, nodeName: string): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id': `urn:noocodex:dag:${dagName}`,
+      '@type': 'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoint': nodeName,
+      'nodes': [{
+        '@id': `urn:noocodex:dag:${dagName}/node/${nodeName}`,
+        '@type': 'SingleNode',
+        'name': nodeName,
+        'node': nodeName,
+        'outputs': { 'done': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
-});
+    };
+  }
+}
 
 void describe('Dagonizer.registerBundle', () => {
   void it('registers every node then every DAG from the bundle', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const nodeA = makeNode('a', ['done'], () => 'done');
-    const nodeB = makeNode('b', ['done'], () => 'done');
-    const dagA = makeSingleNodeDAG('flowA', 'a');
-    const dagB = makeSingleNodeDAG('flowB', 'b');
+    const nodeA = TestNode.make('a', ['done'], () => 'done');
+    const nodeB = TestNode.make('b', ['done'], () => 'done');
+    const dagA = TestRegistryDag.singleNode('flowA', 'a');
+    const dagB = TestRegistryDag.singleNode('flowB', 'b');
 
     dispatcher.registerBundle({ 'nodes': [nodeA, nodeB], 'dags': [dagA, dagB] });
 
@@ -335,9 +338,9 @@ void describe('Dagonizer.registerBundle', () => {
 
   void it('accepts an empty nodes array when DAGs reference already-registered nodes', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const nodeA = makeNode('a', ['done'], () => 'done');
+    const nodeA = TestNode.make('a', ['done'], () => 'done');
     dispatcher.registerNode(nodeA);
-    const dagA = makeSingleNodeDAG('flowA', 'a');
+    const dagA = TestRegistryDag.singleNode('flowA', 'a');
 
     dispatcher.registerBundle({ 'nodes': [], 'dags': [dagA] });
 
@@ -348,8 +351,8 @@ void describe('Dagonizer.registerBundle', () => {
 
   void it('accepts an empty dags array and registers nodes only', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const nodeA = makeNode('a', ['done'], () => 'done');
-    const nodeB = makeNode('b', ['done'], () => 'done');
+    const nodeA = TestNode.make('a', ['done'], () => 'done');
+    const nodeB = TestNode.make('b', ['done'], () => 'done');
 
     dispatcher.registerBundle({ 'nodes': [nodeA, nodeB], 'dags': [] });
 
@@ -360,8 +363,8 @@ void describe('Dagonizer.registerBundle', () => {
 
   void it('throws on a DAG referencing an unregistered node, with earlier nodes still registered', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const nodeA = makeNode('a', ['done'], () => 'done');
-    const danglingDAG = makeSingleNodeDAG('dangling', 'missing');
+    const nodeA = TestNode.make('a', ['done'], () => 'done');
+    const danglingDAG = TestRegistryDag.singleNode('dangling', 'missing');
 
     assert.throws(
       () => dispatcher.registerBundle({ 'nodes': [nodeA], 'dags': [danglingDAG] }),
@@ -375,8 +378,8 @@ void describe('Dagonizer.registerBundle', () => {
 
   void it('resolves DAG references to nodes defined in the same bundle (nodes register first)', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const nodeA = makeNode('a', ['done'], () => 'done');
-    const dagA = makeSingleNodeDAG('flowA', 'a');
+    const nodeA = TestNode.make('a', ['done'], () => 'done');
+    const dagA = TestRegistryDag.singleNode('flowA', 'a');
 
     // Order in the bundle's `dags` array references a node that only exists
     // in the same bundle's `nodes` array; succeeds because nodes register first.

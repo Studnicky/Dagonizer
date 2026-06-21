@@ -24,6 +24,8 @@ type TimerGlobals = typeof globalThis & {
   clearTimeout(handle: unknown): void;
 };
 
+// Platform boundary: globalThis is typed as bare `typeof globalThis`; we widen
+// to TimerGlobals to access setTimeout/clearTimeout with unknown handle types.
 const G = globalThis as TimerGlobals;
 
 /**

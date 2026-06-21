@@ -7,7 +7,7 @@
  * defining a local helper.
  */
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import type { NodeInterface, SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
@@ -24,25 +24,35 @@ export class TestNode {
    *
    * @param name     - Node name (must match the DAG placement `node` reference).
    * @param outputs  - Declared output tokens; `outputs[0]` is the default route.
-   * @param exec     - Optional callback receiving `(state)` and returning a token
-   *                   string (sync or async). Defaults to `() => outputs[0]`.
+   * @param exec     - Optional callback receiving `(state, context)` and
+   *                   returning a token string (sync or async). The context
+   *                   gives access to the abort signal and services for nodes
+   *                   that sleep, abort, or read `context.services`. Defaults to
+   *                   `() => outputs[0]`.
    */
   static make<TState extends NodeStateInterface>(
     name: string,
     outputs: readonly string[],
-    exec?: (state: TState) => string | Promise<string>,
+    exec?: (state: TState, context: NodeContextType) => string | Promise<string>,
   ): NodeInterface<TState> {
-    const defaultOutput = outputs[0] as string;
+    const first = outputs[0];
+    const defaultOutput = first !== undefined ? first : '';
 
     class MakeNode extends ScalarNode<TState, string> {
       override readonly name = name;
-      override readonly outputs = outputs as readonly string[];
+      override readonly outputs = outputs;
+
+      override get outputSchema(): Record<string, SchemaObjectType> {
+        const schema: Record<string, SchemaObjectType> = {};
+        for (const port of this.outputs) schema[port] = { 'type': 'object' };
+        return schema;
+      }
 
       override async executeOne(
         state: TState,
-        _context: NodeContextType,
+        context: NodeContextType,
       ): Promise<NodeOutputType<string>> {
-        const output = exec !== undefined ? await exec(state) : defaultOutput;
+        const output = exec !== undefined ? await exec(state, context) : defaultOutput;
         return NodeOutputBuilder.of(output);
       }
     }

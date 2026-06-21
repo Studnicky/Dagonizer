@@ -23,7 +23,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
@@ -68,6 +68,9 @@ export class WorkState extends NodeStateBase {
 export class SquareWorkerNode extends ScalarNode<WorkState, 'done'> {
   readonly name = 'squareWorker';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: WorkState) {
     // Each scatter item is written to metadata under the itemKey ('task').

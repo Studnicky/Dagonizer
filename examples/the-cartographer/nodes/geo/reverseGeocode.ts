@@ -18,11 +18,18 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region reverse-geocode-node
 export class ReverseGeocodeNode extends ScalarNode<CartographerState, 'geocoded', CartographerServices> {
   readonly 'name' = 'reverse-geocode';
   readonly 'outputs' = ['geocoded'] as const;
+
+  override get outputSchema(): Record<'geocoded', SchemaObjectType> {
+    return {
+      'geocoded': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'geocoded'>> {
     const outcome = await context.services.reverseGeocoder.lookup(

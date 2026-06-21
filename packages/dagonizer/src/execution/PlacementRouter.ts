@@ -9,12 +9,12 @@ import type { RunNodeResultType } from './ScatterDispatch.js';
  * the router depends only on the single `mapOutput` method, never on the whole
  * mapper or the dispatcher.
  */
-export interface StateMergePortInterface<TState extends NodeStateInterface> {
+export interface StateMergePortInterface {
   /**
    * Copy fields from `childState` back to `parentState` per the `output`
    * mapping (`{ parentPath: childKey }`). A no-op for an empty mapping.
    */
-  mapOutput(childState: TState, parentState: TState, output: Record<string, string>): void;
+  mapOutput(childState: NodeStateInterface, parentState: NodeStateInterface, output: Record<string, string>): void;
 }
 
 /**
@@ -69,16 +69,16 @@ export class PlacementRouter {
    * placement's `outputs`, and builds the `NodeResultType` carrying the parent
    * state and the buffered intermediates.
    */
-  static assemble<TState extends NodeStateInterface>(
+  static assemble(
     placementName: string,
     outputs: PlacementOutputsType,
     terminalOutcome: 'completed' | 'failed' | null,
-    cloneState: TState,
-    parentState: TState,
+    cloneState: NodeStateInterface,
+    parentState: NodeStateInterface,
     outputMapping: Record<string, string>,
-    intermediates: ReadonlyArray<NodeResultType<TState>>,
-    merge: StateMergePortInterface<TState>,
-  ): RunNodeResultType<TState> {
+    intermediates: ReadonlyArray<NodeResultType<NodeStateInterface>>,
+    merge: StateMergePortInterface,
+  ): RunNodeResultType {
     // Propagate errors and warnings from child to parent.
     for (const err of cloneState.errors) parentState.collectError(err);
     for (const warn of cloneState.warnings) parentState.collectWarning(warn);
@@ -104,14 +104,14 @@ export class PlacementRouter {
    * throws on an unrouted token before reaching here); the envelope path uses it
    * with the `'success'`/`'error'` route decision.
    */
-  static envelope<TState extends NodeStateInterface>(
+  static envelope(
     placementName: string,
     output: string,
     nextStage: string | null,
-    parentState: TState,
-    intermediates: ReadonlyArray<NodeResultType<TState>>,
-  ): RunNodeResultType<TState> {
-    const result: NodeResultType<TState> = {
+    parentState: NodeStateInterface,
+    intermediates: ReadonlyArray<NodeResultType<NodeStateInterface>>,
+  ): RunNodeResultType {
+    const result: NodeResultType<NodeStateInterface> = {
       'output': output,
       'skipped': false,
       'nodeName': placementName,

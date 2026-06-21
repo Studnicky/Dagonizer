@@ -16,12 +16,12 @@ export class ScatterSource {
   static toAsyncIterator(source: unknown): AsyncIterator<unknown> {
     if (source !== null && typeof source === 'object') {
       // AsyncIterable first (duck-type Symbol.asyncIterator).
-      if (Symbol.asyncIterator in (source as object)) {
-        return (source as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+      if (ScatterSource.#isAsyncIterable(source)) {
+        return source[Symbol.asyncIterator]();
       }
       // Sync iterable (duck-type Symbol.iterator), including arrays.
-      if (Symbol.iterator in (source as object)) {
-        const syncIter = (source as Iterable<unknown>)[Symbol.iterator]();
+      if (ScatterSource.#isIterable(source)) {
+        const syncIter = source[Symbol.iterator]();
         return {
           next(): Promise<IteratorResult<unknown>> {
             return Promise.resolve(syncIter.next());
@@ -35,5 +35,15 @@ export class ScatterSource {
         return Promise.resolve({ 'value': undefined, 'done': true });
       },
     };
+  }
+
+  /** Duck-type predicate: the object carries `Symbol.asyncIterator`. */
+  static #isAsyncIterable(value: object): value is AsyncIterable<unknown> {
+    return Symbol.asyncIterator in value;
+  }
+
+  /** Duck-type predicate: the object carries `Symbol.iterator`. */
+  static #isIterable(value: object): value is Iterable<unknown> {
+    return Symbol.iterator in value;
   }
 }

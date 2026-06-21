@@ -30,7 +30,6 @@ import type {
 } from '@studnicky/dagonizer/container';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
-import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { NodeSystemInfo } from './NodeSystemInfo.js';
 
@@ -83,14 +82,14 @@ const SYSTEM_INFO = new NodeSystemInfo();
  */
 export type NodeContainerBaseType<
   TWorker,
-> = DagContainerBase<NodeStateInterface, TWorker>;
+> = DagContainerBase<TWorker>;
 
 // ---------------------------------------------------------------------------
 // NodeContainerBase
 // ---------------------------------------------------------------------------
 
 export abstract class NodeContainerBase<TWorker>
-  extends DagContainerBase<NodeStateInterface, TWorker> {
+  extends DagContainerBase<TWorker> {
 
   /**
    * Resolve a `NodeContainerBaseOptionsType` into the complete `DagContainerOptionsType`

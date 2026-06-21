@@ -31,17 +31,16 @@ import { describe, it } from 'node:test';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import type { NodeResultType } from '../../src/entities/node/NodeResult.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -54,37 +53,22 @@ class BoundState extends NodeStateBase {
   }
 
   protected override restoreData(snap: JsonObjectType): void {
-    if (Array.isArray(snap['items'])) this.items = snap['items'] as number[];
+    const rawItems = snap['items'];
+    if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
     if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
   }
 }
 
 // ── Inner nodes for the 3-node sequential sub-DAG body ────────────────────────
 
-class BodyNodeA extends ScalarNode<BoundState, 'next'> {
-  readonly name = 'body-a';
-  readonly outputs = ['next'] as const;
-  protected async executeOne(state: BoundState): Promise<NodeOutputType<'next'>> {
-    state.counter += 1;
-    return { 'errors': [], 'output': 'next' };
-  }
-}
+const bodyNodeA = TestNode.make<BoundState>('body-a', ['next'], (state) => {
+  state.counter += 1;
+  return 'next';
+});
 
-class BodyNodeB extends ScalarNode<BoundState, 'next'> {
-  readonly name = 'body-b';
-  readonly outputs = ['next'] as const;
-  protected async executeOne(): Promise<NodeOutputType<'next'>> {
-    return { 'errors': [], 'output': 'next' };
-  }
-}
+const bodyNodeB = TestNode.make<BoundState>('body-b', ['next']);
 
-class BodyNodeC extends ScalarNode<BoundState, 'done'> {
-  readonly name = 'body-c';
-  readonly outputs = ['done'] as const;
-  protected async executeOne(): Promise<NodeOutputType<'done'>> {
-    return { 'errors': [], 'output': 'done' };
-  }
-}
+const bodyNodeC = TestNode.make<BoundState>('body-c', ['done']);
 
 // ── Gather strategy: compactable (folds per-clone into parent via reduce) ─────
 
@@ -155,39 +139,42 @@ const bodyDag: DAGType = Validator.dag.validate({
 
 // ── Parent DAG: scatter with DAG body ─────────────────────────────────────────
 
-function makeBoundDag(name: string, concurrency: number): DAGType {
-  return Validator.dag.validate({
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    'name':     name,
-    'version':  '1',
-    'entrypoint': 'fan',
-    'nodes': [
-      {
-        '@id':         `urn:noocodex:dag:${name}/node/fan`,
-        '@type':       'ScatterNode',
-        'name':        'fan',
-        'body':        { 'dag': BODY_DAG_NAME },
-        'source':      'items',
-        'itemKey':     'item',
-        'concurrency': concurrency,
-        'gather':      { 'strategy': 'bound-memory-gather' },
-        'outputs': {
-          'all-success': 'end',
-          'partial':     'end',
-          'all-error':   'end',
-          'empty':       'end',
+class TestScatterDag {
+  private constructor() {}
+  static bound(name: string, concurrency: number): DAGType {
+    return Validator.dag.validate({
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@type':       'ScatterNode',
+          'name':        'fan',
+          'body':        { 'dag': BODY_DAG_NAME },
+          'source':      'items',
+          'itemKey':     'item',
+          'concurrency': concurrency,
+          'gather':      { 'strategy': 'bound-memory-gather' },
+          'outputs': {
+            'all-success': 'end',
+            'partial':     'end',
+            'all-error':   'end',
+            'empty':       'end',
+          },
         },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  });
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    });
+  }
 }
 
 // ── Observer subclass: counts onNodeEnd calls ─────────────────────────────────
@@ -219,11 +206,11 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     const N = 3000;
 
     const dispatcher = new ObservingDagonizer();
-    dispatcher.registerNode(new BodyNodeA());
-    dispatcher.registerNode(new BodyNodeB());
-    dispatcher.registerNode(new BodyNodeC());
+    dispatcher.registerNode(bodyNodeA);
+    dispatcher.registerNode(bodyNodeB);
+    dispatcher.registerNode(bodyNodeC);
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(makeBoundDag('bound-N3000', 4));
+    dispatcher.registerDAG(TestScatterDag.bound('bound-N3000', 4));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
@@ -271,11 +258,11 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     const M = 4;
 
     const dispatcher = new ObservingDagonizer();
-    dispatcher.registerNode(new BodyNodeA());
-    dispatcher.registerNode(new BodyNodeB());
-    dispatcher.registerNode(new BodyNodeC());
+    dispatcher.registerNode(bodyNodeA);
+    dispatcher.registerNode(bodyNodeB);
+    dispatcher.registerNode(bodyNodeC);
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(makeBoundDag('bound-hooks-N500', 4));
+    dispatcher.registerDAG(TestScatterDag.bound('bound-hooks-N500', 4));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
@@ -316,17 +303,20 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
     const N = 200;
 
     const dispatcher = new Dagonizer<BoundState>();
-    dispatcher.registerNode(new BodyNodeA());
-    dispatcher.registerNode(new BodyNodeB());
-    dispatcher.registerNode(new BodyNodeC());
+    dispatcher.registerNode(bodyNodeA);
+    dispatcher.registerNode(bodyNodeB);
+    dispatcher.registerNode(bodyNodeC);
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(makeBoundDag('bound-intermediates-N200', 2));
+    dispatcher.registerDAG(TestScatterDag.bound('bound-intermediates-N200', 2));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
     const execution = dispatcher.execute('bound-intermediates-N200', state);
-    let scatterResult: NodeResultType<BoundState> | null = null;
+    // Iteration yields heterogeneous per-node results typed `NodeStateInterface`
+    // (a child embedded node runs on its own isolation state); this test reads
+    // only `nodeName` and `intermediateResults`, both on the base interface.
+    let scatterResult: NodeResultType<NodeStateInterface> | null = null;
 
     for await (const stage of execution) {
       if (stage.nodeName === 'fan') {
@@ -351,20 +341,21 @@ void describe('Scatter: O(N×M) stage-streaming regression (scatter-memory-bound
    * This is a best-effort check; CI runs without --expose-gc and the test skips.
    */
   void it('heap usage during scatter over N=3000 stays bounded (GC-gated)', async () => {
-    if (typeof (globalThis as unknown as { gc?: () => void }).gc !== 'function') {
+    const gcFn: unknown = Reflect.get(globalThis, 'gc');
+    if (typeof gcFn !== 'function') {
       // Not running with --expose-gc: skip heap assertion.
       return;
     }
-    const gc = (globalThis as unknown as { gc: () => void }).gc;
+    const gc = (): void => { gcFn.call(undefined); };
 
     const N = 3000;
 
     const dispatcher = new Dagonizer<BoundState>();
-    dispatcher.registerNode(new BodyNodeA());
-    dispatcher.registerNode(new BodyNodeB());
-    dispatcher.registerNode(new BodyNodeC());
+    dispatcher.registerNode(bodyNodeA);
+    dispatcher.registerNode(bodyNodeB);
+    dispatcher.registerNode(bodyNodeC);
     dispatcher.registerDAG(bodyDag);
-    dispatcher.registerDAG(makeBoundDag('bound-heap-N3000', 4));
+    dispatcher.registerDAG(TestScatterDag.bound('bound-heap-N3000', 4));
 
     const state = new BoundState();
     state.items = Array.from({ 'length': N }, (_, i) => i);

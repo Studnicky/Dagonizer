@@ -175,7 +175,13 @@ describe('GeoCoarsener', () => {
 
 describe('GdprRedactor', () => {
   it('classify returns the expected PII and sensitive-data field lists', () => {
-    const result = GdprRedactor.classify({} as Parameters<typeof GdprRedactor.classify>[0]);
+    const result = GdprRedactor.classify({
+      'shipmentId': 'SHP-001', 'timestamp': '2026-01-01T00:00:00Z', 'eventType': 'SCAN',
+      'latitude': 0, 'longitude': 0, 'carrier': 'ups', 'facilityId': 'FAC-001',
+      'recipientName': 'Alice', 'recipientEmail': 'alice@example.com',
+      'recipientPhone': '+1-555-0100', 'recipientAddress': '1 Main St',
+      'recipientCountry': 'US', 'marketingConsent': false, 'promisedDeliveryAt': '2026-01-05',
+    });
     assert.ok(result.personalDataFields.includes('recipientEmail'));
     assert.ok(result.personalDataFields.includes('scanCoords'));
     assert.ok(result.sensitiveDataFields.includes('recipientCountry'));
