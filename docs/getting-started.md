@@ -32,6 +32,10 @@ seeAlso:
 
 # Getting Started
 
+`@studnicky/dagonizer` lets you define multi-step workflows as a graph of typed nodes. Each node does one piece of work, returns a named output, and the dispatcher routes to the next node based on that output. Steps can depend on each other, run with shared typed state, retry on failure, cancel cleanly on abort, and pause and resume from a checkpoint — without your nodes knowing about any of that machinery.
+
+A **DAG** (**D**irected **A**cyclic **G**raph) is the graph of steps. Think of it as a flowchart: each box is a node, each arrow is labelled with a named output, and the dispatcher follows the arrows at runtime.
+
 From zero to a running DAG in three steps.
 
 ## Install
@@ -77,6 +81,33 @@ Awaitable form:
 Async-iterable form, one event per node:
 
 <<< @/../examples/01-linear.ts#execute-iterable
+
+## Fluent authoring with DAGBuilder
+
+The example above uses the raw JSON-LD DAG definition directly, which is the canonical wire format. For day-to-day authoring, `DAGBuilder` (from `@studnicky/dagonizer/builder`) is the recommended path: it is a compile-checked fluent API that builds the same JSON-LD definition from typed method calls, catching unwired outputs and invalid routing at compile time before any schema validation runs.
+
+```ts twoslash
+import { DAGBuilder, NodeStateBase, ScalarNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
+// ---cut---
+class CheckNode extends ScalarNode<NodeStateBase, 'ok' | 'fail'> {
+  readonly name = 'check';
+  readonly outputs = ['ok', 'fail'] as const;
+  override get outputSchema(): Record<'ok' | 'fail', SchemaObjectType> {
+    return { ok: { type: 'object' }, fail: { type: 'object' } };
+  }
+  protected override async executeOne(_state: NodeStateBase) {
+    return NodeOutputBuilder.of<'ok' | 'fail'>('ok');
+  }
+}
+
+const dag = new DAGBuilder('my-flow', '1')
+  .node('check', new CheckNode(), { ok: 'end', fail: 'end' })
+  .terminal('end')
+  .build();
+```
+
+See the [DAGBuilder guide](/guide/builder) for the full API including scatter, embedded DAG, and phase placements.
 
 ## Next destination
 

@@ -1,0 +1,292 @@
+/**
+ * explorer.css — MermaidExplorer control chrome + Mermaid theme integration.
+ *
+ * Sections:
+ *   1. Mermaid diagram theme — colour-maps Mermaid's SVG node shapes to
+ *      VitePress CSS custom properties so diagrams are theme-aware.
+ *   2. Diagram frame — the wrapper that positions the D-pad over the SVG.
+ *   3. D-pad control grid — 3×3 navigation grid, hover-reveal, button styles.
+ *   4. Fullscreen modal — overlay, stage, hint bar, animation.
+ *
+ * Custom property fallbacks:
+ *   --dag-explorer-surface  fallback surface colour (set by MermaidExplorer.#applyTheme)
+ *   --dag-explorer-stroke   fallback stroke / border colour
+ *   --dag-explorer-accent   fallback accent / hover colour
+ *
+ * All --vp-c-* references are VitePress design tokens; when this stylesheet is
+ * used outside VitePress the --dag-explorer-* fallbacks apply.
+ */
+
+/* ==========================================================================
+   1. Mermaid diagram theme
+   ========================================================================== */
+
+/**
+ * Node fill + stroke: applies to every SVG shape Mermaid renders inside a
+ * node — rect (rectangle, subroutine), circle (round), ellipse, polygon
+ * (rhombus), and path (hexagon, stadium, etc.).
+ *
+ * Uses VitePress surface/brand tokens so diagrams adapt to light/dark mode.
+ * The class selector targets `.dagonizer-mermaid` (our own enhanced frames)
+ * and `.mermaid` (Mermaid's own class) inside `.vp-doc`.
+ */
+.vp-doc .dagonizer-mermaid .node rect,
+.vp-doc .dagonizer-mermaid .node circle,
+.vp-doc .dagonizer-mermaid .node ellipse,
+.vp-doc .dagonizer-mermaid .node polygon,
+.vp-doc .dagonizer-mermaid .node path,
+.vp-doc div.mermaid .node rect,
+.vp-doc div.mermaid .node circle,
+.vp-doc div.mermaid .node ellipse,
+.vp-doc div.mermaid .node polygon,
+.vp-doc div.mermaid .node path {
+  fill:   var(--vp-c-bg-soft, #101318);
+  stroke: var(--vp-c-brand-1, #22e8ff);
+}
+
+/* Node labels */
+.vp-doc .dagonizer-mermaid .nodeLabel,
+.vp-doc div.mermaid .nodeLabel,
+.vp-doc .dagonizer-mermaid .label,
+.vp-doc div.mermaid .label {
+  color:       var(--vp-c-text-1, #eef3f7);
+  font-family: var(--vp-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size:   0.82rem;
+}
+
+/* Edge lines */
+.vp-doc .dagonizer-mermaid .edgePath .path,
+.vp-doc div.mermaid        .edgePath .path {
+  stroke: var(--vp-c-brand-1, #22e8ff);
+}
+
+/* Arrowhead markers */
+.vp-doc .dagonizer-mermaid marker path,
+.vp-doc div.mermaid        marker path {
+  fill:   var(--vp-c-brand-1, #22e8ff);
+  stroke: var(--vp-c-brand-1, #22e8ff);
+}
+
+/* Edge labels */
+.vp-doc .dagonizer-mermaid .edgeLabel .label rect,
+.vp-doc div.mermaid        .edgeLabel .label rect {
+  fill:         var(--vp-c-bg-soft, #101318);
+  stroke:       var(--vp-c-divider, #2e3748);
+  fill-opacity: 0.88;
+}
+.vp-doc .dagonizer-mermaid .edgeLabel .label span,
+.vp-doc div.mermaid        .edgeLabel .label span {
+  color:       var(--vp-c-text-2, #ccd6f6);
+  font-family: var(--vp-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size:   0.75rem;
+}
+
+/* Subgraph fill */
+.vp-doc .dagonizer-mermaid .cluster rect,
+.vp-doc div.mermaid        .cluster rect {
+  fill:         var(--vp-c-bg-alt, #0e1525);
+  stroke:       var(--vp-c-divider, #2e3748);
+  fill-opacity: 0.6;
+}
+
+/* ==========================================================================
+   2. Diagram frame
+   ========================================================================== */
+
+/**
+ * dag-mermaid-frame: the wrapper that MermaidExplorer.enhance() adds.
+ *
+ * `position: relative` is required so the D-pad wrap (`position: absolute`)
+ * is contained within the frame rather than escaping to the viewport.
+ *
+ * `overflow: hidden` clips the SVG while it's being panned/zoomed so the
+ * diagram never bleeds outside the frame boundary.
+ */
+.dag-mermaid-frame {
+  position:   relative;
+  overflow:   hidden;
+  /* A bounded viewport is REQUIRED. Without an explicit size the frame grows to
+     the SVG's natural (often huge) dimensions, so fit-to-contain measures the
+     frame as the same size as the diagram (scale ~= 1, no fit) and the D-pad
+     anchors off-screen. A fixed width + clamped height gives fit a real
+     viewport and keeps the D-pad at the visible bottom-right. */
+  width:      100%;
+  height:     clamp(320px, 54vh, 560px);
+  cursor:     grab;
+  user-select: none;
+  /* Prevent touch-scroll from fighting with drag-pan on mobile. */
+  touch-action: none;
+}
+
+.dag-mermaid-frame:active {
+  cursor: grabbing;
+}
+
+/* ==========================================================================
+   3. D-pad control grid
+   ========================================================================== */
+
+/**
+ * D-pad wrap: anchored bottom-right inside the frame (position: absolute
+ * requires the frame to be `position: relative`, which .dag-mermaid-frame
+ * establishes). Hover-reveal: fades from 0.55 to 1 opacity on frame hover.
+ */
+.dag-mermaid-dpad-wrap {
+  position:   absolute;
+  bottom:     10px;
+  right:      10px;
+  z-index:    10;
+  opacity:    0.55;
+  transition: opacity 0.18s ease;
+  /* Prevent the D-pad itself from triggering the frame's grab cursor. */
+  cursor:     default;
+}
+
+.dag-mermaid-frame:hover .dag-mermaid-dpad-wrap,
+.dag-mermaid-modal .dag-mermaid-dpad-wrap {
+  opacity: 1;
+}
+
+/**
+ * D-pad grid: 3×3 grid, 32px × 32px cells with 4px gaps.
+ * Matches GraphDpad.vue exactly: `grid-template-columns: repeat(3, 32px)`.
+ */
+.dag-mermaid-dpad {
+  display:               grid;
+  grid-template-columns: repeat(3, 32px);
+  grid-template-rows:    repeat(3, 32px);
+  gap:                   4px;
+  background:            rgba(0, 0, 0, 0.30);
+  padding:               6px;
+  border-radius:         8px;
+  backdrop-filter:       blur(4px);
+}
+
+/**
+ * D-pad button: matches GraphDpad.vue `.dpad-btn` exactly.
+ *
+ * Colour fallback chain:
+ *   1. --dag-explorer-surface / --dag-explorer-stroke / --dag-explorer-accent
+ *      (set as inline properties by MermaidExplorer.#applyTheme when the
+ *       caller provides a `theme` option).
+ *   2. --vp-c-bg-alt / --vp-c-divider / --vp-c-text-1 / --dagonizer-brand
+ *      (VitePress / Dagonizer design tokens, present when hosted on the docs
+ *       site).
+ *   3. Hard-coded fallback literals (used outside VitePress context).
+ */
+.dag-mermaid-dpad-btn {
+  width:            32px;
+  height:           32px;
+  display:          inline-flex;
+  align-items:      center;
+  justify-content:  center;
+  background:       var(--dag-explorer-surface, var(--vp-c-bg-alt, #0e1525));
+  border:           1px solid var(--dag-explorer-stroke, var(--vp-c-divider, #2e3748));
+  border-radius:    4px;
+  color:            var(--vp-c-text-1, #eef3f7);
+  cursor:           pointer;
+  font-size:        13px;
+  font-weight:      600;
+  padding:          0;
+  line-height:      1;
+  transition:       background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  /* Prevent button from triggering drag-pan on the SVG behind it. */
+  touch-action:     none;
+}
+
+.dag-mermaid-dpad-btn:hover:not(:disabled) {
+  background:    var(--vp-c-bg, #020306);
+  border-color:  var(--dag-explorer-accent, var(--dagonizer-brand, #22e8ff));
+  color:         var(--dag-explorer-accent, var(--dagonizer-brand, #22e8ff));
+}
+
+.dag-mermaid-dpad-btn:focus-visible {
+  outline:       2px solid var(--dag-explorer-accent, var(--dagonizer-brand, #22e8ff));
+  outline-offset: 1px;
+}
+
+.dag-mermaid-dpad-btn--disabled,
+.dag-mermaid-dpad-btn:disabled {
+  opacity:        0.35;
+  cursor:         not-allowed;
+}
+
+/* ==========================================================================
+   4. Fullscreen modal
+   ========================================================================== */
+
+/**
+ * Modal overlay: fixed fullscreen backdrop with a blur effect.
+ *
+ * z-index 9998 places the backdrop below the modal stage (9999) so the stage
+ * is always above the page but below any browser chrome.
+ */
+.dag-mermaid-modal {
+  position:          fixed;
+  inset:             0;
+  z-index:           9999;
+  display:           flex;
+  flex-direction:    column;
+  background:        rgba(0, 0, 0, 0.78);
+  backdrop-filter:   blur(6px);
+  animation:         dag-modal-in 0.18s ease-out;
+  /* Click events on the overlay backdrop (not stage) close the modal.
+     This is handled in JS; here we only style the overlay. */
+}
+
+/**
+ * Modal stage: the inner container that holds the cloned SVG.
+ *
+ * `overflow: hidden` clips the SVG during pan/zoom.
+ * `flex: 1 1 auto` makes the stage fill the remaining vertical space after
+ * the hint bar at the bottom.
+ */
+.dag-mermaid-modal-stage {
+  flex:         1 1 auto;
+  position:     relative;
+  overflow:     hidden;
+  cursor:       grab;
+  user-select:  none;
+  touch-action: none;
+}
+
+.dag-mermaid-modal-stage:active {
+  cursor: grabbing;
+}
+
+/**
+ * Hint bar: bottom strip with usage instructions.
+ *
+ * `pointer-events: none` prevents the hint from blocking stage clicks.
+ */
+.dag-mermaid-modal-hint {
+  flex:            0 0 auto;
+  padding:         0.45rem 1rem;
+  background:      rgba(2, 3, 6, 0.65);
+  border-top:      1px solid var(--vp-c-divider, #2e3748);
+  font-family:     var(--vp-font-family-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size:       0.68rem;
+  color:           var(--vp-c-text-3, #7a8290);
+  text-align:      center;
+  letter-spacing:  0.06em;
+  text-transform:  uppercase;
+  pointer-events:  none;
+}
+
+/**
+ * D-pad inside the modal: same grid, anchored bottom-right of the overlay.
+ * The modal is `position: fixed` so the D-pad wrap is contained within it
+ * via `position: absolute` (the modal establishes a stacking context).
+ */
+.dag-mermaid-modal .dag-mermaid-dpad-wrap {
+  position: absolute;
+  bottom:   calc(2.2rem + 10px); /* above the hint bar */
+  right:    10px;
+  opacity:  1;
+}
+
+/* Fade-in animation for the modal overlay. */
+@keyframes dag-modal-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}

@@ -4,6 +4,7 @@
   "commit": false,
   "fixed": [[
     "@studnicky/dagonizer",
+    "@studnicky/dagonizer-adapter-anthropic",
     "@studnicky/dagonizer-adapter-cerebras",
     "@studnicky/dagonizer-adapter-gemini-api",
     "@studnicky/dagonizer-adapter-gemini-nano",

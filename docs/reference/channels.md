@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`HandoffChannelInterface`, `MessageHandoffChannelInterface`'
+    description: '`HandoffChannelInterface`'
   - text: 'Reference: Container'
     link: './container'
     description: 'pool-owning container base, `DagHost`'
@@ -151,5 +151,5 @@ class SqsChannel implements HandoffChannelInterface {
 
 - [Example 11: Loopback hand-off](../examples/11-handoff)
 - [Guide: Distribution and cloud](../guide/distribution)
-- [Reference: Contracts](./contracts) — `HandoffChannelInterface`, `MessageHandoffChannelInterface`
+- [Reference: Contracts](./contracts) — `HandoffChannelInterface`
 - [Reference: Container](./container) — `DagContainerBase`, `DagHost`

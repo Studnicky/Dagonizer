@@ -62,6 +62,17 @@ const sidebar = [
     ],
   },
   {
+    // Vocabulary and theory: read before or alongside the demos.
+    text: 'Concepts',
+    collapsed: false,
+    items: [
+      { text: 'Concepts',                link: '/concepts' },
+      { text: 'Plural-native execution', link: '/guide/plural-native' },
+      { text: 'Architecture',            link: '/architecture' },
+      { text: 'Lifecycle phases',        link: '/guide/lifecycle-phases' },
+    ],
+  },
+  {
     // Live demo first, then phase walk-throughs in dependency order.
     text: 'Demos',
     collapsed: false,
@@ -78,6 +89,7 @@ const sidebar = [
       { text: 'Phase 02: DAGBuilder',                  link: '/examples/02-builder' },
       { text: 'Phase 03: Tool schemas',                link: '/examples/03-schema' },
       { text: 'Phase 05: EmbeddedDAGNode composition', link: '/examples/05-embedded-dags' },
+      { text: 'Example 27: Recursion via dagFrom',     link: '/examples/27-recursion' },
       { text: 'Phase 06: Cancellation',                link: '/examples/06-cancellation' },
       { text: 'Phase 07: Retry',                       link: '/examples/07-retry' },
       { text: 'Phase 08: Checkpoint + resume',         link: '/examples/08-checkpoint' },
@@ -135,17 +147,6 @@ const sidebar = [
     ],
   },
   {
-    // Vocabulary and theory: read after the demo.
-    text: 'Concepts',
-    collapsed: false,
-    items: [
-      { text: 'Concepts',           link: '/concepts' },
-      { text: 'Plural-native execution', link: '/guide/plural-native' },
-      { text: 'Architecture',       link: '/architecture' },
-      { text: 'Lifecycle phases',   link: '/guide/lifecycle-phases' },
-    ],
-  },
-  {
     // Dependency order: author, export, runtime, wiring, persistence, viz.
     text: 'Guide',
     collapsed: false,
@@ -161,6 +162,7 @@ const sidebar = [
       { text: 'Migrating to batch',        link: '/guide/migrating-to-batch' },
       { text: 'Services container',        link: '/guide/services' },
       { text: 'Observability',             link: '/guide/observability' },
+      { text: 'Conversational agents',     link: '/guide/conversational' },
       { text: 'State accessors',           link: '/guide/state-accessor' },
       { text: 'Shared state',              link: '/guide/shared-state' },
       { text: 'Checkpoint and resume',     link: '/guide/checkpoint' },
@@ -596,6 +598,13 @@ export default withMermaid(defineConfig({
     // first paint already shows the mechanicus chrome (pearl-black node
     // surface, teal accent border, monospace text on the navy panel).
     theme: 'base',
+    // Raise Mermaid's safety caps: a large DAG (hundreds of placements/edges,
+    // tens of KB of source) silently blanks on the defaults (maxTextSize 50000,
+    // maxEdges 500). NOTE: themeVariables colours are parsed by khroma and MUST
+    // be concrete colours — a CSS var() throws and blanks every diagram; theme
+    // colours live in base.css/explorer.css on the rendered SVG instead.
+    maxTextSize: 200000,
+    maxEdges: 5000,
     // System monospace stack ONLY, no web fonts. Mermaid measures label
     // widths at SSR time before any web font loads; if measurement uses the
     // fallback and the render later swaps in a wider web font (JetBrains

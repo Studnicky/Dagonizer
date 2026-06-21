@@ -19,6 +19,9 @@
  */
 
 export { MermaidRenderer } from './MermaidRenderer.js';
+export type { MermaidRenderOptionsType } from './MermaidRenderer.js';
+export { MermaidExplorer } from './MermaidExplorer.js';
+export type { MermaidExplorerOptionsType, MermaidExplorerThemeType } from './MermaidExplorer.js';
 export { JsonLdRenderer, DAGONIZER_VOCAB, DagJsonLdDocumentSchema } from './JsonLdRenderer.js';
 export type { DagJsonLdDocumentType, JsonLdGraphEntryType } from './JsonLdRenderer.js';
 export { CytoscapeRenderer } from './CytoscapeRenderer.js';

@@ -154,6 +154,7 @@
       "types": "./dist/viz/index.d.ts",
       "default": "./dist/viz/index.js"
     },
+    "./viz/explorer.css": "./dist/viz/explorer.css",
     "./store": {
       "types": "./dist/store/index.d.ts",
       "default": "./dist/store/index.js"
@@ -181,7 +182,7 @@
     "stamp-version": "node scripts/stamp-version.mjs",
     "stamp-version:check": "node scripts/stamp-version.mjs --check",
     "clean": "rm -rf dist dist-test dist-testing",
-    "build:src": "tsc -p tsconfig.json",
+    "build:src": "tsc -p tsconfig.json && cp src/viz/explorer.css dist/viz/explorer.css",
     "build:testing": "tsc -p tsconfig.testing.json",
     "build": "npm run build:src && npm run build:testing",
     "pretest": "rm -rf dist-test && tsc -p tsconfig.test.json",

@@ -31,8 +31,7 @@ write the work, not by what the engine does:
 | **`MonadicNode`** (the root — the monad) | `execute(batch)` directly | batch-native / hot-path nodes that process the whole batch at once (shared LRU caches, vectorized work) |
 | **`ScalarNode`** (extends `MonadicNode`) | `executeOne(state)` | the common per-item node; the base loops `executeOne` over the batch and groups by port |
 
-`MonadicNode` is the minimum viable node — it supplies `name` / `outputs` /
-`contract` / `timeout` / `validate` / `destroy` and leaves `execute` abstract.
+`MonadicNode` is the minimum viable node — it supplies `timeout` / `validate` / `destroy` defaults and leaves `name`, `outputs`, `outputSchema`, and `execute` abstract. Concrete nodes must implement all four. `outputSchema` is an abstract getter (`abstract get outputSchema(): Record<TOutput, SchemaObjectType>`) that declares a per-port JSON Schema fragment describing the state delta the node writes when routing to that port; the compiler enforces its presence on every subclass.
 `ScalarNode` is the per-item specialization: "a scalar is a batch of one."
 
 <<< @/../examples/dags/plural-native.ts#node-taxonomy

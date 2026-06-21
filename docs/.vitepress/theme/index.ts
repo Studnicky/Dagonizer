@@ -3,13 +3,14 @@ import DefaultTheme from 'vitepress/theme'
 import TwoslashFloatingVue from '@shikijs/vitepress-twoslash/client'
 import '@shikijs/vitepress-twoslash/style.css'
 import { h, defineAsyncComponent } from 'vue'
+import { MermaidExplorer } from '@studnicky/dagonizer/viz'
+import '@studnicky/dagonizer/viz/explorer.css'
 import './palette.css'
 import './base.css'
 
 import TopBar from './components/TopBar.vue'
 import HomeHero from './components/HomeHero.vue'
 import DocFooter from './components/DocFooter.vue'
-import MermaidGate from './components/MermaidGate.vue'
 
 // ArchivistRunner is heavy (cytoscape + fcose + LLM provider matrix);
 // lazy-load so doc pages that don't embed it don't pay for the bundle.
@@ -36,6 +37,10 @@ export default {
     app.component('CartographerRunner', CartographerRunner)
     app.component('DagGraph', DagGraph)
     app.use(TwoslashFloatingVue)
+    // Mermaid diagrams get the same D-pad + fullscreen explorer as the graph
+    // canvases, straight from the package. Client-only; install() wires a
+    // MutationObserver for async-rendered SVGs and is a no-op without a DOM.
+    if (typeof window !== 'undefined') MermaidExplorer.install()
   },
   Layout() {
     return h(DefaultTheme.Layout, null, {
@@ -47,8 +52,7 @@ export default {
       // canonical sidebar/topbar/footer chrome that every page uses.
       'doc-before': () => h(HomeHero),
       // DocFooter renders the seeAlso + nextSteps frontmatter arrays.
-      // MermaidGate enhances diagrams after the page mounts.
-      'doc-after': () => [h(DocFooter), h(MermaidGate)],
+      'doc-after': () => h(DocFooter),
       'sidebar-nav-before': () =>
         h('div', { class: 'dagonizer-sidebar-icon' }, [
           h('img', {

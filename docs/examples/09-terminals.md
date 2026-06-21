@@ -77,7 +77,7 @@ const terminalsRegistry = new Map([['child-for-terminals', childDAG]]);
 ## What it shows
 
 - **Explicit completed terminal.** `.node(..., { ok: 'end' }).terminal('end')`. Declares a named `TerminalNode` placement with the default `outcome: 'completed'`. The diagram shows `end` as a discrete node and the engine marks the state `completed` when execution arrives there.
-- **Explicit failed terminal.** `.terminal('end-fail', { outcome: 'failed' })`. Two terminal placements, `end-ok` (completed) and `end-fail` (failed), wired from a check node. The DAG runs twice, once triggering each terminal, producing `completed` and `failed` lifecycle kinds respectively.
+- **Explicit failed terminal.** `.terminal('end-fail', { outcome: 'failed' })`. Two terminal placements, `end-ok` (completed) and `end-fail` (failed), wired from a check node. The DAG runs twice, once triggering each terminal, producing `completed` and `failed` lifecycle variants respectively.
 - **Embedded-DAG routing to named terminals.** `.embeddedDAG('run', 'child-for-terminals', { success: 'end-ok', error: 'end-fail' })`. The parent registers named terminals and routes the embedded-DAG placement's `success` and `error` outputs directly to them. A child DAG that collects errors surfaces a `failed` lifecycle in the parent.
 
 ## The code
@@ -102,10 +102,10 @@ Running the DAG twice with `state.shouldPass = true` and `false` produces:
 
 ```
 Pattern 2a: check node routes to end-ok
-  lifecycle.kind = completed
+  lifecycle.variant = completed
 
 Pattern 2b: check node routes to end-fail
-  lifecycle.kind = failed
+  lifecycle.variant = failed
 ```
 
 <DagGraph :dag="dag2" aria-label="demo-explicit-terminals: a check node routes pass to end-ok and fail to end-fail." />
@@ -122,10 +122,10 @@ Running the DAG twice:
 
 ```
 Pattern 3a: scatter child succeeds, end-ok
-  lifecycle.kind = completed
+  lifecycle.variant = completed
 
 Pattern 3b: scatter child errors, end-fail
-  lifecycle.kind = failed
+  lifecycle.variant = failed
 ```
 
 <DagGraph :dag="dag3" :embedded-d-a-gs="terminalsRegistry" :expand-all="true" aria-label="demo-scatter-terminals: scatter success routes to end-ok and error routes to end-fail." />

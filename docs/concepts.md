@@ -45,7 +45,7 @@ Nodes are registered with the dispatcher under a string name; the same registere
 
 ## DAG
 
-A **DAG** is a JSON-LD document that declares an entrypoint and a list of node placements with their routing. It is plain data: store it in a file, a database row, or a configuration service, and load it through `Dagonizer.load(json)`. Validation against `DAGSchema` happens at the ingest boundary; everything downstream is typed.
+A **DAG** is a JSON-LD document that declares an entrypoint and a list of node placements with their routing. It is plain data: store it in a file, a database row, or a configuration service. Parse a JSON string via `DAGDocument.load(json)` or validate an already-decoded value via `DAGDocument.ofValue(value)` — both validate against `DAGSchema` at the ingest boundary. Register the result with `dispatcher.registerDAG(dag)`; everything downstream is typed.
 
 The Archivist DAG has roughly ten placements covering classify, scout scatter, compose retry loop, and persist. Its `@context` and `@type` discriminator make it both a runtime artifact and a Linked Data document.
 
@@ -79,7 +79,7 @@ All mutations happen in place on the state object. The dispatcher returns the sa
 
 `NodeStateBase` provides:
 
-- `lifecycle`: discriminated union of the current lifecycle kind plus timestamps
+- `lifecycle`: discriminated union of the current lifecycle variant plus timestamps
 - `errors` and `warnings`: arrays collected from every node
 - `metadata`: generic key-value bag for cross-node messages
 - `collectError`, `collectWarning`, `setMetadata`, lifecycle mark methods
@@ -100,7 +100,7 @@ A **lifecycle** is the FSM behind each DAG execution: `pending → running → c
 
 Terminal states are sticky. Once a flow is `completed`, `failed`, `cancelled`, or `timed_out`, further lifecycle events are ignored.
 
-The discriminated union carries timestamps appropriate to each state. Narrowing on `kind` unlocks the typed fields:
+The discriminated union carries timestamps appropriate to each state. Narrowing on `variant` unlocks the typed fields:
 
 <<< @/../examples/18-observability.ts#lifecycle-state
 
@@ -108,7 +108,7 @@ Timestamps are monotonic milliseconds from `Clock.monotonicMs()`, not wall-clock
 
 ## Dispatcher
 
-The **dispatcher** is the `Dagonizer<TState>` instance. It holds the node and DAG registries, owns the execution loop, and exposes the observability hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`). Consumers extend `Dagonizer` to compose multi-observer behavior into one subclass.
+The **dispatcher** is the `Dagonizer<TState>` instance. It holds the node and DAG registries, owns the execution loop, and exposes the observability hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`). Consumers extend `Dagonizer` to compose multi-observer behavior into one subclass.
 
 Production code instantiates one dispatcher per process. Tests instantiate per case for isolation.
 
@@ -139,7 +139,7 @@ Each node receives the composed signal as `context.signal`. Nodes propagate it t
 
 When the signal fires between nodes, the dispatcher stops without starting the next one. When it fires during a node, the node is responsible for detecting `context.signal.aborted` or threading the signal through its IO.
 
-After early termination: `result.cursor` holds the next node that would have run, and `result.state.lifecycle.kind` is `cancelled` or `timed_out`.
+After early termination: `result.cursor` holds the next node that would have run, and `result.state.lifecycle.variant` is `cancelled` or `timed_out`.
 
 ## Scatter gather strategies
 
@@ -236,7 +236,7 @@ XState owns interactive, event-driven state machines: user interactions, device 
 
 Shared: terminal-state semantics, typed events, immutable transitions.
 
-Pattern: an XState transition's `actions` invoke `dispatcher.execute()` on a registered Dagonizer DAG; the result's `lifecycle.kind` becomes the next XState event (`COMPLETED`, `FAILED`, `CANCELLED`). XState owns the *when* and *why*; Dagonizer owns the *what runs*.
+Pattern: an XState transition's `actions` invoke `dispatcher.execute()` on a registered Dagonizer DAG; the result's `lifecycle.variant` becomes the next XState event (`COMPLETED`, `FAILED`, `CANCELLED`). XState owns the *when* and *why*; Dagonizer owns the *what runs*.
 
 ### Dagonizer plus BullMQ or job queues
 

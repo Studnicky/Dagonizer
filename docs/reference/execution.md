@@ -161,7 +161,7 @@ const result = await execution; // same run, cached
 console.log(nodes, result.cursor);
 ```
 
-The iterator never throws. Cancellation and operation errors resolve to a final `ExecutionResultType` with a non-`null` `cursor`, populated `interruptedAt`, and the appropriate `state.lifecycle` kind.
+The iterator never throws. Cancellation and operation errors resolve to a final `ExecutionResultType` with a non-`null` `cursor`, populated `interruptedAt`, and the appropriate `state.lifecycle.variant`.
 
 ## Related guides
 

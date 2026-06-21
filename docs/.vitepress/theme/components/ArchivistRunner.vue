@@ -35,6 +35,7 @@ import { ApiKeyStore, BackendMatrix, OllamaModels, ProviderInstantiator } from '
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
+import { ToolRegistry } from '@studnicky/dagonizer/tool';
 import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
@@ -246,6 +247,7 @@ async function resumeFromCheckpoint(): Promise<void> {
       'observer': buildObserver(restored.cursor, prov),
     });
 
+    dispatcher.registerBundle(archivistToolRegistry.bundle<ArchivistServices>());
     dispatcher.registerBundle(bookSearchScatterBundle);
     dispatcher.registerBundle(composeRetryLoopBundle);
     dispatcher.registerBundle(archivistBundle);
@@ -412,6 +414,16 @@ const googleBooksTool      = new GoogleBooksTool();
 const subjectSearchTool    = new SubjectSearchTool();
 const wikipediaSummaryTool = new WikipediaSummaryTool();
 
+// Tool registry: each tool becomes an embeddable `tool:<name>` DAG that the
+// book-search scatter resolves at runtime via `{ dagFrom: 'dagName' }`. Must be
+// registered (before bookSearchScatterBundle) or every scatter item fails to
+// resolve its body DAG and routes to 'error' — parity with the CLI (main.ts).
+const archivistToolRegistry = new ToolRegistry();
+archivistToolRegistry.register(webSearchTool);
+archivistToolRegistry.register(googleBooksTool);
+archivistToolRegistry.register(subjectSearchTool);
+archivistToolRegistry.register(wikipediaSummaryTool);
+
 function buildServices(): ArchivistServices {
   const llm = makeLlm();
   if (llm === null) throw new Error('no backend selected');
@@ -434,6 +446,11 @@ function buildServices(): ArchivistServices {
  * `resumeFromCheckpoint()` (resume from a cursor).
  */
 function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
+  // Collected errors are DATA the engine routes (a node may route to its
+  // 'error' output without throwing). Surface every newly-collected
+  // ArchivistState error in the trace so routed/collected failures are
+  // visible, not silently swallowed. Tracks how many have already been shown.
+  let shownErrorCount = 0;
   return {
     onFlowStart(dagName: string) {
       // reset() is awaited by the caller (ask / resumeFromCheckpoint) before
@@ -459,7 +476,25 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
       trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'variant': 'end' }];
       dagGraph.value?.setCompleted(fullId);
       if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
-      StateProjection.project(state, memoryStore);
+      // The parent observer also fires for nodes inside isolated child states
+      // (e.g. the tool:<name> scatter bodies), whose state is NOT an
+      // ArchivistState — only project the parent's ArchivistState into memory.
+      if (state instanceof ArchivistState) {
+        StateProjection.project(state, memoryStore);
+        // Surface any errors the parent state collected since the last node end
+        // (routed-to-'error' failures collect without throwing onError).
+        for (let i = shownErrorCount; i < state.errors.length; i++) {
+          const err = state.errors[i];
+          if (err === undefined) continue;
+          trace.value = [...trace.value, {
+            'node': err.operation !== '' ? err.operation : fullId,
+            'ts': Date.now(),
+            'variant': 'error',
+            'message': `${err.code}: ${err.message}`,
+          }];
+        }
+        shownErrorCount = state.errors.length;
+      }
       prov.recordNodeEnd(nodeName, output ?? undefined);
       memoryTick.value++;
       runnerMachine.pulse(output === null
@@ -661,6 +696,7 @@ async function ask(): Promise<void> {
       'observer': buildObserver(null, prov),
     });
 
+    dispatcher.registerBundle(archivistToolRegistry.bundle<ArchivistServices>());
     dispatcher.registerBundle(bookSearchScatterBundle);
     dispatcher.registerBundle(composeRetryLoopBundle);
     dispatcher.registerBundle(archivistBundle);

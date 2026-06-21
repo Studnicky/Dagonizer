@@ -75,7 +75,9 @@ const layerVisible = ref<Record<GraphLayer, boolean>>({
 
 /** Pan is implemented by shifting all point positions by a fixed world-unit delta. */
 const PAN_ENABLED = true;
-const PAN_STEP = 250;
+// Screen-pixel pan step, matching the cytoscape DAG graph's `cy.panBy` (80px).
+// Converted to world units per-call via the current zoom (see `mgPanBy`).
+const PAN_STEP = 80;
 
 /** Layer entries for GraphLegend: reactive so active state reflects layerVisible. */
 const memoryLegendTabs = computed<readonly LegendTab[]>(() => {
@@ -104,6 +106,9 @@ const loadError = ref<string | null>(null);
 const zoomLevel = ref<number>(1);
 /** Zoom level at last fitView; zoom-out floor so graph never shrinks to a dot. */
 const fitZoomLevel = ref<number | null>(null);
+/** Frame ref so the D-pad expand control toggles fullscreen — same rule as the
+ *  cytoscape DAG graph (DagGraph), not a zoom step. */
+const diagramFrameRef = ref<InstanceType<typeof DiagramFrame> | null>(null);
 
 const graph = shallowRef<GraphHandle | null>(null);
 interface PointMeta {
@@ -246,21 +251,79 @@ function pollZoom(): void {
   try { zoomLevel.value = graph.value?.getZoomLevel() ?? 1; } catch { /* ignore */ }
 }
 
+// Zoom step matches the cytoscape DAG graph (DagGraph) so both D-pads zoom by
+// the same factor — one rule across both graph backends.
+const ZOOM_STEP = 1.25;
+
 function mgZoomIn(): void {
   const g = graph.value;
   if (g === null) return;
-  try { g.setZoomLevel(g.getZoomLevel() * 1.3); pollZoom(); } catch { /* ignore */ }
+  try { g.setZoomLevel(g.getZoomLevel() * ZOOM_STEP); pollZoom(); } catch { /* ignore */ }
 }
 
 function mgZoomOut(): void {
   const g = graph.value;
   if (g === null) return;
   try {
-    const next = g.getZoomLevel() / 1.3;
+    const next = g.getZoomLevel() / ZOOM_STEP;
     const floor = fitZoomLevel.value ?? 0;
     g.setZoomLevel(Math.max(next, floor));
     pollZoom();
   } catch { /* ignore */ }
+}
+
+// Centre: recentre the point cloud in the viewport WITHOUT changing zoom — the
+// same rule as the cytoscape graph's `cy.center()`. cosmos.gl has no camera
+// translate, so shift every point by the world-space delta that moves the
+// cloud's centroid to the viewport centre (pixels → world via current zoom).
+function mgCentre(): void {
+  const g = graph.value;
+  const container = containerRef.value;
+  if (g === null || container === null) return;
+  let flat: readonly number[] = [];
+  try { flat = g.getPointPositions(); } catch { return; }
+  if (flat.length === 0) return;
+
+  let sumX = 0;
+  let sumY = 0;
+  const count = flat.length / 2;
+  for (let i = 0; i < flat.length; i += 2) {
+    sumX += flat[i] ?? 0;
+    sumY += flat[i + 1] ?? 0;
+  }
+  const centroidX = sumX / count;
+  const centroidY = sumY / count;
+
+  let screenX = 0;
+  let screenY = 0;
+  try {
+    const screen = g.spaceToScreenPosition([centroidX, centroidY]);
+    screenX = screen[0];
+    screenY = screen[1];
+  } catch { return; }
+
+  const rect = container.getBoundingClientRect();
+  const zoom = g.getZoomLevel();
+  if (zoom === 0) return;
+  const worldDx = (rect.width / 2 - screenX) / zoom;
+  const worldDy = (rect.height / 2 - screenY) / zoom;
+
+  const next = new Float32Array(flat.length);
+  for (let i = 0; i < flat.length; i += 2) {
+    next[i]     = (flat[i]     ?? 0) + worldDx;
+    next[i + 1] = (flat[i + 1] ?? 0) + worldDy;
+  }
+  try {
+    g.setPointPositions(next, true);
+    g.render(0);
+    scheduleLabelPaint();
+  } catch { /* ignore */ }
+}
+
+// Expand: toggle the diagram frame to fullscreen — identical rule to the
+// cytoscape graph's expand control.
+function mgExpand(): void {
+  void diagramFrameRef.value?.toggleFullscreen();
 }
 
 function mgFit(): void {
@@ -276,16 +339,24 @@ function mgFit(): void {
   } catch { /* ignore */ }
 }
 
+// `dx`/`dy` are SCREEN-pixel deltas (matching the cytoscape graph's 80px
+// `cy.panBy`). cosmos.gl pans by shifting points, so convert pixels → world
+// units via the current zoom; the on-screen pan distance is then constant at
+// every zoom level — the same rule as the DAG graph.
 function mgPanBy(dx: number, dy: number): void {
   const g = graph.value;
   if (g === null) return;
   let flat: readonly number[] = [];
   try { flat = g.getPointPositions(); } catch { return; }
   if (flat.length === 0) return;
+  const zoom = g.getZoomLevel();
+  if (zoom === 0) return;
+  const worldDx = dx / zoom;
+  const worldDy = dy / zoom;
   const next = new Float32Array(flat.length);
   for (let i = 0; i < flat.length; i += 2) {
-    next[i]     = (flat[i]     ?? 0) + dx;
-    next[i + 1] = (flat[i + 1] ?? 0) + dy;
+    next[i]     = (flat[i]     ?? 0) + worldDx;
+    next[i + 1] = (flat[i + 1] ?? 0) + worldDy;
   }
   try {
     g.setPointPositions(next, true);
@@ -604,7 +675,7 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
 </script>
 
 <template>
-  <DiagramFrame title="RDF graph" :frameless="true" :aria-label="`RDF triple graph: ${String(store.size)} triples`" @resize="onFrameResize">
+  <DiagramFrame ref="diagramFrameRef" title="RDF graph" :frameless="true" :aria-label="`RDF triple graph: ${String(store.size)} triples`" @resize="onFrameResize">
     <template #meta>
       <span class="mg-count">{{ store.size }} {{ store.size === 1 ? 'triple' : 'triples' }}</span>
     </template>
@@ -646,11 +717,12 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
         <GraphDpad
           :zoom-level="zoomLevel"
           :pan-enabled="PAN_ENABLED"
+          expand-title="Fullscreen"
           @zoom-in="mgZoomIn"
           @zoom-out="mgZoomOut"
-          @centre="mgFit"
+          @centre="mgCentre"
           @fit="mgFit"
-          @expand="mgZoomIn"
+          @expand="mgExpand"
           @pan-up="mgPanUp"
           @pan-down="mgPanDown"
           @pan-left="mgPanLeft"

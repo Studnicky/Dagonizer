@@ -42,8 +42,14 @@ export interface NodeVizAdapter {
 const TRANSITIONS: Readonly<Record<NodeVizState, Partial<Record<NodeVizEventKind, NodeVizState>>>> = {
   pending:   { start: 'active', reset: 'pending' },
   active:    { end:   'completed', error: 'errored', reset: 'pending' },
-  completed: { reset: 'pending' },
-  errored:   { reset: 'pending' },
+  // `start` re-activates a settled node so it re-pulses. A scatter routes many
+  // items through the SAME body-DAG cytoscape node; without this, the node
+  // latches to `completed` after the first item and every later pass is a
+  // no-op, so the animation thins out and stops mid-run. Re-activation keeps
+  // the graph alive under sustained throughput; single-pass flows (each node
+  // fires once) are unaffected.
+  completed: { start: 'active', reset: 'pending' },
+  errored:   { start: 'active', reset: 'pending' },
 };
 
 /** Class names added on entry to each visual state. */

@@ -63,6 +63,7 @@ import type {
 ```ts twoslash
 import type { NodeStateInterface, ValidationResultType, NodeContextType } from '@studnicky/dagonizer';
 import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer/contracts';
 import { Timeout } from '@studnicky/dagonizer';
 // ---cut---
 interface NodeInterface<
@@ -72,6 +73,7 @@ interface NodeInterface<
 > {
   readonly name: string;
   readonly outputs: readonly TOutput[];
+  readonly outputSchema: Record<TOutput, SchemaObjectType>;
   readonly timeout: Timeout;
   execute(batch: Batch<TState>, context: NodeContextType<TServices>): Promise<RoutedBatchType<TOutput, TState>>;
   destroy?(): Promise<void>;
@@ -81,7 +83,9 @@ interface NodeInterface<
 
 The contract every consumer node implements. Nodes are stateless; they mutate state and route to a named output. They never throw: caught errors route to `'error'` (or whatever the consumer declared).
 
-`timeout` is an optional per-node wall-clock budget expressed as a `Timeout` value (`Timeout.ofMs(n)` or `Timeout.none()`). When set to a non-none value, the engine derives a child `AbortController` from the run's signal and schedules an abort after the budget. On expiry, `NodeTimeoutError` is thrown and the run is marked failed. The `MonadicNode` base class defaults to `Timeout.none()`; nodes that do not extend it should omit the field (treated as `Timeout.none()` by the engine).
+`outputSchema` is a mandatory per-output-port JSON Schema 2020-12 record describing the state delta each port guarantees. Every declared output port in `outputs` must have an entry. Schemas are partial over state — they validate the fields the node writes; do not set `additionalProperties: false`. `MonadicNode` provides a passthrough default (`{ type: 'object' }` per port); concrete nodes should override with real schemas.
+
+`timeout` is a per-node wall-clock budget expressed as a `Timeout` value (`Timeout.ofMs(n)` or `Timeout.none()`). When set to a non-none value, the engine derives a child `AbortController` from the run's signal and schedules an abort after the budget. On expiry, `NodeTimeoutError` is thrown and the run is marked failed. The `MonadicNode` base class defaults to `Timeout.none()`; nodes that do not extend it should omit the field (treated as `Timeout.none()` by the engine).
 
 ## ExecuteOptionsType
 
@@ -95,36 +99,37 @@ interface ExecuteOptionsType {
 
 `Dagonizer.execute` and `Dagonizer.resume` accept this as their third argument. `SignalComposer.compose` folds the two fields into a single signal.
 
-## ClockProvider
+## ClockProviderInterface
 
 ```ts twoslash
 // ---cut---
-interface ClockProvider {
+interface ClockProviderInterface {
   hrtime(): bigint;
 }
 ```
 
 Backend for the `Clock` singleton. Implement to swap time sources (typically in tests via `VirtualClockProvider` from `@studnicky/dagonizer/testing`).
 
-## SchedulerProvider
+## SchedulerProviderInterface
 
 ```ts twoslash
+import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-interface SchedulerProvider {
-  after(delayMs: number, signal?: AbortSignal): Promise<void>;
-  at(atMs: number, signal?: AbortSignal): Promise<void>;
-  every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void>;
+interface SchedulerProviderInterface {
+  after(delayMs: number, options?: AbortableOptionsType): Promise<void>;
+  at(atMs: number, options?: AbortableOptionsType): Promise<void>;
+  every(intervalMs: number, options?: AbortableOptionsType): AsyncIterable<void>;
   cancelAll(): void;
 }
 ```
 
-`SchedulerProvider` is the backend contract; implement it to swap in a custom scheduler. `Scheduler.current()` returns the active `SchedulerProvider`. Production uses `RealTimeScheduler`; tests install `VirtualScheduler` from `@studnicky/dagonizer/testing`.
+`SchedulerProviderInterface` is the backend contract; implement it to swap in a custom scheduler. `Scheduler.current()` returns the active `SchedulerProviderInterface`. Production uses `RealTimeScheduler`; tests install `VirtualScheduler` from `@studnicky/dagonizer/testing`.
 
-## StateAccessor
+## StateAccessorInterface
 
 ```ts twoslash
 // ---cut---
-interface StateAccessor {
+interface StateAccessorInterface {
   get(state: object, path: string): unknown;
   set(state: object, path: string, value: unknown): void;
 }
@@ -132,24 +137,24 @@ interface StateAccessor {
 
 Path resolver used for scatter source reads, state-mapping input copies, and gather writes. Default implementation: `DottedPathAccessor` in `runtime/`. Pass a custom implementation via `new Dagonizer({ accessor })`.
 
-## Snapshottable
+## SnapshottableInterface
 
 ```ts twoslash
 import type { StoreSnapshotType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-interface Snapshottable {
+interface SnapshottableInterface {
   snapshot(): Promise<StoreSnapshotType>;
   restore(snapshot: StoreSnapshotType): Promise<void>;
 }
 ```
 
-The capability checkpointing depends on. `Checkpoint.capture(dag, result, { stores })` and `ckpt.restoreStores(map)` take `Record<string, Snapshottable>`, so a non-KV backing (RDF triple store, vector index) can ride along in a checkpoint without implementing the key-value surface. `Store extends Snapshottable`. The `StoreSnapshotType` / `StoreSnapshotEntryType` envelopes live with it. See [Store](./store.md) for the envelope shape and `BaseStore`.
+The capability checkpointing depends on. `Checkpoint.capture(dag, result, { stores })` and `ckpt.restoreStores(map)` take `Record<string, SnapshottableInterface>`, so a non-KV backing (RDF triple store, vector index) can ride along in a checkpoint without implementing the key-value surface. `StoreInterface extends SnapshottableInterface`. The `StoreSnapshotType` / `StoreSnapshotEntryType` envelopes live with it. See [Store](./store.md) for the envelope shape and `BaseStore`.
 
-## CheckpointStore
+## CheckpointStoreInterface
 
 ```ts twoslash
 // ---cut---
-interface CheckpointStore {
+interface CheckpointStoreInterface {
   save(key: string, json: string): Promise<void>;
   load(key: string): Promise<string | null>;
   delete(key: string): Promise<void>;
@@ -158,11 +163,11 @@ interface CheckpointStore {
 
 Persistence backend for checkpoints. `ckpt.persist(store, key)` and `Checkpoint.recall(store, key)` compose the codec with the store. Reference impl: `MemoryCheckpointStore`. See [persistence](../guide/persistence.md) for a Postgres example.
 
-## Embedder
+## EmbedderInterface
 
 ```ts twoslash
 // ---cut---
-interface Embedder {
+interface EmbedderInterface {
   readonly id: string;
   readonly displayName: string;
   readonly dimensions: number;
@@ -174,7 +179,7 @@ interface Embedder {
 }
 ```
 
-Produces a fixed-dimensionality vector for a text input. Plugins implement this (typically by extending `BaseEmbedder` from `@studnicky/dagonizer/adapter`) to swap embedding backends. The adapter cascade pattern applies: register multiple `Embedder`s, probe at runtime, pick the first available.
+Produces a fixed-dimensionality vector for a text input. Plugins implement this (typically by extending `BaseEmbedder` from `@studnicky/dagonizer/adapter`) to swap embedding backends. The adapter cascade pattern applies: register multiple `EmbedderInterface`s, probe at runtime, pick the first available.
 
 | Member | Description |
 |---|---|
@@ -237,9 +242,10 @@ See [Reference: Store](./store#interface-remotestore) for the full interface and
 
 ```ts twoslash
 import type { DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer';
+import type { ObserverRelayInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface DagContainerInterface {
-  runDag(task: DagTaskInterface<unknown>): Promise<DagOutcomeType>;
+  runDag(task: DagTaskInterface<unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
   destroy?(): Promise<void>;
 }
 ```
@@ -304,12 +310,12 @@ interface RegistryModuleInterface {
 ## DagOutcomeType
 
 ```ts twoslash
-import type { NodeErrorType, ExecutorIntermediateType } from '@studnicky/dagonizer';
+import type { NodeErrorWireType, ExecutorIntermediateType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface DagOutcomeType {
   readonly terminalOutput: string;
-  readonly errors:         readonly NodeErrorType[];
+  readonly errors:         readonly NodeErrorWireType[];
   readonly stateSnapshot:  JsonObjectType | null;
   readonly intermediates:  readonly ExecutorIntermediateType[];
 }
@@ -357,12 +363,12 @@ import type { GatherExecutionType, GatherRecordType, OutcomeRecordType } from '@
 
 `GatherRecordType<TState>` carries per-clone results from the scatter loop: `index`, `item`, `output`, `terminalOutcome`, and `cloneState`. `GatherExecutionType<TState>` is the invocation context handed to `GatherStrategy.apply`: it provides `records`, the live parent `state`, the `accessor`, and `invoker` (a `NodeInvoker`; used by the `custom` strategy via `invoker.invokeNode(name)`). `OutcomeRecordType` is the per-clone summary handed to `OutcomeReducer.reduce`: `index`, `output`, and `terminalOutcome`.
 
-## LlmAdapter / LlmClient
+## LlmAdapterInterface / LlmClientInterface
 
 ```ts twoslash
 import type { AdapterCapabilitiesType, ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
 // ---cut---
-interface LlmAdapter {
+interface LlmAdapterInterface {
   readonly id:           string;
   readonly displayName:  string;
   readonly capabilities: AdapterCapabilitiesType;
@@ -372,18 +378,18 @@ interface LlmAdapter {
   probe(): Promise<boolean>;
 }
 
-interface LlmClient {
+interface LlmClientInterface {
   chat(request: ChatRequestType): Promise<ChatResponseType>;
 }
 ```
 
-`LlmAdapter` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `LlmClient` is the minimal chat surface pattern bases accept — any `LlmAdapter` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapter` directly.
+`LlmAdapterInterface` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `LlmClientInterface` is the minimal chat surface pattern bases accept — any `LlmAdapterInterface` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapterInterface` directly.
 
-## NodeInvoker
+## NodeInvokerInterface
 
 ```ts twoslash
 // ---cut---
-interface NodeInvoker {
+interface NodeInvokerInterface {
   invokeNode(nodeName: string): Promise<void>;
 }
 ```
