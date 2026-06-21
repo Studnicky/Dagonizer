@@ -408,6 +408,10 @@ html::-webkit-scrollbar-corner {
    chrome so tables visually slot in beside cards, code blocks, and
    mermaid frames. */
 .vp-doc table {
+  /* VitePress defaults tables to `display: block` (for overflow scroll), which
+     leaves the columns content-width inside the full-width chrome — an empty
+     gap on the right. `display: table` distributes the columns across 100%. */
+  display: table;
   border-collapse: collapse;
   width: 100%;
   margin: 1.5rem 0;
@@ -633,33 +637,18 @@ html::-webkit-scrollbar-corner {
    same family of terminal panels. SVG color tokens come from
    palette.css so dark / light mode propagates without overrides. */
 
-.vp-doc div[class*="mermaid"],
-.vp-doc .dagonizer-mermaid-frame {
-  position: relative;
-  max-width: 100%;
+/* Mermaid frame surface chrome ONLY. Sizing, overflow, cursor, the D-pad, and
+   the SVG pan/zoom transform are owned by @studnicky/dagonizer/viz/explorer.css.
+   The old broad `div[class*="mermaid"]` selector also matched the explorer's
+   own `dag-mermaid-dpad*` divs and forced overflow/position/max-width onto them,
+   breaking the D-pad and fit — so scope strictly to the frame class. */
+.vp-doc .dagonizer-mermaid {
   margin: 1.5rem 0;
-  padding: 16px;
   background-color: var(--dagonizer-surface-bg-deep);
   background-image: var(--dagonizer-surface-grain);
   background-size: var(--dagonizer-surface-grain-size);
   border: var(--dagonizer-surface-border);
   border-radius: var(--dagonizer-surface-radius);
-  overflow-x: auto;
-  cursor: zoom-in;
-}
-.vp-doc div[class*="mermaid"] svg,
-.vp-doc .dagonizer-mermaid-frame svg {
-  /* Mermaid sets explicit width/height attributes when useMaxWidth:
-     false. `max-width: 100%` lets CSS scale the SVG DOWN if it
-     exceeds the frame (wide LR diagrams), but never UP, so tall TB
-     diagrams stay readable at their natural width rather than being
-     stretched to fill the column. */
-  width: auto !important;
-  height: auto !important;
-  max-width: 100% !important;
-  display: block;
-  margin: 0 auto;
-  background: var(--mermaid-bg);
 }
 
 /* Node fills / strokes / text: every shape routes through the same tokens */
@@ -825,100 +814,8 @@ html::-webkit-scrollbar-corner {
 /* Edge label font-size left to mermaid's themeVariables.fontSize so
    measurement and render stay in lock-step. */
 
-/* ===== Mermaid expand button + modal (pan/zoom viewer) =====
-   The .dagonizer-mermaid-expand button is injected by MermaidEnhancer.client.ts
-   into each diagram frame. The modal overlay is appended to <body>. */
-
-.dagonizer-mermaid-expand {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  padding: 4px 9px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-2);
-  background: var(--dagonizer-pearl);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  cursor: zoom-in;
-  z-index: 1;
-  user-select: none;
-}
-.dagonizer-mermaid-expand:hover {
-  color: var(--dagonizer-cyan);
-  border-color: var(--dagonizer-cyan);
-}
-
-/* Modal overlay */
-.dagonizer-mermaid-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(2, 3, 6, 0.94);
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: stretch;
-  cursor: grab;
-}
-.dagonizer-mermaid-modal.dragging { cursor: grabbing; }
-
-.dagonizer-mermaid-modal-toolbar {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 2;
-  display: flex;
-  gap: 6px;
-}
-.dagonizer-mermaid-modal-toolbar button {
-  padding: 6px 12px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  background: var(--dagonizer-pearl);
-  border: 1px solid var(--vp-c-divider);
-  color: var(--vp-c-text-1);
-  border-radius: 4px;
-  cursor: pointer;
-}
-.dagonizer-mermaid-modal-toolbar button:hover {
-  border-color: var(--dagonizer-cyan);
-  color: var(--dagonizer-cyan);
-}
-
-.dagonizer-mermaid-modal-stage {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-}
-.dagonizer-mermaid-modal-stage svg {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform-origin: 0 0;
-  max-width: none !important;
-  height: auto !important;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
-.dagonizer-mermaid-modal-hint {
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 0.72rem;
-  color: var(--vp-c-text-3);
-  background: var(--dagonizer-pearl);
-  padding: 4px 10px;
-  border-radius: 4px;
-  letter-spacing: 0.04em;
-  z-index: 2;
-  white-space: nowrap;
-}
+/* Mermaid pan/zoom + fullscreen explorer (D-pad, modal) is provided by
+   @studnicky/dagonizer/viz (MermaidExplorer) and its explorer.css. */
 
 /* ============================================================
    Sidebar-as-overlay-drawer layout

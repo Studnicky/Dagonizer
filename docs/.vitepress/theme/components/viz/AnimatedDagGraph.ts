@@ -252,13 +252,12 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     cy.on('drag', 'node', this.#onDrag);
     cy.on('zoom', this.#onZoom);
 
-    cy.one('layoutstop', () => {
-      // Deferred double-fit (see applyFit): the first pass fits what's settled,
-      // the next-frame pass captures the final extent of deeply-nested compound
-      // bounding boxes. Each pass unclamps before fitting so a larger (expanded)
-      // or smaller (collapsed) graph fits in either direction, then re-clamps.
-      this.applyFit();
-    });
+    // Fit on load. The `preset` layout completes SYNCHRONOUSLY during mount(),
+    // so by the time this onReady hook runs `layoutstop` has already fired —
+    // a `cy.one('layoutstop')` here would never run for the initial layout and
+    // the graph would render unfit. Call applyFit() directly instead (it does
+    // its own double-pass via requestAnimationFrame to settle compound boxes).
+    this.applyFit();
   }
 
   // ── Private: adapters ────────────────────────────────────────────────────
@@ -477,8 +476,10 @@ export class AnimatedDagGraph extends CytoscapeGraph {
       padding: 60,
       animate: false,
     });
+    // `preset` runs synchronously, so layoutstop has already fired here — fit
+    // directly rather than via a `cy.one('layoutstop')` that would never run.
     layout.run();
-    cy.one('layoutstop', () => { this.applyFit(); });
+    this.applyFit();
   }
 
   // ── Public: camera buttons ────────────────────────────────────────────────

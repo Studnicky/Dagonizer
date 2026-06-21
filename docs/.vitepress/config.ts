@@ -598,6 +598,13 @@ export default withMermaid(defineConfig({
     // first paint already shows the mechanicus chrome (pearl-black node
     // surface, teal accent border, monospace text on the navy panel).
     theme: 'base',
+    // Raise Mermaid's safety caps: a large DAG (hundreds of placements/edges,
+    // tens of KB of source) silently blanks on the defaults (maxTextSize 50000,
+    // maxEdges 500). NOTE: themeVariables colours are parsed by khroma and MUST
+    // be concrete colours — a CSS var() throws and blanks every diagram; theme
+    // colours live in base.css/explorer.css on the rendered SVG instead.
+    maxTextSize: 200000,
+    maxEdges: 5000,
     // System monospace stack ONLY, no web fonts. Mermaid measures label
     // widths at SSR time before any web font loads; if measurement uses the
     // fallback and the render later swaps in a wider web font (JetBrains

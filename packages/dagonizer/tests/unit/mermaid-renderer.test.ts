@@ -27,7 +27,7 @@ void describe('MermaidRenderer.render', () => {
       ],
     };
     const out = MermaidRenderer.render(dag);
-    assert.match(out, /flowchart LR/u);
+    assert.match(out, /flowchart TB/u);
     assert.match(out, /greet\[greet\]/u);
     assert.match(out, /greet -->\|success\| end/u);
     assert.match(out, /end\(\(\(end/u);
@@ -117,7 +117,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
     const edgeLines = out.split('\n').filter((line) => line.includes('-->') && line.includes('setup'));
     assert.equal(edgeLines.length, 0);
     // does not crash; returns valid flowchart
-    assert.match(out, /flowchart LR/u);
+    assert.match(out, /flowchart TB/u);
   });
 
   void it('renders a post-phase PhaseNode with phase suffix in label', () => {
@@ -365,7 +365,7 @@ void describe('RoleColorUtils.forRole', () => {
 });
 
 void describe('MermaidRenderer.render: TerminalNodeType', () => {
-  void it('renders a completed TerminalNodeType as a double-circle with outcome suffix', () => {
+  void it('renders a completed TerminalNodeType as a double-circle with outcome suffix (keep mode)', () => {
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:t',
@@ -384,16 +384,17 @@ void describe('MermaidRenderer.render: TerminalNodeType', () => {
         { '@id': 'urn:noocodex:dag:t/node/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' },
       ],
     };
-    const out = MermaidRenderer.render(dag);
+    // Use terminalAnnotations:'keep' to preserve the outcome suffix in the label.
+    const out = MermaidRenderer.render(dag, { 'terminalAnnotations': 'keep' });
     // double-circle shape: (((label)))
     assert.match(out, /done\(\(\(.*\)\)\)/u);
-    // outcome suffix present in label
+    // outcome suffix present in label when annotations are kept
     assert.match(out, /completed/u);
     // edge connects to the TerminalNodeType
     assert.match(out, /step -->\|success\| done/u);
   });
 
-  void it('renders a failed TerminalNodeType as an asymmetric flag with outcome suffix', () => {
+  void it('renders a failed TerminalNodeType as an asymmetric flag with outcome suffix (keep mode)', () => {
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:t2',
@@ -412,7 +413,8 @@ void describe('MermaidRenderer.render: TerminalNodeType', () => {
         { '@id': 'urn:noocodex:dag:t2/node/abort', '@type': 'TerminalNode', 'name': 'abort', 'outcome': 'failed' },
       ],
     };
-    const out = MermaidRenderer.render(dag);
+    // Use terminalAnnotations:'keep' to preserve the outcome suffix in the label.
+    const out = MermaidRenderer.render(dag, { 'terminalAnnotations': 'keep' });
     // asymmetric flag shape: name>label]
     assert.match(out, /abort>/u);
     assert.match(out, /\(failed\)/u);
@@ -591,5 +593,268 @@ void describe('MermaidRenderer: reservoir glyph', () => {
     // No reservoir classDef and no reservoir class assignment.
     assert.doesNotMatch(out, /classDef reservoir/u);
     assert.doesNotMatch(out, /class fan reservoir/u);
+  });
+});
+
+// ── MermaidRenderOptionsType: new rendering-correctness passes ─────────────
+
+/** DAG with a colon-namespaced placement name that would break Mermaid's lexer. */
+const COLON_NODE_DAG: DAGType = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:colon-test',
+  '@type':    'DAG',
+  'name':       'colon-test',
+  'version':    '1',
+  'entrypoint': 'extract:class-base',
+  'nodes': [
+    {
+      '@id':     'urn:noocodex:dag:colon-test/node/extract:class-base',
+      '@type':   'SingleNode',
+      'name':    'extract:class-base',
+      'node':    'extractor',
+      'outputs': { 'success': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:colon-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+  ],
+};
+
+void describe('MermaidRenderer: options — orientation', () => {
+  void it('default orientation is TB', () => {
+    const out = MermaidRenderer.render(PLAIN_SCATTER_DAG);
+    assert.match(out, /^flowchart TB$/mu);
+  });
+
+  void it('orientation LR override emits flowchart LR', () => {
+    const out = MermaidRenderer.render(PLAIN_SCATTER_DAG, { 'orientation': 'LR' });
+    assert.match(out, /^flowchart LR$/mu);
+  });
+
+  void it('orientation RL override emits flowchart RL', () => {
+    const out = MermaidRenderer.render(PLAIN_SCATTER_DAG, { 'orientation': 'RL' });
+    assert.match(out, /^flowchart RL$/mu);
+  });
+
+  void it('orientation BT override emits flowchart BT', () => {
+    const out = MermaidRenderer.render(PLAIN_SCATTER_DAG, { 'orientation': 'BT' });
+    assert.match(out, /^flowchart BT$/mu);
+  });
+});
+
+void describe('MermaidRenderer: options — node-id sanitization', () => {
+  void it('replaces `:` in bare node IDs with `_` by default', () => {
+    const out = MermaidRenderer.render(COLON_NODE_DAG);
+    // The bare id in the shape definition uses `_` not `:`.
+    assert.match(out, /extract_class-base\[/u);
+    // The label INSIDE the brackets keeps the original colon.
+    assert.match(out, /\[extract:class-base\]/u);
+  });
+
+  void it('edge target ids are also sanitized', () => {
+    const out = MermaidRenderer.render(COLON_NODE_DAG);
+    // Edge from the colon-named source to `end`; source id uses `_`.
+    assert.match(out, /extract_class-base -->/u);
+  });
+
+  void it('classDef and `class ` directive lines are NOT mangled by sanitization', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:sanitize-classDef-guard',
+      '@type':    'DAG',
+      'name':       'sanitize-classDef-guard',
+      'version':    '1',
+      'entrypoint': 'embed',
+      'nodes': [
+        {
+          '@id':       'urn:noocodex:dag:sanitize-classDef-guard/node/embed',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'embed',
+          'dag':       'inner',
+          'container': 'cpu',
+          'outputs':   { 'success': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:sanitize-classDef-guard/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const out = MermaidRenderer.render(dag);
+    // classDef line retains fill:/stroke:/color: colons intact.
+    assert.match(out, /classDef contained-cpu fill:#/u);
+    assert.match(out, /stroke:#/u);
+    assert.match(out, /color:#/u);
+    // `class ` assignment line is also intact.
+    assert.match(out, /class embed contained-cpu/u);
+  });
+
+  void it('sanitization can be disabled via sanitizeNodeIds: false', () => {
+    const out = MermaidRenderer.render(COLON_NODE_DAG, { 'sanitizeNodeIds': false });
+    // The original colon is preserved in the bare id position.
+    assert.match(out, /extract:class-base\[/u);
+  });
+});
+
+void describe('MermaidRenderer: options — terminal-annotation strip', () => {
+  void it('strips \\n(completed) from completed terminal node label by default', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:strip-completed',
+      '@type':    'DAG',
+      'name':       'strip-completed',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:strip-completed/node/step',
+          '@type':   'SingleNode',
+          'name':    'step',
+          'node':    'worker',
+          'outputs': { 'success': 'done' },
+        },
+        { '@id': 'urn:noocodex:dag:strip-completed/node/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' },
+      ],
+    };
+    const out = MermaidRenderer.render(dag);
+    // The literal `\n(completed)` suffix is stripped from the shape line.
+    assert.doesNotMatch(out, /\\n\(completed\)/u);
+    // The node still renders as a double-circle (shape syntax preserved).
+    assert.match(out, /done\(\(\(/u);
+  });
+
+  void it('strips \\n(failed) from failed terminal node label by default', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:strip-failed',
+      '@type':    'DAG',
+      'name':       'strip-failed',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:strip-failed/node/step',
+          '@type':   'SingleNode',
+          'name':    'step',
+          'node':    'worker',
+          'outputs': { 'error': 'abort' },
+        },
+        { '@id': 'urn:noocodex:dag:strip-failed/node/abort', '@type': 'TerminalNode', 'name': 'abort', 'outcome': 'failed' },
+      ],
+    };
+    const out = MermaidRenderer.render(dag);
+    // The literal `\n(failed)` suffix is stripped from the shape line.
+    assert.doesNotMatch(out, /\\n\(failed\)/u);
+    // The node still renders as an asymmetric flag (shape syntax preserved).
+    assert.match(out, /abort>/u);
+  });
+
+  void it('keeps terminal annotations when terminalAnnotations is "keep"', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:keep-annotations',
+      '@type':    'DAG',
+      'name':       'keep-annotations',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:keep-annotations/node/step',
+          '@type':   'SingleNode',
+          'name':    'step',
+          'node':    'worker',
+          'outputs': { 'success': 'done' },
+        },
+        { '@id': 'urn:noocodex:dag:keep-annotations/node/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' },
+      ],
+    };
+    const out = MermaidRenderer.render(dag, { 'terminalAnnotations': 'keep' });
+    // The literal \n(completed) is preserved in the output.
+    assert.match(out, /\\n\(completed\)/u);
+  });
+
+  void it('classDef and style directive lines are NOT altered by the annotation strip pass', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:strip-directive-guard',
+      '@type':    'DAG',
+      'name':       'strip-directive-guard',
+      'version':    '1',
+      'entrypoint': 'work',
+      'nodes': [
+        {
+          '@id':       'urn:noocodex:dag:strip-directive-guard/node/work',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'work',
+          'dag':       'inner',
+          'container': 'cpu',
+          'outputs':   { 'success': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:strip-directive-guard/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const out = MermaidRenderer.render(dag);
+    // classDef line is not mangled (fill:/stroke:/color: colons remain).
+    assert.match(out, /classDef contained-cpu fill:#/u);
+  });
+});
+
+void describe('MermaidRenderer: options — containerTints theme override', () => {
+  void it('containerTints[role] overrides the default hash-derived fill for that role', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:tints-test',
+      '@type':    'DAG',
+      'name':       'tints-test',
+      'version':    '1',
+      'entrypoint': 'task',
+      'nodes': [
+        {
+          '@id':       'urn:noocodex:dag:tints-test/node/task',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'task',
+          'dag':       'sub',
+          'container': 'gpu',
+          'outputs':   { 'success': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:tints-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const customFill = '#ff00ff';
+    const out = MermaidRenderer.render(dag, { 'theme': { 'containerTints': { 'gpu': customFill } } });
+    // classDef for `gpu` must use the override fill.
+    assert.match(out, new RegExp(`classDef contained-gpu fill:${customFill}`, 'u'));
+    // class assignment for the node is still present.
+    assert.match(out, /class task contained-gpu/u);
+  });
+
+  void it('roles not in containerTints keep the default palette fill', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:tints-partial',
+      '@type':    'DAG',
+      'name':       'tints-partial',
+      'version':    '1',
+      'entrypoint': 'a',
+      'nodes': [
+        {
+          '@id':       'urn:noocodex:dag:tints-partial/node/a',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'a',
+          'dag':       'sub-a',
+          'container': 'cpu',
+          'outputs':   { 'success': 'b' },
+        },
+        {
+          '@id':       'urn:noocodex:dag:tints-partial/node/b',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'b',
+          'dag':       'sub-b',
+          'container': 'io',
+          'outputs':   { 'success': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:tints-partial/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    // Only override `io`; `cpu` should keep its palette colour.
+    const out = MermaidRenderer.render(dag, { 'theme': { 'containerTints': { 'io': '#abcdef' } } });
+    const cpuColors = RoleColorUtils.forRole('cpu');
+    assert.match(out, new RegExp(`classDef contained-cpu fill:${cpuColors.fill}`, 'u'));
+    assert.match(out, /classDef contained-io fill:#abcdef/u);
   });
 });
