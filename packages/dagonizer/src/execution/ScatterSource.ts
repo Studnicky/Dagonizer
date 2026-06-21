@@ -16,11 +16,11 @@ export class ScatterSource {
   static toAsyncIterator(source: unknown): AsyncIterator<unknown> {
     if (source !== null && typeof source === 'object') {
       // AsyncIterable first (duck-type Symbol.asyncIterator).
-      if (Symbol.asyncIterator in (source as object)) {
+      if (Symbol.asyncIterator in source) {
         return (source as AsyncIterable<unknown>)[Symbol.asyncIterator]();
       }
       // Sync iterable (duck-type Symbol.iterator), including arrays.
-      if (Symbol.iterator in (source as object)) {
+      if (Symbol.iterator in source) {
         const syncIter = (source as Iterable<unknown>)[Symbol.iterator]();
         return {
           next(): Promise<IteratorResult<unknown>> {

@@ -178,8 +178,7 @@ export class DAGBuilder {
       '@type':   'SingleNode',
       name,
       'node':    dagNode.name,
-      // Generic erasure: TOutput is narrower than string; the entity schema stores string keys.
-      'outputs': routes as Record<string, string>,
+      'outputs': routes,
     });
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
@@ -226,7 +225,7 @@ export class DAGBuilder {
     } else if ('dagFrom' in body) {
       wireBody = { 'dagFrom': body.dagFrom };
     } else {
-      wireBody = { 'node': (body as NodeInterface<TState, TOutput, TServices>).name };
+      wireBody = { 'node': body.name };
     }
 
     const scatterNode: ScatterNodeType = {
@@ -236,8 +235,7 @@ export class DAGBuilder {
       'source':  source,
       'body':    wireBody,
       'gather':  resolved.gather,
-      // outputs: Record<string, string> satisfies ScatterNode['outputs'].
-      'outputs': outputs as Record<string, string>,
+      'outputs': outputs,
       // itemKey and reducer: always present — materialised from resolved defaults.
       'itemKey': resolved.itemKey,
       'reducer': resolved.reducer,
@@ -308,8 +306,7 @@ export class DAGBuilder {
       '@id':     DAGIdentity.placementId(this.#name, name),
       '@type':   'EmbeddedDAGNode',
       name,
-      // Record<'success'|'error', string> satisfies EmbeddedDAGNode['outputs']: Record<string, string>.
-      'outputs': outputs as Record<string, string>,
+      'outputs': outputs,
       // Exactly one of dag | dagFrom, spread at construction — no post-construction shape mutation.
       ...dagField,
       // Optional fields spread at construction — no post-construction shape mutation.
@@ -394,7 +391,7 @@ export class DAGBuilder {
       'name':       this.#name,
       'version':    this.#version,
       'entrypoint': this.#entrypoint,
-      'nodes':      [...this.#nodes] as DAGType['nodes'],
+      'nodes':      [...this.#nodes],
     };
 
     return dag;

@@ -53,11 +53,25 @@ export abstract class BaseStore implements StoreInterface {
   // ── Public StoreInterface contract (delegates to protected hooks) ─────────────
 
   async get<T extends JsonValueType>(key: string): Promise<T | null> {
-    return this.performGet<T>(this.qualifyKey(key));
+    return this.narrowStored<T>(await this.performGet(this.qualifyKey(key)));
   }
 
   async set<T extends JsonValueType>(key: string, value: T): Promise<void> {
-    await this.performSet<T>(this.qualifyKey(key), value);
+    // `value: T` widens to `JsonValueType` for the type-erased hook — no cast.
+    await this.performSet(this.qualifyKey(key), value);
+  }
+
+  /**
+   * The SINGLE typed-accessor boundary of the entire store layer. A store is
+   * type-erased internally — its `perform*` hooks traffic in `JsonValueType`.
+   * The generic `T` on `get`/`update` is the CALLER's contract about what they
+   * stored under a key; the store cannot re-derive it at runtime, so the one
+   * unavoidable cast lives here, in exactly one place. Concrete stores whose
+   * `update` override reads the backing store directly (atomic RMW) narrow
+   * through this same helper instead of casting in their own override.
+   */
+  protected narrowStored<T extends JsonValueType>(value: JsonValueType | null): T | null {
+    return value as T | null;
   }
 
   async has(key: string): Promise<boolean> {
@@ -91,10 +105,10 @@ export abstract class BaseStore implements StoreInterface {
    */
   protected async performUpdateRmw<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     const qualified = this.qualifyKey(key);
-    const raw       = await this.performGet<T>(qualified);
+    const raw       = this.narrowStored<T>(await this.performGet(qualified));
     const current   = raw === null ? undefined : raw;
     const next      = fn(current);
-    await this.performSet<T>(qualified, next);
+    await this.performSet(qualified, next);
     return next;
   }
 
@@ -136,8 +150,8 @@ export abstract class BaseStore implements StoreInterface {
 
   // ── Plugin author hooks ─────────────────────────────────────────────
 
-  protected abstract performGet<T extends JsonValueType>(qualifiedKey: string): Promise<T | null>;
-  protected abstract performSet<T extends JsonValueType>(qualifiedKey: string, value: T): Promise<void>;
+  protected abstract performGet(qualifiedKey: string): Promise<JsonValueType | null>;
+  protected abstract performSet(qualifiedKey: string, value: JsonValueType): Promise<void>;
   protected abstract performHas(qualifiedKey: string): Promise<boolean>;
   protected abstract performDelete(qualifiedKey: string): Promise<boolean>;
   protected abstract performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]>;

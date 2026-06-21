@@ -541,8 +541,10 @@ export class ScatterPoolDriver<TServices>
       // Paired iteration over items+clones (same length: both built from `items`).
       const results: ScatterItemResultType[] = [];
       for (let i = 0; i < items.length; i++) {
-        const buffered = items[i] as { index: number; item: unknown; bufferKey: string };
-        const clone = clones[i] as NodeStateInterface;
+        const buffered = items[i];
+        if (buffered === undefined) throw new ExecutionError(`ScatterDispatch: invariant — items[${i}] is undefined`);
+        const clone = clones[i];
+        if (clone === undefined) throw new ExecutionError(`ScatterDispatch: invariant — clones[${i}] is undefined`);
         for (const err of clone.errors) state.collectError(err);
         for (const warn of clone.warnings) state.collectWarning(warn);
         results.push({
@@ -639,8 +641,10 @@ export class ScatterPoolDriver<TServices>
       // Paired iteration over items+clones (same length: both built from `items`).
       const results: ScatterItemResultType[] = [];
       for (let i = 0; i < items.length; i++) {
-        const buffered = items[i] as { index: number; item: unknown; bufferKey: string };
-        const clone = clones[i] as NodeStateInterface;
+        const buffered = items[i];
+        if (buffered === undefined) throw new ExecutionError(`ScatterDispatch: invariant — items[${i}] is undefined`);
+        const clone = clones[i];
+        if (clone === undefined) throw new ExecutionError(`ScatterDispatch: invariant — clones[${i}] is undefined`);
         const terminalOutcome = terminalByItemId.get(String(buffered.index)) ?? null;
         const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
         const output = PlacementRouter.route(terminalOutcome, hasUnrecoverable);
@@ -685,7 +689,8 @@ export class ScatterPoolDriver<TServices>
       outcomes = [];
       for (let i = 0; i < items.length; i++) {
         const clone: NodeStateInterface = clones[i] ?? state;
-        const buffered = items[i] as { index: number; item: unknown; bufferKey: string };
+        const buffered = items[i];
+        if (buffered === undefined) throw new ExecutionError(`ScatterDispatch: invariant — items[${i}] is undefined`);
         const itemCorrelationId = this.#adapter.nextCorrelationId(batchBodyDagName);
         const itemContext = this.#adapter.context(batchBodyDagName, scatter.name, signal);
         const task = new DagTask<TServices>(
@@ -714,8 +719,10 @@ export class ScatterPoolDriver<TServices>
     // Build results from outcomes. Paired iteration over items+clones (same length).
     const results: ScatterItemResultType[] = [];
     for (let i = 0; i < items.length; i++) {
-      const buffered = items[i] as { index: number; item: unknown; bufferKey: string };
-      const clone = clones[i] as NodeStateInterface;
+      const buffered = items[i];
+      if (buffered === undefined) throw new ExecutionError(`ScatterDispatch: invariant — items[${i}] is undefined`);
+      const clone = clones[i];
+      if (clone === undefined) throw new ExecutionError(`ScatterDispatch: invariant — clones[${i}] is undefined`);
       const outcome = outcomes.find((o) => o.id === String(buffered.index));
 
       if (outcome === undefined) {
@@ -811,7 +818,8 @@ export class ScatterPoolDriver<TServices>
     // Per-item findIndex+splice would be O(inbox × batch); this is O(inbox) total.
     let writeIdx = 0;
     for (let readIdx = 0; readIdx < inbox.length; readIdx++) {
-      const entry = inbox[readIdx] as ScatterInboxItemType;
+      const entry = inbox[readIdx];
+      if (entry === undefined) throw new ExecutionError(`ScatterDispatch: invariant — inbox[${readIdx}] is undefined`);
       if (!toRemove.has(entry.index)) {
         inbox[writeIdx++] = entry;
       }

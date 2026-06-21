@@ -62,7 +62,7 @@ import type { NodeContextType } from '../dist/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../dist/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
-import { CheckpointRestoreAdapter, NodeStateBase, ScalarNode, Timeout } from '@studnicky/dagonizer';
+import { CheckpointRestoreAdapter, NodeStateBase, ScalarNode, Timeout, Validator } from '@studnicky/dagonizer';
 
 
 // ---------------------------------------------------------------------------
@@ -271,7 +271,7 @@ const DAG_CONTEXT = {
  * Build a simple single-node DAG (the body DAG that runs inside the host).
  */
 function singleNodeDag(dagName: string, nodeName: string, output: string): DAGType {
-  return {
+  return Validator.dag.validate({
     '@context': DAG_CONTEXT,
     '@id': `urn:conformance:dag:${dagName}`,
     '@type': 'DAG',
@@ -293,7 +293,7 @@ function singleNodeDag(dagName: string, nodeName: string, output: string): DAGTy
         'outcome': 'completed',
       },
     ],
-  } as unknown as DAGType;
+  });
 }
 
 /**
@@ -312,7 +312,7 @@ function embeddingDag(runnerName: string, childDagName: string, _outputs: string
   // each is routed to the parent's terminal placement.
   const outputMap: Record<string, string> = { 'done': 'end', 'error': 'end' };
 
-  return {
+  return Validator.dag.validate({
     '@context': DAG_CONTEXT,
     '@id': `urn:conformance:dag:${runnerName}`,
     '@type': 'DAG',
@@ -344,7 +344,7 @@ function embeddingDag(runnerName: string, childDagName: string, _outputs: string
         'outcome': 'completed',
       },
     ],
-  } as unknown as DAGType;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -358,7 +358,7 @@ function embeddingDag(runnerName: string, childDagName: string, _outputs: string
 export const SCATTER_ITEM_BODY_DAG = 'conformance-scatter-item-body';
 
 function scatterItemBodyDag(): DAGType {
-  return {
+  return Validator.dag.validate({
     '@context': DAG_CONTEXT,
     '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}`,
     '@type': 'DAG',
@@ -380,7 +380,7 @@ function scatterItemBodyDag(): DAGType {
         'outcome': 'completed',
       },
     ],
-  } as unknown as DAGType;
+  });
 }
 
 /**
@@ -391,7 +391,7 @@ function scatterItemBodyDag(): DAGType {
  * the gather result is a per-item integer array — deterministic and comparable.
  */
 function scatterDag(runnerName: string): DAGType {
-  return {
+  return Validator.dag.validate({
     '@context': DAG_CONTEXT,
     '@id': `urn:conformance:dag:${runnerName}`,
     '@type': 'DAG',
@@ -409,6 +409,7 @@ function scatterDag(runnerName: string): DAGType {
         'concurrency': 1,
         'container': CONFORMANCE_CONTAINER_ROLE,
         'gather': { 'strategy': 'map', 'mapping': { 'value': 'gatheredItems' } },
+        'reducer': 'aggregate',
         'outputs': {
           'all-success': 'end',
           'partial': 'end',
@@ -423,7 +424,7 @@ function scatterDag(runnerName: string): DAGType {
         'outcome': 'completed',
       },
     ],
-  } as unknown as DAGType;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -488,7 +489,7 @@ const CONFORMANCE_NODES: NodeInterface<NodeStateInterface, string, unknown>[] = 
   new TimeoutSleeperNode(),
   new AbortSleeperNode(),
   new ScatterCounterNode(),
-] as NodeInterface<NodeStateInterface, string, unknown>[];
+];
 
 /**
  * All DAGs — body DAGs + runner DAGs. The host needs body DAGs to execute;

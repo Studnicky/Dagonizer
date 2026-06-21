@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import { Batch } from '@studnicky/dagonizer';
 import type { ChatResponseType } from '@studnicky/dagonizer/adapter';
+import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
 
 import { DecisionNode } from '../src/index.js';
 
@@ -31,10 +32,7 @@ void test('DecisionNode routes by parsed choice + writes state', async () => {
     'finishReason': 'stop',
     'usage': { 'promptTokens': 0, 'completionTokens': 0 },
   };
-  const ctx = {
-    'services': { 'llm': { 'chat': async () => mockResponse } },
-    'signal': new AbortController().signal,
-  } as unknown as Parameters<typeof node.execute>[1];
+  const ctx = NodeContextBuilder.of('test-dag', 'test-decision', new AbortController().signal, { 'llm': { 'chat': async () => mockResponse } });
   const result = await node.execute(Batch.of(state), ctx);
   assert.equal(result.has('yes'), true);
   assert.equal(result.has('no'), false);

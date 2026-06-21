@@ -45,10 +45,21 @@ import { WikipediaSummaryTool }  from '@studnicky/dagonizer-tool-wikipedia';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
 
 // ── DOM ──────────────────────────────────────────────────────────────────
-const form    = document.getElementById('ask-form')      as HTMLFormElement;
-const input   = document.getElementById('ask-input')     as HTMLInputElement;
-const button  = document.getElementById('ask-button')    as HTMLButtonElement;
-const logEl   = document.getElementById('archivist-log') as HTMLPreElement;
+const formEl = document.getElementById('ask-form');
+if (!(formEl instanceof HTMLFormElement))    throw new Error('missing #ask-form');
+const form = formEl;
+
+const inputEl = document.getElementById('ask-input');
+if (!(inputEl instanceof HTMLInputElement))  throw new Error('missing #ask-input');
+const input = inputEl;
+
+const buttonEl = document.getElementById('ask-button');
+if (!(buttonEl instanceof HTMLButtonElement)) throw new Error('missing #ask-button');
+const button = buttonEl;
+
+const logRaw = document.getElementById('archivist-log');
+if (!(logRaw instanceof HTMLPreElement))     throw new Error('missing #archivist-log');
+const logEl = logRaw;
 
 /** Static CLI helpers for the browser demo: log wiring and query submission. */
 class ArchivistCli {

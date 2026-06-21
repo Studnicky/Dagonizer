@@ -94,11 +94,11 @@ export type EventLogEntryType =
 const EventLogEntryValidator: EntityValidatorInterface<EventLogEntryType> = {
   is(value): value is EventLogEntryType {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-    const obj = value as Record<string, unknown>;
-    if (typeof obj['at'] !== 'number') return false;
-    if (typeof obj['key'] !== 'string') return false;
-    if (obj['variant'] === 'set') return 'value' in obj;
-    if (obj['variant'] === 'delete') return true;
+    if (!('at' in value) || typeof value.at !== 'number') return false;
+    if (!('key' in value) || typeof value.key !== 'string') return false;
+    if (!('variant' in value)) return false;
+    if (value.variant === 'set') return 'value' in value;
+    if (value.variant === 'delete') return true;
     return false;
   },
   validate(value): EventLogEntryType {
@@ -195,7 +195,8 @@ export class EventLogStore extends BaseStore {
     fn: (current: T | undefined) => T,
   ): Promise<T> {
     const qualified = this.qualifyKey(key);
-    const current   = this.#latestAs<T>(qualified);
+    const stored    = this.#latest(qualified);
+    const current   = stored === undefined ? undefined : this.narrowStored<T>(stored) ?? undefined;
     const next      = fn(current);
     await this.#append({ 'variant': 'set', 'at': Date.now(), 'key': qualified, 'value': next });
     return next;
@@ -203,11 +204,11 @@ export class EventLogStore extends BaseStore {
 
   // ── Protected perform* hooks ──────────────────────────────────────────────
 
-  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
-    return this.#latestAs<T>(key) ?? null;
+  protected async performGet(key: string): Promise<JsonValueType | null> {
+    return this.#latest(key) ?? null;
   }
 
-  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
+  protected async performSet(key: string, value: JsonValueType): Promise<void> {
     await this.#append({ 'variant': 'set', 'at': Date.now(), 'key': key, 'value': value });
   }
 
@@ -269,23 +270,6 @@ export class EventLogStore extends BaseStore {
       return entry.value;
     }
     return undefined;
-  }
-
-  /**
-   * Caller-expectation boundary cast. `#latest` returns the honest stored type
-   * (`JsonValueType | undefined`); a caller that declared a narrower `T extends
-   * JsonValueType` (via `get<T>` / `update<T>`) narrows the stored value to that
-   * shape here. The store neither knows nor re-validates `T` at runtime, so
-   * this single seam is where the caller's type expectation enters —
-   * structurally identical to the sanctioned `JsonValueType` boundary cast in
-   * `dagonizer-store-sqlite`'s `performSnapshotEntries`. `undefined` (key
-   * absent / tombstoned) is passed through unchanged. This is the one and only
-   * unchecked cast in the store; both `performGet` and the atomic `update`
-   * override read through it.
-   */
-  #latestAs<T extends JsonValueType>(key: string): T | undefined {
-    const value = this.#latest(key);
-    return value === undefined ? undefined : (value as T);
   }
 
   /** Append an event to the in-memory log and, if a file handle is open, persist it. */

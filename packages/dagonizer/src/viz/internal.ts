@@ -142,7 +142,8 @@ export class PlacementUtils {
    * pass here.
    */
   private static isPlacementEntry(node: object): node is PlacementEntryType {
-    const type = (node as Record<string, unknown>)['@type'];
+    if (!('@type' in node)) return false;
+    const type = (node as { '@type': unknown })['@type'];
     return typeof type === 'string' && PlacementUtils.PLACEMENT_TYPES.has(type);
   }
 

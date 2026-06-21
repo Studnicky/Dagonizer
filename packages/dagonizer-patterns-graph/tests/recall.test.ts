@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
+import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
 import type { Binding, SlotPattern, TripleStoreInterface } from '@studnicky/dagonizer/patterns';
 
 import { RecallContextNode } from '../src/index.js';
@@ -24,15 +25,15 @@ class TestRecall extends RecallContextNode<TestState, string> {
 void test('RecallContextNode reads + writes via the store', async () => {
   const node = new TestRecall();
   const state = new TestState();
-  const mockStore = {
+  const mockStore: TripleStoreInterface = {
     'select': () => [{ 's': { 'termType': 'NamedNode', 'value': 'urn:test:a' } }],
     'assert': () => undefined,
     'ask': () => true,
     'count': () => 1,
     'clearGraph': () => undefined,
     'triples': function* () { /* empty */ },
-  } as unknown as TripleStoreInterface;
-  const ctx = { 'services': { 'memory': mockStore }, 'signal': new AbortController().signal } as unknown as Parameters<typeof node.execute>[1];
+  };
+  const ctx = NodeContextBuilder.of('test-dag', 'test-recall', new AbortController().signal, { 'memory': mockStore });
   const result = await node.execute(state, ctx);
   assert.equal(result.output, 'success');
   assert.deepEqual(state.recalled, ['urn:test:a']);

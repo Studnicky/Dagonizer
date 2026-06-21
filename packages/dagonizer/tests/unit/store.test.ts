@@ -27,12 +27,12 @@ class PassThroughStore extends BaseStore {
   protected get snapshotType(): string    { return 'pass-through-store'; }
   protected get snapshotVersion(): number { return 1; }
 
-  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
+  protected async performGet(key: string): Promise<JsonValueType | null> {
     const value = this.#backing[key];
-    return value === undefined ? null : value as T;
+    return value === undefined ? null : value;
   }
 
-  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
+  protected async performSet(key: string, value: JsonValueType): Promise<void> {
     this.#backing[key] = value;
   }
 
@@ -93,12 +93,12 @@ class MockRemoteStore extends BaseStore implements RemoteStoreInterface {
   protected get snapshotType(): string    { return 'mock-remote-store-v1'; }
   protected get snapshotVersion(): number { return 1; }
 
-  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
+  protected async performGet(key: string): Promise<JsonValueType | null> {
     const value = this.#backing.get(key);
-    return value === undefined ? null : value as T;
+    return value === undefined ? null : value;
   }
 
-  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
+  protected async performSet(key: string, value: JsonValueType): Promise<void> {
     this.#backing.set(key, value);
   }
 
@@ -127,7 +127,8 @@ class MockRemoteStore extends BaseStore implements RemoteStoreInterface {
     fn: (current: T | undefined) => T,
   ): Promise<T> {
     const qualified = this.qualifyKey(key);
-    const next      = fn(this.#backing.get(qualified) as T | undefined);
+    const raw       = this.narrowStored<T>(this.#backing.get(qualified) ?? null);
+    const next      = fn(raw === null ? undefined : raw);
     this.#backing.set(qualified, next);
     return next;
   }

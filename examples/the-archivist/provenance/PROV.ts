@@ -25,7 +25,7 @@
  *   dag:Run:               the whole top-level execution
  */
 
-import type { Term } from 'n3';
+import type { NamedNode } from 'n3';
 
 import { MemoryStore } from '../memory/MemoryStore.ts';
 
@@ -66,13 +66,13 @@ export const DAG_ACT = {
 
 /** Per-run IRI factories. */
 export const ProvIris = {
-  activity(runId: string, name: string, ts: number): Term {
+  activity(runId: string, name: string, ts: number): NamedNode {
     return MemoryStore.iri(`urn:dagonizer:activity:${runId}:${encodeURIComponent(name)}:${String(ts)}`);
   },
-  agent(id: string): Term {
+  agent(id: string): NamedNode {
     return MemoryStore.iri(`urn:dagonizer:agent:${encodeURIComponent(id)}`);
   },
-  entity(entityVariant: string, key: string): Term {
+  entity(entityVariant: string, key: string): NamedNode {
     return MemoryStore.iri(`urn:dagonizer:entity:${entityVariant}:${encodeURIComponent(key)}`);
   },
 };

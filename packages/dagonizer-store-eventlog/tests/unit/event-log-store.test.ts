@@ -246,8 +246,7 @@ void test('restore: wrong type throws StoreError INCOMPATIBLE_SNAPSHOT', async (
     () => store.restore({ 'version': 1, 'type': 'wrong-type', 'entries': [] }),
     (err: unknown) => {
       assert.ok(err instanceof StoreError);
-      const storeErr = err as StoreError;
-      assert.equal(storeErr.classification.reason, 'INCOMPATIBLE_SNAPSHOT');
+      assert.equal(err.classification.reason, 'INCOMPATIBLE_SNAPSHOT');
       return true;
     },
   );
@@ -259,8 +258,7 @@ void test('restore: wrong version throws StoreError INCOMPATIBLE_SNAPSHOT', asyn
     () => store.restore({ 'version': 99, 'type': 'event-log-store', 'entries': [] }),
     (err: unknown) => {
       assert.ok(err instanceof StoreError);
-      const storeErr = err as StoreError;
-      assert.equal(storeErr.classification.reason, 'INCOMPATIBLE_SNAPSHOT');
+      assert.equal(err.classification.reason, 'INCOMPATIBLE_SNAPSHOT');
       return true;
     },
   );

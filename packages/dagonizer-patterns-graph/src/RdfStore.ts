@@ -23,6 +23,7 @@
 
 import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
 import type { JsonValueType } from '@studnicky/dagonizer/entities';
+import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { BindingType, QuadType, SlotPatternType, TermType, TripleStoreInterface } from '@studnicky/dagonizer/patterns';
 import { BaseStore, type BaseStoreOptionsType } from '@studnicky/dagonizer/store';
 
@@ -117,7 +118,7 @@ export class RdfStore extends BaseStore implements TripleStoreInterface {
       const rawKey = quad.subject.value.slice(this.#subjectPrefix.length);
       entries.push({
         "key":   rawKey,
-        "value": JSON.parse(quad.object.value) as JsonValueType,
+        "value": JsonValue.from(JSON.parse(quad.object.value)),
       });
     }
     return entries;
@@ -181,7 +182,7 @@ export class RdfStore extends BaseStore implements TripleStoreInterface {
       if (quad === undefined)                        continue;
       if (quad.subject.value !== subject)             continue;
       if (quad.predicate.value !== this.#valuePredicate) continue;
-      return JSON.parse(quad.object.value) as T;
+      return this.narrowStored<T>(JsonValue.from(JSON.parse(quad.object.value))) ?? undefined;
     }
     return undefined;
   }

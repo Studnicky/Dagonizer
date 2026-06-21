@@ -50,10 +50,9 @@ import type { DispatcherBundleType } from '../dist/contracts/DispatcherBundle.js
 import type { DagonizerInterface } from '../dist/Dagonizer.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
-import type {
-  ConformanceState} from './ConformanceRegistry.js';
 import {
   ConformanceRegistry,
+  ConformanceState,
   CONFORMANCE_DAG,
 } from './ConformanceRegistry.js';
 
@@ -125,8 +124,8 @@ export interface DagConformanceLawInterface {
 function dispatcherFor(
   harness: DagConformanceHarnessInterface,
 ): DagonizerInterface<NodeStateInterface, undefined> {
-  const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
-  const containers = { [harness.containerRole]: harness.container } as Readonly<Record<string, DagContainerInterface>>;
+  const bundle = ConformanceRegistry.bundle().bundle;
+  const containers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({ [harness.containerRole]: harness.container });
   return harness.createDispatcher(bundle, containers);
 }
 
@@ -147,8 +146,9 @@ export class DagConformance {
         const result = await dispatcher.execute(CONFORMANCE_DAG.law1, state);
 
         assert.strictEqual(result.state.lifecycle.variant, 'completed', 'flow must complete');
+        assert.ok(result.state instanceof ConformanceState, 'result.state must be ConformanceState');
         assert.ok(
-          (result.state as ConformanceState).executedNodes.includes('recorder'),
+          result.state.executedNodes.includes('recorder'),
           'recorder node must have executed and recorded through state',
         );
       },
@@ -166,8 +166,9 @@ export class DagConformance {
           result.state, initialState,
           'result.state must be the same object reference as initialState',
         );
+        assert.ok(result.state instanceof ConformanceState, 'result.state must be ConformanceState');
         assert.strictEqual(
-          (result.state as ConformanceState).value, 99,
+          result.state.value, 99,
           'mutation must be visible post-execution',
         );
       },
@@ -192,7 +193,8 @@ export class DagConformance {
 
         // The error-emitter node calls collectError with code 'TEST_ERROR'.
         // At least one collected error on the state must carry that code.
-        const stateErrors = (result.state as ConformanceState).errors;
+        assert.ok(result.state instanceof ConformanceState, 'result.state must be ConformanceState');
+        const stateErrors = result.state.errors;
         assert.ok(
           stateErrors.length > 0,
           'at least one error must have been collected on state',
@@ -259,8 +261,9 @@ export class DagConformance {
 
         // The abort-sleeper records `began = true` before awaiting the signal.
         // After a 20ms delay the sleeper must have started.
+        assert.ok(result.state instanceof ConformanceState, 'result.state must be ConformanceState');
         assert.strictEqual(
-          (result.state as ConformanceState).began,
+          result.state.began,
           true,
           'abort-sleeper must have set began=true before the signal fired',
         );
@@ -300,11 +303,11 @@ export class DagConformance {
           }
         }
 
-        const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
+        const bundle = ConformanceRegistry.bundle().bundle;
         const container = harness.container;
-        const containers = { [harness.containerRole]: container } as Readonly<Record<string, DagContainerInterface>>;
+        const containers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({ [harness.containerRole]: container });
         const dispatcher = new RecordingDispatcher({ containers });
-        dispatcher.registerBundle(bundle as Parameters<typeof dispatcher.registerBundle>[0]);
+        dispatcher.registerBundle(bundle);
 
         const state = harness.createState();
         await dispatcher.execute(CONFORMANCE_DAG.law6, state);
@@ -340,7 +343,7 @@ export class DagConformance {
       'name': 'Law 7: scatter checkpoint/resume bookkeeping byte-identical across backends',
       async run(): Promise<void> {
         const bundleResult = ConformanceRegistry.bundle();
-        const bundle = bundleResult.bundle as DispatcherBundleType<NodeStateInterface, undefined>;
+        const bundle = bundleResult.bundle;
 
         // Helper: run the scatter DAG and capture every per-ack checkpoint write.
         // `dispatcher` accepts the pre-built dispatcher so callers control
@@ -352,7 +355,7 @@ export class DagConformance {
           finalSnapshot: unknown;
         }> => {
           const checkpoints: unknown[] = [];
-          const state = harness.createState() as ConformanceState;
+          const state = harness.createState();
           // Seed 3 items for the scatter source.
           state.scatterItems = [10, 20, 30];
 
@@ -374,16 +377,15 @@ export class DagConformance {
         // Run 1: in-process (no container bound → resolveContainer returns null → inline path).
         // Use harness.createInProcessDispatcher when available; otherwise fall back to a
         // second contained run (weaker but backend-agnostic and still proves determinism).
+        const emptyContainers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({});
         const inProcessDispatcher = harness.createInProcessDispatcher !== undefined
           ? harness.createInProcessDispatcher(bundle)
-          : harness.createDispatcher(bundle, {} as Readonly<Record<string, DagContainerInterface>>);
+          : harness.createDispatcher(bundle, emptyContainers);
         const inProcess = await runAndCapture(inProcessDispatcher);
 
         // Run 2: through the container (harness.createDispatcher binds the container).
-        const containedDispatcher = harness.createDispatcher(
-          bundle,
-          { [harness.containerRole]: harness.container } as Readonly<Record<string, DagContainerInterface>>,
-        );
+        const containedContainers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({ [harness.containerRole]: harness.container });
+        const containedDispatcher = harness.createDispatcher(bundle, containedContainers);
         const contained = await runAndCapture(containedDispatcher);
 
         // Assert same number of checkpoint writes (one per acked item = 3).
@@ -408,8 +410,14 @@ export class DagConformance {
         // Both scatter over [10, 20, 30] with map gather { value → gatheredItems }.
         // scatter-counter sets clone.value += 1 (starts at 0); map gather appends
         // [1, 1, 1] to parent gatheredItems. Must be identical across both runs.
-        const inProcessData = (inProcess.finalSnapshot as Record<string, unknown>)['data'] as Record<string, unknown> | undefined;
-        const containedData = (contained.finalSnapshot as Record<string, unknown>)['data'] as Record<string, unknown> | undefined;
+        const inSnap = inProcess.finalSnapshot;
+        const inProcessData = (typeof inSnap === 'object' && inSnap !== null && !Array.isArray(inSnap) && 'data' in inSnap)
+          ? (inSnap as { data?: Record<string, unknown> }).data
+          : undefined;
+        const outSnap = contained.finalSnapshot;
+        const containedData = (typeof outSnap === 'object' && outSnap !== null && !Array.isArray(outSnap) && 'data' in outSnap)
+          ? (outSnap as { data?: Record<string, unknown> }).data
+          : undefined;
         assert.deepStrictEqual(
           inProcessData?.['gatheredItems'],
           containedData?.['gatheredItems'],
@@ -438,12 +446,12 @@ export class DagConformance {
         }
 
         const { failingContainer, freshContainer } = harness.interruptMidScatter();
-        const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundleType<NodeStateInterface, undefined>;
+        const bundle = ConformanceRegistry.bundle().bundle;
 
         // Phase 1: start the scatter through the failing container.
         // The failingContainer kills its isolate after >=1 item acks.
         // executeScatter will throw or produce an error (pool error propagates).
-        const state1 = harness.createState() as ConformanceState;
+        const state1 = harness.createState();
         // Seed the scatter source. scatterItems is the SOURCE array.
         // gatheredItems accumulates map-gather results from scatter-counter.
         state1.scatterItems = [10, 20, 30];
@@ -453,9 +461,7 @@ export class DagConformance {
           origSet1(key, value);
         };
 
-        const failingContainers = {
-          [harness.containerRole]: failingContainer,
-        } as Readonly<Record<string, DagContainerInterface>>;
+        const failingContainers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({ [harness.containerRole]: failingContainer });
         const failingDispatcher = harness.createDispatcher(bundle, failingContainers);
 
         // The scatter may throw (pool error) or complete with an error output.
@@ -482,17 +488,16 @@ export class DagConformance {
 
         // Phase 2: resume through a fresh container.
         // The inbox contains un-acked items; the fresh container processes them.
-        const freshContainers = {
-          [harness.containerRole]: freshContainer,
-        } as Readonly<Record<string, DagContainerInterface>>;
+        const freshContainers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({ [harness.containerRole]: freshContainer });
         const freshDispatcher = harness.createDispatcher(bundle, freshContainers);
 
         const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state1, 'fan');
+        assert.ok(result.state instanceof ConformanceState, 'result.state must be ConformanceState');
 
         // All 3 items must be in the final gathered state (no item lost).
         // The map gather writes clone.value (1 for each scatter-counter run)
         // into gatheredItems. Length must be 3 after full completion.
-        const finalItems = (result.state as ConformanceState).gatheredItems;
+        const finalItems = result.state.gatheredItems;
         assert.strictEqual(
           finalItems.length,
           3,
@@ -539,8 +544,9 @@ export class DagConformance {
           result.state, initialState,
           'result.state must be the same reference as initialState',
         );
+        assert.ok(result.state instanceof ConformanceState, 'result.state must be ConformanceState');
         assert.strictEqual(
-          (result.state as ConformanceState).value, 99,
+          result.state.value, 99,
           'snapshot round-trip must be a fixed point — value=99 must survive',
         );
       },

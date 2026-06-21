@@ -20,6 +20,8 @@
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
+import type { Term } from 'n3';
+
 import type { Binding } from '../memory/MemoryStore.ts';
 import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -85,7 +87,7 @@ export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 
       if (shortlisted.length === 0) continue;
 
       // Pick the highest-scored book in this prior shortlist.
-      let bestBook: { iri: ReturnType<typeof MemoryStore.iri>; score: number } | null = null;
+      let bestBook: { iri: Term; score: number } | null = null;
       for (const row of shortlisted) {
         const book = row['book'];
         if (book === undefined) continue;

@@ -141,6 +141,13 @@ export interface InstantiateInputs {
  * ApiKeyStore: per-provider API key persistence in localStorage.
  */
 export class ApiKeyStore {
+  static readonly #VALID_ID_SET: ReadonlySet<string> = new Set<string>(['gemini-nano', 'gemini-api', 'web-llm', 'groq', 'cerebras', 'mistral', 'openrouter', 'ollama']);
+
+  /** Returns true when `value` is a valid ProviderId string. */
+  static isProviderId(value: string): value is ProviderId {
+    return ApiKeyStore.#VALID_ID_SET.has(value);
+  }
+
   /** Load the per-provider API key map from localStorage. */
   static load(): Partial<Record<ProviderId, string>> {
     if (typeof localStorage === 'undefined') return {};
@@ -157,7 +164,13 @@ export class ApiKeyStore {
       return {};
     }
     try {
-      return JSON.parse(raw) as Partial<Record<ProviderId, string>>;
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      const result: Partial<Record<ProviderId, string>> = {};
+      for (const [key, val] of Object.entries(parsed)) {
+        if (typeof val === 'string' && ApiKeyStore.isProviderId(key)) result[key] = val;
+      }
+      return result;
     } catch {
       return {};
     }

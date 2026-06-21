@@ -91,7 +91,8 @@ export class ShortcutMatcher {
     query: string,
   ): readonly ToolCall[] {
     // Derive the preferred query from the first tool call that has one.
-    const firstQuery = calls.find((c) => typeof c.arguments['query'] === 'string')?.arguments['query'] as string | undefined;
+    const firstQueryValue = calls.find((c) => typeof c.arguments['query'] === 'string')?.arguments['query'];
+    const firstQuery: string | undefined = typeof firstQueryValue === 'string' ? firstQueryValue : undefined;
     const fallbackQuery = firstQuery ?? query;
 
     const names = new Set(calls.map((c) => c.name));

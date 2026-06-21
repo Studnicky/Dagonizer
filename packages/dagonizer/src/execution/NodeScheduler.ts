@@ -228,7 +228,9 @@ export class NodeScheduler<TServices> {
       const rankMap = PlacementRank.compute(dag);
       const declIndex = new Map<string, number>();
       for (let i = 0; i < dag.nodes.length; i++) {
-        declIndex.set((dag.nodes[i] as DAGNodeType).name, i);
+        const placement = dag.nodes[i];
+        if (placement === undefined) continue;
+        declIndex.set(placement.name, i);
       }
 
       const rankOf = (name: string): number => rankMap.get(name) ?? Number.MAX_SAFE_INTEGER;

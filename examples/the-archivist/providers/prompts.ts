@@ -216,7 +216,7 @@ export const schemas = {
       },
     },
     'required': ['order'],
-  } as Record<string, unknown>,
+  } satisfies Record<string, unknown>,
   "decideTools": {
     'type':                 'object',
     'description':          'Pick tools by 1-based index into the numbered tool list.',
@@ -232,7 +232,7 @@ export const schemas = {
       },
     },
     'required': ['tools'],
-  } as Record<string, unknown>,
+  } satisfies Record<string, unknown>,
 };
 
 // ── Prompt builders ────────────────────────────────────────────────────

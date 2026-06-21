@@ -20,10 +20,13 @@ export interface DAGErrorInterface extends Error {
   toJSON(): DAGErrorJSONType;
 }
 
+/** Empty context object: the canonical "no context" sentinel for `DAGError`. */
+const EMPTY_CONTEXT: Record<string, unknown> = {};
+
 /** Module-level defaults for `DAGError` options. `cause` is not defaulted — it is a genuine optional sentinel. */
 const DAG_ERROR_DEFAULTS = {
   'code':    'DAG_ERROR',
-  'context': {} as Record<string, unknown>,
+  'context': EMPTY_CONTEXT,
 } as const;
 
 /**

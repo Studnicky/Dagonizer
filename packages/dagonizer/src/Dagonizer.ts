@@ -64,6 +64,12 @@ class DispatcherOutputSchemaValidator implements OutputSchemaValidatorInterface 
 /** Registry version used when the dispatcher is constructed without one. */
 const DEFAULT_REGISTRY_VERSION = '0';
 
+/** Empty containers map: the canonical "no containers" sentinel. */
+const EMPTY_CONTAINERS: Readonly<Record<string, never>> = Object.freeze({});
+
+/** Empty channels map: the canonical "no channels" sentinel. */
+const EMPTY_CHANNELS: Readonly<Record<string, never>> = Object.freeze({});
+
 /**
  * Canonical defaults for `DagonizerOptionsType`.
  *
@@ -73,9 +79,9 @@ const DEFAULT_REGISTRY_VERSION = '0';
  * requires a type-unsafe cast at the assignment site regardless.
  */
 const DAGONIZER_OPTION_DEFAULTS = {
-  'accessor': DEFAULT_STATE_ACCESSOR as StateAccessorInterface,
-  'containers': {} as Readonly<Record<string, never>>,
-  'channels': {} as Readonly<Record<string, never>>,
+  'accessor': DEFAULT_STATE_ACCESSOR,
+  'containers': EMPTY_CONTAINERS,
+  'channels': EMPTY_CHANNELS,
   'registryVersion': DEFAULT_REGISTRY_VERSION,
   'validateOutputs': false,
 } as const;
@@ -939,12 +945,12 @@ implements
     validateOutputs: boolean;
   }> {
     return {
-      'accessor':        partial.accessor ?? DEFAULT_STATE_ACCESSOR,
+      'accessor':        partial.accessor ?? DAGONIZER_OPTION_DEFAULTS.accessor,
       'services':        partial.services as TServices,
-      'containers':      partial.containers ?? (DAGONIZER_OPTION_DEFAULTS.containers as Readonly<Record<string, DagContainerInterface>>),
+      'containers':      partial.containers ?? DAGONIZER_OPTION_DEFAULTS.containers,
       'channels':        partial.channels ?? DAGONIZER_OPTION_DEFAULTS.channels,
-      'registryVersion': partial.registryVersion ?? DEFAULT_REGISTRY_VERSION,
-      'validateOutputs': partial.validateOutputs ?? false,
+      'registryVersion': partial.registryVersion ?? DAGONIZER_OPTION_DEFAULTS.registryVersion,
+      'validateOutputs': partial.validateOutputs ?? DAGONIZER_OPTION_DEFAULTS.validateOutputs,
     };
   }
 

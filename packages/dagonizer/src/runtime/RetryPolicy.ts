@@ -33,16 +33,19 @@ const DEFAULT_JITTER_FACTOR = 0.1;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DECORRELATED_JITTER_MULTIPLIER = 3;
 
+/** Empty error-constructor list: the canonical "no filter" sentinel. */
+const EMPTY_ERROR_CONSTRUCTORS: readonly ErrorConstructorType[] = [];
+
 /** Canonical defaults for `RetryPolicyOptionsType` numeric/strategy fields. */
 const RETRY_POLICY_DEFAULTS = {
   'maxAttempts':  DEFAULT_MAX_ATTEMPTS,
-  'strategy':     BackoffStrategyNames.EXPONENTIAL as BackoffStrategyType,
+  'strategy':     BackoffStrategyNames.EXPONENTIAL satisfies BackoffStrategyType,
   'baseDelay':    DEFAULT_BASE_DELAY_MS,
   'maxDelay':     DEFAULT_MAX_DELAY_MS,
   'multiplier':   DEFAULT_MULTIPLIER,
   'jitterFactor': DEFAULT_JITTER_FACTOR,
-  'retryOn':      [] as readonly ErrorConstructorType[],
-  'abortOn':      [] as readonly ErrorConstructorType[],
+  'retryOn':      EMPTY_ERROR_CONSTRUCTORS,
+  'abortOn':      EMPTY_ERROR_CONSTRUCTORS,
 } as const;
 
 

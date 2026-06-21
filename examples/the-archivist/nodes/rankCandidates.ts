@@ -80,6 +80,11 @@ const RECENCY_WINDOW_YEARS = 30;
  * Static methods only; no instance state.
  */
 export class CandidateScorer {
+  /** True when `value` is an array of finite numbers (type predicate for cache validation). */
+  static isFiniteNumberArray(value: unknown): value is readonly number[] {
+    return Array.isArray(value) && value.every((n) => typeof n === 'number' && Number.isFinite(n));
+  }
+
   static sourcePriority(source: string): number {
     const key = source.toLowerCase();
     return SOURCE_PRIORITY[key] ?? 0.5;
@@ -101,8 +106,8 @@ export class CandidateScorer {
     const out: (readonly number[] | null)[] = [];
     for (const c of candidates) {
       const cached = c.notes?.['titleEmbedding'];
-      if (Array.isArray(cached) && cached.every((n) => typeof n === 'number' && Number.isFinite(n))) {
-        out.push(cached as readonly number[]);
+      if (CandidateScorer.isFiniteNumberArray(cached)) {
+        out.push(cached);
         continue;
       }
       out.push(await embedder.embed(c.book.identity.title));
