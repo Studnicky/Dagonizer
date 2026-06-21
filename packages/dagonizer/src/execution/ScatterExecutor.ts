@@ -126,8 +126,8 @@ export class ScatterExecutor<TServices> {
     // the remaining, un-processed items). No positional skip is applied;
     // items are indexed starting from nextIndex as they arrive.
     const isIndexStableSource = raw !== null && typeof raw === 'object' &&
-      Symbol.iterator in (raw as object) &&
-      !(Symbol.asyncIterator in (raw as object));
+      Symbol.iterator in raw &&
+      !(Symbol.asyncIterator in raw);
 
     const rawIter = ScatterSource.toAsyncIterator(raw);
 

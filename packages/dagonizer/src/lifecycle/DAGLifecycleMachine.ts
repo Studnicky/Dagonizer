@@ -58,11 +58,10 @@ export class DAGLifecycleMachine {
       return state;
     }
 
-    // TypeScript's control-flow analysis cannot infer that `isTerminal`
-    // eliminates the terminal variants; the cast to `ActiveState` is sound
-    // because the guard above returns early for every terminal variant.
+    // `isTerminal` is a type-predicate, so the early return above narrows
+    // `state` to the active (pending | running) variants — no cast.
     type ActiveState = Extract<DAGLifecycleStateType, { variant: 'pending' | 'running' }>;
-    const activeState = state as ActiveState;
+    const activeState: ActiveState = state;
     // The TRANSITION_TABLE is keyed on `ActiveState['variant']` × `EventType`,
     // but the index signature returns `Handler<K,T> | undefined`. The wider
     // cast to a plain `(state, event) => DAGLifecycleStateType` is necessary
@@ -75,7 +74,9 @@ export class DAGLifecycleMachine {
   }
 
   /** True iff `state` has reached one of the four terminal variants. */
-  static isTerminal(state: DAGLifecycleStateType): boolean {
+  static isTerminal(
+    state: DAGLifecycleStateType,
+  ): state is Extract<DAGLifecycleStateType, { variant: 'completed' | 'failed' | 'cancelled' | 'timed_out' }> {
     return (
       state.variant === 'completed'
       || state.variant === 'failed'
