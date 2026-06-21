@@ -24,16 +24,15 @@ import { describe, it } from 'node:test';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -62,7 +61,8 @@ class ItemCountState extends CountState {
 
   protected override restoreData(snap: JsonObjectType): void {
     super.restoreData(snap);
-    if (Array.isArray(snap['items'])) this.items = snap['items'] as number[];
+    const rawItems = snap['items'];
+    if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
   }
 }
 
@@ -94,56 +94,92 @@ class CountingGather extends GatherStrategy {
   ): Promise<void> {
     // Record how many records the engine passed us. In compactable mode this
     // must be 0 — the engine skips allFreshRecords.push for compactable gathers.
-    (execution.state as CountState).finalizeRecordCount = execution.records.length;
+    assert.ok(
+      execution.state instanceof CountState,
+      'CountingGather.finalize: expected CountState',
+    );
+    execution.state.finalizeRecordCount = execution.records.length;
   }
 }
 
 // ── worker node ──────────────────────────────────────────────────────────────
 
-class PassThroughNode extends ScalarNode<ItemCountState, 'done'> {
-  readonly name = 'pass';
-  readonly outputs = ['done'] as const;
-
-  protected async executeOne(): Promise<NodeOutputType<'done'>> {
-    return { 'errors': [], 'output': 'done' };
-  }
-}
+const passThroughNode = TestNode.make<ItemCountState>('pass', ['done']);
 
 // ── DAG factory ──────────────────────────────────────────────────────────────
 
-function makeCountingDag(name: string, concurrency: number): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    'name':     name,
-    'version':  '1',
-    'entrypoint': 'fan',
-    'nodes': [
-      {
-        '@id':         `urn:noocodex:dag:${name}/node/fan`,
-        '@type':       'ScatterNode',
-        'name':        'fan',
-        'body':        { 'node': 'pass' },
-        'source':      'items',
-        'itemKey':     'item',
-        'concurrency': concurrency,
-        'gather':      { 'strategy': 'counting-test' },
-        'outputs': {
-          'all-success': 'end',
-          'partial':     'end',
-          'all-error':   'end',
-          'empty':       'end',
+class TestScatterDag {
+  private constructor() {}
+
+  static counting(name: string, concurrency: number): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@type':       'ScatterNode',
+          'name':        'fan',
+          'body':        { 'node': 'pass' },
+          'source':      'items',
+          'itemKey':     'item',
+          'concurrency': concurrency,
+          'gather':      { 'strategy': 'counting-test' },
+          'outputs': {
+            'all-success': 'end',
+            'partial':     'end',
+            'all-error':   'end',
+            'empty':       'end',
+          },
         },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  };
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+  }
+
+  static multiNodeBody(name: string, concurrency: number): DAGType {
+    return Validator.dag.validate({
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@type':       'ScatterNode',
+          'name':        'fan',
+          'body':        { 'dag': MULTI_BODY_DAG_NAME },
+          'source':      'items',
+          'itemKey':     'item',
+          'concurrency': concurrency,
+          'gather':      { 'strategy': 'multi-node-body-gather' },
+          'outputs': {
+            'all-success': 'end',
+            'partial':     'end',
+            'all-error':   'end',
+            'empty':       'end',
+          },
+        },
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    });
+  }
 }
 
 // ── setup: register the test strategy once ────────────────────────────────────
@@ -159,8 +195,8 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
     const N = 500;
 
     const dispatcher = new Dagonizer<ItemCountState>();
-    dispatcher.registerNode(new PassThroughNode());
-    dispatcher.registerDAG(makeCountingDag('bounded-finalize-records', 4));
+    dispatcher.registerNode(passThroughNode);
+    dispatcher.registerDAG(TestScatterDag.counting('bounded-finalize-records', 4));
 
     const state = new ItemCountState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
@@ -188,8 +224,8 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
     const N = 2000;
 
     const dispatcher = new Dagonizer<ItemCountState>();
-    dispatcher.registerNode(new PassThroughNode());
-    dispatcher.registerDAG(makeCountingDag('bounded-large-n', 8));
+    dispatcher.registerNode(passThroughNode);
+    dispatcher.registerDAG(TestScatterDag.counting('bounded-large-n', 8));
 
     const state = new ItemCountState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
@@ -215,8 +251,8 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
     const N = 5000;
 
     const dispatcher = new Dagonizer<ItemCountState>();
-    dispatcher.registerNode(new PassThroughNode());
-    dispatcher.registerDAG(makeCountingDag('bounded-n5000', 16));
+    dispatcher.registerNode(passThroughNode);
+    dispatcher.registerDAG(TestScatterDag.counting('bounded-n5000', 16));
 
     const state = new ItemCountState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
@@ -251,19 +287,13 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
       }
 
       protected override restoreData(snap: JsonObjectType): void {
-        if (Array.isArray(snap['items'])) this.items = snap['items'] as number[];
+        const rawItems = snap['items'];
+        if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
         if (typeof snap['finalizeRecordCount'] === 'number') this.finalizeRecordCount = snap['finalizeRecordCount'];
       }
     }
 
-    class TrackingNode extends ScalarNode<TrackingState, 'done'> {
-      readonly name = 'track-pass';
-      readonly outputs = ['done'] as const;
-
-      protected async executeOne(): Promise<NodeOutputType<'done'>> {
-        return { 'errors': [], 'output': 'done' };
-      }
-    }
+    const trackingNode = TestNode.make<TrackingState>('track-pass', ['done']);
 
     // Use a local subclass registered under a unique name to capture record count
     // We override via a local subclass registered under a unique name.
@@ -277,7 +307,11 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
         _config: GatherConfigType,
         execution: GatherExecutionType<NodeStateBase>,
       ): Promise<void> {
-        (execution.state as TrackingState).finalizeRecordCount = execution.records.length;
+        assert.ok(
+          execution.state instanceof TrackingState,
+          'RecordCountingCustomGather.finalize: expected TrackingState',
+        );
+        execution.state.finalizeRecordCount = execution.records.length;
       }
     }
 
@@ -317,7 +351,7 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
     };
 
     const dispatcher = new Dagonizer<TrackingState>();
-    dispatcher.registerNode(new TrackingNode());
+    dispatcher.registerNode(trackingNode);
     dispatcher.registerDAG(retainedDag);
 
     const state = new TrackingState();
@@ -366,7 +400,8 @@ class MultiNodeBodyState extends NodeStateBase {
   }
 
   protected override restoreData(snap: JsonObjectType): void {
-    if (Array.isArray(snap['items'])) this.items = snap['items'] as number[];
+    const rawItems = snap['items'];
+    if (Array.isArray(rawItems)) this.items = rawItems.filter((x): x is number => typeof x === 'number');
     if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
     if (typeof snap['finalizeRecordCount'] === 'number') this.finalizeRecordCount = snap['finalizeRecordCount'];
   }
@@ -375,32 +410,16 @@ class MultiNodeBodyState extends NodeStateBase {
 // ── nodes for the sub-DAG body ────────────────────────────────────────────────
 
 /** First inner node: reads the scatter item and increments a field on the clone. */
-class InnerNodeA extends ScalarNode<MultiNodeBodyState, 'next'> {
-  readonly name = 'inner-a';
-  readonly outputs = ['next'] as const;
-  protected async executeOne(state: MultiNodeBodyState): Promise<NodeOutputType<'next'>> {
-    state.counter += 1;
-    return { 'errors': [], 'output': 'next' };
-  }
-}
+const innerNodeA = TestNode.make<MultiNodeBodyState>('inner-a', ['next'], (state) => {
+  state.counter += 1;
+  return 'next';
+});
 
 /** Second inner node: a pass-through that confirms the pipeline continues. */
-class InnerNodeB extends ScalarNode<MultiNodeBodyState, 'next'> {
-  readonly name = 'inner-b';
-  readonly outputs = ['next'] as const;
-  protected async executeOne(): Promise<NodeOutputType<'next'>> {
-    return { 'errors': [], 'output': 'next' };
-  }
-}
+const innerNodeB = TestNode.make<MultiNodeBodyState>('inner-b', ['next']);
 
 /** Third inner node: confirms three-node depth. */
-class InnerNodeC extends ScalarNode<MultiNodeBodyState, 'done'> {
-  readonly name = 'inner-c';
-  readonly outputs = ['done'] as const;
-  protected async executeOne(): Promise<NodeOutputType<'done'>> {
-    return { 'errors': [], 'output': 'done' };
-  }
-}
+const innerNodeC = TestNode.make<MultiNodeBodyState>('inner-c', ['done']);
 
 // ── sub-DAG body (3 inner nodes): inner-a → inner-b → inner-c → end ──────────
 
@@ -463,48 +482,18 @@ class MultiNodeBodyGather extends GatherStrategy {
     _config: GatherConfigType,
     execution: GatherExecutionType<NodeStateBase>,
   ): Promise<void> {
-    (execution.state as MultiNodeBodyState).finalizeRecordCount = execution.records.length;
+    assert.ok(
+      execution.state instanceof MultiNodeBodyState,
+      'MultiNodeBodyGather.finalize: expected MultiNodeBodyState',
+    );
+    execution.state.finalizeRecordCount = execution.records.length;
   }
 }
 
 GatherStrategies.register(new MultiNodeBodyGather());
 
 // ── parent DAG: scatter with body.dag pointing to the 3-node sub-DAG ─────────
-
-function makeMultiNodeBodyDag(name: string, concurrency: number): DAGType {
-  return Validator.dag.validate({
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    'name':     name,
-    'version':  '1',
-    'entrypoint': 'fan',
-    'nodes': [
-      {
-        '@id':         `urn:noocodex:dag:${name}/node/fan`,
-        '@type':       'ScatterNode',
-        'name':        'fan',
-        'body':        { 'dag': MULTI_BODY_DAG_NAME },
-        'source':      'items',
-        'itemKey':     'item',
-        'concurrency': concurrency,
-        'gather':      { 'strategy': 'multi-node-body-gather' },
-        'outputs': {
-          'all-success': 'end',
-          'partial':     'end',
-          'all-error':   'end',
-          'empty':       'end',
-        },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  });
-}
+// (see TestScatterDag.multiNodeBody above)
 
 void describe('Scatter: bounded-memory invariant for multi-node DAG body (in-process path)', () => {
   void it('scatter result carries empty intermediateResults proving inner nodes are not buffered', async () => {
@@ -514,11 +503,11 @@ void describe('Scatter: bounded-memory invariant for multi-node DAG body (in-pro
     const N = 1000;
 
     const dispatcher = new Dagonizer<MultiNodeBodyState>();
-    dispatcher.registerNode(new InnerNodeA());
-    dispatcher.registerNode(new InnerNodeB());
-    dispatcher.registerNode(new InnerNodeC());
+    dispatcher.registerNode(innerNodeA);
+    dispatcher.registerNode(innerNodeB);
+    dispatcher.registerNode(innerNodeC);
     dispatcher.registerDAG(multiNodeBodyDag);
-    dispatcher.registerDAG(makeMultiNodeBodyDag('multi-body-empty-intermediates', 4));
+    dispatcher.registerDAG(TestScatterDag.multiNodeBody('multi-body-empty-intermediates', 4));
 
     const state = new MultiNodeBodyState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
@@ -554,11 +543,11 @@ void describe('Scatter: bounded-memory invariant for multi-node DAG body (in-pro
     const N = 3000;
 
     const dispatcher = new Dagonizer<MultiNodeBodyState>();
-    dispatcher.registerNode(new InnerNodeA());
-    dispatcher.registerNode(new InnerNodeB());
-    dispatcher.registerNode(new InnerNodeC());
+    dispatcher.registerNode(innerNodeA);
+    dispatcher.registerNode(innerNodeB);
+    dispatcher.registerNode(innerNodeC);
     dispatcher.registerDAG(multiNodeBodyDag);
-    dispatcher.registerDAG(makeMultiNodeBodyDag('multi-body-n3000', 8));
+    dispatcher.registerDAG(TestScatterDag.multiNodeBody('multi-body-n3000', 8));
 
     const state = new MultiNodeBodyState();
     state.items = Array.from({ 'length': N }, (_, i) => i);

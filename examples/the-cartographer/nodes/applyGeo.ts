@@ -16,11 +16,18 @@ import { GeoLookup } from '../services.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region apply-geo-node
 export class ApplyGeoNode extends ScalarNode<CartographerState, 'normalize', CartographerServices> {
   readonly 'name' = 'apply-geo';
   readonly 'outputs' = ['normalize'] as const;
+
+  override get outputSchema(): Record<'normalize', SchemaObjectType> {
+    return {
+      'normalize': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalize'>> {
     const geo = state.canonical.geo;

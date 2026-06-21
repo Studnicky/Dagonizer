@@ -35,7 +35,7 @@ class LoopbackSide implements MessageChannelInterface {
     if (this.#closed) return;
     const peer = this.#peer;
     if (peer === null || peer.#closed) return;
-    const cloned = structuredClone(message) as BridgeMessageType;
+    const cloned = structuredClone(message);
     const handler = peer.#handler;
     if (handler !== null) {
       // Schedule delivery asynchronously — preserves async semantics without

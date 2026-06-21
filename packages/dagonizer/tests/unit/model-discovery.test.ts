@@ -72,6 +72,27 @@ class TestEmbedder extends BaseEmbedder {
 }
 
 // ---------------------------------------------------------------------------
+// Protected-exposing subclasses.
+// These extend TestAdapter / TestEmbedder and expose the protected `model`
+// getter as a public instance method so tests can verify its behavior without
+// any cast.
+// ---------------------------------------------------------------------------
+
+/** Exposes the protected `model` getter on TestAdapter via a public method. */
+class ExposedAdapter extends TestAdapter {
+  readModel(): string {
+    return this.model;
+  }
+}
+
+/** Exposes the protected `model` getter on TestEmbedder via a public method. */
+class ExposedEmbedder extends TestEmbedder {
+  readModel(): string {
+    return this.model;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // LlmModel schema + Validator wiring
 // ---------------------------------------------------------------------------
 
@@ -192,7 +213,8 @@ void describe('selectChatModel', () => {
   });
 
   void it('returns null when catalogue is empty, does not set a model', async () => {
-    class EmptyAdapter extends BaseAdapter {
+    // EmptyExposedAdapter: exposes the protected model getter so we can verify it throws.
+    class EmptyExposedAdapter extends BaseAdapter {
       constructor() {
         super('empty', 'Empty', { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false });
       }
@@ -202,29 +224,29 @@ void describe('selectChatModel', () => {
       protected override async performChat(): Promise<never> {
         throw new LlmError('not implemented', { 'reason': 'UNKNOWN', 'retryable': false });
       }
+      readModel(): string {
+        return this.model;
+      }
     }
-    const adapter = new EmptyAdapter();
+    const adapter = new EmptyExposedAdapter();
     const selected = await adapter.selectChatModel();
     assert.equal(selected, null);
-    // model getter should still throw because nothing was set
-    assert.throws(() => { void (adapter as unknown as { model: string }).model; }, (err) => {
-      assert.ok(err instanceof LlmError);
-      assert.equal(err.classification.reason, 'MODEL_NOT_FOUND');
-      return true;
-    });
+    // model getter should still throw because nothing was set.
+    assert.throws(
+      () => { adapter.readModel(); },
+      (err) => {
+        assert.ok(err instanceof LlmError);
+        assert.equal(err.classification.reason, 'MODEL_NOT_FOUND');
+        return true;
+      },
+    );
   });
 
   void it('model getter returns the selected name after selectChatModel picks', async () => {
-    const adapter = new TestAdapter();
+    const adapter = new ExposedAdapter();
     const selected = await adapter.selectChatModel();
     assert.ok(selected !== null);
-    // Access model via a protected-exposing subclass proxy
-    class Exposed extends (adapter.constructor as typeof TestAdapter) {
-      static getModel(a: TestAdapter): string {
-        return (a as unknown as { model: string }).model;
-      }
-    }
-    assert.equal(Exposed.getModel(adapter), selected);
+    assert.equal(adapter.readModel(), selected);
   });
 });
 
@@ -234,9 +256,9 @@ void describe('selectChatModel', () => {
 
 void describe('model getter', () => {
   void it('throws LlmError MODEL_NOT_FOUND when no model selected', () => {
-    const adapter = new TestAdapter();
+    const adapter = new ExposedAdapter();
     assert.throws(
-      () => { void (adapter as unknown as { model: string }).model; },
+      () => { adapter.readModel(); },
       (err) => {
         assert.ok(err instanceof LlmError, 'should be LlmError');
         assert.equal(err.classification.reason, 'MODEL_NOT_FOUND');
@@ -246,9 +268,9 @@ void describe('model getter', () => {
   });
 
   void it('does NOT throw when model passed at construction', () => {
-    const adapter = new TestAdapter('llama3');
-    assert.doesNotThrow(() => { void (adapter as unknown as { model: string }).model; });
-    assert.equal((adapter as unknown as { model: string }).model, 'llama3');
+    const adapter = new ExposedAdapter('llama3');
+    assert.doesNotThrow(() => { adapter.readModel(); });
+    assert.equal(adapter.readModel(), 'llama3');
   });
 });
 
@@ -324,9 +346,9 @@ void describe('selectEmbeddingModel', () => {
   });
 
   void it('sets the model so subsequent calls can succeed', async () => {
-    const embedder = new TestEmbedder();
+    const embedder = new ExposedEmbedder();
     const selected = await embedder.selectEmbeddingModel();
     assert.ok(selected !== null);
-    assert.doesNotThrow(() => { void (embedder as unknown as { model: string }).model; });
+    assert.doesNotThrow(() => { embedder.readModel(); });
   });
 });

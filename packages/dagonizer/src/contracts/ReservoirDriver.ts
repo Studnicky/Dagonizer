@@ -12,15 +12,13 @@
  * contract surface, so it lives here beside the contract.
  */
 
-import type { NodeStateInterface } from '../NodeStateBase.js';
-
 import type { ScatterItemResultType } from './ScatterPoolDriver.js';
 
 /**
  * Result envelope for a batch execution. One result per item in the batch.
  */
-export type ScatterItemBatchResultType<TState extends NodeStateInterface> = {
-  results: ScatterItemResultType<TState>[];
+export type ScatterItemBatchResultType = {
+  results: ScatterItemResultType[];
 };
 
 /**
@@ -30,9 +28,9 @@ export type ScatterItemBatchResultType<TState extends NodeStateInterface> = {
  * into `ReservoirBuffer`. The buffer calls these two methods for every released
  * batch; all DAG/state mutation logic lives in the implementor, not the buffer.
  */
-export interface ReservoirDriverInterface<TState extends NodeStateInterface> {
+export interface ReservoirDriverInterface {
   /** Execute one released batch of items and return a result per item. */
-  executeBatch(items: { index: number; item: unknown; bufferKey: string }[]): Promise<ScatterItemBatchResultType<TState>>;
+  executeBatch(items: { index: number; item: unknown; bufferKey: string }[]): Promise<ScatterItemBatchResultType>;
   /** Acknowledge a completed batch: fold its results into parent state and persist the checkpoint. */
-  ackBatch(batchResult: ScatterItemBatchResultType<TState>): Promise<void>;
+  ackBatch(batchResult: ScatterItemBatchResultType): Promise<void>;
 }

@@ -111,7 +111,8 @@ import { recommendSimilar }     from './nodes/recommendSimilar.ts';
 import { recordFindings }       from './nodes/recordFindings.ts';
 import { classifyIntentSalvage, composeEmptyResponseSalvage, composeMemoryResponseSalvage, decideToolsSalvage, extractQuerySalvage } from './nodes/salvage.ts';
 import { declineOffTopic, respondToVisitor, composeEmptyResponse } from './nodes/respondToVisitor.ts';
-import { scoutDispatch } from './nodes/scouts.ts';
+import { buildBookWorksets } from './nodes/buildBookWorksets.ts';
+import './nodes/scouts.ts'; // registers 'tool-candidate-merge' gather strategy
 
 import { DAGBuilder } from '@studnicky/dagonizer';
 import type { DispatcherBundleType } from '@studnicky/dagonizer';
@@ -213,27 +214,29 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
     'done': 'reviews-decide-tools',
   })
   .node('reviews-decide-tools', decideTools, {
-    'tools':    'reviews-scatter',
-    'no-tools': 'reviews-scatter',
+    'tools':    'reviews-build-worksets',
+    'no-tools': 'reviews-build-worksets',
     'retry':    'reviews-decide-tools',
     'salvage':  'reviews-decide-tools-salvage',
   })
   .node('reviews-decide-tools-salvage', decideToolsSalvage, {
-    'done': 'reviews-scatter',
+    'done': 'reviews-build-worksets',
   })
-  // Heterogeneous scatter: four provider descriptors fan out concurrently;
-  // scoutDispatch reads the currentItem metadata key and calls the matching
-  // scout logic. scout-merge gather flat-merges candidates + failureCause
-  // from all four clones back into parent state. any-success reducer routes
-  // 'success' when at least one scout found results, 'error' when all returned
-  // empty. Both routes proceed to reviews-rank.
-  .scatter('reviews-scatter', 'scoutProviders', scoutDispatch, {
+  // Build scatter worksets: converts toolPlan into bookWorksets items so the
+  // scatter can dispatch to each tool:<name> embedded DAG via dagFrom.
+  .node('reviews-build-worksets', buildBookWorksets, {
+    'ready': 'reviews-scatter',
+  })
+  // Tool-registry scatter: each bookWorksets item names its own tool:<name>
+  // embedded DAG. tool-candidate-merge gather reads each clone's output via
+  // accessor (no cast) and folds CandidateType[] into parent candidates.
+  .scatter('reviews-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
     'success': 'reviews-rank',
     'error':   'reviews-rank',
     'empty':   'reviews-rank',
   }, {
     'concurrency': 4,
-    'gather': { 'strategy': 'scout-merge' },
+    'gather': { 'strategy': 'tool-candidate-merge' },
     'reducer': 'any-success',
   })
   .node('reviews-rank',    rankByRating,     { 'ranked': 'reviews-merge' })
@@ -248,18 +251,22 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   // specific book the visitor named, not arbitrary top-5 hits.
   .node('describe-extract',      extractQuery,     { 'success': 'describe-decide-tools', 'retry': 'describe-extract', 'salvage': 'describe-extract-salvage' })
   .node('describe-extract-salvage', extractQuerySalvage, { 'done': 'describe-decide-tools' })
-  .node('describe-decide-tools', decideTools,      { 'tools': 'describe-scatter', 'no-tools': 'describe-scatter', 'retry': 'describe-decide-tools', 'salvage': 'describe-decide-tools-salvage' })
-  .node('describe-decide-tools-salvage', decideToolsSalvage, { 'done': 'describe-scatter' })
-  // Heterogeneous scatter: same descriptor source, same dispatching body.
+  .node('describe-decide-tools', decideTools,      { 'tools': 'describe-build-worksets', 'no-tools': 'describe-build-worksets', 'retry': 'describe-decide-tools', 'salvage': 'describe-decide-tools-salvage' })
+  .node('describe-decide-tools-salvage', decideToolsSalvage, { 'done': 'describe-build-worksets' })
+  // Build scatter worksets before dispatch.
+  .node('describe-build-worksets', buildBookWorksets, {
+    'ready': 'describe-scatter',
+  })
+  // Tool-registry scatter: dagFrom resolves body DAG from each item's dagName.
   // any-success reducer: 'success' → describe-pick, 'error' → compose-empty.
-  // 'error' fires when all four scouts return empty.
-  .scatter('describe-scatter', 'scoutProviders', scoutDispatch, {
+  // 'error' fires when all tool scouts return empty.
+  .scatter('describe-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
     'success': 'describe-pick',
     'error':   'compose-empty',
     'empty':   'compose-empty',
   }, {
     'concurrency': 4,
-    'gather': { 'strategy': 'scout-merge' },
+    'gather': { 'strategy': 'tool-candidate-merge' },
     'reducer': 'any-success',
   })
   .node('describe-pick',   pickBestMatch,    { 'picked': 'describe-merge' })
@@ -361,7 +368,7 @@ export const archivistBundle: DispatcherBundleType<ArchivistState, ArchivistServ
   'nodes': [
     preRunSetup,
     recallContext, classifyIntent, extractQuery, decideTools,
-    scoutDispatch,
+    buildBookWorksets,
     rankByRating, pickBestMatch, mergeCandidates, recordFindings,
     hasCitationsGate, groupByYear, recallPastVisits, recommendSimilar,
     recallMemories, composeMemoryResponse, respondToVisitor,

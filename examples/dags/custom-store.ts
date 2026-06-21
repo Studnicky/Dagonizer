@@ -56,18 +56,18 @@ export class MapStore extends BaseStore {
     fn: (current: T | undefined) => T,
   ): Promise<T> {
     const qualified = this.qualifyKey(key);
-    const raw       = this.#data.get(qualified) as T | undefined;
-    const next      = fn(raw);
+    const stored    = this.#data.get(qualified) ?? null;
+    const current   = this.narrowStored<T>(stored) ?? undefined;
+    const next      = fn(current);
     this.#data.set(qualified, next);
     return next;
   }
 
-  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
-    const value = this.#data.get(key);
-    return value === undefined ? null : (value as T);
+  protected async performGet(key: string): Promise<JsonValueType | null> {
+    return this.#data.get(key) ?? null;
   }
 
-  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
+  protected async performSet(key: string, value: JsonValueType): Promise<void> {
     this.#data.set(key, value);
   }
 

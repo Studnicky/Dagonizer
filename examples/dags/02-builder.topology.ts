@@ -15,6 +15,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
 
 // ---------------------------------------------------------------------------
@@ -35,6 +36,9 @@ export class ChatState extends NodeStateBase {
 export class ClassifyNode extends ScalarNode<ChatState, 'on_topic' | 'off_topic'> {
   readonly name = 'classify';
   readonly outputs = ['on_topic', 'off_topic'] as const;
+  override get outputSchema(): Record<'on_topic' | 'off_topic', SchemaObjectType> {
+    return { 'on_topic': { 'type': 'object' }, 'off_topic': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ChatState) {
     state.topic = state.input.toLowerCase().includes('weather') ? 'off_topic' : 'on_topic';
@@ -45,6 +49,9 @@ export class ClassifyNode extends ScalarNode<ChatState, 'on_topic' | 'off_topic'
 export class RespondNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'respond';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ChatState) {
     state.reply = state.topic === 'on_topic'
@@ -103,6 +110,9 @@ export const typeSafeRoutingDag = new DAGBuilder('type-safe-demo', '1')
 class NotifyNode extends ScalarNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-notify';
   readonly outputs = ['success', 'error'] as const;
+  override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
+    return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
+  }
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
@@ -131,12 +141,18 @@ export const scatterDiscardDag = new DAGBuilder('notify', '1')
 class ScoutDispatchNode extends ScalarNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-scout-dispatch';
   readonly outputs = ['success', 'error'] as const;
+  override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
+    return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
+  }
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
 class MergeNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'builder-merge';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
@@ -168,12 +184,18 @@ export const scatterHeterogeneousDag = new DAGBuilder('search', '1')
 class GenerateNode extends ScalarNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-generate';
   readonly outputs = ['success', 'error'] as const;
+  override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
+    return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
+  }
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
 class SelectNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'builder-select';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
@@ -204,6 +226,9 @@ export const scatterMapDag = new DAGBuilder('batch', '1')
 class ProcessNode extends ScalarNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-process';
   readonly outputs = ['success', 'error'] as const;
+  override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
+    return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
+  }
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
@@ -256,12 +281,18 @@ export const scatterInputsDag = new DAGBuilder('chat', '1')
 class SetupNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'builder-setup';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
 class MainNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'builder-main';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
   protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 

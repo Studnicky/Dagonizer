@@ -12,41 +12,41 @@ import type { RunNodeResultType } from './ScatterDispatch.js';
  * Leaf (`SingleNode`) placement executor surface. `LeafExecutor` implements
  * this interface; `PlacementDispatch` holds a reference via the field `#leaf`.
  */
-export interface LeafPlacementExecutorInterface<TState extends NodeStateInterface> {
+export interface LeafPlacementExecutorInterface {
   executeSingleNode(
     placement: SingleNodePlacementType,
-    state: TState,
+    state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal | null,
-  ): Promise<RunNodeResultType<TState>>;
+  ): Promise<RunNodeResultType>;
 }
 
 /**
  * Embedded-DAG placement executor surface. `EmbeddedDagExecutor` implements
  * this interface; `PlacementDispatch` holds a reference via the field `#embedded`.
  */
-export interface EmbeddedPlacementExecutorInterface<TState extends NodeStateInterface> {
+export interface EmbeddedPlacementExecutorInterface {
   executeEmbeddedDAG(
     placement: EmbeddedDAGNodeType,
-    state: TState,
+    state: NodeStateInterface,
     signal: AbortSignal | null,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
-  ): Promise<RunNodeResultType<TState>>;
+  ): Promise<RunNodeResultType>;
 }
 
 /**
  * Scatter placement executor surface. `ScatterExecutor` implements this
  * interface; `PlacementDispatch` holds a reference via the field `#scatter`.
  */
-export interface ScatterPlacementExecutorInterface<TState extends NodeStateInterface> {
+export interface ScatterPlacementExecutorInterface {
   executeScatter(
     placement: ScatterNodeType,
-    state: TState,
+    state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal | null,
     placementPath: readonly string[],
-  ): Promise<RunNodeResultType<TState>>;
+  ): Promise<RunNodeResultType>;
 }
 
 /**
@@ -64,15 +64,15 @@ export interface ScatterPlacementExecutorInterface<TState extends NodeStateInter
  * and `PhaseNode` are likewise handled before `executeDAGNode` in `runNodes`;
  * their branches synthesise the no-op result the union requires.
  */
-export class PlacementDispatch<TState extends NodeStateInterface> {
-  readonly #leaf: LeafPlacementExecutorInterface<TState>;
-  readonly #embedded: EmbeddedPlacementExecutorInterface<TState>;
-  readonly #scatter: ScatterPlacementExecutorInterface<TState>;
+export class PlacementDispatch {
+  readonly #leaf: LeafPlacementExecutorInterface;
+  readonly #embedded: EmbeddedPlacementExecutorInterface;
+  readonly #scatter: ScatterPlacementExecutorInterface;
 
   constructor(
-    leaf: LeafPlacementExecutorInterface<TState>,
-    embedded: EmbeddedPlacementExecutorInterface<TState>,
-    scatter: ScatterPlacementExecutorInterface<TState>,
+    leaf: LeafPlacementExecutorInterface,
+    embedded: EmbeddedPlacementExecutorInterface,
+    scatter: ScatterPlacementExecutorInterface,
   ) {
     this.#leaf = leaf;
     this.#embedded = embedded;
@@ -81,12 +81,12 @@ export class PlacementDispatch<TState extends NodeStateInterface> {
 
   dispatch(
     entry: DAGNodeType,
-    state: TState,
+    state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal | null,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
-  ): Promise<RunNodeResultType<TState>> {
+  ): Promise<RunNodeResultType> {
     switch (entry['@type']) {
       case 'EmbeddedDAGNode': {
         // Placement.isEmbeddedDAG guard: @type === 'EmbeddedDAGNode' confirmed by

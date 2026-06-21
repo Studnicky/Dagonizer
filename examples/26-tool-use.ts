@@ -170,6 +170,8 @@ await dispatchNode.execute(Batch.of(stateC), {
   nodeName: 'dispatchTool',
   signal: ac.signal,
   services: undefined,
+  validateOutputs: false,
+  outputSchemaValidator: null,
 });
 
 process.stdout.write(`  finalAnswer:   "${stateC.finalAnswer}"\n\n`);

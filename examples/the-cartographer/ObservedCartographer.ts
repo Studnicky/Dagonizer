@@ -35,7 +35,7 @@ const COMPONENT = 'ObservedCartographer';
 export class ObservedCartographer extends Dagonizer<CartographerState, CartographerServices> {
   readonly #logger = new ConsoleLogger();
 
-  constructor(options: DagonizerOptionsType<CartographerState, CartographerServices>) {
+  constructor(options: DagonizerOptionsType<CartographerServices>) {
     super(options);
   }
 

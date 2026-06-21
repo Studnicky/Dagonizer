@@ -9,8 +9,8 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { JsonObjectType, JsonValueType } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // Basic subclass
@@ -35,15 +35,11 @@ interface Config {
 // #region clone-manual
 class SharedConfigState extends NodeStateBase {
   items: string[] = [];
-  config: Config;
-
-  constructor(config: Config) {
-    super();
-    this.config = config;
-  }
+  config: Config = { retries: 3 };
 
   override clone(): this {
-    const cloned = new SharedConfigState(this.config) as this;
+    const cloned = super.clone();
+    cloned.config = this.config;
     cloned.items = [...this.items];
     return cloned;
   }
@@ -96,10 +92,10 @@ export function demoStaticRestore(): void {
 
 // #region retry-budget-node
 export class ApiState extends NodeStateBase {
-  data: unknown = null;
+  data: JsonValueType = null;
 
   protected override snapshotData(): JsonObjectType {
-    return { data: this.data as JsonObjectType };
+    return { data: this.data };
   }
 
   protected override restoreData(snap: JsonObjectType): void {
@@ -110,6 +106,9 @@ export class ApiState extends NodeStateBase {
 export class ApiNode extends ScalarNode<ApiState, 'success' | 'retry' | 'salvage'> {
   readonly name    = 'api';
   readonly outputs = ['success', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'success' | 'retry' | 'salvage', SchemaObjectType> {
+    return { 'success': { 'type': 'object' }, 'retry': { 'type': 'object' }, 'salvage': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ApiState, context: NodeContextType) {
     try {

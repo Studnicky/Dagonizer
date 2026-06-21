@@ -11,7 +11,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
 
 // #region state
@@ -26,6 +26,9 @@ export class ChatState extends NodeStateBase {
 export class ClassifyNode extends ScalarNode<ChatState, 'on_topic' | 'off_topic'> {
   readonly name = 'classify';
   readonly outputs = ['on_topic', 'off_topic'] as const;
+  override get outputSchema(): Record<'on_topic' | 'off_topic', SchemaObjectType> {
+    return { 'on_topic': { 'type': 'object' }, 'off_topic': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ChatState) {
     // Pick an output key based on input content; the DAG placement
@@ -40,6 +43,9 @@ export class ClassifyNode extends ScalarNode<ChatState, 'on_topic' | 'off_topic'
 export class RespondNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'respond';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ChatState) {
     state.reply = state.topic === 'on_topic'

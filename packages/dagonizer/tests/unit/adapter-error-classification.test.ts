@@ -14,7 +14,6 @@ import { describe, it } from 'node:test';
 import {
   Classifications,
   LlmError,
-  type ErrorClassificationType,
 } from '../../src/adapter/LlmError.js';
 
 void describe('ErrorClassificationType discriminated union (ADP-6)', () => {
@@ -25,8 +24,10 @@ void describe('ErrorClassificationType discriminated union (ADP-6)', () => {
       assert.equal(c.retryable, true, `${reason} should be retryable`);
       // TypeScript narrows c.retryable === true, so retryAfterMs is present
       assert.ok('retryAfterMs' in c, `${reason} should have retryAfterMs`);
-      assert.equal((c as Extract<ErrorClassificationType, { retryable: true }>).retryAfterMs, null,
-        `${reason} retryAfterMs should be null (no hint)`);
+      assert.ok(c.retryable, `${reason} should be retryable (guard)`);
+      if (c.retryable) {
+        assert.equal(c.retryAfterMs, null, `${reason} retryAfterMs should be null (no hint)`);
+      }
     }
   });
 
@@ -44,16 +45,21 @@ void describe('ErrorClassificationType discriminated union (ADP-6)', () => {
     const c = LlmError.classifyHttp(429);
     assert.equal(c.reason, 'QUOTA_EXHAUSTED');
     assert.equal(c.retryable, true);
-    assert.equal((c as Extract<ErrorClassificationType, { retryable: true }>).retryAfterMs, null);
+    assert.ok(c.retryable);
+    if (c.retryable) {
+      assert.equal(c.retryAfterMs, null);
+    }
   });
 
   void it('classifyHttp 429 with body hint → retryAfterMs: number', () => {
     const c = LlmError.classifyHttp(429, { 'body': '{"retry_after": "30"}' });
     assert.equal(c.reason, 'QUOTA_EXHAUSTED');
     assert.equal(c.retryable, true);
-    const retryable = c as Extract<ErrorClassificationType, { retryable: true }>;
-    assert.ok(retryable.retryAfterMs !== null, 'should have numeric retryAfterMs hint');
-    assert.equal(retryable.retryAfterMs, 30_000);
+    assert.ok(c.retryable);
+    if (c.retryable) {
+      assert.ok(c.retryAfterMs !== null, 'should have numeric retryAfterMs hint');
+      assert.equal(c.retryAfterMs, 30_000);
+    }
   });
 
   void it('classifyHttp non-retryable statuses (4xx non-timeout) have no retryAfterMs', () => {
@@ -75,13 +81,19 @@ void describe('ErrorClassificationType discriminated union (ADP-6)', () => {
     assert.equal(c.reason, 'TIMEOUT');
     assert.equal(c.retryable, true);
     assert.ok('retryAfterMs' in c, '408 TIMEOUT should have retryAfterMs');
-    assert.equal((c as Extract<ErrorClassificationType, { retryable: true }>).retryAfterMs, null);
+    assert.ok(c.retryable);
+    if (c.retryable) {
+      assert.equal(c.retryAfterMs, null);
+    }
   });
 
   void it('classifyHttp 5xx produces retryable NETWORK with null retryAfterMs', () => {
     const c = LlmError.classifyHttp(503);
     assert.equal(c.reason, 'NETWORK');
     assert.equal(c.retryable, true);
-    assert.equal((c as Extract<ErrorClassificationType, { retryable: true }>).retryAfterMs, null);
+    assert.ok(c.retryable);
+    if (c.retryable) {
+      assert.equal(c.retryAfterMs, null);
+    }
   });
 });

@@ -2,28 +2,22 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
 void describe('Dagonizer scatter gather strategies', () => {
   void it('partition routes items by output into distinct target paths', async () => {
-    interface S extends NodeStateBase {
-      items: number[];
-      evens: number[];
-      odds: number[];
+    class PartitionState extends NodeStateBase {
+      items: number[] = [];
+      evens: number[] = [];
+      odds: number[] = [];
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class ClassifyNode extends ScalarNode<NodeStateBase, 'even' | 'odd'> {
-      readonly name = 'classify';
-      readonly outputs = ['even', 'odd'] as const;
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'even' | 'odd'>> {
-        const n = state.getMetadata<number>('item') ?? 0;
-        return { 'errors': [], 'output': n % 2 === 0 ? 'even' as const : 'odd' as const };
-      }
-    }
-    const classify = new ClassifyNode();
+    const classify = TestNode.make<NodeStateBase>('classify', ['even', 'odd'], (state) => {
+      const n = state.getMetadata<number>('item') ?? 0;
+      return n % 2 === 0 ? 'even' : 'odd';
+    });
     dispatcher.registerNode(classify);
 
     const dag = new DAGBuilder('partition', '1')
@@ -41,7 +35,7 @@ void describe('Dagonizer scatter gather strategies', () => {
       .build();
     dispatcher.registerDAG(dag);
 
-    const state = new NodeStateBase() as S;
+    const state = new PartitionState();
     state.items = [1, 2, 3, 4, 5];
     state.evens = [];
     state.odds  = [];
@@ -55,25 +49,15 @@ void describe('Dagonizer scatter gather strategies', () => {
     let seenResults: GatherResultRecord[] | undefined;
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class ClsNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'classify';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-    }
-    class MergeNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'merge';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'success'>> {
-        seenResults = state.getMetadata<GatherResultRecord[]>('gatherResults');
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    const cls = new ClsNode();
-    const merge = new MergeNode();
+    const cls = TestNode.make('classify', ['success']);
+    const merge = TestNode.make('merge', ['success'], (state) => {
+      seenResults = state.getMetadata<GatherResultRecord[]>('gatherResults');
+      return 'success';
+    });
     dispatcher.registerNode(cls);
     dispatcher.registerNode(merge);
 
-    interface S extends NodeStateBase { items: number[] }
+    class CustomFanState extends NodeStateBase { items: number[] = []; }
     const dag = new DAGBuilder('customfan', '1')
       .scatter(
         'fan',
@@ -89,7 +73,7 @@ void describe('Dagonizer scatter gather strategies', () => {
       .build();
     dispatcher.registerDAG(dag);
 
-    const state = new NodeStateBase() as S;
+    const state = new CustomFanState();
     state.items = [1, 2, 3];
     await dispatcher.execute('customfan', state);
 
@@ -102,15 +86,10 @@ void describe('Dagonizer scatter gather strategies', () => {
   });
 
   void it('append gathers clone items into a target array in source-index order', async () => {
-    interface S extends NodeStateBase { items: number[]; out: number[] }
+    class AppendState extends NodeStateBase { items: number[] = []; out: number[] = []; }
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class PassThroughNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'passThrough';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-    }
-    const passThrough = new PassThroughNode();
+    const passThrough = TestNode.make('passThrough', ['success']);
     dispatcher.registerNode(passThrough);
 
     const dag = new DAGBuilder('appendfan', '1')
@@ -128,7 +107,7 @@ void describe('Dagonizer scatter gather strategies', () => {
       .build();
     dispatcher.registerDAG(dag);
 
-    const state = new NodeStateBase() as S;
+    const state = new AppendState();
     state.items = [10, 20, 30];
     state.out   = [];
     await dispatcher.execute('appendfan', state);
@@ -143,15 +122,10 @@ void describe('Dagonizer scatter gather strategies', () => {
     // so the target is always an array. This is the documented behavior change
     // introduced with native streaming scatter (§A.3.4).
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class ProduceNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'produce';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'success'>> {
-        state.setMetadata('answer', 'hello');
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    const produce = new ProduceNode();
+    const produce = TestNode.make('produce', ['success'], (state) => {
+      state.setMetadata('answer', 'hello');
+      return 'success';
+    });
     dispatcher.registerNode(produce);
 
     // Single-item source scatter + map strategy: reads cloneState metadata
@@ -177,8 +151,8 @@ void describe('Dagonizer scatter gather strategies', () => {
       .build();
     dispatcher.registerDAG(dag);
 
-    interface S extends NodeStateBase { items: number[] }
-    const state = new NodeStateBase() as S;
+    class MapFanState extends NodeStateBase { items: number[] = []; }
+    const state = new MapFanState();
     state.items = [1];
     await dispatcher.execute('mapfan', state);
     // Incremental gather always produces an array; single-item → ['hello'].
@@ -186,22 +160,17 @@ void describe('Dagonizer scatter gather strategies', () => {
   });
 
   void it('scatter respects concurrency cap', async () => {
-    interface S extends NodeStateBase { items: number[]; out: number[] }
+    class ConcState extends NodeStateBase { items: number[] = []; out: number[] = []; }
     let inFlight = 0;
     let peak = 0;
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
-      readonly name = 'slow';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputType<'success'>> {
-        inFlight++;
-        peak = Math.max(peak, inFlight);
-        await new Promise<void>((r) => setImmediate(r));
-        inFlight--;
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    const slow = new SlowNode();
+    const slow = TestNode.make('slow', ['success'], async () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise<void>((r) => setImmediate(r));
+      inFlight--;
+      return 'success';
+    });
     dispatcher.registerNode(slow);
 
     const dag = new DAGBuilder('conc', '1')
@@ -219,7 +188,7 @@ void describe('Dagonizer scatter gather strategies', () => {
       .build();
     dispatcher.registerDAG(dag);
 
-    const state = new NodeStateBase() as S;
+    const state = new ConcState();
     state.items = [1, 2, 3, 4, 5, 6];
     state.out   = [];
     await dispatcher.execute('conc', state);

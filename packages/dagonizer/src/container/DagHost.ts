@@ -185,7 +185,8 @@ export class DagHost {
         if (
           registryInterface === null ||
           typeof registryInterface !== 'object' ||
-          typeof (registryInterface as Record<string, unknown>)['instantiate'] !== 'function'
+          !('instantiate' in registryInterface) ||
+          typeof (registryInterface as { instantiate: unknown }).instantiate !== 'function'
         ) {
           this.#channel.send({
             'variant': 'error',
@@ -301,7 +302,8 @@ export class DagHost {
 
       if (restoredItems.length === 1) {
         // Single-item path: use the standard execute() API.
-        const item = restoredItems[0] as { id: string; state: NodeStateInterface };
+        const item = restoredItems[0];
+        if (item === undefined) throw new Error('DagHost: invariant — restoredItems[0] is undefined');
         const execution = dagonizer.execute(request.dagName, item.state, {
           'signal': controller.signal,
         });
@@ -432,7 +434,7 @@ export class DagHost {
       // On unhandled exception, return failed items for all items in the request.
       const failedItems = restoredItems.map(({ id, state }) => ({
         'id': id,
-        'snapshot': state.snapshot() as JsonObjectType | null,
+        'snapshot': state.snapshot(),
         'terminalOutcome': 'failed',
       }));
 

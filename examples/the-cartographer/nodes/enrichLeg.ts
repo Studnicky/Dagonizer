@@ -16,11 +16,18 @@ import { ShippingCalculator } from '../services.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region enrich-leg-node
 export class EnrichLegNode extends ScalarNode<CartographerState, 'leg-measured', CartographerServices> {
   readonly 'name' = 'enrich-leg';
   readonly 'outputs' = ['leg-measured'] as const;
+
+  override get outputSchema(): Record<'leg-measured', SchemaObjectType> {
+    return {
+      'leg-measured': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'leg-measured'>> {
     const norm = state.normalized;

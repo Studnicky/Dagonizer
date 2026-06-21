@@ -12,7 +12,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { Batch, GatherExecutionType, GatherRecordType, NodeStateInterface } from '@studnicky/dagonizer';
+import type { Batch, GatherExecutionType, GatherRecordType, NodeStateInterface, SchemaObjectType } from '@studnicky/dagonizer';
 import type { GatherConfigType } from '@studnicky/dagonizer/entities';
 import type { DAGType } from '@studnicky/dagonizer';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
@@ -30,6 +30,9 @@ export class ScrapeState extends NodeStateBase {
 export class ProbeNode extends ScalarNode<ScrapeState, 'ok' | 'fail'> {
   readonly name = 'probe';
   readonly outputs = ['ok', 'fail'] as const;
+  override get outputSchema(): Record<'ok' | 'fail', SchemaObjectType> {
+    return { 'ok': { 'type': 'object' }, 'fail': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: ScrapeState) {
     // Each item is written to state under the itemKey ('url') before execute.
@@ -92,7 +95,7 @@ export const gatherPartition = { strategy: 'partition', partitions: { success: '
 class TopNGather extends GatherStrategy {
   readonly name = 'top-n';
   override initial(_config: GatherConfigType, _state: NodeStateInterface, _accessor: StateAccessorInterface): void { /* seed */ }
-  override reduce(_config: GatherConfigType, _batch: Batch<GatherRecordType<NodeStateInterface>>, _state: NodeStateInterface, _accessor: StateAccessorInterface): void { /* fold */ }
+  override reduce(_config: GatherConfigType, _batch: Batch<GatherRecordType>, _state: NodeStateInterface, _accessor: StateAccessorInterface): void { /* fold */ }
   override async finalize(_config: GatherConfigType, _execution: GatherExecutionType<NodeStateInterface>): Promise<void> { /* trim to top-N */ }
 }
 GatherStrategies.register(new TopNGather());

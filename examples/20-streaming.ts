@@ -4,7 +4,10 @@
  * Dagonizer.execute() returns an `Execution<TState>` that is both:
  *   - Awaitable  — `await dispatcher.execute(...)` waits for the final summary.
  *   - AsyncIterable — `for await (const stage of dispatcher.execute(...))` yields
- *                      a `NodeResultType<TState>` for each node as it completes.
+ *                      a `NodeResultType<NodeStateInterface>` for each node as it completes.
+ *                      The base type is used so embedded-child nodes with different
+ *                      concrete states are covered. Use `stage.nodeName`, `stage.output`,
+ *                      `stage.skipped` directly; downcast `stage.state` locally if needed.
  *
  * The two consumption modes share a single internal generator. Iterating and
  * then awaiting returns the cached final result; the flow body runs exactly once.
@@ -18,7 +21,7 @@
  */
 
 import { Dagonizer } from '@studnicky/dagonizer';
-import type { NodeResultType } from '@studnicky/dagonizer';
+import type { NodeResultType, NodeStateInterface } from '@studnicky/dagonizer';
 import { PipelineState, IngestNode, EnrichNode, PersistNode, dag } from './dags/20-streaming.js';
 
 // ---------------------------------------------------------------------------
@@ -35,7 +38,10 @@ const state = new PipelineState();
 
 // #region streaming
 // Stream each node result as it arrives, then the final summary.
-const intermediateNodes: Array<NodeResultType<PipelineState>> = [];
+// Execution<TState> yields NodeResultType<NodeStateInterface> on iteration
+// (the base type, because embedded-child nodes may carry different concrete states).
+// The final awaited result is still ExecutionResultType<PipelineState>.
+const intermediateNodes: Array<NodeResultType<NodeStateInterface>> = [];
 
 process.stdout.write('\n20-streaming: stage-by-stage execution progress\n\n');
 process.stdout.write('  Streaming nodes as they complete:\n');

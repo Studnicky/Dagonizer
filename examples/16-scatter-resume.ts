@@ -101,7 +101,7 @@ const ckpt      = await Checkpoint.capture('scatter-resume', partial);
 const persisted  = ckpt.toJson();
 
 // Simulate process restart: parse the JSON and restore typed state.
-const restored  = Checkpoint.load(JSON.parse(persisted) as unknown);
+const restored  = Checkpoint.load(JSON.parse(persisted));
 const { state: resumedState, cursor } = restored.restoreState(
   CheckpointRestoreAdapter.wrap((snap) => ResumeState.restore(snap)),
 );

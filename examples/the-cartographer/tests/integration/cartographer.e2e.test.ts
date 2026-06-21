@@ -33,47 +33,49 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 
 // ── Shared setup ───────────────────────────────────────────────────────────────
 
-/**
- * Build a fresh Dagonizer instance with all bundles registered.
- * Uses the recorded (offline) geo backend for determinism.
- */
-function buildDispatcher(): Dagonizer<CartographerState, CartographerServices> {
-  const services = GeoResolvers.recorded();
-  const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ services });
-  dispatcher.registerBundle(geoResolveBundle);
-  dispatcher.registerBundle(orderEnrichmentBundle);
-  dispatcher.registerBundle(gdprComplianceBundle);
-  dispatcher.registerBundle(ingestSourceBundle);
-  dispatcher.registerBundle(cartographerBundle);
-  return dispatcher;
-}
+class Harness {
+  /**
+   * Build a fresh Dagonizer instance with all bundles registered.
+   * Uses the recorded (offline) geo backend for determinism.
+   */
+  static dispatcher(): Dagonizer<CartographerState, CartographerServices> {
+    const services = GeoResolvers.recorded();
+    const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ services });
+    dispatcher.registerBundle(geoResolveBundle);
+    dispatcher.registerBundle(orderEnrichmentBundle);
+    dispatcher.registerBundle(gdprComplianceBundle);
+    dispatcher.registerBundle(ingestSourceBundle);
+    dispatcher.registerBundle(cartographerBundle);
+    return dispatcher;
+  }
 
-/**
- * Minimal mixed-format event config for fast deterministic runs.
- * Covers all five event types to exercise every per-type pipeline branch.
- */
-function minimalEventConfig(): CartographerState['eventConfig'] {
-  return [
-    { 'eventType': 'position-ping',         'count': 3, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 1 }] },
-    { 'eventType': 'facility-scan',         'count': 3, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 1 }] },
-    { 'eventType': 'sensor-reading',        'count': 2, 'formatMix': [{ 'format': 'ndjson', 'compression': 'none', 'weight': 1 }] },
-    { 'eventType': 'customs-event',         'count': 2, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 1 }] },
-    { 'eventType': 'delivery-confirmation', 'count': 2, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 1 }] },
-  ];
-}
+  /**
+   * Minimal mixed-format event config for fast deterministic runs.
+   * Covers all five event types to exercise every per-type pipeline branch.
+   */
+  static minimalEventConfig(): CartographerState['eventConfig'] {
+    return [
+      { 'eventType': 'position-ping',         'count': 3, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 1 }] },
+      { 'eventType': 'facility-scan',         'count': 3, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 1 }] },
+      { 'eventType': 'sensor-reading',        'count': 2, 'formatMix': [{ 'format': 'ndjson', 'compression': 'none', 'weight': 1 }] },
+      { 'eventType': 'customs-event',         'count': 2, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 1 }] },
+      { 'eventType': 'delivery-confirmation', 'count': 2, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 1 }] },
+    ];
+  }
 
-/**
- * Execute the cartographer pipeline with a small seed and return the final state.
- */
-async function runPipeline(config?: CartographerState['eventConfig']): Promise<CartographerState> {
-  const dispatcher = buildDispatcher();
-  const state = new CartographerState();
-  state.eventConfig = config ?? minimalEventConfig();
+  /**
+   * Execute the cartographer pipeline with a small seed and return the final state.
+   */
+  static async runPipeline(config?: CartographerState['eventConfig']): Promise<CartographerState> {
+    const dispatcher = Harness.dispatcher();
+    const state = new CartographerState();
+    state.eventConfig = config ?? Harness.minimalEventConfig();
 
-  const execution = dispatcher.execute('cartographer', state);
-  for await (const _stage of execution) { /* drain stages */ }
-  await execution;
-  return state;
+    const execution = dispatcher.execute('cartographer', state);
+    for await (const _stage of execution) { /* drain stages */ }
+    await execution;
+    return state;
+  }
 }
 
 // ── Lifecycle completion ────────────────────────────────────────────────────────
@@ -82,7 +84,7 @@ describe('Cartographer DAG end-to-end', () => {
   let state: CartographerState;
 
   before(async () => {
-    state = await runPipeline();
+    state = await Harness.runPipeline();
   }, { timeout: 60_000 });
 
   it('reaches lifecycle "completed"', () => {
@@ -259,7 +261,7 @@ describe('Cartographer DAG — single-type position-ping run', () => {
     const singleTypeConfig: CartographerState['eventConfig'] = [
       { 'eventType': 'position-ping', 'count': 3, 'formatMix': [{ 'format': 'json', 'compression': 'none', 'weight': 1 }] },
     ];
-    const state = await runPipeline(singleTypeConfig);
+    const state = await Harness.runPipeline(singleTypeConfig);
     assert.equal(state.lifecycle.variant, 'completed');
     assert.ok(state.sampleRecords.length > 0);
     // All routing paths should come from position-ping lane
@@ -274,7 +276,7 @@ describe('Cartographer DAG — single-type position-ping run', () => {
 
 describe('Cartographer DAG — RegionInsights accumulation', () => {
   it('region insights onTimeCount + lateCount equals etaRun events in that region', { timeout: 60_000 }, async () => {
-    const state = await runPipeline(minimalEventConfig());
+    const state = await Harness.runPipeline(Harness.minimalEventConfig());
     for (const [key, entry] of state.insights) {
       // onTimeCount + lateCount can be less than shipmentCount because some event types
       // (sensor-reading, customs-event) skip etaRun, so we just verify non-negative
@@ -288,7 +290,7 @@ describe('Cartographer DAG — RegionInsights accumulation', () => {
   });
 
   it('consentValid + consentMissing + consentExpired equals shipmentCount per region', { timeout: 60_000 }, async () => {
-    const state = await runPipeline(minimalEventConfig());
+    const state = await Harness.runPipeline(Harness.minimalEventConfig());
     for (const [key, entry] of state.insights) {
       const consentTotal = entry.consentValid + entry.consentMissing + entry.consentExpired;
       assert.equal(
@@ -300,7 +302,7 @@ describe('Cartographer DAG — RegionInsights accumulation', () => {
   });
 
   it('size tier counts sum to shipmentCount per region', { timeout: 60_000 }, async () => {
-    const state = await runPipeline(minimalEventConfig());
+    const state = await Harness.runPipeline(Harness.minimalEventConfig());
     for (const [key, entry] of state.insights) {
       const tierTotal = entry.sizeTierEnvelope + entry.sizeTierSmall + entry.sizeTierMedium
         + entry.sizeTierLarge + entry.sizeTierFreight;
@@ -317,7 +319,7 @@ describe('Cartographer DAG — RegionInsights accumulation', () => {
 
 describe('Cartographer DAG bundle registration', () => {
   it('registers all bundles without throwing', () => {
-    assert.doesNotThrow(() => { buildDispatcher(); });
+    assert.doesNotThrow(() => { Harness.dispatcher(); });
   });
 
   it('the dispatcher can be constructed with recorded services', () => {

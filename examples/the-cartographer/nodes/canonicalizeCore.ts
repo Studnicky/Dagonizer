@@ -29,11 +29,19 @@ import {
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region canonicalize-core-node
 export class CanonicalizeCoreNode extends ScalarNode<CartographerState, 'normalized' | 'rejected', CartographerServices> {
   readonly 'name' = 'canonicalize-core';
   readonly 'outputs' = ['normalized', 'rejected'] as const;
+
+  override get outputSchema(): Record<'normalized' | 'rejected', SchemaObjectType> {
+    return {
+      'normalized': { 'type': 'object' },
+      'rejected':   { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized' | 'rejected'>> {
     const raw = state.raw;

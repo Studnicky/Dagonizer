@@ -176,13 +176,16 @@ void describe('PlacementRank.compute', () => {
     };
     // Must terminate.
     const ranks = PlacementRank.compute(dag);
-    assert.ok(typeof ranks.get('a') === 'number');
-    assert.ok(typeof ranks.get('b') === 'number');
-    assert.ok(typeof ranks.get('end') === 'number');
+    const rankA   = ranks.get('a');
+    const rankB   = ranks.get('b');
+    const rankEnd = ranks.get('end');
+    assert.ok(typeof rankA   === 'number');
+    assert.ok(typeof rankB   === 'number');
+    assert.ok(typeof rankEnd === 'number');
     // All ranks are finite numbers (no infinite loop / MAX_SAFE_INTEGER for reachable nodes).
-    assert.ok((ranks.get('a') as number) < Number.MAX_SAFE_INTEGER);
-    assert.ok((ranks.get('b') as number) < Number.MAX_SAFE_INTEGER);
-    assert.ok((ranks.get('end') as number) < Number.MAX_SAFE_INTEGER);
+    assert.ok(rankA   < Number.MAX_SAFE_INTEGER);
+    assert.ok(rankB   < Number.MAX_SAFE_INTEGER);
+    assert.ok(rankEnd < Number.MAX_SAFE_INTEGER);
   });
 
   void it('assigns MAX_SAFE_INTEGER to unreachable placements', () => {

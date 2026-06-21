@@ -3,7 +3,7 @@
  *
  * Owns the slot semaphore, active-worker counter, error accumulator, and the
  * drain loop that drives concurrent item execution. Item body execution and
- * acknowledgment are delegated to a `ScatterPoolDriverInterface<TState>`
+ * acknowledgment are delegated to a `ScatterPoolDriverInterface`
  * instance so the pool has no knowledge of DAG internals; it only manages
  * concurrency.
  *
@@ -22,8 +22,6 @@
 import type { ScatterPoolDriverInterface } from '../contracts/ScatterPoolDriver.js';
 import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { ExecutionError } from '../errors/index.js';
-import type { NodeStateInterface } from '../NodeStateBase.js';
-
 /**
  * Options for constructing a `ScatterWorkerPool`.
  *
@@ -57,8 +55,8 @@ export type ScatterWorkerPoolOptionsType = {
  * V8 shape stability: all fields are initialised in declaration order in the
  * constructor. No fields are added or deleted after construction.
  */
-export class ScatterWorkerPool<TState extends NodeStateInterface> {
-  readonly #driver: ScatterPoolDriverInterface<TState>;
+export class ScatterWorkerPool {
+  readonly #driver: ScatterPoolDriverInterface;
   readonly #concurrencyLimit: number;
   readonly #inbox: ScatterInboxItemType[];
   readonly #inboxIter: AsyncIterator<ScatterInboxItemType, undefined>;
@@ -71,7 +69,7 @@ export class ScatterWorkerPool<TState extends NodeStateInterface> {
   #slotResolve: (() => void) | null;
   readonly #poolErrors: unknown[];
 
-  constructor(driver: ScatterPoolDriverInterface<TState>, options: ScatterWorkerPoolOptionsType) {
+  constructor(driver: ScatterPoolDriverInterface, options: ScatterWorkerPoolOptionsType) {
     this.#driver = driver;
     this.#concurrencyLimit = options.concurrencyLimit;
     this.#inbox = options.inbox;

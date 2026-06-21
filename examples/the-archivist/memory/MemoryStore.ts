@@ -27,7 +27,7 @@
  */
 
 import { DataFactory, Parser, Store, Writer } from 'n3';
-import type { Quad, Quad_Graph, Quad_Object, Quad_Predicate, Quad_Subject, Term } from 'n3';
+import type { Literal, NamedNode, Quad, Quad_Graph, Quad_Object, Quad_Predicate, Quad_Subject, Term } from 'n3';
 
 import type { SnapshottableInterface, StoreSnapshotType } from '@studnicky/dagonizer/contracts';
 
@@ -106,25 +106,25 @@ export class MemoryStore implements SnapshottableInterface {
   get size(): number { return this.#store.size; }
 
   /** Pre-bake a named-node IRI for the `dag:` vocabulary. */
-  static dagIri(local: string): Term { return namedNode(`${DAG_NS}${local}`); }
+  static dagIri(local: string): NamedNode { return namedNode(`${DAG_NS}${local}`); }
   /** Pre-bake a named-node IRI for a candidate book by ISBN. */
-  static bookIri(isbn: string): Term { return namedNode(`${BOOK_NS}${isbn}`); }
+  static bookIri(isbn: string): NamedNode { return namedNode(`${BOOK_NS}${isbn}`); }
   /** Per-run subject IRI. */
-  static runIri(id: string):   Term { return namedNode(`${RUN_NS}${id}`); }
+  static runIri(id: string):   NamedNode { return namedNode(`${RUN_NS}${id}`); }
   /** Make any IRI. */
-  static iri(value: string):   Term { return namedNode(value); }
+  static iri(value: string):   NamedNode { return namedNode(value); }
   /** Named-graph IRI for the per-run typed-state mirror graph. */
-  static stateGraphIri(runId: string): Term { return namedNode(`${STATE_GRAPH_PREFIX}${runId}`); }
+  static stateGraphIri(runId: string): NamedNode { return namedNode(`${STATE_GRAPH_PREFIX}${runId}`); }
   /** Named-graph IRI for the per-run PROV-O activity log. */
-  static provGraphIri(runId: string):  Term { return namedNode(`${PROV_GRAPH_PREFIX}${runId}`); }
+  static provGraphIri(runId: string):  NamedNode { return namedNode(`${PROV_GRAPH_PREFIX}${runId}`); }
 
   /** Literal helpers: typed XSD where it matters for SPARQL FILTER. */
   static lit = {
-    str(value: string):   Term { return literal(value); },
-    num(value: number):   Term { return literal(String(value), namedNode('http://www.w3.org/2001/XMLSchema#double')); },
-    int(value: number):   Term { return literal(String(value), namedNode('http://www.w3.org/2001/XMLSchema#integer')); },
-    bool(value: boolean): Term { return literal(String(value), namedNode('http://www.w3.org/2001/XMLSchema#boolean')); },
-    dateTime(value: Date): Term { return literal(value.toISOString(), namedNode('http://www.w3.org/2001/XMLSchema#dateTime')); },
+    str(value: string):   Literal { return literal(value); },
+    num(value: number):   Literal { return literal(String(value), namedNode('http://www.w3.org/2001/XMLSchema#double')); },
+    int(value: number):   Literal { return literal(String(value), namedNode('http://www.w3.org/2001/XMLSchema#integer')); },
+    bool(value: boolean): Literal { return literal(String(value), namedNode('http://www.w3.org/2001/XMLSchema#boolean')); },
+    dateTime(value: Date): Literal { return literal(value.toISOString(), namedNode('http://www.w3.org/2001/XMLSchema#dateTime')); },
   };
 
   /**
@@ -148,13 +148,8 @@ export class MemoryStore implements SnapshottableInterface {
   }
 
   /** Write one quad. `graph` defaults to the default graph. */
-  assert(s: Term, p: Term, o: Term, graph?: Term): void {
-    this.#store.addQuad(quad(
-      s as Quad_Subject,
-      p as Quad_Predicate,
-      o as Quad_Object,
-      (graph ?? defaultGraph()) as Quad_Graph,
-    ));
+  assert(s: Quad_Subject, p: Quad_Predicate, o: Quad_Object, graph?: Quad_Graph): void {
+    this.#store.addQuad(quad(s, p, o, graph ?? defaultGraph()));
     this.#flush();
   }
 

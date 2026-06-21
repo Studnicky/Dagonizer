@@ -15,11 +15,18 @@ import { FieldMappings } from '../../services.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region normalize-ndjson-node
 export class NormalizeNdjsonNode extends ScalarNode<CartographerState, 'normalized', CartographerServices> {
   readonly 'name' = 'normalize-ndjson-map';
   readonly 'outputs' = ['normalized'] as const;
+
+  override get outputSchema(): Record<'normalized', SchemaObjectType> {
+    return {
+      'normalized': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized'>> {
     const map = FieldMappings.forKey(state.currentSource.mappingKey);

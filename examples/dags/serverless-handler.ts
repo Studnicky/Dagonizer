@@ -17,9 +17,15 @@
  */
 
 import { DAG_CONTEXT, Dagonizer, NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
 import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
+
+// Runtime guard: narrows { [x: string]: unknown } to JsonObjectType.
+// json-schema-to-ts derives stateSnapshot as the wider record type; the engine
+// always produces JSON-safe values, so this confirms the outer shape.
+const isJsonObject = (v: { [x: string]: unknown }): v is JsonObjectType =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 export const REGISTRY_VERSION = '1.0.0';
 
@@ -50,6 +56,9 @@ export class OrderState extends NodeStateBase {
 export class SettleNode extends ScalarNode<OrderState, 'done'> {
   readonly name = 'settle';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: OrderState) {
     state.status = 'settled';
     return NodeOutputBuilder.of('done');
@@ -120,7 +129,10 @@ export async function handle(
   if (!('stateSnapshot' in envelope)) {
     throw new Error('stateSnapshotRef envelopes require fetching the URI before restore');
   }
-  const state = OrderState.restore(envelope.stateSnapshot as JsonObjectType);
+  if (!isJsonObject(envelope.stateSnapshot)) {
+    throw new Error('stateSnapshot is not a JSON object');
+  }
+  const state = OrderState.restore(envelope.stateSnapshot);
 
   // 3. Build a per-invocation dispatcher with egress channels bound to terminal
   //    names. The channel publishes the next envelope after the terminal.

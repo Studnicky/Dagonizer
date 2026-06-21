@@ -19,7 +19,7 @@
  *   readonly name = 'top-n';
  *   reduce(
  *     config: GatherConfigType,
- *     batch: Batch<GatherRecordType<NodeStateInterface>>,
+ *     batch: Batch<GatherRecordType>,
  *     state: NodeStateInterface,
  *     accessor: StateAccessorInterface,
  *   ): void {
@@ -86,7 +86,7 @@ export abstract class GatherStrategy {
    */
   abstract reduce(
     config: GatherConfigType,
-    batch: Batch<GatherRecordType<NodeStateInterface>>,
+    batch: Batch<GatherRecordType>,
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void | Promise<void>;
@@ -97,7 +97,7 @@ export abstract class GatherStrategy {
    */
   async finalize(
     _config: GatherConfigType,
-    _execution: GatherExecutionType<NodeStateInterface>,
+    _execution: GatherExecutionType,
   ): Promise<void> { /* no-op */ }
 }
 
@@ -106,7 +106,7 @@ class MapGatherStrategy extends GatherStrategy {
 
   reduce(
     config: GatherConfigType,
-    batch: Batch<GatherRecordType<NodeStateInterface>>,
+    batch: Batch<GatherRecordType>,
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
@@ -127,7 +127,7 @@ class AppendGatherStrategy extends GatherStrategy {
 
   reduce(
     config: GatherConfigType,
-    batch: Batch<GatherRecordType<NodeStateInterface>>,
+    batch: Batch<GatherRecordType>,
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
@@ -150,7 +150,7 @@ class PartitionGatherStrategy extends GatherStrategy {
 
   reduce(
     config: GatherConfigType,
-    batch: Batch<GatherRecordType<NodeStateInterface>>,
+    batch: Batch<GatherRecordType>,
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
@@ -180,7 +180,7 @@ class CustomGatherStrategy extends GatherStrategy {
 
   override async finalize(
     config: GatherConfigType,
-    execution: GatherExecutionType<NodeStateInterface>,
+    execution: GatherExecutionType,
   ): Promise<void> {
     if (config.customNode === undefined) return;
     // Expose a plain projection of records for the custom gather node to read.
@@ -233,7 +233,7 @@ class CollectGatherStrategy extends GatherStrategy {
 
   reduce(
     config: GatherConfigType,
-    batch: Batch<GatherRecordType<NodeStateInterface>>,
+    batch: Batch<GatherRecordType>,
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {

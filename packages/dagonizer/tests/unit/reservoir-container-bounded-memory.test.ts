@@ -47,7 +47,7 @@ import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 //   dist-test/tests/unit/reservoir-container-bounded-memory.test.js
 // The conformance registry is at:
 //   dist-testing/ConformanceRegistry.js
-// PACKAGE_ROOT = four levels up from the test file.
+// PACKAGE_ROOT = three levels up from the test file (tests/unit/ → tests/ → dagonizer/).
 // ---------------------------------------------------------------------------
 
 const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..');
@@ -58,11 +58,14 @@ const REGISTRY_VERSION = '1.0.0';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildHostPair(): { host: DagHost; parentSide: MessageChannelInterface } {
-  const [parentSide, hostSide] = LoopbackChannel.pair();
-  const host = new DagHost(hostSide);
-  host.start();
-  return { host, parentSide };
+class TestHostPair {
+  private constructor() {}
+  static create(): { host: DagHost; parentSide: MessageChannelInterface } {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    const host = new DagHost(hostSide);
+    host.start();
+    return { host, parentSide };
+  }
 }
 
 /** Initialize the host and assert it replied 'ready'. */
@@ -98,7 +101,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
    * independent of the (now-empty) `response.intermediates` array.
    */
   void it('batch response carries empty intermediates[] while live intermediate messages are still forwarded', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     await initHost(parentSide);
 
     const N = 5; // Small N — we test the structural contract, not heap scale
@@ -112,7 +115,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
       parentSide.onMessage((msg) => {
         if (msg.variant === 'intermediate') intermediateMessages.push(msg);
         if (msg.variant === 'result') {
-          resolve({ 'result': msg as BridgeMessageType & { variant: 'result' }, intermediateMessages });
+          resolve({ 'result': msg, intermediateMessages });
         }
       });
       // Send N items in a single batch request.
@@ -179,14 +182,14 @@ void describe('DagHost — batch request: intermediates are empty, live messages
    * `intermediates` in `ExecutionResponse`.
    */
   void it('single-item (N=1) response still carries non-empty intermediates for top-level streaming', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     await initHost(parentSide);
 
     const initialState = new NodeStateBase();
 
     const singleResult = await new Promise<BridgeMessageType & { variant: 'result' }>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.variant === 'result') resolve(msg as BridgeMessageType & { variant: 'result' });
+        if (msg.variant === 'result') resolve(msg);
       });
       parentSide.send({
         'variant': 'execute',
@@ -216,7 +219,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
    * Proves the bounded contract holds regardless of batch size.
    */
   void it('large batch (N=50) produces empty intermediates in response', async () => {
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     await initHost(parentSide);
 
     const N = 50;
@@ -224,7 +227,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
 
     const batchResult = await new Promise<BridgeMessageType & { variant: 'result' }>((resolve) => {
       parentSide.onMessage((msg) => {
-        if (msg.variant === 'result') resolve(msg as BridgeMessageType & { variant: 'result' });
+        if (msg.variant === 'result') resolve(msg);
       });
       parentSide.send({
         'variant': 'execute',
@@ -281,13 +284,16 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
    * not with total event count.
    */
   void it('heap delta per batch is O(1) not O(batch_size × nodes) when GC is available', async () => {
-    if (typeof (globalThis as unknown as { gc?: () => void }).gc !== 'function') {
+    const maybeGc: unknown = Reflect.get(globalThis, 'gc');
+    if (typeof maybeGc !== 'function') {
       // Not running with --expose-gc — skip heap assertion.
       return;
     }
-    const gc = (globalThis as unknown as { gc: () => void }).gc;
+    // After typeof guard, maybeGc is Function. Wrap in a () => void closure
+    // so call sites read as gc() without needing a cast at every invocation.
+    const gc = (): void => { maybeGc.call(null); };
 
-    const { parentSide } = buildHostPair();
+    const { parentSide } = TestHostPair.create();
     await initHost(parentSide);
 
     const BATCH_SIZE = 100;

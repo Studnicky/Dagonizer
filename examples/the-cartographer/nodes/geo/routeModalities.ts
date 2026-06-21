@@ -17,11 +17,19 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-modalities-node
 export class RouteModalitiesNode extends ScalarNode<CartographerState, 'ip' | 'gps-only', CartographerServices> {
   readonly 'name' = 'route-modalities';
   readonly 'outputs' = ['ip', 'gps-only'] as const;
+
+  override get outputSchema(): Record<'ip' | 'gps-only', SchemaObjectType> {
+    return {
+      'ip':       { 'type': 'object' },
+      'gps-only': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'ip' | 'gps-only'>> {
     const hasIp = state.canonical.body.ipAddress.length > 0;

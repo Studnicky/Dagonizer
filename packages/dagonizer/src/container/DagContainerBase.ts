@@ -82,10 +82,9 @@ export type DagContainerOptionsType = {
 // DagContainerBase
 // ---------------------------------------------------------------------------
 
-export abstract class DagContainerBase<
-  TState extends NodeStateInterface = NodeStateInterface,
-  TWorker = unknown,
-> implements DagContainerInterface<TState> {
+export abstract class DagContainerBase<TWorker = unknown>
+  implements DagContainerInterface
+{
 
   // Channel → dispatch map. WeakMap so GC'd channels release their dispatches.
   readonly #dispatches: WeakMap<MessageChannelInterface, ChannelDispatch>;
@@ -228,7 +227,7 @@ export abstract class DagContainerBase<
   // runDag
   // ---------------------------------------------------------------------------
 
-  async runDag(task: DagTaskInterface<TState, unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+  async runDag(task: DagTaskInterface<unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     const relay: ObserverRelayInterface | null = options?.relay ?? null;
 
     return this.#withChannel(
@@ -258,8 +257,8 @@ export abstract class DagContainerBase<
    * entries, one per item.
    */
   async runDagBatch(
-    task: DagTaskInterface<TState, unknown>,
-    batch: Batch<TState>,
+    task: DagTaskInterface<unknown>,
+    batch: Batch<NodeStateInterface>,
     options?: { readonly relay?: ObserverRelayInterface },
   ): Promise<BatchRunResultType[]> {
     const relay: ObserverRelayInterface | null = options?.relay ?? null;
@@ -269,7 +268,7 @@ export abstract class DagContainerBase<
       task.context.signal,
       async (_channel, dispatch) => {
         const baseRequest = task.toRequest();
-        const batchItems = batch.items().map((item: ItemType<TState>) => ({
+        const batchItems = batch.items().map((item: ItemType<NodeStateInterface>) => ({
           'id': item.id,
           'snapshot': item.state.snapshot() as { [key: string]: unknown },
         }));
@@ -287,7 +286,7 @@ export abstract class DagContainerBase<
       (err) => {
         const message = err instanceof Error ? err.message : String(err);
         // Return one transport-error result per item.
-        return batch.items().map((item: ItemType<TState>) =>
+        return batch.items().map((item: ItemType<NodeStateInterface>) =>
           DagOutcome.batchItemTransportError(item.id, correlationId, { message }),
         );
       },

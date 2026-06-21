@@ -15,6 +15,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { DatabaseSyncOptions } from 'node:sqlite';
 
 import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
+import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { JsonValueType } from '@studnicky/dagonizer/entities';
 import { BASE_STORE_DEFAULTS, BaseStore, type BaseStoreOptionsType } from '@studnicky/dagonizer/store';
 
@@ -25,11 +26,29 @@ export type SqliteStoreOptionsType = BaseStoreOptionsType & {
   readonly tableName?: string;
 };
 
-/** Narrow row shape returned by prepared SELECT statements. */
+/** Row shape returned by `SELECT value FROM ...` prepared statements. */
+type ValueRowType = {
+  readonly value: string;
+};
+
+/** Row shape returned by `SELECT key, value FROM ...` prepared statements. */
 type KvRowType = {
   readonly key: string;
   readonly value: string;
 };
+
+/** Structural guards for rows returned by node:sqlite's `.get()` / `.all()`. */
+class KvRow {
+  static isValue(row: unknown): row is ValueRowType {
+    if (row === null || typeof row !== 'object') return false;
+    return 'value' in row && typeof row.value === 'string';
+  }
+
+  static isFull(row: unknown): row is KvRowType {
+    if (!KvRow.isValue(row)) return false;
+    return 'key' in row && typeof row.key === 'string';
+  }
+}
 
 export class SqliteStore extends BaseStore {
   readonly #db: DatabaseSync;
@@ -60,10 +79,11 @@ export class SqliteStore extends BaseStore {
     const qualified = this.qualifyKey(key);
     this.#db.exec('BEGIN IMMEDIATE');
     try {
-      const row = this.#db
+      const raw = this.#db
         .prepare(`SELECT value FROM ${this.#tableName} WHERE key = ?`)
-        .get(qualified) as KvRowType | undefined;
-      const current = (row === undefined) ? undefined : JSON.parse(row.value) as T;
+        .get(qualified);
+      const parsed: JsonValueType | null = KvRow.isValue(raw) ? JsonValue.from(JSON.parse(raw.value)) : null;
+      const current = this.narrowStored<T>(parsed) ?? undefined;
       const next = fn(current);
       this.#db
         .prepare(
@@ -79,15 +99,15 @@ export class SqliteStore extends BaseStore {
     }
   }
 
-  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
-    const row = this.#db
+  protected async performGet(key: string): Promise<JsonValueType | null> {
+    const raw = this.#db
       .prepare(`SELECT value FROM ${this.#tableName} WHERE key = ?`)
-      .get(key) as KvRowType | undefined;
-    if (row === undefined) return null;
-    return JSON.parse(row.value) as T;
+      .get(key);
+    if (!KvRow.isValue(raw)) return null;
+    return JsonValue.from(JSON.parse(raw.value));
   }
 
-  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
+  protected async performSet(key: string, value: JsonValueType): Promise<void> {
     this.#db
       .prepare(
         `INSERT INTO ${this.#tableName} (key, value) VALUES (?, ?)` +
@@ -111,19 +131,13 @@ export class SqliteStore extends BaseStore {
   }
 
   protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
-    // Foreign-data boundary cast: node:sqlite's `.all()` returns
-    // `unknown[]` because the driver can't statically know table schemas.
-    // The double-cast through `unknown` is the conventional TS narrowing
-    // at this boundary; structurally identical to the `JSON.parse(...) as
-    // JsonValueType` boundary on the next line. KvRowType matches the SELECT
-    // projection exactly, so the cast is sound.
     const rows = this.#db
       .prepare(`SELECT key, value FROM ${this.#tableName} ORDER BY key`)
-      .all() as unknown as KvRowType[];
-    return rows.map((row) => ({
-      'key':   row.key,
-      'value': JSON.parse(row.value) as JsonValueType,
-    }));
+      .all();
+    return rows.flatMap((raw) => {
+      if (!KvRow.isFull(raw)) return [];
+      return [{ 'key': raw.key, 'value': JsonValue.from(JSON.parse(raw.value)) }];
+    });
   }
 
   protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {

@@ -1,4 +1,5 @@
 import type { JsonObjectType, JsonValueType } from './entities/json.js';
+import { JsonValue } from './entities/JsonValue.js';
 import type { NodeErrorType } from './entities/node/NodeError.js';
 import type { NodeWarningType } from './entities/node/NodeWarning.js';
 import { DAGError } from './errors/DAGError.js';
@@ -349,13 +350,11 @@ export class NodeStateBase implements NodeStateInterface {
       // Spread to a stable snapshot object; the live record is not passed
       // by reference so checkpoint consumers cannot mutate internal state.
       'metadata': { ...this._metadata },
-      // Sound JSON-safe narrowing: `_retries` entries are number values.
-      // Convert Map → plain Record at the wire boundary.
-      'retries': Object.fromEntries(this._retries) as JsonValueType,
-      // Sound JSON-safe narrowing: `NodeWarning` fields are all primitive
-      // strings/numbers (schema-derived). Spread copies them to a plain object;
-      // the resulting array of plain objects satisfies `JsonValueType`.
-      'warnings': this._warnings.map((w) => ({ ...w })) as JsonValueType,
+      // Convert Map → plain Record at the wire boundary; JsonValue.from confirms JSON-safety.
+      'retries': JsonValue.from(Object.fromEntries(this._retries)),
+      // NodeWarning fields are all primitive strings/numbers (schema-derived).
+      // Spread copies them to plain objects; JsonValue.from confirms JSON-safety.
+      'warnings': JsonValue.from(this._warnings.map((w) => ({ ...w }))),
       ...this.snapshotData(),
     };
   }
@@ -410,7 +409,7 @@ export class NodeStateBase implements NodeStateInterface {
     if (metadata !== undefined && typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
       // Populate from the plain Record wire shape.
       for (const [k, v] of Object.entries(metadata)) {
-        this._metadata[k] = v as JsonValueType;
+        this._metadata[k] = v;
       }
     }
     const retries = snapshot['retries'];

@@ -3,16 +3,12 @@ import { test } from 'node:test';
 
 import { WebLlmAdapter } from '../src/index.js';
 
-interface MutableGlobal {
-  navigator?: unknown;
-}
-
 function installNavigator(nav: unknown): void {
-  (globalThis as MutableGlobal).navigator = nav;
+  Object.assign(globalThis, { 'navigator': nav });
 }
 
 function removeNavigator(): void {
-  delete (globalThis as MutableGlobal).navigator;
+  Reflect.deleteProperty(globalThis, 'navigator');
 }
 
 void test('WebLlmAdapter identity', () => {

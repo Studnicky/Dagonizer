@@ -23,6 +23,7 @@ import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-event-type-variant-node
 type VariantRoute = CanonicalEventVariant['eventType'];
@@ -49,6 +50,16 @@ const ROUTING_PATH: Readonly<Record<VariantRoute, RoutingPath>> = {
 export class RouteEventTypeNode extends ScalarNode<CartographerState, VariantRoute, CartographerServices> {
   readonly 'name' = 'route-event-type-variant';
   readonly 'outputs' = ['position-ping', 'sensor-reading', 'customs-event', 'facility-scan', 'delivery-confirmation'] as const;
+
+  override get outputSchema(): Record<'position-ping' | 'sensor-reading' | 'customs-event' | 'facility-scan' | 'delivery-confirmation', SchemaObjectType> {
+    return {
+      'position-ping':         { 'type': 'object' },
+      'sensor-reading':        { 'type': 'object' },
+      'customs-event':         { 'type': 'object' },
+      'facility-scan':         { 'type': 'object' },
+      'delivery-confirmation': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<VariantRoute>> {
     const variant = state.getMetadata<CanonicalEventVariant>('canonical-event');

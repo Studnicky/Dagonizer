@@ -20,12 +20,19 @@ import { Consent, GdprRedactor, GeoCoarsener, Jurisdictions } from '../services.
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region gdpr-nodes
 
 export class ConsentGateNode extends ScalarNode<CartographerState, 'classify', CartographerServices> {
   readonly 'name' = 'consent-gate';
   readonly 'outputs' = ['classify'] as const;
+
+  override get outputSchema(): Record<'classify', SchemaObjectType> {
+    return {
+      'classify': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'classify'>> {
     // Resolve marketing consent (10% of consented treated as lapsed/expired).
@@ -44,6 +51,12 @@ export class ClassifyPiiNode extends ScalarNode<CartographerState, 'redact', Car
   readonly 'name' = 'classify-pii';
   readonly 'outputs' = ['redact'] as const;
 
+  override get outputSchema(): Record<'redact', SchemaObjectType> {
+    return {
+      'redact': { 'type': 'object' },
+    };
+  }
+
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'redact'>> {
     const classification = GdprRedactor.classify(state.currentEvent);
     state.gdprResult = {
@@ -58,6 +71,13 @@ export class ClassifyPiiNode extends ScalarNode<CartographerState, 'redact', Car
 export class RedactPiiNode extends ScalarNode<CartographerState, 'ok' | 'violation', CartographerServices> {
   readonly 'name' = 'redact-pii';
   readonly 'outputs' = ['ok', 'violation'] as const;
+
+  override get outputSchema(): Record<'ok' | 'violation', SchemaObjectType> {
+    return {
+      'ok':        { 'type': 'object' },
+      'violation': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'ok' | 'violation'>> {
     // Genuine violation: special-category data with no lawful basis (rare drop).

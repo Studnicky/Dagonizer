@@ -46,7 +46,8 @@ export class Batch<TState> {
   map<U>(fn: (state: TState, id: ItemIdType) => U): Batch<U> {
     const mapped: ItemType<U>[] = new Array(this.#items.length);
     for (let i = 0; i < this.#items.length; i++) {
-      const item = this.#items[i] as ItemType<TState>;
+      const item = this.#items[i];
+      if (item === undefined) throw new RangeError(`Batch.map: invariant — items[${i}] is undefined`);
       mapped[i] = { 'id': item.id, 'state': fn(item.state, item.id) };
     }
     return new Batch<U>(mapped);
@@ -111,7 +112,9 @@ export class Batch<TState> {
     if (i < 0 || i >= this.#items.length) {
       throw new RangeError(`Batch.row(${i}): index out of bounds (size ${this.#items.length})`);
     }
-    return this.#items[i] as ItemType<TState>;
+    const item = this.#items[i];
+    if (item === undefined) throw new RangeError(`Batch.row(${i}): invariant — bounds checked but element missing`);
+    return item;
   }
 
   /** Returns all items as a readonly array. */

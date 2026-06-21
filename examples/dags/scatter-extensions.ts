@@ -29,6 +29,7 @@ import type {
   NodeStateInterface,
   OutcomeRecordType,
   RoutedBatchType,
+  SchemaObjectType,
 } from '@studnicky/dagonizer';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 
@@ -50,6 +51,9 @@ export class RankingState extends NodeStateBase {
 export class ScoreNode extends ScalarNode<RankingState, 'success' | 'error'> {
   readonly name    = 'score';
   readonly outputs = ['success', 'error'] as const;
+  override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
+    return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: RankingState) {
     const item = state.getMetadata<string>('item') ?? '';
@@ -68,6 +72,9 @@ export class ScoreNode extends ScalarNode<RankingState, 'success' | 'error'> {
 export class BatchEnrichNode extends MonadicNode<RankingState, 'enriched'> {
   readonly name = 'batch-enrich';
   readonly outputs = ['enriched'] as const;
+  override get outputSchema(): Record<'enriched', SchemaObjectType> {
+    return { 'enriched': { 'type': 'object' } };
+  }
 
   async execute(
     batch: Batch<RankingState>,
@@ -100,6 +107,8 @@ export async function scoreOneItem(item: string): Promise<boolean> {
     dagName: 'test',
     nodeName: 'score',
     services: undefined,
+    validateOutputs: false,
+    outputSchemaValidator: null,
   };
   const routed = await node.execute(Batch.of(state), ctx);
   return routed.has('success');

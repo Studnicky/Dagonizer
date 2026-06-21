@@ -109,6 +109,7 @@ export {
   ExecutionRequestSchema,
   ExecutionResponseSchema,
   DAGHandoffSchema,
+  JsonValue,
 } from './entities/index.js';
 export type {
   BackoffStrategyType,
@@ -227,6 +228,25 @@ export { ScalarNode } from './core/ScalarNode.js';
 export { NodeRunner } from './core/NodeRunner.js';
 
 // =============================================================================
+// PATTERNS
+// =============================================================================
+
+export {
+  AppendAssistantNode,
+  BuildChatRequestNode,
+  BuildToolWorksetsNode,
+  CallModelNode,
+  CollectToolResultsNode,
+  DecodeTextToolCallsNode,
+  NormalizeResponseNode,
+  NormalizeToolCallsNode,
+} from './patterns/index.js';
+export type {
+  AgentServicesType,
+  ToolCallScatterItemType,
+} from './patterns/index.js';
+
+// =============================================================================
 // CHECKPOINT
 // =============================================================================
 
@@ -249,6 +269,10 @@ export type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 export type { NodeStateInterface } from './NodeStateBase.js';
 export type { DAGErrorInterface } from './errors/DAGError.js';
 
+// Child-state factory: class with clone-parent default.
+export { ChildStateFactory } from './runtime/ChildStateFactory.js';
+export type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js';
+
 // =============================================================================
 // CONTRACTS (adapter-pattern interfaces)
 // =============================================================================
@@ -258,7 +282,7 @@ export type { DagContainerInterface } from './contracts/DagContainerInterface.js
 export type { DagOutcomeType } from './contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
 export type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
-export type { NodeInterface } from './contracts/NodeInterface.js';
+export type { NodeInterface, SchemaObjectType } from './contracts/NodeInterface.js';
 export type { RemoteStoreInterface } from './contracts/RemoteStoreInterface.js';
 export type { RemoteStoreEndpointType } from './contracts/RemoteStoreEndpoint.js';
 export type { RemoteStoreLeaseType } from './contracts/RemoteStoreLease.js';

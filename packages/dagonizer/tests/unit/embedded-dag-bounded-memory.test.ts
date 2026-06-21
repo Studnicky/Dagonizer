@@ -24,6 +24,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
@@ -38,6 +39,7 @@ import type { NodeResultType } from '../../src/entities/node/NodeResult.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestDag } from '../_support/TestDag.js';
 
 // ── shared state ──────────────────────────────────────────────────────────────
 
@@ -56,7 +58,7 @@ class EmbedMemState extends NodeStateBase {
 
   protected override restoreData(snap: JsonObjectType): void {
     if (typeof snap['value'] === 'number')   this.value   = snap['value'];
-    if (Array.isArray(snap['items']))        this.items   = snap['items'] as number[];
+    if (Array.isArray(snap['items']))        this.items   = snap['items'].filter((e): e is number => typeof e === 'number');
     if (typeof snap['counter'] === 'number') this.counter = snap['counter'];
   }
 }
@@ -66,6 +68,7 @@ class EmbedMemState extends NodeStateBase {
 class IncValueNode extends ScalarNode<EmbedMemState, 'done'> {
   readonly name: string;
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   private readonly delta: number;
 
   constructor(name: string, delta: number) {
@@ -83,6 +86,7 @@ class IncValueNode extends ScalarNode<EmbedMemState, 'done'> {
 class IncCounterNode extends ScalarNode<EmbedMemState, 'done'> {
   readonly name = 'inc-counter';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
   protected async executeOne(state: EmbedMemState): Promise<NodeOutputType<'done'>> {
     state.counter += 1;
@@ -134,40 +138,28 @@ function terminalPlacement(dag: string): DAGType['nodes'][number] {
   return { '@id': `urn:noocodex:dag:${dag}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' };
 }
 
-function makeDAG(name: string, entrypoint: string, nodes: DAGType['nodes']): DAGType {
-  return Validator.dag.validate({
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    name,
-    'version':  '1',
-    entrypoint,
-    nodes,
-  });
-}
-
 // ── 3-level nesting fixture (outer → mid → inner, each with one node) ─────────
 //
 // outer: inc-outer(+1000) → embed-mid
 // mid:   inc-mid(+100)    → embed-inner
 // inner: inc-inner(+1)    → terminal
 
-const innerDAG3 = makeDAG('emb3-inner', 'inc-inner', [
+const innerDAG3 = Validator.dag.validate(TestDag.of('emb3-inner', 'inc-inner', [
   singlePlacement('emb3-inner', 'inc-inner', { 'done': 'end' }),
   terminalPlacement('emb3-inner'),
-]);
+]));
 
-const midDAG3 = makeDAG('emb3-mid', 'inc-mid', [
+const midDAG3 = Validator.dag.validate(TestDag.of('emb3-mid', 'inc-mid', [
   singlePlacement('emb3-mid', 'inc-mid', { 'done': 'embed-inner' }),
   embedPlacement('emb3-mid', 'embed-inner', 'emb3-inner', VALUE_MAPPING),
   terminalPlacement('emb3-mid'),
-]);
+]));
 
-const outerDAG3 = makeDAG('emb3-outer', 'inc-outer', [
+const outerDAG3 = Validator.dag.validate(TestDag.of('emb3-outer', 'inc-outer', [
   singlePlacement('emb3-outer', 'inc-outer', { 'done': 'embed-mid' }),
   embedPlacement('emb3-outer', 'embed-mid', 'emb3-mid', VALUE_MAPPING),
   terminalPlacement('emb3-outer'),
-]);
+]));
 
 // ── gather for scatter tests ──────────────────────────────────────────────────
 
@@ -199,57 +191,65 @@ GatherStrategies.register(new EmbedCounterGather());
 // The scatter body DAG references `emb3-mid` (which itself embeds `emb3-inner`).
 // This creates depth-2 nesting inside the scatter body.
 
-const scatterBodyDAG = makeDAG('emb-scatter-body', 'inc-counter', [
+const scatterBodyDAG = Validator.dag.validate(TestDag.of('emb-scatter-body', 'inc-counter', [
   singlePlacement('emb-scatter-body', 'inc-counter', { 'done': 'embed-mid' }),
   embedPlacement('emb-scatter-body', 'embed-mid', 'emb3-mid', COUNTER_MAPPING),
   terminalPlacement('emb-scatter-body'),
-]);
+]));
 
-function makeScatterOverEmbedDAG(name: string, concurrency: number): DAGType {
-  return Validator.dag.validate({
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    name,
-    'version':  '1',
-    'entrypoint': 'fan',
-    'nodes': [
-      {
-        '@id':         `urn:noocodex:dag:${name}/node/fan`,
-        '@type':       'ScatterNode',
-        'name':        'fan',
-        'body':        { 'dag': 'emb-scatter-body' },
-        'source':      'items',
-        'itemKey':     'item',
-        concurrency,
-        'gather':      { 'strategy': 'embed-counter-gather' },
-        'outputs': {
-          'all-success': 'end',
-          'partial':     'end',
-          'all-error':   'end',
-          'empty':       'end',
+class TestEmbedDag {
+  private constructor() { /* static class */ }
+
+  static scatterOverEmbed(name: string, concurrency: number): DAGType {
+    return Validator.dag.validate({
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      name,
+      'version':  '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@type':       'ScatterNode',
+          'name':        'fan',
+          'body':        { 'dag': 'emb-scatter-body' },
+          'source':      'items',
+          'itemKey':     'item',
+          concurrency,
+          'gather':      { 'strategy': 'embed-counter-gather' },
+          'outputs': {
+            'all-success': 'end',
+            'partial':     'end',
+            'all-error':   'end',
+            'empty':       'end',
+          },
         },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  });
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    });
+  }
 }
 
 // ── helper: build and register a fully-wired dispatcher ──────────────────────
 
-function buildDispatcher(): Dagonizer<EmbedMemState> {
-  const d = new Dagonizer<EmbedMemState>();
-  d.registerNode(new IncValueNode('inc-outer', 1000));
-  d.registerNode(new IncValueNode('inc-mid',    100));
-  d.registerNode(new IncValueNode('inc-inner',    1));
-  d.registerNode(new IncCounterNode());
-  for (const dag of [innerDAG3, midDAG3, outerDAG3, scatterBodyDAG]) d.registerDAG(dag);
-  return d;
+class TestHarness {
+  private constructor() { /* static class */ }
+
+  static dispatcher(): Dagonizer<EmbedMemState> {
+    const d = new Dagonizer<EmbedMemState>();
+    d.registerNode(new IncValueNode('inc-outer', 1000));
+    d.registerNode(new IncValueNode('inc-mid',    100));
+    d.registerNode(new IncValueNode('inc-inner',    1));
+    d.registerNode(new IncCounterNode());
+    for (const dag of [innerDAG3, midDAG3, outerDAG3, scatterBodyDAG]) d.registerDAG(dag);
+    return d;
+  }
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -264,19 +264,21 @@ void describe('EmbeddedDAG: bounded-memory invariant (no inner-node buffering in
     // mid DAG:   inc-mid(+100)    → embed-inner (EmbeddedDAGNode) → end
     // inner DAG: inc-inner(+1)    → end
 
-    const d = buildDispatcher();
+    const d = TestHarness.dispatcher();
     const state = new EmbedMemState();
 
     const seen: string[] = [];
     const execution = d.execute('emb3-outer', state);
-    let lastState: EmbedMemState = state;
+    // Iteration yields heterogeneous per-node results typed `NodeStateInterface`;
+    // `nodeName` is on the base. The final state is read from the awaited result,
+    // whose `state` is typed `EmbedMemState` — no downcast needed.
     for await (const stage of execution) {
-      seen.push((stage as NodeResultType<EmbedMemState>).nodeName);
-      lastState = (stage as NodeResultType<EmbedMemState>).state;
+      seen.push(stage.nodeName);
     }
+    const result = await execution;
 
     // Correctness: all three inc nodes fired in order (+1000 +100 +1 = 1101)
-    assert.equal(lastState.value, 1101, 'state threads through all 3 nesting levels');
+    assert.equal(result.state.value, 1101, 'state threads through all 3 nesting levels');
 
     // Top-level streaming: inner stages are present (bufferIntermediates=true at this level)
     assert.ok(seen.includes('inc-outer'), 'top-level node inc-outer must appear');
@@ -291,17 +293,17 @@ void describe('EmbeddedDAG: bounded-memory invariant (no inner-node buffering in
     // Correctness proof: counter must equal N (one inc-counter per item).
     const N = 2000;
 
-    const d = buildDispatcher();
-    d.registerDAG(makeScatterOverEmbedDAG('emb-scatter-n2000', 8));
+    const d = TestHarness.dispatcher();
+    d.registerDAG(TestEmbedDag.scatterOverEmbed('emb-scatter-n2000', 8));
 
     const state = new EmbedMemState();
     state.items = Array.from({ 'length': N }, (_, i) => i);
 
     const execution = d.execute('emb-scatter-n2000', state);
-    let scatterResult: NodeResultType<EmbedMemState> | null = null;
+    let scatterResult: NodeResultType<NodeStateInterface> | null = null;
     for await (const stage of execution) {
-      if ((stage as NodeResultType<EmbedMemState>).nodeName === 'fan') {
-        scatterResult = stage as NodeResultType<EmbedMemState>;
+      if (stage.nodeName === 'fan') {
+        scatterResult = stage;
       }
     }
 
@@ -315,11 +317,18 @@ void describe('EmbeddedDAG: bounded-memory invariant (no inner-node buffering in
       `non-empty array proves O(N*M*L) buffering is still occurring.`,
     );
 
-    // Correctness: counter == N proves every item ran inc-counter exactly once
+    // Correctness: counter == N proves every item ran inc-counter exactly once.
+    // The iteration yield is typed `NodeStateInterface`; this scatter runs on
+    // `EmbedMemState` (no isolation factory), so narrow via instanceof.
+    assert.ok(
+      scatterResult.state instanceof EmbedMemState,
+      'scatter state must be an EmbedMemState instance',
+    );
+    const scatterCounter = scatterResult.state.counter;
     assert.equal(
-      scatterResult.state.counter,
+      scatterCounter,
       N,
-      `counter must equal N=${N} (one inc-counter per scatter item); got ${scatterResult.state.counter}`,
+      `counter must equal N=${N} (one inc-counter per scatter item); got ${scatterCounter}`,
     );
   });
 });

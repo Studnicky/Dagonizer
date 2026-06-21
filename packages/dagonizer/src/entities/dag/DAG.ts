@@ -123,6 +123,12 @@ const DAGNodeEntrySchema = {
               'properties': { 'dag': { 'type': 'string', 'minLength': 1 } },
               'additionalProperties': false,
             },
+            {
+              'type': 'object',
+              'required': ['dagFrom'],
+              'properties': { 'dagFrom': { 'type': 'string', 'minLength': 1 } },
+              'additionalProperties': false,
+            },
           ],
         },
         'source':      { 'type': 'string', 'minLength': 1 },
@@ -157,12 +163,16 @@ const DAGNodeEntrySchema = {
     },
     {
       'type': 'object',
-      'required': ['@id', '@type', 'name', 'dag', 'outputs'],
+      // Exactly one of `dag` | `dagFrom` is enforced by DAGValidator; the wire
+      // schema allows either to be present (or, structurally, neither/both —
+      // the semantic check rejects those).
+      'required': ['@id', '@type', 'name', 'outputs'],
       'properties': {
-        '@id':   { 'type': 'string', 'minLength': 1 },
-        '@type': { 'type': 'string', 'const': 'EmbeddedDAGNode' },
-        'name':  { 'type': 'string', 'minLength': 1 },
-        'dag':   { 'type': 'string', 'minLength': 1 },
+        '@id':     { 'type': 'string', 'minLength': 1 },
+        '@type':   { 'type': 'string', 'const': 'EmbeddedDAGNode' },
+        'name':    { 'type': 'string', 'minLength': 1 },
+        'dag':     { 'type': 'string', 'minLength': 1 },
+        'dagFrom': { 'type': 'string', 'minLength': 1 },
         'outputs': {
           'type': 'object',
           'additionalProperties': { 'type': 'string' },

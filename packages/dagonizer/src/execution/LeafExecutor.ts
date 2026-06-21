@@ -12,15 +12,15 @@ import type { RunNodeResultType } from './ScatterDispatch.js';
  * `Dagonizer` implements this interface so `LeafExecutor` depends only on a
  * narrow port, not on the whole dispatcher.
  */
-export interface LeafExecutorSourceInterface<TState extends NodeStateInterface, TServices> {
-  readonly nodes: ReadonlyMap<string, NodeInterface<TState, string, TServices>>;
+export interface LeafExecutorSourceInterface<TServices> {
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
   withNodeTimeout<TResult>(
-    node: NodeInterface<TState, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string, TServices>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
   nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType<TServices>;
-  runNodeOnState(node: NodeInterface<TState, string, TServices>, state: TState, context: NodeContextType<TServices>): Promise<string>;
+  runNodeOnState(node: NodeInterface<NodeStateInterface, string, TServices>, state: NodeStateInterface, context: NodeContextType<TServices>): Promise<string>;
 }
 
 /**
@@ -34,19 +34,19 @@ export interface LeafExecutorSourceInterface<TState extends NodeStateInterface, 
  * used to build the node context, so `LeafExecutor` has no direct dependency
  * on `SignalComposer`.
  */
-export class LeafExecutor<TState extends NodeStateInterface, TServices> {
-  readonly #source: LeafExecutorSourceInterface<TState, TServices>;
+export class LeafExecutor<TServices> {
+  readonly #source: LeafExecutorSourceInterface<TServices>;
 
-  constructor(source: LeafExecutorSourceInterface<TState, TServices>) {
+  constructor(source: LeafExecutorSourceInterface<TServices>) {
     this.#source = source;
   }
 
   async executeSingleNode(
     nodeConfig: SingleNodePlacementType,
-    state: TState,
+    state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal | null,
-  ): Promise<RunNodeResultType<TState>> {
+  ): Promise<RunNodeResultType> {
     const dagNode = this.#source.nodes.get(nodeConfig.node);
 
     if (!dagNode) {

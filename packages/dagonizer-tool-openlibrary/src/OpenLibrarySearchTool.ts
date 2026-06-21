@@ -101,6 +101,7 @@ export class OpenLibrarySearchTool implements ToolInterface<OpenLibrarySearchInp
         },
       },
     },
+    'outputSchema': { 'type': 'array', 'items': { 'type': 'object' } },
     'strict': true,
   };
 

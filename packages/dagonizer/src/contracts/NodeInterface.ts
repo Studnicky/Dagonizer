@@ -2,9 +2,33 @@ import type { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import type { NodeUnionType } from '../entities/node/Node.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
+import type { JsonSchemaObjectType } from '../entities/primitives/JsonSchema.js';
 import type { Timeout } from '../entities/Timeout.js';
 import type { ValidationResultType } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+
+/**
+ * The loose schema-object type accepted by `Validator.compile`. Equivalent to
+ * `JsonSchemaObjectType` — reused, not reinvented.
+ */
+export type SchemaObjectType = JsonSchemaObjectType;
+
+/**
+ * Thin validation contract the engine injects into `NodeContextType` when
+ * `validateOutputs` is true. Lives in `contracts/` so `core/` can import it
+ * without violating the layer rule (core/ ← contracts/ is a legal inward edge).
+ *
+ * The implementation is built in `Dagonizer` using `Validator.compile`; `core/`
+ * only sees this interface, keeping `validation/` out of the `core/` import graph.
+ */
+export interface OutputSchemaValidatorInterface {
+  /**
+   * Validate `state` against the schema declared for `portKey`. Returns `null`
+   * when the state satisfies the schema; returns a non-empty array of human-
+   * readable violation strings when it does not.
+   */
+  validatePort(portKey: string, schema: SchemaObjectType, state: unknown): string[] | null;
+}
 
 /**
  * A discrete unit of work in a flow.
@@ -70,6 +94,17 @@ export interface NodeInterface<
    * Common outputs: 'success', 'error', 'skip', 'retry'
    */
   readonly 'outputs': readonly TOutput[];
+
+  /**
+   * Per-output-port JSON Schema 2020-12 declarations describing the state delta
+   * this node guarantees when it routes to that port. Every declared output port
+   * in `outputs` MUST have an entry here (enforced at `registerNode`). Schemas
+   * are partial over state — they validate the fields this node writes; do NOT
+   * set `additionalProperties: false`. `MonadicNode` provides a passthrough
+   * default (`{ type: 'object' }` per port) so unmigrated nodes compile without
+   * change. Concrete nodes override with real schemas.
+   */
+  readonly 'outputSchema': Record<TOutput, SchemaObjectType>;
 
   /**
    * Validate node configuration.

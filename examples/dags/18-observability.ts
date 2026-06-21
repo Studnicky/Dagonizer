@@ -10,6 +10,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 
 // ---------------------------------------------------------------------------
@@ -27,6 +28,9 @@ export class PipelineState extends NodeStateBase {
 export class ValidateNode extends ScalarNode<PipelineState, 'ok' | 'invalid'> {
   readonly name = 'validate';
   readonly outputs = ['ok', 'invalid'] as const;
+  override get outputSchema(): Record<'ok' | 'invalid', SchemaObjectType> {
+    return { 'ok': { 'type': 'object' }, 'invalid': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: PipelineState) {
     state.value = 1;
@@ -37,6 +41,9 @@ export class ValidateNode extends ScalarNode<PipelineState, 'ok' | 'invalid'> {
 export class TransformNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'transform';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: PipelineState) {
     state.value = state.value * 10;

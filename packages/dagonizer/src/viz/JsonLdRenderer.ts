@@ -179,7 +179,9 @@ export class JsonLdRenderer {
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
           'dag:body':   'node' in placement.body
             ? { 'dag:node': placement.body.node }
-            : { 'dag:dag': JsonLdRenderer.dagIri(placement.body.dag) },
+            : 'dag' in placement.body
+              ? { 'dag:dag': JsonLdRenderer.dagIri(placement.body.dag) }
+              : { 'dag:dagFrom': placement.body.dagFrom },
         };
         if (placement.source !== undefined)       out['dag:source']       = placement.source;
         if (placement.itemKey !== undefined)      out['dag:itemKey']      = placement.itemKey;
@@ -193,11 +195,13 @@ export class JsonLdRenderer {
       }
       case 'EmbeddedDAGNode': {
         // EmbeddedDAGNode may carry optional stateMapping and container fields.
+        // Either `dag` (build-time literal) or `dagFrom` (runtime path) is present.
         const out: JsonLdGraphEntryType & Record<string, unknown> = {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
-          'dag:dag':    JsonLdRenderer.dagIri(placement.dag),
         };
+        if (placement.dag !== undefined)     out['dag:dag']     = JsonLdRenderer.dagIri(placement.dag);
+        if (placement.dagFrom !== undefined) out['dag:dagFrom'] = placement.dagFrom;
         if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
         // container is a placement property mapped in DAG_CONTEXT; include when present.
         if (placement.container !== undefined)    out['dag:container']    = placement.container;

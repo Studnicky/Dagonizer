@@ -21,23 +21,26 @@ import { WellFormedValidator } from '../../src/validation/WellFormedValidator.js
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSingleNodePlacement(name: string, outputs: Record<string, string>): DAGType['nodes'][number] {
-  return {
-    '@id':   `urn:noocodex:dag:test/node/${name}`,
-    '@type': 'SingleNode',
-    'name':  name,
-    'node':  name,
-    'outputs': outputs,
-  };
-}
+class TestPlacement {
+  private constructor() {}
+  static singleNode(name: string, outputs: Record<string, string>): DAGType['nodes'][number] {
+    return {
+      '@id':   `urn:noocodex:dag:test/node/${name}`,
+      '@type': 'SingleNode',
+      'name':  name,
+      'node':  name,
+      'outputs': outputs,
+    };
+  }
 
-function makeTerminal(name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
-  return {
-    '@id':     `urn:noocodex:dag:test/node/${name}`,
-    '@type':   'TerminalNode',
-    'name':    name,
-    'outcome': outcome,
-  };
+  static terminal(name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
+    return {
+      '@id':     `urn:noocodex:dag:test/node/${name}`,
+      '@type':   'TerminalNode',
+      'name':    name,
+      'outcome': outcome,
+    };
+  }
 }
 
 function baseDAG(nodes: DAGType['nodes']): DAGType {
@@ -62,8 +65,8 @@ void describe('WellFormedValidator', () => {
 
   void it('returns no violations for a well-formed DAG with TerminalNode end', () => {
     const dag = baseDAG([
-      makeSingleNodePlacement('start', { 'ok': 'end' }),
-      makeTerminal('end', 'completed'),
+      TestPlacement.singleNode('start', { 'ok': 'end' }),
+      TestPlacement.terminal('end', 'completed'),
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 0, `Expected no violations; got: ${JSON.stringify(violations)}`);
@@ -71,9 +74,9 @@ void describe('WellFormedValidator', () => {
 
   void it('returns no violations for a chained DAG with TerminalNode end', () => {
     const dag = baseDAG([
-      makeSingleNodePlacement('a', { 'done': 'b' }),
-      makeSingleNodePlacement('b', { 'done': 'end' }),
-      makeTerminal('end', 'completed'),
+      TestPlacement.singleNode('a', { 'done': 'b' }),
+      TestPlacement.singleNode('b', { 'done': 'end' }),
+      TestPlacement.terminal('end', 'completed'),
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 0);
@@ -83,7 +86,7 @@ void describe('WellFormedValidator', () => {
 
   void it('reports a violation when an output targets a non-existent placement', () => {
     const dag = baseDAG([
-      makeSingleNodePlacement('start', { 'done': 'ghost' }),  // 'ghost' does not exist
+      TestPlacement.singleNode('start', { 'done': 'ghost' }),  // 'ghost' does not exist
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 1);
@@ -94,7 +97,7 @@ void describe('WellFormedValidator', () => {
 
   void it('reports one violation per dangling target', () => {
     const dag = baseDAG([
-      makeSingleNodePlacement('start', { 'ok': 'also-ghost', 'fail': 'ghost-too' }),
+      TestPlacement.singleNode('start', { 'ok': 'also-ghost', 'fail': 'ghost-too' }),
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 2);
@@ -113,7 +116,7 @@ void describe('WellFormedValidator', () => {
         'gather': { 'strategy': 'discard' },
         'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
       },
-      makeTerminal('end', 'completed'),
+      TestPlacement.terminal('end', 'completed'),
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 0);
@@ -130,7 +133,7 @@ void describe('WellFormedValidator', () => {
         'dag':    'child-dag',
         'outputs': { 'success': 'end', 'error': 'end' },
       },
-      makeTerminal('end', 'completed'),
+      TestPlacement.terminal('end', 'completed'),
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 0);
@@ -140,8 +143,8 @@ void describe('WellFormedValidator', () => {
 
   void it('accepts a TerminalNode with outcome completed', () => {
     const dag = baseDAG([
-      makeSingleNodePlacement('start', { 'ok': 'end' }),
-      makeTerminal('end', 'completed'),
+      TestPlacement.singleNode('start', { 'ok': 'end' }),
+      TestPlacement.terminal('end', 'completed'),
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 0);
@@ -149,8 +152,8 @@ void describe('WellFormedValidator', () => {
 
   void it('accepts a TerminalNode with outcome failed', () => {
     const dag = baseDAG([
-      makeSingleNodePlacement('start', { 'ok': 'end' }),
-      makeTerminal('end', 'failed'),
+      TestPlacement.singleNode('start', { 'ok': 'end' }),
+      TestPlacement.terminal('end', 'failed'),
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 0);
@@ -160,8 +163,8 @@ void describe('WellFormedValidator', () => {
 
   void it('accepts a self-loop (retry pattern) as a valid target', () => {
     const dag = baseDAG([
-      makeSingleNodePlacement('fetch', { 'success': 'end', 'retry': 'fetch' }),  // self-loop on retry
-      makeTerminal('end', 'completed'),
+      TestPlacement.singleNode('fetch', { 'success': 'end', 'retry': 'fetch' }),  // self-loop on retry
+      TestPlacement.terminal('end', 'completed'),
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 0);
@@ -171,9 +174,9 @@ void describe('WellFormedValidator', () => {
 
   void it('reports violations only for offending placements in a mixed DAG', () => {
     const dag = baseDAG([
-      makeSingleNodePlacement('a', { 'ok': 'b' }),                          // clean
-      makeSingleNodePlacement('b', { 'ok': 'nowhere' }),                    // VIOLATION: dangling target
-      makeSingleNodePlacement('c', { 'ok': 'a' }),                          // clean
+      TestPlacement.singleNode('a', { 'ok': 'b' }),                          // clean
+      TestPlacement.singleNode('b', { 'ok': 'nowhere' }),                    // VIOLATION: dangling target
+      TestPlacement.singleNode('c', { 'ok': 'a' }),                          // clean
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 1);

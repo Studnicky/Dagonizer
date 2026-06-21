@@ -21,7 +21,7 @@ import type { RunNodesBatchType, RunOptionsType } from './ScatterDispatch.js';
  * provide a concrete implementation so the body-run primitive depends only on
  * these methods, never on private dispatcher members.
  */
-export interface BodyRunPortInterface<TState extends NodeStateInterface, TServices> {
+export interface BodyRunPortInterface<TServices> {
   /**
    * Run a named sub-DAG body in-process through the canonical `runNodes`
    * generator. The returned generator yields each inner node result and returns
@@ -29,19 +29,19 @@ export interface BodyRunPortInterface<TState extends NodeStateInterface, TServic
    */
   runBodyNodes(
     dagName: string,
-    state: TState,
+    state: NodeStateInterface,
     fromStage: string | null,
     options: ExecuteOptionsType,
     runOptions: RunOptionsType,
     placementPath: readonly string[],
-    batch?: RunNodesBatchType<TState>,
-  ): AsyncGenerator<NodeResultType<TState>, { terminalOutcome: 'completed' | 'failed' | null }, void>;
+    batch?: RunNodesBatchType,
+  ): AsyncGenerator<NodeResultType<NodeStateInterface>, { terminalOutcome: 'completed' | 'failed' | null }, void>;
   /** Resolve a bound container by role, or `null` to run the body in-process. */
-  resolveContainer(role: string | undefined): DagContainerInterface<TState> | null;
+  resolveContainer(role: string | undefined): DagContainerInterface | null;
   /** Mint a monotonic correlation id for a container request envelope. */
   nextCorrelationId(dagName: string): string;
   /** Build an observer relay bound to `state` for worker-side event forwarding. */
-  relayFor(state: TState): ObserverRelayInterface;
+  relayFor(state: NodeStateInterface): ObserverRelayInterface;
   /** Build a node context for a body invocation, substituting a never-firing signal when absent. */
   bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
 }
@@ -59,9 +59,9 @@ export interface BodyRunPortInterface<TState extends NodeStateInterface, TServic
  *   into the clone regardless; this field lets the caller apply its own policy
  *   (scatter re-queues by throwing; embedded routes the collected error).
  */
-export type BodyRunResultType<TState extends NodeStateInterface> = {
+export type BodyRunResultType = {
   readonly terminalOutcome: 'completed' | 'failed' | null;
-  readonly intermediates: ReadonlyArray<NodeResultType<TState>>;
+  readonly intermediates: ReadonlyArray<NodeResultType<NodeStateInterface>>;
   readonly infrastructureError: NodeErrorWireType | null;
 };
 
@@ -83,10 +83,10 @@ export type BodyRunResultType<TState extends NodeStateInterface> = {
  * `infrastructureError` field carries the first transport failure (if any) so
  * the caller applies the routing policy its cardinality requires.
  */
-export class BodyExecutor<TState extends NodeStateInterface, TServices> {
-  readonly #source: BodyRunPortInterface<TState, TServices>;
+export class BodyExecutor<TServices> {
+  readonly #source: BodyRunPortInterface<TServices>;
 
-  constructor(source: BodyRunPortInterface<TState, TServices>) {
+  constructor(source: BodyRunPortInterface<TServices>) {
     this.#source = source;
   }
 
@@ -102,13 +102,13 @@ export class BodyExecutor<TState extends NodeStateInterface, TServices> {
   async run(
     bodyDag: string,
     placementName: string,
-    cloneState: TState,
-    parentState: TState,
+    cloneState: NodeStateInterface,
+    parentState: NodeStateInterface,
     containerRole: string | undefined,
     signal: AbortSignal | null,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
-  ): Promise<BodyRunResultType<TState>> {
+  ): Promise<BodyRunResultType> {
     const innerPath: readonly string[] = [...placementPath, placementName];
     const container = this.#source.resolveContainer(containerRole);
 
@@ -121,16 +121,16 @@ export class BodyExecutor<TState extends NodeStateInterface, TServices> {
   async #runInProcess(
     bodyDag: string,
     placementName: string,
-    cloneState: TState,
-    parentState: TState,
+    cloneState: NodeStateInterface,
+    parentState: NodeStateInterface,
     signal: AbortSignal | null,
     innerPath: readonly string[],
     bufferIntermediates: boolean,
-  ): Promise<BodyRunResultType<TState>> {
+  ): Promise<BodyRunResultType> {
     const childOptions: ExecuteOptionsType = { ...(signal !== null && { 'signal': signal }) };
     const iter = this.#source.runBodyNodes(bodyDag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
 
-    const intermediates: Array<NodeResultType<TState>> = [];
+    const intermediates: Array<NodeResultType<NodeStateInterface>> = [];
     let terminalOutcome: 'completed' | 'failed' | null;
 
     // When bufferIntermediates is true (top-level streaming context), collect
@@ -171,16 +171,16 @@ export class BodyExecutor<TState extends NodeStateInterface, TServices> {
   async #runContained(
     bodyDag: string,
     placementName: string,
-    cloneState: TState,
-    parentState: TState,
+    cloneState: NodeStateInterface,
+    parentState: NodeStateInterface,
     signal: AbortSignal | null,
     innerPath: readonly string[],
     bufferIntermediates: boolean,
-    container: DagContainerInterface<TState>,
-  ): Promise<BodyRunResultType<TState>> {
+    container: DagContainerInterface,
+  ): Promise<BodyRunResultType> {
     const correlationId = this.#source.nextCorrelationId(bodyDag);
     const context = this.#source.bodyContext(bodyDag, placementName, signal);
-    const task = new DagTask<TState, TServices>(
+    const task = new DagTask(
       bodyDag,
       innerPath,
       correlationId,
@@ -207,7 +207,7 @@ export class BodyExecutor<TState extends NodeStateInterface, TServices> {
     // requested (top-level streaming). Inside a scatter body the observer relay
     // delivers per-node observability live; buffering at scatter scale is
     // O(N*M*L).
-    const intermediates: Array<NodeResultType<TState>> = [];
+    const intermediates: Array<NodeResultType<NodeStateInterface>> = [];
     if (bufferIntermediates) {
       for (const wi of outcome.intermediates) {
         intermediates.push({

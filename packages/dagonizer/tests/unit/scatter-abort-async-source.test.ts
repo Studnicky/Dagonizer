@@ -20,16 +20,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── test state ────────────────────────────────────────────────────────────────
 
@@ -60,28 +58,33 @@ class AbortState extends NodeStateBase {
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 /** Build a simple scatter DAG over an `items` source with an append gather. */
-const makeAbortDag = (name: string, concurrency: number): DAGType => ({
-  '@context': DAG_CONTEXT,
-  '@id':      `urn:noocodex:dag:${name}`,
-  '@type':    'DAG',
-  'name':     name,
-  'version':  '1',
-  'entrypoint': 'fan',
-  'nodes': [
-    {
-      '@id':         `urn:noocodex:dag:${name}/node/fan`,
-      '@type':       'ScatterNode',
-      'name':        'fan',
-      'body':        { 'node': 'worker' },
-      'source':      'items',
-      'itemKey':     'item',
-      'concurrency': concurrency,
-      'gather':      { 'strategy': 'append', 'target': 'processed' },
-      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
-    },
-    { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
-  ],
-});
+class TestAbortDag {
+  private constructor() {}
+  static ofConcurrency(name: string, concurrency: number): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@type':       'ScatterNode',
+          'name':        'fan',
+          'body':        { 'node': 'worker' },
+          'source':      'items',
+          'itemKey':     'item',
+          'concurrency': concurrency,
+          'gather':      { 'strategy': 'append', 'target': 'processed' },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
+    };
+  }
+}
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
@@ -110,31 +113,26 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
 
     const dispatcher = new Dagonizer<AbortState>();
 
-    class WorkerNode extends ScalarNode<AbortState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: AbortState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
-        // Simulate some async work.
-        await new Promise<void>((resolve, reject) => {
-          const handle = setTimeout(resolve, 2);
-          context.signal.addEventListener('abort', () => {
-            clearTimeout(handle);
-            reject(context.signal.reason);
-          }, { 'once': true });
-        });
-        const n = ++completedCount;
-        // Abort after the configured number of completions.
-        if (n === ABORT_AFTER_COMPLETE) {
-          controller.abort(new Error('test-abort'));
-        }
-        state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' as const };
+    const worker = TestNode.make<AbortState>('worker', ['success'], async (state, context) => {
+      // Simulate some async work.
+      await new Promise<void>((resolve, reject) => {
+        const handle = setTimeout(resolve, 2);
+        context.signal.addEventListener('abort', () => {
+          clearTimeout(handle);
+          reject(context.signal.reason);
+        }, { 'once': true });
+      });
+      const n = ++completedCount;
+      // Abort after the configured number of completions.
+      if (n === ABORT_AFTER_COMPLETE) {
+        controller.abort(new Error('test-abort'));
       }
-    }
-    const worker = new WorkerNode();
+      state.processed.push(state.getMetadata<number>('item') ?? -1);
+      return 'success';
+    });
 
     dispatcher.registerNode(worker);
-    dispatcher.registerDAG(makeAbortDag('abort-async-50', 2));
+    dispatcher.registerDAG(TestAbortDag.ofConcurrency('abort-async-50', 2));
 
     const state = new AbortState();
 
@@ -184,15 +182,10 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     //    must supply the remainder. We test the simpler array-based resume path
     //    to confirm the checkpoint is usable.)
     const resumeDispatcher = new Dagonizer<AbortState>();
-    class ResumeWorkerNode extends ScalarNode<AbortState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: AbortState): Promise<NodeOutputType<'success'>> {
-        state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    resumeDispatcher.registerNode(new ResumeWorkerNode());
+    resumeDispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], (state) => {
+      state.processed.push(state.getMetadata<number>('item') ?? -1);
+      return 'success';
+    }));
 
     // Supply an array-based resume DAG so the engine can skip seen indices.
     const resumeDag: DAGType = {
@@ -253,17 +246,11 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
    */
   void it('pre-aborted signal: pull-loop exits before processing any items', async () => {
     const dispatcher = new Dagonizer<AbortState>();
-
-    class PreAbortWorkerNode extends ScalarNode<AbortState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: AbortState): Promise<NodeOutputType<'success'>> {
-        state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    dispatcher.registerNode(new PreAbortWorkerNode());
-    dispatcher.registerDAG(makeAbortDag('pre-aborted', 2));
+    dispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], (state) => {
+      state.processed.push(state.getMetadata<number>('item') ?? -1);
+      return 'success';
+    }));
+    dispatcher.registerDAG(TestAbortDag.ofConcurrency('pre-aborted', 2));
 
     const state = new AbortState();
 
@@ -297,27 +284,22 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     const executedItems: number[] = [];
 
     const dispatcher = new Dagonizer<AbortState>();
-    class ExactlyOnceWorkerNode extends ScalarNode<AbortState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: AbortState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
-        await new Promise<void>((resolve, reject) => {
-          const handle = setTimeout(resolve, 1);
-          context.signal.addEventListener('abort', () => {
-            clearTimeout(handle);
-            reject(context.signal.reason);
-          }, { 'once': true });
-        });
-        const item = state.getMetadata<number>('item') ?? -1;
-        executedItems.push(item);
-        if (++completedCount === ABORT_AFTER) {
-          controller.abort(new Error('abort-at-5'));
-        }
-        state.processed.push(item);
-        return { 'errors': [], 'output': 'success' as const };
+    dispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], async (state, context) => {
+      await new Promise<void>((resolve, reject) => {
+        const handle = setTimeout(resolve, 1);
+        context.signal.addEventListener('abort', () => {
+          clearTimeout(handle);
+          reject(context.signal.reason);
+        }, { 'once': true });
+      });
+      const item = state.getMetadata<number>('item') ?? -1;
+      executedItems.push(item);
+      if (++completedCount === ABORT_AFTER) {
+        controller.abort(new Error('abort-at-5'));
       }
-    }
-    dispatcher.registerNode(new ExactlyOnceWorkerNode());
+      state.processed.push(item);
+      return 'success';
+    }));
 
     // Use array source for deterministic index-stable resume.
     const abortDag: DAGType = {
@@ -354,17 +336,12 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     // Resume with fresh dispatcher.
     const resumeItems: number[] = [];
     const resumeDispatcher = new Dagonizer<AbortState>();
-    class ExactlyOnceResumeWorkerNode extends ScalarNode<AbortState, 'success'> {
-      readonly name = 'worker';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: AbortState): Promise<NodeOutputType<'success'>> {
-        const item = state.getMetadata<number>('item') ?? -1;
-        resumeItems.push(item);
-        state.processed.push(item);
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-    resumeDispatcher.registerNode(new ExactlyOnceResumeWorkerNode());
+    resumeDispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], (state) => {
+      const item = state.getMetadata<number>('item') ?? -1;
+      resumeItems.push(item);
+      state.processed.push(item);
+      return 'success';
+    }));
     resumeDispatcher.registerDAG(abortDag);
 
     // Restore state for resume.

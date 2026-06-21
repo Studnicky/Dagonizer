@@ -17,15 +17,19 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 /**
  * The result envelope that `ScatterPoolDriverInterface.executeItem` returns.
  *
+ * `cloneState` is typed as `NodeStateInterface` because isolation factories may
+ * produce child states whose concrete class differs from the parent dispatcher's
+ * `TState`. The engine only guarantees the base interface at this boundary.
+ *
  * Shape is stable (all fields initialised, required): V8 sees one hidden class
  * across all item executions.
  */
-export type ScatterItemResultType<TState extends NodeStateInterface> = {
+export type ScatterItemResultType = {
   index: number;
   item: unknown;
   output: string;
   terminalOutcome: 'completed' | 'failed' | null;
-  cloneState: TState;
+  cloneState: NodeStateInterface;
 };
 
 /**
@@ -35,7 +39,7 @@ export type ScatterItemResultType<TState extends NodeStateInterface> = {
  * into `ScatterWorkerPool`. The pool calls these two methods for every item;
  * all DAG/state mutation logic lives in the implementor, not the pool.
  */
-export interface ScatterPoolDriverInterface<TState extends NodeStateInterface> {
+export interface ScatterPoolDriverInterface {
   /**
    * Execute one scatter item body and return its result.
    *
@@ -43,12 +47,12 @@ export interface ScatterPoolDriverInterface<TState extends NodeStateInterface> {
    * resolves. Must throw on infrastructure failure (container crash, transport
    * loss) so the pool correctly routes it to `poolErrors` rather than acking.
    */
-  executeItem(index: number, item: unknown): Promise<ScatterItemResultType<TState>>;
+  executeItem(index: number, item: unknown): Promise<ScatterItemResultType>;
 
   /**
    * Acknowledge a completed item: remove it from the inbox, record the acked
    * result, apply incremental gather to fold into parent state, and persist
    * the checkpoint.
    */
-  ackItem(result: ScatterItemResultType<TState>): Promise<void>;
+  ackItem(result: ScatterItemResultType): Promise<void>;
 }

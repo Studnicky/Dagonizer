@@ -3,16 +3,12 @@ import { test } from 'node:test';
 
 import { GeminiNanoAdapter } from '../src/index.js';
 
-interface MutableGlobal {
-  LanguageModel?: unknown;
-}
-
 function installLanguageModel(stub: unknown): void {
-  (globalThis as MutableGlobal).LanguageModel = stub;
+  Object.assign(globalThis, { 'LanguageModel': stub });
 }
 
 function removeLanguageModel(): void {
-  delete (globalThis as MutableGlobal).LanguageModel;
+  Reflect.deleteProperty(globalThis, 'LanguageModel');
 }
 
 void test('GeminiNanoAdapter identity', () => {

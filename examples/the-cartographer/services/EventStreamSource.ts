@@ -52,32 +52,6 @@ function typedConfigTotal(config: EventTypeConfig): number {
   return total;
 }
 
-/**
- * Build per-entry format thresholds from a FormatMix weight array.
- * Returns an array of cumulative limit thresholds mapping local scan indices to {format, compression}.
- */
-function buildTypedFormatThresholds(
-  mix: EventTypeConfig[number]['formatMix'],
-  count: number,
-): Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }> {
-  const totalWeight = mix.reduce((sum, m) => sum + m.weight, 0);
-  const thresholds: Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }> = [];
-  let allocated = 0;
-  for (let mi = 0; mi < mix.length; mi++) {
-    const m = mix[mi]!;
-    const isLast = mi === mix.length - 1;
-    const c = isLast
-      ? Math.max(0, count - allocated)
-      : totalWeight > 0
-        ? Math.round((m.weight / totalWeight) * count)
-        : 0;
-    allocated += c;
-    if (c > 0) {
-      thresholds.push({ format: m.format, compression: m.compression, limit: allocated });
-    }
-  }
-  return thresholds;
-}
 
 /**
  * Scale the original config so the per-entry counts sum to exactly `target`,
@@ -112,6 +86,33 @@ export class EventStreamSource {
   private constructor() { /* static-only */ }
 
   /**
+   * Build per-entry format thresholds from a FormatMix weight array.
+   * Returns an array of cumulative limit thresholds mapping local scan indices to {format, compression}.
+   */
+  private static typedFormatThresholds(
+    mix: EventTypeConfig[number]['formatMix'],
+    count: number,
+  ): Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }> {
+    const totalWeight = mix.reduce((sum, m) => sum + m.weight, 0);
+    const thresholds: Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }> = [];
+    let allocated = 0;
+    for (let mi = 0; mi < mix.length; mi++) {
+      const m = mix[mi]!;
+      const isLast = mi === mix.length - 1;
+      const c = isLast
+        ? Math.max(0, count - allocated)
+        : totalWeight > 0
+          ? Math.round((m.weight / totalWeight) * count)
+          : 0;
+      allocated += c;
+      if (c > 0) {
+        thresholds.push({ format: m.format, compression: m.compression, limit: allocated });
+      }
+    }
+    return thresholds;
+  }
+
+  /**
    * Return an AsyncIterable<SourcePayload> for a typed feed. Yields payloads
    * lazily from ShipmentEvents.typedScansGenerator with O(1) peak memory.
    *
@@ -143,7 +144,7 @@ export class EventStreamSource {
     // the scan's eventType) rather than by sequential stream position.
     if (effective <= originalSum) {
       const entryThresholds = config.map((entry) =>
-        buildTypedFormatThresholds(entry.formatMix, entry.count),
+        EventStreamSource.typedFormatThresholds(entry.formatMix, entry.count),
       );
 
       // Map eventType → config index for O(1) per-scan format-index lookup.
@@ -164,14 +165,14 @@ export class EventStreamSource {
           const localIndices = new Array<number>(config.length).fill(0);
 
           return {
-            async next(): Promise<IteratorResult<SourcePayload>> {
+            async next(): Promise<IteratorResult<SourcePayload, undefined>> {
               if (globalIndex >= effective) {
-                return { value: undefined as unknown as SourcePayload, done: true };
+                return { value: undefined, done: true };
               }
 
               const step = generator.next();
               if (step.done === true) {
-                return { value: undefined as unknown as SourcePayload, done: true };
+                return { value: undefined, done: true };
               }
 
               const scan = step.value;
@@ -236,7 +237,7 @@ export class EventStreamSource {
           cycleConfig = scaleConfig(config, originalSum, batchSize);
           cycleTotal = cycleConfig.reduce((s, e) => s + e.count, 0);
           cycleEntryThresholds = cycleConfig.map((entry) =>
-            buildTypedFormatThresholds(entry.formatMix, entry.count),
+            EventStreamSource.typedFormatThresholds(entry.formatMix, entry.count),
           );
           // Build eventType → cycleConfig index map for per-type local index lookup.
           cycleEventTypeToIdx = new Map();
@@ -251,11 +252,11 @@ export class EventStreamSource {
         }
 
         return {
-          async next(): Promise<IteratorResult<SourcePayload>> {
+          async next(): Promise<IteratorResult<SourcePayload, undefined>> {
             // Advance to the next cycle when the current one is exhausted.
             while (cycleGenerator === null || cycleYielded >= cycleTotal) {
               if (remaining <= 0) {
-                return { value: undefined as unknown as SourcePayload, done: true };
+                return { value: undefined, done: true };
               }
               startNextCycle();
             }
@@ -263,7 +264,7 @@ export class EventStreamSource {
             const step = cycleGenerator.next();
             // Guard against an unexpectedly exhausted generator (mis-scaled config).
             if (step.done === true) {
-              return { value: undefined as unknown as SourcePayload, done: true };
+              return { value: undefined, done: true };
             }
 
             const scan = step.value;

@@ -21,7 +21,7 @@
 
 // #region pre-phase-setup
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -29,6 +29,11 @@ import type { ArchivistServices } from '../services.ts';
 export class PreRunSetupNode extends ScalarNode<ArchivistState, 'ready', ArchivistServices> {
   readonly name = 'pre-run-setup';
   readonly outputs = ['ready'] as const;
+  override get outputSchema(): Record<'ready', SchemaObjectType> {
+    return {
+      'ready': { 'type': 'object' },
+    };
+  }
 
   protected override executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     // Stamp a per-run identifier that downstream memory-write nodes key their

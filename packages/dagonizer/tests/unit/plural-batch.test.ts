@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
 import { RoutedBatchBuilder } from '../../src/entities/batch/RoutedBatchType.js';
+import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../src/entities/node/NodeError.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
@@ -25,12 +27,7 @@ class TestState extends NodeStateBase {
   }
 }
 
-const ctx: NodeContextType = {
-  'signal': new AbortController().signal,
-  'dagName': 'test-dag',
-  'nodeName': 'test-node',
-  'services': undefined,
-};
+const ctx: NodeContextType = NodeContextBuilder.of('test-dag', 'test-node', new AbortController().signal, undefined);
 
 // ---------------------------------------------------------------------------
 // Batch
@@ -219,6 +216,9 @@ void describe('RoutedBatchBuilder', () => {
 class TagNode extends ScalarNode<TestState, 'tagged' | 'skip'> {
   readonly name = 'tag';
   readonly outputs = ['tagged', 'skip'] as const;
+  override get outputSchema(): Record<'tagged' | 'skip', SchemaObjectType> {
+    return { 'tagged': { 'type': 'object' }, 'skip': { 'type': 'object' } };
+  }
   protected async executeOne(
     state: TestState,
     _ctx: NodeContextType,
@@ -230,6 +230,9 @@ class TagNode extends ScalarNode<TestState, 'tagged' | 'skip'> {
 class ErroringNode extends ScalarNode<TestState, 'done'> {
   readonly name = 'erroring';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected async executeOne(
     _state: TestState,
     _ctx: NodeContextType,

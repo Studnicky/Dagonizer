@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -9,10 +10,6 @@ import type { DAGType } from '../../src/entities/index.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-const makeNode = TestNode.make;
 
 // Recording Dagonizer subclass captures every hook invocation in order so
 // tests can assert on the full call sequence rather than aggregate counts.
@@ -52,7 +49,11 @@ class RecordingDagonizer extends Dagonizer<NodeStateBase> {
     const pathIndex = hook === 'nodeStart' ? 2 : 3;
     return this.calls
       .filter((call) => call.hook === hook && call.args[0] === nodeName)
-      .map((call) => [...(call.args[pathIndex] as readonly string[])]);
+      .map((call) => {
+        const raw = call.args[pathIndex];
+        assert.ok(Array.isArray(raw), `args[${String(pathIndex)}] must be an array`);
+        return raw.filter((e): e is string => typeof e === 'string');
+      });
   }
 }
 
@@ -162,7 +163,7 @@ const placementParentDAG: DAGType = {
 void describe('Dagonizer subclass hooks contract', () => {
   void it('runs end-to-end without subclass hooks (base protected hooks are no-ops)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('only', ['success']));
+    dispatcher.registerNode(TestNode.make('only', ['success']));
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:noop-default',
@@ -185,16 +186,16 @@ void describe('Dagonizer subclass hooks contract', () => {
   void it('fires onNodeStart and onNodeEnd in order across a 3-node DAG', async () => {
     const dispatcher = new RecordingDagonizer();
 
-    dispatcher.registerNode(makeNode('a', ['success']));
-    dispatcher.registerNode(makeNode('b', ['success']));
-    dispatcher.registerNode(makeNode('c', ['success']));
+    dispatcher.registerNode(TestNode.make('a', ['success']));
+    dispatcher.registerNode(TestNode.make('b', ['success']));
+    dispatcher.registerNode(TestNode.make('c', ['success']));
     dispatcher.registerDAG(linearDAG);
 
     const result = await dispatcher.execute('linear', new NodeStateBase());
     assert.equal(result.state.lifecycle.variant, 'completed');
 
-    const nodeStartNames = dispatcher.hooksOfType('nodeStart').map((c) => c.args[0] as string);
-    const nodeEndNames   = dispatcher.hooksOfType('nodeEnd').map((c) => c.args[0] as string);
+    const nodeStartNames = dispatcher.hooksOfType('nodeStart').map((c) => c.args[0]).filter((x): x is string => typeof x === 'string');
+    const nodeEndNames   = dispatcher.hooksOfType('nodeEnd').map((c) => c.args[0]).filter((x): x is string => typeof x === 'string');
     assert.deepEqual(nodeStartNames, ['a', 'b', 'c', 'end']);
     assert.deepEqual(nodeEndNames,   ['a', 'b', 'c', 'end']);
   });
@@ -235,8 +236,8 @@ void describe('Dagonizer subclass hooks contract', () => {
       ],
     };
 
-    dispatcher.registerNode(makeNode('child-only',   ['success']));
-    dispatcher.registerNode(makeNode('parent-entry', ['success']));
+    dispatcher.registerNode(TestNode.make('child-only',   ['success']));
+    dispatcher.registerNode(TestNode.make('parent-entry', ['success']));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
@@ -255,6 +256,9 @@ void describe('Dagonizer subclass hooks contract', () => {
     class BoomNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'boom';
       readonly outputs = ['success'] as const;
+      override get outputSchema(): Record<'success', SchemaObjectType> {
+        return { 'success': { 'type': 'object' } };
+      }
       protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { throw new Error('boom went off'); }
     }
     dispatcher.registerNode(new BoomNode());
@@ -280,8 +284,9 @@ void describe('Dagonizer subclass hooks contract', () => {
     const errors = dispatcher.hooksOfType('error');
     assert.equal(errors.length, 1, 'onError fires exactly once');
     assert.equal(errors[0]?.args[0], 'boom');
-    assert.ok(errors[0]?.args[1] instanceof Error);
-    assert.match((errors[0]?.args[1] as Error).message, /boom went off/);
+    const errorArg = errors[0]?.args[1];
+    assert.ok(errorArg instanceof Error);
+    assert.match(errorArg.message, /boom went off/);
   });
 
   void it('a throwing hook propagates and aborts the flow (hooks MUST NOT throw)', async () => {
@@ -297,7 +302,7 @@ void describe('Dagonizer subclass hooks contract', () => {
     }
 
     const dispatcher = new ThrowingDagonizer();
-    dispatcher.registerNode(makeNode('a', ['success']));
+    dispatcher.registerNode(TestNode.make('a', ['success']));
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:inst-throw',
@@ -327,9 +332,9 @@ void describe('Dagonizer subclass hooks contract', () => {
   void it('threads placementPath: empty for top-level nodes, single-element for one-deep, full path for two-deep', async () => {
     const dispatcher = new RecordingDagonizer();
 
-    dispatcher.registerNode(makeNode('top-step',    ['next']));
-    dispatcher.registerNode(makeNode('middle-step', ['next']));
-    dispatcher.registerNode(makeNode('leaf-step',   ['done']));
+    dispatcher.registerNode(TestNode.make('top-step',    ['next']));
+    dispatcher.registerNode(TestNode.make('middle-step', ['next']));
+    dispatcher.registerNode(TestNode.make('leaf-step',   ['done']));
 
     dispatcher.registerDAG(leafDAG);
     dispatcher.registerDAG(middleDAG);
@@ -431,7 +436,7 @@ void describe('Dagonizer subclass hooks contract', () => {
 
     const dispatcher = new RecordingDagonizer();
 
-    dispatcher.registerNode(makeNode('inner-step', ['done']));
+    dispatcher.registerNode(TestNode.make('inner-step', ['done']));
     dispatcher.registerDAG(innerDAG);
     dispatcher.registerDAG(twoInstancesDAG);
 

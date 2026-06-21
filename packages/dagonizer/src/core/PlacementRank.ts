@@ -75,7 +75,8 @@ export class PlacementRank {
     const reachable = new Set<string>();
     const reachStack: string[] = [dag.entrypoint];
     while (reachStack.length > 0) {
-      const cur = reachStack.pop() as string;
+      const cur = reachStack.pop();
+      if (cur === undefined) continue;
       if (reachable.has(cur)) continue;
       reachable.add(cur);
       const targets = adjacency.get(cur);

@@ -23,7 +23,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
@@ -60,6 +60,9 @@ export class GatherDemoState extends NodeStateBase {
 export class TagNode extends ScalarNode<GatherDemoState, 'done'> {
   readonly name = 'tag';
   readonly outputs = ['done'] as const;
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: GatherDemoState) {
     const item = state.getMetadata<string>('item') ?? '?';

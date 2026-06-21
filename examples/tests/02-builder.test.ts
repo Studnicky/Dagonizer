@@ -3,17 +3,19 @@ import assert from 'node:assert/strict';
 import { Dagonizer } from '@studnicky/dagonizer';
 import { ChatState, ClassifyNode, RespondNode, dag } from '../dags/02-builder.topology.ts';
 
-function makeDispatcher(): Dagonizer<ChatState> {
-  const dispatcher = new Dagonizer<ChatState>();
-  dispatcher.registerNode(new ClassifyNode());
-  dispatcher.registerNode(new RespondNode());
-  dispatcher.registerDAG(dag);
-  return dispatcher;
+class Harness {
+  static dispatcher(): Dagonizer<ChatState> {
+    const dispatcher = new Dagonizer<ChatState>();
+    dispatcher.registerNode(new ClassifyNode());
+    dispatcher.registerNode(new RespondNode());
+    dispatcher.registerDAG(dag);
+    return dispatcher;
+  }
 }
 
 describe('02-builder: DAGBuilder produces identical DAG shape', () => {
   it('on_topic input echoes and completes', async () => {
-    const dispatcher = makeDispatcher();
+    const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'TypeScript generics';
     const result = await dispatcher.execute('chat', state);
@@ -25,7 +27,7 @@ describe('02-builder: DAGBuilder produces identical DAG shape', () => {
   });
 
   it('off_topic input (weather) produces coding reply', async () => {
-    const dispatcher = makeDispatcher();
+    const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'weather forecast for today';
     const result = await dispatcher.execute('chat', state);
@@ -39,7 +41,7 @@ describe('02-builder: DAGBuilder produces identical DAG shape', () => {
   });
 
   it('executedNodes includes classify and respond', async () => {
-    const dispatcher = makeDispatcher();
+    const dispatcher = Harness.dispatcher();
     const state = new ChatState();
     state.input = 'Explain async/await';
     const result = await dispatcher.execute('chat', state);

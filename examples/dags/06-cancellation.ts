@@ -10,8 +10,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node: iterates a list while checking context.signal.aborted between items
@@ -21,6 +20,9 @@ import type { NodeContextType } from '@studnicky/dagonizer';
 export class BatchProcessNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'batch-process';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   protected override async executeOne(_state: NodeStateBase, context: NodeContextType) {
     const items = ['alpha', 'beta', 'gamma', 'delta', 'epsilon'];
@@ -50,6 +52,9 @@ export class BatchProcessNode extends ScalarNode<NodeStateBase, 'success'> {
 export class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'slow';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   protected override async executeOne(_state: NodeStateBase, context: NodeContextType) {
     // Wrap the delay in a manual Promise that listens for abort. If the node

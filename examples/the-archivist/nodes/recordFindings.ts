@@ -24,7 +24,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
 import { PROV, ProvIris } from '../provenance/PROV.ts';
@@ -52,6 +52,11 @@ const ARCHIVIST_AGENT      = ProvIris.agent('archivist-software');
 export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded', ArchivistServices> {
   readonly name = 'record-findings';
   readonly outputs = ['recorded'] as const;
+  override get outputSchema(): Record<'recorded', SchemaObjectType> {
+    return {
+      'recorded': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
     const memory = context.services.memory;

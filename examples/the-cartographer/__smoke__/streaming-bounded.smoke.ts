@@ -85,14 +85,15 @@ function tryGC(): void {
   (globalThis as { gc?: () => void }).gc?.();
 }
 
-/** Build a dispatcher with the three required bundles. */
-function buildDispatcher(): Dagonizer<CartographerState, CartographerServices> {
-  const services: CartographerServices = GeoResolvers.recorded();
-  const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ 'services': services });
-  dispatcher.registerBundle(eventPipelineBundle);
-  dispatcher.registerBundle(ingestSourceBundle);
-  dispatcher.registerBundle(cartographerBundle);
-  return dispatcher;
+class Harness {
+  static dispatcher(): Dagonizer<CartographerState, CartographerServices> {
+    const services: CartographerServices = GeoResolvers.recorded();
+    const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ 'services': services });
+    dispatcher.registerBundle(eventPipelineBundle);
+    dispatcher.registerBundle(ingestSourceBundle);
+    dispatcher.registerBundle(cartographerBundle);
+    return dispatcher;
+  }
 }
 
 /** Scale eventConfig so that approximately `n` scans are generated. */
@@ -107,7 +108,7 @@ function scaleConfig(state: CartographerState, n: number): void {
 
 /** Run the streaming cartographer DAG and return peak heapUsed in bytes. */
 async function runStreaming(n: number): Promise<{ state: CartographerState; peakBytes: number }> {
-  const dispatcher = buildDispatcher();
+  const dispatcher = Harness.dispatcher();
   const state = new CartographerState();
   state.useStreamingSource = true;
   scaleConfig(state, n);

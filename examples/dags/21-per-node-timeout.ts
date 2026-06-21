@@ -21,7 +21,7 @@ import {
   ScalarNode,
 } from '@studnicky/dagonizer';
 import { Timeout } from '@studnicky/dagonizer/runtime';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -41,6 +41,9 @@ export class FastTaskNode extends ScalarNode<TaskState, 'done'> {
   readonly outputs = ['done'] as const;
   // Per-node timeout budget: 200 ms. This node resolves in ~0 ms → no timeout.
   override readonly timeout = Timeout.ofMs(200);
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(state: TaskState) {
     state.output = 'fast-done';
     return NodeOutputBuilder.of('done');
@@ -61,6 +64,9 @@ export class SlowTaskNode extends ScalarNode<TaskState, 'done'> {
   readonly outputs = ['done'] as const;
   // Per-node timeout budget: 50 ms. The node tries to wait 5 s → NodeTimeoutError.
   override readonly timeout = Timeout.ofMs(50);
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { 'done': { 'type': 'object' } };
+  }
   protected override async executeOne(_state: TaskState, context: NodeContextType) {
     // Await a 5-second delay, but honour context.signal so the engine's
     // per-node abort terminates the wait promptly at the 50 ms boundary.

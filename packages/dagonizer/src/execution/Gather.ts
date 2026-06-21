@@ -14,11 +14,11 @@ import type { NodeInvokerSourceInterface } from './NodeInvoker.js';
  * implements this interface so `Gather` depends only on a narrow port, not
  * on the whole dispatcher.
  */
-export interface GatherSourceInterface<TState extends NodeStateInterface, TServices> {
-  readonly nodes: ReadonlyMap<string, NodeInterface<TState, string, TServices>>;
+export interface GatherSourceInterface<TServices> {
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
   readonly accessor: StateAccessorInterface;
   nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType<TServices>;
-  runNodeOnState(node: NodeInterface<TState, string, TServices>, state: TState, context: NodeContextType<TServices>): Promise<string>;
+  runNodeOnState(node: NodeInterface<NodeStateInterface, string, TServices>, state: NodeStateInterface, context: NodeContextType<TServices>): Promise<string>;
 }
 
 /**
@@ -33,12 +33,12 @@ export interface GatherSourceInterface<TState extends NodeStateInterface, TServi
  * Implements `NodeInvokerSourceInterface` so it can be passed as the source
  * to `NodeInvoker` instances produced during `composeGatherExecution`.
  */
-export class Gather<TState extends NodeStateInterface, TServices>
-  implements NodeInvokerSourceInterface<TState>
+export class Gather<TServices>
+  implements NodeInvokerSourceInterface
 {
-  readonly #source: GatherSourceInterface<TState, TServices>;
+  readonly #source: GatherSourceInterface<TServices>;
 
-  constructor(source: GatherSourceInterface<TState, TServices>) {
+  constructor(source: GatherSourceInterface<TServices>) {
     this.#source = source;
   }
 
@@ -50,12 +50,12 @@ export class Gather<TState extends NodeStateInterface, TServices>
    * context. No injected function callbacks.
    */
   composeGatherExecution(
-    state: TState,
-    records: ReadonlyArray<GatherRecordType<TState>>,
+    state: NodeStateInterface,
+    records: ReadonlyArray<GatherRecordType>,
     dagName: string,
     signal: AbortSignal | null,
-  ): GatherExecutionType<TState> {
-    const invoker = new NodeInvoker<TState>(this, state, dagName, signal);
+  ): GatherExecutionType {
+    const invoker = new NodeInvoker(this, state, dagName, signal);
     return {
       state,
       'records': [...records],
@@ -81,7 +81,7 @@ export class Gather<TState extends NodeStateInterface, TServices>
    */
   async invokeRegisteredNode(
     nodeName: string,
-    state: TState,
+    state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal | null,
   ): Promise<void> {

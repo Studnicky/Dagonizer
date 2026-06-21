@@ -32,15 +32,15 @@ const DEFAULT_SCATTER_CONCURRENCY = 1;
  * (for `composeGatherExecution` calls in the finalize pass). Behavior is
  * byte-identical to the original inline method.
  */
-export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
-  readonly #scatterSource: ScatterDispatchSourceInterface<TState, TServices>;
-  readonly #bodyExecutor: BodyExecutor<TState, TServices>;
-  readonly #gather: Gather<TState, TServices>;
+export class ScatterExecutor<TServices> {
+  readonly #scatterSource: ScatterDispatchSourceInterface<TServices>;
+  readonly #bodyExecutor: BodyExecutor<TServices>;
+  readonly #gather: Gather<TServices>;
 
   constructor(
-    scatterSource: ScatterDispatchSourceInterface<TState, TServices>,
-    bodyExecutor: BodyExecutor<TState, TServices>,
-    gather: Gather<TState, TServices>,
+    scatterSource: ScatterDispatchSourceInterface<TServices>,
+    bodyExecutor: BodyExecutor<TServices>,
+    gather: Gather<TServices>,
   ) {
     this.#scatterSource = scatterSource;
     this.#bodyExecutor = bodyExecutor;
@@ -49,11 +49,11 @@ export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
 
   async executeScatter(
     scatter: ScatterNodeType,
-    state: TState,
+    state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal | null,
     placementPath: readonly string[],
-  ): Promise<RunNodeResultType<TState>> {
+  ): Promise<RunNodeResultType> {
     // ── 1. Resolve source and scatter defaults ───────────────────────────────
     // Resolve once here; used at the early-exit, in the worker pool, and at
     // the outcome-reducer step — no repeated `?? default` at each site.
@@ -69,7 +69,7 @@ export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
     if (isEmpty) {
       const routeOutput = OutcomeReducers.resolve(reducerName).reduce([]);
       const nextStage = scatter.outputs[routeOutput] ?? null;
-      const result: NodeResultType<TState> = {
+      const result: NodeResultType<NodeStateInterface> = {
         'output': routeOutput,
         'skipped': true,
         'nodeName': scatter.name,
@@ -104,8 +104,8 @@ export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
 
     // ── 3. Gather strategy: prepare accumulators ────────────────────────────
     // Accumulate fresh records for the finalize pass and outcome-reducer.
-    const allFreshRecords: GatherRecordType<TState>[] = [];
-    const intermediateResults: Array<NodeResultType<TState>> = [];
+    const allFreshRecords: GatherRecordType<NodeStateInterface>[] = [];
+    const intermediateResults: Array<NodeResultType<NodeStateInterface>> = [];
 
     // NOTE: Gather contributions from acked items in a prior run are already
     // present in the state snapshot (they were folded per-ack via reduce).
@@ -126,8 +126,8 @@ export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
     // the remaining, un-processed items). No positional skip is applied;
     // items are indexed starting from nextIndex as they arrive.
     const isIndexStableSource = raw !== null && typeof raw === 'object' &&
-      Symbol.iterator in (raw as object) &&
-      !(Symbol.asyncIterator in (raw as object));
+      Symbol.iterator in raw &&
+      !(Symbol.asyncIterator in raw);
 
     const rawIter = ScatterSource.toAsyncIterator(raw);
 
@@ -161,10 +161,10 @@ export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
     //   - a `ScatterDispatchAdapterInterface` built here, and
     //   - a `ScatterRunContextType` holding the scatter-local mutable accumulators.
 
-    const scatterAdapter: ScatterDispatchAdapterInterface<TState, TServices> =
-      new ScatterDispatchAdapter<TState, TServices>(this.#scatterSource);
+    const scatterAdapter: ScatterDispatchAdapterInterface<TServices> =
+      new ScatterDispatchAdapter<TServices>(this.#scatterSource);
 
-    const scatterCtx: ScatterRunContextType<TState> = {
+    const scatterCtx: ScatterRunContextType = {
       scatter,
       state,
       dagName,
@@ -185,11 +185,11 @@ export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
     };
 
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
-    const driver = new ScatterPoolDriver<TState, TServices>(scatterAdapter, scatterCtx, this.#bodyExecutor);
+    const driver = new ScatterPoolDriver<TServices>(scatterAdapter, scatterCtx, this.#bodyExecutor);
 
     if (scatter.reservoir !== undefined) {
       // Reservoir path: buffer-then-release loop keyed by item field.
-      const reservoirBuf = new ReservoirBuffer<TState>(driver, {
+      const reservoirBuf = new ReservoirBuffer(driver, {
         'concurrencyLimit': concurrencyLimit,
         'inbox': inbox,
         'freshIter': freshIter,
@@ -202,7 +202,7 @@ export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
       await reservoirBuf.drain();
     } else {
       // Non-reservoir path: original per-item worker pool (byte-identical).
-      const pool = new ScatterWorkerPool<TState>(driver, {
+      const pool = new ScatterWorkerPool(driver, {
         'concurrencyLimit': concurrencyLimit,
         'inbox': inbox,
         'freshIter': freshIter,
@@ -232,7 +232,7 @@ export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
         // reconstructing each prior-run clone from its persisted gather values so
         // the strategy sees the full record set.
         const freshIndices = new Set<number>(allFreshRecords.map((r) => r.index));
-        const syntheticRecords: GatherRecordType<TState>[] = [];
+        const syntheticRecords: GatherRecordType[] = [];
         for (const acked of ackedResults) {
           if (freshIndices.has(acked.index)) continue;
           const syntheticClone = state.clone();
@@ -280,7 +280,7 @@ export class ScatterExecutor<TState extends NodeStateInterface, TServices> {
     const routeOutput = OutcomeReducers.resolve(reducerName).reduce(outcomeRecords);
     const nextStage = scatter.outputs[routeOutput] ?? null;
 
-    const result: NodeResultType<TState> = {
+    const result: NodeResultType<NodeStateInterface> = {
       'output': routeOutput,
       'skipped': false,
       'nodeName': scatter.name,

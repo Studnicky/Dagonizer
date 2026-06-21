@@ -50,6 +50,18 @@ export const ScatterNodeSchema = {
           'properties': { 'dag': { 'type': 'string', 'minLength': 1 } },
           'additionalProperties': false,
         },
+        {
+          // dagFrom: a dotted path read from each ITEM (the source-array element)
+          // whose resolved string value names that item's body dag at runtime —
+          // each item names its own dag (e.g. a tool call carrying
+          // `dagName: 'tool:<name>'`). Resolution precedes the isolation-factory
+          // child build. A non-object item, an unresolvable path, or an
+          // unregistered name routes the item to `error` (no throw).
+          'type': 'object',
+          'required': ['dagFrom'],
+          'properties': { 'dagFrom': { 'type': 'string', 'minLength': 1 } },
+          'additionalProperties': false,
+        },
       ],
     },
     'source':      { 'type': 'string', 'minLength': 1 },

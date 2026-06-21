@@ -88,7 +88,7 @@ import type { Services } from './dags/10-shared-state.js';
 
     // Resume: restore store from checkpoint, then resume execution.
     const freshLog = new MemoryStore();
-    const ckpt2    = Checkpoint.load(JSON.parse(json) as unknown);
+    const ckpt2    = Checkpoint.load(JSON.parse(json));
     await ckpt2.restoreStores({ "log": freshLog });
 
     const restoredEntries = await freshLog.get('entries') ?? '';

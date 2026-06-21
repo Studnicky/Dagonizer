@@ -29,11 +29,19 @@ import { Consent } from '../services.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-redaction-node
 export class RouteRedactionNode extends ScalarNode<CartographerState, 'needs-redaction' | 'skip-redaction', CartographerServices> {
   readonly 'name' = 'route-redaction';
   readonly 'outputs' = ['needs-redaction', 'skip-redaction'] as const;
+
+  override get outputSchema(): Record<'needs-redaction' | 'skip-redaction', SchemaObjectType> {
+    return {
+      'needs-redaction': { 'type': 'object' },
+      'skip-redaction':  { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'needs-redaction' | 'skip-redaction'>> {
     const ev = state.currentEvent;

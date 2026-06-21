@@ -29,22 +29,21 @@ export class MemoryStore extends BaseStore {
    */
   override async update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     const qualified = this.qualifyKey(key);
-    // Map<string, JsonValueType>.get() returns JsonValueType | undefined; the caller's
-    // generic T extends JsonValueType so the narrowing cast is safe by contract.
-    const raw       = this.#data.get(qualified) as T | undefined;
-    const next      = fn(raw);
+    // Synchronous atomic RMW: read the backing Map directly (no await between
+    // read and write). Narrowing goes through the base's single typed-accessor
+    // boundary helper — no cast in this override.
+    const raw       = this.narrowStored<T>(this.#data.get(qualified) ?? null);
+    const next      = fn(raw === null ? undefined : raw);
     this.#data.set(qualified, next);
     return next;
   }
 
-  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
+  protected async performGet(key: string): Promise<JsonValueType | null> {
     const value = this.#data.get(key);
-    // Map<string, JsonValueType>.get() returns JsonValueType | undefined; the undefined
-    // case is handled by the ternary above; T extends JsonValueType so the cast is safe.
-    return value === undefined ? null : (value as T);
+    return value === undefined ? null : value;
   }
 
-  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
+  protected async performSet(key: string, value: JsonValueType): Promise<void> {
     this.#data.set(key, value);
   }
 

@@ -10,7 +10,7 @@ import {
   NodeStateBase,
   ScalarNode,
 } from '@studnicky/dagonizer';
-import type { DAGType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // #region state
@@ -42,6 +42,9 @@ export class GenerateState extends NodeStateBase {
 export class ProviderNode extends ScalarNode<GenerateState, 'success'> {
   readonly name = 'provider';
   readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: GenerateState) {
     const name = state.getMetadata<string>('provider') ?? 'unknown';
@@ -66,6 +69,9 @@ export class ProviderNode extends ScalarNode<GenerateState, 'success'> {
 export class SelectNode extends ScalarNode<GenerateState, 'selected' | 'none'> {
   readonly name = 'select';
   readonly outputs = ['selected', 'none'] as const;
+  override get outputSchema(): Record<'selected' | 'none', SchemaObjectType> {
+    return { 'selected': { 'type': 'object' }, 'none': { 'type': 'object' } };
+  }
 
   protected override async executeOne(state: GenerateState) {
     if (state.candidates.length === 0) return NodeOutputBuilder.of('none');

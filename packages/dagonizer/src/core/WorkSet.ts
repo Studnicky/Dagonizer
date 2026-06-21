@@ -93,6 +93,21 @@ export class WorkSet<TState> {
   }
 
   /**
+   * Remove and return the batch pending at `node`. Throws when no batch is
+   * held there. Use only at call sites that have verified the entry exists
+   * (e.g. immediately after `nextReady` returns the name) — the throw is a
+   * programming-error guard, not expected control flow.
+   */
+  takeExpected(node: string): Batch<TState> {
+    const batch = this.#entries.get(node);
+    if (batch === undefined) {
+      throw new Error(`WorkSet.takeExpected: no batch at '${node}'`);
+    }
+    this.#entries.delete(node);
+    return batch;
+  }
+
+  /**
    * Read-only iterator over all (placement, batch) pairs currently in the
    * work set. Used by `WorkSetCheckpoint.write` at the abort boundary to
    * serialise the in-flight work set without exposing the private map.

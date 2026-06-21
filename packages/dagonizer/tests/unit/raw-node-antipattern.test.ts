@@ -12,12 +12,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import type { NodeInterface, SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
+import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
@@ -32,17 +33,15 @@ class TagState extends NodeStateBase {
   }
 }
 
-const ctx: NodeContextType = {
-  'signal': new AbortController().signal,
-  'dagName': 'antipattern-dag',
-  'nodeName': 'tag',
-  'services': undefined,
-};
+const ctx: NodeContextType = NodeContextBuilder.of('antipattern-dag', 'tag', new AbortController().signal, undefined);
 
 /** The supported way: a per-item `ScalarNode`. Tags positives, skips the rest. */
 class TagScalarNode extends ScalarNode<TagState, 'tagged' | 'skip'> {
   readonly name = 'tag';
   readonly outputs = ['tagged', 'skip'] as const;
+  override get outputSchema(): Record<'tagged' | 'skip', SchemaObjectType> {
+    return { 'tagged': { 'type': 'object' }, 'skip': { 'type': 'object' } };
+  }
   protected override async executeOne(state: TagState): Promise<NodeOutputType<'tagged' | 'skip'>> {
     return NodeOutputBuilder.of(state.value > 0 ? 'tagged' : 'skip');
   }
@@ -56,6 +55,10 @@ void describe('Antipattern — hand-rolled raw NodeInterface', () => {
       'name': 'tag-raw',
       'outputs': ['tagged', 'skip'] as const,
       'timeout': Timeout.none(),
+      'outputSchema': {
+        'tagged': { 'type': 'object' },
+        'skip':   { 'type': 'object' },
+      },
       async execute(batch: Batch<TagState>): Promise<RoutedBatchType<'tagged' | 'skip', TagState>> {
         const acc = new Map<'tagged' | 'skip', ItemType<TagState>[]>();
         for (const item of batch) {

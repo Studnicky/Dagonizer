@@ -6,6 +6,20 @@ import type { DAGType } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { DAGONIZER_VOCAB, JsonLdRenderer } from '../../src/viz/JsonLdRenderer.js';
 
+// ── Local type-narrowing helpers ─────────────────────────────────────────────
+
+/** Narrows an `unknown` value to a single-target route entry. */
+const isTargetRoute = (v: unknown): v is { 'dag:target': string } => {
+  if (typeof v !== 'object' || v === null) return false;
+  return typeof Reflect.get(v, 'dag:target') === 'string';
+};
+
+/** Narrows an `unknown` value to a labelled route entry with output and target. */
+const isLabelledRoute = (v: unknown): v is { 'dag:output': string; 'dag:target': string } => {
+  if (!isTargetRoute(v)) return false;
+  return typeof Reflect.get(v, 'dag:output') === 'string';
+};
+
 void describe('JsonLdRenderer.render', () => {
   void it('emits a stable @context + @graph for a single-node DAG', () => {
     const dag: DAGType = {
@@ -87,7 +101,9 @@ void describe('JsonLdRenderer.render', () => {
     };
     const doc = JsonLdRenderer.render(dag);
     const placement = doc['@graph'].find((entry) => entry['@type'] === 'dag:SingleNode');
-    const routes = (placement?.['dag:routes'] ?? []) as ReadonlyArray<{ 'dag:target': string }>;
+    const rawRoutes = placement?.['dag:routes'];
+    assert.ok(Array.isArray(rawRoutes) && rawRoutes.length > 0, 'dag:routes must be a non-empty array');
+    const routes = rawRoutes.filter(isTargetRoute);
     assert.equal(routes[0]?.['dag:target'], 'urn:dagonizer:one#end');
   });
 
@@ -299,7 +315,9 @@ void describe('JsonLdRenderer.render: TerminalNodeType', () => {
     assert.equal(abortEntry?.['dag:outcome'], 'failed');
     // Routes from step point to IRI targets (not null)
     const stepEntry = doc['@graph'].find((e) => e['@type'] === 'dag:SingleNode');
-    const routes = (stepEntry?.['dag:routes'] ?? []) as ReadonlyArray<{ 'dag:output': string; 'dag:target': string }>;
+    const rawStepRoutes = stepEntry?.['dag:routes'];
+    assert.ok(Array.isArray(rawStepRoutes), 'step dag:routes must be an array');
+    const routes = rawStepRoutes.filter(isLabelledRoute);
     const successRoute = routes.find((r) => r['dag:output'] === 'success');
     const errorRoute = routes.find((r) => r['dag:output'] === 'error');
     assert.equal(successRoute?.['dag:target'], 'urn:dagonizer:jt3#done');

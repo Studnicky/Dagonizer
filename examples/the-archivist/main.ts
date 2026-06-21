@@ -42,12 +42,24 @@ import type { AdapterCapabilitiesType } from '@studnicky/dagonizer/adapter';
 import { GoogleBooksTool }       from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool, SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool }  from '@studnicky/dagonizer-tool-wikipedia';
+import { ToolRegistry } from '@studnicky/dagonizer/tool';
 
 // ── DOM ──────────────────────────────────────────────────────────────────
-const form    = document.getElementById('ask-form')      as HTMLFormElement;
-const input   = document.getElementById('ask-input')     as HTMLInputElement;
-const button  = document.getElementById('ask-button')    as HTMLButtonElement;
-const logEl   = document.getElementById('archivist-log') as HTMLPreElement;
+const formEl = document.getElementById('ask-form');
+if (!(formEl instanceof HTMLFormElement))    throw new Error('missing #ask-form');
+const form = formEl;
+
+const inputEl = document.getElementById('ask-input');
+if (!(inputEl instanceof HTMLInputElement))  throw new Error('missing #ask-input');
+const input = inputEl;
+
+const buttonEl = document.getElementById('ask-button');
+if (!(buttonEl instanceof HTMLButtonElement)) throw new Error('missing #ask-button');
+const button = buttonEl;
+
+const logRaw = document.getElementById('archivist-log');
+if (!(logRaw instanceof HTMLPreElement))     throw new Error('missing #archivist-log');
+const logEl = logRaw;
 
 /** Static CLI helpers for the browser demo: log wiring and query submission. */
 class ArchivistCli {
@@ -215,6 +227,15 @@ const dispatcher = new ObservedArchivist({ services });
 // #endregion wire-services
 
 // #region register-bundle
+// Tool registry: each book-search tool becomes an embeddable `tool:<name>` DAG.
+// Register before bookSearchScatterBundle so the embedded-DAG references resolve.
+const toolRegistry = new ToolRegistry();
+toolRegistry.register(new OpenLibrarySearchTool());
+toolRegistry.register(new GoogleBooksTool());
+toolRegistry.register(new SubjectSearchTool());
+toolRegistry.register(new WikipediaSummaryTool());
+dispatcher.registerBundle(toolRegistry.bundle<ArchivistServices>());
+
 dispatcher.registerBundle(bookSearchScatterBundle);
 dispatcher.registerBundle(composeRetryLoopBundle);
 dispatcher.registerBundle(archivistBundle);

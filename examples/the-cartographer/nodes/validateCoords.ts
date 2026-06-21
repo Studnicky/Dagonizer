@@ -11,11 +11,19 @@ import type { CartographerServices } from '../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region validate-coords-node
 export class ValidateCoordsNode extends ScalarNode<CartographerState, 'valid' | 'rejected', CartographerServices> {
   readonly 'name' = 'validate-coords';
   readonly 'outputs' = ['valid', 'rejected'] as const;
+
+  override get outputSchema(): Record<'valid' | 'rejected', SchemaObjectType> {
+    return {
+      'valid':    { 'type': 'object' },
+      'rejected': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'valid' | 'rejected'>> {
     const { latitude, longitude } = state.raw;

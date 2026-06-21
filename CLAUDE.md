@@ -9,9 +9,27 @@ stack; consumers extend and compose, never patch.
 ⦿ **Class extension is the only extension mechanism.** Zero callbacks.
   Zero function-pass-in. Subclass the class or implement the adapter
   contract.
-⦿ **Domain modules with `noun.verb()` only.** Static classes. No
-  freestanding helpers (`makeX`, `buildX`, `fromX`, `parseX`). The
-  registered name is the contract; the static method is the API.
+⦿ **Always `noun.verb()`, never `verbNoun()`.** Every callable is a
+  method on a noun — a static method on a domain class, or an instance
+  method. There are zero freestanding verb-first functions anywhere in
+  the repo: not in `src/`, not in `tests/`, not in `examples/`, not in
+  `scripts/`, not in test fixtures. Forbidden: `makeX`, `buildX`,
+  `createX`, `fromX`, `parseX`, `composeX`, `genX`, `toX`, and every
+  other freestanding `verbNoun(...)`. The registered name is the
+  contract; the static method is the API.
+
+  Conversion idiom — a static factory on the produced type:
+    ⊥ `function makeIncNode(d) { return new IncNode(d); }` → `makeIncNode(10)`
+    ✓ `class IncNode { static of(d): IncNode { return new IncNode(d); } }` → `IncNode.of(10)`
+    ⊥ `function makeDAG(name) { … }` → `makeDAG('x')`
+    ✓ `class TestDag { static linear(name): DAGType { … } }` → `TestDag.linear('x')`
+  When the helper builds a foreign type (a `DAGType`, a dispatcher, a
+  task), introduce a named static class for it (`TestDag`, `TestTask`,
+  `Harness`) and hang the factory off that noun. The `.of()` name is the
+  default single-argument materialiser; use a more specific verb
+  (`.linear`, `.scatter`, `.bounded`) when the factory has a shape.
+  A trivial wrapper that only does `new X(...)` is inlined to `new X(...)`
+  at the call site rather than kept as a helper.
 ⦿ **Schemas are the source of truth.** Every wire-shape entity has a
   `*Schema` value (JSON Schema 2020-12) and a `FromSchema`-derived
   TypeScript type. No hand-written wire shapes.

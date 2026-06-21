@@ -22,9 +22,12 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
+import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
+
 import { ArchivistState } from '../../ArchivistState.ts';
 import { recallCandidates } from '../../nodes/recallCandidates.ts';
 import { GRAPH_MEMORY, MemoryStore } from '../../memory/MemoryStore.ts';
+import type { ArchivistServices } from '../../services.ts';
 
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
@@ -56,18 +59,61 @@ class DeterministicEmbedder implements EmbedderInterface {
   async listModels(): Promise<readonly []> { return []; }
 }
 
+// ── Stub implementations for never-called ArchivistServices ─────────────────
+
+/** Minimal ToolDefinitionType stub used by service properties that are never invoked. */
+const STUB_DEFINITION = {
+  'name':         'stub',
+  'description':  '',
+  'inputSchema':  { 'type': 'object' as const },
+  'outputSchema': { 'type': 'object' as const },
+  'strict':       false,
+} satisfies ArchivistServices['webSearch']['definition'];
+
+/** Never-called stub for tool contracts; satisfies ToolInterface. */
+class NullTool {
+  readonly definition = STUB_DEFINITION;
+  async execute(): Promise<never> {
+    return Promise.reject(new Error('NullTool.execute: not called in this test'));
+  }
+}
+
+/** Never-called stub for LlmClientInterface; satisfies all methods. */
+class NullLlm {
+  async classifyIntent(): Promise<never>     { return Promise.reject(new Error('not called')); }
+  async extractTerms(): Promise<never>       { return Promise.reject(new Error('not called')); }
+  async decideTools(): Promise<never>        { return Promise.reject(new Error('not called')); }
+  async rankCandidates(): Promise<never>     { return Promise.reject(new Error('not called')); }
+  async compose(): Promise<never>            { return Promise.reject(new Error('not called')); }
+  async composeAuthor(): Promise<never>      { return Promise.reject(new Error('not called')); }
+  async composeReviews(): Promise<never>     { return Promise.reject(new Error('not called')); }
+  async describeBook(): Promise<never>       { return Promise.reject(new Error('not called')); }
+  async composeSimilar(): Promise<never>     { return Promise.reject(new Error('not called')); }
+  async validate(): Promise<never>           { return Promise.reject(new Error('not called')); }
+  async composeMemoryRecall(): Promise<never>{ return Promise.reject(new Error('not called')); }
+  async composeEmptyResponse(): Promise<never>{ return Promise.reject(new Error('not called')); }
+  async suggestStarterQuery(): Promise<never>{ return Promise.reject(new Error('not called')); }
+  async suggestGreeting(): Promise<never>    { return Promise.reject(new Error('not called')); }
+  async suggestVisitorReplyTo(): Promise<never>{ return Promise.reject(new Error('not called')); }
+  async explainTool(): Promise<never>        { return Promise.reject(new Error('not called')); }
+}
+
 // ── Minimal fixture context ─────────────────────────────────────────────────
 
 /** Context and seed helpers for recallCandidates unit tests. */
 class RecallCandidatesFixture {
   static makeContext(memory: MemoryStore, embedder: EmbedderInterface | null = null) {
-    return {
-      signal: new AbortController().signal,
-      services: {
-        memory,
-        embedder,
-      },
-    } as unknown as Parameters<typeof recallCandidates.runItem>[1];
+    const services: ArchivistServices = {
+      webSearch:        new NullTool(),
+      googleBooks:      new NullTool(),
+      wikipediaSummary: new NullTool(),
+      subjectSearch:    new NullTool(),
+      llm:              new NullLlm(),
+      memory,
+      embedder,
+      nodeTimeouts:     {},
+    };
+    return NodeContextBuilder.of('test-dag', 'recall-candidates', new AbortController().signal, services);
   }
 
   static seedPriorRun(

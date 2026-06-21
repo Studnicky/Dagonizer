@@ -16,7 +16,7 @@
  * call `record*` here, which immediately writes quads into the store.
  */
 
-import type { Term } from 'n3';
+import type { NamedNode } from 'n3';
 
 import { MemoryStore } from '../memory/MemoryStore.ts';
 
@@ -32,11 +32,11 @@ export interface ProvObserverInputs {
 export class RdfProvObserver {
   readonly #store: MemoryStore;
   readonly #runId: string;
-  readonly #graph: Term;
-  readonly #dispatcher: Term;
-  readonly #run: Term;
-  #lastActivity: Term | null = null;
-  readonly #activeByNode = new Map<string, Term>();
+  readonly #graph: NamedNode;
+  readonly #dispatcher: NamedNode;
+  readonly #run: NamedNode;
+  #lastActivity: NamedNode | null = null;
+  readonly #activeByNode = new Map<string, NamedNode>();
 
   constructor(inputs: ProvObserverInputs) {
     this.#store = inputs.store;
@@ -118,7 +118,7 @@ export class RdfProvObserver {
    *   try { await tool.execute(...); }
    *   finally { obs.recordToolEnd(child, candidates.length); }
    */
-  recordToolCall(parentNode: string, toolName: string, args: Record<string, unknown>): Term {
+  recordToolCall(parentNode: string, toolName: string, args: Record<string, unknown>): NamedNode {
     const parent = this.#activeByNode.get(parentNode) ?? this.#run;
     const now = Date.now();
     const activity = ProvIris.activity(this.#runId, `tool-${toolName}`, now);
@@ -137,7 +137,7 @@ export class RdfProvObserver {
     return activity;
   }
 
-  recordToolEnd(activity: Term, resultSummary: string): void {
+  recordToolEnd(activity: NamedNode, resultSummary: string): void {
     this.#store.assert(activity, PROV.endedAtTime,
       MemoryStore.lit.dateTime(new Date()), this.#graph);
     this.#store.assert(activity, MemoryStore.dagIri('result'),
@@ -145,7 +145,7 @@ export class RdfProvObserver {
   }
 
   /** Sub-activity for one LLM round-trip. */
-  recordLlmCall(parentNode: string, providerId: string, callVariant: string): Term {
+  recordLlmCall(parentNode: string, providerId: string, callVariant: string): NamedNode {
     const parent = this.#activeByNode.get(parentNode) ?? this.#run;
     const now = Date.now();
     const activity = ProvIris.activity(this.#runId, `llm-${callVariant}`, now);
@@ -162,7 +162,7 @@ export class RdfProvObserver {
     return activity;
   }
 
-  recordLlmEnd(activity: Term, tokensIn: number, tokensOut: number): void {
+  recordLlmEnd(activity: NamedNode, tokensIn: number, tokensOut: number): void {
     this.#store.assert(activity, PROV.endedAtTime,
       MemoryStore.lit.dateTime(new Date()), this.#graph);
     this.#store.assert(activity, MemoryStore.dagIri('tokensIn'),
@@ -178,7 +178,7 @@ export class RdfProvObserver {
     this.#activeByNode.clear();
   }
 
-  #typed(subject: Term, type: Term): void {
+  #typed(subject: NamedNode, type: NamedNode): void {
     this.#store.assert(subject, RDF_TYPE, type, this.#graph);
   }
 }

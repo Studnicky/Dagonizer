@@ -2,25 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
-class GreetNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name = 'greet';
-  readonly outputs = ['success'] as const;
-  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
-}
-
-class PlanNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
-  readonly name = 'plan';
-  readonly outputs = ['success', 'error'] as const;
-  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success' | 'error'>> { return { 'errors': [], 'output': 'success' as const }; }
-}
-
-const greet = new GreetNode();
-const plan = new PlanNode();
+const greet = TestNode.make('greet', ['success'] as const);
+const plan = TestNode.make('plan', ['success', 'error'] as const);
 
 void describe('DAGBuilder', () => {
   void it('builds a single-node DAG in JSON-LD canonical form', () => {
@@ -38,7 +25,8 @@ void describe('DAGBuilder', () => {
     assert.ok(dag['@context'] !== undefined);
     const first = dag.nodes[0];
     assert.equal(first?.['@type'], 'SingleNode');
-    assert.ok((first?.['@id'] as string).includes('demo/node/greet'));
+    const firstId = first?.['@id'];
+    assert.ok(typeof firstId === 'string' && firstId.includes('demo/node/greet'));
   });
 
   void it('uses explicit entrypoint when set', () => {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -8,6 +9,7 @@ import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
 type PaletteServices = {
   readonly logger: { entries: string[] };
@@ -28,6 +30,9 @@ void describe('Dagonizer services container', () => {
     class UseServicesNode extends ScalarNode<S, 'success', PaletteServices> {
       readonly name = 'use-services';
       readonly outputs = ['success'] as const;
+      override get outputSchema(): Record<'success', SchemaObjectType> {
+        return { 'success': { 'type': 'object' } };
+      }
       protected async executeOne(state: S, context: NodeContextType<PaletteServices>): Promise<NodeOutputType<'success'>> {
         context.services.logger.entries.push(`hit:${context.services.client.url}`);
         state.out = context.services.client.url;
@@ -65,17 +70,11 @@ void describe('Dagonizer services container', () => {
       out: unknown = 'unset';
     }
 
-    class CheckUndefinedNode extends ScalarNode<S, 'success'> {
-      readonly name = 'check-undefined';
-      readonly outputs = ['success'] as const;
-      protected async executeOne(state: S, context: NodeContextType): Promise<NodeOutputType<'success'>> {
-        state.out = context.services;
-        return { 'errors': [], 'output': 'success' as const };
-      }
-    }
-
     const dispatcher = new Dagonizer<S>();
-    dispatcher.registerNode(new CheckUndefinedNode());
+    dispatcher.registerNode(TestNode.make<S>('check-undefined', ['success'], (state, context) => {
+      state.out = context.services;
+      return 'success';
+    }));
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:svc-default',

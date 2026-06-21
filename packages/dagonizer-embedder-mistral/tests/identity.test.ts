@@ -31,24 +31,20 @@ void test('MistralEmbedder.probe returns false when apiKey is empty', async () =
   assert.equal(await embedder.probe(), false);
 });
 
-interface MutableGlobal {
-  fetch?: unknown;
-}
+const originalFetch: typeof fetch | undefined = globalThis.fetch;
 
-const originalFetch = (globalThis as MutableGlobal).fetch;
-
-function installFetch(impl: typeof fetch): void {
-  (globalThis as MutableGlobal).fetch = impl;
+function installFetch(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): void {
+  Object.assign(globalThis, { 'fetch': impl });
 }
 
 function restoreFetch(): void {
-  (globalThis as MutableGlobal).fetch = originalFetch;
+  Object.assign(globalThis, { 'fetch': originalFetch });
 }
 
 void test('MistralEmbedder.embed extracts data[0].embedding from response body', async () => {
-  installFetch((async () => new Response(JSON.stringify({
+  installFetch(async () => new Response(JSON.stringify({
     'data': [{ 'embedding': [0.9, 0.8, 0.7] }],
-  }), { 'status': 200 })) as typeof fetch);
+  }), { 'status': 200 }));
   const embedder = new MistralEmbedder('k');
   try {
     const vec = await embedder.embed('hello');
@@ -69,7 +65,7 @@ void test('MistralEmbedder.listModels classifies embedding and chat models corre
       { 'id': 'mixtral-8x7b-instruct-v0.1' },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new MistralEmbedder('test-key');
   try {
     const models = await embedder.listModels();
@@ -93,7 +89,7 @@ void test('MistralEmbedder.listModels classifies embedding and chat models corre
 });
 
 void test('MistralEmbedder.listModels returns [] when apiKey is empty', async () => {
-  installFetch((async () => new Response('{}', { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response('{}', { 'status': 200 }));
   const embedder = new MistralEmbedder('');
   try {
     const models = await embedder.listModels();
@@ -104,7 +100,7 @@ void test('MistralEmbedder.listModels returns [] when apiKey is empty', async ()
 });
 
 void test('MistralEmbedder.listModels returns [] on transport failure', async () => {
-  installFetch((async () => { throw new Error('fetch failed'); }) as typeof fetch);
+  installFetch(async () => { throw new Error('fetch failed'); });
   const embedder = new MistralEmbedder('test-key');
   try {
     const models = await embedder.listModels();
@@ -115,7 +111,7 @@ void test('MistralEmbedder.listModels returns [] on transport failure', async ()
 });
 
 void test('MistralEmbedder.listModels returns [] when response fails schema validation', async () => {
-  installFetch((async () => new Response(JSON.stringify({ 'wrong': 'shape' }), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify({ 'wrong': 'shape' }), { 'status': 200 }));
   const embedder = new MistralEmbedder('test-key');
   try {
     const models = await embedder.listModels();
@@ -126,16 +122,19 @@ void test('MistralEmbedder.listModels returns [] when response fails schema vali
 });
 
 void test('MistralEmbedder.listModels sends Authorization: Bearer header', async () => {
-  let capturedHeaders: Record<string, string> | undefined;
-  installFetch((async (_input: string | URL | Request, init?: RequestInit) => {
-    capturedHeaders = init?.headers as Record<string, string> | undefined;
+  let capturedHeaders: RequestInit['headers'];
+  installFetch(async (_input: string | URL | Request, init?: RequestInit) => {
+    capturedHeaders = init?.headers;
     return new Response(JSON.stringify({ 'data': [] }), { 'status': 200 });
-  }) as typeof fetch);
+  });
   const embedder = new MistralEmbedder('my-api-key');
   try {
     await embedder.listModels();
     assert.ok(capturedHeaders !== undefined, 'fetch was called');
-    assert.equal(capturedHeaders['Authorization'], 'Bearer my-api-key', 'Authorization header sent');
+    assert.ok(
+      typeof capturedHeaders === 'object' && !Array.isArray(capturedHeaders) && !(capturedHeaders instanceof Headers) && capturedHeaders['Authorization'] === 'Bearer my-api-key',
+      'Authorization header sent',
+    );
   } finally {
     restoreFetch();
   }
@@ -148,7 +147,7 @@ void test('MistralEmbedder.selectEmbeddingModel picks an embedding model and ski
       { 'id': 'mistral-embed' },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new MistralEmbedder('test-key', {});
   try {
     const selected = await embedder.selectEmbeddingModel();
@@ -160,7 +159,7 @@ void test('MistralEmbedder.selectEmbeddingModel picks an embedding model and ski
 
 void test('MistralEmbedder.selectEmbeddingModel returns null when no embedding models found', async () => {
   const canned = { 'data': [{ 'id': 'mistral-small-latest' }] };
-  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new MistralEmbedder('test-key', {});
   try {
     const selected = await embedder.selectEmbeddingModel();
@@ -177,7 +176,7 @@ void test('MistralEmbedder.selectEmbeddingModel honors preferred model', async (
       { 'id': 'codestral-embed' },
     ],
   };
-  installFetch((async () => new Response(JSON.stringify(canned), { 'status': 200 })) as typeof fetch);
+  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new MistralEmbedder('test-key', {});
   try {
     const selected = await embedder.selectEmbeddingModel({ 'preferred': 'codestral-embed' });

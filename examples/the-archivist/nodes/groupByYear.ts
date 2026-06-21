@@ -13,7 +13,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -22,6 +22,11 @@ import type { ArchivistServices } from '../services.ts';
 export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered', ArchivistServices> {
   readonly name = 'group-by-year';
   readonly outputs = ['ordered'] as const;
+  override get outputSchema(): Record<'ordered', SchemaObjectType> {
+    return {
+      'ordered': { 'type': 'object' },
+    };
+  }
 
   protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
     if (state.candidates.length === 0) {

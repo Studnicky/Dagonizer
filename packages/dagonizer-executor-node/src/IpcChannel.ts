@@ -34,7 +34,7 @@ export interface IpcEndpointInterface {
 // ---------------------------------------------------------------------------
 
 export interface IpcProcessLikeInterface {
-  send(message: object): unknown;
+  send(message: unknown): unknown;
   on(event: 'message', listener: (message: unknown) => void): this;
 }
 
@@ -52,7 +52,7 @@ export class IpcChannel extends BaseMessageChannel {
    * Both ForkContainer and ClusterContainer use this factory.
    */
   static ofChildProcess(process: IpcProcessLikeInterface): IpcChannel {
-    const send = (message: unknown): void => { process.send(message as object); };
+    const send = (message: unknown): void => { process.send(message); };
     const subscribe = (event: 'message', listener: (message: unknown) => void): IpcEndpointInterface => {
       process.on(event, listener);
       return { 'send': send, 'on': subscribe };

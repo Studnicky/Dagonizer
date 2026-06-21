@@ -197,9 +197,11 @@ await SmokeRunner.check('(f) position-ping variants carry geometry fields and no
 
 await SmokeRunner.check('all 5 eventTypes are represented in the decoded variants', async () => {
   const types = new Set(variants.map((v) => v.eventType));
-  const expected = ['position-ping', 'facility-scan', 'sensor-reading', 'customs-event', 'delivery-confirmation'];
+  const expected: ReadonlyArray<CanonicalEventVariant['eventType']> = [
+    'position-ping', 'facility-scan', 'sensor-reading', 'customs-event', 'delivery-confirmation',
+  ];
   for (const t of expected) {
-    assert.ok(types.has(t as CanonicalEventVariant['eventType']), `Expected eventType '${t}' in variants, got: ${[...types].join(', ')}`);
+    assert.ok(types.has(t), `Expected eventType '${t}' in variants, got: ${[...types].join(', ')}`);
   }
 });
 

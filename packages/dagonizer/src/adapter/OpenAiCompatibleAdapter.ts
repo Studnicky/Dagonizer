@@ -329,8 +329,9 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   #decodeJson(raw: string): Record<string, unknown> {
+    let parsed: unknown;
     try {
-      return JSON.parse(raw) as Record<string, unknown>;
+      parsed = JSON.parse(raw);
     } catch (cause) {
       throw new LlmError(
         `${this.#config.displayName}: malformed tool-call arguments — ${raw.slice(0, 120)}`,
@@ -338,5 +339,18 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
         { cause },
       );
     }
+    if (!OpenAiCompatibleAdapter.#isJsonObject(parsed)) {
+      throw new LlmError(
+        `${this.#config.displayName}: tool-call arguments must be a JSON object — ${raw.slice(0, 120)}`,
+        Classifications['SCHEMA_VIOLATION'],
+      );
+    }
+    // The predicate narrows `parsed` to `Record<string, unknown>` — no cast.
+    return parsed;
+  }
+
+  /** A non-null, non-array object — the JSON-object ingest shape. */
+  static #isJsonObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }

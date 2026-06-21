@@ -48,7 +48,8 @@ export class ConstantUsage {
   // -- GatherStrategyName ------------------------------------------------------
   // Validate a config value against the known gather strategies.
   static isKnownGatherStrategy(name: string): name is GatherStrategyNameType {
-    return (Object.values(GatherStrategyNames) as readonly string[]).includes(name);
+    const strategySet = new Set<string>(Object.values(GatherStrategyNames));
+    return strategySet.has(name);
   }
 
   // -- MetadataKey -------------------------------------------------------------
