@@ -70,7 +70,7 @@ export class ToolInvokeNode<TServices = undefined> extends ScalarNode<ToolInvoca
       // (scatter/dagFrom path: scatter sets metadata[currentItem] = the scatter
       // item, which carries `arguments`). The embeddedDAG path wins when
       // `state.input` is non-empty; the scatter path is the fallback. The item
-      // comes out of the `unknown`-typed metadata bag and is narrowed through a
+      // comes out of the `unknown`-typed metadata record and is narrowed through a
       // type guard — no cast.
       const inputFromState = state.input;
       const scatterItem = state.getMetadata(SCATTER_ITEM_KEY_DEFAULT);

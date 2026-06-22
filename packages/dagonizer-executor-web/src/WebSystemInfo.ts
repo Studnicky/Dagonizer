@@ -2,7 +2,7 @@
  * WebSystemInfo: SystemInfoInterface for browser/Web Worker environments.
  *
  * Probes `navigator.hardwareConcurrency` via an injectable `WebNavigatorProbes`
- * bag for deterministic testing. Delegates the clamp formula to
+ * record for deterministic testing. Delegates the clamp formula to
  * `SystemInfo.recommendedWorkerCount` from the core package; this class owns
  * only the environment probing.
  *
@@ -35,7 +35,7 @@ export type WebNavigatorProbesType = {
 };
 
 // ---------------------------------------------------------------------------
-// WebSystemInfoProbes: constructor DI bag
+// WebSystemInfoProbes: constructor DI record
 // ---------------------------------------------------------------------------
 
 /**

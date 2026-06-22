@@ -1,5 +1,5 @@
 /**
- * ArchivistServices: the dispatcher's services bag.
+ * ArchivistServices: the dispatcher's services record.
  *
  * The Archivist does not cheat with hand-crafted in-process catalogs.
  * Every candidate comes from an authoritative source (the OpenLibrary

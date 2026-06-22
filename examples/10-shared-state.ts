@@ -1,8 +1,8 @@
 /**
- * 10-shared-state: MemoryStore on the services bag, with checkpoint round-trip.
+ * 10-shared-state: MemoryStore on the services record, with checkpoint round-trip.
  *
  * Demonstrates:
- *   1. A MemoryStore threaded through the services bag.
+ *   1. A MemoryStore threaded through the services record.
  *   2. Two nodes and an embedded sub-DAG that accumulate entries to the
  *      same store.
  *   3. Checkpoint.capture() snapshots the store alongside parent state.

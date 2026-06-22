@@ -3,7 +3,7 @@
  * Cartographer worker pool. Statically imported by cartographerWorkerEntry and
  * injected into the DagHost, so the worker runs no dynamic import. instantiate
  * registers the stream-event body (decode → route → per-type pipelines) and a
- * deterministic offline geo services bag.
+ * deterministic offline geo services record.
  */
 
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';

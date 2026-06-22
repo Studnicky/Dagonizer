@@ -82,3 +82,6 @@ export type { StoreInterface } from './StoreInterface.js';
 
 // Child-state factory: constructor thunk for isolated sub-DAG child states.
 export type { ChildStateFactoryType } from './ChildStateFactoryType.js';
+
+// Trigger: drives a `DagRunner` (once / cli / event / request).
+export type { TriggerInterface } from './TriggerInterface.js';

@@ -1,4 +1,5 @@
 import type { NodeInterface } from '../contracts/NodeInterface.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import { DAGError } from '../errors/index.js';
@@ -47,7 +48,8 @@ export class LeafExecutor<TServices> {
     dagName: string,
     signal: AbortSignal | null,
   ): Promise<RunNodeResultType> {
-    const dagNode = this.#source.nodes.get(nodeConfig.node);
+    const nodeIri = ContextResolver.expand(nodeConfig.node, {});
+    const dagNode = this.#source.nodes.get(nodeIri);
 
     if (!dagNode) {
       throw new DAGError(`Unknown node: ${nodeConfig.node}`);

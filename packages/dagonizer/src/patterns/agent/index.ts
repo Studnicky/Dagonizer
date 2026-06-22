@@ -1,4 +1,6 @@
 export type { AgentServicesType } from '../../contracts/AgentServicesType.js';
+export { AgentBuilder } from './AgentBuilder.js';
+export type { AgentBuilderInterface, AgentLoopNodesType, AgentLoopOptionsType } from './AgentBuilder.js';
 export { AppendAssistantNode } from './AppendAssistantNode.js';
 export { BuildChatRequestNode } from './BuildChatRequestNode.js';
 export { BuildToolWorksetsNode } from './BuildToolWorksetsNode.js';

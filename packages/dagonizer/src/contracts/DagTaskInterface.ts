@@ -32,7 +32,7 @@ export interface DagTaskInterface<TServices = undefined> {
   timeout: Timeout;
   /** Live seeded child clone. In-process containers execute against this directly. */
   state: NodeStateInterface;
-  /** Composed `NodeContext` carrying the abort signal and services bag for this task. */
+  /** Composed `NodeContext` carrying the abort signal and services record for this task. */
   context: NodeContextType<TServices>;
   /**
    * Materialise the wire form by snapshotting the live clone. Isolating

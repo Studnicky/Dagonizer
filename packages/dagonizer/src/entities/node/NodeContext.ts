@@ -30,9 +30,9 @@ export type NodeContextWireType = FromSchema<typeof NodeContextSchema>;
  * Extends `NodeContextWireType` entity with `signal: AbortSignal` and a typed
  * `services` slot. The entity carries the JSON-expressible fields
  * (`dagName`, `nodeName`); the type adds runtime-only fields
- * (signal, services bag) that are not serializable.
+ * (signal, services record) that are not serializable.
  *
- * The `TServices` parameter carries the consumer-defined service bag the
+ * The `TServices` parameter carries the consumer-defined services record the
  * dispatcher was constructed with, typically a typed record of injected
  * dependencies (loggers, clients, registries). When a dispatcher is
  * constructed without `services`, `TServices` defaults to `undefined`
@@ -49,10 +49,11 @@ export type NodeContextType<TServices = undefined> = NodeContextWireType & {
   /** Name of the current node. */
   'nodeName': string;
   /**
-   * Services bag handed to the dispatcher at construction. `undefined`
-   * when the dispatcher was constructed without a services option.
+   * Services record handed to the dispatcher at construction. `undefined`
+   * when the dispatcher was constructed without a services option; a node
+   * that requires services narrows this and routes to `error` when absent.
    */
-  'services': TServices;
+  'services': TServices | undefined;
   /**
    * When `true`, `ScalarNode.execute` validates each item's state against
    * `this.outputSchema[port]` after `executeOne` returns. On mismatch the
@@ -84,7 +85,7 @@ export class NodeContextBuilder {
     dagName: string,
     nodeName: string,
     signal: AbortSignal,
-    services: TServices,
+    services: TServices | undefined,
     validateOutputs: boolean = false,
     outputSchemaValidator: OutputSchemaValidatorInterface | null = null,
   ): NodeContextType<TServices> {

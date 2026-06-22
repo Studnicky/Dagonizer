@@ -15,7 +15,7 @@ import { OpenLibrarySearchTool, SubjectSearchTool, CanonicalId } from '@studnick
 
 const candidates = await OpenLibrarySearchTool.execute({ query: 'Piranesi', limit: 5 });
 
-// Or via the dispatcher's services bag:
+// Or via the dispatcher's services record:
 dispatcher.register({ services: { webSearch: OpenLibrarySearchTool } });
 ```
 

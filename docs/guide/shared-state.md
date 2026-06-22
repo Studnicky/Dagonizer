@@ -1,6 +1,6 @@
 ---
 title: 'Shared state'
-description: 'Store on the services bag for cross-DAG accumulation; TypedStore for narrowed key sets; checkpoint integration; RemoteStore for distributed coordination.'
+description: 'Store on the services record for cross-DAG accumulation; TypedStore for narrowed key sets; checkpoint integration; RemoteStore for distributed coordination.'
 seeAlso:
   - text: 'DAGBuilder'
     link: './builder'
@@ -72,9 +72,9 @@ Two mechanisms cross the scatter boundary in Dagonizer. The choice depends on th
 
 ## DAG that exercises shared state
 
-The runnable demo wires a `MemoryStore` onto the services bag of a parent DAG with a scatter sub-DAG child. Both write to the same store:
+The runnable demo wires a `MemoryStore` onto the services record of a parent DAG with a scatter sub-DAG child. Both write to the same store:
 
-<DagGraph :dag="parentDag" :embedded-d-a-gs="sharedStateRegistry" :expand-all="true" aria-label="Parent main-flow with embedded sub-flow; both DAGs share one Store via the services bag." />
+<DagGraph :dag="parentDag" :embedded-d-a-gs="sharedStateRegistry" :expand-all="true" aria-label="Parent main-flow with embedded sub-flow; both DAGs share one Store via the services record." />
 
 ## When to use what
 
@@ -82,7 +82,7 @@ The runnable demo wires a `MemoryStore` onto the services bag of a parent DAG wi
 |---|---|---|
 | Embed a registered sub-DAG exactly once and transfer specific fields in/out | `inputs` / `outputs` on `.embeddedDAG()` | Single-direction, isolated, checkpoint-friendly without extra wiring |
 | Scatter across an array and seed each clone with a parent field | `inputs` option on `.scatter()` (`stateMapping.input`) | Parent field copied into each clone state before the body runs |
-| Multiple nodes accumulate growing shared state (agent memory, RAG context, audit log) | `MemoryStore` (or another `Store`) on the services bag | Cross-node and cross-scatter; survives execution boundaries within a run |
+| Multiple nodes accumulate growing shared state (agent memory, RAG context, audit log) | `MemoryStore` (or another `Store`) on the services record | Cross-node and cross-scatter; survives execution boundaries within a run |
 | RDF graph patterns (`RecallContextNode`, `RecordFindingsNode`, etc.) need a Store that is also a `TripleStore` | `RdfStore` from `@studnicky/dagonizer-patterns-graph` | Implements both contracts; key-value side reifies as triples; quad side exposes native RDF |
 | Known, fixed key set; compile-time safety without explicit `<T>` at every call | `TypedStore<Schema>` wrapping any `Store` | Keys and value types inferred from the schema |
 | Long-running flow that survives restart | `MemoryStore.snapshot()` via `Checkpoint.capture({ stores })` | Resume captures shared state alongside parent state |
@@ -92,7 +92,7 @@ The runnable demo wires a `MemoryStore` onto the services bag of a parent DAG wi
 
 A `Store` is a live, shared, mutable map. Use it when multiple placements accumulate to the same structure (a message list, a token budget, an event log) and that accumulation must persist across placement boundaries without threading every value through state-mapping options at every hop.
 
-## Services-bag wiring
+## Services-record wiring
 
 The runnable example declares a `Services` interface whose `log` field has type `Store`, then instantiates the dispatcher with a `MemoryStore` bound to that field:
 

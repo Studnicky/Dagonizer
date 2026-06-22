@@ -73,7 +73,7 @@ Five kinds:
 
 ## State
 
-**State** is the shared data bag that travels through every node. It implements `NodeStateInterface` and typically extends `NodeStateBase`. The Archivist's `ArchivistState` carries the user query, classification, retrieved candidates, scout results, composed answer, and persistence metadata.
+**State** is the shared data record that travels through every node. It implements `NodeStateInterface` and typically extends `NodeStateBase`. The Archivist's `ArchivistState` carries the user query, classification, retrieved candidates, scout results, composed answer, and persistence metadata.
 
 All mutations happen in place on the state object. The dispatcher returns the same reference it received.
 
@@ -81,7 +81,7 @@ All mutations happen in place on the state object. The dispatcher returns the sa
 
 - `lifecycle`: discriminated union of the current lifecycle variant plus timestamps
 - `errors` and `warnings`: arrays collected from every node
-- `metadata`: generic key-value bag for cross-node messages
+- `metadata`: generic key-value record for cross-node messages
 - `collectError`, `collectWarning`, `setMetadata`, lifecycle mark methods
 
 `clone()` is called by the dispatcher before scatter clones. The clone carries a copy of `metadata` but resets `lifecycle` to `pending` and clears `errors` and `warnings`. Each child execution is a fresh run.

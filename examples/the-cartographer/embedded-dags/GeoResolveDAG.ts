@@ -21,7 +21,7 @@
  * this whole sub-DAG (the geo nodes) when the source pre-resolved geo.
  *
  * The transports (ReverseGeocoder / IpGeolocator) are injected via the services
- * bag — the GPS transport is always the offline country-coder; the IP transport is
+ * record — the GPS transport is always the offline country-coder; the IP transport is
  * Live (real HTTP) online or Recorded (fixture replay) for the smoke.
  */
 

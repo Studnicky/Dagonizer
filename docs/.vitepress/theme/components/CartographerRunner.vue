@@ -455,7 +455,7 @@ async function run(): Promise<void> {
 
   try {
     // Offline recorded geo on both sides: the worker registry builds its own
-    // recorded services bag; the main thread (seed + summarize + gather) needs
+    // recorded services record; the main thread (seed + summarize + gather) needs
     // no network. Deterministic and infeasible-to-network-at-1M.
     const services: CartographerServices = GeoResolvers.recorded();
 

@@ -17,7 +17,7 @@
  * passes it as the third positional argument.
  *
  * The `services` type parameter follows the same convention as
- * `DagTaskInterface`: default `undefined` = no services bag.
+ * `DagTaskInterface`: default `undefined` = no services record.
  */
 
 import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';

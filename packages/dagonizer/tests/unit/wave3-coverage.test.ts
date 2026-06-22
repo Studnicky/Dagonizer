@@ -18,7 +18,7 @@
  *
  *   TST-W3-7: BaseStore.connect / BaseStore.disconnect no-op defaults (MemoryStore)
  *
- *   TST-W3-8: NodeErrorBuilder.from positional signature and options bag
+ *   TST-W3-8: NodeErrorBuilder.from positional signature and options object
  */
 
 import assert from 'node:assert/strict';
@@ -670,7 +670,7 @@ void describe('TST-W3-7: BaseStore.connect / disconnect no-op defaults', () => {
 // ---------------------------------------------------------------------------
 
 void describe('TST-W3-8: NodeErrorBuilder.from positional signature', () => {
-  void it('fills context: {} by default when options bag is omitted', () => {
+  void it('fills context: {} by default when options object is omitted', () => {
     const err = NodeErrorBuilder.from(
       'CODE',
       'msg',
@@ -679,10 +679,10 @@ void describe('TST-W3-8: NodeErrorBuilder.from positional signature', () => {
       '2020-01-01T00:00:00Z',
     );
     assert.deepEqual(err.context, {},
-      'context must default to {} when options bag is omitted');
+      'context must default to {} when options object is omitted');
   });
 
-  void it('fills context: {} by default when options bag is empty', () => {
+  void it('fills context: {} by default when options object is empty', () => {
     const err = NodeErrorBuilder.from(
       'CODE',
       'msg',
@@ -692,10 +692,10 @@ void describe('TST-W3-8: NodeErrorBuilder.from positional signature', () => {
       {},
     );
     assert.deepEqual(err.context, {},
-      'context must default to {} when options bag provides no context');
+      'context must default to {} when options object provides no context');
   });
 
-  void it('honors the context when provided in the options bag', () => {
+  void it('honors the context when provided in the options object', () => {
     const ctx = { 'field': 'email', 'value': null };
     const err = NodeErrorBuilder.from(
       'VALIDATION_ERROR',

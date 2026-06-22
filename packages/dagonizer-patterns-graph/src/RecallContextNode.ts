@@ -7,7 +7,7 @@
  * (write the recalled context back to state).
  */
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import { DAGError, NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { BindingType, SlotPatternType } from '@studnicky/dagonizer/patterns';
 import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
@@ -27,7 +27,11 @@ export abstract class RecallContextNode<
     context: NodeContextType<GraphServicesType>,
   ): Promise<NodeOutputType<'success' | 'empty'>> {
     const pattern = this.composeQuery(state);
-    const rows = context.services.memory.select(pattern);
+    const services = context.services;
+    if (services === undefined) {
+      throw new DAGError('RecallContextNode requires a services record carrying a `memory` store; the dispatcher was constructed without `services`.');
+    }
+    const rows = services.memory.select(pattern);
     const bindings = this.mapBindings(rows);
     this.applyRecall(state, bindings);
     return NodeOutputBuilder.of(bindings.length === 0 ? 'empty' : 'success');

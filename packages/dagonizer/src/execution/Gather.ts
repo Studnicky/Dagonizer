@@ -1,6 +1,7 @@
 import type { GatherExecutionType, GatherRecordType } from '../contracts/GatherExecution.js';
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -85,10 +86,11 @@ export class Gather<TServices>
     dagName: string,
     signal: AbortSignal | null,
   ): Promise<void> {
-    if (!this.#source.nodes.has(nodeName)) {
+    const nodeIri = ContextResolver.expand(nodeName, {});
+    if (!this.#source.nodes.has(nodeIri)) {
       throw new DAGError(`Unknown custom node: ${nodeName}`);
     }
-    const dagNode = this.#source.nodes.get(nodeName);
+    const dagNode = this.#source.nodes.get(nodeIri);
     if (dagNode === undefined) return;
     const context = this.#source.nodeContext(dagName, nodeName, signal);
     await this.#source.runNodeOnState(dagNode, state, context);

@@ -16,7 +16,7 @@
  * }
  *
  * // Resume later.
- * const raw = JSON.parse(await storage.get('ckpt')) as unknown;
+ * const raw: unknown = JSON.parse(await storage.get('ckpt'));
  * const ckpt = Checkpoint.load(raw);
  * const { dagName, state: restoredState, cursor } = ckpt.restoreState(
  *   CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap)),
@@ -45,7 +45,6 @@
 import type { CheckpointRestoreAdapterInterface } from '../contracts/CheckpointRestoreAdapterInterface.js';
 import type { CheckpointStoreInterface } from '../contracts/CheckpointStoreInterface.js';
 import type { SnapshottableInterface, StoreSnapshotType } from '../contracts/SnapshottableInterface.js';
-import { CHECKPOINT_DATA_VERSION } from '../entities/checkpoint/CheckpointData.js';
 import type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
 import type { JsonObjectType } from '../entities/json.js';
@@ -155,7 +154,6 @@ export class Checkpoint {
     }
 
     const base: CheckpointDataType = {
-      'version': CHECKPOINT_DATA_VERSION,
       'dagName': dagName,
       'cursor': result.cursor,
       'state': result.state.snapshot(),
@@ -171,26 +169,16 @@ export class Checkpoint {
       return new Checkpoint(base);
     }
 
-    const snapshots = await Promise.all(
-      entries.map(async ([name, store]) => {
+    const snapshots: [string, StoreSnapshotType][] = await Promise.all(
+      entries.map(async ([name, store]): Promise<[string, StoreSnapshotType]> => {
         const snap = await store.snapshot();
-        // Post-validation boundary: `store.snapshot()` returns `StoreSnapshotType`
-        // (the contract return type). The tuple cast preserves the pair for
-        // later insertion into `StoreRecord` without losing the key.
-        return [name, snap] as [string, StoreSnapshotType];
+        return [name, snap];
       }),
     );
 
-    // Build the stores record in the schema-derived shape.
-    // `StoreSnapshotType` is the contract type; `CheckpointData['stores'][string]`
-    // is the schema-derived type. Both have readonly fields; the cast bridges
-    // the nominal type gap between the json-schema-to-ts derivation and the
-    // hand-written contract without a structural difference at runtime.
-    type StoreRecord = NonNullable<CheckpointDataType['stores']>;
-    type StoreEntry  = StoreRecord[string];
-    const stores: StoreRecord = {};
+    const stores: Record<string, StoreSnapshotType> = {};
     for (const [name, snap] of snapshots) {
-      stores[name] = snap as StoreEntry;
+      stores[name] = snap;
     }
 
     const data: CheckpointDataType = { ...base, stores };
@@ -259,12 +247,7 @@ export class Checkpoint {
       throw new ValidationError(`Cannot restore from a CheckpointData with null cursor: the DAG had no resumable position`);
     }
     return {
-      // Post-validation boundary: `this.data` passed `Validator.checkpoint`
-      // at construction time, so `data.state` satisfies `JsonObjectType`. The
-      // schema-derived type carries `JsonObjectType` but TypeScript infers
-      // `CheckpointData['state']` as `Record<string, unknown>`; the cast is a
-      // safe narrowing to the structurally identical `JsonObjectType` alias.
-      'state': adapter.restore(this.data.state as JsonObjectType),
+      'state': adapter.restore(this.data.state),
       'dagName': this.data.dagName,
       'cursor': this.data.cursor,
       'executedNodes': [...this.data.executedNodes],
@@ -306,14 +289,11 @@ export class Checkpoint {
     await Promise.all(
       Object.entries(checkpointStores).map(async ([name, snapshot]) => {
         // `store` is guaranteed present: the `missingNames` check above throws
-        // for any checkpoint key absent from the `stores` map, so every key
-        // that reaches here has a matching entry.
-        const store = stores[name] as SnapshottableInterface;
-        // Post-validation boundary: `snapshot` comes from `CheckpointData.stores`
-        // which is validated by `Validator.checkpoint` at load time. The
-        // schema-derived type is structurally identical to `StoreSnapshotType`; the
-        // cast bridges the readonly/mutable gap in the generated types.
-        await store.restore(snapshot as StoreSnapshotType);
+        // for any checkpoint key absent from the `stores` map. The explicit
+        // undefined guard narrows the index access without a cast.
+        const store = stores[name];
+        if (store === undefined) return;
+        await store.restore(snapshot);
       }),
     );
   }

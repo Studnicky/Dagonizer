@@ -144,7 +144,7 @@ export class TripOrchestrator {
   private stateStore: StateStore;
 
   assemble() {
-    // Wire nodes with constructor injection (no services bag needed)
+    // Wire nodes with constructor injection (no services record needed)
     const intake = new IntakeNode(this.llm);
     const retrieve = new RetrievalNode(this.searchEngine);
     const propose = new ProposalNode(this.templateEngine);

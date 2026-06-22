@@ -252,7 +252,7 @@ interface DagContainerInterface {
 
 Adapter contract for running an embedded DAG in an isolate (worker thread, forked child, spawned process, Web Worker). Bound to the dispatcher via `DagonizerOptionsType.containers` keyed by logical role name. On a dispatcher with a non-empty `containers` registry, a declared-but-unbound role throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats declared roles as inert and runs every body in-process.
 
-`runDag` must never throw. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeType.errors` with `recoverable: false`. The `TServices` parameter on the task is unconstrained (`unknown`) so the interface stays decoupled from the dispatcher's services bag.
+`runDag` must never throw. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeType.errors` with `recoverable: false`. The `TServices` parameter on the task is unconstrained (`unknown`) so the interface stays decoupled from the dispatcher's services record.
 
 `destroy()` is optional. Implement it to release pool resources when the dispatcher shuts down.
 
@@ -305,7 +305,7 @@ interface RegistryModuleInterface {
 
 `RegistryModuleInterface` is the default export shape of a registry module loaded by `DagHost` via dynamic import. `instantiate` receives the opaque `servicesConfig` JSON from the `init` message and returns a fully initialised `RegistryBundleInterface`.
 
-`RegistryBundleInterface` bundles the node+DAG registry (`bundle`), the locally constructed services bag (`services`), the semantic version for the init ↔ ready handshake (`registryVersion`), and the state restore factory (`restoreState`). Services never cross the isolate boundary — each isolate constructs its own via its registry module.
+`RegistryBundleInterface` bundles the node+DAG registry (`bundle`), the locally constructed services record (`services`), the semantic version for the init ↔ ready handshake (`registryVersion`), and the state restore factory (`restoreState`). Services never cross the isolate boundary — each isolate constructs its own via its registry module.
 
 ## DagOutcomeType
 

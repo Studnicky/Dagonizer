@@ -9,7 +9,7 @@
  * implement. The "monadic" framing captures three traits the pattern taxonomy
  * depends on:
  *
- *   1. Context-carrying: execution sees the dispatcher's services bag and the
+ *   1. Context-carrying: execution sees the dispatcher's services record and the
  *      abort signal alongside the batch, not as ambient globals.
  *   2. Composable: output-port routing chains nodes into larger flows via the
  *      dispatcher's placement graph (the bind operation in Dagonizer terms).
@@ -29,7 +29,7 @@
  * @typeParam TState    the node state the dispatcher threads through the batch.
  * @typeParam TOutput   the literal union of output port names. Narrows the
  *                      placement-routing surface at compile time.
- * @typeParam TServices the services bag shape. `undefined` for nodes that need
+ * @typeParam TServices the services record shape. `undefined` for nodes that need
  *                      no service.
  */
 

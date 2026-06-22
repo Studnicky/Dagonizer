@@ -18,7 +18,7 @@ Run `npm install` (or `pnpm install`) from the repo root before running any exam
 | `07-retry.ts` | `RetryPolicy` inside an operation node; backoff strategy | `npx tsx examples/07-retry.ts` |
 | `08-checkpoint.ts` | Abort → snapshot → restore → resume across a dispatcher restart | `npx tsx examples/08-checkpoint.ts` |
 | `09-terminals.ts` | `TerminalNode`: explicit `completed`/`failed` endpoints; scatter routing | `npx tsx examples/09-terminals.ts` |
-| `10-shared-state.ts` | `MemoryStore` on the services bag + checkpoint round-trip | `npx tsx examples/10-shared-state.ts` |
+| `10-shared-state.ts` | `MemoryStore` on the services record + checkpoint round-trip | `npx tsx examples/10-shared-state.ts` |
 | `11-handoff.ts` | `DAGHandoff` envelope: two DAGs chained via `InMemoryChannel` | `npx tsx examples/11-handoff.ts` |
 | `18-observability.ts` | Subclass hooks: `onFlowStart`/`onFlowEnd`/`onNodeStart`/`onNodeEnd`/`onError` | `npx tsx examples/18-observability.ts` |
 | `19-phase-nodes.ts` | `DAGBuilder.phase()`: pre and post lifecycle wrapping | `npx tsx examples/19-phase-nodes.ts` |

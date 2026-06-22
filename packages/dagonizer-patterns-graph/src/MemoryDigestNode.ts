@@ -6,7 +6,7 @@
  * and `applyDigest` (write it back to state).
  */
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import { DAGError, NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { TripleStoreInterface } from '@studnicky/dagonizer/patterns';
 import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
@@ -24,7 +24,11 @@ export abstract class MemoryDigestNode<
     state: TState,
     context: NodeContextType<GraphServicesType>,
   ): Promise<NodeOutputType<'success'>> {
-    const digest = this.composeDigest(context.services.memory, state);
+    const services = context.services;
+    if (services === undefined) {
+      throw new DAGError('MemoryDigestNode requires a services record carrying a `memory` store; the dispatcher was constructed without `services`.');
+    }
+    const digest = this.composeDigest(services.memory, state);
     this.applyDigest(state, digest);
     return NodeOutputBuilder.of('success');
   }

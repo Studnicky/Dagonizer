@@ -41,7 +41,7 @@ export interface OutputSchemaValidatorInterface {
  * The `TOutput` generic narrows the node's output port union so
  * node configurations can be exhaustiveness-checked at compile time.
  *
- * The `TServices` generic carries the dispatcher's services bag through
+ * The `TServices` generic carries the dispatcher's services record through
  * `NodeContextType`. When a node only depends on `state`, leave
  * `TServices` at the default `undefined`.
  */
@@ -80,7 +80,7 @@ export interface NodeInterface<
    * Never throws; catches all errors internally and routes to error output.
    *
    * `context` carries the abort signal, the names of the flow/stage being
-   * executed, and the dispatcher's services bag. Long-running nodes should
+   * executed, and the dispatcher's services record. Long-running nodes should
    * propagate `context.signal` to any awaitable IO.
    */
   execute(batch: Batch<TState>, context: NodeContextType<TServices>): Promise<RoutedBatchType<TOutput, TState>>;

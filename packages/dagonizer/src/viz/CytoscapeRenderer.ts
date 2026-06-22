@@ -41,7 +41,7 @@ import { PlacementUtils, RoleColorUtils } from './internal.js';
 import type { PlacementEntryType } from './internal.js';
 
 /**
- * Data bag carried by every Cytoscape node element.
+ * Data record carried by every Cytoscape node element.
  *
  * The required fields (`id`, `label`, `type`) are always present.
  * The optional fields cover all extra keys the renderer writes per

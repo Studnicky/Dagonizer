@@ -63,7 +63,6 @@ export type { DAGLifecycleStateDataType } from './state-machines/DAGLifecycleSta
 // ---------------------------------------------------------------------------
 
 export {
-  CHECKPOINT_DATA_VERSION,
   CheckpointDataSchema,
 } from './checkpoint/CheckpointData.js';
 export type { CheckpointDataType } from './checkpoint/CheckpointData.js';

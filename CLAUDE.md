@@ -179,11 +179,12 @@ Every public surface ships through a `package.json` `exports` entry:
 | `./patterns` | Pattern-tier base classes consumers extend (`MonadicNode` and pattern node bases) |
 | `./tool` | Tool contract surface: `ToolInterface`, `HttpTransport`, `ToolError` |
 | `./core` | Pluggable execution primitives: `GatherStrategies`, `GatherStrategy`, `OutcomeReducers` |
-| `./derive` | Contract-derived flow generation: `DAGDeriver`, `OperationContract` |
 | `./viz` | DAG visualization: `CytoscapeRenderer`, `MermaidRenderer` |
 | `./store` | Shared key-value store: `StoreInterface`, `BaseStore` |
 | `./container` | Embedded-DAG container surface: `DagContainerBase`, channel dispatch, transport contracts |
 | `./channels` | `InMemoryChannel` and its options |
+| `./runner` | `DagRunner`, trigger contract (`TriggerInterface`, `OnceTrigger`, `CliTrigger`, `EventTrigger`, `RequestTrigger`) |
+| `./progress` | `EventBus`, `SseStream`, bus event envelope schema |
 
 Adding a new top-level concept? Add a subpath. Do not silently expand
 the root barrel.

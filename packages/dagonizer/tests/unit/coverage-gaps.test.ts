@@ -316,7 +316,6 @@ void describe('TST-19: Checkpoint.restoreStores — type/version mismatch → St
     // Build a checkpoint whose stores.cache has type 'cache-store', but we
     // attempt to restore it into a MemoryStore (type 'memory-store').
     const badRaw = {
-      'version': '2',
       'dagName': 'type-mismatch-test',
       'cursor': 'next-node',
       'state': {},
@@ -350,7 +349,6 @@ void describe('TST-19: Checkpoint.restoreStores — type/version mismatch → St
     // Build a checkpoint whose stores.data has an unsupported version.
     // MemoryStore accepts version 1; supply version 99.
     const badVersion = {
-      'version': '2',
       'dagName': 'version-mismatch-test',
       'cursor': 'next-node',
       'state': {},

@@ -3,7 +3,7 @@
  *
  * Bundles the DAG/node registry, locally constructed services, the semantic
  * version for the version handshake, and the state restore factory. Services
- * never cross the boundary — each isolate constructs its own services bag via
+ * never cross the boundary — each isolate constructs its own services record via
  * its registry module.
  */
 
@@ -27,7 +27,7 @@ export interface RegistryBundleInterface<TServices = unknown> {
    */
   bundle: DispatcherBundleType<NodeStateInterface, TServices>;
   /**
-   * Locally constructed services bag. Opaque to the protocol; `TServices`
+   * Locally constructed services record. Opaque to the protocol; `TServices`
    * defaults to `unknown` so existing call sites stay source-compatible,
    * while a registry that knows its services shape narrows it without a cast.
    */
@@ -39,6 +39,18 @@ export interface RegistryBundleInterface<TServices = unknown> {
    * Implement `restore(snapshot)` to rehydrate domain state.
    */
   restoreState: CheckpointRestoreAdapterInterface<NodeStateInterface>;
+  /**
+   * Optional keying scheme for this bundle's registry maps. When `'iri'`, names
+   * are expanded to full IRI keys using `ContextResolver`. When `'name'` (the
+   * default when absent), bare names are used as registry keys — backward
+   * compatible with all existing bundles.
+   *
+   * Extension contract: optional seam. Existing bundles that omit this field
+   * default to `'name'` on both sides of the container protocol. When the parent
+   * sends `keyingScheme: 'iri'` the bundle must declare the same to satisfy the
+   * handshake; `DagHost` rejects mismatches with `VERSION_MISMATCH`.
+   */
+  keyingScheme?: 'name' | 'iri';
   /**
    * Optional teardown hook. Called by `DagHost` on shutdown before the host
    * process/thread exits, so node resources (DB connections, file handles, etc.)

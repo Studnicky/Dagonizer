@@ -10,7 +10,7 @@ seeAlso:
     description: 'a dispatcher subclass may also subclass state'
   - text: 'Services'
     link: './services'
-    description: 'pass loggers or tracers in via the services bag'
+    description: 'pass loggers or tracers in via the services record'
 ---
 
 # Observability

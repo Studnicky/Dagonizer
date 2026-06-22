@@ -33,7 +33,7 @@ const dispatcher = new Dagonizer<MyState>();
 const dispatcher2 = new Dagonizer<MyState, MyServices>({ services: { logger: console } });
 ```
 
-`TState` must satisfy `NodeStateInterface`. In practice, always extend `NodeStateBase`. `TServices` is the optional services bag exposed to every node via `context.services`; defaults to `undefined`.
+`TState` must satisfy `NodeStateInterface`. In practice, always extend `NodeStateBase`. `TServices` is the optional services record exposed to every node via `context.services`; defaults to `undefined`.
 
 ### Constructor
 
@@ -46,7 +46,7 @@ declare const options: DagonizerOptionsType;
 const d = new Dagonizer(options);
 ```
 
-`options.accessor` swaps the path resolver for scatter source reads, state-mapping input copies, and gather writes. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
+`options.accessor` swaps the path resolver for scatter source reads, state-mapping input copies, and gather writes. Defaults to `DottedPathAccessor`. `options.services` is the typed services record; defaults to `undefined`.
 
 ### `DagonizerOptionsType`
 
@@ -72,7 +72,7 @@ export {};
 | Field | Type | Description |
 |---|---|---|
 | `accessor` | `StateAccessorInterface` | Path resolver for scatter source reads, gather writes, and state-mapping copies. Defaults to `DottedPathAccessor`. |
-| `services` | `TServices` | Typed services bag exposed to every node via `context.services`. Defaults to `undefined`. |
+| `services` | `TServices` | Typed services record exposed to every node via `context.services`. Defaults to `undefined`. |
 | `containers` | `Readonly<Record<string, DagContainerInterface>>` | Named container backends keyed by logical role name. On a non-empty registry, a placement that declares a role this map does not bind throws `DAGError` at `registerDAG` time. Defaults to an empty registry, where declared roles are inert and all placements run in-process. |
 | `channels` | `Readonly<Record<string, HandoffChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
 | `registryVersion` | `string` | Registry version string included in every `DAGHandoff` envelope for receiver version-handshake validation. Defaults to `'0'`. |

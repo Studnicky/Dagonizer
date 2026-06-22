@@ -6,7 +6,7 @@
  * record) and `toQuads` (turn one entity into a list of quads).
  */
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import { DAGError, NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { QuadType } from '@studnicky/dagonizer/patterns';
 import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
@@ -25,9 +25,13 @@ export abstract class RecordFindingsNode<
     context: NodeContextType<GraphServicesType>,
   ): Promise<NodeOutputType<'success'>> {
     const entities = this.selectEntities(state);
+    const services = context.services;
+    if (services === undefined) {
+      throw new DAGError('RecordFindingsNode requires a services record carrying a `memory` store; the dispatcher was constructed without `services`.');
+    }
     for (const entity of entities) {
       for (const q of this.toQuads(entity)) {
-        context.services.memory.assert(q.subject, q.predicate, q.object, q.graph);
+        services.memory.assert(q.subject, q.predicate, q.object, q.graph);
       }
     }
     return NodeOutputBuilder.of('success');

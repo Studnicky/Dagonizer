@@ -15,7 +15,7 @@ import { MemoryStore } from '@studnicky/dagonizer/store';
 import type { StoreInterface } from '@studnicky/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
-// Services bag type
+// Services record type
 // ---------------------------------------------------------------------------
 
 // #region services
@@ -94,7 +94,7 @@ const stepBNode = new StepBNode();
 
 // #region parent-dag
 // run-child is an EmbeddedDAGNode whose body is the registered 'sub-flow' DAG.
-// The child shares the same services bag, so child-step appends to the same
+// The child shares the same services record, so child-step appends to the same
 // MemoryStore between step-a and step-b.
 export const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-a', stepANode, { "done": 'run-child' })
@@ -178,7 +178,7 @@ export async function storeErrorDemo(store: RemoteStoreInterface): Promise<void>
 // #endregion store-error-discrimination
 
 // ---------------------------------------------------------------------------
-// Services node: reads from context.services bag
+// Services node: reads from context.services record
 // ---------------------------------------------------------------------------
 
 // #region services-node

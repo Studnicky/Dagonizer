@@ -47,10 +47,10 @@ for (const c of candidates) {
 
 // MetadataKey
 process.stdout.write('\nMetadataKey.CURRENT_ITEM read:\n');
-const bag: Partial<Record<MetadataKeyType, CatalogueItem>> = {
+const record: Partial<Record<MetadataKeyType, CatalogueItem>> = {
   [MetadataKeys.CURRENT_ITEM]: { title: 'The Archivist Compendium' },
 };
-process.stdout.write(`  currentItem=${JSON.stringify(ConstantUsage.readCurrentItem(bag))}\n`);
+process.stdout.write(`  currentItem=${JSON.stringify(ConstantUsage.readCurrentItem(record))}\n`);
 
 // ScatterOutput
 process.stdout.write('\nScatterOutput interpretations:\n');

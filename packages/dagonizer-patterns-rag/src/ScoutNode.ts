@@ -11,7 +11,7 @@
  * that plug in a specific ToolInterface instance.
  */
 
-import { NodeOutputBuilder, ScalarNode  } from '@studnicky/dagonizer';
+import { DAGError, NodeOutputBuilder, ScalarNode  } from '@studnicky/dagonizer';
 import type { ToolInterface } from '@studnicky/dagonizer/tool';
 import type { NodeContextType, NodeOutputType, NodeStateInterface  } from '@studnicky/dagonizer/types';
 
@@ -40,8 +40,12 @@ export abstract class ScoutNode<
     context: NodeContextType<ScoutServicesType<TInput, TToolOutput>>,
   ): Promise<NodeOutputType<'success' | 'empty' | 'error'>> {
     const input = this.composeInput(state);
+    const services = context.services;
+    if (services === undefined) {
+      throw new DAGError('ScoutNode requires a services record carrying a `tool`; the dispatcher was constructed without `services`.');
+    }
     try {
-      const raw = await context.services.tool.execute(input, { "signal": context.signal });
+      const raw = await services.tool.execute(input, { "signal": context.signal });
       const items = this.normalize(raw);
       this.writeBack(state, items);
       return NodeOutputBuilder.of(items.length === 0 ? 'empty' : 'success');

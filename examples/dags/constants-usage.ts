@@ -53,7 +53,7 @@ export class ConstantUsage {
   }
 
   // -- MetadataKey -------------------------------------------------------------
-  // Read a reserved key off a node's metadata bag.
+  // Read a reserved key off a node's metadata record.
   // CURRENT_ITEM is set by scatter; narrow to CatalogueItem at the read site.
   static readCurrentItem(metadata: Partial<Record<MetadataKeyType, CatalogueItem>>): CatalogueItem | undefined {
     return metadata[MetadataKeys.CURRENT_ITEM];

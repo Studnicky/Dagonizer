@@ -9,7 +9,7 @@
  * no key/CORS, runs identically in Node 18+ and the browser), used by BOTH the
  * live and the recorded service bags.
  *
- * Implementations are injected via the dispatcher services bag and reached at
+ * Implementations are injected via the dispatcher services record and reached at
  * `context.services.reverseGeocoder`. `lookup` honours the abort signal.
  */
 

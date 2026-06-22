@@ -5,7 +5,7 @@
  * in-process path can execute against it directly. Isolating containers call
  * `toRequest()` to snapshot the clone into a wire-safe `ExecutionRequest`.
  *
- * `TServices` parameterises the services bag on the composed `NodeContext`.
+ * `TServices` parameterises the services record on the composed `NodeContext`.
  *
  * Constructor args are required positional in declaration order (V8 shape
  * stability). All fields are readonly and initialized in the constructor.

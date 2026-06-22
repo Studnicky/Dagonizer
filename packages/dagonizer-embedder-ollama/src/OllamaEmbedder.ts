@@ -99,7 +99,7 @@ const KNOWN_DIMENSIONS: Readonly<Record<string, number>> = {
  *
  * Unlike `GeminiApiEmbedder` and `MistralEmbedder` where an API key is
  * always required (making it a required positional), Ollama's local mode
- * needs no key at all. `apiKey` therefore lives in the options bag and is
+ * needs no key at all. `apiKey` therefore lives in the options object and is
  * omitted for local usage.
  *
  * `model` is optional. When omitted, call `selectEmbeddingModel()` to
@@ -136,7 +136,7 @@ export class OllamaEmbedder extends BaseEmbedder {
    * Local usage:  `new OllamaEmbedder()`
    * Cloud usage:  `new OllamaEmbedder({ apiKey: '<key>', baseUrl: 'https://api.ollama.ai' })`
    *
-   * `apiKey` is optional in the options bag (not a required positional) because
+   * `apiKey` is optional in the options object (not a required positional) because
    * local Ollama needs no key. Compare `GeminiApiEmbedder(apiKey, options?)` and
    * `MistralEmbedder(apiKey, options?)` where a key is always required.
    */

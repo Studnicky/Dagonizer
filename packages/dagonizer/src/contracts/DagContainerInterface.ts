@@ -11,7 +11,7 @@
  * pool resources when the dispatcher shuts down.
  *
  * The `TServices` on `DagTaskInterface` in `runDag` is `unknown` so the container
- * interface remains decoupled from the dispatcher's services bag.
+ * interface remains decoupled from the dispatcher's services record.
  */
 
 import type { DagOutcomeType } from './DagOutcomeType.js';
@@ -29,7 +29,7 @@ export interface DagContainerInterface {
    *
    * The `TServices` on the task is intentionally unconstrained (unknown) so
    * the container interface remains decoupled from the dispatcher's services
-   * bag. Containers access only `task.state`, `task.toRequest()`, and
+   * record. Containers access only `task.state`, `task.toRequest()`, and
    * `task.context.signal` — they never read `task.context.services`.
    *
    * The optional `options.relay` is an internal observer provided by the parent

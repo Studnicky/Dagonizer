@@ -6,6 +6,7 @@ import type { HandoffChannelInterface } from './contracts/HandoffChannelInterfac
 import type { NodeInterface, OutputSchemaValidatorInterface, SchemaObjectType } from './contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
+import { ContextResolver } from './dag/ContextResolver.js';
 import type { DagRegistrar, DagRegistrarSourceInterface } from './dag/DagRegistrar.js';
 import { Batch } from './entities/batch/Batch.js';
 import type { DAGType } from './entities/dag/DAG.js';
@@ -75,8 +76,8 @@ const EMPTY_CHANNELS: Readonly<Record<string, never>> = Object.freeze({});
  *
  * Every field that has a default is present here. The constructor resolves
  * all options in one spread: `{ ...DAGONIZER_OPTION_DEFAULTS, ...options }`.
- * `services` is intentionally absent — it has no meaningful default and
- * requires a type-unsafe cast at the assignment site regardless.
+ * `services` is intentionally absent — it has no meaningful default; it
+ * resolves to the honest `TServices | undefined` (no cast).
  */
 const DAGONIZER_OPTION_DEFAULTS = {
   'accessor': DEFAULT_STATE_ACCESSOR,
@@ -93,7 +94,7 @@ export type { ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType,
 /**
  * Constructor options for `Dagonizer`.
  *
- * `TServices` is the consumer-defined services bag that the dispatcher
+ * `TServices` is the consumer-defined services record that the dispatcher
  * passes through every `NodeContextType`. Default `undefined` means
  * nodes receive `context.services === undefined`.
  */
@@ -104,13 +105,6 @@ export type DagonizerOptionsType<TServices = undefined> = {
    * walks `path.split('.')`.
    */
   accessor?: StateAccessorInterface;
-  /**
-   * Services bag exposed to every node via `context.services`. Construct
-   * the dispatcher with `{ services: { logger, db, ... } }` and the same
-   * reference flows into every `NodeInterface.execute(state, context)`
-   * call.
-   */
-  services?: TServices;
   /**
    * Named container backends. Keys are logical role names declared on
    * `EmbeddedDAGNode.container` and `ScatterNode.container` (dag-body
@@ -147,6 +141,13 @@ export type DagonizerOptionsType<TServices = undefined> = {
    * Enable in dev/test to catch contract violations early.
    */
   validateOutputs?: boolean;
+  /**
+   * Services record exposed to every node via `context.services`. Optional: a
+   * dispatcher may run with no services (`TServices` defaults to `undefined`).
+   * The resolved field is honestly `TServices | undefined`; a node that requires
+   * services narrows `context.services` and routes to `error` when absent.
+   */
+  services?: TServices;
 }
 
 
@@ -162,7 +163,7 @@ export { Placement } from './entities/dag/Placement.js';
  *
  * `TServices` flows through every node's `NodeContextType.services`
  * field; defaults to `undefined` when the dispatcher is constructed
- * without a services bag.
+ * without a services record.
  */
 export interface DagonizerInterface<
   TState extends NodeStateInterface,
@@ -310,12 +311,10 @@ implements
   readonly nodeIndex = new Map<string, DAGNodeType>();
   // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
   readonly accessor: StateAccessorInterface;
-  // Declared as TServices so NodeContextType<TServices>.services is
-  // satisfied. When TServices = undefined (the default), the field is undefined.
-  // The cast in the constructor is required because options.services is optional
-  // (TServices | undefined); when the caller passes undefined for a non-undefined
-  // TServices the error surfaces at the call site, not here.
-  private readonly services: TServices;
+  // services is the honest `TServices | undefined`: a dispatcher may run with no
+  // services record. `NodeContextType<TServices>.services` carries the same type; a
+  // node that requires services narrows it and routes to `error` when absent.
+  private readonly services: TServices | undefined;
   // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
   readonly stateMapper: StateMapper;
   // Every registered DAG has an entry here; ChildStateFactory.cloneParent is stored
@@ -376,7 +375,7 @@ implements
    * reads, gather writes, and embedded-DAG state mapping. Defaults to
    * `DottedPathAccessor`.
    *
-   * `options.services` is the typed services bag exposed to every node
+   * `options.services` is the typed services record exposed to every node
    * via `context.services`. Defaults to `undefined`.
    */
   constructor(options: DagonizerOptionsType<TServices> = {}) {
@@ -689,7 +688,7 @@ implements
    * not been registered.
    */
   getDAG(name: string): DAGType | undefined {
-    return this.dags.get(name);
+    return this.dags.get(ContextResolver.expand(name, {}));
   }
 
   /**
@@ -697,7 +696,7 @@ implements
    * has not been registered.
    */
   getNode(name: string): NodeInterface<NodeStateInterface, string, TServices> | undefined {
-    return this.nodes.get(name);
+    return this.nodes.get(ContextResolver.expand(name, {}));
   }
 
   /**
@@ -927,18 +926,16 @@ implements
    * applied; no code inside the constructor or engine internals ever sees
    * optional fields.
    *
-   * `services` has no sensible default: when the caller does not supply it,
-   * it resolves to `undefined` cast to `TServices`. This is sound when
-   * `TServices = undefined` (the default type parameter). Callers that
-   * specify a non-`undefined` `TServices` must provide `services`; if they
-   * do not, the cast is unsound at their call site — the type system surfaces
-   * the error there, not here.
+   * `services` is optional in `DagonizerOptionsType`; the resolved record carries
+   * the honest `TServices | undefined` (no cast). When `TServices = undefined`
+   * (the default) it is `undefined`; a node that requires a concrete services record
+   * narrows `context.services` and routes to `error` when it is absent.
    */
   static options<TServices = undefined>(
     partial: DagonizerOptionsType<TServices> = {},
   ): Readonly<{
     accessor: StateAccessorInterface;
-    services: TServices;
+    services: TServices | undefined;
     containers: Readonly<Record<string, DagContainerInterface>>;
     channels: Readonly<Record<string, HandoffChannelInterface>>;
     registryVersion: string;
@@ -946,7 +943,7 @@ implements
   }> {
     return {
       'accessor':        partial.accessor ?? DAGONIZER_OPTION_DEFAULTS.accessor,
-      'services':        partial.services as TServices,
+      'services':        partial.services,
       'containers':      partial.containers ?? DAGONIZER_OPTION_DEFAULTS.containers,
       'channels':        partial.channels ?? DAGONIZER_OPTION_DEFAULTS.channels,
       'registryVersion': partial.registryVersion ?? DAGONIZER_OPTION_DEFAULTS.registryVersion,

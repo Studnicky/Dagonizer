@@ -7,7 +7,7 @@
  *     co-import with the pattern surface. Per-item pattern bases extend
  *     `ScalarNode` (which extends `MonadicNode`); hot-path nodes extend
  *     `MonadicNode` directly.
- *   - `AgentServicesType`: typed services bag for agent-flow nodes.
+ *   - `AgentServicesType`: typed services record for agent-flow nodes.
  *   - Agent-flow template-method bases: `BuildChatRequestNode`, `CallModelNode`,
  *     `NormalizeResponseNode`, `DecodeTextToolCallsNode`, `AppendAssistantNode`,
  *     `NormalizeToolCallsNode`, `BuildToolWorksetsNode`, `CollectToolResultsNode`.
@@ -29,6 +29,7 @@ export { MonadicNode } from '../core/MonadicNode.js';
 export type { AgentServicesType } from '../contracts/AgentServicesType.js';
 
 export {
+  AgentBuilder,
   AppendAssistantNode,
   BuildChatRequestNode,
   BuildToolWorksetsNode,
@@ -39,7 +40,7 @@ export {
   NormalizeToolCallsNode,
 } from './agent/index.js';
 
-export type { ToolCallScatterItemType } from './agent/index.js';
+export type { AgentBuilderInterface, AgentLoopNodesType, AgentLoopOptionsType, ToolCallScatterItemType } from './agent/index.js';
 
 export type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
 

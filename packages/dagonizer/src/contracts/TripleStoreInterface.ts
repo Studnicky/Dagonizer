@@ -3,7 +3,7 @@
  *
  * Graph patterns (`RecallContextNode`, `RecordFindingsNode`,
  * `MemoryDigestNode`) operate against this interface; `services.memory`
- * in the consumer's bag must satisfy it. The Archivist's `MemoryStore`
+ * in the consumer's services record must satisfy it. The Archivist's `MemoryStore`
  * (n3-backed, browser-compatible) is the canonical implementation.
  *
  * Kept intentionally narrow: pattern bases only need to assert quads,

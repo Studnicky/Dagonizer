@@ -16,7 +16,7 @@
  * response into a node output.
  */
 
-import { ScalarNode } from '@studnicky/dagonizer';
+import { DAGError, ScalarNode } from '@studnicky/dagonizer';
 import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 import type { ChatRequestType, ChatResponseType, PartialChatRequestType } from '@studnicky/dagonizer/adapter';
 import type { LlmClientInterface } from '@studnicky/dagonizer/patterns';
@@ -53,7 +53,11 @@ export abstract class LlmDispatchNode<
   protected async dispatch(state: TState, context: NodeContextType<RagServicesType>): Promise<ChatResponseType> {
     const prompt = this.composePrompt(state);
     const request: ChatRequestType = ChatRequestBuilder.from(this.composeRequest(prompt, context.signal));
-    return context.services.llm.chat(request);
+    const services = context.services;
+    if (services === undefined) {
+      throw new DAGError('LlmDispatchNode requires a services record carrying an `llm` adapter; the dispatcher was constructed without `services`.');
+    }
+    return services.llm.chat(request);
   }
 
   /**

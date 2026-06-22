@@ -170,6 +170,14 @@
     "./channels": {
       "types": "./dist/channels/index.d.ts",
       "default": "./dist/channels/index.js"
+    },
+    "./runner": {
+      "types": "./dist/runner/index.d.ts",
+      "default": "./dist/runner/index.js"
+    },
+    "./progress": {
+      "types": "./dist/progress/index.d.ts",
+      "default": "./dist/progress/index.js"
     }
   },
   "scripts": {

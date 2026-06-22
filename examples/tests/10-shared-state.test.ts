@@ -11,7 +11,7 @@ import {
 } from '../dags/10-shared-state.ts';
 import type { Services } from '../dags/10-shared-state.ts';
 
-describe('10-shared-state: MemoryStore shared across nodes via services bag', () => {
+describe('10-shared-state: MemoryStore shared across nodes via services record', () => {
   it('entries accumulate in order: step-a, child-step, step-b', async () => {
     const logStore = new MemoryStore();
     const dispatcher = new Dagonizer<NodeStateBase, Services>({ services: { log: logStore } });

@@ -41,7 +41,7 @@ import { GeoResolvers }      from '../services/GeoResolvers.js';
 
 const registry: RegistryModuleInterface = {
   async instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
-    // Reconstruct the services bag in this worker thread.
+    // Reconstruct the services record in this worker thread.
     // useRecordedIp: true  → deterministic fixture replay (no network)
     // useRecordedIp: false → live freeipapi.com IP geolocation
     const useRecorded = servicesConfig['useRecordedIp'] !== false;

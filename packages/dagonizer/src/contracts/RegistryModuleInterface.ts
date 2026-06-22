@@ -7,7 +7,7 @@
  * `RegistryBundleInterface` with the nodes, DAGs, services, and version.
  *
  * Services never cross the boundary — each isolate constructs its own services
- * bag via its registry module.
+ * services record via its registry module.
  */
 
 import type { JsonObjectType } from '../entities/json.js';
@@ -19,7 +19,7 @@ import type { RegistryBundleInterface } from './RegistryBundleInterface.js';
  */
 export interface RegistryModuleInterface<TServices = unknown> {
   /**
-   * Construct the service bag and return the fully initialised bundle.
+   * Construct the services record and return the fully initialised bundle.
    * `servicesConfig` is the opaque JSON object from the `init` message —
    * the registry module interprets it to wire its dependencies. `TServices`
    * defaults to `unknown`; a module that knows its services shape narrows it.

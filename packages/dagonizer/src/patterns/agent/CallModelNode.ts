@@ -23,6 +23,7 @@ import type { NodeContextType } from '../../entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
 import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
+import { DAGError } from '../../errors/DAGError.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class CallModelNode<
@@ -47,7 +48,11 @@ export abstract class CallModelNode<
     _state: TState,
     context: NodeContextType<AgentServicesType>,
   ): LlmAdapterInterface {
-    return context.services.llm;
+    const services = context.services;
+    if (services === undefined) {
+      throw new DAGError('CallModelNode requires a services record carrying an `llm` adapter; the dispatcher was constructed without `services`.');
+    }
+    return services.llm;
   }
 
   /** Read the prepared chat request from state. */

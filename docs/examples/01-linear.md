@@ -43,6 +43,6 @@ The `#linear-run` region covers the dispatcher construction, molecular sub-DAG r
 - **Bundle registration order.** Each sub-DAG ships a `DispatcherBundleType` (its nodes plus its DAG); `dispatcher.registerBundle(bundle)` installs every node before the DAG. Register the embedded-DAG bundles (`bookSearchScatterBundle`, `composeRetryLoopBundle`) before the parent `archivistBundle`. The dispatcher validates all node references at registration time.
 - **Single execute call.** `dispatcher.execute('the-archivist', visitor)` drives the entire multi-branch flow. The caller sees one `ExecutionResult<ArchivistState>` containing the final state and lifecycle.
 - **Lifecycle result.** `result.state.lifecycle.variant` is `'completed'`, `'cancelled'`, or `'timed_out'`. Nodes never throw; the dispatcher always returns.
-- **Services bag.** Every node receives `context.services` (LLM, search tools, memory, logger). Nodes never construct their own clients.
+- **Services record.** Every node receives `context.services` (LLM, search tools, memory, logger). Nodes never construct their own clients.
 
 See this in action in the [Archivist live demo](./the-archivist).

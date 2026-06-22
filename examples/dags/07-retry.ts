@@ -67,7 +67,7 @@ export class FetchNode extends ScalarNode<FetchState, 'success' | 'error'> {
     const downstream = new FlakyDownstream();
     try {
       // policy.run() re-invokes downstream.call() until it succeeds or
-      // maxAttempts is reached. The options bag passes context.signal so
+      // maxAttempts is reached. The options object passes context.signal so
       // an abort cancels the wait between retries immediately.
       state.result = await policy.run(() => downstream.call(), { signal: context.signal });
       return NodeOutputBuilder.of('success');

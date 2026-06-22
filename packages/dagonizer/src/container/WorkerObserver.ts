@@ -54,7 +54,7 @@ export class WorkerObserver<
 
   /**
    * Emit an instrumentation BridgeMessage on the channel. Required positional:
-   * `hook` and `composedPath`. Optional trailing bag for hook-specific fields;
+   * `hook` and `composedPath`. Optional trailing options object for hook-specific fields;
    * all default to schema-safe sentinels so the emitted message is always valid.
    */
   #emit(

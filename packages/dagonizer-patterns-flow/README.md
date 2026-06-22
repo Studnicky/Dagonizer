@@ -12,7 +12,7 @@ npm install @studnicky/dagonizer @studnicky/dagonizer-patterns-flow
 
 ```
 MonadicNode (root)
-└── FlowNode<TState>                          (no services bag)
+└── FlowNode<TState>                          (no services record)
     ├── SelectNode<TState, TItem>             (pick/sort from list)
     │   ├── PickByScoreNode<TItem>
     │   └── SortByNode<TItem>
