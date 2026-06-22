@@ -18,7 +18,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { Term } from 'n3';
 
@@ -51,7 +51,7 @@ export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 
     this.services = services;
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     const memory = this.services.memory;
     const currentGraph = MemoryStore.stateGraphIri(state.runId).value;
 

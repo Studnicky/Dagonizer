@@ -51,7 +51,15 @@ export class ExtractQueryNode extends ScalarNode<ArchivistState, 'success' | 're
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
     try {
-      state.terms = await this.services.llm.extractTerms(state.query, signal);
+      const terms = await this.services.llm.extractTerms(state.query, signal);
+      if (terms.length === 0) {
+        if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
+          return NodeOutputBuilder.of('retry');
+        }
+        state.clearAttempts(context.nodeName);
+        return NodeOutputBuilder.of('salvage');
+      }
+      state.terms = terms;
       state.clearAttempts(context.nodeName);
       return NodeOutputBuilder.of('success');
     } catch (err) {

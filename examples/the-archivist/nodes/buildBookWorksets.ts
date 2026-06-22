@@ -22,7 +22,7 @@
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer';
+import type { NodeOutputType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/types';
 
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -47,7 +47,6 @@ export class BuildBookWorksetsNode extends ScalarNode<ArchivistState, 'ready'> {
 
   protected override async executeOne(
     state: ArchivistState,
-    _context: NodeContextType,
   ): Promise<NodeOutputType<'ready'>> {
     const worksets: BookWorksetItemType[] = [];
 

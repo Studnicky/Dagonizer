@@ -114,56 +114,59 @@ export class DagHost {
       return;
     }
 
-    // Exhaustive typed switch: TypeScript narrows `message` on each `variant` arm,
-    // eliminating the need for `as` casts inside each handler. The R3
-    // fire-and-forget pattern for 'execute' is preserved — the error is
-    // captured and sent as a channel message rather than leaking an unhandled
-    // rejection. Unknown variants (host→parent messages) are unexpected here but
-    // must not crash the host.
-    const messageVariant = message.variant;
-    switch (message.variant) {
-      case 'init': {
-        const servicesConfig = JsonObject.is(message.servicesConfig) ? message.servicesConfig : {};
+    // Dispatch map over variant: handlers are keyed by message variant.
+    // DagHost receives only parent→host messages; host→parent messages are
+    // unexpected on this side but must not crash the host — the fallback
+    // sends an UNEXPECTED_MESSAGE error for any unknown variant.
+    type HostMsg = typeof message;
+    const variantDispatch: Partial<Record<HostMsg['variant'], (m: HostMsg) => Promise<void> | void>> = {
+      'init': async (m) => {
+        const im = m as HostMsg & { variant: 'init' };
+        const servicesConfig = JsonObject.is(im.servicesConfig) ? im.servicesConfig : {};
         await this.#handleInit(
-          message.registryModule,
-          message.registryVersion,
+          im.registryModule,
+          im.registryVersion,
           servicesConfig,
-          message.keyingScheme ?? 'name',
+          im.keyingScheme ?? 'name',
         );
-        break;
-      }
-      case 'execute':
+      },
+      'execute': (m) => {
+        const em = m as HostMsg & { variant: 'execute' };
         // R3: fire-and-forget with error capture so failures reach the caller.
-        this.#handleExecute(message.request.correlationId, message.request).catch((err: unknown) => {
+        this.#handleExecute(em.request.correlationId, em.request).catch((err: unknown) => {
           const errMsg = err instanceof Error ? err.message : String(err);
           try {
             this.#channel.send({
               'variant': 'error',
-              'correlationId': message.request.correlationId,
+              'correlationId': em.request.correlationId,
               'code': 'INTERNAL_ERROR',
               'message': `DagHost execute error: ${errMsg}`,
               'recoverable': false,
             });
           } catch { /* channel closed — suppress */ }
         });
-        break;
-      case 'abort':
-        this.#handleAbort(message.correlationId, message.reason);
-        break;
-      case 'shutdown':
+      },
+      'abort': (m) => {
+        const am = m as HostMsg & { variant: 'abort' };
+        this.#handleAbort(am.correlationId, am.reason);
+      },
+      'shutdown': async () => {
         await this.#handleShutdown();
-        break;
-      default:
-        // DagHost receives only parent→host messages; host→parent messages are
-        // unexpected on this side but must not crash the host.
-        this.#channel.send({
-          'variant': 'error',
-          'correlationId': null,
-          'code': 'UNEXPECTED_MESSAGE',
-          'message': `DagHost received unexpected message variant: ${messageVariant}`,
-          'recoverable': true,
-        });
-        break;
+      },
+    };
+
+    const handler = variantDispatch[message.variant];
+    if (handler !== undefined) {
+      await handler(message);
+    } else {
+      // Unknown variant: host→parent messages arriving on this side are unexpected.
+      this.#channel.send({
+        'variant': 'error',
+        'correlationId': null,
+        'code': 'UNEXPECTED_MESSAGE',
+        'message': `DagHost received unexpected message variant: ${String(message.variant)}`,
+        'recoverable': true,
+      });
     }
   }
 

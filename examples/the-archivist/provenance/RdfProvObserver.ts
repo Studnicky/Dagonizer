@@ -11,9 +11,9 @@
  * The observer is engine-agnostic: it doesn't know about ArchivistState
  * fields, only about the lifecycle events the dispatcher fires.
  *
- * Wire it into an `ObservedDagonizer` via the `observer:` option;
- * `onFlowStart`/`onNodeStart`/`onNodeEnd`/`onError`/`onFlowEnd` all
- * call `record*` here, which immediately writes quads into the store.
+ * Wire it into an `ObservedDag` subclass by calling `record*` from the
+ * overridden lifecycle hooks. `onFlowStart`/`onNodeStart`/`onNodeEnd`/
+ * `onError`/`onFlowEnd` all write quads into the store immediately.
  */
 
 import type { NamedNode } from 'n3';

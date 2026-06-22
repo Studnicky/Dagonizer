@@ -93,7 +93,7 @@ export class WikipediaSummaryTool implements ToolInterface<WikipediaInputType, r
       : `urn:wiki:${CanonicalId.slugify(payload.title)}`;
 
     const notes: Record<string, unknown> = {
-      '_sources': ['wikipedia'],
+      'sources': ['wikipedia'],
       ...(payload.thumbnail?.source !== undefined           && { 'thumbnail': payload.thumbnail.source }),
       ...(payload.content_urls?.desktop?.page !== undefined && { 'wikiUrl':   payload.content_urls.desktop.page }),
       ...(payload.description !== undefined                 && { 'wikiKind':  payload.description }),

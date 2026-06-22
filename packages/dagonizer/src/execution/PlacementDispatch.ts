@@ -87,46 +87,46 @@ export class PlacementDispatch {
     placementPath: readonly string[],
     bufferIntermediates: boolean,
   ): Promise<RunNodeResultType> {
-    switch (entry['@type']) {
-      case 'EmbeddedDAGNode': {
+    // Dispatch map over @type: each handler is keyed by the placement discriminant.
+    // SingleNode is handled structurally by the work-set scheduler (via
+    // #fireSinglePlacement) before executeDAGNode is called; its entry keeps the
+    // routing exhaustive over the DAGNodeType['@type'] union. TerminalNode /
+    // PhaseNode are handled before executeDAGNode in runNodes; their entries
+    // synthesise the no-op result the union requires.
+    const typeDispatch: Record<DAGNodeType['@type'], (e: DAGNodeType) => Promise<RunNodeResultType>> = {
+      'EmbeddedDAGNode': (e) => {
         // Placement.isEmbeddedDAG guard: @type === 'EmbeddedDAGNode' confirmed by
-        // the dispatch branch; guard makes the narrowing explicit.
-        if (!Placement.isEmbeddedDAG(entry)) throw new DAGError(`Dispatch type mismatch: expected EmbeddedDAGNode`);
-        return this.#embedded.executeEmbeddedDAG(entry, state, signal, placementPath, bufferIntermediates);
-      }
-      case 'ScatterNode': {
-        if (!Placement.isScatter(entry)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);
-        return this.#scatter.executeScatter(entry, state, dagName, signal, placementPath);
-      }
-      // SingleNode is handled structurally by the work-set scheduler (via
-      // #fireSinglePlacement) before executeDAGNode is called; this branch is
-      // unreachable in normal operation but keeps the dispatch exhaustive over
-      // the DAGNodeType['@type'] union. executeSingleNode is preserved here so
-      // the method is not flagged as unused by static analysis.
-      case 'SingleNode': {
-        if (!Placement.isSingle(entry)) throw new DAGError(`Dispatch type mismatch: expected SingleNode`);
-        return this.#leaf.executeSingleNode(entry, state, dagName, signal);
-      }
-      // TerminalNode / PhaseNode are handled before executeDAGNode in runNodes;
-      // these branches are unreachable in normal operation but keep the dispatch
-      // exhaustive over the node `@type` union.
-      case 'TerminalNode': {
-        if (!Placement.isTerminal(entry)) throw new DAGError(`Dispatch type mismatch: expected TerminalNode`);
+        // the dispatch key; guard makes the narrowing explicit.
+        if (!Placement.isEmbeddedDAG(e)) throw new DAGError(`Dispatch type mismatch: expected EmbeddedDAGNode`);
+        return this.#embedded.executeEmbeddedDAG(e, state, signal, placementPath, bufferIntermediates);
+      },
+      'ScatterNode': (e) => {
+        if (!Placement.isScatter(e)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);
+        return this.#scatter.executeScatter(e, state, dagName, signal, placementPath);
+      },
+      'SingleNode': (e) => {
+        if (!Placement.isSingle(e)) throw new DAGError(`Dispatch type mismatch: expected SingleNode`);
+        return this.#leaf.executeSingleNode(e, state, dagName, signal);
+      },
+      'TerminalNode': (e) => {
+        if (!Placement.isTerminal(e)) throw new DAGError(`Dispatch type mismatch: expected TerminalNode`);
         return Promise.resolve({ 'nextStage': null, 'result': {
-          'output': entry.outcome, 'skipped': false, 'nodeName': entry.name, state, 'intermediateResults': [],
+          'output': e.outcome, 'skipped': false, 'nodeName': e.name, state, 'intermediateResults': [],
         } });
-      }
-      case 'PhaseNode': {
-        if (!Placement.isPhase(entry)) throw new DAGError(`Dispatch type mismatch: expected PhaseNode`);
+      },
+      'PhaseNode': (e) => {
+        if (!Placement.isPhase(e)) throw new DAGError(`Dispatch type mismatch: expected PhaseNode`);
         return Promise.resolve({ 'nextStage': null, 'result': {
-          'output': entry.phase, 'skipped': true, 'nodeName': entry.name, state, 'intermediateResults': [],
+          'output': e.phase, 'skipped': true, 'nodeName': e.name, state, 'intermediateResults': [],
         } });
-      }
-      default: {
-        // Exhaustive over DAGNodeType['@type']; an unknown type is a contract
-        // violation, mirroring the prior dispatch-map `undefined` handler.
-        throw new DAGError(`Unknown node type: ${String(entry['@type'])}`);
-      }
+      },
+    };
+
+    const handler = typeDispatch[entry['@type']];
+    if (handler === undefined) {
+      // Exhaustive over DAGNodeType['@type']; an unknown type is a contract violation.
+      throw new DAGError(`Unknown node type: ${String(entry['@type'])}`);
     }
+    return handler(entry);
   }
 }

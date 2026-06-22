@@ -31,7 +31,7 @@ Protected `on*` hooks on `Dagonizer` fire at every execution boundary. Subclass 
 
 ## Subclass hooks
 
-<<< @/../examples/the-archivist/ObservedArchivist.ts#observed-archivist
+<<< @/../examples/the-archivist/ObservedDag.ts#observed-dag
 
 All seven default to no-ops. Override only the hooks you need. Multi-observer composition (logger plus tracer plus metrics) is a subclass concern: write it into the subclass body.
 

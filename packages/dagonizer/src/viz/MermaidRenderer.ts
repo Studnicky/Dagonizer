@@ -345,38 +345,40 @@ export class MermaidRenderer {
   /** Render a placement's Mermaid shape syntax (rectangle / trapezoid / double-circle / flag). */
   private static renderShape(placement: PlacementEntryType): string {
     const label = MermaidRenderer.escapeLabel(placement.name);
-    switch (placement['@type']) {
-      case 'SingleNode':
-        return `${placement.name}[${label}]`;
-      case 'ScatterNode': {
-        if (placement.reservoir !== undefined) {
+    const shapeDispatch: Record<PlacementEntryType['@type'], (p: PlacementEntryType) => string> = {
+      'SingleNode': () => `${placement.name}[${label}]`,
+      'ScatterNode': (p) => {
+        const sp = p as PlacementEntryType & { '@type': 'ScatterNode' };
+        if (sp.reservoir !== undefined) {
           // Reservoir-configured scatter: augment label with key/capacity marker.
           // Per-key fill and per-firing batch size are runtime values — the
           // animation layer renders them from observer buffer-size deltas.
           const reservoirLabel = MermaidRenderer.escapeLabel(
-            `${placement.name}\\n▣ ${placement.reservoir.keyField} ×${placement.reservoir.capacity}`,
+            `${placement.name}\\n▣ ${sp.reservoir.keyField} ×${sp.reservoir.capacity}`,
           );
           return `${placement.name}[/${reservoirLabel}/]`;
         }
         // Plain scatter (no reservoir): trapezoid shape.
         return `${placement.name}[/${label}/]`;
-      }
-      case 'EmbeddedDAGNode':
-        // subroutine shape: a nested sub-DAG invocation
-        return `${placement.name}[[${label}]]`;
-      case 'TerminalNode': {
-        const outcomeLabel = MermaidRenderer.escapeLabel(`${placement.name}\\n(${placement.outcome})`);
-        if (placement.outcome === 'completed') {
+      },
+      'EmbeddedDAGNode': () => `${placement.name}[[${label}]]`,
+      'TerminalNode': (p) => {
+        const tp = p as PlacementEntryType & { '@type': 'TerminalNode' };
+        const outcomeLabel = MermaidRenderer.escapeLabel(`${placement.name}\\n(${tp.outcome})`);
+        if (tp.outcome === 'completed') {
           // double-circle: connotes "final state" in Mermaid
           return `${placement.name}(((${outcomeLabel})))`;
         }
         // asymmetric / flag shape for failed terminals
         return `${placement.name}>${outcomeLabel}]`;
-      }
-      case 'PhaseNode':
+      },
+      'PhaseNode': (p) => {
+        const pp = p as PlacementEntryType & { '@type': 'PhaseNode' };
         // stadium shape: connotes a lifecycle hook (pre/post) wrapping a node
-        return `${placement.name}([${MermaidRenderer.escapeLabel(placement.name)} (${placement.phase})])`;
-    }
+        return `${placement.name}([${MermaidRenderer.escapeLabel(placement.name)} (${pp.phase})])`;
+      },
+    };
+    return shapeDispatch[placement['@type']](placement);
   }
 
   /** Render a placement's outbound edges as `from -->|label| to` lines. */

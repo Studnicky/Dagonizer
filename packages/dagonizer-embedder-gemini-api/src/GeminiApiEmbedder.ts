@@ -88,7 +88,7 @@ export class GeminiApiEmbedder extends BaseEmbedder {
    * Probe true when a non-empty API key was supplied. Never throws.
    * Symmetric with `GeminiApiAdapter.probe`.
    */
-  override async probe(_options?: AbortableOptionsType): Promise<boolean> {
+  override async probe(): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 

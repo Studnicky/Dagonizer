@@ -9,7 +9,7 @@
 
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { BindingType, SlotPatternType } from '@studnicky/dagonizer/patterns';
-import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { GraphNode } from './GraphNode.js';
 
@@ -24,7 +24,6 @@ export abstract class RecallContextNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextType,
   ): Promise<NodeOutputType<'success' | 'empty'>> {
     const pattern = this.composeQuery(state);
     const rows = this.memory.select(pattern);

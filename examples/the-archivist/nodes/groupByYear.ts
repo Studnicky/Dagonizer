@@ -13,7 +13,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -27,7 +27,7 @@ export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered'> {
     };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     if (state.candidates.length === 0) {
       return NodeOutputBuilder.of('ordered');
     }

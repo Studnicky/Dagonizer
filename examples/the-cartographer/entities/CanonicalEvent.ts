@@ -208,7 +208,157 @@ const DELIVERY_BODY_DEFAULT: DeliveryConfirmationEvent['body'] = {
   'specialCategory':       'none',
 };
 
+interface FromSourcePayloadContext {
+  readonly envelope: {
+    readonly shipmentId: string;
+    readonly eventId: string;
+    readonly epochMs: number;
+    readonly sourceId: string;
+    readonly sourceFormat: PositionPingEvent['sourceFormat'];
+    readonly sourceCompression: PositionPingEvent['sourceCompression'];
+  };
+  readonly decoded: Record<string, unknown>;
+  readonly sharedGeo: {
+    readonly scanSeq: number;
+    readonly latitude: number;
+    readonly longitude: number;
+    readonly ipAddress: string;
+    readonly legFromLat: number;
+    readonly legFromLng: number;
+    readonly originLat: number;
+    readonly originLng: number;
+    readonly destLat: number;
+    readonly destLng: number;
+    readonly carrier: string;
+    readonly status: string;
+    readonly rawTimestamp: string;
+  };
+  readonly preResolvedGeo: { readonly country: string; readonly continent: string; readonly region: string } | undefined;
+}
+
 export class CanonicalEventVariantBuilder {
+  private static readonly fromSourcePayloadDispatch: Readonly<Record<string, (ctx: FromSourcePayloadContext) => CanonicalEventVariant>> = {
+    'position-ping': ({ envelope, sharedGeo, preResolvedGeo }) => {
+      const body: PositionPingEvent['body'] = {
+        'scanSeq':      sharedGeo.scanSeq,
+        'latitude':     sharedGeo.latitude,
+        'longitude':    sharedGeo.longitude,
+        'ipAddress':    sharedGeo.ipAddress,
+        'legFromLat':   sharedGeo.legFromLat,
+        'legFromLng':   sharedGeo.legFromLng,
+        'originLat':    sharedGeo.originLat,
+        'originLng':    sharedGeo.originLng,
+        'destLat':      sharedGeo.destLat,
+        'destLng':      sharedGeo.destLng,
+        'carrier':      sharedGeo.carrier,
+        'status':       sharedGeo.status,
+        'rawTimestamp': sharedGeo.rawTimestamp.length > 0 ? sharedGeo.rawTimestamp : POSITION_PING_BODY_DEFAULT.rawTimestamp,
+      };
+      return { ...envelope, 'eventType': 'position-ping', 'body': body, ...(preResolvedGeo !== undefined && { 'geo': preResolvedGeo }) };
+    },
+    'facility-scan': ({ envelope, decoded, sharedGeo, preResolvedGeo }) => {
+      const body: FacilityScanEvent['body'] = {
+        'scanSeq':               sharedGeo.scanSeq,
+        'latitude':              sharedGeo.latitude,
+        'longitude':             sharedGeo.longitude,
+        'ipAddress':             sharedGeo.ipAddress,
+        'legFromLat':            sharedGeo.legFromLat,
+        'legFromLng':            sharedGeo.legFromLng,
+        'originLat':             sharedGeo.originLat,
+        'originLng':             sharedGeo.originLng,
+        'destLat':               sharedGeo.destLat,
+        'destLng':               sharedGeo.destLng,
+        'carrier':               sharedGeo.carrier,
+        'status':                sharedGeo.status,
+        'rawTimestamp':          sharedGeo.rawTimestamp.length > 0 ? sharedGeo.rawTimestamp : FACILITY_SCAN_BODY_DEFAULT.rawTimestamp,
+        'facilityId':            CanonicalEventVariantBuilder.str(decoded['facilityId']),
+        'weight':                CanonicalEventVariantBuilder.num(decoded['weight']),
+        'weightUnit':            CanonicalEventVariantBuilder.weightUnit(decoded['weightUnit']),
+        'lineItems':             CanonicalEventVariantBuilder.lineItems(decoded['lineItems']),
+        'rawDispatchAt':         CanonicalEventVariantBuilder.str(decoded['dispatchRaw']),
+        'rawPromisedDeliveryAt': CanonicalEventVariantBuilder.str(decoded['promisedRaw']),
+        'disruptionReason':      CanonicalEventVariantBuilder.str(decoded['disruptionReason']),
+        'recipientName':         CanonicalEventVariantBuilder.str(decoded['recipientName']),
+        'recipientEmail':        CanonicalEventVariantBuilder.str(decoded['recipientEmail']),
+        'recipientPhone':        CanonicalEventVariantBuilder.str(decoded['recipientPhone']),
+        'recipientAddress':      CanonicalEventVariantBuilder.str(decoded['recipientAddress']),
+        'recipientCountry':      CanonicalEventVariantBuilder.str(decoded['recipientCountry']),
+        'marketingConsent':      CanonicalEventVariantBuilder.bool(decoded['marketingConsent']),
+        'lawfulBasis':           CanonicalEventVariantBuilder.lawfulBasis(decoded['lawfulBasis']),
+        'specialCategory':       CanonicalEventVariantBuilder.specialCategory(decoded['specialCategory']),
+      };
+      return { ...envelope, 'eventType': 'facility-scan', 'body': body, ...(preResolvedGeo !== undefined && { 'geo': preResolvedGeo }) };
+    },
+    'sensor-reading': ({ envelope, decoded, sharedGeo, preResolvedGeo }) => {
+      const body: SensorReadingEvent['body'] = {
+        'scanSeq':      sharedGeo.scanSeq,
+        'latitude':     sharedGeo.latitude,
+        'longitude':    sharedGeo.longitude,
+        'ipAddress':    sharedGeo.ipAddress,
+        'legFromLat':   sharedGeo.legFromLat,
+        'legFromLng':   sharedGeo.legFromLng,
+        'originLat':    sharedGeo.originLat,
+        'originLng':    sharedGeo.originLng,
+        'destLat':      sharedGeo.destLat,
+        'destLng':      sharedGeo.destLng,
+        'carrier':      sharedGeo.carrier,
+        'status':       sharedGeo.status,
+        'rawTimestamp': sharedGeo.rawTimestamp.length > 0 ? sharedGeo.rawTimestamp : SENSOR_READING_BODY_DEFAULT.rawTimestamp,
+        'tempC':        CanonicalEventVariantBuilder.num(decoded['tempC']),
+        'humidityPct':  CanonicalEventVariantBuilder.num(decoded['humidityPct']),
+        'shockG':       CanonicalEventVariantBuilder.num(decoded['shockG']),
+      };
+      return { ...envelope, 'eventType': 'sensor-reading', 'body': body, ...(preResolvedGeo !== undefined && { 'geo': preResolvedGeo }) };
+    },
+    'customs-event': ({ envelope, decoded, sharedGeo, preResolvedGeo }) => {
+      const body: CustomsEvent['body'] = {
+        'scanSeq':       sharedGeo.scanSeq,
+        'latitude':      sharedGeo.latitude,
+        'longitude':     sharedGeo.longitude,
+        'ipAddress':     sharedGeo.ipAddress,
+        'legFromLat':    sharedGeo.legFromLat,
+        'legFromLng':    sharedGeo.legFromLng,
+        'originLat':     sharedGeo.originLat,
+        'originLng':     sharedGeo.originLng,
+        'destLat':       sharedGeo.destLat,
+        'destLng':       sharedGeo.destLng,
+        'carrier':       sharedGeo.carrier,
+        'status':        sharedGeo.status,
+        'rawTimestamp':  sharedGeo.rawTimestamp.length > 0 ? sharedGeo.rawTimestamp : CUSTOMS_EVENT_BODY_DEFAULT.rawTimestamp,
+        'customsStatus': CanonicalEventVariantBuilder.str(decoded['customsStatus']),
+      };
+      return { ...envelope, 'eventType': 'customs-event', 'body': body, ...(preResolvedGeo !== undefined && { 'geo': preResolvedGeo }) };
+    },
+    'delivery-confirmation': ({ envelope, decoded, sharedGeo, preResolvedGeo }) => {
+      const body: DeliveryConfirmationEvent['body'] = {
+        'scanSeq':               sharedGeo.scanSeq,
+        'latitude':              sharedGeo.latitude,
+        'longitude':             sharedGeo.longitude,
+        'ipAddress':             sharedGeo.ipAddress,
+        'legFromLat':            sharedGeo.legFromLat,
+        'legFromLng':            sharedGeo.legFromLng,
+        'originLat':             sharedGeo.originLat,
+        'originLng':             sharedGeo.originLng,
+        'destLat':               sharedGeo.destLat,
+        'destLng':               sharedGeo.destLng,
+        'carrier':               sharedGeo.carrier,
+        'status':                sharedGeo.status,
+        'rawTimestamp':          sharedGeo.rawTimestamp.length > 0 ? sharedGeo.rawTimestamp : DELIVERY_BODY_DEFAULT.rawTimestamp,
+        'delivered':             CanonicalEventVariantBuilder.bool(decoded['delivered']),
+        'rawPromisedDeliveryAt': CanonicalEventVariantBuilder.str(decoded['promisedRaw']),
+        'disruptionReason':      CanonicalEventVariantBuilder.str(decoded['disruptionReason']),
+        'recipientName':         CanonicalEventVariantBuilder.str(decoded['recipientName']),
+        'recipientEmail':        CanonicalEventVariantBuilder.str(decoded['recipientEmail']),
+        'recipientPhone':        CanonicalEventVariantBuilder.str(decoded['recipientPhone']),
+        'recipientAddress':      CanonicalEventVariantBuilder.str(decoded['recipientAddress']),
+        'recipientCountry':      CanonicalEventVariantBuilder.str(decoded['recipientCountry']),
+        'marketingConsent':      CanonicalEventVariantBuilder.bool(decoded['marketingConsent']),
+        'lawfulBasis':           CanonicalEventVariantBuilder.lawfulBasis(decoded['lawfulBasis']),
+        'specialCategory':       CanonicalEventVariantBuilder.specialCategory(decoded['specialCategory']),
+      };
+      return { ...envelope, 'eventType': 'delivery-confirmation', 'body': body, ...(preResolvedGeo !== undefined && { 'geo': preResolvedGeo }) };
+    },
+  };
   /**
    * Type-guard for CanonicalEventVariant. Narrows `unknown` to the discriminated
    * union by verifying the object shape and eventType discriminant.
@@ -337,162 +487,39 @@ export class CanonicalEventVariantBuilder {
       ? { 'country': geoCountry, 'continent': geoContinent, 'region': geoRegion }
       : undefined;
 
-    switch (payload.eventType) {
-      case 'position-ping': {
-        const body: PositionPingEvent['body'] = {
-          'scanSeq':      scanSeq,
-          'latitude':     latitude,
-          'longitude':    longitude,
-          'ipAddress':    ipAddress,
-          'legFromLat':   legFromLat,
-          'legFromLng':   legFromLng,
-          'originLat':    originLat,
-          'originLng':    originLng,
-          'destLat':      destLat,
-          'destLng':      destLng,
-          'carrier':      carrier,
-          'status':       status,
-          'rawTimestamp': rawTimestamp.length > 0 ? rawTimestamp : POSITION_PING_BODY_DEFAULT.rawTimestamp,
-        };
-        const variant: PositionPingEvent = {
-          ...envelope,
-          'eventType': 'position-ping',
-          'body': body,
-          ...(preResolvedGeo !== undefined && { 'geo': preResolvedGeo }),
-        };
-        return variant;
-      }
+    return CanonicalEventVariantBuilder.resolveFromSourcePayloadHandler(payload.eventType)({
+      envelope,
+      decoded,
+      sharedGeo: {
+        scanSeq, latitude, longitude, ipAddress,
+        legFromLat, legFromLng, originLat, originLng,
+        destLat, destLng, carrier, status, rawTimestamp,
+      },
+      preResolvedGeo,
+    });
+  }
 
-      case 'facility-scan': {
-        const body: FacilityScanEvent['body'] = {
-          'scanSeq':               scanSeq,
-          'latitude':              latitude,
-          'longitude':             longitude,
-          'ipAddress':             ipAddress,
-          'legFromLat':            legFromLat,
-          'legFromLng':            legFromLng,
-          'originLat':             originLat,
-          'originLng':             originLng,
-          'destLat':               destLat,
-          'destLng':               destLng,
-          'carrier':               carrier,
-          'status':                status,
-          'rawTimestamp':          rawTimestamp.length > 0 ? rawTimestamp : FACILITY_SCAN_BODY_DEFAULT.rawTimestamp,
-          'facilityId':            CanonicalEventVariantBuilder.str(decoded['facilityId']),
-          'weight':                CanonicalEventVariantBuilder.num(decoded['weight']),
-          'weightUnit':            CanonicalEventVariantBuilder.weightUnit(decoded['weightUnit']),
-          'lineItems':             CanonicalEventVariantBuilder.lineItems(decoded['lineItems']),
-          'rawDispatchAt':         CanonicalEventVariantBuilder.str(decoded['dispatchRaw']),
-          'rawPromisedDeliveryAt': CanonicalEventVariantBuilder.str(decoded['promisedRaw']),
-          'disruptionReason':      CanonicalEventVariantBuilder.str(decoded['disruptionReason']),
-          'recipientName':         CanonicalEventVariantBuilder.str(decoded['recipientName']),
-          'recipientEmail':        CanonicalEventVariantBuilder.str(decoded['recipientEmail']),
-          'recipientPhone':        CanonicalEventVariantBuilder.str(decoded['recipientPhone']),
-          'recipientAddress':      CanonicalEventVariantBuilder.str(decoded['recipientAddress']),
-          'recipientCountry':      CanonicalEventVariantBuilder.str(decoded['recipientCountry']),
-          'marketingConsent':      CanonicalEventVariantBuilder.bool(decoded['marketingConsent']),
-          'lawfulBasis':           CanonicalEventVariantBuilder.lawfulBasis(decoded['lawfulBasis']),
-          'specialCategory':       CanonicalEventVariantBuilder.specialCategory(decoded['specialCategory']),
-        };
-        const variant: FacilityScanEvent = {
-          ...envelope,
-          'eventType': 'facility-scan',
-          'body': body,
-          ...(preResolvedGeo !== undefined && { 'geo': preResolvedGeo }),
-        };
-        return variant;
-      }
-
-      case 'sensor-reading': {
-        const body: SensorReadingEvent['body'] = {
-          'scanSeq':      scanSeq,
-          'latitude':     latitude,
-          'longitude':    longitude,
-          'ipAddress':    ipAddress,
-          'legFromLat':   legFromLat,
-          'legFromLng':   legFromLng,
-          'originLat':    originLat,
-          'originLng':    originLng,
-          'destLat':      destLat,
-          'destLng':      destLng,
-          'carrier':      carrier,
-          'status':       status,
-          'rawTimestamp': rawTimestamp.length > 0 ? rawTimestamp : SENSOR_READING_BODY_DEFAULT.rawTimestamp,
-          'tempC':        CanonicalEventVariantBuilder.num(decoded['tempC']),
-          'humidityPct':  CanonicalEventVariantBuilder.num(decoded['humidityPct']),
-          'shockG':       CanonicalEventVariantBuilder.num(decoded['shockG']),
-        };
-        const variant: SensorReadingEvent = {
-          ...envelope,
-          'eventType': 'sensor-reading',
-          'body': body,
-          ...(preResolvedGeo !== undefined && { 'geo': preResolvedGeo }),
-        };
-        return variant;
-      }
-
-      case 'customs-event': {
-        const body: CustomsEvent['body'] = {
-          'scanSeq':       scanSeq,
-          'latitude':      latitude,
-          'longitude':     longitude,
-          'ipAddress':     ipAddress,
-          'legFromLat':    legFromLat,
-          'legFromLng':    legFromLng,
-          'originLat':     originLat,
-          'originLng':     originLng,
-          'destLat':       destLat,
-          'destLng':       destLng,
-          'carrier':       carrier,
-          'status':        status,
-          'rawTimestamp':  rawTimestamp.length > 0 ? rawTimestamp : CUSTOMS_EVENT_BODY_DEFAULT.rawTimestamp,
-          'customsStatus': CanonicalEventVariantBuilder.str(decoded['customsStatus']),
-        };
-        const variant: CustomsEvent = {
-          ...envelope,
-          'eventType': 'customs-event',
-          'body': body,
-          ...(preResolvedGeo !== undefined && { 'geo': preResolvedGeo }),
-        };
-        return variant;
-      }
-
-      case 'delivery-confirmation': {
-        const body: DeliveryConfirmationEvent['body'] = {
-          'scanSeq':               scanSeq,
-          'latitude':              latitude,
-          'longitude':             longitude,
-          'ipAddress':             ipAddress,
-          'legFromLat':            legFromLat,
-          'legFromLng':            legFromLng,
-          'originLat':             originLat,
-          'originLng':             originLng,
-          'destLat':               destLat,
-          'destLng':               destLng,
-          'carrier':               carrier,
-          'status':                status,
-          'rawTimestamp':          rawTimestamp.length > 0 ? rawTimestamp : DELIVERY_BODY_DEFAULT.rawTimestamp,
-          'delivered':             CanonicalEventVariantBuilder.bool(decoded['delivered']),
-          'rawPromisedDeliveryAt': CanonicalEventVariantBuilder.str(decoded['promisedRaw']),
-          'disruptionReason':      CanonicalEventVariantBuilder.str(decoded['disruptionReason']),
-          'recipientName':         CanonicalEventVariantBuilder.str(decoded['recipientName']),
-          'recipientEmail':        CanonicalEventVariantBuilder.str(decoded['recipientEmail']),
-          'recipientPhone':        CanonicalEventVariantBuilder.str(decoded['recipientPhone']),
-          'recipientAddress':      CanonicalEventVariantBuilder.str(decoded['recipientAddress']),
-          'recipientCountry':      CanonicalEventVariantBuilder.str(decoded['recipientCountry']),
-          'marketingConsent':      CanonicalEventVariantBuilder.bool(decoded['marketingConsent']),
-          'lawfulBasis':           CanonicalEventVariantBuilder.lawfulBasis(decoded['lawfulBasis']),
-          'specialCategory':       CanonicalEventVariantBuilder.specialCategory(decoded['specialCategory']),
-        };
-        const variant: DeliveryConfirmationEvent = {
-          ...envelope,
-          'eventType': 'delivery-confirmation',
-          'body': body,
-          ...(preResolvedGeo !== undefined && { 'geo': preResolvedGeo }),
-        };
-        return variant;
-      }
-    }
+  private static resolveFromSourcePayloadHandler(eventType: string): (ctx: FromSourcePayloadContext) => CanonicalEventVariant {
+    const positionPingHandler = CanonicalEventVariantBuilder.fromSourcePayloadDispatch['position-ping'];
+    const fallback = (ctx: FromSourcePayloadContext): CanonicalEventVariant => {
+      const body: PositionPingEvent['body'] = {
+        'scanSeq':      ctx.sharedGeo.scanSeq,
+        'latitude':     ctx.sharedGeo.latitude,
+        'longitude':    ctx.sharedGeo.longitude,
+        'ipAddress':    ctx.sharedGeo.ipAddress,
+        'legFromLat':   ctx.sharedGeo.legFromLat,
+        'legFromLng':   ctx.sharedGeo.legFromLng,
+        'originLat':    ctx.sharedGeo.originLat,
+        'originLng':    ctx.sharedGeo.originLng,
+        'destLat':      ctx.sharedGeo.destLat,
+        'destLng':      ctx.sharedGeo.destLng,
+        'carrier':      ctx.sharedGeo.carrier,
+        'status':       ctx.sharedGeo.status,
+        'rawTimestamp': ctx.sharedGeo.rawTimestamp.length > 0 ? ctx.sharedGeo.rawTimestamp : POSITION_PING_BODY_DEFAULT.rawTimestamp,
+      };
+      return { ...ctx.envelope, 'eventType': 'position-ping', 'body': body, ...(ctx.preResolvedGeo !== undefined && { 'geo': ctx.preResolvedGeo }) };
+    };
+    return CanonicalEventVariantBuilder.fromSourcePayloadDispatch[eventType] ?? positionPingHandler ?? fallback;
   }
 }
 // #endregion canonical-event-variant-entity

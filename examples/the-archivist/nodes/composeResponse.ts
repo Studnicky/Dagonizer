@@ -22,7 +22,7 @@
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
-import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistState, ConversationTurn } from '../ArchivistState.ts';
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistServices } from '../services.ts';
 
@@ -68,18 +68,33 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     // (the retry loop and validate-response wiring stays one
     // implementation), and dispatches to the intent-flavoured prompt
     // builder so the LLM gets the right directives + framing.
-    let draftPromise: Promise<string>;
-    switch (state.intent) {
-      case 'lookup-author':     draftPromise = llm.composeAuthor(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
-      case 'find-reviews':      draftPromise = llm.composeReviews(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
-      case 'describe-book':     draftPromise = llm.describeBook(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
-      case 'recommend-similar': draftPromise = llm.composeSimilar(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
-      default:                  draftPromise = llm.compose(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-    }
+    type ComposeMethod = (
+      query: string,
+      shortlist: readonly CandidateType[],
+      prior: readonly { variant: string; text: string }[] | undefined,
+      recalledSummary: string | undefined,
+      conversation: readonly ConversationTurn[] | undefined,
+      signal: AbortSignal,
+    ) => Promise<string>;
+    const composeDispatch: Partial<Record<string, ComposeMethod>> = {
+      'lookup-author':     (q, sl, p, rs, cv, sig) => llm.composeAuthor(q, sl, p, rs, cv, sig),
+      'find-reviews':      (q, sl, p, rs, cv, sig) => llm.composeReviews(q, sl, p, rs, cv, sig),
+      'describe-book':     (q, sl, p, rs, cv, sig) => llm.describeBook(q, sl, p, rs, cv, sig),
+      'recommend-similar': (q, sl, p, rs, cv, sig) => llm.composeSimilar(q, sl, p, rs, cv, sig),
+    };
+    const composeFn: ComposeMethod = composeDispatch[state.intent] ??
+      ((q, sl, p, rs, cv, sig) => llm.compose(q, sl, p, rs, cv, sig));
     try {
-      state.draft = await draftPromise;
-      if (state.priorContext.length > 0) {
+      const draft = await composeFn(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
+      // Guard: an empty draft is a fabrication gap — route to retry/salvage
+      // so the validate-response node does not receive an empty string.
+      if (draft.length === 0) {
+        if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
+          return NodeOutputBuilder.of('retry');
+        }
+        return NodeOutputBuilder.of('salvage');
       }
+      state.draft = draft;
       return NodeOutputBuilder.of('drafted');
     } catch (err) {
       // External cancellation / run deadline propagates unchanged.

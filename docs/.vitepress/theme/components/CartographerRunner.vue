@@ -13,8 +13,8 @@
  *   │ [pinned Run bar]         │                                           │
  *   └──────────────────────────┴───────────────────────────────────────────┘
  *
- * No LLM — purely deterministic data orchestration. Reuses ObservedDagonizer
- * (generic subclass) and DagGraph (animated cytoscape host) from the Archivist.
+ * No LLM — purely deterministic data orchestration. Subclasses ObservedDag
+ * (generic Dagonizer subclass) and reuses DagGraph (animated cytoscape host).
  * SSR-safe: all browser-only work is guarded to onMounted / click handlers.
  */
 
@@ -33,7 +33,8 @@ import type { EnrichedShipment } from '../../../../examples/the-cartographer/ent
 import type { CanonicalEventVariant } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
 import type { FormatMix } from '../../../../examples/the-cartographer/services.ts';
 
-import { ObservedDagonizer } from './ObservedDagonizer.ts';
+import { ObservedDag } from '../../../../examples/the-archivist/ObservedDag.ts';
+import { ConsoleLogger } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 import { WebWorkerContainer } from '@studnicky/dagonizer-executor-web';
 import type { WebWorkerLikeInterface } from '@studnicky/dagonizer-executor-web';
 import DagGraph from './DagGraph.vue';
@@ -349,6 +350,82 @@ function scrollFeedToBottom(): void {
   }
 }
 
+// ── Browser observer (class extension) ───────────────────────────────────────
+// CartographerBrowserObserver subclasses ObservedDag<CartographerState> to add
+// Vue-reactive DOM updates on top of the base leveled logging. The buffer/RAF
+// throttling below bounds DOM mutations to at most one per animation frame,
+// essential for 1,000,000-event scatter runs.
+const _cartographerLogger = new ConsoleLogger();
+
+class CartographerBrowserObserver extends ObservedDag<CartographerState> {
+  protected override onNodeStart(
+    nodeName: string,
+    state: CartographerState,
+    placementPath: readonly string[],
+  ): void {
+    super.onNodeStart(nodeName, state, placementPath);
+    const fullId = [...placementPath, nodeName].join('/');
+    frameActiveNodes.add(fullId);
+    // Trace records top-level node events only; inner per-clone activity is
+    // conveyed through the progress bar, feed, and throttled graph lighting.
+    if (placementPath.length === 0) {
+      traceBuffer.push({ 'variant': 'start', 'node': fullId, 'ts': Date.now() });
+    }
+    scheduleFlush();
+  }
+
+  protected override onNodeEnd(
+    nodeName: string,
+    output: string | null,
+    state: CartographerState,
+    placementPath: readonly string[],
+  ): void {
+    super.onNodeEnd(nodeName, output, state, placementPath);
+    const fullId = [...placementPath, nodeName].join('/');
+    latestRunState = state;
+    frameActiveNodes.delete(fullId);
+    frameCompletedNodes.add(fullId);
+    if (output !== null) frameTraversedEdges.add(`${fullId}|${output}`);
+    if (placementPath.length === 0) {
+      traceBuffer.push({ 'variant': 'end', 'node': fullId, 'ts': Date.now(), output });
+    }
+    scheduleFlush();
+  }
+
+  protected override onError(
+    nodeName: string,
+    error: Error,
+    state: CartographerState,
+    placementPath: readonly string[],
+  ): void {
+    super.onError(nodeName, error, state, placementPath);
+    const fullId = [...placementPath, nodeName].join('/');
+    frameErroredNode = fullId;
+    traceBuffer.push({ 'variant': 'error', 'node': fullId, 'ts': Date.now(), 'message': error.message !== '' ? error.message : String(error) });
+    scheduleFlush();
+  }
+
+  protected override onFlowEnd(
+    dagName: string,
+    state: CartographerState,
+    result: import('@studnicky/dagonizer').ExecutionResultType<CartographerState>,
+  ): void {
+    super.onFlowEnd(dagName, state, result);
+    // Final synchronous flush — capture the terminal state exactly.
+    latestRunState = state;
+    records.value = [...state.sampleRecords];
+    // The streaming flow decodes inline; there is no materialised
+    // canonical-event array. The Before/After accordion's pre-stream source
+    // panel is wired in the separate UI follow-up.
+    canonicalEvents.value = [];
+    insightsMap.value = new Map(state.insights);
+    journeysMap.value = new Map(state.journeys);
+    trace.value = traceBuffer.slice(-MAX_TRACE);
+    applyLiveState(state);
+    progressPct.value = 100;
+  }
+}
+
 // ── Live-update throttling (survives 1,000,000-event runs) ───────────────────
 // The streaming scatter fires onNodeStart/onNodeEnd for every inner node of
 // every clone — N events × M sub-DAG nodes is millions of observer calls.
@@ -451,7 +528,7 @@ async function run(): Promise<void> {
 
   await dagGraph.value?.reset();
 
-  let dispatcher: ObservedDagonizer<CartographerState> | null = null;
+  let dispatcher: CartographerBrowserObserver | null = null;
 
   try {
     // Offline recorded geo on both sides: the worker registry builds its own
@@ -470,54 +547,7 @@ async function run(): Promise<void> {
       'poolSize':        clampedPoolSize.value,
     });
 
-    const observer = {
-      onNodeStart(nodeName: string, _state: CartographerState, placementPath: readonly string[] = []) {
-        const fullId = [...placementPath, nodeName].join('/');
-        frameActiveNodes.add(fullId);
-        // Trace records top-level node events only; inner per-clone activity is
-        // conveyed through the progress bar, feed, and throttled graph lighting.
-        if (placementPath.length === 0) {
-          traceBuffer.push({ variant: 'start', node: fullId, ts: Date.now() });
-        }
-        scheduleFlush();
-      },
-      onNodeEnd(nodeName: string, output: string | null, state: CartographerState, placementPath: readonly string[] = []) {
-        const fullId = [...placementPath, nodeName].join('/');
-        latestRunState = state;
-        frameActiveNodes.delete(fullId);
-        frameCompletedNodes.add(fullId);
-        if (output !== null) frameTraversedEdges.add(`${fullId}|${output}`);
-        if (placementPath.length === 0) {
-          traceBuffer.push({ variant: 'end', node: fullId, ts: Date.now(), output });
-        }
-        scheduleFlush();
-      },
-      onError(nodeName: string, error: Error, _state: CartographerState, placementPath: readonly string[] = []) {
-        const fullId = [...placementPath, nodeName].join('/');
-        frameErroredNode = fullId;
-        traceBuffer.push({ variant: 'error', node: fullId, ts: Date.now(), message: error.message !== '' ? error.message : String(error) });
-        scheduleFlush();
-      },
-      onFlowEnd(_dagName: string, state: CartographerState) {
-        // Final synchronous flush — capture the terminal state exactly.
-        latestRunState = state;
-        records.value = [...state.sampleRecords];
-        // The streaming flow decodes inline; there is no materialised
-        // canonical-event array. The Before/After accordion's pre-stream source
-        // panel is wired in the separate UI follow-up.
-        canonicalEvents.value = [];
-        insightsMap.value = new Map(state.insights);
-        journeysMap.value = new Map(state.journeys);
-        trace.value = traceBuffer.slice(-MAX_TRACE);
-        applyLiveState(state);
-        progressPct.value = 100;
-      },
-    };
-
-    dispatcher = new ObservedDagonizer<CartographerState>({
-      'observer': observer,
-      'containers': { 'cpu': container },
-    });
+    dispatcher = new CartographerBrowserObserver(_cartographerLogger, { 'containers': { 'cpu': container } });
 
     // Bundle registration order: sub-DAGs first so their names resolve.
     dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));

@@ -27,7 +27,7 @@ import { BookSearchScatterBundleFactory } from './embedded-dags/BookSearchScatte
 import { ComposeRetryLoopBundleFactory } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { DomConsoleLogger } from './logger/DomConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
-import { ObservedArchivist } from './ObservedArchivist.ts';
+import { ObservedDag } from './ObservedDag.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import type { ArchivistServices, LlmClientInterface } from './services.ts';
 
@@ -220,11 +220,11 @@ const services: ArchivistServices = {
   'nodeTimeouts':     {},
 };
 
-// ObservedArchivist: a Dagonizer subclass that wires every lifecycle hook to
-// its own internally-owned logger via protected hook overrides (the sole
-// observability surface). The DOM driver keeps its own `DomConsoleLogger`
-// (above) to stream its stage / result display lines into the `<pre>` panel.
-const dispatcher = new ObservedArchivist();
+// ObservedDag: generic Dagonizer subclass wiring every lifecycle hook to an
+// injected logger. The DOM driver's `DomConsoleLogger` is passed in so the
+// dispatcher's hook log lines stream into the `<pre>` panel alongside the
+// driver's own stage / result lines.
+const dispatcher = new ObservedDag<ArchivistState>(logger);
 // #endregion wire-services
 
 // #region register-bundle

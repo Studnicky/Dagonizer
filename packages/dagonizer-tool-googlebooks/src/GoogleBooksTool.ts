@@ -105,7 +105,7 @@ export class GoogleBooksTool implements ToolInterface<GoogleBooksInputType, read
       });
       const year = GoogleBooksTool.pickYear(info.publishedDate);
       const notes: Record<string, unknown> = {
-        '_sources': ['google-books'],
+        'sources': ['google-books'],
         ...(info.averageRating !== undefined && { 'rating': info.averageRating }),
         ...(info.ratingsCount !== undefined  && { 'ratingsCount': info.ratingsCount }),
         ...(vol.id !== undefined             && { 'googleVolumeId': vol.id }),

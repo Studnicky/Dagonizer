@@ -5,7 +5,7 @@
  */
 
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -20,7 +20,6 @@ export abstract class ExtractFieldNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextType,
   ): Promise<NodeOutputType<'success'>> {
     const value = this.extract(state);
     this.apply(state, value);

@@ -697,65 +697,246 @@ export class CartographerState extends NodeStateBase {
     return value === 'none' || value === 'gzip' ? value : 'none';
   }
 
-  /** Deep-clone a CanonicalEventVariant (switches on eventType to keep each member's exact shape). */
-  private static cloneVariant(v: CanonicalEventVariant): CanonicalEventVariant {
-    const envelope = {
+  // ── Dispatch maps (replace switches on eventType) ──────────────────────────
+
+  private static readonly cloneVariantDispatch: Readonly<Record<string, (v: CanonicalEventVariant) => CanonicalEventVariant>> = {
+    'position-ping': (v) => {
+      const ev = v as PositionPingEvent;
+      const copy: PositionPingEvent = { ...CartographerState.variantEnvelope(ev), 'eventType': 'position-ping', 'body': { ...ev.body } };
+      if (ev.geo !== undefined) copy.geo = { ...ev.geo };
+      if (ev.consentHandled !== undefined) copy.consentHandled = ev.consentHandled;
+      if (ev.pii !== undefined) copy.pii = ev.pii;
+      return copy;
+    },
+    'facility-scan': (v) => {
+      const ev = v as FacilityScanEvent;
+      const copy: FacilityScanEvent = { ...CartographerState.variantEnvelope(ev), 'eventType': 'facility-scan', 'body': { ...ev.body, 'lineItems': ev.body.lineItems.map((li) => ({ ...li })) } };
+      if (ev.geo !== undefined) copy.geo = { ...ev.geo };
+      if (ev.consentHandled !== undefined) copy.consentHandled = ev.consentHandled;
+      if (ev.pii !== undefined) copy.pii = ev.pii;
+      return copy;
+    },
+    'sensor-reading': (v) => {
+      const ev = v as SensorReadingEvent;
+      const copy: SensorReadingEvent = { ...CartographerState.variantEnvelope(ev), 'eventType': 'sensor-reading', 'body': { ...ev.body } };
+      if (ev.geo !== undefined) copy.geo = { ...ev.geo };
+      if (ev.consentHandled !== undefined) copy.consentHandled = ev.consentHandled;
+      if (ev.pii !== undefined) copy.pii = ev.pii;
+      return copy;
+    },
+    'customs-event': (v) => {
+      const ev = v as CustomsEvent;
+      const copy: CustomsEvent = { ...CartographerState.variantEnvelope(ev), 'eventType': 'customs-event', 'body': { ...ev.body } };
+      if (ev.geo !== undefined) copy.geo = { ...ev.geo };
+      if (ev.consentHandled !== undefined) copy.consentHandled = ev.consentHandled;
+      if (ev.pii !== undefined) copy.pii = ev.pii;
+      return copy;
+    },
+    'delivery-confirmation': (v) => {
+      const ev = v as DeliveryConfirmationEvent;
+      const copy: DeliveryConfirmationEvent = { ...CartographerState.variantEnvelope(ev), 'eventType': 'delivery-confirmation', 'body': { ...ev.body } };
+      if (ev.geo !== undefined) copy.geo = { ...ev.geo };
+      if (ev.consentHandled !== undefined) copy.consentHandled = ev.consentHandled;
+      if (ev.pii !== undefined) copy.pii = ev.pii;
+      return copy;
+    },
+  };
+
+  private static readonly variantToJsonBodyDispatch: Readonly<Record<string, (v: CanonicalEventVariant) => JsonObjectType>> = {
+    'position-ping': (v) => {
+      const ev = v as PositionPingEvent;
+      return {
+        'scanSeq':      ev.body.scanSeq,   'latitude':   ev.body.latitude,  'longitude':    ev.body.longitude,
+        'ipAddress':    ev.body.ipAddress,  'legFromLat': ev.body.legFromLat, 'legFromLng':  ev.body.legFromLng,
+        'originLat':    ev.body.originLat,  'originLng':  ev.body.originLng,  'destLat':     ev.body.destLat,  'destLng': ev.body.destLng,
+        'carrier':      ev.body.carrier,    'status':     ev.body.status,      'rawTimestamp': ev.body.rawTimestamp,
+      };
+    },
+    'facility-scan': (v) => {
+      const ev = v as FacilityScanEvent;
+      return {
+        'scanSeq':      ev.body.scanSeq,   'latitude':   ev.body.latitude,  'longitude':    ev.body.longitude,
+        'ipAddress':    ev.body.ipAddress,  'legFromLat': ev.body.legFromLat, 'legFromLng':  ev.body.legFromLng,
+        'originLat':    ev.body.originLat,  'originLng':  ev.body.originLng,  'destLat':     ev.body.destLat,  'destLng': ev.body.destLng,
+        'carrier':      ev.body.carrier,    'status':     ev.body.status,      'rawTimestamp': ev.body.rawTimestamp,
+        'facilityId':   ev.body.facilityId, 'weight': ev.body.weight, 'weightUnit': ev.body.weightUnit,
+        'lineItems':    ev.body.lineItems.map((li) => ({ 'productId': li.productId, 'quantity': li.quantity })),
+        'rawDispatchAt': ev.body.rawDispatchAt, 'rawPromisedDeliveryAt': ev.body.rawPromisedDeliveryAt,
+        'disruptionReason': ev.body.disruptionReason,
+        'recipientName': ev.body.recipientName, 'recipientEmail': ev.body.recipientEmail,
+        'recipientPhone': ev.body.recipientPhone, 'recipientAddress': ev.body.recipientAddress,
+        'recipientCountry': ev.body.recipientCountry, 'marketingConsent': ev.body.marketingConsent,
+        'lawfulBasis':  ev.body.lawfulBasis, 'specialCategory': ev.body.specialCategory,
+      };
+    },
+    'sensor-reading': (v) => {
+      const ev = v as SensorReadingEvent;
+      return {
+        'scanSeq':      ev.body.scanSeq,   'latitude':   ev.body.latitude,  'longitude':    ev.body.longitude,
+        'ipAddress':    ev.body.ipAddress,  'legFromLat': ev.body.legFromLat, 'legFromLng':  ev.body.legFromLng,
+        'originLat':    ev.body.originLat,  'originLng':  ev.body.originLng,  'destLat':     ev.body.destLat,  'destLng': ev.body.destLng,
+        'carrier':      ev.body.carrier,    'status':     ev.body.status,      'rawTimestamp': ev.body.rawTimestamp,
+        'tempC':        ev.body.tempC,      'humidityPct': ev.body.humidityPct, 'shockG': ev.body.shockG,
+      };
+    },
+    'customs-event': (v) => {
+      const ev = v as CustomsEvent;
+      return {
+        'scanSeq':      ev.body.scanSeq,   'latitude':   ev.body.latitude,  'longitude':    ev.body.longitude,
+        'ipAddress':    ev.body.ipAddress,  'legFromLat': ev.body.legFromLat, 'legFromLng':  ev.body.legFromLng,
+        'originLat':    ev.body.originLat,  'originLng':  ev.body.originLng,  'destLat':     ev.body.destLat,  'destLng': ev.body.destLng,
+        'carrier':      ev.body.carrier,    'status':     ev.body.status,      'rawTimestamp': ev.body.rawTimestamp,
+        'customsStatus': ev.body.customsStatus,
+      };
+    },
+    'delivery-confirmation': (v) => {
+      const ev = v as DeliveryConfirmationEvent;
+      return {
+        'scanSeq':      ev.body.scanSeq,   'latitude':   ev.body.latitude,  'longitude':    ev.body.longitude,
+        'ipAddress':    ev.body.ipAddress,  'legFromLat': ev.body.legFromLat, 'legFromLng':  ev.body.legFromLng,
+        'originLat':    ev.body.originLat,  'originLng':  ev.body.originLng,  'destLat':     ev.body.destLat,  'destLng': ev.body.destLng,
+        'carrier':      ev.body.carrier,    'status':     ev.body.status,      'rawTimestamp': ev.body.rawTimestamp,
+        'delivered':    ev.body.delivered,  'rawPromisedDeliveryAt': ev.body.rawPromisedDeliveryAt,
+        'disruptionReason': ev.body.disruptionReason,
+        'recipientName': ev.body.recipientName, 'recipientEmail': ev.body.recipientEmail,
+        'recipientPhone': ev.body.recipientPhone, 'recipientAddress': ev.body.recipientAddress,
+        'recipientCountry': ev.body.recipientCountry, 'marketingConsent': ev.body.marketingConsent,
+        'lawfulBasis':  ev.body.lawfulBasis, 'specialCategory': ev.body.specialCategory,
+      };
+    },
+  };
+
+  private static readonly variantFromJsonDispatch: Readonly<Record<string, (
+    envelope: { shipmentId: string; eventId: string; epochMs: number; sourceId: string; sourceFormat: CanonicalEventVariant['sourceFormat']; sourceCompression: CanonicalEventVariant['sourceCompression'] },
+    sharedBody: { scanSeq: number; latitude: number; longitude: number; ipAddress: string; legFromLat: number; legFromLng: number; originLat: number; originLng: number; destLat: number; destLng: number; carrier: string; status: string; rawTimestamp: string },
+    b: Record<string, unknown>,
+    o: Record<string, unknown>,
+  ) => CanonicalEventVariant>> = {
+    'facility-scan': (envelope, sharedBody, b, o) => {
+      const variant: FacilityScanEvent = {
+        ...envelope, 'eventType': 'facility-scan',
+        'body': {
+          ...sharedBody,
+          'facilityId':           CartographerState.str(b['facilityId']),
+          'weight':               CartographerState.num(b['weight']),
+          'weightUnit':           CartographerState.weightUnit(b['weightUnit']),
+          'lineItems':            CartographerState.lineItemsFromJson(b['lineItems']),
+          'rawDispatchAt':        CartographerState.str(b['rawDispatchAt']),
+          'rawPromisedDeliveryAt': CartographerState.str(b['rawPromisedDeliveryAt']),
+          'disruptionReason':     CartographerState.str(b['disruptionReason']),
+          'recipientName':        CartographerState.str(b['recipientName']),
+          'recipientEmail':       CartographerState.str(b['recipientEmail']),
+          'recipientPhone':       CartographerState.str(b['recipientPhone']),
+          'recipientAddress':     CartographerState.str(b['recipientAddress']),
+          'recipientCountry':     CartographerState.str(b['recipientCountry']),
+          'marketingConsent':     CartographerState.bool(b['marketingConsent']),
+          'lawfulBasis':          CartographerState.lawfulBasis(b['lawfulBasis']),
+          'specialCategory':      CartographerState.specialCategory(b['specialCategory']),
+        },
+      };
+      const geoObj = CartographerState.asObject(o['geo']);
+      if (geoObj !== null) variant.geo = { 'country': CartographerState.str(geoObj['country']), 'continent': CartographerState.str(geoObj['continent']), 'region': CartographerState.str(geoObj['region']) };
+      if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+      if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+      return variant;
+    },
+    'sensor-reading': (envelope, sharedBody, b, o) => {
+      const variant: SensorReadingEvent = {
+        ...envelope, 'eventType': 'sensor-reading',
+        'body': {
+          ...sharedBody,
+          'tempC':       CartographerState.num(b['tempC']),
+          'humidityPct': CartographerState.num(b['humidityPct']),
+          'shockG':      CartographerState.num(b['shockG']),
+        },
+      };
+      const geoObj = CartographerState.asObject(o['geo']);
+      if (geoObj !== null) variant.geo = { 'country': CartographerState.str(geoObj['country']), 'continent': CartographerState.str(geoObj['continent']), 'region': CartographerState.str(geoObj['region']) };
+      if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+      if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+      return variant;
+    },
+    'customs-event': (envelope, sharedBody, b, o) => {
+      const variant: CustomsEvent = {
+        ...envelope, 'eventType': 'customs-event',
+        'body': { ...sharedBody, 'customsStatus': CartographerState.str(b['customsStatus']) },
+      };
+      const geoObj = CartographerState.asObject(o['geo']);
+      if (geoObj !== null) variant.geo = { 'country': CartographerState.str(geoObj['country']), 'continent': CartographerState.str(geoObj['continent']), 'region': CartographerState.str(geoObj['region']) };
+      if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+      if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+      return variant;
+    },
+    'delivery-confirmation': (envelope, sharedBody, b, o) => {
+      const variant: DeliveryConfirmationEvent = {
+        ...envelope, 'eventType': 'delivery-confirmation',
+        'body': {
+          ...sharedBody,
+          'delivered':             CartographerState.bool(b['delivered']),
+          'rawPromisedDeliveryAt': CartographerState.str(b['rawPromisedDeliveryAt']),
+          'disruptionReason':      CartographerState.str(b['disruptionReason']),
+          'recipientName':         CartographerState.str(b['recipientName']),
+          'recipientEmail':        CartographerState.str(b['recipientEmail']),
+          'recipientPhone':        CartographerState.str(b['recipientPhone']),
+          'recipientAddress':      CartographerState.str(b['recipientAddress']),
+          'recipientCountry':      CartographerState.str(b['recipientCountry']),
+          'marketingConsent':      CartographerState.bool(b['marketingConsent']),
+          'lawfulBasis':           CartographerState.lawfulBasis(b['lawfulBasis']),
+          'specialCategory':       CartographerState.specialCategory(b['specialCategory']),
+        },
+      };
+      const geoObj = CartographerState.asObject(o['geo']);
+      if (geoObj !== null) variant.geo = { 'country': CartographerState.str(geoObj['country']), 'continent': CartographerState.str(geoObj['continent']), 'region': CartographerState.str(geoObj['region']) };
+      if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+      if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+      return variant;
+    },
+    'position-ping': (envelope, sharedBody, _b, o) => {
+      const variant: PositionPingEvent = { ...envelope, 'eventType': 'position-ping', 'body': { ...sharedBody } };
+      const geoObj = CartographerState.asObject(o['geo']);
+      if (geoObj !== null) variant.geo = { 'country': CartographerState.str(geoObj['country']), 'continent': CartographerState.str(geoObj['continent']), 'region': CartographerState.str(geoObj['region']) };
+      if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+      if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+      return variant;
+    },
+  };
+
+  /** Extract the shared envelope fields from a CanonicalEventVariant (used by dispatch maps). */
+  private static variantEnvelope(v: CanonicalEventVariant): {
+    shipmentId: string; eventId: string; epochMs: number;
+    sourceId: string; sourceFormat: CanonicalEventVariant['sourceFormat']; sourceCompression: CanonicalEventVariant['sourceCompression'];
+  } {
+    return {
       'shipmentId':        v.shipmentId,
       'eventId':           v.eventId,
       'epochMs':           v.epochMs,
       'sourceId':          v.sourceId,
       'sourceFormat':      v.sourceFormat,
       'sourceCompression': v.sourceCompression,
-    } as const;
-    let result: CanonicalEventVariant;
-    switch (v.eventType) {
-      case 'position-ping': {
-        const copy: PositionPingEvent = { ...envelope, 'eventType': 'position-ping', 'body': { ...v.body } };
-        if (v.geo !== undefined) copy.geo = { ...v.geo };
-        if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
-        if (v.pii !== undefined) copy.pii = v.pii;
-        result = copy;
-        break;
-      }
-      case 'facility-scan': {
-        const copy: FacilityScanEvent = { ...envelope, 'eventType': 'facility-scan', 'body': { ...v.body, 'lineItems': v.body.lineItems.map((li) => ({ ...li })) } };
-        if (v.geo !== undefined) copy.geo = { ...v.geo };
-        if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
-        if (v.pii !== undefined) copy.pii = v.pii;
-        result = copy;
-        break;
-      }
-      case 'sensor-reading': {
-        const copy: SensorReadingEvent = { ...envelope, 'eventType': 'sensor-reading', 'body': { ...v.body } };
-        if (v.geo !== undefined) copy.geo = { ...v.geo };
-        if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
-        if (v.pii !== undefined) copy.pii = v.pii;
-        result = copy;
-        break;
-      }
-      case 'customs-event': {
-        const copy: CustomsEvent = { ...envelope, 'eventType': 'customs-event', 'body': { ...v.body } };
-        if (v.geo !== undefined) copy.geo = { ...v.geo };
-        if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
-        if (v.pii !== undefined) copy.pii = v.pii;
-        result = copy;
-        break;
-      }
-      case 'delivery-confirmation': {
-        const copy: DeliveryConfirmationEvent = { ...envelope, 'eventType': 'delivery-confirmation', 'body': { ...v.body } };
-        if (v.geo !== undefined) copy.geo = { ...v.geo };
-        if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
-        if (v.pii !== undefined) copy.pii = v.pii;
-        result = copy;
-        break;
-      }
-    }
-    return result;
+    };
   }
 
-  /** Serialize a CanonicalEventVariant to a JSON-safe object (switches on eventType for exact body fields). */
+  private static resolveCloneHandler(eventType: string): (v: CanonicalEventVariant) => CanonicalEventVariant {
+    return CartographerState.cloneVariantDispatch[eventType]
+        ?? CartographerState.cloneVariantDispatch['position-ping']
+        ?? ((vv: CanonicalEventVariant): CanonicalEventVariant => ({ ...vv }));
+  }
+
+  /** Deep-clone a CanonicalEventVariant (dispatch map on eventType to keep each member's exact shape). */
+  private static cloneVariant(v: CanonicalEventVariant): CanonicalEventVariant {
+    return CartographerState.resolveCloneHandler(v.eventType)(v);
+  }
+
+  private static resolveToJsonBodyHandler(eventType: string): (v: CanonicalEventVariant) => JsonObjectType {
+    return CartographerState.variantToJsonBodyDispatch[eventType]
+        ?? CartographerState.variantToJsonBodyDispatch['position-ping']
+        ?? (() => ({}));
+  }
+
+  /** Serialize a CanonicalEventVariant to a JSON-safe object (dispatch map on eventType for exact body fields). */
   private static variantToJson(v: CanonicalEventVariant): JsonObjectType {
-    const envelope: JsonObjectType = {
+    const bodyHandler = CartographerState.resolveToJsonBodyHandler(v.eventType);
+    return {
       'shipmentId':        v.shipmentId,
       'eventId':           v.eventId,
       'epochMs':           v.epochMs,
@@ -766,71 +947,35 @@ export class CartographerState extends NodeStateBase {
       'geo':               v.geo !== undefined ? { 'country': v.geo.country, 'continent': v.geo.continent, 'region': v.geo.region } : null,
       'consentHandled':    v.consentHandled !== undefined ? v.consentHandled : null,
       'pii':               v.pii !== undefined ? v.pii : null,
+      'body':              bodyHandler(v),
     };
-    switch (v.eventType) {
-      case 'position-ping':
-        envelope['body'] = {
-          'scanSeq':      v.body.scanSeq,   'latitude':  v.body.latitude,  'longitude': v.body.longitude,
-          'ipAddress':    v.body.ipAddress,  'legFromLat': v.body.legFromLat, 'legFromLng': v.body.legFromLng,
-          'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':    v.body.destLat,  'destLng': v.body.destLng,
-          'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
-        };
-        break;
-      case 'facility-scan':
-        envelope['body'] = {
-          'scanSeq':      v.body.scanSeq,   'latitude':  v.body.latitude,  'longitude': v.body.longitude,
-          'ipAddress':    v.body.ipAddress,  'legFromLat': v.body.legFromLat, 'legFromLng': v.body.legFromLng,
-          'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':    v.body.destLat,  'destLng': v.body.destLng,
-          'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
-          'facilityId':   v.body.facilityId, 'weight': v.body.weight, 'weightUnit': v.body.weightUnit,
-          'lineItems':    v.body.lineItems.map((li) => ({ 'productId': li.productId, 'quantity': li.quantity })),
-          'rawDispatchAt': v.body.rawDispatchAt, 'rawPromisedDeliveryAt': v.body.rawPromisedDeliveryAt,
-          'disruptionReason': v.body.disruptionReason,
-          'recipientName': v.body.recipientName, 'recipientEmail': v.body.recipientEmail,
-          'recipientPhone': v.body.recipientPhone, 'recipientAddress': v.body.recipientAddress,
-          'recipientCountry': v.body.recipientCountry, 'marketingConsent': v.body.marketingConsent,
-          'lawfulBasis':  v.body.lawfulBasis, 'specialCategory': v.body.specialCategory,
-        };
-        break;
-      case 'sensor-reading':
-        envelope['body'] = {
-          'scanSeq':      v.body.scanSeq,   'latitude':  v.body.latitude,  'longitude': v.body.longitude,
-          'ipAddress':    v.body.ipAddress,  'legFromLat': v.body.legFromLat, 'legFromLng': v.body.legFromLng,
-          'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':    v.body.destLat,  'destLng': v.body.destLng,
-          'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
-          'tempC':        v.body.tempC,      'humidityPct': v.body.humidityPct, 'shockG': v.body.shockG,
-        };
-        break;
-      case 'customs-event':
-        envelope['body'] = {
-          'scanSeq':      v.body.scanSeq,   'latitude':  v.body.latitude,  'longitude': v.body.longitude,
-          'ipAddress':    v.body.ipAddress,  'legFromLat': v.body.legFromLat, 'legFromLng': v.body.legFromLng,
-          'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':    v.body.destLat,  'destLng': v.body.destLng,
-          'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
-          'customsStatus': v.body.customsStatus,
-        };
-        break;
-      case 'delivery-confirmation':
-        envelope['body'] = {
-          'scanSeq':      v.body.scanSeq,   'latitude':  v.body.latitude,  'longitude': v.body.longitude,
-          'ipAddress':    v.body.ipAddress,  'legFromLat': v.body.legFromLat, 'legFromLng': v.body.legFromLng,
-          'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':    v.body.destLat,  'destLng': v.body.destLng,
-          'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
-          'delivered':    v.body.delivered,  'rawPromisedDeliveryAt': v.body.rawPromisedDeliveryAt,
-          'disruptionReason': v.body.disruptionReason,
-          'recipientName': v.body.recipientName, 'recipientEmail': v.body.recipientEmail,
-          'recipientPhone': v.body.recipientPhone, 'recipientAddress': v.body.recipientAddress,
-          'recipientCountry': v.body.recipientCountry, 'marketingConsent': v.body.marketingConsent,
-          'lawfulBasis':  v.body.lawfulBasis, 'specialCategory': v.body.specialCategory,
-        };
-        break;
-    }
-    return envelope;
   }
 
-  /** Reconstruct a CanonicalEventVariant from a deserialized JSON object (switches on eventType). */
+  private static resolveFromJsonHandler(eventType: string): (
+    envelope: { shipmentId: string; eventId: string; epochMs: number; sourceId: string; sourceFormat: CanonicalEventVariant['sourceFormat']; sourceCompression: CanonicalEventVariant['sourceCompression'] },
+    sharedBody: { scanSeq: number; latitude: number; longitude: number; ipAddress: string; legFromLat: number; legFromLng: number; originLat: number; originLng: number; destLat: number; destLng: number; carrier: string; status: string; rawTimestamp: string },
+    b: Record<string, unknown>,
+    o: Record<string, unknown>,
+  ) => CanonicalEventVariant {
+    const pp = (
+      envelope: { shipmentId: string; eventId: string; epochMs: number; sourceId: string; sourceFormat: CanonicalEventVariant['sourceFormat']; sourceCompression: CanonicalEventVariant['sourceCompression'] },
+      sharedBody: { scanSeq: number; latitude: number; longitude: number; ipAddress: string; legFromLat: number; legFromLng: number; originLat: number; originLng: number; destLat: number; destLng: number; carrier: string; status: string; rawTimestamp: string },
+      _b: Record<string, unknown>,
+      o: Record<string, unknown>,
+    ): CanonicalEventVariant => {
+      const variant: PositionPingEvent = { ...envelope, 'eventType': 'position-ping', 'body': { ...sharedBody } };
+      const geoObj = CartographerState.asObject(o['geo']);
+      if (geoObj !== null) variant.geo = { 'country': CartographerState.str(geoObj['country']), 'continent': CartographerState.str(geoObj['continent']), 'region': CartographerState.str(geoObj['region']) };
+      if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+      if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+      return variant;
+    };
+    return CartographerState.variantFromJsonDispatch[eventType] ?? pp;
+  }
+
+  /** Reconstruct a CanonicalEventVariant from a deserialized JSON object (dispatch map on eventType). */
   private static variantFromJson(o: Record<string, unknown>): CanonicalEventVariant {
-    const eventType = o['eventType'];
+    const eventType = typeof o['eventType'] === 'string' ? o['eventType'] : 'position-ping';
     const b = CartographerState.asObject(o['body']) ?? {};
     const envelope = {
       'shipmentId':        CartographerState.str(o['shipmentId']),
@@ -839,7 +984,7 @@ export class CartographerState extends NodeStateBase {
       'sourceId':          CartographerState.str(o['sourceId']),
       'sourceFormat':      CartographerState.canonicalSourceFormat(o['sourceFormat']),
       'sourceCompression': CartographerState.canonicalSourceCompression(o['sourceCompression']),
-    } as const;
+    };
     const sharedBody = {
       'scanSeq':      CartographerState.num(b['scanSeq']),
       'latitude':     CartographerState.num(b['latitude']),
@@ -854,104 +999,8 @@ export class CartographerState extends NodeStateBase {
       'carrier':      CartographerState.str(b['carrier']),
       'status':       CartographerState.str(b['status']),
       'rawTimestamp': CartographerState.str(b['rawTimestamp']),
-    } as const;
-    let result: CanonicalEventVariant;
-    switch (eventType) {
-      case 'facility-scan': {
-        const variant: FacilityScanEvent = {
-          ...envelope, 'eventType': 'facility-scan',
-          'body': {
-            ...sharedBody,
-            'facilityId':           CartographerState.str(b['facilityId']),
-            'weight':               CartographerState.num(b['weight']),
-            'weightUnit':           CartographerState.weightUnit(b['weightUnit']),
-            'lineItems':            CartographerState.lineItemsFromJson(b['lineItems']),
-            'rawDispatchAt':        CartographerState.str(b['rawDispatchAt']),
-            'rawPromisedDeliveryAt': CartographerState.str(b['rawPromisedDeliveryAt']),
-            'disruptionReason':     CartographerState.str(b['disruptionReason']),
-            'recipientName':        CartographerState.str(b['recipientName']),
-            'recipientEmail':       CartographerState.str(b['recipientEmail']),
-            'recipientPhone':       CartographerState.str(b['recipientPhone']),
-            'recipientAddress':     CartographerState.str(b['recipientAddress']),
-            'recipientCountry':     CartographerState.str(b['recipientCountry']),
-            'marketingConsent':     CartographerState.bool(b['marketingConsent']),
-            'lawfulBasis':          CartographerState.lawfulBasis(b['lawfulBasis']),
-            'specialCategory':      CartographerState.specialCategory(b['specialCategory']),
-          },
-        };
-        const geoObjFs = CartographerState.asObject(o['geo']);
-        if (geoObjFs !== null) variant.geo = { 'country': CartographerState.str(geoObjFs['country']), 'continent': CartographerState.str(geoObjFs['continent']), 'region': CartographerState.str(geoObjFs['region']) };
-        if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
-        if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
-        result = variant;
-        break;
-      }
-      case 'sensor-reading': {
-        const variant: SensorReadingEvent = {
-          ...envelope, 'eventType': 'sensor-reading',
-          'body': {
-            ...sharedBody,
-            'tempC':       CartographerState.num(b['tempC']),
-            'humidityPct': CartographerState.num(b['humidityPct']),
-            'shockG':      CartographerState.num(b['shockG']),
-          },
-        };
-        const geoObjSr = CartographerState.asObject(o['geo']);
-        if (geoObjSr !== null) variant.geo = { 'country': CartographerState.str(geoObjSr['country']), 'continent': CartographerState.str(geoObjSr['continent']), 'region': CartographerState.str(geoObjSr['region']) };
-        if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
-        if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
-        result = variant;
-        break;
-      }
-      case 'customs-event': {
-        const variant: CustomsEvent = {
-          ...envelope, 'eventType': 'customs-event',
-          'body': { ...sharedBody, 'customsStatus': CartographerState.str(b['customsStatus']) },
-        };
-        const geoObjCe = CartographerState.asObject(o['geo']);
-        if (geoObjCe !== null) variant.geo = { 'country': CartographerState.str(geoObjCe['country']), 'continent': CartographerState.str(geoObjCe['continent']), 'region': CartographerState.str(geoObjCe['region']) };
-        if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
-        if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
-        result = variant;
-        break;
-      }
-      case 'delivery-confirmation': {
-        const variant: DeliveryConfirmationEvent = {
-          ...envelope, 'eventType': 'delivery-confirmation',
-          'body': {
-            ...sharedBody,
-            'delivered':             CartographerState.bool(b['delivered']),
-            'rawPromisedDeliveryAt': CartographerState.str(b['rawPromisedDeliveryAt']),
-            'disruptionReason':      CartographerState.str(b['disruptionReason']),
-            'recipientName':         CartographerState.str(b['recipientName']),
-            'recipientEmail':        CartographerState.str(b['recipientEmail']),
-            'recipientPhone':        CartographerState.str(b['recipientPhone']),
-            'recipientAddress':      CartographerState.str(b['recipientAddress']),
-            'recipientCountry':      CartographerState.str(b['recipientCountry']),
-            'marketingConsent':      CartographerState.bool(b['marketingConsent']),
-            'lawfulBasis':           CartographerState.lawfulBasis(b['lawfulBasis']),
-            'specialCategory':       CartographerState.specialCategory(b['specialCategory']),
-          },
-        };
-        const geoObjDc = CartographerState.asObject(o['geo']);
-        if (geoObjDc !== null) variant.geo = { 'country': CartographerState.str(geoObjDc['country']), 'continent': CartographerState.str(geoObjDc['continent']), 'region': CartographerState.str(geoObjDc['region']) };
-        if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
-        if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
-        result = variant;
-        break;
-      }
-      default: {
-        // 'position-ping' and any unrecognised value fall here
-        const variant: PositionPingEvent = { ...envelope, 'eventType': 'position-ping', 'body': { ...sharedBody } };
-        const geoObjPp = CartographerState.asObject(o['geo']);
-        if (geoObjPp !== null) variant.geo = { 'country': CartographerState.str(geoObjPp['country']), 'continent': CartographerState.str(geoObjPp['continent']), 'region': CartographerState.str(geoObjPp['region']) };
-        if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
-        if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
-        result = variant;
-        break;
-      }
-    }
-    return result;
+    };
+    return CartographerState.resolveFromJsonHandler(eventType)(envelope, sharedBody, b, o);
   }
 
   private static sourceToJson(s: SourcePayload): JsonObjectType {

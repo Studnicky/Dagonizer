@@ -130,7 +130,8 @@ export class WebLlmAdapter extends BaseAdapter {
    * (e.g. update a loading indicator). The default implementation is a
    * no-op; the adapter is usable without overriding this method.
    */
-  protected onInitProgress(_report: WebLlmInitReportType): void {
+  protected onInitProgress(report: WebLlmInitReportType): void {
+    void report;
     // no-op default — subclasses override to handle progress events
   }
 
@@ -140,7 +141,7 @@ export class WebLlmAdapter extends BaseAdapter {
    * required to enumerate them. The catalog is a constant; the returned
    * Promise always resolves immediately.
    */
-  override listModels(_options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
+  override listModels(): Promise<readonly LlmModelType[]> {
     return Promise.resolve(PREBUILT_MODELS);
   }
 

@@ -4,6 +4,10 @@ All notable changes to `@studnicky/dagonizer` are documented here. Format follow
 
 ## [Unreleased]
 
+### Security
+
+- **Docs/build toolchain dependency advisories resolved (`pnpm audit` clean).** Pinned patched versions of transitive dev-only dependencies via `pnpm.overrides`: `vitepress > vite` to `^6.4.3` (verified: VitePress 1.6.4 builds on Vite 6 — the Vite advisories are dev-server CVEs that do not affect the static docs build or the deployed site), `dompurify` (via mermaid) to `>=3.4.11`, `esbuild@0.28` to `>=0.28.1`, `js-yaml@4` (via changesets) to `^4.2.0`, and `read-yaml-file` to `^2.1.0` (drops the last `js-yaml@3` instance from the changesets release tooling; `changeset version` verified end-to-end on the new resolution). No published-package runtime dependency changes.
+
 ### Added
 
 - **Mandatory per-port `outputSchema` node contract.** Every `NodeInterface` declares `readonly outputSchema: Record<TOutput, SchemaObjectType>` — a JSON Schema 2020-12 partial for each output port describing the state delta the node writes. `MonadicNode.outputSchema` is `abstract`: there is no passthrough default, so a concrete node that omits its return shapes does not compile. The compiler is the enforcement — the contract is declared everywhere, for every node in the engine, the pattern packages, and the examples. `ToolDefinitionType` gains a required `outputSchema` field mirroring `inputSchema`. `SchemaObjectType` is exported from the root barrel and `./contracts`.

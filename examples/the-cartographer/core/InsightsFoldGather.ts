@@ -66,7 +66,16 @@ interface JourneyAccumulator {
 
 // ── InsightsFoldGather ────────────────────────────────────────────────────────
 
+type SizeTierKey = 'envelope' | 'small' | 'medium' | 'large' | 'freight';
+
 export class InsightsFoldGather extends GatherStrategy {
+  private static readonly sizeTierDispatch: Readonly<Record<SizeTierKey, (entry: import('../CartographerState.ts').RegionInsights) => void>> = {
+    'envelope': (entry) => { entry.sizeTierEnvelope++; },
+    'small':    (entry) => { entry.sizeTierSmall++; },
+    'medium':   (entry) => { entry.sizeTierMedium++; },
+    'large':    (entry) => { entry.sizeTierLarge++; },
+    'freight':  (entry) => { entry.sizeTierFreight++; },
+  };
   readonly name = 'insights-fold';
 
   // Per-execution accumulators (reset in initial() before each scatter).
@@ -258,13 +267,7 @@ export class InsightsFoldGather extends GatherStrategy {
     if (enriched.consentStatus === 'missing') entry.consentMissing++;
     if (enriched.consentStatus === 'expired') entry.consentExpired++;
 
-    switch (enriched.sizeTier) {
-      case 'envelope': entry.sizeTierEnvelope++; break;
-      case 'small':    entry.sizeTierSmall++;    break;
-      case 'medium':   entry.sizeTierMedium++;   break;
-      case 'large':    entry.sizeTierLarge++;    break;
-      case 'freight':  entry.sizeTierFreight++;  break;
-    }
+    InsightsFoldGather.sizeTierDispatch[enriched.sizeTier as SizeTierKey]?.(entry);
 
     // Write the internal map back to parent state after every mutation.
     // The map is bounded to ~6-8 continent keys regardless of event count.

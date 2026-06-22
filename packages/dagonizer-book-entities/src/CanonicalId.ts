@@ -120,7 +120,7 @@ export class CanonicalId {
       'notes': {
         ...(a.notes ?? {}),
         ...(b.notes ?? {}),
-        '_sources': sources,
+        'sources': sources,
       },
     };
   }
@@ -163,8 +163,7 @@ export class CanonicalId {
    * Merge two BookPublication values using the dispatch map.
    *
    * The map drives three typed branches so no per-field ternary spreads are
-   * needed. TypeScript narrows `entry.key` inside each `case` block, letting
-   * each branch access only the fields it was designed for.
+   * needed. Each variant handler accesses only the fields it was designed for.
    */
   private static mergePublication(a: BookPublicationType, b: BookPublicationType): BookPublicationType {
     let summary: string | null = null;
@@ -173,22 +172,28 @@ export class CanonicalId {
     let publishers: string[] = [];
     let subjects: string[] = [];
 
+    // Dispatch map over merge variant: each handler applies its strategy.
+    const variantDispatch: Record<PublicationMergeEntryType['variant'], (e: PublicationMergeEntryType) => void> = {
+      'longest': () => {
+        summary = CanonicalId.longest(a.summary, b.summary);
+      },
+      'first-defined': () => {
+        firstPublishYear = a.firstPublishYear ?? b.firstPublishYear;
+      },
+      'unique-union': (e) => {
+        const ue = e as UniqueUnionEntryType;
+        // Dispatch map over key: each handler unions the specific array field.
+        const keyDispatch: Record<UniqueUnionEntryType['key'], () => void> = {
+          'languages':  () => { languages  = CanonicalId.unique([...a.languages,  ...b.languages]);  },
+          'publishers': () => { publishers = CanonicalId.unique([...a.publishers, ...b.publishers]); },
+          'subjects':   () => { subjects   = CanonicalId.unique([...a.subjects,   ...b.subjects]);   },
+        };
+        keyDispatch[ue.key]();
+      },
+    };
+
     for (const entry of PUBLICATION_MERGE_MAP) {
-      switch (entry.variant) {
-        case 'longest':
-          summary = CanonicalId.longest(a.summary, b.summary);
-          break;
-        case 'first-defined':
-          firstPublishYear = a.firstPublishYear ?? b.firstPublishYear;
-          break;
-        case 'unique-union':
-          switch (entry.key) {
-            case 'languages':  languages  = CanonicalId.unique([...a.languages,  ...b.languages]);  break;
-            case 'publishers': publishers = CanonicalId.unique([...a.publishers, ...b.publishers]); break;
-            case 'subjects':   subjects   = CanonicalId.unique([...a.subjects,   ...b.subjects]);   break;
-          }
-          break;
-      }
+      variantDispatch[entry.variant](entry);
     }
 
     return { 'summary': summary, 'firstPublishYear': firstPublishYear, 'languages': languages, 'publishers': publishers, 'subjects': subjects };
@@ -219,7 +224,7 @@ export class CanonicalId {
   }
 
   private static sourceList(c: CandidateType): string[] {
-    const noteSources = c.notes?.['_sources'];
+    const noteSources = c.notes?.['sources'];
     if (Array.isArray(noteSources)) return noteSources.filter((s): s is string => typeof s === 'string');
     return c.source.split('+').map((s) => s.trim()).filter(Boolean);
   }

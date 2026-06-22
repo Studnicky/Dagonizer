@@ -146,11 +146,12 @@ class ToolCandidateGatherStrategy extends GatherStrategy {
   }
 
   override reduce(
-    _config: GatherConfigType,
+    config: GatherConfigType,
     batch: Batch<GatherRecordType>,
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
+    void config;
     const languageValue = accessor.get(state, 'userLanguage');
     const userLanguage = typeof languageValue === 'string' ? languageValue : 'en';
     const candidatesValue = accessor.get(state, 'candidates');
