@@ -13,6 +13,7 @@ import type { ReservoirDriverInterface, ScatterItemBatchResultType } from '../co
 import type { ScatterItemResultType, ScatterPoolDriverInterface } from '../contracts/ScatterPoolDriver.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { GatherStrategy } from '../core/GatherStrategies.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
@@ -64,22 +65,22 @@ export type RunNodesBatchType = {
  * `ScatterPoolDriver`. Each member is bound at construction time so the adapter
  * has a stable hidden class (same shape every construction).
  */
-export interface ScatterDispatchAdapterInterface<TServices> {
+export interface ScatterDispatchAdapterInterface {
   readonly stateMapper: {
     cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
     spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
   };
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   withNodeTimeout<TResult>(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
-  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
+  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType;
   runNodes(
     dagName: string,
     state: NodeStateInterface,
@@ -99,22 +100,22 @@ export interface ScatterDispatchAdapterInterface<TServices> {
  * implements it so the scatter adapter is a named class with a stable shape,
  * not an object-literal of bound arrow closures rebuilt per scatter call.
  */
-export interface ScatterDispatchSourceInterface<TServices> {
+export interface ScatterDispatchSourceInterface {
   readonly stateMapper: {
     cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
     spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
   };
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   withNodeTimeout<TResult>(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
-  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
+  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType;
   runScatterNodes(
     dagName: string,
     state: NodeStateInterface,
@@ -137,21 +138,21 @@ export interface ScatterDispatchSourceInterface<TServices> {
  * source. Fields are initialised in constructor-declaration order for a
  * consistent hidden class across constructions.
  */
-export class ScatterDispatchAdapter<TServices>
-  implements ScatterDispatchAdapterInterface<TServices>
+export class ScatterDispatchAdapter
+  implements ScatterDispatchAdapterInterface
 {
   readonly stateMapper: {
     cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
     spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
   };
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
-  readonly #source: ScatterDispatchSourceInterface<TServices>;
+  readonly #source: ScatterDispatchSourceInterface;
 
-  constructor(source: ScatterDispatchSourceInterface<TServices>) {
+  constructor(source: ScatterDispatchSourceInterface) {
     this.stateMapper = source.stateMapper;
     this.nodes = source.nodes;
     this.dags = source.dags;
@@ -162,14 +163,14 @@ export class ScatterDispatchAdapter<TServices>
   }
 
   withNodeTimeout<TResult>(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult> {
     return this.#source.withNodeTimeout(node, signal, fn);
   }
 
-  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices> {
+  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType {
     return this.#source.bodyContext(dagName, nodeName, signal);
   }
 
@@ -236,17 +237,17 @@ export type ScatterRunContextType = {
  * Implements `ScatterPoolDriverInterface` without accessing private
  * members on `Dagonizer` directly.
  */
-export class ScatterPoolDriver<TServices>
+export class ScatterPoolDriver
   implements ScatterPoolDriverInterface, ReservoirDriverInterface
 {
-  readonly #adapter: ScatterDispatchAdapterInterface<TServices>;
+  readonly #adapter: ScatterDispatchAdapterInterface;
   readonly #ctx: ScatterRunContextType;
-  readonly #bodyExecutor: BodyExecutor<TServices>;
+  readonly #bodyExecutor: BodyExecutor;
 
   constructor(
-    adapter: ScatterDispatchAdapterInterface<TServices>,
+    adapter: ScatterDispatchAdapterInterface,
     ctx: ScatterRunContextType,
-    bodyExecutor: BodyExecutor<TServices>,
+    bodyExecutor: BodyExecutor,
   ) {
     this.#adapter = adapter;
     this.#ctx = ctx;
@@ -261,7 +262,7 @@ export class ScatterPoolDriver<TServices>
    * to `'error'` with a collected `outputContractViolation` NodeError.
    */
   #validateOutputContract(
-    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    dagNode: NodeInterface<NodeStateInterface, string>,
     routed: RoutedBatchType<string, NodeStateInterface>,
   ): RoutedBatchType<string, NodeStateInterface> {
     return OutputContractApplier.applyToRouted(
@@ -297,7 +298,8 @@ export class ScatterPoolDriver<TServices>
       cloneState.setMetadata('itemIndex', itemIndex);
 
       // Node body: build a size-1 Batch and execute.
-      const dagNode = this.#adapter.nodes.get(scatter.body.node);
+      const nodeIri = ContextResolver.expand(scatter.body.node, {});
+      const dagNode = this.#adapter.nodes.get(nodeIri);
       if (!dagNode) {
         throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
       }
@@ -343,7 +345,16 @@ export class ScatterPoolDriver<TServices>
         const resolved = (typeof item === 'object' && item !== null)
           ? this.#adapter.accessor.get(item, scatter.body.dagFrom)
           : null;
-        if (typeof resolved !== 'string' || resolved.length === 0 || !this.#adapter.dags.has(resolved)) {
+        if (typeof resolved !== 'string' || resolved.length === 0) {
+          const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
+          errorClone.deleteMetadata(SCATTER_PROGRESS_KEY);
+          errorClone.deleteMetadata(WORKSET_PROGRESS_KEY);
+          errorClone.setMetadata(itemKey, item);
+          errorClone.setMetadata('itemIndex', itemIndex);
+          return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone };
+        }
+        const resolvedIri = ContextResolver.expand(resolved, {});
+        if (!this.#adapter.dags.has(resolvedIri)) {
           const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
           errorClone.deleteMetadata(SCATTER_PROGRESS_KEY);
           errorClone.deleteMetadata(WORKSET_PROGRESS_KEY);
@@ -358,6 +369,7 @@ export class ScatterPoolDriver<TServices>
 
       // Build the child clone using the body dag's registered factory (spawnChild
       // returns NodeStateInterface; isolation factory may produce a different class).
+      // stateFactories is bare-name keyed; bodyDagName is the bare/short name.
       const factory = this.#adapter.stateFactories.get(bodyDagName) ?? ChildStateFactory.cloneParent;
       const cloneState = this.#adapter.stateMapper.spawnChild(
         state,
@@ -498,7 +510,8 @@ export class ScatterPoolDriver<TServices>
 
     if ('node' in scatter.body) {
       // ── Branch A: node body ─────────────────────────────────────────────────
-      const dagNode = this.#adapter.nodes.get(scatter.body.node);
+      const batchNodeIri = ContextResolver.expand(scatter.body.node, {});
+      const dagNode = this.#adapter.nodes.get(batchNodeIri);
       if (!dagNode) {
         throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
       }
@@ -568,30 +581,39 @@ export class ScatterPoolDriver<TServices>
     let batchBodyDagName: string;
     if ('dagFrom' in scatter.body) {
       const firstItem = items[0]?.item;
-      const resolved = (typeof firstItem === 'object' && firstItem !== null)
+      const rawResolved = (typeof firstItem === 'object' && firstItem !== null)
         ? this.#adapter.accessor.get(firstItem, scatter.body.dagFrom)
         : null;
-      if (typeof resolved !== 'string' || resolved.length === 0 || !this.#adapter.dags.has(resolved)) {
-        // Route all items to error without running any body (clone-parent for error path).
-        const errorResults: ScatterItemResultType[] = items.map((buffered) => {
-          const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
-          clone.deleteMetadata(SCATTER_PROGRESS_KEY);
-          clone.deleteMetadata(WORKSET_PROGRESS_KEY);
-          clone.setMetadata(itemKey, buffered.item);
-          clone.setMetadata('itemIndex', buffered.index);
-          for (const err of clone.errors) state.collectError(err);
-          for (const warn of clone.warnings) state.collectWarning(warn);
-          return {
-            'index': buffered.index,
-            'item': buffered.item,
-            'output': 'error',
-            'terminalOutcome': 'failed' as const,
-            'cloneState': clone,
-          };
-        });
-        return { 'results': errorResults };
+      if (typeof rawResolved !== 'string' || rawResolved.length === 0) {
+        return {
+          'results': items.map((buffered) => {
+            const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
+            clone.deleteMetadata(SCATTER_PROGRESS_KEY);
+            clone.deleteMetadata(WORKSET_PROGRESS_KEY);
+            clone.setMetadata(itemKey, buffered.item);
+            clone.setMetadata('itemIndex', buffered.index);
+            for (const err of clone.errors) state.collectError(err);
+            for (const warn of clone.warnings) state.collectWarning(warn);
+            return { 'index': buffered.index, 'item': buffered.item, 'output': 'error', 'terminalOutcome': 'failed' as const, 'cloneState': clone };
+          }),
+        };
       }
-      batchBodyDagName = resolved;
+      const batchResolvedIri = ContextResolver.expand(rawResolved, {});
+      if (!this.#adapter.dags.has(batchResolvedIri)) {
+        return {
+          'results': items.map((buffered) => {
+            const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
+            clone.deleteMetadata(SCATTER_PROGRESS_KEY);
+            clone.deleteMetadata(WORKSET_PROGRESS_KEY);
+            clone.setMetadata(itemKey, buffered.item);
+            clone.setMetadata('itemIndex', buffered.index);
+            for (const err of clone.errors) state.collectError(err);
+            for (const warn of clone.warnings) state.collectWarning(warn);
+            return { 'index': buffered.index, 'item': buffered.item, 'output': 'error', 'terminalOutcome': 'failed' as const, 'cloneState': clone };
+          }),
+        };
+      }
+      batchBodyDagName = rawResolved;
     } else {
       batchBodyDagName = scatter.body.dag;
     }
@@ -601,6 +623,7 @@ export class ScatterPoolDriver<TServices>
 
     // Build N child clones using the body dag's registered factory (spawnChild
     // returns NodeStateInterface; isolation factories may produce a different class).
+    // stateFactories is bare-name keyed; batchBodyDagName is the bare/short name.
     const batchFactory = this.#adapter.stateFactories.get(batchBodyDagName) ?? ChildStateFactory.cloneParent;
     const clones: NodeStateInterface[] = [];
     const batchItems: { id: string; state: NodeStateInterface }[] = [];
@@ -674,7 +697,7 @@ export class ScatterPoolDriver<TServices>
       // DagContainerBase.runDagBatch accepts DagTaskInterface<unknown>
       // and Batch<NodeStateInterface>; no cast needed.
       const repCloneForTask: NodeStateInterface = clones[0] ?? state;
-      const task = new DagTask<TServices>(
+      const task = new DagTask(
         batchBodyDagName,
         innerPath,
         correlationId,
@@ -693,7 +716,7 @@ export class ScatterPoolDriver<TServices>
         if (buffered === undefined) throw new ExecutionError(`ScatterDispatch: invariant — items[${i}] is undefined`);
         const itemCorrelationId = this.#adapter.nextCorrelationId(batchBodyDagName);
         const itemContext = this.#adapter.context(batchBodyDagName, scatter.name, signal);
-        const task = new DagTask<TServices>(
+        const task = new DagTask(
           batchBodyDagName,
           innerPath,
           itemCorrelationId,

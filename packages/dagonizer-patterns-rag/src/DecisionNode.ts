@@ -14,7 +14,6 @@ import { NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { LlmDispatchNode } from './LlmDispatchNode.js';
-import type { RagServicesType } from './LlmDispatchNode.js';
 
 export abstract class DecisionNode<
   TState extends NodeStateInterface,
@@ -32,7 +31,7 @@ export abstract class DecisionNode<
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<RagServicesType>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<TOutput>> {
     const response = await this.dispatch(state, context);
     const content = this.extractContent(response);

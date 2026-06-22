@@ -1,6 +1,7 @@
 import type { GatherExecutionType, GatherRecordType } from '../contracts/GatherExecution.js';
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -14,11 +15,11 @@ import type { NodeInvokerSourceInterface } from './NodeInvoker.js';
  * implements this interface so `Gather` depends only on a narrow port, not
  * on the whole dispatcher.
  */
-export interface GatherSourceInterface<TServices> {
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+export interface GatherSourceInterface {
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly accessor: StateAccessorInterface;
-  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType<TServices>;
-  runNodeOnState(node: NodeInterface<NodeStateInterface, string, TServices>, state: NodeStateInterface, context: NodeContextType<TServices>): Promise<string>;
+  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType;
+  runNodeOnState(node: NodeInterface<NodeStateInterface, string>, state: NodeStateInterface, context: NodeContextType): Promise<string>;
 }
 
 /**
@@ -33,12 +34,12 @@ export interface GatherSourceInterface<TServices> {
  * Implements `NodeInvokerSourceInterface` so it can be passed as the source
  * to `NodeInvoker` instances produced during `composeGatherExecution`.
  */
-export class Gather<TServices>
+export class Gather
   implements NodeInvokerSourceInterface
 {
-  readonly #source: GatherSourceInterface<TServices>;
+  readonly #source: GatherSourceInterface;
 
-  constructor(source: GatherSourceInterface<TServices>) {
+  constructor(source: GatherSourceInterface) {
     this.#source = source;
   }
 
@@ -85,10 +86,11 @@ export class Gather<TServices>
     dagName: string,
     signal: AbortSignal | null,
   ): Promise<void> {
-    if (!this.#source.nodes.has(nodeName)) {
+    const nodeIri = ContextResolver.expand(nodeName, {});
+    if (!this.#source.nodes.has(nodeIri)) {
       throw new DAGError(`Unknown custom node: ${nodeName}`);
     }
-    const dagNode = this.#source.nodes.get(nodeName);
+    const dagNode = this.#source.nodes.get(nodeIri);
     if (dagNode === undefined) return;
     const context = this.#source.nodeContext(dagName, nodeName, signal);
     await this.#source.runNodeOnState(dagNode, state, context);

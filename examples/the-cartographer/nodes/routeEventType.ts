@@ -17,7 +17,7 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
+import { CanonicalEventVariantBuilder } from '../entities/CanonicalEvent.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
@@ -47,7 +47,7 @@ const ROUTING_PATH: Readonly<Record<VariantRoute, RoutingPath>> = {
   'delivery-confirmation': 'order',
 };
 
-export class RouteEventTypeNode extends ScalarNode<CartographerState, VariantRoute, CartographerServices> {
+export class RouteEventTypeNode extends ScalarNode<CartographerState, VariantRoute> {
   readonly 'name' = 'route-event-type-variant';
   readonly 'outputs' = ['position-ping', 'sensor-reading', 'customs-event', 'facility-scan', 'delivery-confirmation'] as const;
 
@@ -61,9 +61,9 @@ export class RouteEventTypeNode extends ScalarNode<CartographerState, VariantRou
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<VariantRoute>> {
-    const variant = state.getMetadata<CanonicalEventVariant>('canonical-event');
-    const t = (variant !== null && variant !== undefined) ? variant.eventType : state.canonicalVariant.eventType;
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<VariantRoute>> {
+    const raw = state.getMetadata('canonical-event');
+    const t = CanonicalEventVariantBuilder.is(raw) ? raw.eventType : state.canonicalVariant.eventType;
 
     const path = ROUTING_PATH[t];
     // facility-scan is the only event type that runs full order enrichment

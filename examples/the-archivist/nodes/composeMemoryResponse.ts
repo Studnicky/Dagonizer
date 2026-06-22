@@ -1,7 +1,7 @@
 /**
  * composeMemoryResponse: LLM compose node for the recall-memories branch.
  *
- * Calls `context.services.llm.composeMemoryRecall(...)` with the
+ * Calls `this.services.llm.composeMemoryRecall(...)` with the
  * visitor's query, the structured `MemoryDigest` from `recallMemories`,
  * and the optional recalled-context summary. Stores the result in
  * `state.draft` so the shared `respondToVisitor` terminal can emit it.
@@ -22,9 +22,15 @@ import { COMPOSE_TIMEOUT_MS } from './composeResponse.ts';
 /** Total attempts (initial + retries) before routing to salvage. */
 const RETRY_BUDGET = 3;
 
-export class ComposeMemoryResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
+export class ComposeMemoryResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
   readonly name = 'compose-memory-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
+
+  private readonly services: ArchivistServices;
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
   override get outputSchema(): Record<'drafted' | 'retry' | 'salvage', SchemaObjectType> {
     return {
       'drafted': { 'type': 'object' },
@@ -33,17 +39,17 @@ export class ComposeMemoryResponseNode extends ScalarNode<ArchivistState, 'draft
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
     const recalledSummary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;
     const conversation = state.conversation.length > 0 ? state.conversation : undefined;
 
     const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS);
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
     try {
-      state.draft = await context.services.llm.composeMemoryRecall(
+      state.draft = await this.services.llm.composeMemoryRecall(
         state.query,
         state.memoryDigest,
         recalledSummary,
@@ -65,5 +71,3 @@ export class ComposeMemoryResponseNode extends ScalarNode<ArchivistState, 'draft
   }
 }
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const composeMemoryResponse = new ComposeMemoryResponseNode();

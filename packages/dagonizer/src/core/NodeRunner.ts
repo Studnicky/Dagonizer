@@ -24,11 +24,10 @@ export class NodeRunner {
   static async run<
     TState extends NodeStateInterface,
     TOutput extends string,
-    TServices,
   >(
-    node: NodeInterface<TState, TOutput, TServices>,
+    node: NodeInterface<TState, TOutput>,
     batch: Batch<TState>,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ): Promise<RoutedBatchType<TOutput, TState>> {
     return node.execute(batch, context);
   }

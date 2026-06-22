@@ -12,7 +12,6 @@
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
@@ -20,7 +19,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-csv-node
-export class ParseCsvNode extends ScalarNode<CartographerState, 'normalized' | 'invalid', CartographerServices> {
+export class ParseCsvNode extends ScalarNode<CartographerState, 'normalized' | 'invalid'> {
   readonly 'name' = 'parse-csv';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
 
@@ -58,7 +57,7 @@ export class ParseCsvNode extends ScalarNode<CartographerState, 'normalized' | '
     return cells;
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized' | 'invalid'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'normalized' | 'invalid'>> {
     // Use decompressed text when available (gzip path), else the raw payload.
     const text = state.decodedText.length > 0 ? state.decodedText : state.currentSource.payload;
     const lines = text.split('\n').filter((l) => l.length > 0);

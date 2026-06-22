@@ -13,8 +13,7 @@
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
-import type { SourcePayload } from '../../entities/SourcePayload.ts';
+import { SourcePayloadGuard } from '../../entities/SourcePayload.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
@@ -22,7 +21,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region select-source-node
-export class SelectSourceNode extends ScalarNode<CartographerState, 'compressed' | 'plain' | 'invalid', CartographerServices> {
+export class SelectSourceNode extends ScalarNode<CartographerState, 'compressed' | 'plain' | 'invalid'> {
   readonly 'name' = 'select-source';
   readonly 'outputs' = ['compressed', 'plain', 'invalid'] as const;
 
@@ -34,13 +33,13 @@ export class SelectSourceNode extends ScalarNode<CartographerState, 'compressed'
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'compressed' | 'plain' | 'invalid'>> {
-    const item = state.getMetadata<SourcePayload>('source');
-    if (item === null || item === undefined || !item.sourceId || !item.payload) {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'compressed' | 'plain' | 'invalid'>> {
+    const raw = state.getMetadata('source');
+    if (!SourcePayloadGuard.is(raw)) {
       return NodeOutputBuilder.of('invalid');
     }
-    state.currentSource = item;
-    return NodeOutputBuilder.of(item.compression === 'gzip' ? 'compressed' : 'plain');
+    state.currentSource = raw;
+    return NodeOutputBuilder.of(raw.compression === 'gzip' ? 'compressed' : 'plain');
   }
 }
 

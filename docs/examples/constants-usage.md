@@ -31,7 +31,7 @@ Constants demonstrated:
 ## What it demonstrates
 
 - **Frozen runtime objects.** `Object.values(GatherStrategyNames)` enumerates all valid gather strategy names. Use this for validation or for building a selector that accepts only known strategies.
-- **`MetadataKeys.CURRENT_ITEM`.** The key the engine writes per scatter clone so nodes can read `state.getMetadata<T>(MetadataKeys.CURRENT_ITEM)` without hardcoding strings.
+- **`MetadataKeys.CURRENT_ITEM`.** The key the engine writes per scatter clone so nodes can read `state.getMetadata(MetadataKeys.CURRENT_ITEM)` (or a typed `state.getter.*` accessor) without hardcoding strings.
 - **`NodeType` as a type guard.** `type === NodeTypes.SCATTER` narrows the node shape to `ScatterNode` in TypeScript.
 - **`ScatterOutput` routing tokens.** `all-success`, `all-error`, `partial`, and `empty` are the outcome-reducer routing tokens. The constant ensures consuming code references the same string the reducer emits.
 

@@ -171,23 +171,26 @@ export class Validator {
    */
   private static compileNamed<T>(name: string, schema: { readonly $id?: string }): EntityValidatorInterface<T> {
     const id = schema.$id;
-    let compiled: ValidateFunction | undefined;
+    // Typed as `ValidateFunction<T>` so the compiled Ajv function IS a type
+    // guard: `validator(value)` narrows `value` to `T`, making the validated
+    // return cast-free (no `value as T` at the boundary).
+    let compiled: ValidateFunction<T> | undefined;
     if (id !== undefined) {
-      const cached = sharedAjv.getSchema(id);
+      const cached = sharedAjv.getSchema<T>(id);
       if (typeof cached === 'function') {
         compiled = cached;
       }
     }
     if (compiled === undefined) {
-      compiled = sharedAjv.compile(schema);
+      compiled = sharedAjv.compile<T>(schema);
     }
-    const validator = compiled;
+    const validator: ValidateFunction<T> = compiled;
     return {
       is(value): value is T {
-        return validator(value) === true;
+        return validator(value);
       },
       validate(value): T {
-        if (validator(value) === true) return value as T;
+        if (validator(value)) return value;
         const ajvErrors: readonly ErrorObject[] = validator.errors ?? [];
         throw new ValidationError(
           `Invalid ${name}:\n  - ${Validator.formatErrors(ajvErrors).join('\n  - ')}`,
@@ -195,7 +198,7 @@ export class Validator {
         );
       },
       errors(value): string[] | null {
-        if (validator(value) === true) return null;
+        if (validator(value)) return null;
         return Validator.formatErrors(validator.errors ?? []);
       },
     };

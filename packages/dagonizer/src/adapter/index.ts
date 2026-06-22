@@ -85,6 +85,8 @@ export { BaseCascade } from './BaseCascade.js';
 export type { CascadePreferenceType } from './BaseCascade.js';
 
 export { LlmAdapterCascade } from './LlmAdapterCascade.js';
+export { LlmAdapterCascadeBuilder } from './LlmAdapterCascadeBuilder.js';
+export type { CatalogueEntryType, LlmAdapterCascadeBuilderOptionsType } from './LlmAdapterCascadeBuilder.js';
 
 // ── EmbedderInterface surface (parallel to LlmAdapterInterface) ──────────────────────────────
 export type { EmbedderInterface } from '../contracts/EmbedderInterface.js';

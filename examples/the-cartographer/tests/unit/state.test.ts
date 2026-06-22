@@ -107,7 +107,8 @@ describe('CartographerState#clone', () => {
     const s = new CartographerState();
     s.raw.lineItems = [{ 'productId': 'P1', 'quantity': 1 }, { 'productId': 'P2', 'quantity': 2 }];
     const c = s.clone();
-    c.raw.lineItems[0]!.productId = 'MUTATED';
+    const firstRaw = c.raw.lineItems[0];
+    if (firstRaw !== undefined) firstRaw.productId = 'MUTATED';
     assert.equal(s.raw.lineItems[0]?.productId, 'P1');
   });
 
@@ -115,7 +116,8 @@ describe('CartographerState#clone', () => {
     const s = new CartographerState();
     s.normalized.lineItems = [{ 'productId': 'P3', 'quantity': 3 }];
     const c = s.clone();
-    c.normalized.lineItems[0]!.productId = 'MUTATED';
+    const firstNorm = c.normalized.lineItems[0];
+    if (firstNorm !== undefined) firstNorm.productId = 'MUTATED';
     assert.equal(s.normalized.lineItems[0]?.productId, 'P3');
   });
 

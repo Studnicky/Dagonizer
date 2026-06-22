@@ -1,5 +1,6 @@
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
@@ -45,13 +46,13 @@ export type EmbeddedDagExecutorSourceType = {
  * error to the placement's `'error'` output. `body.infrastructureError` is
  * intentionally ignored here (no re-queue).
  */
-export class EmbeddedDagExecutor<TServices> {
+export class EmbeddedDagExecutor {
   readonly #source: EmbeddedDagExecutorSourceType;
-  readonly #bodyExecutor: BodyExecutor<TServices>;
+  readonly #bodyExecutor: BodyExecutor;
 
   constructor(
     source: EmbeddedDagExecutorSourceType,
-    bodyExecutor: BodyExecutor<TServices>,
+    bodyExecutor: BodyExecutor,
   ) {
     this.#source = source;
     this.#bodyExecutor = bodyExecutor;
@@ -97,7 +98,9 @@ export class EmbeddedDagExecutor<TServices> {
     // Validate that the resolved dag name is registered. An unregistered name
     // means the runtime path resolved to a string that does not correspond to
     // any known DAG — route to error without throwing.
-    if (!this.#source.dags.has(dagName)) {
+    // dags is IRI-keyed: expand the bare/short dagName to its registry key.
+    const dagIri = ContextResolver.expand(dagName, {});
+    if (!this.#source.dags.has(dagIri)) {
       return PlacementRouter.assemble(
         placement.name,
         placement.outputs,

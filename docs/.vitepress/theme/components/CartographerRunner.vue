@@ -25,7 +25,7 @@ import type { JourneyInsights, RegionInsights } from '../../../../examples/the-c
 import type { CartographerServices } from '../../../../examples/the-cartographer/CartographerServices.ts';
 import { cartographerWorkersDAG, CartographerWorkersDag, eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
 import { ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
-import { geoResolveBundle } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
+import { GeoResolveDAG } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
 import { gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
 import { orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
@@ -451,11 +451,11 @@ async function run(): Promise<void> {
 
   await dagGraph.value?.reset();
 
-  let dispatcher: ObservedDagonizer<CartographerState, CartographerServices> | null = null;
+  let dispatcher: ObservedDagonizer<CartographerState> | null = null;
 
   try {
     // Offline recorded geo on both sides: the worker registry builds its own
-    // recorded services bag; the main thread (seed + summarize + gather) needs
+    // recorded services record; the main thread (seed + summarize + gather) needs
     // no network. Deterministic and infeasible-to-network-at-1M.
     const services: CartographerServices = GeoResolvers.recorded();
 
@@ -514,14 +514,13 @@ async function run(): Promise<void> {
       },
     };
 
-    dispatcher = new ObservedDagonizer<CartographerState, CartographerServices>({
-      services,
+    dispatcher = new ObservedDagonizer<CartographerState>({
       'observer': observer,
       'containers': { 'cpu': container },
     });
 
     // Bundle registration order: sub-DAGs first so their names resolve.
-    dispatcher.registerBundle(geoResolveBundle);
+    dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
     dispatcher.registerBundle(ingestSourceBundle);

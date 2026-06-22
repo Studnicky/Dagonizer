@@ -94,8 +94,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     const seen: number[] = [];
     dispatcher.registerNode(TestNode.make('double', ['success'], (state) => {
-      const item = state.getMetadata<number>('item');
-      if (item === undefined) throw new Error('no item');
+      const item = state.getter.number('item');
       seen.push(item);
       return 'success';
     }));

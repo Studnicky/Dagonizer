@@ -34,8 +34,8 @@ class DomainState extends NodeStateBase {
 
 // Minimal metadata-backed StateAccessorInterface for the StateMapper path.
 const metadataAccessor: StateAccessorInterface = {
-  get<T = unknown>(state: NodeStateBase, key: string): T | null {
-    return state.getMetadata<T>(key) ?? null;
+  get(state: NodeStateBase, key: string): unknown {
+    return state.getMetadata(key) ?? null;
   },
   set(state: NodeStateBase, key: string, value: unknown): void {
     state.setMetadata(key, value);
@@ -97,9 +97,9 @@ void describe('Dagonizer accepts a custom StateAccessorInterface', () => {
   void it('uses the supplied accessor for scatter source reads', async () => {
     let getCalls = 0;
     const trackingAccessor: StateAccessorInterface = {
-      get<T = unknown>(state: object, path: string): T | null {
+      get(state: object, path: string): unknown {
         getCalls += 1;
-        return new DottedPathAccessor().get<T>(state, path);
+        return new DottedPathAccessor().get(state, path);
       },
       set(state: object, path: string, value: unknown): void {
         new DottedPathAccessor().set(state, path, value);
@@ -113,7 +113,7 @@ void describe('Dagonizer accepts a custom StateAccessorInterface', () => {
 
     const dispatcher = new Dagonizer<ScatterState>({ 'accessor': trackingAccessor });
     dispatcher.registerNode(TestNode.make<ScatterState>('handler', ['success'], (state) => {
-      const item = state.getMetadata<number>('item') ?? 0;
+      const item = state.getter.number('item');
       state.results.push(item * 2);
       return 'success';
     }));

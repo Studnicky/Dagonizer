@@ -169,7 +169,6 @@ await dispatchNode.execute(Batch.of(stateC), {
   dagName: 'tool-use-demo',
   nodeName: 'dispatchTool',
   signal: ac.signal,
-  services: undefined,
   validateOutputs: false,
   outputSchemaValidator: null,
 });

@@ -54,7 +54,7 @@ class ScatterKillerNode extends ScalarNode<ConformanceState, 'done'> {
   }
 
   protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
-    const current = state.getMetadata<number>('currentItem');
+    const current = state.getMetadata('currentItem');
     if (current === KILL_ITEM) {
       // Silent death: terminate this worker thread mid-request. No result is
       // sent. The parent's exit listener is the only thing that unblocks the
@@ -77,13 +77,12 @@ class KillBundle {
   static of(): RegistryBundleInterface {
     const base = ConformanceRegistry.bundle();
     const nodes = base.bundle.nodes.filter((n) => n.name !== 'scatter-counter');
-    nodes.push(new ScatterKillerNode() as (typeof base.bundle.nodes)[number]);
+    nodes.push(new ScatterKillerNode());
     return {
       'bundle': {
         'nodes': nodes,
         'dags': base.bundle.dags,
       },
-      'services': base.services,
       'registryVersion': base.registryVersion,
       'restoreState': base.restoreState,
     };

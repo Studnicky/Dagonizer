@@ -11,15 +11,15 @@ void describe('SqliteStore: basic operations', () => {
   void it('get/set/has/delete round-trip', async () => {
     const store = new SqliteStore(':memory:');
 
-    await store.set<string>('greeting', 'hello');
-    assert.equal(await store.get<string>('greeting'), 'hello');
+    await store.set('greeting', 'hello');
+    assert.equal(await store.get('greeting'), 'hello');
     assert.equal(await store.has('greeting'), true);
     assert.equal(await store.has('missing'), false);
 
     const deleted = await store.delete('greeting');
     assert.equal(deleted, true);
     assert.equal(await store.has('greeting'), false);
-    assert.equal(await store.get<string>('greeting'), null);
+    assert.equal(await store.get('greeting'), null);
 
     await store.disconnect();
   });
@@ -35,9 +35,9 @@ void describe('SqliteStore: basic operations', () => {
 void describe('SqliteStore: update atomicity', () => {
   void it('update(key, fn) returns the new value; get() reads the same', async () => {
     const store = new SqliteStore(':memory:');
-    const result = await store.update<number>('counter', (n) => (n ?? 0) + 1);
+    const result = await store.update('counter', (n) => (typeof n === 'number' ? n : 0) + 1);
     assert.equal(result, 1);
-    assert.equal(await store.get<number>('counter'), 1);
+    assert.equal(await store.get('counter'), 1);
     await store.disconnect();
   });
 
@@ -48,10 +48,10 @@ void describe('SqliteStore: update atomicity', () => {
     // the second will block until the first transaction commits, so the
     // final value must be 2 (no lost update).
     await Promise.all([
-      store.update<number>('k', (n) => (n ?? 0) + 1),
-      store.update<number>('k', (n) => (n ?? 0) + 1),
+      store.update('k', (n) => (typeof n === 'number' ? n : 0) + 1),
+      store.update('k', (n) => (typeof n === 'number' ? n : 0) + 1),
     ]);
-    assert.equal(await store.get<number>('k'), 2);
+    assert.equal(await store.get('k'), 2);
     await store.disconnect();
   });
 });
@@ -59,8 +59,8 @@ void describe('SqliteStore: update atomicity', () => {
 void describe('SqliteStore: snapshot', () => {
   void it('snapshot() returns typed envelope with type and version', async () => {
     const store = new SqliteStore(':memory:');
-    await store.set<number>('a', 1);
-    await store.set<string>('b', 'two');
+    await store.set('a', 1);
+    await store.set('b', 'two');
 
     const snap = await store.snapshot();
     assert.equal(snap.type, 'sqlite-store');
@@ -76,14 +76,14 @@ void describe('SqliteStore: snapshot', () => {
 
   void it('restore() repopulates a fresh SqliteStore from a captured snapshot', async () => {
     const source = new SqliteStore(':memory:');
-    await source.set<number>('x', 42);
+    await source.set('x', 42);
     await source.set('y', [1, 2, 3]);
     const snap = await source.snapshot();
     await source.disconnect();
 
     const target = new SqliteStore(':memory:');
     await target.restore(snap);
-    assert.equal(await target.get<number>('x'), 42);
+    assert.equal(await target.get('x'), 42);
     assert.deepEqual(await target.get('y'), [1, 2, 3]);
     await target.disconnect();
   });
@@ -128,7 +128,7 @@ void describe('SqliteStore: snapshot', () => {
 void describe('SqliteStore: namespace', () => {
   void it('namespace option prefixes keys visible in snapshot', async () => {
     const store = new SqliteStore(':memory:', { 'namespace': 'foo' });
-    await store.set<string>('key', 'value');
+    await store.set('key', 'value');
 
     // Snapshot entries carry the qualified key (with namespace prefix)
     const snap = await store.snapshot();
@@ -136,7 +136,7 @@ void describe('SqliteStore: namespace', () => {
     assert.equal(snap.entries[0]?.key, 'foo:key');
 
     // Public get uses the same prefix; reads the same entry back
-    assert.equal(await store.get<string>('key'), 'value');
+    assert.equal(await store.get('key'), 'value');
     await store.disconnect();
   });
 });
@@ -144,12 +144,12 @@ void describe('SqliteStore: namespace', () => {
 void describe('SqliteStore: disconnect', () => {
   void it('disconnect() closes the connection; subsequent ops throw', async () => {
     const store = new SqliteStore(':memory:');
-    await store.set<string>('before', 'close');
+    await store.set('before', 'close');
     await store.disconnect();
 
     // After close, any SQLite operation should throw
     await assert.rejects(
-      () => store.get<string>('before'),
+      () => store.get('before'),
       (err: unknown) => {
         assert.ok(err instanceof Error);
         return true;
@@ -162,8 +162,8 @@ void describe('SqliteStore: custom tableName', () => {
   void it('custom tableName works as backing table', async () => {
     const store = new SqliteStore(':memory:', { 'namespace': '', 'tableName': 'app_kv' });
 
-    await store.set<number>('count', 7);
-    assert.equal(await store.get<number>('count'), 7);
+    await store.set('count', 7);
+    assert.equal(await store.get('count'), 7);
 
     const snap = await store.snapshot();
     assert.equal(snap.type, 'sqlite-store');

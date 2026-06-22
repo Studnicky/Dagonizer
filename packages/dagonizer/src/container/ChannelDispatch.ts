@@ -25,7 +25,7 @@ import type { MessageChannelInterface } from '../contracts/MessageChannelInterfa
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
-import type { JsonObjectType } from '../entities/json.js';
+import { JsonObject } from '../entities/json.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 
 import { DagOutcome } from './DagOutcome.js';
@@ -320,33 +320,29 @@ export class ChannelDispatch {
         const correlationId = msg.response.correlationId;
         const entry = this.#pending.get(correlationId);
         if (entry === undefined) return;
-        // Protocol-boundary narrowing: BridgeMessage's 'result' branch carries
-        // inline schema copies (InlineNodeErrorShape, InlineExecutionResponseShape)
-        // that are structurally identical to the canonical NodeError and JsonObjectType
-        // types but produce distinct FromSchema derivations. Ajv has validated the
-        // wire message, so these casts are safe:
-        //   errors: same required fields/types as NodeErrorSchema; only nominal gap.
-        //   items[*].snapshot: schema { type: ['object', 'null'] } → Ajv-validated JSON
-        //     object, values confirmed JSON-compatible by the validator; safe to narrow
-        //     from { [k: string]: unknown } | null to JsonObjectType | null.
+        // Protocol-boundary narrowing: the BridgeMessage 'result' branch carries
+        // an inline error shape structurally identical to the canonical
+        // `NodeErrorWireType`. `item.snapshot` (schema `{ type: ['object','null'] }`)
+        // is narrowed to `JsonObjectType | null` via `JsonObject.is`.
+        const errors: readonly NodeErrorWireType[] = msg.response.errors;
 
         if (entry.variant === 'single') {
           // Single-item (N=1): unpack items[0] into a flat DagOutcomeType.
           const firstItem = msg.response.items[0];
+          const firstSnapshot = firstItem?.snapshot;
           entry.settle({
             'terminalOutput': firstItem?.terminalOutcome ?? 'failed',
-            'errors': msg.response.errors as readonly NodeErrorWireType[],
-            'stateSnapshot': (firstItem?.snapshot ?? null) as JsonObjectType | null,
+            'errors': errors,
+            'stateSnapshot': JsonObject.is(firstSnapshot) ? firstSnapshot : null,
             'intermediates': msg.response.intermediates,
           });
         } else {
           // Batch (N>1): produce one BatchRunResultType per item.
-          const batchErrors = msg.response.errors as readonly NodeErrorWireType[];
           const results: BatchRunResultType[] = msg.response.items.map((item: { id: string; terminalOutcome: string; snapshot?: Record<string, unknown> | null }) => ({
             'id': item.id,
             'terminalOutput': item.terminalOutcome,
-            'errors': batchErrors,
-            'stateSnapshot': (item.snapshot ?? null) as JsonObjectType | null,
+            'errors': errors,
+            'stateSnapshot': JsonObject.is(item.snapshot) ? item.snapshot : null,
             'intermediates': msg.response.intermediates,
           }));
           entry.settle(results);
@@ -358,10 +354,10 @@ export class ChannelDispatch {
         const entry = this.#pending.get(msg.correlationId);
         if (entry === undefined || entry.relay === null) return;
         const { relay } = entry;
-        // Ajv-validated boundary: placementPath is confirmed an array of strings
-        // by the BridgeMessage schema; cast from schema-inferred type to the
-        // narrower readonly string[] used by ObserverRelayInterface.
-        const path = msg.placementPath as readonly string[];
+        // Ajv-validated boundary: placementPath is an array of strings by the
+        // BridgeMessage schema; a `string[]` widens to the `readonly string[]`
+        // the ObserverRelayInterface expects with no cast.
+        const path: readonly string[] = msg.placementPath;
         // Dispatch map over switch: each hook handler is a closed-over function
         // that forwards the instrumentation event to the relay.
         type InstrMsg = typeof msg & { variant: 'instrumentation' };
@@ -386,7 +382,7 @@ export class ChannelDispatch {
             }
           },
         };
-        hookDispatch[msg.hook]?.(msg as InstrMsg);
+        hookDispatch[msg.hook]?.(msg);
         break;
       }
 

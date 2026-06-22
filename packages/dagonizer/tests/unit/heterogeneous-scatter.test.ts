@@ -74,7 +74,7 @@ const dispatchNode = TestNode.make<HeterogeneousState>(
   'dispatch',
   ['success', 'empty'],
   (state) => {
-    const provider = state.getMetadata<string>('currentItem') ?? 'unknown';
+    const provider = state.getter.string('currentItem', 'unknown');
     const dispatch: Record<string, () => string> = {
       'alpha': () => { state.providerResult = 'result-from-alpha'; return 'success'; },
       'beta':  () => { state.providerResult = 'result-from-beta';  return 'success'; },
@@ -100,11 +100,15 @@ class FlatMergeGather extends GatherStrategy {
   ): void {
     for (const item of batch) {
       const record: GatherRecordType = item.state;
-      const existingResults = accessor.get<string[]>(state, 'results')      ?? [];
-      const existingFails   = accessor.get<string[]>(state, 'failMessages') ?? [];
+      const rawResults = accessor.get(state, 'results');
+      const existingResults: string[] = Array.isArray(rawResults) ? rawResults.filter((x): x is string => typeof x === 'string') : [];
+      const rawFails = accessor.get(state, 'failMessages');
+      const existingFails: string[] = Array.isArray(rawFails) ? rawFails.filter((x): x is string => typeof x === 'string') : [];
 
-      const result = accessor.get<string>(record.cloneState, 'providerResult') ?? '';
-      const cloneFails = accessor.get<string[]>(record.cloneState, 'failMessages') ?? [];
+      const rawResult = accessor.get(record.cloneState, 'providerResult');
+      const result: string = typeof rawResult === 'string' ? rawResult : '';
+      const rawCloneFails = accessor.get(record.cloneState, 'failMessages');
+      const cloneFails: string[] = Array.isArray(rawCloneFails) ? rawCloneFails.filter((x): x is string => typeof x === 'string') : [];
 
       if (result.length > 0) {
         accessor.set(state, 'results', [...existingResults, result]);

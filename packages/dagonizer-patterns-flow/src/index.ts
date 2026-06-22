@@ -1,7 +1,7 @@
 /**
  * @studnicky/dagonizer-patterns-flow: pure flow primitives.
  *
- * No services bag; deterministic transforms on state. The patterns are
+ * No services record; deterministic transforms on state. The patterns are
  * the canonical "shape" nodes (select/sort, reduce/dedupe/group,
  * gate, extract, respond) every DAG eventually needs.
  */

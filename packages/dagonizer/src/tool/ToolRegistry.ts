@@ -76,9 +76,8 @@ export class ToolRegistry {
     const outputValidator = Validator.compile<unknown>(tool.definition.outputSchema);
 
     // Build the synthesized DAG from a default-typed node (the builder reads its
-    // `name`). The registered node instances are constructed per `bundle()` call,
-    // typed to the consumer's services — so the synthesized DAG carries no
-    // services type and the node is discarded after the DAG is built.
+    // `name`). The registered node instances are constructed per `bundle()` call
+    // so the synthesized DAG node is discarded after the DAG is built.
     const dag = new DAGBuilder(dagName, '1')
       .node('invoke', new ToolInvokeNode(nodeName, tool, inputValidator, outputValidator), { 'done': 'end', 'error': 'end-fail' })
       .terminal('end')
@@ -122,18 +121,15 @@ export class ToolRegistry {
    * seeded into the embed's `input`, the result read from `output`, and the
    * parent's state is never mutated by the tool. A tool is a pure function.
    */
-  bundle<TServices = undefined>(): DispatcherBundleType<ToolInvocationState, TServices> {
-    const nodes: ToolInvokeNode<TServices>[] = [];
+  bundle(): DispatcherBundleType<ToolInvocationState> {
+    const nodes: ToolInvokeNode[] = [];
     const dags: DAGType[] = [];
     const stateFactories: Record<string, ChildStateFactoryType> = {};
 
     for (const entry of this.#entries.values()) {
-      // Construct each node typed to the consumer's `TServices` (inferred from
-      // the `registerBundle` call site). The node ignores services — it gets its
-      // tool via the constructor — so it is services-polymorphic, but its type is
-      // the dispatcher's, which keeps registration cast-free. Validators compiled
-      // once at `register()` time are passed through here; no recompilation.
-      nodes.push(new ToolInvokeNode<TServices>(entry['nodeName'], entry['tool'], entry['inputValidator'], entry['outputValidator']));
+      // Construct each node. The node gets its tool via the constructor.
+      // Validators compiled once at `register()` time are passed through here; no recompilation.
+      nodes.push(new ToolInvokeNode(entry['nodeName'], entry['tool'], entry['inputValidator'], entry['outputValidator']));
       dags.push(entry['dag']);
       stateFactories[entry['dagName']] = () => new ToolInvocationState();
     }

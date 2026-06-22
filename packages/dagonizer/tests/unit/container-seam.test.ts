@@ -180,7 +180,7 @@ const parentContainerDAG: DAGType = {
 // Minimal CounterState container test double used only to put a dispatcher in
 // container-dispatch mode (its runDag is never invoked by the registration tests).
 const fakeCounterContainer: DagContainerInterface = {
-  async runDag(_task: DagTaskInterface<unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+  async runDag(_task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
   },
 };
@@ -245,7 +245,7 @@ const validDagBodyScatterDAG: DAGType = {
 // declares that role registers without tripping the unbound-role throw. Its
 // runDag is never invoked by the registration-only test below.
 const fakeDagContainer: DagContainerInterface = {
-  async runDag(_task: DagTaskInterface<unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+  async runDag(_task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
   },
 };
@@ -274,13 +274,17 @@ const bodyChildDAG: DAGType = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeInProcessDispatcher(): Dagonizer<CounterState> {
-  const d = new Dagonizer<CounterState>();
-  d.registerNode(incrementNode);
-  d.registerNode(terminalNode);
-  d.registerDAG(childDAG);
-  d.registerDAG(parentDAG);
-  return d;
+class DispatcherFixture {
+  private constructor() {}
+
+  static inProcess(): Dagonizer<CounterState> {
+    const d = new Dagonizer<CounterState>();
+    d.registerNode(incrementNode);
+    d.registerNode(terminalNode);
+    d.registerDAG(childDAG);
+    d.registerDAG(parentDAG);
+    return d;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -358,7 +362,7 @@ void describe('Builder container key', () => {
 void describe('Container seam — W1', () => {
   // (a) No container → in-process, byte-identical
   void it('embedded DAG with no container runs in-process and mutates state', async () => {
-    const dispatcher = makeInProcessDispatcher();
+    const dispatcher = DispatcherFixture.inProcess();
     const state = new CounterState();
     assert.equal(state.value, 0);
 
@@ -374,7 +378,7 @@ void describe('Container seam — W1', () => {
   void it('bound container receives runDag call and outcome is applied to parent state', async () => {
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
     const fakeContainer: DagContainerInterface = {
-      async runDag(task: DagTaskInterface<unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+      async runDag(task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
         // Restore child clone from the snapshot in the task.
         // items[0].snapshot is { [key: string]: unknown } at the wire boundary;
         // JsonValue.from coerces it to JsonValueType, then the object guard narrows
@@ -470,7 +474,7 @@ void describe('Container seam — W1', () => {
 
   // Verify in-process path is byte-identical regardless of whether containers is set
   void it('in-process path produces identical results regardless of empty containers option', async () => {
-    const dispatcherA = makeInProcessDispatcher();
+    const dispatcherA = DispatcherFixture.inProcess();
     const dispatcherB = new Dagonizer<CounterState>({ 'containers': {} });
     dispatcherB.registerNode(incrementNode);
     dispatcherB.registerNode(terminalNode);

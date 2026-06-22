@@ -28,7 +28,6 @@ import { coldChainCheck } from '../nodes/coldChainCheck.ts';
 import { enrichLeg } from '../nodes/enrichLeg.ts';
 import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
@@ -89,7 +88,7 @@ export const pipelineSensorReadingDAG: DAGType = new DAGBuilder('pipeline-sensor
 
   .build();
 
-export const pipelineSensorReadingBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const pipelineSensorReadingBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [parseVariant, canonicalizeCore, coldChainCheck, enrichLeg, aggregateEvent],
   'dags':  [pipelineSensorReadingDAG],
 };

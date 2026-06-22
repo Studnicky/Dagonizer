@@ -205,26 +205,30 @@ class MinimalState extends NodeStateBase {}
 // MinimalDagTask: minimal DagTaskInterface implementation
 // ---------------------------------------------------------------------------
 
-function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<undefined> {
-  const snapshot = new MinimalState().snapshot();
-  const request: ExecutionRequestType = {
-    'dagName': 'test-dag',
-    'placementPath': [],
-    'items': [{ 'id': correlationId, 'snapshot': snapshot }],
-    'timeoutMs': null,
-    'correlationId': correlationId,
-  };
-  return {
-    'dagName': 'test-dag',
-    'placementPath': [],
-    'correlationId': correlationId,
-    'timeout': Timeout.none(),
-    'state': new MinimalState(),
-    'context': NodeContextBuilder.of('test-dag', 'test-node', signal, undefined),
-    toRequest(): ExecutionRequestType {
-      return request;
-    },
-  };
+class LoopbackTask {
+  private constructor() {}
+
+  static of(correlationId: string, signal: AbortSignal): DagTaskInterface {
+    const snapshot = new MinimalState().snapshot();
+    const request: ExecutionRequestType = {
+      'dagName': 'test-dag',
+      'placementPath': [],
+      'items': [{ 'id': correlationId, 'snapshot': snapshot }],
+      'timeoutMs': null,
+      'correlationId': correlationId,
+    };
+    return {
+      'dagName': 'test-dag',
+      'placementPath': [],
+      'correlationId': correlationId,
+      'timeout': Timeout.none(),
+      'state': new MinimalState(),
+      'context': NodeContextBuilder.of('test-dag', 'test-node', signal),
+      toRequest(): ExecutionRequestType {
+        return request;
+      },
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -288,28 +292,32 @@ class SingleChannelContainer extends DagContainerBase<null> {
 //   terminalOutput = 'done-' + correlationId (deterministic per-request value).
 // ---------------------------------------------------------------------------
 
-function startFakeHost(hostSide: MessageChannelInterface): void {
-  hostSide.onMessage((msg) => {
-    if (msg.variant === 'init') {
-      hostSide.send({
-        'variant': 'ready',
-        'registryVersion': msg.registryVersion,
-        'capabilities': [],
-      });
-    } else if (msg.variant === 'execute') {
-      const { correlationId } = msg.request;
-      const itemId = msg.request.items[0]?.id ?? correlationId;
-      hostSide.send({
-        'variant': 'result',
-        'response': {
-          'correlationId': correlationId,
-          'items': [{ 'id': itemId, 'snapshot': null, 'terminalOutcome': `done-${correlationId}` }],
-          'errors': [],
-          'intermediates': [],
-        },
-      });
-    }
-  });
+class LoopbackFakeHost {
+  private constructor() {}
+
+  static start(hostSide: MessageChannelInterface): void {
+    hostSide.onMessage((msg) => {
+      if (msg.variant === 'init') {
+        hostSide.send({
+          'variant': 'ready',
+          'registryVersion': msg.registryVersion,
+          'capabilities': [],
+        });
+      } else if (msg.variant === 'execute') {
+        const { correlationId } = msg.request;
+        const itemId = msg.request.items[0]?.id ?? correlationId;
+        hostSide.send({
+          'variant': 'result',
+          'response': {
+            'correlationId': correlationId,
+            'items': [{ 'id': itemId, 'snapshot': null, 'terminalOutcome': `done-${correlationId}` }],
+            'errors': [],
+            'intermediates': [],
+          },
+        });
+      }
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +329,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
   void it('(a) exactly ONE underlying onMessage subscription regardless of request count', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const counting = new CountingChannel(parentSide);
-    startFakeHost(hostSide);
+    LoopbackFakeHost.start(hostSide);
 
     const container = new SingleChannelContainer(counting);
 
@@ -333,7 +341,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     const results: DagOutcomeType[] = [];
 
     for (let i = 0; i < REQUEST_COUNT; i++) {
-      const task = makeTask(`req-${i}`, ac.signal);
+      const task = LoopbackTask.of(`req-${i}`, ac.signal);
       const outcome = await container.runDag(task);
       results.push(outcome);
     }
@@ -350,7 +358,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
 
   void it('(b) results correlate correctly — each request gets its own outcome', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
-    startFakeHost(hostSide);
+    LoopbackFakeHost.start(hostSide);
 
     const container = new SingleChannelContainer(parentSide);
 
@@ -359,7 +367,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
 
     for (let i = 0; i < REQUEST_COUNT; i++) {
       const correlationId = `req-${i}`;
-      const task = makeTask(correlationId, ac.signal);
+      const task = LoopbackTask.of(correlationId, ac.signal);
       const outcome = await container.runDag(task);
 
       // (b) Each request must receive its own correlated terminalOutput.
@@ -425,8 +433,8 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     const ac = new AbortController();
     // Launch both requests concurrently.
     const [outcomeA, outcomeB] = await Promise.all([
-      container.runDag(makeTask('req-A', ac.signal)),
-      container.runDag(makeTask('req-B', ac.signal)),
+      container.runDag(LoopbackTask.of('req-A', ac.signal)),
+      container.runDag(LoopbackTask.of('req-B', ac.signal)),
     ]);
 
     // (c) Each caller must receive its own outcome despite out-of-order delivery.
@@ -495,7 +503,7 @@ void describe('worker observability: forwarded node events reach the parent obse
     };
 
     const ac = new AbortController();
-    const outcome = await container.runDag(makeTask('obs-1', ac.signal), { relay });
+    const outcome = await container.runDag(LoopbackTask.of('obs-1', ac.signal), { relay });
 
     assert.strictEqual(outcome.terminalOutput, 'done');
     assert.strictEqual(seen.length, 1, 'parent relay observes exactly one forwarded inner node');

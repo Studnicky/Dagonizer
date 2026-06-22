@@ -28,9 +28,13 @@ import type { ClassifiedIntent } from '../services.ts';
 
 import { TextSimilarity } from '../nodes/textUtils.ts';
 
-/** Cosine similarity over two equal-length vectors, delegating to `TextSimilarity.cosine`. */
-export const cosineSimilarity = (a: readonly number[], b: readonly number[]): number =>
-  TextSimilarity.cosine(a, b);
+/** Pure vector math utilities. */
+export class Vector {
+  private constructor() { /* static class */ }
+  static cosineSimilarity(a: readonly number[], b: readonly number[]): number {
+    return TextSimilarity.cosine(a, b);
+  }
+}
 
 /**
  * Canonical intent labels. The order matters only for tie-breaking:

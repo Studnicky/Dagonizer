@@ -83,7 +83,7 @@ Dagonizer is structured as a **ports-and-adapters** (hexagonal) architecture. Th
 
 | Port | Contract | Role |
 |------|----------|------|
-| Node execution | `NodeInterface<TState, TOutput, TServices>` | The step the dispatcher calls |
+| Node execution | `NodeInterface<TState, TOutput>` | The step the dispatcher calls |
 | Clock | `ClockProviderInterface` | Monotonic time source |
 | Scheduler | `SchedulerProviderInterface` | Timer/sleep primitives |
 | State store | `StoreInterface` | Key-value persistence |
@@ -103,7 +103,7 @@ This is why **class extension and contract implementation are the only extension
 |--------|------|
 | `Dagonizer<TState>` | Dispatcher. Holds the node and DAG registries. Executes DAGs. |
 | `DAG` | Plain-object graph definition: nodes plus entrypoint. |
-| `NodeInterface<TState, TOutput, TServices>` | Stateless unit of work. Receives a `Batch<TState>` and a `NodeContextType<TServices>`; returns a `RoutedBatchType<TOutput, TState>`. |
+| `NodeInterface<TState, TOutput>` | Stateless unit of work. Receives a `Batch<TState>` and a `NodeContextType`; returns a `RoutedBatchType<TOutput, TState>`. |
 | `NodeStateInterface` | Lifecycle and error/warning accumulation surface. Travels through every node. |
 | `Execution<TState>` | Handle returned by `execute()` and `resume()`. AsyncIterable and PromiseLike. |
 
@@ -123,8 +123,8 @@ flowchart TB
 
 Two abstract base classes cover the authoring surface:
 
-- **`MonadicNode<TState, TOutput, TServices>`** — the root node base. Implements `NodeInterface` and supplies `name` / `outputs` / `outputSchema` / `timeout` / `validate` / `destroy`, leaving `execute(batch)` abstract. Extend directly for **batch-native** nodes — the hot path where one call processes the whole batch and shares caches across items.
-- **`ScalarNode<TState, TOutput, TServices>`** — extends `MonadicNode`. You implement `protected executeOne(state, context): Promise<NodeOutputType<TOutput>>`; the base loops it over the batch and groups items by returned port. This is the common per-item case.
+- **`MonadicNode<TState, TOutput>`** — the root node base. Implements `NodeInterface` and supplies `name` / `outputs` / `outputSchema` / `timeout` / `validate` / `destroy`, leaving `execute(batch)` abstract. Extend directly for **batch-native** nodes — the hot path where one call processes the whole batch and shares caches across items.
+- **`ScalarNode<TState, TOutput>`** — extends `MonadicNode`. You implement `protected executeOne(state, context): Promise<NodeOutputType<TOutput>>`; the base loops it over the batch and groups items by returned port. This is the common per-item case.
 
 `MonadicNode` ships from `@studnicky/dagonizer/patterns` alongside the agent-flow template-method bases; `ScalarNode` ships from `@studnicky/dagonizer` (the root barrel).
 
@@ -317,7 +317,7 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./checkpoint` | `Checkpoint`, `CheckpointRestoreAdapter` |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler` (test-only) |
 | `./adapter` | `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterCascade`, `LlmAdapterRegistry`, `BaseEmbedder`, `EmbedderCascade`, `EmbedderRegistry`; type `LlmAdapterInterface`; chat/tool schemas and `FromSchema` types; capability descriptors |
-| `./patterns` | `MonadicNode` (root node base); `AgentServicesType`; agent-flow template-method node bases (`BuildChatRequestNode`, `CallModelNode`, `NormalizeResponseNode`, `DecodeTextToolCallsNode`, `AppendAssistantNode`, `NormalizeToolCallsNode`, `BuildToolWorksetsNode`, `CollectToolResultsNode`); `ToolCallScatterItemType`; `LlmClientInterface`; `TripleStoreInterface` |
+| `./patterns` | `MonadicNode` (root node base); agent-flow template-method node bases (`BuildChatRequestNode`, `CallModelNode`, `NormalizeResponseNode`, `DecodeTextToolCallsNode`, `AppendAssistantNode`, `NormalizeToolCallsNode`, `BuildToolWorksetsNode`, `CollectToolResultsNode`); `ToolCallScatterItemType`; `LlmClientInterface`; `TripleStoreInterface` |
 | `./tool` | `ToolInterface`, `ToolError`, `HttpTransport`, `OpenApiGuard`, `ToolRegistry`, `ToolInvokeNode`, `ToolInvocationState` |
 | `./core` | `GatherStrategies`, `OutcomeReducers` extension registries |
 | `./viz` | `MermaidRenderer`, `JsonLdRenderer`, `CytoscapeRenderer`, `CytoscapeGraph`, `CompositeLayout` |
@@ -333,7 +333,7 @@ Class extension is the only extension mechanism. Zero callbacks. Zero function-p
 
 - **Observability**: subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`). Multi-observer composition is the consumer's responsibility; write it into the subclass.
 - **Domain state**: subclass `NodeStateBase`. Override `snapshotData()` and `restoreData()` for checkpointable fields.
-- **Nodes**: implement `NodeInterface<TState, TOutput, TServices>`. Nodes never throw; they return a routed batch. Extend `ScalarNode` and implement `executeOne` for the per-item case.
+- **Nodes**: implement `NodeInterface<TState, TOutput>`. Nodes receive their dependencies through their constructors. Nodes never throw; they return a routed batch. Extend `ScalarNode` and implement `executeOne` for the per-item case.
 - **Time and scheduling**: implement `ClockProviderInterface` and `SchedulerProviderInterface`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` and `VirtualScheduler` for deterministic time.
 - **Isolating compute**: implement `DagContainerInterface` to run an embedded DAG or scatter-dag-body in any isolate. Bind roles to backend instances at dispatcher construction via `options.containers`. The `@studnicky/dagonizer-executor-node` package ships `WorkerThreadContainer`, `ForkContainer`, `ClusterContainer`, and `SpawnContainer` for Node.js deployments.
 - **Cross-host egress**: implement `HandoffChannelInterface` to publish `DAGHandoff` envelopes to any transport (queue, message bus, HTTP endpoint). Bind to terminal names at construction via `options.channels`. `InMemoryChannel` (from `./channels`) is the reference implementation for tests and demos.

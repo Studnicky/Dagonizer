@@ -10,7 +10,7 @@ import { NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { QuadType } from '@studnicky/dagonizer/patterns';
 import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
-import { GraphNode, type GraphServicesType } from './GraphNode.js';
+import { GraphNode } from './GraphNode.js';
 
 export abstract class RecordFindingsNode<
   TState extends NodeStateInterface,
@@ -22,12 +22,12 @@ export abstract class RecordFindingsNode<
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<GraphServicesType>,
+    _context: NodeContextType,
   ): Promise<NodeOutputType<'success'>> {
     const entities = this.selectEntities(state);
     for (const entity of entities) {
       for (const q of this.toQuads(entity)) {
-        context.services.memory.assert(q.subject, q.predicate, q.object, q.graph);
+        this.memory.assert(q.subject, q.predicate, q.object, q.graph);
       }
     }
     return NodeOutputBuilder.of('success');

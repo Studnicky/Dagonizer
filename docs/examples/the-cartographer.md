@@ -154,7 +154,7 @@ fields hold the per-event enrichment pipeline's intermediate values.
 
 ### `CartographerServices`
 
-The services bag injected via `Dagonizer` constructor options. Geo resolution uses
+The dependency record passed into node constructors. Geo resolution uses
 swappable transport adapters: the GPS modality is always the offline
 `@rapideditor/country-coder` (deterministic, no HTTP); the IP modality uses the live
 `freeipapi.com` API online or recorded fixture replay for the smoke tests.
@@ -163,7 +163,7 @@ swappable transport adapters: the GPS modality is always the offline
 
 ### `GeoResolvers`
 
-Factory that assembles the `CartographerServices` bag for the chosen backend.
+Factory that assembles the `CartographerServices` record for the chosen backend.
 
 <<< ../../examples/the-cartographer/services/GeoResolvers.ts#geo-resolvers
 

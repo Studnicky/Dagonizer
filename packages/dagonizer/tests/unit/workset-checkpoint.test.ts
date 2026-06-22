@@ -69,9 +69,12 @@ class WalkState extends NodeStateBase {
   }
 }
 
-/** Factory: restore a `WalkState` from a JSON snapshot. */
-function restoreWalkState(snap: JsonObjectType): WalkState {
-  return WalkState.restore(snap);
+class WalkStateRestore {
+  private constructor() {}
+
+  static fromSnapshot(snap: JsonObjectType): WalkState {
+    return WalkState.restore(snap);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +280,7 @@ void describe('WorkSet checkpoint — multi-item resume parity', () => {
       const parsed: unknown = JSON.parse(raw);
       const ckpt2 = Checkpoint.load(parsed);
       const { 'state': restoredState, dagName, cursor } = ckpt2.restoreState(
-        CheckpointRestoreAdapter.wrap(restoreWalkState),
+        CheckpointRestoreAdapter.wrap(WalkStateRestore.fromSnapshot),
       );
 
       // ── Run 2: resume ────────────────────────────────────────────────────

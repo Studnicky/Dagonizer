@@ -8,10 +8,11 @@
  * prose) but the request side is identical.
  *
  *   MonadicNode
- *   └── LlmDispatchNode<TState, TOutput, RagServicesType>   (this)
+ *   └── LlmDispatchNode<TState, TOutput>   (this)
  *       ├── DecisionNode (parses TChoice, applies, routes)
  *       └── ComposeNode (writes draft, routes 'success')
  *
+ * The LLM client is injected into the constructor and held as `this.llm`.
  * Subclasses override `dispatch(state, context)` to turn the chat
  * response into a node output.
  */
@@ -22,14 +23,14 @@ import type { ChatRequestType, ChatResponseType, PartialChatRequestType } from '
 import type { LlmClientInterface } from '@studnicky/dagonizer/patterns';
 import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
-export type RagServicesType = {
-  readonly llm: LlmClientInterface;
-};
-
 export abstract class LlmDispatchNode<
   TState extends NodeStateInterface,
   TOutput extends string,
-> extends ScalarNode<TState, TOutput, RagServicesType> {
+> extends ScalarNode<TState, TOutput> {
+  constructor(protected readonly llm: LlmClientInterface) {
+    super();
+  }
+
   /** Build the user prompt from state. */
   protected abstract composePrompt(state: TState): string;
 
@@ -50,10 +51,10 @@ export abstract class LlmDispatchNode<
   }
 
   /** Send the request through the configured LLM. */
-  protected async dispatch(state: TState, context: NodeContextType<RagServicesType>): Promise<ChatResponseType> {
+  protected async dispatch(state: TState, context: NodeContextType): Promise<ChatResponseType> {
     const prompt = this.composePrompt(state);
     const request: ChatRequestType = ChatRequestBuilder.from(this.composeRequest(prompt, context.signal));
-    return context.services.llm.chat(request);
+    return this.llm.chat(request);
   }
 
   /**
@@ -68,6 +69,6 @@ export abstract class LlmDispatchNode<
   /** Leaves provide their own executeOne(); the dispatch loop is shared. */
   protected abstract override executeOne(
     state: TState,
-    context: NodeContextType<RagServicesType>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<TOutput>>;
 }

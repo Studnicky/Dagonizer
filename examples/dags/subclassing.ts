@@ -73,16 +73,16 @@ export { ItemListState };
 // #region static-restore
 export class RestoredState extends NodeStateBase {
   items: string[] = [];
-}
 
-// NodeStateBase.restore is static with this-polymorphism.
-// Subclasses inherit it; RestoredState.restore(snap) returns RestoredState.
-export function demoStaticRestore(): void {
-  const state = new RestoredState();
-  const snap = state.snapshot();
-  const restored = RestoredState.restore(snap);
-  // restored is RestoredState (not NodeStateBase)
-  void restored;
+  // NodeStateBase.restore is static with this-polymorphism.
+  // Subclasses inherit it; RestoredState.restore(snap) returns RestoredState.
+  static demo(): void {
+    const state = new RestoredState();
+    const snap = state.snapshot();
+    const restored = RestoredState.restore(snap);
+    // restored is RestoredState (not NodeStateBase)
+    void restored;
+  }
 }
 // #endregion static-restore
 

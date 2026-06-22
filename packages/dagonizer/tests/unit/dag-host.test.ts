@@ -64,27 +64,31 @@ class TestHostPair {
   }
 }
 
-/** Collect the next single message from a channel. */
-function nextMessage(parentSide: MessageChannelInterface): Promise<BridgeMessageType> {
-  return new Promise((resolve) => {
-    parentSide.onMessage((msg) => resolve(msg));
-  });
-}
+class DagHostFixture {
+  private constructor() {}
 
-/** Send init and collect the first reply. */
-async function sendInit(
-  parentSide: MessageChannelInterface,
-  registryModule: string = REGISTRY_MODULE_URL,
-  registryVersion: string = REGISTRY_VERSION,
-): Promise<BridgeMessageType> {
-  const reply = nextMessage(parentSide);
-  parentSide.send({
-    'variant': 'init',
-    'registryModule': registryModule,
-    'registryVersion': registryVersion,
-    'servicesConfig': {},
-  });
-  return reply;
+  /** Collect the next single message from a channel. */
+  static nextMessage(parentSide: MessageChannelInterface): Promise<BridgeMessageType> {
+    return new Promise((resolve) => {
+      parentSide.onMessage((msg) => resolve(msg));
+    });
+  }
+
+  /** Send init and collect the first reply. */
+  static async sendInit(
+    parentSide: MessageChannelInterface,
+    registryModule: string = REGISTRY_MODULE_URL,
+    registryVersion: string = REGISTRY_VERSION,
+  ): Promise<BridgeMessageType> {
+    const reply = DagHostFixture.nextMessage(parentSide);
+    parentSide.send({
+      'variant': 'init',
+      'registryModule': registryModule,
+      'registryVersion': registryVersion,
+      'servicesConfig': {},
+    });
+    return reply;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +98,7 @@ async function sendInit(
 void describe('DagHost — init handshake', () => {
   void it('replies ready with matching registryVersion on valid init', async () => {
     const { parentSide } = TestHostPair.create();
-    const reply = await sendInit(parentSide);
+    const reply = await DagHostFixture.sendInit(parentSide);
 
     assert.strictEqual(reply.variant, 'ready');
     if (reply.variant === 'ready') {
@@ -105,7 +109,7 @@ void describe('DagHost — init handshake', () => {
 
   void it('replies error with VERSION_MISMATCH when version does not match', async () => {
     const { parentSide } = TestHostPair.create();
-    const reply = await sendInit(parentSide, REGISTRY_MODULE_URL, '99.0.0');
+    const reply = await DagHostFixture.sendInit(parentSide, REGISTRY_MODULE_URL, '99.0.0');
 
     assert.strictEqual(reply.variant, 'error');
     if (reply.variant === 'error') {
@@ -117,7 +121,7 @@ void describe('DagHost — init handshake', () => {
 
   void it('replies error when module cannot be resolved', async () => {
     const { parentSide } = TestHostPair.create();
-    const reply = await sendInit(parentSide, '/nonexistent/module-does-not-exist.js');
+    const reply = await DagHostFixture.sendInit(parentSide, '/nonexistent/module-does-not-exist.js');
 
     assert.strictEqual(reply.variant, 'error');
     if (reply.variant === 'error') {
@@ -128,7 +132,7 @@ void describe('DagHost — init handshake', () => {
 
   void it('replies error with INVALID_REGISTRY_MODULE for module without instantiate', async () => {
     const { parentSide } = TestHostPair.create();
-    const reply = await sendInit(parentSide, INVALID_MODULE_URL);
+    const reply = await DagHostFixture.sendInit(parentSide, INVALID_MODULE_URL);
 
     assert.strictEqual(reply.variant, 'error');
     if (reply.variant === 'error') {
@@ -149,7 +153,7 @@ void describe('DagHost — execute returns result', () => {
   void it('runs a dag and returns result with items[0].terminalOutcome + items[0].snapshot + intermediates', async () => {
     const { parentSide } = TestHostPair.create();
 
-    const ready = await sendInit(parentSide);
+    const ready = await DagHostFixture.sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready');
 
     // Collect messages until we see a 'result' (intermediates + instrumentation may arrive first).
@@ -189,7 +193,7 @@ void describe('DagHost — execute returns result', () => {
   void it('forwards intermediate messages for each node in the dag', async () => {
     const { parentSide } = TestHostPair.create();
 
-    const ready = await sendInit(parentSide);
+    const ready = await DagHostFixture.sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready');
 
     const intermediates: BridgeMessageType[] = [];
@@ -227,7 +231,7 @@ void describe('DagHost — execute returns result', () => {
   void it('returns result with items[0].terminalOutcome failed on execution error', async () => {
     const { parentSide } = TestHostPair.create();
 
-    const ready = await sendInit(parentSide);
+    const ready = await DagHostFixture.sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready');
 
     const resultPromise = new Promise<BridgeMessageType>((resolve) => {
@@ -269,7 +273,7 @@ void describe('DagHost — abort', () => {
   void it('fires the AbortController; in-flight sleeper terminates before safety ceiling', async () => {
     const { parentSide } = TestHostPair.create();
 
-    const ready = await sendInit(parentSide);
+    const ready = await DagHostFixture.sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready');
 
     const resultPromise = new Promise<BridgeMessageType>((resolve) => {
@@ -317,7 +321,7 @@ void describe('DagHost — shutdown', () => {
   void it('channel closes after shutdown message (no hang)', async () => {
     const { parentSide } = TestHostPair.create();
 
-    const ready = await sendInit(parentSide);
+    const ready = await DagHostFixture.sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready');
 
     parentSide.send({ 'variant': 'shutdown' });
@@ -337,7 +341,7 @@ void describe('DagHost — execute before init (G8)', () => {
     const { parentSide } = TestHostPair.create();
 
     // DO NOT send init — send execute directly.
-    const replyPromise = nextMessage(parentSide);
+    const replyPromise = DagHostFixture.nextMessage(parentSide);
 
     const initialState = new NodeStateBase();
     parentSide.send({
@@ -365,7 +369,7 @@ void describe('DagHost — execute before init (G8)', () => {
     const { parentSide } = TestHostPair.create();
 
     // First: send execute without init — consume the error.
-    const errorPromise = nextMessage(parentSide);
+    const errorPromise = DagHostFixture.nextMessage(parentSide);
     const initialState = new NodeStateBase();
     parentSide.send({
       'variant': 'execute',
@@ -381,7 +385,7 @@ void describe('DagHost — execute before init (G8)', () => {
     assert.strictEqual(errorReply.variant, 'error');
 
     // Then: init should still succeed — the host is not in a terminal state.
-    const ready = await sendInit(parentSide);
+    const ready = await DagHostFixture.sendInit(parentSide);
     assert.strictEqual(ready.variant, 'ready', `expected ready after recovery init, got ${ready.variant}`);
   });
 });

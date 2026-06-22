@@ -7,7 +7,7 @@
  * `RegistryBundleInterface` with the nodes, DAGs, services, and version.
  *
  * Services never cross the boundary — each isolate constructs its own services
- * bag via its registry module.
+ * services record via its registry module.
  */
 
 import type { JsonObjectType } from '../entities/json.js';
@@ -17,12 +17,11 @@ import type { RegistryBundleInterface } from './RegistryBundleInterface.js';
 /**
  * Default export shape of a registry module loaded by DagHost via dynamic import.
  */
-export interface RegistryModuleInterface<TServices = unknown> {
+export interface RegistryModuleInterface {
   /**
-   * Construct the service bag and return the fully initialised bundle.
+   * Construct the module and return the fully initialised bundle.
    * `servicesConfig` is the opaque JSON object from the `init` message —
-   * the registry module interprets it to wire its dependencies. `TServices`
-   * defaults to `unknown`; a module that knows its services shape narrows it.
+   * the registry module interprets it to wire its dependencies.
    */
-  instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface<TServices>>;
+  instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface>;
 }

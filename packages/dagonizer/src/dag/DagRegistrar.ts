@@ -10,6 +10,8 @@ import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
 import { DAGValidator } from '../validation/DAGValidator.js';
 import { Validator } from '../validation/Validator.js';
 
+import { ContextResolver } from './ContextResolver.js';
+
 /**
  * Narrow registry surface the `DagRegistrar` mutates and queries. `Dagonizer`
  * provides a thin source object backed by its public registries (`dags`,
@@ -22,11 +24,11 @@ import { Validator } from '../validation/Validator.js';
  * `Dagonizer` stays the composition root whose public `registerDAG` /
  * `registerNode` / `registerBundle` methods delegate here.
  */
-export interface DagRegistrarSourceInterface<TServices> {
+export interface DagRegistrarSourceInterface {
   /** Registered DAGs keyed by name. Mutated by `registerDAG`. */
   readonly dags: Map<string, DAGType>;
   /** Registered nodes keyed by name. Mutated by `registerNode`. Base-typed so heterogeneous child-node states store without casts. */
-  readonly nodes: Map<string, NodeInterface<NodeStateInterface, string, TServices>>;
+  readonly nodes: Map<string, NodeInterface<NodeStateInterface, string>>;
   /** Placement index keyed by `${dagName}:${placementName}`. Mutated by `registerDAG`. */
   readonly nodeIndex: Map<string, DAGNodeType>;
   /**
@@ -68,10 +70,10 @@ export interface DagRegistrarSourceInterface<TServices> {
  * Every gate throws `DAGError` (or rethrows a thrown `Error`) before any
  * registry mutation, so a rejected DAG leaves no partial registration behind.
  */
-export class DagRegistrar<TServices> {
-  readonly #source: DagRegistrarSourceInterface<TServices>;
+export class DagRegistrar {
+  readonly #source: DagRegistrarSourceInterface;
 
-  constructor(source: DagRegistrarSourceInterface<TServices>) {
+  constructor(source: DagRegistrarSourceInterface) {
     this.#source = source;
   }
 
@@ -91,9 +93,16 @@ export class DagRegistrar<TServices> {
    * mutating the registries.
    */
   registerDAG(dag: DAGType, stateFactory: ChildStateFactoryType = ChildStateFactory.cloneParent): void {
-    if (this.#source.dags.has(dag.name)) {
-      if (this.#source.dags.get(dag.name) === dag) return;
-      throw new DAGError(`DAG '${dag.name}' is already registered with a different implementation`);
+    // Extract and validate the DAG's own @context prefix map.
+    const dagContext = ContextResolver.contextOf(dag['@context']);
+    ContextResolver.validate(dagContext);
+
+    // Expand the DAG name to its IRI key for all registry operations.
+    const dagIri = ContextResolver.expand(dag.name, dagContext);
+
+    if (this.#source.dags.has(dagIri)) {
+      if (this.#source.dags.get(dagIri) === dag) return;
+      throw new DAGError(`DAG '${dag.name}' (IRI: '${dagIri}') is already registered with a different implementation`);
     }
 
     // Schema pre-pass: catches malformed JSON (missing fields, wrong
@@ -101,7 +110,7 @@ export class DagRegistrar<TServices> {
     // surfaces node/DAG cross-references.
     Validator.dag.validate(dag);
 
-    DAGValidator.validateDAGConfig(dag, this.#source.nodes, this.#source.dags);
+    DAGValidator.validateDAGConfig(dag, dagContext, this.#source.nodes, this.#source.dags);
 
     // Container-role binding check (D2 = throw). A dispatcher that opts into
     // container dispatch (a non-empty `containers` registry) must bind every
@@ -123,34 +132,34 @@ export class DagRegistrar<TServices> {
       }
     }
 
-    this.#source.dags.set(dag.name, dag);
+    this.#source.dags.set(dagIri, dag);
+    // stateFactories stays bare-name keyed so consumers who access it directly
+    // (e.g. tests, stateFactories.get(dagName)) continue to work without change.
     this.#source.stateFactories.set(dag.name, stateFactory);
     for (const node of dag.nodes) {
       // DAGNodeType = DAG['nodes'][number] — node already satisfies the type.
-      this.#source.nodeIndex.set(`${dag.name}:${node.name}`, node);
+      // dagIri is the expanded IRI key; placement name stays as declared in the DAG.
+      this.#source.nodeIndex.set(`${dagIri}:${node.name}`, node);
     }
   }
 
   /**
    * Register a node. Accepts nodes typed against any `TNodeState extends
    * NodeStateInterface` — including child-state classes that differ from the
-   * dispatcher's state type. The node's services type is the dispatcher's
-   * `TServices`; services-agnostic nodes (e.g. `ToolInvokeNode<TServices>`) are
-   * constructed typed to the dispatcher's `TServices` at bundle time, so they
-   * register against the `NodeInterface<NodeStateInterface, string, TServices>`
-   * map without a cast (`NodeInterface.execute` is a bivariant method, so the
-   * narrower `TNodeState` is structurally assignable).
+   * dispatcher's state type.
    *
    * Throws `DAGError` when a node with the same name is already registered.
    */
   registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
-    node: NodeInterface<TNodeState, TOutput, TServices>,
+    node: NodeInterface<TNodeState, TOutput>,
+    context: Record<string, unknown> = {},
   ): void {
-    if (this.#source.nodes.has(node.name)) {
+    const nodeIri = ContextResolver.expand(node.name, context);
+    if (this.#source.nodes.has(nodeIri)) {
       // Identity check: runtime reference equality is sufficient; no cast needed
       // since Object.is accepts any two values. Both sides are the same object.
-      if (Object.is(this.#source.nodes.get(node.name), node)) return;
-      throw new DAGError(`Node '${node.name}' is already registered with a different implementation`);
+      if (Object.is(this.#source.nodes.get(nodeIri), node)) return;
+      throw new DAGError(`Node '${node.name}' (IRI: '${nodeIri}') is already registered with a different implementation`);
     }
     if (node.validate) {
       const result = node.validate();
@@ -168,7 +177,7 @@ export class DagRegistrar<TServices> {
         );
       }
     }
-    this.#source.nodes.set(node.name, node);
+    this.#source.nodes.set(nodeIri, node);
   }
 
   /**
@@ -186,11 +195,14 @@ export class DagRegistrar<TServices> {
    * `registerDAG`. A DAG with no entry in the map receives
    * `ChildStateFactory.cloneParent` (clone-parent).
    */
-  registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState, TServices>): void {
+  registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void {
+    const bundleContext = bundle.context ?? {};
     for (const node of bundle.nodes) {
-      this.registerNode(node);
+      this.registerNode(node, bundleContext);
     }
     for (const dag of bundle.dags) {
+      // DAG context comes from each dag's own @context; stateFactories keyed by dag.name (bare)
+      // since that's how callers pass them. Internally the IRI key is computed inside registerDAG.
       const factory = bundle.stateFactories?.[dag.name];
       this.registerDAG(dag, factory);
     }

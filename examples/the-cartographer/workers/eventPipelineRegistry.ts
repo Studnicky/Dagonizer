@@ -7,7 +7,6 @@
  * identical execution graph to the parent.
  *
  * eventPipelineBundle (from dag.ts) covers:
- *   geo-resolve DAG + nodes (reverseGeocode, routeModalities, ipGeolocate, fuseGeo)
  *   geo-pipeline DAG + nodes (routeGeo, applyGeo, validateCoords)
  *   canonicalize-core nodes (canonicalizeCore, canonicalizeFacility, canonicalizeRecipient)
  *   order-enrichment DAG + nodes (enrichPricing, enrichShipping, enrichEta)
@@ -20,6 +19,10 @@
  * backend — 'recorded' (fixture replay, offline) inside workers unless the
  * parent was started with live=true. Workers never share the parent's live
  * HTTP transport; each thread owns its own service instances.
+ *
+ * geo-resolve nodes and DAG are built per-call via GeoResolveDAG.build(services)
+ * so each worker thread owns its own geo service instances with independent
+ * transports (no cross-thread resource sharing).
  *
  * This file MUST be compiled to JavaScript before use — workers cannot import
  * .ts files at runtime. Build with:
@@ -34,6 +37,7 @@ import type {
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import { eventPipelineBundle } from '../dag.js';
+import { GeoResolveDAG }       from '../embedded-dags/GeoResolveDAG.js';
 
 // State + services
 import { CartographerState } from '../CartographerState.js';
@@ -41,18 +45,20 @@ import { GeoResolvers }      from '../services/GeoResolvers.js';
 
 const registry: RegistryModuleInterface = {
   async instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
-    // Reconstruct the services bag in this worker thread.
+    // Reconstruct the services record in this worker thread.
     // useRecordedIp: true  → deterministic fixture replay (no network)
     // useRecordedIp: false → live freeipapi.com IP geolocation
     const useRecorded = servicesConfig['useRecordedIp'] !== false;
     const services = useRecorded ? GeoResolvers.recorded() : GeoResolvers.live();
 
+    // Build per-thread geo-resolve bundle (nodes need DI services injected).
+    const geoBundle = GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator);
+
     return {
       'bundle': {
-        'nodes': eventPipelineBundle.nodes,
-        'dags':  eventPipelineBundle.dags,
+        'nodes': [...geoBundle.nodes, ...eventPipelineBundle.nodes],
+        'dags':  [...geoBundle.dags,  ...eventPipelineBundle.dags],
       },
-      'services':        services,
       'registryVersion': '1.0.0',
       'restoreState': {
         restore(snapshot: JsonObjectType) {

@@ -23,7 +23,6 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { Consent } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
@@ -32,7 +31,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-redaction-node
-export class RouteRedactionNode extends ScalarNode<CartographerState, 'needs-redaction' | 'skip-redaction', CartographerServices> {
+export class RouteRedactionNode extends ScalarNode<CartographerState, 'needs-redaction' | 'skip-redaction'> {
   readonly 'name' = 'route-redaction';
   readonly 'outputs' = ['needs-redaction', 'skip-redaction'] as const;
 
@@ -43,7 +42,7 @@ export class RouteRedactionNode extends ScalarNode<CartographerState, 'needs-red
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'needs-redaction' | 'skip-redaction'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'needs-redaction' | 'skip-redaction'>> {
     const ev = state.currentEvent;
     const hasPii =
       state.canonical.pii === true ||

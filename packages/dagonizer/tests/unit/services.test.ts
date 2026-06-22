@@ -9,90 +9,121 @@ import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { TestNode } from '../_support/TestNode.js';
 
-type PaletteServices = {
-  readonly logger: { entries: string[] };
-  readonly client: { url: string };
+// ── Fixtures ─────────────────────────────────────────────────────────────────
+
+class S extends NodeStateBase {
+  out: string = '';
 }
 
-void describe('Dagonizer services container', () => {
-  void it('passes the services bag through to NodeContextType.services', async () => {
-    const services: PaletteServices = {
-      'logger': { 'entries': [] },
-      'client': { 'url': 'https://example' },
-    };
+/** Logger injected via constructor — the DI model replacing the services container. */
+class Logger {
+  readonly entries: string[] = [];
+  log(msg: string): void { this.entries.push(msg); }
+}
 
-    class S extends NodeStateBase {
-      out = '';
-    }
+/**
+ * UseServicesNode: receives a Logger via constructor.
+ * Proves that constructor DI replaces the services container pattern.
+ */
+class UseServicesNode extends ScalarNode<S, 'success'> {
+  readonly name = 'use-services';
+  readonly outputs = ['success'] as const;
+  readonly #logger: Logger;
 
-    class UseServicesNode extends ScalarNode<S, 'success', PaletteServices> {
-      readonly name = 'use-services';
+  constructor(logger: Logger) {
+    super();
+    this.#logger = logger;
+  }
+
+  override get outputSchema(): Record<'success', SchemaObjectType> {
+    return { 'success': { 'type': 'object' } };
+  }
+
+  protected async executeOne(state: S, _context: NodeContextType): Promise<NodeOutputType<'success'>> {
+    this.#logger.log(`hit:${state.out}`);
+    state.out = 'served';
+    return { 'errors': [], 'output': 'success' as const };
+  }
+}
+
+const SVC_DAG: DAGType = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:svc',
+  '@type':    'DAG',
+  'name': 'svc',
+  'version': '1',
+  'entrypoint': 'use-services',
+  'nodes': [
+    {
+      '@id':   'urn:noocodex:dag:svc/node/use-services',
+      '@type': 'SingleNode',
+      'name':  'use-services',
+      'node':  'use-services',
+      'outputs': { 'success': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:svc/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+  ],
+};
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+void describe('Dagonizer constructor DI', () => {
+  void it('node receives its dep via constructor and uses it during execution', async () => {
+    const logger = new Logger();
+    const node = new UseServicesNode(logger);
+
+    const dispatcher = new Dagonizer<S>();
+    dispatcher.registerNode(node);
+    dispatcher.registerDAG(SVC_DAG);
+
+    const state = new S();
+    state.out = 'initial';
+
+    const result = await dispatcher.execute('svc', state);
+
+    assert.equal(result.state.lifecycle.variant, 'completed');
+    assert.equal(result.state.out, 'served');
+    assert.deepEqual(logger.entries, ['hit:initial'], 'logger injected via constructor must record the call');
+  });
+
+  void it('node without injected dep completes flow cleanly', async () => {
+    class NoDepNode extends ScalarNode<S, 'success'> {
+      readonly name = 'no-dep';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> {
         return { 'success': { 'type': 'object' } };
       }
-      protected async executeOne(state: S, context: NodeContextType<PaletteServices>): Promise<NodeOutputType<'success'>> {
-        context.services.logger.entries.push(`hit:${context.services.client.url}`);
-        state.out = context.services.client.url;
+      protected async executeOne(state: S, _ctx: NodeContextType): Promise<NodeOutputType<'success'>> {
+        state.out = 'done';
         return { 'errors': [], 'output': 'success' as const };
       }
     }
 
-    const dispatcher = new Dagonizer<S, PaletteServices>({ services });
-    dispatcher.registerNode(new UseServicesNode());
-    const dag: DAGType = {
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:svc',
-      '@type':    'DAG',
-      'name': 'svc',
-      'version': '1',
-      'entrypoint': 'use-services',
-      'nodes': [{
-        '@id':   'urn:noocodex:dag:svc/node/use-services',
-        '@type': 'SingleNode',
-        'name':  'use-services', 'node': 'use-services', 'outputs': { 'success': 'end' },
-      },
-        { '@id': 'urn:noocodex:dag:svc/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
-      ],
-    };
-    dispatcher.registerDAG(dag);
-
-    const result = await dispatcher.execute('svc', new S());
-    assert.equal(result.state.lifecycle.variant, 'completed');
-    assert.equal(result.state.out, 'https://example');
-    assert.deepEqual(services.logger.entries, ['hit:https://example']);
-  });
-
-  void it('defaults services to undefined when no bag is supplied', async () => {
-    class S extends NodeStateBase {
-      out: unknown = 'unset';
-    }
-
     const dispatcher = new Dagonizer<S>();
-    dispatcher.registerNode(TestNode.make<S>('check-undefined', ['success'], (state, context) => {
-      state.out = context.services;
-      return 'success';
-    }));
+    dispatcher.registerNode(new NoDepNode());
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:svc-default',
+      '@id':      'urn:noocodex:dag:no-dep',
       '@type':    'DAG',
-      'name': 'svc-default',
+      'name': 'no-dep',
       'version': '1',
-      'entrypoint': 'check-undefined',
-      'nodes': [{
-        '@id':   'urn:noocodex:dag:svc-default/node/check-undefined',
-        '@type': 'SingleNode',
-        'name':  'check-undefined', 'node': 'check-undefined', 'outputs': { 'success': 'end' },
-      },
-        { '@id': 'urn:noocodex:dag:svc-default/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      'entrypoint': 'no-dep',
+      'nodes': [
+        {
+          '@id':   'urn:noocodex:dag:no-dep/node/no-dep',
+          '@type': 'SingleNode',
+          'name':  'no-dep',
+          'node':  'no-dep',
+          'outputs': { 'success': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:no-dep/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
     });
 
-    const result = await dispatcher.execute('svc-default', new S());
+    const result = await dispatcher.execute('no-dep', new S());
+
     assert.equal(result.state.lifecycle.variant, 'completed');
-    assert.equal(result.state.out, undefined);
+    assert.equal(result.state.out, 'done');
   });
 });

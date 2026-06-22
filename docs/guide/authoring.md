@@ -67,7 +67,7 @@ See [JSON-LD export and import](./json-ld) for the canonical shape, round-trip s
 
 ## Node implementations sit beside authoring
 
-Authoring decides topology; node implementations carry the work. `NodeInterface<TState, TOutput, TServices>` is the contract every node satisfies. The classify-intent node from the Archivist demo declares a seven-value `TOutput` union and routes via `switch`:
+Authoring decides topology; node implementations carry the work. `NodeInterface<TState, TOutput>` is the contract every node satisfies. The classify-intent node from the Archivist demo declares a seven-value `TOutput` union and routes via `switch`:
 
 <<< @/../examples/the-archivist/nodes/classifyIntent.ts#node-class
 

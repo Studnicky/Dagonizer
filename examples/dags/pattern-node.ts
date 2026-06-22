@@ -15,6 +15,7 @@
 import { NodeStateBase } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 import { DecisionNode } from '@studnicky/dagonizer-patterns-rag';
+import type { LlmClientInterface } from '@studnicky/dagonizer/contracts';
 
 export type Intent = 'search' | 'describe' | 'recommend' | 'off-topic';
 
@@ -27,6 +28,10 @@ export class IntentState extends NodeStateBase {
 export class IntentClassifier extends DecisionNode<IntentState, Intent, Intent> {
   readonly name = 'classify-intent';
   readonly outputs = ['search', 'describe', 'recommend', 'off-topic'] as const;
+
+  constructor(llm: LlmClientInterface) {
+    super(llm);
+  }
   override get outputSchema(): Record<'search' | 'describe' | 'recommend' | 'off-topic', SchemaObjectType> {
     return {
       'search':     { 'type': 'object' },

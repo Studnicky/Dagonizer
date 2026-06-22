@@ -27,7 +27,7 @@ export abstract class RespondNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextType<undefined>,
+    _context: NodeContextType,
   ): Promise<NodeOutputType<'success'>> {
     this.emit(state, this.extractDraft(state));
     return NodeOutputBuilder.of('success');

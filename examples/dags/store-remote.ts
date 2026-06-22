@@ -93,10 +93,10 @@ export class GrpcStore extends BaseStore implements RemoteStoreInterface {
   }
 
   // Override update for atomic RMW — in-memory direct access is safe.
-  override async update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
+  override async update(key: string, fn: (current: JsonValueType | undefined) => JsonValueType): Promise<JsonValueType> {
     const qualified = this.qualifyKey(key);
     const stored    = this.#data.get(qualified) ?? null;
-    const current   = this.narrowStored<T>(stored) ?? undefined;
+    const current   = stored === null ? undefined : stored;
     const next      = fn(current);
     this.#data.set(qualified, next);
     return next;

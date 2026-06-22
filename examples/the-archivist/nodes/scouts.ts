@@ -151,13 +151,17 @@ class ToolCandidateGatherStrategy extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
-    const userLanguage = accessor.get<string>(state, 'userLanguage') ?? 'en';
-    const existing = accessor.get<CandidateType[]>(state, 'candidates') ?? [];
+    const languageValue = accessor.get(state, 'userLanguage');
+    const userLanguage = typeof languageValue === 'string' ? languageValue : 'en';
+    const candidatesValue = accessor.get(state, 'candidates');
+    const existing: CandidateType[] = Array.isArray(candidatesValue)
+      ? candidatesValue.filter(ToolCandidateGatherStrategy.isCandidateType)
+      : [];
     const merged: CandidateType[] = [...existing];
 
     for (const item of batch) {
       const record = item.state;
-      const rawOutput = accessor.get<unknown>(record.cloneState, 'output');
+      const rawOutput = accessor.get(record.cloneState, 'output');
       if (!Array.isArray(rawOutput)) continue;
 
       const toolCandidates = rawOutput.filter(ToolCandidateGatherStrategy.isCandidateType);
@@ -166,10 +170,12 @@ class ToolCandidateGatherStrategy extends GatherStrategy {
       if (filtered.length === 0 && toolCandidates.length > 0) {
         // All candidates were language-filtered out; note the loss but don't log the source name
         // (the strategy doesn't know which tool produced this clone).
-        const current = accessor.get<string>(state, 'failureCause') ?? '';
+        const causeValue = accessor.get(state, 'failureCause');
+        const current = typeof causeValue === 'string' ? causeValue : '';
         accessor.set(state, 'failureCause', `${current}Tool scout: 0 hits after language filter. `);
       } else if (filtered.length === 0) {
-        const current = accessor.get<string>(state, 'failureCause') ?? '';
+        const causeValue = accessor.get(state, 'failureCause');
+        const current = typeof causeValue === 'string' ? causeValue : '';
         accessor.set(state, 'failureCause', `${current}Tool scout: 0 results. `);
       }
 

@@ -83,7 +83,7 @@ export class SquareNode extends ScalarNode<MultiBackendState, 'done'> {
   }
 
   protected override async executeOne(state: MultiBackendState) {
-    const task = state.getMetadata<number>('task') ?? 0;
+    const task = state.getter.number('task');
     state.lastResult = task * task;
     return NodeOutputBuilder.of('done');
   }

@@ -10,7 +10,6 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { ShippingCalculator } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
@@ -19,7 +18,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region enrich-leg-node
-export class EnrichLegNode extends ScalarNode<CartographerState, 'leg-measured', CartographerServices> {
+export class EnrichLegNode extends ScalarNode<CartographerState, 'leg-measured'> {
   readonly 'name' = 'enrich-leg';
   readonly 'outputs' = ['leg-measured'] as const;
 
@@ -29,7 +28,7 @@ export class EnrichLegNode extends ScalarNode<CartographerState, 'leg-measured',
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'leg-measured'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'leg-measured'>> {
     const norm = state.normalized;
     // Seq 0 starts at the origin (legFrom == origin), so its leg is the first
     // hop. Distance is min-clamped to ~1 km by ShippingCalculator.

@@ -12,14 +12,12 @@
  */
 
 export { LlmDispatchNode } from './LlmDispatchNode.js';
-export type { RagServicesType } from './LlmDispatchNode.js';
 
 export { DecisionNode } from './DecisionNode.js';
 
 export { ComposeNode } from './ComposeNode.js';
 
 export { ScoutNode } from './ScoutNode.js';
-export type { ScoutServicesType } from './ScoutNode.js';
 
 // Named leaves: narrow TChoice / output port for the common cases.
 export {

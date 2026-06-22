@@ -16,7 +16,6 @@
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
 import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
@@ -32,7 +31,7 @@ const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'csv' | 'json' | 'n
   'yaml':  'yaml',
 };
 
-export class RouteFormatNode extends ScalarNode<CartographerState, 'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid', CartographerServices> {
+export class RouteFormatNode extends ScalarNode<CartographerState, 'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'> {
   readonly 'name' = 'route-format';
   readonly 'outputs' = ['csv', 'json', 'ndjson', 'yaml', 'invalid'] as const;
 
@@ -46,7 +45,7 @@ export class RouteFormatNode extends ScalarNode<CartographerState, 'csv' | 'json
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'>> {
     const route = FORMAT_ROUTE[state.currentSource.format];
     if (route === undefined) {
       return NodeOutputBuilder.of('invalid');

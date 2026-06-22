@@ -85,8 +85,12 @@ process.stdout.write(`[checkpoint] persisted to MemoryCheckpointStore under key 
 process.stdout.write(`[checkpoint] store.size=${String(store1.size)}\n`);
 // Print the persisted JSON for inspection
 const raw = await store1.load(CHECKPOINT_KEY);
-const data = JSON.parse(raw!) as { dagName: string; cursor: string; state: unknown };
-process.stdout.write(`[checkpoint] dagName="${data.dagName}" cursor="${data.cursor}"\n\n`);
+if (raw === undefined || raw === null) throw new Error(`No checkpoint data found for key "${CHECKPOINT_KEY}"`);
+const parsed: unknown = JSON.parse(raw);
+if (typeof parsed !== 'object' || parsed === null || !('dagName' in parsed) || !('cursor' in parsed)) {
+  throw new Error('Checkpoint data missing expected fields');
+}
+process.stdout.write(`[checkpoint] dagName="${String(parsed.dagName)}" cursor="${String(parsed.cursor)}"\n\n`);
 
 // ── Step 4: fresh dispatcher + same store (simulates process restart) ─────────
 

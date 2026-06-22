@@ -35,7 +35,8 @@ const dagRunTimestamp = MemoryStore.dagIri('runTimestamp');
 
 const MAX_TERMS = 6;
 
-export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 'empty', ArchivistServices> {
+export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 'empty'> {
+  private readonly services: ArchivistServices;
   readonly name = 'recommend-similar';
   readonly outputs = ['seeded', 'empty'] as const;
   override get outputSchema(): Record<'seeded' | 'empty', SchemaObjectType> {
@@ -45,8 +46,13 @@ export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    const memory = context.services.memory;
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
+
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+    const memory = this.services.memory;
     const currentGraph = MemoryStore.stateGraphIri(state.runId).value;
 
     // Find every state graph except the current run.
@@ -145,5 +151,3 @@ export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 
   }
 }
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const recommendSimilar = new RecommendSimilarNode();

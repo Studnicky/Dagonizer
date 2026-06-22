@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import type { AgentServicesType } from '../../src/contracts/AgentServicesType.js';
+import type { LlmAdapterInterface } from '../../src/contracts/LlmAdapterInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ChatRequestType } from '../../src/entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../../src/entities/adapter/ChatResponse.js';
@@ -170,7 +170,7 @@ class TestBuildChatRequestNode extends BuildChatRequestNode<HarnessState> {
 
   protected buildRequest(
     state: HarnessState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): ChatRequestType {
     const req: ChatRequestType = {
       'messages': [{ 'role': 'user', 'content': state.prompt }],
@@ -188,15 +188,16 @@ class TestBuildChatRequestNode extends BuildChatRequestNode<HarnessState> {
 
 class TestCallModelNode extends CallModelNode<HarnessState> {
   readonly name = 'call-model';
+  constructor(llm: LlmAdapterInterface) { super(llm); }
 
-  protected getRequest(state: HarnessState, _context: NodeContextType<AgentServicesType>): ChatRequestType {
+  protected getRequest(state: HarnessState, _context: NodeContextType): ChatRequestType {
     // chatRequest is set by TestBuildChatRequestNode (this node runs only after
     // build-request on the success path); guard rather than cast away the null.
     if (state.chatRequest === null) throw new Error('chatRequest must be built before call-model');
     return state.chatRequest;
   }
 
-  protected storeResponse(state: HarnessState, response: ChatResponseType, _context: NodeContextType<AgentServicesType>): void {
+  protected storeResponse(state: HarnessState, response: ChatResponseType, _context: NodeContextType): void {
     state.chatResponse = response;
     if (response.message.variant === 'text') {
       state.assistantText = response.message.content;
@@ -207,11 +208,11 @@ class TestCallModelNode extends CallModelNode<HarnessState> {
 class TestDecodeTextToolCallsNode extends DecodeTextToolCallsNode<HarnessState> {
   readonly name = 'decode-tools';
 
-  protected getText(state: HarnessState, _context: NodeContextType<AgentServicesType>): string {
+  protected getText(state: HarnessState, _context: NodeContextType): string {
     return state.assistantText;
   }
 
-  protected storeToolCalls(state: HarnessState, calls: readonly ToolCallType[], _context: NodeContextType<AgentServicesType>): void {
+  protected storeToolCalls(state: HarnessState, calls: readonly ToolCallType[], _context: NodeContextType): void {
     state.decodedCalls = [...calls];
   }
 }
@@ -219,11 +220,11 @@ class TestDecodeTextToolCallsNode extends DecodeTextToolCallsNode<HarnessState> 
 class TestNormalizeToolCallsNode extends NormalizeToolCallsNode<HarnessState> {
   readonly name = 'normalize-tools';
 
-  protected getToolCalls(state: HarnessState, _context: NodeContextType<AgentServicesType>): readonly ToolCallType[] {
+  protected getToolCalls(state: HarnessState, _context: NodeContextType): readonly ToolCallType[] {
     return state.decodedCalls;
   }
 
-  protected writeNormalized(state: HarnessState, calls: readonly ToolCallType[], _context: NodeContextType<AgentServicesType>): void {
+  protected writeNormalized(state: HarnessState, calls: readonly ToolCallType[], _context: NodeContextType): void {
     state.decodedCalls = [...calls];
   }
 }
@@ -231,19 +232,19 @@ class TestNormalizeToolCallsNode extends NormalizeToolCallsNode<HarnessState> {
 class TestBuildToolWorksetsNode extends BuildToolWorksetsNode<HarnessState> {
   readonly name = 'build-worksets';
 
-  protected getToolCalls(state: HarnessState, _context: NodeContextType<AgentServicesType>): readonly ToolCallType[] {
+  protected getToolCalls(state: HarnessState, _context: NodeContextType): readonly ToolCallType[] {
     return state.decodedCalls;
   }
 
-  protected classifyCall(_call: ToolCallType, _state: HarnessState, _context: NodeContextType<AgentServicesType>): 'safe' | 'exclusive' {
+  protected classifyCall(_call: ToolCallType, _state: HarnessState, _context: NodeContextType): 'safe' | 'exclusive' {
     return 'safe';
   }
 
-  protected writeSafeWorkset(state: HarnessState, calls: readonly ToolCallScatterItemType[], _context: NodeContextType<AgentServicesType>): void {
+  protected writeSafeWorkset(state: HarnessState, calls: readonly ToolCallScatterItemType[], _context: NodeContextType): void {
     state.safeWorkset = [...calls];
   }
 
-  protected writeExclusiveWorkset(state: HarnessState, calls: readonly ToolCallScatterItemType[], _context: NodeContextType<AgentServicesType>): void {
+  protected writeExclusiveWorkset(state: HarnessState, calls: readonly ToolCallScatterItemType[], _context: NodeContextType): void {
     state.exclusiveWorkset = [...calls];
   }
 }
@@ -251,11 +252,11 @@ class TestBuildToolWorksetsNode extends BuildToolWorksetsNode<HarnessState> {
 class TestCollectToolResultsNode extends CollectToolResultsNode<HarnessState> {
   readonly name = 'collect-results';
 
-  protected getGatheredResults(state: HarnessState, _context: NodeContextType<AgentServicesType>): readonly unknown[] {
+  protected getGatheredResults(state: HarnessState, _context: NodeContextType): readonly unknown[] {
     return state.toolOutputs;
   }
 
-  protected writeResult(state: HarnessState, results: readonly unknown[], _context: NodeContextType<AgentServicesType>): void {
+  protected writeResult(state: HarnessState, results: readonly unknown[], _context: NodeContextType): void {
     state.collectedResults = [...results];
   }
 }
@@ -263,7 +264,7 @@ class TestCollectToolResultsNode extends CollectToolResultsNode<HarnessState> {
 class TestNormalizeResponseNode extends NormalizeResponseNode<HarnessState> {
   readonly name = 'normalize-response';
 
-  protected getResponse(state: HarnessState, _context: NodeContextType<AgentServicesType>): ChatResponseType | null {
+  protected getResponse(state: HarnessState, _context: NodeContextType): ChatResponseType | null {
     return state.chatResponse;
   }
 }
@@ -271,11 +272,11 @@ class TestNormalizeResponseNode extends NormalizeResponseNode<HarnessState> {
 class TestAppendAssistantNode extends AppendAssistantNode<HarnessState> {
   readonly name = 'append-assistant';
 
-  protected getResponse(state: HarnessState, _context: NodeContextType<AgentServicesType>): ChatResponseType | null {
+  protected getResponse(state: HarnessState, _context: NodeContextType): ChatResponseType | null {
     return state.chatResponse;
   }
 
-  protected append(state: HarnessState, response: ChatResponseType, _context: NodeContextType<AgentServicesType>): void {
+  protected append(state: HarnessState, response: ChatResponseType, _context: NodeContextType): void {
     if (response.message.variant === 'text') {
       state.assistantText = `[appended] ${response.message.content}`;
     }
@@ -297,7 +298,7 @@ class AgentFixtures {
     return registry;
   }
 
-  static services(registry: ToolRegistry): AgentServicesType {
+  static services(registry: ToolRegistry): { llm: LlmAdapterInterface; tools: ToolRegistry } {
     return { 'llm': AgentFixtures.adapter(), 'tools': registry };
   }
 }
@@ -306,16 +307,13 @@ class AgentFixtures {
 
 void describe('NormalizeResponseNode: unit', () => {
   void it('routes text response to text output', async () => {
-    const registry = AgentFixtures.registry();
-    const services = AgentFixtures.services(registry);
-
     const node = new TestNormalizeResponseNode();
     const dag = new DAGBuilder('normalize-test', '1')
       .node('normalize-response', node, { 'text': 'end', 'tools': 'end', 'mixed': 'end', 'empty': 'end', 'error': 'end' })
       .terminal('end')
       .build();
 
-    const dispatcher = new Dagonizer<HarnessState, AgentServicesType>({ 'services': services });
+    const dispatcher = new Dagonizer<HarnessState>();
     dispatcher.registerNode(node);
     dispatcher.registerDAG(dag);
 
@@ -331,16 +329,13 @@ void describe('NormalizeResponseNode: unit', () => {
   });
 
   void it('routes null response to empty output', async () => {
-    const registry = AgentFixtures.registry();
-    const services = AgentFixtures.services(registry);
-
     const node = new TestNormalizeResponseNode();
     const dag = new DAGBuilder('normalize-empty-test', '1')
       .node('normalize-response', node, { 'text': 'end', 'tools': 'end', 'mixed': 'end', 'empty': 'end', 'error': 'end' })
       .terminal('end')
       .build();
 
-    const dispatcher = new Dagonizer<HarnessState, AgentServicesType>({ 'services': services });
+    const dispatcher = new Dagonizer<HarnessState>();
     dispatcher.registerNode(node);
     dispatcher.registerDAG(dag);
 
@@ -352,9 +347,6 @@ void describe('NormalizeResponseNode: unit', () => {
 
 void describe('AppendAssistantNode: unit', () => {
   void it('appends text response to assistant text field', async () => {
-    const registry = AgentFixtures.registry();
-    const services = AgentFixtures.services(registry);
-
     const node = new TestAppendAssistantNode();
     const dag = new DAGBuilder('append-test', '1')
       .node('append-assistant', node, { 'done': 'end', 'error': 'end-fail' })
@@ -362,7 +354,7 @@ void describe('AppendAssistantNode: unit', () => {
       .terminal('end-fail', { 'outcome': 'failed' })
       .build();
 
-    const dispatcher = new Dagonizer<HarnessState, AgentServicesType>({ 'services': services });
+    const dispatcher = new Dagonizer<HarnessState>();
     dispatcher.registerNode(node);
     dispatcher.registerDAG(dag);
 
@@ -379,9 +371,6 @@ void describe('AppendAssistantNode: unit', () => {
   });
 
   void it('routes error when no response stored', async () => {
-    const registry = AgentFixtures.registry();
-    const services = AgentFixtures.services(registry);
-
     const node = new TestAppendAssistantNode();
     const dag = new DAGBuilder('append-missing-test', '1')
       .node('append-assistant', node, { 'done': 'end', 'error': 'end-fail' })
@@ -389,7 +378,7 @@ void describe('AppendAssistantNode: unit', () => {
       .terminal('end-fail', { 'outcome': 'failed' })
       .build();
 
-    const dispatcher = new Dagonizer<HarnessState, AgentServicesType>({ 'services': services });
+    const dispatcher = new Dagonizer<HarnessState>();
     dispatcher.registerNode(node);
     dispatcher.registerDAG(dag);
 
@@ -401,9 +390,6 @@ void describe('AppendAssistantNode: unit', () => {
 
 void describe('NormalizeToolCallsNode: unit', () => {
   void it('filters invalid calls and routes valid', async () => {
-    const registry = AgentFixtures.registry();
-    const services = AgentFixtures.services(registry);
-
     const node = new TestNormalizeToolCallsNode();
     const dag = new DAGBuilder('normalize-calls-test', '1')
       .node('normalize-tools', node, { 'valid': 'end', 'empty': 'end', 'error': 'end-fail' })
@@ -411,7 +397,7 @@ void describe('NormalizeToolCallsNode: unit', () => {
       .terminal('end-fail', { 'outcome': 'failed' })
       .build();
 
-    const dispatcher = new Dagonizer<HarnessState, AgentServicesType>({ 'services': services });
+    const dispatcher = new Dagonizer<HarnessState>();
     dispatcher.registerNode(node);
     dispatcher.registerDAG(dag);
 
@@ -426,9 +412,6 @@ void describe('NormalizeToolCallsNode: unit', () => {
   });
 
   void it('routes error when all calls are invalid', async () => {
-    const registry = AgentFixtures.registry();
-    const services = AgentFixtures.services(registry);
-
     const node = new TestNormalizeToolCallsNode();
     const dag = new DAGBuilder('normalize-bad-calls-test', '1')
       .node('normalize-tools', node, { 'valid': 'end', 'empty': 'end', 'error': 'end-fail' })
@@ -436,7 +419,7 @@ void describe('NormalizeToolCallsNode: unit', () => {
       .terminal('end-fail', { 'outcome': 'failed' })
       .build();
 
-    const dispatcher = new Dagonizer<HarnessState, AgentServicesType>({ 'services': services });
+    const dispatcher = new Dagonizer<HarnessState>();
     dispatcher.registerNode(node);
     dispatcher.registerDAG(dag);
 
@@ -457,7 +440,7 @@ void describe('Agent-flow nodes: full turn/tool pipeline end-to-end', () => {
     const services = AgentFixtures.services(registry);
 
     const buildRequestNode = new TestBuildChatRequestNode();
-    const callModelNode = new TestCallModelNode();
+    const callModelNode = new TestCallModelNode(services.llm);
     const decodeToolsNode = new TestDecodeTextToolCallsNode();
     const normalizeToolsNode = new TestNormalizeToolCallsNode();
     const buildWorksetsNode = new TestBuildToolWorksetsNode();
@@ -503,7 +486,7 @@ void describe('Agent-flow nodes: full turn/tool pipeline end-to-end', () => {
     // Dispatcher: register parent nodes, then the tool bundle (ToolInvokeNode instances
     // with TServices = undefined — registerBundle now accepts TBundleServices = undefined
     // on a services-typed dispatcher), then the parent DAG.
-    const dispatcher = new Dagonizer<HarnessState, AgentServicesType>({ 'services': services });
+    const dispatcher = new Dagonizer<HarnessState>();
     dispatcher.registerNode(buildRequestNode);
     dispatcher.registerNode(callModelNode);
     dispatcher.registerNode(decodeToolsNode);

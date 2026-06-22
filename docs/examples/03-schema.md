@@ -16,7 +16,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
+import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
 </script>
 
 # Phase 03: Tool schemas

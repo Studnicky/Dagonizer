@@ -25,10 +25,9 @@ import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { Dagonizer } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from './ArchivistState.ts';
-import type { ArchivistServices } from './services.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 
-export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServices> {
+export class ObservedArchivist extends Dagonizer<ArchivistState> {
   readonly #logger = new ConsoleLogger();
 
   /**

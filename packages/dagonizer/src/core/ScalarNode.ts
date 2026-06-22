@@ -24,15 +24,14 @@ import { MonadicNode } from './MonadicNode.js';
 export abstract class ScalarNode<
   TState extends NodeStateInterface,
   TOutput extends string,
-  TServices = undefined,
-> extends MonadicNode<TState, TOutput, TServices> {
+> extends MonadicNode<TState, TOutput> {
   /**
    * Per-item execution. Subclasses implement this; the base class maps it over
    * the batch and groups items by the returned output port.
    */
   protected abstract executeOne(
     state: TState,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<TOutput>>;
 
   /**
@@ -44,7 +43,7 @@ export abstract class ScalarNode<
    */
   override async execute(
     batch: Batch<TState>,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ): Promise<RoutedBatchType<TOutput, TState>> {
     const acc = new Map<TOutput, ItemType<TState>[]>();
 

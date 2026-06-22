@@ -22,7 +22,7 @@ import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/check
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
-import { archivistBundle, archivistDAG } from '../../../../examples/the-archivist/dag.ts';
+import { ArchivistBundleFactory } from '../../../../examples/the-archivist/dag.ts';
 import { DomConsoleLogger } from '../../../../examples/the-archivist/logger/DomConsoleLogger.ts';
 import type { LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
@@ -31,6 +31,7 @@ import { SeedLibrary } from '../../../../examples/the-archivist/data/SeedLibrary
 import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/RdfProvObserver.ts';
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
 import { NODE_VARIANTS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
+import { ArchivistNodes } from '../../../../examples/the-archivist/nodes/ArchivistNodes.ts';
 import { ApiKeyStore, BackendMatrix, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
@@ -40,8 +41,9 @@ import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
-import { BookSearchScatterDAG, bookSearchScatterBundle } from '../../../../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts';
-import { ComposeRetryLoopDAG, composeRetryLoopBundle } from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
+import { BookSearchScatterBundleFactory } from '../../../../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts';
+import { ComposeRetryLoopBundleFactory } from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
+import type { DAGType } from '@studnicky/dagonizer';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
 import BackendPicker from './BackendPicker.vue';
@@ -238,19 +240,34 @@ async function resumeFromCheckpoint(): Promise<void> {
     'dispatcherAgentId':  `dispatcher:${activeBackend.value}`,
   });
 
-  let dispatcher: ObservedDagonizer<ArchivistState, ArchivistServices> | null = null;
+  let dispatcher: ObservedDagonizer<ArchivistState> | null = null;
 
   try {
     const services = buildServices();
-    dispatcher = new ObservedDagonizer<ArchivistState, ArchivistServices>({
-      services,
+    const nodes = ArchivistNodes.build(services);
+    const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
+    const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
+    const parentBundle     = ArchivistBundleFactory.create(nodes);
+
+    const parentDag = parentBundle.dags[0];
+    if (parentDag !== undefined) archivistDag.value = parentDag;
+    const bookSearchDag = bookSearchBundle.dags[0];
+    const composeRetryDag = composeBundle.dags[0];
+    if (bookSearchDag !== undefined && composeRetryDag !== undefined) {
+      embeddedDagRegistry.value = new Map([
+        ['book-search-scatter', bookSearchDag],
+        ['compose-retry-loop', composeRetryDag],
+      ]);
+    }
+
+    dispatcher = new ObservedDagonizer<ArchivistState>({
       'observer': buildObserver(restored.cursor, prov),
     });
 
-    dispatcher.registerBundle(archivistToolRegistry.bundle<ArchivistServices>());
-    dispatcher.registerBundle(bookSearchScatterBundle);
-    dispatcher.registerBundle(composeRetryLoopBundle);
-    dispatcher.registerBundle(archivistBundle);
+    dispatcher.registerBundle(archivistToolRegistry.bundle());
+    dispatcher.registerBundle(bookSearchBundle);
+    dispatcher.registerBundle(composeBundle);
+    dispatcher.registerBundle(parentBundle);
 
     activeAbortController = new AbortController();
     const deadlineMs = overallDeadlineMs();
@@ -396,14 +413,14 @@ const rightTabs = computed(() => {
   ];
 });
 
-// Stable embedded-DAG registry for the DagGraph self-render path. Passed to
-// DagGraph with `:expand-all`, so every embedded sub-DAG (book-search-scatter,
-// compose-retry-loop) renders fully expanded as a connected subgraph from the
-// first paint — every node in every DAG is visible.
-const embeddedDagRegistry = new Map([
-  ['book-search-scatter', BookSearchScatterDAG],
-  ['compose-retry-loop', ComposeRetryLoopDAG],
-]);
+// Lazily-populated top-level archivist DAG reference for DagGraph display.
+// Set on the first call to buildRunBundles() (ask() or resumeFromCheckpoint()),
+// so the graph renders the DAG structure once a real LLM/services set exists.
+const archivistDag = ref<DAGType | null>(null);
+
+// Lazily-populated embedded-DAG registry. Keys match the embeddedDAG placement
+// names in the parent DAG. Built alongside archivistDag from the same factory call.
+const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map());
 
 // Stable tool instances. The scout nodes call `tool.execute(...)`, which is an
 // instance method on each Tool class (`new OpenLibrarySearchTool()`), so the
@@ -688,18 +705,33 @@ async function ask(): Promise<void> {
       'wikipedia-scout':         webSearchMs,
     },
   };
-  let dispatcher: ObservedDagonizer<ArchivistState, ArchivistServices> | null = null;
+  let dispatcher: ObservedDagonizer<ArchivistState> | null = null;
 
   try {
-    dispatcher = new ObservedDagonizer<ArchivistState, ArchivistServices>({
-      services,
+    const nodes = ArchivistNodes.build(services);
+    const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
+    const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
+    const parentBundle     = ArchivistBundleFactory.create(nodes);
+
+    const parentDag = parentBundle.dags[0];
+    if (parentDag !== undefined) archivistDag.value = parentDag;
+    const bookSearchDag = bookSearchBundle.dags[0];
+    const composeRetryDag = composeBundle.dags[0];
+    if (bookSearchDag !== undefined && composeRetryDag !== undefined) {
+      embeddedDagRegistry.value = new Map([
+        ['book-search-scatter', bookSearchDag],
+        ['compose-retry-loop', composeRetryDag],
+      ]);
+    }
+
+    dispatcher = new ObservedDagonizer<ArchivistState>({
       'observer': buildObserver(null, prov),
     });
 
-    dispatcher.registerBundle(archivistToolRegistry.bundle<ArchivistServices>());
-    dispatcher.registerBundle(bookSearchScatterBundle);
-    dispatcher.registerBundle(composeRetryLoopBundle);
-    dispatcher.registerBundle(archivistBundle);
+    dispatcher.registerBundle(archivistToolRegistry.bundle());
+    dispatcher.registerBundle(bookSearchBundle);
+    dispatcher.registerBundle(composeBundle);
+    dispatcher.registerBundle(parentBundle);
 
     const visitor = new ArchivistState();
     visitor.query = queryText;
@@ -949,8 +981,9 @@ function reset(): void {
             <template #dag>
               <div class="graph-pane">
                 <DagGraph
+                  v-if="archivistDag !== null"
                   ref="dagGraph"
-                  :dag="archivistDAG"
+                  :dag="archivistDag"
                   :embedded-d-a-gs="embeddedDagRegistry"
                   :node-variants="NODE_VARIANTS"
                   :expand-all="true"

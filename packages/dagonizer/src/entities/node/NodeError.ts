@@ -57,9 +57,9 @@ export type NodeErrorWireType = FromSchema<typeof NodeErrorSchema>;
  */
 export type NodeErrorType = Omit<NodeErrorWireType, 'context'> & {
   /**
-   * Diagnostic context bag for this error.
+   * Diagnostic context record for this error.
    *
-   * Always present. Callers with no additional data omit the options bag;
+   * Always present. Callers with no additional data omit the options object;
    * `NodeErrorBuilder.from` fills `context: {}` automatically.
    */
   'context': Record<string, unknown>;
@@ -73,8 +73,8 @@ export type NodeErrorType = Omit<NodeErrorWireType, 'context'> & {
  * and a value would share a name, rename the value to its real role).
  *
  * Required fields are positional in their natural order. The optional
- * `context` lives in the trailing options bag. `context` defaults to `{}`
- * when the bag is omitted, so authors never write boilerplate.
+ * `context` lives in the trailing options object. `context` defaults to `{}`
+ * when the services record is omitted, so authors never write boilerplate.
  *
  * @example
  * ```ts
@@ -107,7 +107,7 @@ export class NodeErrorBuilder {
    * @param operation - Name of the operation that failed.
    * @param recoverable - Whether the error allows the flow to continue.
    * @param timestamp - ISO 8601 timestamp of the error.
-   * @param options - Optional bag; `context` defaults to `{}`.
+   * @param options - Optional record; `context` defaults to `{}`.
    */
   static from(
     code: string,

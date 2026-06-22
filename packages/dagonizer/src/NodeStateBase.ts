@@ -1,10 +1,11 @@
-import type { JsonObjectType, JsonValueType } from './entities/json.js';
+import type { JsonObjectType } from './entities/json.js';
 import { JsonValue } from './entities/JsonValue.js';
 import type { NodeErrorType } from './entities/node/NodeError.js';
 import type { NodeWarningType } from './entities/node/NodeWarning.js';
 import { DAGError } from './errors/DAGError.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { DAGLifecycleStateType } from './lifecycle/DAGLifecycleState.js';
+import { MetadataGetter } from './MetadataGetter.js';
 import { Clock } from './runtime/Clock.js';
 import { Validator } from './validation/Validator.js';
 
@@ -50,7 +51,15 @@ export interface NodeStateInterface {
   /**
    * Get a metadata value with type casting.
    */
-  getMetadata<T>(key: string): T | undefined;
+  getMetadata(key: string): unknown;
+
+  /**
+   * Strict-typed reads over this state's metadata. `state.getter.string('url')`
+   * narrows the `unknown` from `getMetadata` to a concrete type with a required
+   * default — cast-free, never `undefined`. Use this in nodes instead of
+   * narrowing `getMetadata` at the call site.
+   */
+  readonly 'getter': MetadataGetter;
 
   /**
    * Current DAG lifecycle state (full discriminated union).
@@ -199,22 +208,31 @@ export interface NodeStateInterface {
  * ```
  */
 export class NodeStateBase implements NodeStateInterface {
+  // Retype the `constructor` property to the no-arg constructor convention every
+  // state class follows, so `clone()` can `new this.constructor()` cast-free.
+  declare ['constructor']: new () => this;
+
   private readonly _errors: NodeErrorType[] = [];
   private _lifecycle: DAGLifecycleStateType = DAGLifecycleMachine.initial();
-  private _metadata: Record<string, JsonValueType> = {};
+  private _metadata: Record<string, unknown> = {};
   private _retries: Map<string, number> = new Map();
   private readonly _warnings: NodeWarningType[] = [];
 
+  // Strict-typed metadata reads (state.getter.string('k')). Constructed once
+  // against this state so the public face is stable; reads route through
+  // getMetadata, so it survives _metadata being replaced on clone/applySnapshot.
+  readonly getter: MetadataGetter;
+
   constructor() {
     // Canonical instantiation. Subclass to add domain-specific state.
+    this.getter = new MetadataGetter(this);
   }
 
   clone(): this {
     // Instantiate the actual (sub)class so domain fields and the
     // snapshotData/restoreData hooks survive clone-then-applySnapshot.
     // State classes follow the no-arg constructor convention.
-    const Constructor = this.constructor as new () => this;
-    const cloned = new Constructor();
+    const cloned = new this.constructor();
 
     // Lifecycle resets to `pending`, errors/warnings empty for fresh
     // sub-execution. Only metadata is preserved for data passing between
@@ -237,12 +255,10 @@ export class NodeStateBase implements NodeStateInterface {
     return this._errors;
   }
 
-  getMetadata<T>(key: string): T | undefined {
-    // Sound narrowing: `_metadata` values are `JsonValueType` (JSON-safe by the
-    // `setMetadata` contract). The cast to `T | undefined` is the single
-    // permitted caller-trust boundary for metadata reads; callers are
-    // responsible for using the same type `T` they wrote via `setMetadata`.
-    return this._metadata[key] as T | undefined;
+  getMetadata(key: string): unknown {
+    // Metadata holds heterogeneous JSON-serialisable values typed as `unknown`
+    // at the boundary; callers narrow to the concrete shape they wrote.
+    return this._metadata[key];
   }
 
   /**
@@ -285,13 +301,9 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   setMetadata(key: string, value: unknown): void {
-    // Metadata is the JSON serialisation boundary. The cast is the single
-    // permitted ingest point: callers must supply JSON-serialisable values,
-    // enforced by convention (schema-derived types + engine discipline) rather
-    // than at the TypeScript type level (scatter items carry `unknown` payloads
-    // in their schema-derived types, making a strict `JsonValueType` parameter
-    // break legitimate engine write sites).
-    this._metadata[key] = value as JsonValueType;
+    // Metadata stores heterogeneous JSON-serialisable values at the `unknown`
+    // boundary; the assignment needs no narrowing.
+    this._metadata[key] = value;
   }
 
   deleteMetadata(key: string): void {
@@ -347,9 +359,9 @@ export class NodeStateBase implements NodeStateInterface {
    */
   snapshot(): JsonObjectType {
     return {
-      // Spread to a stable snapshot object; the live record is not passed
-      // by reference so checkpoint consumers cannot mutate internal state.
-      'metadata': { ...this._metadata },
+      // `JsonValue.from` deep-copies into a stable snapshot and confirms the
+      // heterogeneous `unknown` metadata values are JSON-safe.
+      'metadata': JsonValue.from(this._metadata),
       // Convert Map → plain Record at the wire boundary; JsonValue.from confirms JSON-safety.
       'retries': JsonValue.from(Object.fromEntries(this._retries)),
       // NodeWarning fields are all primitive strings/numbers (schema-derived).

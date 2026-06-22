@@ -9,7 +9,6 @@
  * Outputs: `'done'` on success, `'error'` on failure or missing response.
  */
 
-import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ChatResponseType } from '../../entities/adapter/ChatResponse.js';
@@ -21,7 +20,7 @@ import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class AppendAssistantNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'done' | 'error', AgentServicesType> {
+> extends ScalarNode<TState, 'done' | 'error'> {
   readonly outputs = ['done', 'error'] as const;
 
   override get outputSchema(): Record<'done' | 'error', SchemaObjectType> {
@@ -34,7 +33,7 @@ export abstract class AppendAssistantNode<
   /** Read the stored model response from state. Return `null` when absent. */
   protected abstract getResponse(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): ChatResponseType | null;
 
   /**
@@ -44,12 +43,12 @@ export abstract class AppendAssistantNode<
   protected abstract append(
     state: TState,
     response: ChatResponseType,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): void;
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'done' | 'error'>> {
     try {
       const response = this.getResponse(state, context);

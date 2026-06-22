@@ -56,8 +56,12 @@ import type { WebWorkerLikeInterface, WorkerScopeLikeInterface } from '../../src
 // inside FakeWorker dynamic-imports this URL to reconstruct the bundle.
 // ---------------------------------------------------------------------------
 
-function conformanceRegistryUrl(): string {
-  return new URL('./fixtures/registry.js', import.meta.url).href;
+class ConformanceRegistryUrl {
+  private constructor() {}
+
+  static resolve(): string {
+    return new URL('./fixtures/registry.js', import.meta.url).href;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -228,7 +232,7 @@ class ContainerFixture {
   private constructor() {}
   static of(): FakeWebWorkerContainer {
     const opts: WebWorkerContainerOptionsType = {
-      'registryModule': conformanceRegistryUrl(),
+      'registryModule': ConformanceRegistryUrl.resolve(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
     };
@@ -248,15 +252,15 @@ const perLawContainers: FakeWebWorkerContainer[] = [];
 
 const harness: DagConformanceHarnessInterface = {
   'createDispatcher'(
-    bundle: DispatcherBundleType<NodeStateInterface, undefined>,
+    bundle: DispatcherBundleType<NodeStateInterface>,
     _containers: Readonly<Record<string, DagContainerInterface>>,
-  ): DagonizerInterface<NodeStateInterface, undefined> {
+  ): DagonizerInterface<NodeStateInterface> {
     // Create a fresh per-law container. Ignore the incoming _containers arg —
     // the sentinel harness.container is only a placeholder.
     const container = ContainerFixture.of();
     perLawContainers.push(container);
     const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
-    const dispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
+    const dispatcher: DagonizerInterface<NodeStateInterface> = new Dagonizer<NodeStateInterface>({ 'containers': containers });
     dispatcher.registerBundle(bundle);
     return dispatcher;
   },
@@ -292,7 +296,7 @@ void describe('DagConformance — WebWorkerContainer (Laws 1–6, 9)', () => {
 
 void describe('WebWorkerContainer pool behavior', () => {
   void it('queues the third execute when poolSize is 2', async () => {
-    const registryModule = conformanceRegistryUrl();
+    const registryModule = ConformanceRegistryUrl.resolve();
 
     const container = new FakeWebWorkerContainer({
       'registryModule': registryModule,
@@ -302,7 +306,7 @@ void describe('WebWorkerContainer pool behavior', () => {
 
     const bundle = ConformanceRegistry.bundle().bundle;
     const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
-    const dispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
+    const dispatcher: DagonizerInterface<NodeStateInterface> = new Dagonizer<NodeStateInterface>({ 'containers': containers });
     dispatcher.registerBundle(bundle);
 
     const state1 = new ConformanceState();
@@ -430,7 +434,7 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
   void it('parked acquire resolves and in-flight request fails when the busy worker dies', async () => {
     // poolSize: 1 — the only worker will be the zombie that never responds to execute.
     const container = new ZombieWorkerContainer({
-      'registryModule': conformanceRegistryUrl(),
+      'registryModule': ConformanceRegistryUrl.resolve(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
     });
@@ -440,7 +444,6 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
     const abortController = new AbortController();
     const context = {
       'signal': abortController.signal,
-      'services': undefined,
       'placementPath': [] as const,
       'dagName': 'test-dag',
       'nodeName': 'test-node',
@@ -528,7 +531,7 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
 
 void describe('WebWorkerContainer destroy() — terminate on all workers', () => {
   void it('calls terminate() on every spawned worker after destroy()', async () => {
-    const registryModule = conformanceRegistryUrl();
+    const registryModule = ConformanceRegistryUrl.resolve();
 
     const container = new FakeWebWorkerContainer({
       'registryModule': registryModule,
@@ -539,7 +542,7 @@ void describe('WebWorkerContainer destroy() — terminate on all workers', () =>
 
     const bundle = ConformanceRegistry.bundle().bundle;
     const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
-    const dispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
+    const dispatcher: DagonizerInterface<NodeStateInterface> = new Dagonizer<NodeStateInterface>({ 'containers': containers });
     dispatcher.registerBundle(bundle);
 
     // Run 3 executes to spawn all pool workers.

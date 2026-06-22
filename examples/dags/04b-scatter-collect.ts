@@ -47,7 +47,7 @@ export class ProviderNode extends ScalarNode<GenerateState, 'success'> {
   }
 
   protected override async executeOne(state: GenerateState) {
-    const name = state.getMetadata<string>('provider') ?? 'unknown';
+    const name = state.getter.string('provider', 'unknown');
     // Deterministic pseudo-score so the example output is stable: score by
     // the provider name length plus a per-provider salt. In a real flow this
     // is an LLM/tool call producing a candidate answer + a quality score.
@@ -75,7 +75,9 @@ export class SelectNode extends ScalarNode<GenerateState, 'selected' | 'none'> {
 
   protected override async executeOne(state: GenerateState) {
     if (state.candidates.length === 0) return NodeOutputBuilder.of('none');
-    let best = state.candidates[0]!;
+    const first = state.candidates[0];
+    if (first === undefined) return NodeOutputBuilder.of('none');
+    let best = first;
     for (const candidate of state.candidates) {
       if (candidate.score > best.score) best = candidate;
     }

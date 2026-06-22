@@ -14,7 +14,6 @@
  * Outputs: `'valid'`, `'empty'`, `'error'`.
  */
 
-import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ToolCallType } from '../../entities/adapter/ToolCall.js';
@@ -26,7 +25,7 @@ import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class NormalizeToolCallsNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'valid' | 'empty' | 'error', AgentServicesType> {
+> extends ScalarNode<TState, 'valid' | 'empty' | 'error'> {
   readonly outputs = ['valid', 'empty', 'error'] as const;
 
   override get outputSchema(): Record<'valid' | 'empty' | 'error', SchemaObjectType> {
@@ -40,19 +39,19 @@ export abstract class NormalizeToolCallsNode<
   /** Read the decoded tool calls from state. */
   protected abstract getToolCalls(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): readonly ToolCallType[];
 
   /** Write the validated subset of tool calls back to state. */
   protected abstract writeNormalized(
     state: TState,
     calls: readonly ToolCallType[],
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): void;
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'valid' | 'empty' | 'error'>> {
     try {
       const calls = this.getToolCalls(state, context);

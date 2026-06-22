@@ -8,9 +8,9 @@ seeAlso:
   - text: 'Subclassing State'
     link: './subclassing'
     description: 'a dispatcher subclass may also subclass state'
-  - text: 'Services'
+  - text: 'Dependency injection'
     link: './services'
-    description: 'pass loggers or tracers in via the services bag'
+    description: 'pass loggers or tracers via constructor injection'
 ---
 
 # Observability

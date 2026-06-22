@@ -13,7 +13,6 @@
  */
 
 import { ToolCallCodec } from '../../adapter/ToolCallCodec.js';
-import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ToolCallType } from '../../entities/adapter/ToolCall.js';
@@ -25,7 +24,7 @@ import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class DecodeTextToolCallsNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'decoded' | 'empty' | 'error', AgentServicesType> {
+> extends ScalarNode<TState, 'decoded' | 'empty' | 'error'> {
   readonly outputs = ['decoded', 'empty', 'error'] as const;
 
   override get outputSchema(): Record<'decoded' | 'empty' | 'error', SchemaObjectType> {
@@ -47,19 +46,19 @@ export abstract class DecodeTextToolCallsNode<
   /** Read the model's raw text response from state. */
   protected abstract getText(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): string;
 
   /** Write the decoded tool calls back to state. */
   protected abstract storeToolCalls(
     state: TState,
     calls: readonly ToolCallType[],
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): void;
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'decoded' | 'empty' | 'error'>> {
     try {
       const text = this.getText(state, context);

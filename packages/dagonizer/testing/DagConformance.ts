@@ -45,6 +45,7 @@ import assert from 'node:assert/strict';
 // The relative '../dist/' imports below are type-only and erased at compile time.
 // Runtime value imported from the package entry (resolves via package exports).
 
+
 import type { DagContainerInterface } from '../dist/contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from '../dist/contracts/DispatcherBundle.js';
 import type { DagonizerInterface } from '../dist/Dagonizer.js';
@@ -56,8 +57,8 @@ import {
   CONFORMANCE_DAG,
 } from './ConformanceRegistry.js';
 
-import type { ScatterProgressType } from '@studnicky/dagonizer';
-import { SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
+import { SCATTER_PROGRESS_KEY, Validator } from '@studnicky/dagonizer';
+import type { StoredScatterProgressType } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,9 +70,9 @@ export interface DagConformanceHarnessInterface {
    * registering the supplied conformance bundle parent-side.
    */
   createDispatcher(
-    bundle: DispatcherBundleType<NodeStateInterface, undefined>,
+    bundle: DispatcherBundleType<NodeStateInterface>,
     containers: Readonly<Record<string, DagContainerInterface>>,
-  ): DagonizerInterface<NodeStateInterface, undefined>;
+  ): DagonizerInterface<NodeStateInterface>;
   /** Create a fresh ConformanceState. */
   createState(): ConformanceState;
   /** Role name bound in containers and stamped on every law EmbeddedDAGNode. */
@@ -90,8 +91,8 @@ export interface DagConformanceHarnessInterface {
    * When absent, Law 7 compares two contained runs (weaker but still valid).
    */
   createInProcessDispatcher?(
-    bundle: DispatcherBundleType<NodeStateInterface, undefined>,
-  ): DagonizerInterface<NodeStateInterface, undefined>;
+    bundle: DispatcherBundleType<NodeStateInterface>,
+  ): DagonizerInterface<NodeStateInterface>;
 
   /**
    * (Optional) Law 8 capability: interrupt the container mid-scatter.
@@ -121,12 +122,30 @@ export interface DagConformanceLawInterface {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function dispatcherFor(
-  harness: DagConformanceHarnessInterface,
-): DagonizerInterface<NodeStateInterface, undefined> {
-  const bundle = ConformanceRegistry.bundle().bundle;
-  const containers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({ [harness.containerRole]: harness.container });
-  return harness.createDispatcher(bundle, containers);
+class LawDispatcher {
+  private constructor() {}
+
+  static for(
+    harness: DagConformanceHarnessInterface,
+  ): DagonizerInterface<NodeStateInterface> {
+    const bundle = ConformanceRegistry.bundle().bundle;
+    const containers: Readonly<Record<string, DagContainerInterface>> = Object.freeze({ [harness.containerRole]: harness.container });
+    return harness.createDispatcher(bundle, containers);
+  }
+}
+
+class SnapshotData {
+  private constructor() {}
+
+  /** Read `data.gatheredItems` from a JSON snapshot value, cast-free. */
+  static gatheredItems(snapshot: unknown): unknown {
+    if (typeof snapshot !== 'object' || snapshot === null || Array.isArray(snapshot)) return undefined;
+    if (!('data' in snapshot)) return undefined;
+    const data = snapshot.data;
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined;
+    if (!('gatheredItems' in data)) return undefined;
+    return data.gatheredItems;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +160,7 @@ export class DagConformance {
     const law1: DagConformanceLawInterface = {
       'name': 'Law 1: node executes with state surface; child DAG flow completes',
       async run(): Promise<void> {
-        const dispatcher = dispatcherFor(harness);
+        const dispatcher = LawDispatcher.for(harness);
         const state = harness.createState();
         const result = await dispatcher.execute(CONFORMANCE_DAG.law1, state);
 
@@ -158,7 +177,7 @@ export class DagConformance {
     const law2: DagConformanceLawInterface = {
       'name': 'Law 2: state mutations are visible; result.state === initialState',
       async run(): Promise<void> {
-        const dispatcher = dispatcherFor(harness);
+        const dispatcher = LawDispatcher.for(harness);
         const initialState = harness.createState();
         const result = await dispatcher.execute(CONFORMANCE_DAG.law2, initialState);
 
@@ -178,7 +197,7 @@ export class DagConformance {
     const law3: DagConformanceLawInterface = {
       'name': 'Law 3: errors collect and route; container crash → collected error',
       async run(): Promise<void> {
-        const dispatcher = dispatcherFor(harness);
+        const dispatcher = LawDispatcher.for(harness);
         const state = harness.createState();
         const result = await dispatcher.execute(CONFORMANCE_DAG.law3, state);
 
@@ -210,7 +229,7 @@ export class DagConformance {
     const law4: DagConformanceLawInterface = {
       'name': 'Law 4: timeoutMs honored — node with timeoutMs times out',
       async run(): Promise<void> {
-        const dispatcher = dispatcherFor(harness);
+        const dispatcher = LawDispatcher.for(harness);
         const state = harness.createState();
 
         const start = Date.now();
@@ -246,7 +265,7 @@ export class DagConformance {
       'name': 'Law 5: abort propagates — aborted run finalizes with interruption',
       async run(): Promise<void> {
         const controller = new AbortController();
-        const dispatcher = dispatcherFor(harness);
+        const dispatcher = LawDispatcher.for(harness);
         const state = harness.createState();
 
         const executionPromise = Promise.resolve(
@@ -293,7 +312,7 @@ export class DagConformance {
         // Import Dagonizer as a value (dist/ resolves via package exports).
         const { Dagonizer } = await import('@studnicky/dagonizer');
 
-        class RecordingDispatcher extends (Dagonizer as typeof Dagonizer<NodeStateInterface, undefined>) {
+        class RecordingDispatcher extends Dagonizer<NodeStateInterface> {
           protected override onNodeStart(nodeName: string, _state: NodeStateInterface, placementPath: readonly string[]): void {
             nodeStartNames.push(nodeName);
             nodeStartPaths.push([...placementPath]);
@@ -349,7 +368,7 @@ export class DagConformance {
         // `dispatcher` accepts the pre-built dispatcher so callers control
         // whether a container is bound.
         const runAndCapture = async (
-          dispatcher: DagonizerInterface<NodeStateInterface, undefined>,
+          dispatcher: DagonizerInterface<NodeStateInterface>,
         ): Promise<{
           checkpoints: unknown[];
           finalSnapshot: unknown;
@@ -410,20 +429,14 @@ export class DagConformance {
         // Both scatter over [10, 20, 30] with map gather { value → gatheredItems }.
         // scatter-counter sets clone.value += 1 (starts at 0); map gather appends
         // [1, 1, 1] to parent gatheredItems. Must be identical across both runs.
-        const inSnap = inProcess.finalSnapshot;
-        const inProcessData = (typeof inSnap === 'object' && inSnap !== null && !Array.isArray(inSnap) && 'data' in inSnap)
-          ? (inSnap as { data?: Record<string, unknown> }).data
-          : undefined;
-        const outSnap = contained.finalSnapshot;
-        const containedData = (typeof outSnap === 'object' && outSnap !== null && !Array.isArray(outSnap) && 'data' in outSnap)
-          ? (outSnap as { data?: Record<string, unknown> }).data
-          : undefined;
+        const inProcessGathered = SnapshotData.gatheredItems(inProcess.finalSnapshot);
+        const containedGathered = SnapshotData.gatheredItems(contained.finalSnapshot);
         assert.deepStrictEqual(
-          inProcessData?.['gatheredItems'],
-          containedData?.['gatheredItems'],
+          inProcessGathered,
+          containedGathered,
           `gathered gatheredItems must be identical: ` +
-          `in-process=${JSON.stringify(inProcessData?.['gatheredItems'])} ` +
-          `contained=${JSON.stringify(containedData?.['gatheredItems'])}`,
+          `in-process=${JSON.stringify(inProcessGathered)} ` +
+          `contained=${JSON.stringify(containedGathered)}`,
         );
       },
     };
@@ -473,8 +486,9 @@ export class DagConformance {
         }
 
         // At least one item must have been acked before the kill.
-        const progress = state1.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
-        const progressEntry = (progress ?? {})['fan'];
+        const raw = state1.getMetadata(SCATTER_PROGRESS_KEY);
+        const progress: StoredScatterProgressType = raw === undefined ? {} : Validator.storedScatterProgress.validate(raw);
+        const progressEntry = progress['fan'];
         const ackedBefore = progressEntry === undefined ? 0
           : progressEntry.mode === 'bounded'
             ? progressEntry.watermark + progressEntry.aheadAcked.length
@@ -531,7 +545,7 @@ export class DagConformance {
     const law9: DagConformanceLawInterface = {
       'name': 'Law 9: state round-trip — seed→snapshot→transport→restore→run is a fixed point',
       async run(): Promise<void> {
-        const dispatcher = dispatcherFor(harness);
+        const dispatcher = LawDispatcher.for(harness);
         const initialState = harness.createState();
 
         // Run the mutator DAG which sets value = 99 on the child state.

@@ -40,64 +40,69 @@ const MAX_COUNT = 1_000_000;
  */
 const CYCLE_CAP = 2_000;
 
-/** Clamp n to [1, 1_000_000]. */
-function clampCount(n: number): number {
-  return Math.min(MAX_COUNT, Math.max(MIN_COUNT, Math.floor(n)));
-}
+class EventTypeConfigMath {
+  private constructor() { /* static-only */ }
 
-/** Sum total scans across all EventTypeConfig entries. */
-function typedConfigTotal(config: EventTypeConfig): number {
-  let total = 0;
-  for (const entry of config) total += entry.count;
-  return total;
-}
-
-
-/**
- * Scale the original config so the per-entry counts sum to exactly `target`,
- * preserving relative proportions from `originalSum`. Rounding drift is
- * corrected on the last entry with a non-zero scaled count. Returns a new
- * config array; formatMix values are shared by reference (read-only).
- */
-function scaleConfig(config: EventTypeConfig, originalSum: number, target: number): EventTypeConfig {
-  const scaled = config.map((entry) => ({
-    'eventType': entry.eventType,
-    'count': Math.round((entry.count / originalSum) * target),
-    'formatMix': entry.formatMix,
-  }));
-
-  // Correct rounding drift so the scaled counts sum exactly to target.
-  const scaledSum = scaled.reduce((s, e) => s + e.count, 0);
-  const drift = target - scaledSum;
-  if (drift !== 0) {
-    for (let i = scaled.length - 1; i >= 0; i--) {
-      if ((scaled[i]?.count ?? 0) > 0 || i === 0) {
-        scaled[i] = { ...scaled[i]!, 'count': (scaled[i]?.count ?? 0) + drift };
-        break;
-      }
-    }
+  /** Clamp n to [1, 1_000_000]. */
+  static clampCount(n: number): number {
+    return Math.min(MAX_COUNT, Math.max(MIN_COUNT, Math.floor(n)));
   }
 
-  return scaled;
+  /** Sum total scans across all EventTypeConfig entries. */
+  static total(config: EventTypeConfig): number {
+    let sum = 0;
+    for (const entry of config) sum += entry.count;
+    return sum;
+  }
+
+  /**
+   * Scale the original config so the per-entry counts sum to exactly `target`,
+   * preserving relative proportions from `originalSum`. Rounding drift is
+   * corrected on the last entry with a non-zero scaled count. Returns a new
+   * config array; formatMix values are shared by reference (read-only).
+   */
+  static scale(config: EventTypeConfig, originalSum: number, target: number): EventTypeConfig {
+    const scaled = config.map((entry) => ({
+      'eventType': entry.eventType,
+      'count': Math.round((entry.count / originalSum) * target),
+      'formatMix': entry.formatMix,
+    }));
+
+    // Correct rounding drift so the scaled counts sum exactly to target.
+    const scaledSum = scaled.reduce((s, e) => s + e.count, 0);
+    const drift = target - scaledSum;
+    if (drift !== 0) {
+      for (let i = scaled.length - 1; i >= 0; i--) {
+        const el = scaled[i];
+        if (el !== undefined && (el.count > 0 || i === 0)) {
+          el.count += drift;
+          break;
+        }
+      }
+    }
+
+    return scaled;
+  }
 }
 
-// #region event-stream-source
-export class EventStreamSource {
+/** Cumulative format/compression threshold mapping a local scan index to an encoding. */
+type FormatThreshold = { format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number };
+
+class FormatThresholds {
   private constructor() { /* static-only */ }
 
   /**
-   * Build per-entry format thresholds from a FormatMix weight array.
-   * Returns an array of cumulative limit thresholds mapping local scan indices to {format, compression}.
+   * Build per-entry format thresholds from a FormatMix weight array. Returns an
+   * array of cumulative limit thresholds mapping local scan indices to
+   * {format, compression}.
    */
-  private static typedFormatThresholds(
-    mix: EventTypeConfig[number]['formatMix'],
-    count: number,
-  ): Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }> {
+  static forMix(mix: EventTypeConfig[number]['formatMix'], count: number): FormatThreshold[] {
     const totalWeight = mix.reduce((sum, m) => sum + m.weight, 0);
-    const thresholds: Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }> = [];
+    const thresholds: FormatThreshold[] = [];
     let allocated = 0;
     for (let mi = 0; mi < mix.length; mi++) {
-      const m = mix[mi]!;
+      const m = mix[mi];
+      if (m === undefined) continue;
       const isLast = mi === mix.length - 1;
       const c = isLast
         ? Math.max(0, count - allocated)
@@ -111,6 +116,112 @@ export class EventStreamSource {
     }
     return thresholds;
   }
+}
+
+/**
+ * Scale-path async iterator: drives ShipmentEvents.typedScansGenerator in
+ * bounded cycles of at most CYCLE_CAP events. Each cycle receives a
+ * proportionally scaled config whose per-entry counts sum to
+ * min(CYCLE_CAP, remaining), keeping each cycle's interleaved generator memory
+ * bounded at O(numTypes) scan candidates. A monotonically increasing
+ * globalIndex guarantees unique sourceIds across all cycles. Per-type local
+ * indices reset at cycle boundaries (each cycle is an independent scaled
+ * config, so threshold offsets restart from 0 within it).
+ */
+class ScaledCycleIterator implements AsyncIterator<SourcePayload, undefined> {
+  #globalIndex = 0;
+  #remaining: number;
+
+  // Current cycle state — null generator signals no cycle has started yet.
+  #cycleGenerator: Generator<TypedScan> | null = null;
+  #cycleConfig: EventTypeConfig = [];
+  #cycleEntryThresholds: FormatThreshold[][] = [];
+  #cycleEventTypeToIdx: Map<string, number> = new Map();
+  #cycleLocalIndices: number[] = [];
+  #cycleTotal = 0;
+  #cycleYielded = 0;
+
+  readonly #config: EventTypeConfig;
+  readonly #originalSum: number;
+
+  constructor(config: EventTypeConfig, originalSum: number, effective: number) {
+    this.#config = config;
+    this.#originalSum = originalSum;
+    this.#remaining = effective;
+  }
+
+  #startNextCycle(): void {
+    const batchSize = Math.min(CYCLE_CAP, this.#remaining);
+    this.#cycleConfig = EventTypeConfigMath.scale(this.#config, this.#originalSum, batchSize);
+    this.#cycleTotal = this.#cycleConfig.reduce((s, e) => s + e.count, 0);
+    this.#cycleEntryThresholds = this.#cycleConfig.map((entry) =>
+      FormatThresholds.forMix(entry.formatMix, entry.count),
+    );
+    // Build eventType → cycleConfig index map for per-type local index lookup.
+    this.#cycleEventTypeToIdx = new Map();
+    for (let i = 0; i < this.#cycleConfig.length; i++) {
+      const entry = this.#cycleConfig[i];
+      if (entry !== undefined && !this.#cycleEventTypeToIdx.has(entry.eventType)) {
+        this.#cycleEventTypeToIdx.set(entry.eventType, i);
+      }
+    }
+    this.#cycleGenerator = ShipmentEvents.typedScansGenerator(this.#cycleConfig);
+    this.#cycleLocalIndices = new Array<number>(this.#cycleConfig.length).fill(0);
+    this.#cycleYielded = 0;
+    this.#remaining -= batchSize;
+  }
+
+  async next(): Promise<IteratorResult<SourcePayload, undefined>> {
+    // Advance to the next cycle when the current one is exhausted.
+    while (this.#cycleGenerator === null || this.#cycleYielded >= this.#cycleTotal) {
+      if (this.#remaining <= 0) {
+        return { value: undefined, done: true };
+      }
+      this.#startNextCycle();
+    }
+
+    const step = this.#cycleGenerator.next();
+    // Guard against an unexpectedly exhausted generator (mis-scaled config).
+    if (step.done === true) {
+      return { value: undefined, done: true };
+    }
+
+    const scan = step.value;
+
+    // Resolve config entry by the scan's eventType (interleaved order).
+    const cycleConfigIdx = this.#cycleEventTypeToIdx.get(scan.eventType) ?? 0;
+    const currentEntry = this.#cycleConfig[cycleConfigIdx] ?? this.#cycleConfig[0];
+    if (currentEntry === undefined) return { value: undefined, done: true };
+    const localIdx = this.#cycleLocalIndices[cycleConfigIdx] ?? 0;
+    const thresholds = this.#cycleEntryThresholds[cycleConfigIdx] ?? [];
+
+    let format: 'csv' | 'json' | 'ndjson' | 'yaml' = currentEntry.formatMix[0]?.format ?? 'json';
+    let compression: 'none' | 'gzip' = currentEntry.formatMix[0]?.compression ?? 'none';
+    for (const threshold of thresholds) {
+      if (localIdx < threshold.limit) {
+        format = threshold.format;
+        compression = threshold.compression;
+        break;
+      }
+    }
+
+    const payload = await Sources.buildPayloadFromScan(scan, format, compression, this.#globalIndex, currentEntry.eventType);
+    const sourceId = `${currentEntry.eventType}-${format}-${compression}-${this.#globalIndex}`;
+
+    this.#cycleLocalIndices[cycleConfigIdx] = localIdx + 1;
+    this.#cycleYielded++;
+    this.#globalIndex++;
+
+    return {
+      value: { ...payload, 'sourceId': sourceId, 'eventType': currentEntry.eventType },
+      done: false,
+    };
+  }
+}
+
+// #region event-stream-source
+export class EventStreamSource {
+  private constructor() { /* static-only */ }
 
   /**
    * Return an AsyncIterable<SourcePayload> for a typed feed. Yields payloads
@@ -134,8 +245,8 @@ export class EventStreamSource {
    *                   sum of entry counts is used. Clamped to [1, 1_000_000].
    */
   static streamTyped(config: EventTypeConfig, totalCount?: number): AsyncIterable<SourcePayload> {
-    const originalSum = typedConfigTotal(config);
-    const effective = totalCount !== undefined ? clampCount(totalCount) : clampCount(originalSum);
+    const originalSum = EventTypeConfigMath.total(config);
+    const effective = totalCount !== undefined ? EventTypeConfigMath.clampCount(totalCount) : EventTypeConfigMath.clampCount(originalSum);
 
     // Backward-compatible single-pass path: effective fits within the config's
     // natural sum — one generator pass produces exactly `effective` payloads.
@@ -144,7 +255,7 @@ export class EventStreamSource {
     // the scan's eventType) rather than by sequential stream position.
     if (effective <= originalSum) {
       const entryThresholds = config.map((entry) =>
-        EventStreamSource.typedFormatThresholds(entry.formatMix, entry.count),
+        FormatThresholds.forMix(entry.formatMix, entry.count),
       );
 
       // Map eventType → config index for O(1) per-scan format-index lookup.
@@ -152,8 +263,10 @@ export class EventStreamSource {
       // wins (same tie-break as the generator's slot ordering).
       const eventTypeToConfigIdx = new Map<string, number>();
       for (let i = 0; i < config.length; i++) {
-        const et = config[i]!.eventType;
-        if (!eventTypeToConfigIdx.has(et)) eventTypeToConfigIdx.set(et, i);
+        const entry = config[i];
+        if (entry !== undefined && !eventTypeToConfigIdx.has(entry.eventType)) {
+          eventTypeToConfigIdx.set(entry.eventType, i);
+        }
       }
 
       return {
@@ -179,7 +292,8 @@ export class EventStreamSource {
 
               // Resolve config entry by the scan's eventType (interleaved order).
               const configIdx = eventTypeToConfigIdx.get(scan.eventType) ?? 0;
-              const currentEntry = config[configIdx]!;
+              const currentEntry = config[configIdx] ?? config[0];
+              if (currentEntry === undefined) return { value: undefined, done: true };
               const localIdx = localIndices[configIdx] ?? 0;
               const thresholds = entryThresholds[configIdx] ?? [];
 
@@ -209,95 +323,11 @@ export class EventStreamSource {
       };
     }
 
-    // Scale path: effective > originalSum.
-    //
-    // Run typedScansGenerator in bounded cycles of at most CYCLE_CAP events
-    // each. Each cycle receives a proportionally scaled config whose per-entry
-    // counts sum to min(CYCLE_CAP, remaining), keeping each cycle's interleaved
-    // generator memory bounded at O(numTypes) scan candidates. A monotonically
-    // increasing globalIndex guarantees unique sourceIds across all cycles.
-    // Per-type local indices reset at cycle boundaries (each cycle is an
-    // independent scaled config, so threshold offsets restart from 0 within it).
+    // Scale path: effective > originalSum. Drive the generator in bounded
+    // cycles via ScaledCycleIterator (see its docstring for the invariants).
     return {
       [Symbol.asyncIterator](): AsyncIterator<SourcePayload> {
-        let globalIndex = 0;
-        let remaining = effective;
-
-        // Current cycle state — null signals no cycle has started yet.
-        let cycleGenerator: Generator<TypedScan> | null = null;
-        let cycleConfig: EventTypeConfig = [];
-        let cycleEntryThresholds: Array<Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }>> = [];
-        let cycleEventTypeToIdx: Map<string, number> = new Map();
-        let cycleLocalIndices: number[] = [];
-        let cycleTotal = 0;
-        let cycleYielded = 0;
-
-        function startNextCycle(): void {
-          const batchSize = Math.min(CYCLE_CAP, remaining);
-          cycleConfig = scaleConfig(config, originalSum, batchSize);
-          cycleTotal = cycleConfig.reduce((s, e) => s + e.count, 0);
-          cycleEntryThresholds = cycleConfig.map((entry) =>
-            EventStreamSource.typedFormatThresholds(entry.formatMix, entry.count),
-          );
-          // Build eventType → cycleConfig index map for per-type local index lookup.
-          cycleEventTypeToIdx = new Map();
-          for (let i = 0; i < cycleConfig.length; i++) {
-            const et = cycleConfig[i]!.eventType;
-            if (!cycleEventTypeToIdx.has(et)) cycleEventTypeToIdx.set(et, i);
-          }
-          cycleGenerator = ShipmentEvents.typedScansGenerator(cycleConfig);
-          cycleLocalIndices = new Array<number>(cycleConfig.length).fill(0);
-          cycleYielded = 0;
-          remaining -= batchSize;
-        }
-
-        return {
-          async next(): Promise<IteratorResult<SourcePayload, undefined>> {
-            // Advance to the next cycle when the current one is exhausted.
-            while (cycleGenerator === null || cycleYielded >= cycleTotal) {
-              if (remaining <= 0) {
-                return { value: undefined, done: true };
-              }
-              startNextCycle();
-            }
-
-            const step = cycleGenerator.next();
-            // Guard against an unexpectedly exhausted generator (mis-scaled config).
-            if (step.done === true) {
-              return { value: undefined, done: true };
-            }
-
-            const scan = step.value;
-
-            // Resolve config entry by the scan's eventType (interleaved order).
-            const cycleConfigIdx = cycleEventTypeToIdx.get(scan.eventType) ?? 0;
-            const currentEntry = cycleConfig[cycleConfigIdx]!;
-            const localIdx = cycleLocalIndices[cycleConfigIdx] ?? 0;
-            const thresholds = cycleEntryThresholds[cycleConfigIdx] ?? [];
-
-            let format: 'csv' | 'json' | 'ndjson' | 'yaml' = currentEntry.formatMix[0]?.format ?? 'json';
-            let compression: 'none' | 'gzip' = currentEntry.formatMix[0]?.compression ?? 'none';
-            for (const threshold of thresholds) {
-              if (localIdx < threshold.limit) {
-                format = threshold.format;
-                compression = threshold.compression;
-                break;
-              }
-            }
-
-            const payload = await Sources.buildPayloadFromScan(scan, format, compression, globalIndex, currentEntry.eventType);
-            const sourceId = `${currentEntry.eventType}-${format}-${compression}-${globalIndex}`;
-
-            cycleLocalIndices[cycleConfigIdx] = localIdx + 1;
-            cycleYielded++;
-            globalIndex++;
-
-            return {
-              value: { ...payload, 'sourceId': sourceId, 'eventType': currentEntry.eventType },
-              done: false,
-            };
-          },
-        };
+        return new ScaledCycleIterator(config, originalSum, effective);
       },
     };
   }

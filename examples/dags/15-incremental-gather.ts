@@ -59,7 +59,7 @@ export class ShoutNode extends ScalarNode<IncrementalState, 'done'> {
   }
 
   protected override async executeOne(state: IncrementalState) {
-    const word = state.getMetadata<string>('word') ?? '?';
+    const word = state.getter.string('word', '?');
     // Write a scalar to `processed` on the clone. The map gather reads
     // `processed` off each clone and appends it to the parent's `results`.
     // (A map gather appends one entry per clone; keep the source field scalar.)
@@ -101,7 +101,8 @@ export class LoggingMapStrategy extends GatherStrategy {
       const record = item.state;
       for (const [clonePath, parentPath] of Object.entries(mapping)) {
         const value = accessor.get(record.cloneState, clonePath);
-        const existing = accessor.get<readonly unknown[]>(state, parentPath) ?? [];
+        const existingRaw = accessor.get(state, parentPath);
+        const existing: readonly unknown[] = Array.isArray(existingRaw) ? existingRaw : [];
         const next = [...existing, value];
         accessor.set(state, parentPath, next);
         this.foldLog.push(
@@ -144,7 +145,8 @@ export class BatchOnlyStrategy extends GatherStrategy {
     const values = execution.records.map((r) =>
       execution.accessor.get(r.cloneState, 'processed'),
     );
-    const existing = execution.accessor.get<readonly unknown[]>(execution.state, 'results') ?? [];
+    const existingRaw = execution.accessor.get(execution.state, 'results');
+    const existing: readonly unknown[] = Array.isArray(existingRaw) ? existingRaw : [];
     const allValues = [...existing, ...values];
     execution.accessor.set(execution.state, 'results', allValues);
     this.foldLog.push(

@@ -36,7 +36,7 @@ export class ProbeNode extends ScalarNode<ScrapeState, 'ok' | 'fail'> {
 
   protected override async executeOne(state: ScrapeState) {
     // Each item is written to state under the itemKey ('url') before execute.
-    const url = state.getMetadata<string>('url') ?? '';
+    const url = state.getter.string('url');
     // Fake probe: even-length URLs succeed, odd-length fail.
     return NodeOutputBuilder.of(url.length % 2 === 0 ? 'ok' : 'fail');
   }

@@ -5,14 +5,19 @@ import { Classifications, LlmError } from '../../src/adapter/LlmError.js';
 import { RetryableErrorPolicy } from '../../src/adapter/RetryableErrorPolicy.js';
 import { BackoffStrategyNames } from '../../src/entities/runtime/BackoffStrategy.js';
 
-const policy = (): RetryableErrorPolicy =>
-  RetryableErrorPolicy.from({ 'maxAttempts': 3, 'strategy': BackoffStrategyNames.EXPONENTIAL, 'baseDelay': 0 });
+class RetryPolicyFixture {
+  private constructor() {}
+
+  static of(): RetryableErrorPolicy {
+    return RetryableErrorPolicy.from({ 'maxAttempts': 3, 'strategy': BackoffStrategyNames.EXPONENTIAL, 'baseDelay': 0 });
+  }
+}
 
 void describe('RetryableErrorPolicy honors LlmError.classification.retryable', () => {
   void it('does NOT retry a non-retryable LlmError (exactly one attempt)', async () => {
     let calls = 0;
     await assert.rejects(
-      () => policy().run(async () => {
+      () => RetryPolicyFixture.of().run(async () => {
         calls += 1;
         throw new LlmError('auth failed', Classifications['AUTH_FAILED']);
       }),
@@ -24,7 +29,7 @@ void describe('RetryableErrorPolicy honors LlmError.classification.retryable', (
   void it('retries a retryable LlmError up to maxAttempts', async () => {
     let calls = 0;
     await assert.rejects(
-      () => policy().run(async () => {
+      () => RetryPolicyFixture.of().run(async () => {
         calls += 1;
         throw new LlmError('network blip', Classifications['NETWORK']);
       }),
@@ -36,7 +41,7 @@ void describe('RetryableErrorPolicy honors LlmError.classification.retryable', (
   void it('falls back to default behavior for non-LlmError errors', async () => {
     let calls = 0;
     await assert.rejects(
-      () => policy().run(async () => {
+      () => RetryPolicyFixture.of().run(async () => {
         calls += 1;
         throw new Error('plain');
       }),

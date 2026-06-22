@@ -59,12 +59,16 @@ class DefaultProbeAdapter extends BaseAdapter {
   }
 }
 
-function descriptorOf(provider: string, model: string): AdapterDescriptorShapeType {
-  return {
-    'provider':     provider,
-    'model':        model,
-    'capabilities': FULL_CAPABILITIES,
-  };
+class AdapterDescriptorFixture {
+  private constructor() {}
+
+  static of(provider: string, model: string): AdapterDescriptorShapeType {
+    return {
+      'provider':     provider,
+      'model':        model,
+      'capabilities': FULL_CAPABILITIES,
+    };
+  }
 }
 
 void describe('AdapterDescriptor.key', () => {
@@ -77,8 +81,8 @@ void describe('AdapterDescriptor.key', () => {
 void describe('LlmAdapterRegistry', () => {
   void it('registers, queries, resolves, and lists adapters', () => {
     const registry = new LlmAdapterRegistry();
-    const descA = descriptorOf('provA', 'modelA');
-    const descB = descriptorOf('provB', 'modelB');
+    const descA = AdapterDescriptorFixture.of('provA', 'modelA');
+    const descB = AdapterDescriptorFixture.of('provB', 'modelB');
     registry.register(descA, () => new TestAdapter('A', true));
     registry.register(descB, () => new TestAdapter('B', true));
 
@@ -100,7 +104,7 @@ void describe('LlmAdapterRegistry', () => {
 
   void it('throws CONFIGURATION on duplicate registration', () => {
     const registry = new LlmAdapterRegistry();
-    const desc = descriptorOf('dup', 'one');
+    const desc = AdapterDescriptorFixture.of('dup', 'one');
     registry.register(desc, () => new TestAdapter('first', true));
     assert.throws(
       () => { registry.register(desc, () => new TestAdapter('second', true)); },
@@ -121,7 +125,7 @@ void describe('LlmAdapterRegistry', () => {
 
   void it('produces a fresh instance per resolve call', () => {
     const registry = new LlmAdapterRegistry();
-    registry.register(descriptorOf('p', 'm'), () => new TestAdapter('p:m', true));
+    registry.register(AdapterDescriptorFixture.of('p', 'm'), () => new TestAdapter('p:m', true));
     const first  = registry.resolve('p', 'm');
     const second = registry.resolve('p', 'm');
     assert.notEqual(first, null);
@@ -133,8 +137,8 @@ void describe('LlmAdapterRegistry', () => {
 void describe('LlmAdapterCascade', () => {
   void it('returns the first adapter when both probe true', async () => {
     const registry = new LlmAdapterRegistry();
-    registry.register(descriptorOf('first',  'm'), () => new TestAdapter('first',  true));
-    registry.register(descriptorOf('second', 'm'), () => new TestAdapter('second', true));
+    registry.register(AdapterDescriptorFixture.of('first',  'm'), () => new TestAdapter('first',  true));
+    registry.register(AdapterDescriptorFixture.of('second', 'm'), () => new TestAdapter('second', true));
     const cascade = new LlmAdapterCascade(registry, [
       { 'provider': 'first',  'model': 'm' },
       { 'provider': 'second', 'model': 'm' },
@@ -145,8 +149,8 @@ void describe('LlmAdapterCascade', () => {
 
   void it('skips probe-false adapter and picks next', async () => {
     const registry = new LlmAdapterRegistry();
-    registry.register(descriptorOf('cold', 'm'), () => new TestAdapter('cold', false));
-    registry.register(descriptorOf('warm', 'm'), () => new TestAdapter('warm', true));
+    registry.register(AdapterDescriptorFixture.of('cold', 'm'), () => new TestAdapter('cold', false));
+    registry.register(AdapterDescriptorFixture.of('warm', 'm'), () => new TestAdapter('warm', true));
     const cascade = new LlmAdapterCascade(registry, [
       { 'provider': 'cold', 'model': 'm' },
       { 'provider': 'warm', 'model': 'm' },
@@ -157,8 +161,8 @@ void describe('LlmAdapterCascade', () => {
 
   void it('throws NO_ADAPTER_AVAILABLE when every probe fails', async () => {
     const registry = new LlmAdapterRegistry();
-    registry.register(descriptorOf('a', 'm'), () => new TestAdapter('a', false));
-    registry.register(descriptorOf('b', 'm'), () => new TestAdapter('b', false));
+    registry.register(AdapterDescriptorFixture.of('a', 'm'), () => new TestAdapter('a', false));
+    registry.register(AdapterDescriptorFixture.of('b', 'm'), () => new TestAdapter('b', false));
     const cascade = new LlmAdapterCascade(registry, [
       { 'provider': 'a', 'model': 'm' },
       { 'provider': 'b', 'model': 'm' },
@@ -178,7 +182,7 @@ void describe('LlmAdapterCascade', () => {
 
   void it('logs unregistered preferences in the failure message', async () => {
     const registry = new LlmAdapterRegistry();
-    registry.register(descriptorOf('known', 'm'), () => new TestAdapter('known', false));
+    registry.register(AdapterDescriptorFixture.of('known', 'm'), () => new TestAdapter('known', false));
     const cascade = new LlmAdapterCascade(registry, [
       { 'provider': 'ghost', 'model': 'm' },
       { 'provider': 'known', 'model': 'm' },
@@ -197,7 +201,7 @@ void describe('LlmAdapterCascade', () => {
 
   void it('skips unregistered preference and selects next', async () => {
     const registry = new LlmAdapterRegistry();
-    registry.register(descriptorOf('real', 'm'), () => new TestAdapter('real', true));
+    registry.register(AdapterDescriptorFixture.of('real', 'm'), () => new TestAdapter('real', true));
     const cascade = new LlmAdapterCascade(registry, [
       { 'provider': 'fake', 'model': 'm' },
       { 'provider': 'real', 'model': 'm' },

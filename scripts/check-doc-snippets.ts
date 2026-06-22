@@ -43,47 +43,51 @@ const FENCE = /^```(ts|tsx|typescript)\b([^\n]*)$/;
 // suppressed block can never hide silently.
 const skipped: string[] = [];
 
-function listMarkdown(dir: string): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(dir)) {
-    if (name === 'node_modules' || name === 'dist' || name === 'cache') continue;
-    const full = join(dir, name);
-    const st = statSync(full);
-    if (st.isDirectory()) out.push(...listMarkdown(full));
-    else if (name.endsWith('.md')) out.push(full);
-  }
-  return out;
-}
+class MarkdownSnippets {
+  private constructor() {}
 
-function extract(mdFile: string): Snippet[] {
-  const lines = readFileSync(mdFile, 'utf8').split('\n');
-  const snippets: Snippet[] = [];
-  let i = 0;
-  let blockIndex = 0;
-  while (i < lines.length) {
-    const open = FENCE.exec(lines[i] ?? '');
-    if (!open) { i++; continue; }
-    const meta = open[2] ?? '';
-    const bodyStart = i + 1;
-    let j = bodyStart;
-    while (j < lines.length && (lines[j] ?? '').trim() !== '```') j++;
-    const body = lines.slice(bodyStart, j).join('\n');
-    i = j + 1;
-    if (!/\btwoslash\b/.test(meta)) continue;          // only twoslash blocks
-    if (/\/\/\s*@(errors|noErrors)\b/.test(body)) {     // expected-error blocks: not type-checked here
-      skipped.push(`${relative(repoRoot, mdFile)}:${bodyStart + 1}`);
-      continue;
+  static list(dir: string): string[] {
+    const out: string[] = [];
+    for (const name of readdirSync(dir)) {
+      if (name === 'node_modules' || name === 'dist' || name === 'cache') continue;
+      const full = join(dir, name);
+      const st = statSync(full);
+      if (st.isDirectory()) out.push(...MarkdownSnippets.list(full));
+      else if (name.endsWith('.md')) out.push(full);
     }
-    const isModule = /^\s*(import|export)\b/m.test(body);
-    const text = isModule ? body : `${body}\nexport {};\n`;
-    snippets.push({
-      virtualPath: join(docsRoot, `.snippet-check/${relative(docsRoot, mdFile).replace(/[/.]/g, '_')}__${blockIndex++}.ts`),
-      mdFile,
-      startLine: bodyStart + 1,
-      text,
-    });
+    return out;
   }
-  return snippets;
+
+  static extract(mdFile: string): Snippet[] {
+    const lines = readFileSync(mdFile, 'utf8').split('\n');
+    const snippets: Snippet[] = [];
+    let i = 0;
+    let blockIndex = 0;
+    while (i < lines.length) {
+      const open = FENCE.exec(lines[i] ?? '');
+      if (!open) { i++; continue; }
+      const meta = open[2] ?? '';
+      const bodyStart = i + 1;
+      let j = bodyStart;
+      while (j < lines.length && (lines[j] ?? '').trim() !== '```') j++;
+      const body = lines.slice(bodyStart, j).join('\n');
+      i = j + 1;
+      if (!/\btwoslash\b/.test(meta)) continue;          // only twoslash blocks
+      if (/\/\/\s*@(errors|noErrors)\b/.test(body)) {     // expected-error blocks: not type-checked here
+        skipped.push(`${relative(repoRoot, mdFile)}:${bodyStart + 1}`);
+        continue;
+      }
+      const isModule = /^\s*(import|export)\b/m.test(body);
+      const text = isModule ? body : `${body}\nexport {};\n`;
+      snippets.push({
+        virtualPath: join(docsRoot, `.snippet-check/${relative(docsRoot, mdFile).replace(/[/.]/g, '_')}__${blockIndex++}.ts`),
+        mdFile,
+        startLine: bodyStart + 1,
+        text,
+      });
+    }
+    return snippets;
+  }
 }
 
 const compilerOptions: ts.CompilerOptions = {
@@ -104,10 +108,10 @@ const compilerOptions: ts.CompilerOptions = {
 // restricts the run to md files whose repo-relative path contains any argument.
 // With no arguments, every doc is checked (the CI default).
 const filters = process.argv.slice(2);
-const mdFiles = listMarkdown(docsRoot).filter(
+const mdFiles = MarkdownSnippets.list(docsRoot).filter(
   f => filters.length === 0 || filters.some(arg => relative(repoRoot, f).includes(arg)),
 );
-const snippets = mdFiles.flatMap(extract);
+const snippets = mdFiles.flatMap(f => MarkdownSnippets.extract(f));
 
 const byPath = new Map(snippets.map(s => [s.virtualPath, s]));
 const host = ts.createCompilerHost(compilerOptions);

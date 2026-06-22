@@ -22,13 +22,8 @@
  */
 
 import { Dagonizer, InMemoryChannel } from '@studnicky/dagonizer';
+import { JsonObject } from '@studnicky/dagonizer/entities';
 import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
-import type { JsonObjectType } from '@studnicky/dagonizer/entities';
-
-// Runtime guard: narrows a record of unknown values to JsonObjectType.
-// The engine always produces JSON-safe snapshots; this confirms the outer shape.
-const isJsonObject = (v: { [x: string]: unknown }): v is JsonObjectType =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 import {
   PipelineState,
@@ -68,11 +63,9 @@ class HandoffChannel extends InMemoryChannel {
     // DAGHandoff is a discriminated union (stateSnapshot vs stateSnapshotRef);
     // narrow to the by-value branch before calling restore.
     if (!('stateSnapshot' in handoff)) return;
-    // stateSnapshot is typed as { [x: string]: unknown } by json-schema-to-ts
-    // (JSON Schema 2020-12 cannot express recursive JsonValueType for 'object').
-    // Guard confirms the outer shape; the engine always produces JSON-safe snapshots.
-    if (!isJsonObject(handoff.stateSnapshot)) return;
-    const continuationState = PipelineState.restore(handoff.stateSnapshot);
+    const snapshot: unknown = handoff.stateSnapshot;
+    if (!JsonObject.is(snapshot)) return;
+    const continuationState = PipelineState.restore(snapshot);
 
     // Execute DAG B on the restored state.
     const result = await dispatcherB.execute('pipeline-b', continuationState);

@@ -13,14 +13,13 @@
  */
 export interface StateAccessorInterface {
   /**
-   * Read the value at `path` on `state`. Returns `null` when the
-   * path traverses a missing or non-object segment.
-   *
-   * The generic parameter `T` narrows the return type at the call site.
-   * The implementation performs a single cast at the return boundary;
-   * internal traversal stays `unknown` until the final segment.
+   * Read the value at `path` on `state`. Returns `null` when the path
+   * traverses a missing or non-object segment, otherwise the resolved value
+   * as `unknown`. Callers narrow the result to the shape they expect
+   * (`Array.isArray(value)`, a `typeof` check, or a `Validator`) rather than
+   * trusting a call-site type argument — the read surface stays honest.
    */
-  get<T = unknown>(state: object, path: string): T | null;
+  get(state: object, path: string): unknown;
 
   /**
    * Write `value` at `path` on `state`. Implementations must create

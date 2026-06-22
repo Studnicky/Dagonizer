@@ -2,7 +2,7 @@
 
 Append-only event-log `Store` implementation for [`@studnicky/dagonizer`](https://github.com/Studnicky/Dagonizer).
 
-Every `set` appends a `{ kind: 'set' }` event; every `delete` appends a `{ kind: 'delete' }` tombstone. `get` returns the latest value for a key by scanning the log in reverse. `snapshot()` compacts the log to a last-write-wins map. `restore()` reseeds the log from snapshot entries. Optional file persistence via `node:fs/promises`; no external dependencies.
+Every `set` appends a `{ variant: 'set' }` event; every `delete` appends a `{ variant: 'delete' }` tombstone. `get` returns the latest value for a key by scanning the log in reverse. `snapshot()` compacts the log to a last-write-wins map. `restore()` reseeds the log from snapshot entries. Optional file persistence via `node:fs/promises`; no external dependencies.
 
 ## Installation
 
@@ -20,9 +20,9 @@ import { EventLogStore } from '@studnicky/dagonizer-store-eventlog';
 
 const store = new EventLogStore();
 
-await store.set<string>('status', 'pending');
-await store.set<string>('status', 'running');
-console.log(await store.get<string>('status')); // 'running'
+await store.set('status', 'pending');
+await store.set('status', 'running');
+console.log(await store.get('status')); // 'running' (JsonValueType — narrow if you need a typed value)
 
 await store.delete('status');
 console.log(await store.has('status')); // false
@@ -30,9 +30,9 @@ console.log(await store.has('status')); // false
 // Inspect the full event history.
 console.log(store.log());
 // [
-//   { kind: 'set',    at: ..., key: 'status', value: 'pending' },
-//   { kind: 'set',    at: ..., key: 'status', value: 'running' },
-//   { kind: 'delete', at: ..., key: 'status' },
+//   { variant: 'set',    at: ..., key: 'status', value: 'pending' },
+//   { variant: 'set',    at: ..., key: 'status', value: 'running' },
+//   { variant: 'delete', at: ..., key: 'status' },
 // ]
 ```
 
@@ -44,13 +44,13 @@ import { EventLogStore } from '@studnicky/dagonizer-store-eventlog';
 // Write session.
 const store = new EventLogStore({ filePath: '/tmp/my-dag.log' });
 await store.connect();          // opens file, replays existing entries
-await store.set<number>('run', 1);
+await store.set('run', 1);
 await store.disconnect();       // flushes and closes the file
 
 // Resume in a new process (same file, same data).
 const resumed = new EventLogStore({ filePath: '/tmp/my-dag.log' });
 await resumed.connect();
-console.log(await resumed.get<number>('run')); // 1
+console.log(await resumed.get('run')); // 1
 await resumed.disconnect();
 ```
 
@@ -67,7 +67,7 @@ await fresh.restore(snap);      // throws StoreError if type/version mismatch
 ### Atomic read-modify-write
 
 ```ts
-await store.update<number>('counter', (c) => (c ?? 0) + 1);
+await store.update('counter', (c) => (typeof c === 'number' ? c : 0) + 1);
 ```
 
 `update()` is atomic under JS single-threaded execution: `#latest()` is called synchronously and no `await` precedes the read, so the body cannot interleave with another `update()` on the same instance.
@@ -84,8 +84,8 @@ await store.update<number>('counter', (c) => (c ?? 0) + 1);
 
 ```ts
 type EventLogEntry =
-  | { readonly kind: 'set';    readonly at: number; readonly key: string; readonly value: JsonValueType }
-  | { readonly kind: 'delete'; readonly at: number; readonly key: string };
+  | { readonly variant: 'set';    readonly at: number; readonly key: string; readonly value: JsonValueType }
+  | { readonly variant: 'delete'; readonly at: number; readonly key: string };
 ```
 
 `at` is a `Date.now()` millisecond timestamp recorded at append time.

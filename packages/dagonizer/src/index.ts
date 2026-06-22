@@ -3,6 +3,7 @@
 // =============================================================================
 
 export { NodeStateBase } from './NodeStateBase.js';
+export { MetadataGetter } from './MetadataGetter.js';
 
 // =============================================================================
 // CONSTANTS
@@ -242,7 +243,6 @@ export {
   NormalizeToolCallsNode,
 } from './patterns/index.js';
 export type {
-  AgentServicesType,
   ToolCallScatterItemType,
 } from './patterns/index.js';
 

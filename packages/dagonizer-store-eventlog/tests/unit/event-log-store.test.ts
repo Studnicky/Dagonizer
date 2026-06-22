@@ -12,18 +12,18 @@ import { EventLogStore } from '../../src/index.js';
 
 void test('in-memory: get returns null for absent key', async () => {
   const store = new EventLogStore();
-  assert.equal(await store.get<string>('missing'), null);
+  assert.equal(await store.get('missing'), null);
 });
 
 void test('in-memory: set + get round-trip', async () => {
   const store = new EventLogStore();
-  await store.set<string>('name', 'dagonizer');
-  assert.equal(await store.get<string>('name'), 'dagonizer');
+  await store.set('name', 'dagonizer');
+  assert.equal(await store.get('name'), 'dagonizer');
 });
 
 void test('in-memory: has returns true after set', async () => {
   const store = new EventLogStore();
-  await store.set<number>('count', 42);
+  await store.set('count', 42);
   assert.equal(await store.has('count'), true);
 });
 
@@ -34,7 +34,7 @@ void test('in-memory: has returns false for absent key', async () => {
 
 void test('in-memory: delete returns true for existing key', async () => {
   const store = new EventLogStore();
-  await store.set<string>('key', 'value');
+  await store.set('key', 'value');
   const result = await store.delete('key');
   assert.equal(result, true);
 });
@@ -47,9 +47,9 @@ void test('in-memory: delete returns false for absent key', async () => {
 
 void test('in-memory: overwriting a key appends a new set entry', async () => {
   const store = new EventLogStore();
-  await store.set<number>('n', 1);
-  await store.set<number>('n', 2);
-  assert.equal(await store.get<number>('n'), 2);
+  await store.set('n', 1);
+  await store.set('n', 2);
+  assert.equal(await store.get('n'), 2);
   assert.equal(store.log().length, 2);
 });
 
@@ -57,43 +57,43 @@ void test('in-memory: overwriting a key appends a new set entry', async () => {
 
 void test('update: applies fn to undefined for absent key', async () => {
   const store = new EventLogStore();
-  const result = await store.update<number>('counter', (c) => (c ?? 0) + 1);
+  const result = await store.update('counter', (c) => (typeof c === 'number' ? c : 0) + 1);
   assert.equal(result, 1);
-  assert.equal(await store.get<number>('counter'), 1);
+  assert.equal(await store.get('counter'), 1);
 });
 
 void test('update: applies fn to existing value', async () => {
   const store = new EventLogStore();
-  await store.set<number>('counter', 10);
-  const result = await store.update<number>('counter', (c) => (c ?? 0) + 5);
+  await store.set('counter', 10);
+  const result = await store.update('counter', (c) => (typeof c === 'number' ? c : 0) + 5);
   assert.equal(result, 15);
-  assert.equal(await store.get<number>('counter'), 15);
+  assert.equal(await store.get('counter'), 15);
 });
 
 void test('update: concurrent Promise.all produces no lost writes (JS single-thread)', async () => {
   const store = new EventLogStore();
-  await store.set<number>('x', 0);
+  await store.set('x', 0);
 
   // Fire 10 concurrent increments. Because update() does no await before
   // reading #latest(), each invocation reads the prior committed value.
   // JS single-threaded semantics guarantee these interleave at microtask
   // boundaries only after each append resolves.
   const increments = Array.from({ "length": 10 }, () =>
-    store.update<number>('x', (v) => (v ?? 0) + 1),
+    store.update('x', (v) => (typeof v === 'number' ? v : 0) + 1),
   );
   await Promise.all(increments);
 
   // Each update reads and commits sequentially under JS's event loop.
-  assert.equal(await store.get<number>('x'), 10);
+  assert.equal(await store.get('x'), 10);
 });
 
 // ── 3. snapshot() returns compacted view ─────────────────────────────────────
 
 void test('snapshot: compacted entries reflect latest value per key', async () => {
   const store = new EventLogStore();
-  await store.set<string>('a', 'first');
-  await store.set<string>('a', 'second');
-  await store.set<string>('b', 'only');
+  await store.set('a', 'first');
+  await store.set('a', 'second');
+  await store.set('b', 'only');
 
   const snap = await store.snapshot();
   assert.equal(snap.type, 'event-log-store');
@@ -107,8 +107,8 @@ void test('snapshot: compacted entries reflect latest value per key', async () =
 
 void test('snapshot: deleted keys are absent from entries', async () => {
   const store = new EventLogStore();
-  await store.set<string>('keep', 'yes');
-  await store.set<string>('drop', 'bye');
+  await store.set('keep', 'yes');
+  await store.set('drop', 'bye');
   await store.delete('drop');
 
   const snap = await store.snapshot();
@@ -125,13 +125,13 @@ void test('restore: reseeds log and get returns restored values', async () => {
 
   // Seed a separate store and snapshot it.
   const source = new EventLogStore();
-  await source.set<number>('x', 99);
-  await source.set<string>('label', 'restored');
+  await source.set('x', 99);
+  await source.set('label', 'restored');
   const sourceSnap = await source.snapshot();
 
   await store.restore(sourceSnap);
-  assert.equal(await store.get<number>('x'), 99);
-  assert.equal(await store.get<string>('label'), 'restored');
+  assert.equal(await store.get('x'), 99);
+  assert.equal(await store.get('label'), 'restored');
 
   // Log has exactly the same count as entries (one set per entry).
   assert.equal(store.log().length, sourceSnap.entries.length);
@@ -141,7 +141,7 @@ void test('restore: reseeds log and get returns restored values', async () => {
 
 void test('restore: clears prior log entries', async () => {
   const store = new EventLogStore();
-  await store.set<string>('old', 'value');
+  await store.set('old', 'value');
   assert.equal(store.log().length, 1);
 
   const empty = new EventLogStore();
@@ -149,31 +149,31 @@ void test('restore: clears prior log entries', async () => {
   await store.restore(emptySnap);
 
   assert.equal(store.log().length, 0);
-  assert.equal(await store.get<string>('old'), null);
+  assert.equal(await store.get('old'), null);
 });
 
 // ── 5. Tombstone semantics ────────────────────────────────────────────────────
 
 void test('tombstone: delete then get returns null', async () => {
   const store = new EventLogStore();
-  await store.set<string>('k', 'v');
+  await store.set('k', 'v');
   await store.delete('k');
-  assert.equal(await store.get<string>('k'), null);
+  assert.equal(await store.get('k'), null);
 });
 
 void test('tombstone: delete then has returns false', async () => {
   const store = new EventLogStore();
-  await store.set<boolean>('flag', true);
+  await store.set('flag', true);
   await store.delete('flag');
   assert.equal(await store.has('flag'), false);
 });
 
 void test('tombstone: set after delete brings key back', async () => {
   const store = new EventLogStore();
-  await store.set<string>('k', 'alive');
+  await store.set('k', 'alive');
   await store.delete('k');
-  await store.set<string>('k', 'reborn');
-  assert.equal(await store.get<string>('k'), 'reborn');
+  await store.set('k', 'reborn');
+  assert.equal(await store.get('k'), 'reborn');
   assert.equal(await store.has('k'), true);
 });
 
@@ -185,12 +185,12 @@ void test('connect: double-connect is a no-op; no duplicate entries', async () =
 
   const store = new EventLogStore({ filePath, 'syncOnAppend': false });
   await store.connect();
-  await store.set<string>('key', 'value');
+  await store.set('key', 'value');
   // A second connect must be a no-op: no new handle, no replay.
   await store.connect();
   // Log still has exactly one entry; the single set above.
   assert.equal(store.log().length, 1);
-  assert.equal(await store.get<string>('key'), 'value');
+  assert.equal(await store.get('key'), 'value');
   await store.disconnect();
 
   await unlink(filePath);
@@ -203,15 +203,15 @@ void test('file-backed: persists and replays entries across instances', async ()
   // Write phase.
   const writer = new EventLogStore({ filePath, 'syncOnAppend': false });
   await writer.connect();
-  await writer.set<string>('hello', 'world');
-  await writer.set<number>('n', 7);
+  await writer.set('hello', 'world');
+  await writer.set('n', 7);
   await writer.disconnect();
 
   // Read phase: new instance, same file.
   const reader = new EventLogStore({ filePath });
   await reader.connect();
-  assert.equal(await reader.get<string>('hello'), 'world');
-  assert.equal(await reader.get<number>('n'), 7);
+  assert.equal(await reader.get('hello'), 'world');
+  assert.equal(await reader.get('n'), 7);
   await reader.disconnect();
 
   await unlink(filePath);
@@ -223,15 +223,15 @@ void test('file-backed: replays tombstones correctly', async () => {
 
   const writer = new EventLogStore({ filePath, 'syncOnAppend': false });
   await writer.connect();
-  await writer.set<string>('a', 'present');
-  await writer.set<string>('b', 'deleted');
+  await writer.set('a', 'present');
+  await writer.set('b', 'deleted');
   await writer.delete('b');
   await writer.disconnect();
 
   const reader = new EventLogStore({ filePath });
   await reader.connect();
-  assert.equal(await reader.get<string>('a'), 'present');
-  assert.equal(await reader.get<string>('b'), null);
+  assert.equal(await reader.get('a'), 'present');
+  assert.equal(await reader.get('b'), null);
   assert.equal(await reader.has('b'), false);
   await reader.disconnect();
 
@@ -268,8 +268,8 @@ void test('restore: wrong version throws StoreError INCOMPATIBLE_SNAPSHOT', asyn
 
 void test('log: includes both set and delete events', async () => {
   const store = new EventLogStore();
-  await store.set<string>('x', 'a');
-  await store.set<string>('x', 'b');
+  await store.set('x', 'a');
+  await store.set('x', 'b');
   await store.delete('x');
 
   const log = store.log();
@@ -281,7 +281,7 @@ void test('log: includes both set and delete events', async () => {
 
 void test('log: returns the live internal log; reference identity is stable', async () => {
   const store = new EventLogStore();
-  await store.set<string>('k', 'v');
+  await store.set('k', 'v');
 
   // log() returns the same underlying array reference on every call.
   const log1 = store.log();
@@ -296,7 +296,7 @@ void test('log: returns the live internal log; reference identity is stable', as
 
 void test('log: update() appends a set entry', async () => {
   const store = new EventLogStore();
-  await store.update<number>('n', () => 42);
+  await store.update('n', () => 42);
   const log = store.log();
   assert.equal(log.length, 1);
   assert.equal(log[0]?.variant, 'set');
@@ -306,9 +306,9 @@ void test('log: update() appends a set entry', async () => {
 
 void test('namespace: qualifies keys transparently', async () => {
   const store = new EventLogStore({ 'namespace': 'ns' });
-  await store.set<string>('key', 'value');
+  await store.set('key', 'value');
   // Unqualified get goes through the same qualifier.
-  assert.equal(await store.get<string>('key'), 'value');
+  assert.equal(await store.get('key'), 'value');
   // Internal log stores the qualified key.
   const entry = store.log()[0];
   assert.ok(entry !== undefined && entry.key === 'ns:key');

@@ -41,7 +41,6 @@ import { enrichLeg } from '../nodes/enrichLeg.ts';
 import { routeRedaction } from '../nodes/routeRedaction.ts';
 import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
@@ -142,7 +141,7 @@ export const pipelineFacilityScanDAG: DAGType = new DAGBuilder('pipeline-facilit
 
   .build();
 
-export const pipelineFacilityScanBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const pipelineFacilityScanBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [parseVariant, canonicalizeCore, canonicalizeFacility, canonicalizeRecipient, enrichLeg, routeRedaction, aggregateEvent],
   'dags':  [pipelineFacilityScanDAG],
 };

@@ -80,7 +80,7 @@ The patterns subpath exposes the abstract `MonadicNode` root plus the service co
 
 | Symbol | Role |
 |--------|------|
-| `MonadicNode<TState, TOutput, TServices>` | Abstract base class. Owns the dispatch loop; subclasses inject domain pieces via abstract methods |
+| `MonadicNode<TState, TOutput>` | Abstract base class. Owns the dispatch loop; subclasses inject domain pieces via abstract methods |
 | `LlmClientInterface` | Service contract: `chat(ChatRequestType): Promise<ChatResponseType>` (subset of `LlmAdapterInterface`) |
 | `TripleStoreInterface` | Service contract: `assert`, `ask`, `select`, `count`, `clearGraph`, `triples` |
 | `Binding`, `Quad`, `SlotPattern`, `Term` | RDF value types used by `TripleStoreInterface` |
@@ -88,7 +88,7 @@ The patterns subpath exposes the abstract `MonadicNode` root plus the service co
 ### Pattern taxonomy
 
 ```
-MonadicNode<TState, TOutput, TServices>            (root: main package)
+MonadicNode<TState, TOutput>                       (root: main package)
 │
 ├── DecisionNode<TState, TChoice>                  [patterns-rag]
 ├── ComposeNode<TState>                            [patterns-rag]

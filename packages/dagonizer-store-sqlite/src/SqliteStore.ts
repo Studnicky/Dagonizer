@@ -72,10 +72,10 @@ export class SqliteStore extends BaseStore {
   protected get snapshotVersion(): number { return 1; }
 
   /** Atomic RMW via SQLite BEGIN IMMEDIATE transaction. */
-  override async update<T extends JsonValueType>(
+  override async update(
     key: string,
-    fn: (current: T | undefined) => T,
-  ): Promise<T> {
+    fn: (current: JsonValueType | undefined) => JsonValueType,
+  ): Promise<JsonValueType> {
     const qualified = this.qualifyKey(key);
     this.#db.exec('BEGIN IMMEDIATE');
     try {
@@ -83,7 +83,7 @@ export class SqliteStore extends BaseStore {
         .prepare(`SELECT value FROM ${this.#tableName} WHERE key = ?`)
         .get(qualified);
       const parsed: JsonValueType | null = KvRow.isValue(raw) ? JsonValue.from(JSON.parse(raw.value)) : null;
-      const current = this.narrowStored<T>(parsed) ?? undefined;
+      const current = parsed === null ? undefined : parsed;
       const next = fn(current);
       this.#db
         .prepare(

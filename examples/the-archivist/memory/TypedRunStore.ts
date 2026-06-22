@@ -13,6 +13,7 @@
 // #region typed-store
 import { strict as assert } from 'node:assert';
 
+import { Validator } from '@studnicky/dagonizer';
 import { MemoryStore, TypedStore } from '@studnicky/dagonizer/store';
 
 /** Known per-run keys with their value types. */
@@ -23,8 +24,20 @@ interface RunSchema {
   approved: boolean;
 }
 
+const RunQuerySchema    = { '$id': 'urn:archivist:RunSchema/query',    'type': 'string' } as const;
+const RunIntentSchema   = { '$id': 'urn:archivist:RunSchema/intent',   'type': 'string' } as const;
+const RunDraftSchema    = { '$id': 'urn:archivist:RunSchema/draft',    'type': 'string' } as const;
+const RunApprovedSchema = { '$id': 'urn:archivist:RunSchema/approved', 'type': 'boolean' } as const;
+
+const runValidators = {
+  query:    Validator.compile<RunSchema['query']>(RunQuerySchema),
+  intent:   Validator.compile<RunSchema['intent']>(RunIntentSchema),
+  draft:    Validator.compile<RunSchema['draft']>(RunDraftSchema),
+  approved: Validator.compile<RunSchema['approved']>(RunApprovedSchema),
+};
+
 const inner = new MemoryStore({ namespace: 'run' });
-const store = new TypedStore<RunSchema>(inner);
+const store = new TypedStore<RunSchema>(inner, runValidators);
 
 await store.set('query',    'books about machine learning');
 await store.set('intent',   'on-topic');

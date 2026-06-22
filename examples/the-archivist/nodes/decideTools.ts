@@ -216,8 +216,13 @@ const NODE_TIMEOUT_MS = 30_000;
 /** Total attempts (initial + retries) before routing to salvage. */
 const RETRY_BUDGET = 2;
 
-export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-tools' | 'retry' | 'salvage', ArchivistServices> {
+export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-tools' | 'retry' | 'salvage'> {
+  private readonly services: ArchivistServices;
   readonly name = 'decide-tools';
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
   readonly outputs = ['tools', 'no-tools', 'retry', 'salvage'] as const;
   override get outputSchema(): Record<'tools' | 'no-tools' | 'retry' | 'salvage', SchemaObjectType> {
     return {
@@ -228,7 +233,7 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
     // ── Deterministic shortcut prelude ────────────────────────────────────
     // Pattern-match common query shapes (author lookup, single quoted title,
     // "books about X", catalog browsing). When a pattern fires, populate
@@ -243,15 +248,15 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
 
     const isFullCatalog = FULL_CATALOG_INTENTS.has(state.intent);
     const available = isFullCatalog
-      ? [context.services.webSearch.definition, context.services.googleBooks.definition, context.services.subjectSearch.definition]
-      : [context.services.webSearch.definition, context.services.subjectSearch.definition];
+      ? [this.services.webSearch.definition, this.services.googleBooks.definition, this.services.subjectSearch.definition]
+      : [this.services.webSearch.definition, this.services.subjectSearch.definition];
 
     const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
 
     try {
-      let calls = await context.services.llm.decideTools(state.query, available, signal);
+      let calls = await this.services.llm.decideTools(state.query, available, signal);
       // LLM responded; the retry budget for this placement is spent.
       state.clearAttempts(context.nodeName);
 
@@ -306,9 +311,6 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
     }
   }
 }
-
-/** Singleton node instance referenced by the DAG wiring. */
-export const decideTools = new DecideToolsNode();
 
 // Export tool names list for tests / documentation.
 export { FULL_CATALOG_TOOL_NAMES };

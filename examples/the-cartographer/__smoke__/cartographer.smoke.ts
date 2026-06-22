@@ -34,8 +34,8 @@
 import { strict as assert } from 'node:assert';
 
 import { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { cartographerBundle, eventPipelineBundle } from '../dag.ts';
+import { GeoResolveDAG } from '../embedded-dags/GeoResolveDAG.ts';
 import { ingestSourceBundle } from '../embedded-dags/IngestSourceDAG.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 
@@ -58,8 +58,10 @@ class SmokeRunner {
   // The smoke ALWAYS uses the RECORDED geo transports → deterministic + offline.
   // Geo is resolved by the geo-resolve sub-DAG against the committed fixture.
   static async runPipeline(n: number): Promise<CartographerState> {
-    const services: CartographerServices = GeoResolvers.recorded();
-    const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ 'services': services });
+    const services = GeoResolvers.recorded();
+    const dispatcher = new Dagonizer<CartographerState>({});
+    // geo-resolve DAG is built per-call with injected services.
+    dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
     // eventPipelineBundle covers all geo, canonicalize, order-enrichment, gdpr, and per-type DAGs.
     dispatcher.registerBundle(eventPipelineBundle);
     // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.

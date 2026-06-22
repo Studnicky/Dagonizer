@@ -21,7 +21,7 @@ import { describe, it } from 'node:test';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { ScatterProgressType } from '../../src/Dagonizer.js';
+import type { ScatterProgressType, StoredScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
@@ -30,6 +30,7 @@ import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ─── shared test state ───────────────────────────────────────────────────────
@@ -193,7 +194,7 @@ void describe('Scatter: AsyncIterable source', () => {
     }
 
     dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], async (state) => {
-      const item = state.getMetadata<number>('item') ?? 0;
+      const item = state.getter.number('item');
       log.push({ 'event': 'process', 'item': item });
       // Yield to the event loop so the pull loop can advance if backpressure
       // is broken; with correct backpressure the next pull happens only AFTER
@@ -241,7 +242,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     const seenItems: number[] = [];
     dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
       calls++;
-      seenItems.push(state.getMetadata<number>('item') ?? -1);
+      seenItems.push(state.getter.number('item', -1));
       return 'success';
     }));
     dispatcher.registerDAG(TestScatterDag.streaming('resume-arr',
@@ -276,7 +277,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     assert.deepEqual([...result.state.processed].sort((a, b) => a - b),
       [10, 20, 30, 40, 50]);
     // Progress cleared.
-    assert.equal(result.state.getMetadata<unknown>(SCATTER_PROGRESS_KEY), undefined);
+    assert.equal(result.state.getMetadata(SCATTER_PROGRESS_KEY), undefined);
   });
 
   void it('inbox items (in-flight at crash time) are reprocessed on resume', async () => {
@@ -285,7 +286,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     const dispatcher = new Dagonizer<StreamState>();
     const processedItems: number[] = [];
     dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
-      processedItems.push(state.getMetadata<number>('item') ?? -1);
+      processedItems.push(state.getter.number('item', -1));
       return 'success';
     }));
     dispatcher.registerDAG(TestScatterDag.streaming('resume-inbox',
@@ -321,7 +322,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     const count2 = result.state.processed.filter((x) => x === 2).length;
     assert.equal(count2, 1, `item value 2 should appear exactly once, got ${count2}`);
     // Progress cleared.
-    assert.equal(result.state.getMetadata<unknown>(SCATTER_PROGRESS_KEY), undefined);
+    assert.equal(result.state.getMetadata(SCATTER_PROGRESS_KEY), undefined);
   });
 });
 
@@ -335,7 +336,7 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
     const processedValues: number[] = [];
     dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
       calls++;
-      processedValues.push(state.getMetadata<number>('item') ?? -1);
+      processedValues.push(state.getter.number('item', -1));
       return 'success';
     }));
     dispatcher.registerDAG(TestScatterDag.streaming('resume-async',
@@ -387,7 +388,7 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
     assert.equal(processedValues.filter((v) => v === 30).length, 1,
       'inbox item must not be processed twice');
     // Progress cleared.
-    assert.equal(result.state.getMetadata<unknown>(SCATTER_PROGRESS_KEY), undefined);
+    assert.equal(result.state.getMetadata(SCATTER_PROGRESS_KEY), undefined);
   });
 });
 
@@ -397,7 +398,7 @@ void describe('Scatter: incremental gather', () => {
     const foldsAfterEachItem: number[] = [];
 
     dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
-      const item = state.getMetadata<number>('item') ?? 0;
+      const item = state.getter.number('item');
       state.produced = item * 2;
       return 'success';
     }));
@@ -484,7 +485,7 @@ void describe('Scatter: incremental gather', () => {
 
     // Items 1,3,5 → 'success'; items 2,4 → 'error'.
     dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success', 'error'], (state) => {
-      const item = state.getMetadata<number>('item') ?? 0;
+      const item = state.getter.number('item');
       return item % 2 === 1 ? 'success' : 'error';
     }));
 
@@ -542,9 +543,12 @@ void describe('Scatter: incremental gather', () => {
     // Custom gather node: reads gatherResults from metadata.
     dispatcher.registerNode(TestNode.make<StreamState>('customGather', ['success'], (state) => {
       customNodeCalls++;
-      const records = state.getMetadata<Array<{ item: unknown }>>('gatherResults') ?? [];
+      const rawRecords = state.getMetadata('gatherResults');
+      const records: Array<Record<string, unknown>> = Array.isArray(rawRecords)
+        ? rawRecords.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+        : [];
       for (const r of records) {
-        if (typeof r.item === 'number') state.processed.push(r.item);
+        if (typeof r['item'] === 'number') state.processed.push(r['item']);
       }
       return 'success';
     }));
@@ -632,7 +636,7 @@ void describe('Scatter: progress shape (inbox model)', () => {
     }
 
     // Key is cleared after clean completion.
-    assert.equal(st.getMetadata<unknown>(SCATTER_PROGRESS_KEY), undefined);
+    assert.equal(st.getMetadata(SCATTER_PROGRESS_KEY), undefined);
   });
 });
 
@@ -675,7 +679,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
         if (n === ABORT_AFTER_COMPLETE) {
           controller.abort(new Error('test-abort'));
         }
-        state.processed.push(state.getMetadata<number>('item') ?? -1);
+        state.processed.push(state.getter.number('item', -1));
         return { 'errors': [], 'output': 'success' as const };
       }
     }
@@ -701,9 +705,10 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
       `cursor should be 'fan' after abort; got '${result.cursor}'`);
 
     // 2. The checkpoint survives — progress entry is still present.
-    const stored = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
-    assert.ok(stored !== undefined,
+    const storedRaw = result.state.getMetadata(SCATTER_PROGRESS_KEY);
+    assert.ok(storedRaw !== undefined,
       'checkpoint must be present after abort (ScatterCheckpoint.clear must NOT have run)');
+    const stored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRaw);
 
     const entry = stored['fan'];
     assert.ok(entry !== undefined, 'expected a progress entry for placement "fan"');
@@ -725,7 +730,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     //    already-acked indices via seenIndices and completes the rest.
     const resumeDispatcher = new Dagonizer<StreamState>();
     resumeDispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
-      state.processed.push(state.getMetadata<number>('item') ?? -1);
+      state.processed.push(state.getter.number('item', -1));
       return 'success';
     }));
     resumeDispatcher.registerDAG(TestScatterDag.streaming('abort-async-resume',
@@ -735,7 +740,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     // Build resume state: carry over the checkpoint metadata, already-processed
     // items, and a full index-stable array source.
     const resumeState = new StreamState();
-    const abortedCheckpoint = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
+    const abortedCheckpoint = result.state.getMetadata(SCATTER_PROGRESS_KEY);
     if (abortedCheckpoint !== undefined) {
       resumeState.setMetadata(SCATTER_PROGRESS_KEY, abortedCheckpoint);
     }
@@ -765,7 +770,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     const dispatcher = new Dagonizer<StreamState>();
 
     dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
-      state.processed.push(state.getMetadata<number>('item') ?? -1);
+      state.processed.push(state.getter.number('item', -1));
       return 'success';
     }));
     dispatcher.registerDAG(TestScatterDag.streaming('pre-aborted',
@@ -815,7 +820,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
             reject(context.signal.reason);
           }, { 'once': true });
         });
-        const item = state.getMetadata<number>('item') ?? -1;
+        const item = state.getter.number('item', -1);
         executedItems.push(item);
         if (++completedCount === ABORT_AFTER) {
           controller.abort(new Error('abort-at-5'));
@@ -841,7 +846,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     const resumeItems: number[] = [];
     const resumeDispatcher = new Dagonizer<StreamState>();
     resumeDispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], (state) => {
-      const item = state.getMetadata<number>('item') ?? -1;
+      const item = state.getter.number('item', -1);
       resumeItems.push(item);
       state.processed.push(item);
       return 'success';
@@ -852,7 +857,7 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
 
     // Restore state for resume.
     const resumeState = new StreamState();
-    const checkpoint = partial.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
+    const checkpoint = partial.state.getMetadata(SCATTER_PROGRESS_KEY);
     if (checkpoint !== undefined) {
       resumeState.setMetadata(SCATTER_PROGRESS_KEY, checkpoint);
     }

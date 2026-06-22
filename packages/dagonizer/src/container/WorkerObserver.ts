@@ -19,18 +19,27 @@ import type { MessageChannelInterface } from '../contracts/MessageChannelInterfa
 import { Dagonizer } from '../Dagonizer.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
+/** Shape of the co-located `WorkerObserver.#emit()` option defaults. */
+type EmitDefaultsType = {
+  readonly phase: 'pre' | 'post' | '';
+  readonly dagName: string;
+  readonly nodeName: string;
+  readonly output: string | null;
+  readonly message: string;
+};
+
 /** Co-located defaults for `WorkerObserver.#emit()` options (schema-safe sentinels). */
-const EMIT_DEFAULTS = {
-  'phase': '' as 'pre' | 'post' | '',
+const EMIT_DEFAULTS: EmitDefaultsType = {
+  'phase': '',
   'dagName': '',
   'nodeName': '',
-  'output': null as string | null,
+  'output': null,
   'message': '',
-} as const;
+};
 
 export class WorkerObserver<
   TState extends NodeStateInterface = NodeStateInterface,
-> extends Dagonizer<TState, unknown> {
+> extends Dagonizer<TState> {
 
   readonly #channel: MessageChannelInterface;
   readonly #correlationId: string;
@@ -54,7 +63,7 @@ export class WorkerObserver<
 
   /**
    * Emit an instrumentation BridgeMessage on the channel. Required positional:
-   * `hook` and `composedPath`. Optional trailing bag for hook-specific fields;
+   * `hook` and `composedPath`. Optional trailing options object for hook-specific fields;
    * all default to schema-safe sentinels so the emitted message is always valid.
    */
   #emit(

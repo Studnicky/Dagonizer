@@ -22,39 +22,47 @@ import { SystemInfo } from '../../src/entities/executor/SystemInfo.js';
 import type { SystemInfoProbesType } from '../../src/entities/executor/SystemInfo.js';
 
 // Helper: build a config with sensible defaults, override as needed.
-function cfg(overrides: Partial<RecommendedWorkerCountConfigType> = {}): RecommendedWorkerCountConfigType {
-  return {
-    'maximumWorkers': 16,
-    'mainThreadReservation': 1,
-    'fallbackWorkerCount': 1,
-    'memoryPerWorkerBytes': null,
-    ...overrides,
-  };
+class WorkerCountConfig {
+  private constructor() {}
+
+  static of(overrides: Partial<RecommendedWorkerCountConfigType> = {}): RecommendedWorkerCountConfigType {
+    return {
+      'maximumWorkers': 16,
+      'mainThreadReservation': 1,
+      'fallbackWorkerCount': 1,
+      'memoryPerWorkerBytes': null,
+      ...overrides,
+    };
+  }
 }
 
 // Helper: build probes.
-function probes(parallelism: number, freeMemoryBytes: number | null = null): SystemInfoProbesType {
-  return { parallelism, freeMemoryBytes };
+class SystemProbes {
+  private constructor() {}
+
+  static of(parallelism: number, freeMemoryBytes: number | null = null): SystemInfoProbesType {
+    return { parallelism, freeMemoryBytes };
+  }
 }
 
 void describe('SystemInfo.recommendedWorkerCount — base clamp', () => {
   void it('4-core host, 1 reserved → 3 workers', () => {
     assert.equal(
-      SystemInfo.recommendedWorkerCount(cfg(), probes(4)),
+      SystemInfo.recommendedWorkerCount(WorkerCountConfig.of(), SystemProbes.of(4)),
       3,
     );
   });
 
   void it('8-core host, 1 reserved, cap 16 → 7 workers', () => {
     assert.equal(
-      SystemInfo.recommendedWorkerCount(cfg({ 'maximumWorkers': 16 }), probes(8)),
+      SystemInfo.recommendedWorkerCount(WorkerCountConfig.of({ 'maximumWorkers': 16 }), SystemProbes.of(8)),
       7,
     );
   });
 
   void it('maximumWorkers caps: 32-core host, cap 4 → 4 workers', () => {
     assert.equal(
-      SystemInfo.recommendedWorkerCount(cfg({ 'maximumWorkers': 4 }), probes(32)),
+      SystemInfo.recommendedWorkerCount(WorkerCountConfig.of({ 'maximumWorkers': 4 }), SystemProbes.of(32)),
       4,
     );
   });
@@ -62,8 +70,8 @@ void describe('SystemInfo.recommendedWorkerCount — base clamp', () => {
   void it('fallbackWorkerCount floor: 1-core host → min 1 worker', () => {
     assert.equal(
       SystemInfo.recommendedWorkerCount(
-        cfg({ 'fallbackWorkerCount': 1, 'mainThreadReservation': 1 }),
-        probes(1),
+        WorkerCountConfig.of({ 'fallbackWorkerCount': 1, 'mainThreadReservation': 1 }),
+        SystemProbes.of(1),
       ),
       1,
     );
@@ -73,8 +81,8 @@ void describe('SystemInfo.recommendedWorkerCount — base clamp', () => {
     // 1 core, 2 reserved → raw = -1; fallback = 1; max(1, min(16, max(1, -1))) = 1
     assert.equal(
       SystemInfo.recommendedWorkerCount(
-        cfg({ 'mainThreadReservation': 2, 'fallbackWorkerCount': 1 }),
-        probes(1),
+        WorkerCountConfig.of({ 'mainThreadReservation': 2, 'fallbackWorkerCount': 1 }),
+        SystemProbes.of(1),
       ),
       1,
     );
@@ -84,8 +92,8 @@ void describe('SystemInfo.recommendedWorkerCount — base clamp', () => {
     // 4-core, 1 reserved → raw=3; fallback=5; min(16, max(5, 3)) = 5
     assert.equal(
       SystemInfo.recommendedWorkerCount(
-        cfg({ 'fallbackWorkerCount': 5 }),
-        probes(4),
+        WorkerCountConfig.of({ 'fallbackWorkerCount': 5 }),
+        SystemProbes.of(4),
       ),
       5,
     );
@@ -95,8 +103,8 @@ void describe('SystemInfo.recommendedWorkerCount — base clamp', () => {
     // 4 cores, 0 reserved → raw=4; min(16, max(1, 4)) = 4
     assert.equal(
       SystemInfo.recommendedWorkerCount(
-        cfg({ 'mainThreadReservation': 0 }),
-        probes(4),
+        WorkerCountConfig.of({ 'mainThreadReservation': 0 }),
+        SystemProbes.of(4),
       ),
       4,
     );
@@ -109,8 +117,8 @@ void describe('SystemInfo.recommendedWorkerCount — memory clamp', () => {
     // memoryBased = floor(512MB / 128MB) = 4
     // final = max(1, min(7, max(1, 4))) = 4
     const result = SystemInfo.recommendedWorkerCount(
-      cfg({ 'memoryPerWorkerBytes': 128 * 1024 * 1024 }),
-      probes(8, 512 * 1024 * 1024),
+      WorkerCountConfig.of({ 'memoryPerWorkerBytes': 128 * 1024 * 1024 }),
+      SystemProbes.of(8, 512 * 1024 * 1024),
     );
     assert.equal(result, 4);
   });
@@ -120,8 +128,8 @@ void describe('SystemInfo.recommendedWorkerCount — memory clamp', () => {
     // memoryBased = floor(8GB / 128MB) = 64
     // final = max(1, min(7, max(1, 64))) = 7  (base wins, memory is abundant)
     const result = SystemInfo.recommendedWorkerCount(
-      cfg({ 'memoryPerWorkerBytes': 128 * 1024 * 1024 }),
-      probes(8, 8 * 1024 * 1024 * 1024),
+      WorkerCountConfig.of({ 'memoryPerWorkerBytes': 128 * 1024 * 1024 }),
+      SystemProbes.of(8, 8 * 1024 * 1024 * 1024),
     );
     assert.equal(result, 7);
   });
@@ -129,8 +137,8 @@ void describe('SystemInfo.recommendedWorkerCount — memory clamp', () => {
   void it('memory clamp is skipped when freeMemoryBytes is null (browser path)', () => {
     // Would be memory-clamped if freeMemoryBytes were provided, but it is null.
     const result = SystemInfo.recommendedWorkerCount(
-      cfg({ 'memoryPerWorkerBytes': 1 }),  // tiny per-worker budget
-      probes(8, null),
+      WorkerCountConfig.of({ 'memoryPerWorkerBytes': 1 }),  // tiny per-worker budget
+      SystemProbes.of(8, null),
     );
     // base = 7; memory clamp skipped → 7
     assert.equal(result, 7);
@@ -138,8 +146,8 @@ void describe('SystemInfo.recommendedWorkerCount — memory clamp', () => {
 
   void it('memory clamp is skipped when memoryPerWorkerBytes is null', () => {
     const result = SystemInfo.recommendedWorkerCount(
-      cfg({ 'memoryPerWorkerBytes': null }),
-      probes(8, 512 * 1024 * 1024),
+      WorkerCountConfig.of({ 'memoryPerWorkerBytes': null }),
+      SystemProbes.of(8, 512 * 1024 * 1024),
     );
     // base = 7; no memory clamp → 7
     assert.equal(result, 7);
@@ -149,8 +157,8 @@ void describe('SystemInfo.recommendedWorkerCount — memory clamp', () => {
     // base = 7; memoryBased = floor(64MB / 256MB) = 0
     // final = max(1, min(7, max(2, 0))) = 2  (fallback=2 wins over 0)
     const result = SystemInfo.recommendedWorkerCount(
-      cfg({ 'memoryPerWorkerBytes': 256 * 1024 * 1024, 'fallbackWorkerCount': 2 }),
-      probes(8, 64 * 1024 * 1024),
+      WorkerCountConfig.of({ 'memoryPerWorkerBytes': 256 * 1024 * 1024, 'fallbackWorkerCount': 2 }),
+      SystemProbes.of(8, 64 * 1024 * 1024),
     );
     assert.equal(result, 2);
   });
@@ -158,8 +166,8 @@ void describe('SystemInfo.recommendedWorkerCount — memory clamp', () => {
   void it('memory clamp floors at 1 even when fallbackWorkerCount is 0', () => {
     // This is a guard against misconfigured fallback; result can never be < 1.
     const result = SystemInfo.recommendedWorkerCount(
-      cfg({ 'memoryPerWorkerBytes': 256 * 1024 * 1024, 'fallbackWorkerCount': 0 }),
-      probes(8, 64 * 1024 * 1024),
+      WorkerCountConfig.of({ 'memoryPerWorkerBytes': 256 * 1024 * 1024, 'fallbackWorkerCount': 0 }),
+      SystemProbes.of(8, 64 * 1024 * 1024),
     );
     assert.equal(result, 1);
   });

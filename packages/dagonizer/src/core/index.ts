@@ -31,4 +31,6 @@ export { RoutedBatchBuilder } from '../entities/batch/RoutedBatchType.js';
 export type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 export { MonadicNode } from './MonadicNode.js';
 export { ScalarNode } from './ScalarNode.js';
+export { LoggedScalarNode } from './LoggedScalarNode.js';
+export type { LoggedScalarNodeOptionsType } from './LoggedScalarNode.js';
 export { NodeRunner } from './NodeRunner.js';

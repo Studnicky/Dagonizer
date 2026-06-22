@@ -10,37 +10,49 @@ import { TestDag } from '../_support/TestDag.js';
 
 // ── Local type-narrowing helpers ─────────────────────────────────────────────
 
-/** Narrows an unknown value to cytoscape.Core — checks the two methods CytoscapeGraph calls. */
-const isCytoscapeCore = (v: unknown): v is cytoscape.Core =>
-  typeof v === 'object' && v !== null && 'batch' in v && 'nodes' in v;
+class CytoscapeGuard {
+  private constructor() {}
 
-/** Narrows an unknown object to cytoscape's container type (HTMLElement at runtime). */
-const isCytoscapeContainer = (v: unknown): v is NonNullable<cytoscape.CytoscapeOptions['container']> =>
-  typeof v === 'object' && v !== null;
+  /** Narrows an unknown value to cytoscape.Core — checks the two methods CytoscapeGraph calls. */
+  static isCore(v: unknown): v is cytoscape.Core {
+    return typeof v === 'object' && v !== null && 'batch' in v && 'nodes' in v;
+  }
 
-/** Narrows an unknown value to a cytoscape element descriptor used in the graph config. */
-const isElementEntry = (v: unknown): v is { group?: string; data?: { id?: string }; position?: { x: number; y: number } } =>
-  typeof v === 'object' && v !== null;
+  /** Narrows an unknown object to cytoscape's container type (HTMLElement at runtime). */
+  static isContainer(v: unknown): v is NonNullable<cytoscape.CytoscapeOptions['container']> {
+    return typeof v === 'object' && v !== null;
+  }
 
-/** Narrows an unknown value to a cytoscape stylesheet rule descriptor. */
-const isStyleEntry = (v: unknown): v is { selector?: string; style?: Record<string, unknown> } =>
-  typeof v === 'object' && v !== null;
+  /** Narrows an unknown value to a cytoscape element descriptor used in the graph config. */
+  static isElementEntry(v: unknown): v is { group?: string; data?: { id?: string }; position?: { x: number; y: number } } {
+    return typeof v === 'object' && v !== null;
+  }
+
+  /** Narrows an unknown value to a cytoscape stylesheet rule descriptor. */
+  static isStyleEntry(v: unknown): v is { selector?: string; style?: Record<string, unknown> } {
+    return typeof v === 'object' && v !== null;
+  }
+}
 
 const rawContainer: unknown = {};
-if (!isCytoscapeContainer(rawContainer)) throw new Error('fakeContainer setup failed');
+if (!CytoscapeGuard.isContainer(rawContainer)) throw new Error('fakeContainer setup failed');
 /** A plain object passed as container; the overridden construct() ignores options so it is never used as HTMLElement. */
 const fakeContainer = rawContainer;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function singleNode(name: string, outputs: Record<string, string>): DAGType['nodes'][0] {
-  return {
-    '@id':    `urn:noocodex:dag:test/node/${name}`,
-    '@type':  'SingleNode',
-    'name':   name,
-    'node':   name,
-    'outputs': outputs,
-  };
+class PlacementFixture {
+  private constructor() {}
+
+  static single(name: string, outputs: Record<string, string>): DAGType['nodes'][0] {
+    return {
+      '@id':    `urn:noocodex:dag:test/node/${name}`,
+      '@type':  'SingleNode',
+      'name':   name,
+      'node':   name,
+      'outputs': outputs,
+    };
+  }
 }
 
 /** A captured cytoscape config plus a record of fake-Core method calls. */
@@ -78,31 +90,35 @@ class StubCytoscapeGraph extends CytoscapeGraph {
       "nodes": (): typeof fakeNodes => fakeNodes,
     };
     // Verify the minimal Core surface CytoscapeGraph calls is present before resolving.
-    if (!isCytoscapeCore(raw)) throw new Error('fakeCore does not satisfy cytoscape.Core interface');
+    if (!CytoscapeGuard.isCore(raw)) throw new Error('fakeCore does not satisfy cytoscape.Core interface');
     return Promise.resolve(raw);
   }
 }
 
-/** Read the elements array passed to the stub factory as plain records. */
-function capturedElements(capture: Capture): Array<{ group?: string; data?: { id?: string }; position?: { x: number; y: number } }> {
-  const els = capture.config?.elements;
-  if (!Array.isArray(els)) return [];
-  const result: Array<{ group?: string; data?: { id?: string }; position?: { x: number; y: number } }> = [];
-  for (const e of els) {
-    if (isElementEntry(e)) result.push(e);
-  }
-  return result;
-}
+class CaptureReader {
+  private constructor() {}
 
-/** Read the stylesheet array passed to the stub factory as plain records. */
-function capturedStyle(capture: Capture): Array<{ selector?: string; style?: Record<string, unknown> }> {
-  const style = capture.config?.style;
-  if (!Array.isArray(style)) return [];
-  const result: Array<{ selector?: string; style?: Record<string, unknown> }> = [];
-  for (const s of style) {
-    if (isStyleEntry(s)) result.push(s);
+  /** Read the elements array passed to the stub factory as plain records. */
+  static elements(capture: Capture): Array<{ group?: string; data?: { id?: string }; position?: { x: number; y: number } }> {
+    const els = capture.config?.elements;
+    if (!Array.isArray(els)) return [];
+    const result: Array<{ group?: string; data?: { id?: string }; position?: { x: number; y: number } }> = [];
+    for (const e of els) {
+      if (CytoscapeGuard.isElementEntry(e)) result.push(e);
+    }
+    return result;
   }
-  return result;
+
+  /** Read the stylesheet array passed to the stub factory as plain records. */
+  static style(capture: Capture): Array<{ selector?: string; style?: Record<string, unknown> }> {
+    const style = capture.config?.style;
+    if (!Array.isArray(style)) return [];
+    const result: Array<{ selector?: string; style?: Record<string, unknown> }> = [];
+    for (const s of style) {
+      if (CytoscapeGuard.isStyleEntry(s)) result.push(s);
+    }
+    return result;
+  }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -110,9 +126,9 @@ function capturedStyle(capture: Capture): Array<{ selector?: string; style?: Rec
 void describe('CytoscapeGraph.mount', () => {
   void it('mounts: resolves the Core, sets .cy, and invokes onReady', async () => {
     const dag = TestDag.of('linear', 'A', [
-      singleNode('A', { "next": 'B' }),
-      singleNode('B', { "next": 'C' }),
-      singleNode('C', { "done": 'end' }),
+      PlacementFixture.single('A', { "next": 'B' }),
+      PlacementFixture.single('B', { "next": 'C' }),
+      PlacementFixture.single('C', { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
@@ -134,9 +150,9 @@ void describe('CytoscapeGraph.mount', () => {
 
   void it('applies pre-computed positions to every node element', async () => {
     const dag = TestDag.of('linear', 'A', [
-      singleNode('A', { "next": 'B' }),
-      singleNode('B', { "next": 'C' }),
-      singleNode('C', { "done": 'end' }),
+      PlacementFixture.single('A', { "next": 'B' }),
+      PlacementFixture.single('B', { "next": 'C' }),
+      PlacementFixture.single('C', { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
@@ -144,7 +160,7 @@ void describe('CytoscapeGraph.mount', () => {
     const graph = new StubCytoscapeGraph(capture, fakeContainer, dag);
     await graph.mount();
 
-    const nodes = capturedElements(capture).filter((el) => el.group === 'nodes');
+    const nodes = CaptureReader.elements(capture).filter((el) => el.group === 'nodes');
     assert.ok(nodes.length >= 3, 'at least A, B, C must be present');
     for (const node of nodes) {
       assert.ok(node.position !== undefined, `node ${node.data?.id} must have a position`);
@@ -155,14 +171,14 @@ void describe('CytoscapeGraph.mount', () => {
 
   void it('stylesheet uses explicit numeric node sizing — never the string "label"', async () => {
     const dag = TestDag.of('mini', 'A', [
-      singleNode('A', { "done": 'end' }),
+      PlacementFixture.single('A', { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
     const capture: Capture = { "config": null, "batchCalls": 0 };
     const graph = new StubCytoscapeGraph(capture, fakeContainer, dag);
     await graph.mount();
 
-    const style = capturedStyle(capture);
+    const style = CaptureReader.style(capture);
     const nodeBase = style.find((rule) => rule.selector === 'node');
     assert.ok(nodeBase !== undefined, 'a base "node" selector must exist');
     assert.equal(typeof nodeBase.style?.['width'], 'number', 'node width must be numeric');
@@ -179,7 +195,7 @@ void describe('CytoscapeGraph.mount', () => {
   void it('self-loop (retry-to-self) node still renders and enforceVisibility does not throw', async () => {
     // 'retry' route targets the node itself → a cytoscape self-loop edge.
     const dag = TestDag.of('retry', 'work', [
-      singleNode('work', { "success": 'end', "retry": 'work' }),
+      PlacementFixture.single('work', { "success": 'end', "retry": 'work' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
@@ -187,11 +203,11 @@ void describe('CytoscapeGraph.mount', () => {
     const graph = new StubCytoscapeGraph(capture, fakeContainer, dag);
     await graph.mount();
 
-    const workNode = capturedElements(capture).find((el) => el.group === 'nodes' && el.data?.id === 'work');
+    const workNode = CaptureReader.elements(capture).find((el) => el.group === 'nodes' && el.data?.id === 'work');
     assert.ok(workNode !== undefined, 'the self-loop node must be present in the element set');
     assert.ok(workNode.position !== undefined, 'the self-loop node must carry a position');
 
-    const selfLoop = capturedElements(capture).find((el) => el.group === 'edges' && el.data?.id === 'work__retry__work');
+    const selfLoop = CaptureReader.elements(capture).find((el) => el.group === 'edges' && el.data?.id === 'work__retry__work');
     assert.ok(selfLoop !== undefined, 'the self-loop edge must be present');
     assert.equal(capture.batchCalls, 2, 'visibility sweep runs even with a self-loop present');
   });
@@ -200,9 +216,9 @@ void describe('CytoscapeGraph.mount', () => {
 void describe('CompositeLayout.compute', () => {
   void it('linear DAG: A→B→C positions form a top-down sequence (A smallest y)', async () => {
     const dag = TestDag.of('linear', 'A', [
-      singleNode('A', { "next": 'B' }),
-      singleNode('B', { "next": 'C' }),
-      singleNode('C', { "done": 'end' }),
+      PlacementFixture.single('A', { "next": 'B' }),
+      PlacementFixture.single('B', { "next": 'C' }),
+      PlacementFixture.single('C', { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
@@ -223,13 +239,13 @@ void describe('CompositeLayout.compute', () => {
   void it('2-level nesting: sibling compounds do not overlap each other', async () => {
     // inner DAGs: each has two leaf nodes
     const innerA = TestDag.of('innerA', 'a1', [
-      singleNode('a1', { "go": 'a2' }),
-      singleNode('a2', { "done": 'end' }),
+      PlacementFixture.single('a1', { "go": 'a2' }),
+      PlacementFixture.single('a2', { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
     const innerB = TestDag.of('innerB', 'b1', [
-      singleNode('b1', { "go": 'b2' }),
-      singleNode('b2', { "done": 'end' }),
+      PlacementFixture.single('b1', { "go": 'b2' }),
+      PlacementFixture.single('b2', { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
@@ -291,15 +307,15 @@ void describe('CompositeLayout.compute', () => {
   void it('ScatterNode (body.dag): inner children sit between predecessor and successor in y; entry has smallest y in subgraph', async () => {
     // inner DAG: entry-node → middle-node → exit-node
     const innerDAG = TestDag.of('inner', 'entry-node', [
-      singleNode('entry-node',  { "go": 'middle-node' }),
-      singleNode('middle-node', { "go": 'exit-node' }),
-      singleNode('exit-node',   { "done": 'end' }),
+      PlacementFixture.single('entry-node',  { "go": 'middle-node' }),
+      PlacementFixture.single('middle-node', { "go": 'exit-node' }),
+      PlacementFixture.single('exit-node',   { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 
     // outer DAG: before → ScatterNode(body.dag=inner) → after
     const outerDAG: DAGType = TestDag.of('outer', 'before', [
-      singleNode('before', { "go": 'embed' }),
+      PlacementFixture.single('before', { "go": 'embed' }),
       {
         '@id':    'urn:noocodex:dag:outer/node/embed',
         '@type':  'EmbeddedDAGNode',
@@ -307,7 +323,7 @@ void describe('CompositeLayout.compute', () => {
         'dag':    'inner',
         'outputs': { "done": 'after' },
       },
-      singleNode('after', { "done": 'end' }),
+      PlacementFixture.single('after', { "done": 'end' }),
       { '@id': 'urn:noocodex:dag:outer/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } satisfies DAGType['nodes'][number],
     ]);
 

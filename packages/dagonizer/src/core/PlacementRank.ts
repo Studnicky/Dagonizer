@@ -31,6 +31,46 @@ export class PlacementRank {
   }
 
   /**
+   * Memoized DFS computing rank(name) = 1 + max(rank of non-back-edge
+   * predecessors). The entry placement has no predecessors → rank 0.
+   *
+   * `memo` caches resolved ranks; `visiting` is the active DFS ancestor set
+   * used for back-edge detection: a predecessor already on the stack is a
+   * back-edge (self-loop or cycle) and is excluded so recursion terminates.
+   */
+  private static rankFor(
+    name: string,
+    predecessors: ReadonlyMap<string, readonly string[]>,
+    memo: Map<string, number>,
+    visiting: Set<string>,
+  ): number {
+    const cached = memo.get(name);
+    if (cached !== undefined) return cached;
+
+    // Back-edge guard: a node already on the active DFS stack returns 0 to
+    // break the cycle (the caller excludes this predecessor anyway).
+    if (visiting.has(name)) return 0;
+
+    visiting.add(name);
+
+    const preds = predecessors.get(name) ?? [];
+    let maxPredRank = -1;
+
+    for (const pred of preds) {
+      // Skip back-edge predecessors (pred is an ancestor on current DFS path).
+      if (visiting.has(pred)) continue;
+      const pr = PlacementRank.rankFor(pred, predecessors, memo, visiting);
+      if (pr > maxPredRank) maxPredRank = pr;
+    }
+
+    visiting.delete(name);
+
+    const rank = maxPredRank === -1 ? 0 : maxPredRank + 1;
+    memo.set(name, rank);
+    return rank;
+  }
+
+  /**
    * Compute a topological rank for every placement in `dag`.
    *
    * Returns a `ReadonlyMap<placementName, rank>` where:
@@ -91,38 +131,9 @@ export class PlacementRank {
     const rankOf = new Map<string, number>();
     const visiting = new Set<string>();
 
-    // Compute rank(v) = 1 + max(rank of non-back-edge predecessors of v).
-    // The entry placement has no predecessors → rank 0.
-    function computeRank(name: string): number {
-      const memo = rankOf.get(name);
-      if (memo !== undefined) return memo;
-
-      // Back-edge guard: if we visit a node already on the active DFS stack,
-      // return 0 to break the cycle (the caller will exclude this anyway).
-      if (visiting.has(name)) return 0;
-
-      visiting.add(name);
-
-      const preds = predecessors.get(name) ?? [];
-      let maxPredRank = -1;
-
-      for (const pred of preds) {
-        // Skip back-edge predecessors (pred is an ancestor on current DFS path).
-        if (visiting.has(pred)) continue;
-        const pr = computeRank(pred);
-        if (pr > maxPredRank) maxPredRank = pr;
-      }
-
-      visiting.delete(name);
-
-      const rank = maxPredRank === -1 ? 0 : maxPredRank + 1;
-      rankOf.set(name, rank);
-      return rank;
-    }
-
     // Compute rank for all reachable placements.
     for (const name of reachable) {
-      computeRank(name);
+      PlacementRank.rankFor(name, predecessors, rankOf, visiting);
     }
 
     // Assemble result: reachable placements get computed rank, unreachable get MAX.

@@ -19,7 +19,6 @@
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
 import type { CanonicalEventVariant } from '../../entities/CanonicalEvent.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
 import { IDENTITY_EXTRAS_BY_TYPE } from '../../services.ts';
@@ -30,7 +29,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region validate-event-node
-export class ValidateEventNode extends ScalarNode<CartographerState, 'validated', CartographerServices> {
+export class ValidateEventNode extends ScalarNode<CartographerState, 'validated'> {
   readonly 'name' = 'validate-event';
   readonly 'outputs' = ['validated'] as const;
 
@@ -44,7 +43,7 @@ export class ValidateEventNode extends ScalarNode<CartographerState, 'validated'
     return typeof value === 'string' ? value : '';
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'validated'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'validated'>> {
     const source = state.currentSource;
     const eventType = source.eventType;
     const extras = IDENTITY_EXTRAS_BY_TYPE[eventType] ?? [];

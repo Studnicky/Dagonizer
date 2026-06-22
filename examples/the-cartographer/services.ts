@@ -434,7 +434,7 @@ export class TimeNormalizer {
     const mdyMatch = TimeNormalizer.RE_MDY.exec(trimmed);
     if (mdyMatch !== null) {
       const [, mm, dd, yyyy, hh, min] = mdyMatch;
-      const iso = `${yyyy}-${mm!.padStart(2, '0')}-${dd!.padStart(2, '0')}T${hh!.padStart(2, '0')}:${min!.padStart(2, '0')}:00Z`;
+      const iso = `${yyyy}-${(mm ?? '00').padStart(2, '0')}-${(dd ?? '00').padStart(2, '0')}T${(hh ?? '00').padStart(2, '0')}:${(min ?? '00').padStart(2, '0')}:00Z`;
       const ms = new Date(iso).getTime();
       return ms;
     }
@@ -1044,7 +1044,13 @@ export class ShipmentEvents {
     formatIdxBox: { v: number },
     journeyIndex: number,
   ): RawShipmentEvent[] {
-    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)] ?? arr[0]!;
+    const pick = <T>(arr: readonly T[]): T => {
+      const el = arr[Math.floor(rand() * arr.length)];
+      if (el !== undefined) return el;
+      const last = arr[arr.length - 1];
+      if (last !== undefined) return last;
+      throw new Error('pick: empty array');
+    };
 
     const dest = pick(ShipmentEvents.REGIONS);
     const hasGatewayIp = rand() < 0.8;
@@ -1082,9 +1088,10 @@ export class ShipmentEvents {
 
     const disruptProb = shipDistanceKm > 8000 ? 0.42 : 0.32;
     const disrupted = rand() < disruptProb;
+    const cleanDisruption = ShipmentEvents.DISRUPTIONS[0] ?? { 'reason': '', 'hours': 0 };
     const disruptionPick = disrupted
-      ? (ShipmentEvents.DISRUPTIONS[1 + Math.floor(rand() * (ShipmentEvents.DISRUPTIONS.length - 1))] ?? ShipmentEvents.DISRUPTIONS[0]!)
-      : ShipmentEvents.DISRUPTIONS[0]!;
+      ? (ShipmentEvents.DISRUPTIONS[1 + Math.floor(rand() * (ShipmentEvents.DISRUPTIONS.length - 1))] ?? cleanDisruption)
+      : cleanDisruption;
     const disruptionHours  = disruptionPick.hours;
     const disruptionReason = disruptionPick.reason;
 
@@ -1279,8 +1286,8 @@ export class ShipmentEvents {
 
     const activeSlots: TypeSlot[] = [];
     for (let i = 0; i < config.length; i++) {
-      const entry = config[i]!;
-      if (entry.count <= 0) continue;
+      const entry = config[i];
+      if (entry === undefined || entry.count <= 0) continue;
       activeSlots.push({
         entryIdx:       i,
         eventType:      entry.eventType,
@@ -1299,19 +1306,24 @@ export class ShipmentEvents {
     // then returns the index into activeSlots of the winner (highest accumulator,
     // ties broken by slot order). The winner's accumulator is decremented by 1.0.
     const weights: number[] = activeSlots.map((s) => {
-      const entry = config[s.entryIdx]!;
-      return entry.count / totalCount;
+      const entry = config[s.entryIdx];
+      return entry !== undefined ? entry.count / totalCount : 0;
     });
 
     const stepWinner = (): number => {
       for (let i = 0; i < activeSlots.length; i++) {
-        activeSlots[i]!.accumulator += weights[i]!;
+        const slot = activeSlots[i];
+        const w = weights[i];
+        if (slot !== undefined && w !== undefined) slot.accumulator += w;
       }
       let best = 0;
       for (let i = 1; i < activeSlots.length; i++) {
-        if (activeSlots[i]!.accumulator > activeSlots[best]!.accumulator) best = i;
+        const slotI = activeSlots[i];
+        const slotBest = activeSlots[best];
+        if (slotI !== undefined && slotBest !== undefined && slotI.accumulator > slotBest.accumulator) best = i;
       }
-      activeSlots[best]!.accumulator -= 1.0;
+      const winner = activeSlots[best];
+      if (winner !== undefined) winner.accumulator -= 1.0;
       return best;
     };
 
@@ -1321,15 +1333,17 @@ export class ShipmentEvents {
     // slot is spliced out and its weight rebalanced across the survivors.
     while (activeSlots.length > 0) {
       const winnerIdx = stepWinner();
-      const slot = activeSlots[winnerIdx]!;
+      const slot = activeSlots[winnerIdx];
+      if (slot === undefined) break;
 
       // Fill candidate buffer for this type if it is empty.
       while (slot.candidateBuffer.length === 0 && slot.remaining > 0) {
         const step = slot.journeyIter.next();
         if (step.done === true) break;
         const journey = step.value;
+        const lastScan = journey[journey.length - 1];
         const candidates: RawShipmentEvent[] = slot.terminalOnly
-          ? [journey[journey.length - 1]!]
+          ? (lastScan !== undefined ? [lastScan] : [])
           : journey.length > 1
             ? journey.slice(0, -1)
             : journey;
@@ -1343,7 +1357,8 @@ export class ShipmentEvents {
         continue;
       }
 
-      const scan = slot.candidateBuffer.shift()!;
+      const scan = slot.candidateBuffer.shift();
+      if (scan === undefined) continue;
 
       // Materialise the typed scan with per-type fields.
       let typed: TypedScan;
@@ -1594,7 +1609,7 @@ const FIELD_MAPPINGS: Readonly<Record<string, FieldMap>> = {
 
 export class FieldMappings {
   static forKey(mappingKey: string): FieldMap {
-    return FIELD_MAPPINGS[mappingKey] ?? FIELD_MAPPINGS['json-position']!;
+    return FIELD_MAPPINGS[mappingKey] ?? FIELD_MAPPINGS['json-position'] ?? {};
   }
 }
 // #endregion field-mappings-service
@@ -1758,7 +1773,7 @@ export class Sources {
     for (const c of chunks) { merged.set(c, offset); offset += c.length; }
 
     let binary = '';
-    for (let i = 0; i < merged.length; i++) binary += String.fromCharCode(merged[i]!);
+    for (let i = 0; i < merged.length; i++) binary += String.fromCharCode(merged[i] ?? 0);
     return btoa(binary);
   }
 
@@ -1854,10 +1869,13 @@ export class Sources {
       const entries = Object.entries(effectiveMap).reverse();
       const swapped: Array<[string, string]> = [];
       for (let i = 0; i < entries.length; i += 2) {
-        if (i + 1 < entries.length) {
-          swapped.push(entries[i + 1]!, entries[i]!);
+        const cur = entries[i];
+        const next = entries[i + 1];
+        if (cur === undefined) continue;
+        if (next !== undefined) {
+          swapped.push(next, cur);
         } else {
-          swapped.push(entries[i]!);
+          swapped.push(cur);
         }
       }
       const shuffledMap: FieldMap = Object.fromEntries(swapped);
@@ -1902,7 +1920,8 @@ export class Sources {
       const mixThresholds: Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }> = [];
       let allocated = 0;
       for (let mi = 0; mi < entry.formatMix.length; mi++) {
-        const mix = entry.formatMix[mi]!;
+        const mix = entry.formatMix[mi];
+        if (mix === undefined) continue;
         const isLast = mi === entry.formatMix.length - 1;
         const count = isLast
           ? Math.max(0, entry.count - allocated)

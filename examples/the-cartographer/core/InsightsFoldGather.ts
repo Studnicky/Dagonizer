@@ -23,9 +23,9 @@ import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
 import type { GatherConfigType, NodeStateInterface } from '@studnicky/dagonizer/types';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 
-import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
+import { EnrichedShipmentGuard, type EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { JourneyInsights, JourneyScan, RegionInsights } from '../CartographerState.ts';
-import type { GeoErrorRecordType } from '../errors/GeoErrorRecord.ts';
+import { GeoErrorRecord } from '../errors/GeoErrorRecord.ts';
 import { ErrorRollup, type ErrorRollupType } from '../errors/ErrorRollup.ts';
 
 // ── Module constants ───────────────────────────────────────────────────────────
@@ -112,8 +112,9 @@ export class InsightsFoldGather extends GatherStrategy {
       // carries its captured RangeError even if enrichment degraded.
       this.foldErrors(record.cloneState, state, accessor);
 
-      const enriched = accessor.get<EnrichedShipment>(record.cloneState, 'enriched');
-      if (enriched === null || !enriched.shipmentId) continue;
+      const rawEnriched = accessor.get(record.cloneState, 'enriched');
+      if (!EnrichedShipmentGuard.is(rawEnriched) || !rawEnriched.shipmentId) continue;
+      const enriched: EnrichedShipment = rawEnriched;
 
       this.foldRegion(enriched, state, accessor);
       this.foldJourney(enriched);
@@ -192,9 +193,9 @@ export class InsightsFoldGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
-    const errors = accessor.get<readonly GeoErrorRecordType[]>(cloneState, 'capturedErrors');
-    if (errors === null || errors.length === 0) return;
-    for (const error of errors) {
+    const rawErrors = accessor.get(cloneState, 'capturedErrors');
+    if (!GeoErrorRecord.isArray(rawErrors) || rawErrors.length === 0) return;
+    for (const error of rawErrors) {
       ErrorRollup.fold(this.errorRollup, error);
     }
     // Write the rollup back to parent state after folding. The rollup is bounded

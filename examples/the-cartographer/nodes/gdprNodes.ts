@@ -14,7 +14,6 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { Consent, GdprRedactor, GeoCoarsener, Jurisdictions } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
@@ -24,7 +23,7 @@ import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region gdpr-nodes
 
-export class ConsentGateNode extends ScalarNode<CartographerState, 'classify', CartographerServices> {
+export class ConsentGateNode extends ScalarNode<CartographerState, 'classify'> {
   readonly 'name' = 'consent-gate';
   readonly 'outputs' = ['classify'] as const;
 
@@ -34,7 +33,7 @@ export class ConsentGateNode extends ScalarNode<CartographerState, 'classify', C
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'classify'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'classify'>> {
     // Resolve marketing consent (10% of consented treated as lapsed/expired).
     const consentStatus = Consent.statusFor(state.currentEvent.shipmentId, state.currentEvent.marketingConsent);
     state.gdprResult = {
@@ -47,7 +46,7 @@ export class ConsentGateNode extends ScalarNode<CartographerState, 'classify', C
   }
 }
 
-export class ClassifyPiiNode extends ScalarNode<CartographerState, 'redact', CartographerServices> {
+export class ClassifyPiiNode extends ScalarNode<CartographerState, 'redact'> {
   readonly 'name' = 'classify-pii';
   readonly 'outputs' = ['redact'] as const;
 
@@ -57,7 +56,7 @@ export class ClassifyPiiNode extends ScalarNode<CartographerState, 'redact', Car
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'redact'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'redact'>> {
     const classification = GdprRedactor.classify(state.currentEvent);
     state.gdprResult = {
       ...state.gdprResult,
@@ -68,7 +67,7 @@ export class ClassifyPiiNode extends ScalarNode<CartographerState, 'redact', Car
   }
 }
 
-export class RedactPiiNode extends ScalarNode<CartographerState, 'ok' | 'violation', CartographerServices> {
+export class RedactPiiNode extends ScalarNode<CartographerState, 'ok' | 'violation'> {
   readonly 'name' = 'redact-pii';
   readonly 'outputs' = ['ok', 'violation'] as const;
 
@@ -79,7 +78,7 @@ export class RedactPiiNode extends ScalarNode<CartographerState, 'ok' | 'violati
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'ok' | 'violation'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'ok' | 'violation'>> {
     // Genuine violation: special-category data with no lawful basis (rare drop).
     if (!GdprRedactor.hasLawfulBasis(state.raw.lawfulBasis, state.raw.specialCategory)) {
       return NodeOutputBuilder.of('violation');

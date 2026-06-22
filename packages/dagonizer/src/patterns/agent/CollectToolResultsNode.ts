@@ -13,7 +13,6 @@
  * Outputs: `'done'` on success, `'empty'` when no results, `'error'` on failure.
  */
 
-import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
@@ -24,7 +23,7 @@ import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class CollectToolResultsNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'done' | 'empty' | 'error', AgentServicesType> {
+> extends ScalarNode<TState, 'done' | 'empty' | 'error'> {
   readonly outputs = ['done', 'empty', 'error'] as const;
 
   override get outputSchema(): Record<'done' | 'empty' | 'error', SchemaObjectType> {
@@ -41,7 +40,7 @@ export abstract class CollectToolResultsNode<
    */
   protected abstract getGatheredResults(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): readonly unknown[];
 
   /**
@@ -51,12 +50,12 @@ export abstract class CollectToolResultsNode<
   protected abstract writeResult(
     state: TState,
     results: readonly unknown[],
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): void;
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'done' | 'empty' | 'error'>> {
     try {
       const results = this.getGatheredResults(state, context);

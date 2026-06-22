@@ -17,9 +17,8 @@ import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
-import type { ArchivistServices } from '../services.ts';
 
-export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered', ArchivistServices> {
+export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered'> {
   readonly name = 'group-by-year';
   readonly outputs = ['ordered'] as const;
   override get outputSchema(): Record<'ordered', SchemaObjectType> {
@@ -28,7 +27,7 @@ export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered', Archi
     };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
     if (state.candidates.length === 0) {
       return NodeOutputBuilder.of('ordered');
     }

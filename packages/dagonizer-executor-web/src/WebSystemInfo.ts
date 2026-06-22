@@ -2,7 +2,7 @@
  * WebSystemInfo: SystemInfoInterface for browser/Web Worker environments.
  *
  * Probes `navigator.hardwareConcurrency` via an injectable `WebNavigatorProbes`
- * bag for deterministic testing. Delegates the clamp formula to
+ * record for deterministic testing. Delegates the clamp formula to
  * `SystemInfo.recommendedWorkerCount` from the core package; this class owns
  * only the environment probing.
  *
@@ -35,7 +35,7 @@ export type WebNavigatorProbesType = {
 };
 
 // ---------------------------------------------------------------------------
-// WebSystemInfoProbes: constructor DI bag
+// WebSystemInfoProbes: constructor DI record
 // ---------------------------------------------------------------------------
 
 /**
@@ -56,20 +56,24 @@ export type WebSystemInfoProbesType = {
 // ---------------------------------------------------------------------------
 
 /**
- * Production default: reads `navigator.hardwareConcurrency` once.
- * Accessed via `Reflect.get(globalThis, …)` to avoid a DOM-lib type dependency;
- * `Reflect.get` returns `unknown`, so no cast is required.
- * Returns 1 when the property is absent or non-positive (restricted contexts).
+ * Reads `navigator.hardwareConcurrency`. Accessed via `Reflect.get(globalThis, …)`
+ * to avoid a DOM-lib type dependency; `Reflect.get` returns `unknown`, so no cast
+ * is required. Returns 1 when the property is absent or non-positive (restricted
+ * contexts). Static class — `noun.verb()`, no freestanding helper.
  */
-function readNavigatorHardwareConcurrency(): number {
-  const nav: unknown = Reflect.get(globalThis, 'navigator');
-  if (nav === null || nav === undefined || typeof nav !== 'object') { return 1; }
-  const hc: unknown = Reflect.get(nav, 'hardwareConcurrency');
-  return (typeof hc === 'number' && hc > 0) ? hc : 1;
+class WebNavigator {
+  private constructor() { /* static class */ }
+
+  static hardwareConcurrency(): number {
+    const nav: unknown = Reflect.get(globalThis, 'navigator');
+    if (nav === null || nav === undefined || typeof nav !== 'object') { return 1; }
+    const hc: unknown = Reflect.get(nav, 'hardwareConcurrency');
+    return (typeof hc === 'number' && hc > 0) ? hc : 1;
+  }
 }
 
 export const DEFAULT_WEB_PROBES: WebNavigatorProbesType = {
-  get 'hardwareConcurrency'(): number { return readNavigatorHardwareConcurrency(); },
+  get 'hardwareConcurrency'(): number { return WebNavigator.hardwareConcurrency(); },
 };
 
 // ---------------------------------------------------------------------------

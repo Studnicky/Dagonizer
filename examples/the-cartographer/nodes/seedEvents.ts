@@ -23,7 +23,6 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { Sources } from '../services.ts';
 import { EventStreamSource } from '../services/EventStreamSource.ts';
 
@@ -33,7 +32,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region seed-events-node
-export class SeedEventsNode extends ScalarNode<CartographerState, 'done', CartographerServices> {
+export class SeedEventsNode extends ScalarNode<CartographerState, 'done'> {
   readonly 'name' = 'seed';
   // A `PhaseNode('pre')` runs before the entrypoint and never appears in the
   // routing graph, so this output token is never consumed — but the node still
@@ -44,7 +43,7 @@ export class SeedEventsNode extends ScalarNode<CartographerState, 'done', Cartog
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'done'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
     if (state.useStreamingSource) {
       const count = state.streamCount > 0 ? state.streamCount : undefined;
       state.sources = EventStreamSource.streamTyped(state.eventConfig, count);

@@ -129,6 +129,14 @@ export const BridgeMessageSchema = {
         'registryModule':  { 'type': 'string', 'minLength': 1 },
         'registryVersion': { 'type': 'string', 'minLength': 1 },
         'servicesConfig':  { 'type': 'object' },
+        /**
+         * Optional keying scheme for the registry maps in the isolate bundle.
+         * When absent, defaults to `'name'` (bare-name keying, backward compatible).
+         * When `'iri'`, the bundle's nodes and DAGs are keyed by expanded IRI.
+         * The host validates that parent and bundle agree; mismatches produce
+         * a `VERSION_MISMATCH` error response.
+         */
+        'keyingScheme': { 'type': 'string', 'enum': ['name', 'iri'] },
       },
       'additionalProperties': false,
     },

@@ -24,7 +24,8 @@ const dagInShortlist  = MemoryStore.dagIri('inShortlist');
 const MAX_PRIOR_QUERIES = 4;
 const MAX_PRIOR_TITLES  = 6;
 
-export class RecallPastVisitsNode extends ScalarNode<ArchivistState, 'recalled', ArchivistServices> {
+export class RecallPastVisitsNode extends ScalarNode<ArchivistState, 'recalled'> {
+  private readonly services: ArchivistServices;
   readonly name = 'recall-past-visits';
   readonly outputs = ['recalled'] as const;
   override get outputSchema(): Record<'recalled', SchemaObjectType> {
@@ -33,8 +34,13 @@ export class RecallPastVisitsNode extends ScalarNode<ArchivistState, 'recalled',
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    const memory = context.services.memory;
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
+
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+    const memory = this.services.memory;
     const currentGraph = MemoryStore.stateGraphIri(state.runId).value;
 
     // Pull every prior visitorQuery across every state graph (graph is
@@ -94,5 +100,3 @@ export class RecallPastVisitsNode extends ScalarNode<ArchivistState, 'recalled',
   }
 }
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const recallPastVisits = new RecallPastVisitsNode();

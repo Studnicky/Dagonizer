@@ -17,14 +17,13 @@
 
 
 import type { ArchivistState } from '../ArchivistState.ts';
-import type { ArchivistServices } from '../services.ts';
 
 import type { NodeInterface } from '@studnicky/dagonizer';
 
 export type NodeVariant = 'deterministic' | 'non-deterministic';
 
 export interface ArchivistNode<TOutput extends string>
-  extends NodeInterface<ArchivistState, TOutput, ArchivistServices> {
+  extends NodeInterface<ArchivistState, TOutput> {
   readonly variant: NodeVariant;
 }
 

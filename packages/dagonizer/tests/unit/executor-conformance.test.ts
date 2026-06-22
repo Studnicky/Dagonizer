@@ -41,13 +41,15 @@ import type {
   DagTaskInterface,
   DagContainerInterface,
   DispatcherBundleType,
-  ScatterProgressType,
+  StoredScatterProgressType,
   NodeStateInterface,
 } from '@studnicky/dagonizer';
 import { DagContainerBase, DagHost, DAG_CONTAINER_TRANSPORT } from '@studnicky/dagonizer/container';
 import type { PoolEntryType } from '@studnicky/dagonizer/container';
 import type { MessageChannelInterface, ObserverRelayInterface } from '@studnicky/dagonizer/contracts';
 import type { JsonObjectType, NodeErrorWireType } from '@studnicky/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer/validation';
+
 
 // ---------------------------------------------------------------------------
 // Registry module URL
@@ -114,11 +116,15 @@ class LoopbackContainer extends DagContainerBase<LoopbackWorker> {
 
 type Destroyable = { destroy(): Promise<void>; }
 
-const perLawContainers: Destroyable[] = [];
+class LawContainerTracker {
+  private constructor() {}
 
-async function teardownPerLawContainers(): Promise<void> {
-  for (const c of perLawContainers.splice(0)) {
-    await c.destroy();
+  static readonly containers: Destroyable[] = [];
+
+  static async teardown(): Promise<void> {
+    for (const c of LawContainerTracker.containers.splice(0)) {
+      await c.destroy();
+    }
   }
 }
 
@@ -133,20 +139,24 @@ async function teardownPerLawContainers(): Promise<void> {
 // of an Instrumentation plugin.
 // ---------------------------------------------------------------------------
 
-function createDispatcherForLaw(
-  bundle: DispatcherBundleType<NodeStateInterface, undefined>,
-  _containers: Readonly<Record<string, DagContainerInterface>>,
-): Dagonizer<NodeStateInterface, undefined> {
-  // LoopbackContainer demand-grows its pool on first runDag(); no async init
-  // needed in the synchronous factory. The base's acquireChannel loop handles
-  // lazy entry creation and init on first use.
-  const container = new LoopbackContainer(REGISTRY_MODULE_URL);
-  perLawContainers.push(container);
+class LawDispatcherFactory {
+  private constructor() {}
 
-  const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
-  const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ containers });
-  dispatcher.registerBundle(bundle);
-  return dispatcher;
+  static create(
+    bundle: DispatcherBundleType<NodeStateInterface>,
+    _containers: Readonly<Record<string, DagContainerInterface>>,
+  ): Dagonizer<NodeStateInterface> {
+    // LoopbackContainer demand-grows its pool on first runDag(); no async init
+    // needed in the synchronous factory. The base's acquireChannel loop handles
+    // lazy entry creation and init on first use.
+    const container = new LoopbackContainer(REGISTRY_MODULE_URL);
+    LawContainerTracker.containers.push(container);
+
+    const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
+    const dispatcher = new Dagonizer<NodeStateInterface>({ containers });
+    dispatcher.registerBundle(bundle);
+    return dispatcher;
+  }
 }
 
 // LazyLoopbackContainer is an alias for LoopbackContainer: the pool-lifecycle
@@ -180,7 +190,7 @@ const harnessRaw = {
     if (sentinelContainer === null) {
       // Lazily build a sentinel so the getter never returns null.
       sentinelContainer = new LazyLoopbackContainer(REGISTRY_MODULE_URL);
-      perLawContainers.push(sentinelContainer);
+      LawContainerTracker.containers.push(sentinelContainer);
     }
     return sentinelContainer;
   },
@@ -189,21 +199,21 @@ const harnessRaw = {
     return new ConformanceState();
   },
 
-  'createDispatcher': createDispatcherForLaw,
+  'createDispatcher': LawDispatcherFactory.create,
 
   // Law 7: build a dispatcher WITHOUT the container role bound so
   // resolveContainer(CONFORMANCE_CONTAINER_ROLE) returns null → inline path.
   createInProcessDispatcher(
-    bundle: DispatcherBundleType<NodeStateInterface, undefined>,
-  ): Dagonizer<NodeStateInterface, undefined> {
-    const dispatcher = new Dagonizer<NodeStateInterface, undefined>();
+    bundle: DispatcherBundleType<NodeStateInterface>,
+  ): Dagonizer<NodeStateInterface> {
+    const dispatcher = new Dagonizer<NodeStateInterface>();
     dispatcher.registerBundle(bundle);
     return dispatcher;
   },
 
   async teardown(): Promise<void> {
     sentinelContainer = null;
-    await teardownPerLawContainers();
+    await LawContainerTracker.teardown();
   },
 };
 const laws = DagConformance.laws(harnessRaw);
@@ -243,7 +253,7 @@ describe('LoopbackContainer — state round-trip fixed point (Law 9 direct)', ()
       // assignment fails. Part of the same dual-compilation decision.
       const bundle = ConformanceRegistry.bundle().bundle;
       const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
-      const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ containers });
+      const dispatcher = new Dagonizer<NodeStateInterface>({ containers });
       dispatcher.registerBundle(bundle);
 
       const initialState = new ConformanceState();
@@ -289,7 +299,7 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface {
     this.#callCount = 0;
   }
 
-  async runDag(task: DagTaskInterface<unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+  async runDag(task: DagTaskInterface, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     this.#callCount += 1;
     if (this.#callCount === 1) {
       // First item: run for real so it acks.
@@ -319,13 +329,13 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface {
 
 describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw)', () => {
   afterEach(async () => {
-    await teardownPerLawContainers();
+    await LawContainerTracker.teardown();
   });
 
   it('un-acked items survive a returned transport error; resume reprocesses them', async () => {
     const inner = new LazyLoopbackContainer(REGISTRY_MODULE_URL);
     const failing = new ReturnTransportErrorAfterOneContainer(inner);
-    perLawContainers.push(failing);
+    LawContainerTracker.containers.push(failing);
 
     // src/ test ↔ dist/ testing-harness brand bridge (see the FIXME above).
     const bundle = ConformanceRegistry.bundle().bundle;
@@ -339,7 +349,7 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     const failingContainers: Readonly<Record<string, DagContainerInterface>> = {
       [CONFORMANCE_CONTAINER_ROLE]: failing,
     };
-    const failingDispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': failingContainers });
+    const failingDispatcher = new Dagonizer<NodeStateInterface>({ 'containers': failingContainers });
     failingDispatcher.registerBundle(bundle);
 
     // The dispatcher catches the scatter pool error internally and finalizes a
@@ -359,8 +369,9 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     // source they live in the persisted inbox. Either way the un-acked item is
     // recoverable: the discriminator threw before clear, preserving the
     // checkpoint with fewer than all items acked.
-    const progress = state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
-    const fan = (progress ?? {})['fan'];
+    const rawProgress = state.getMetadata(SCATTER_PROGRESS_KEY);
+    const progress: StoredScatterProgressType = rawProgress === undefined ? {} : Validator.storedScatterProgress.validate(rawProgress);
+    const fan = progress['fan'];
     assert.ok(fan !== undefined, 'checkpoint must survive — ScatterCheckpoint.clear must NOT run on infra failure');
     const ackedCount = fan.mode === 'bounded'
       ? fan.watermark + fan.aheadAcked.length
@@ -370,11 +381,11 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
 
     // Phase 2: resume through a healthy container. Un-acked items reprocess.
     const fresh = new LazyLoopbackContainer(REGISTRY_MODULE_URL);
-    perLawContainers.push(fresh);
+    LawContainerTracker.containers.push(fresh);
     const freshContainers: Readonly<Record<string, DagContainerInterface>> = {
       [CONFORMANCE_CONTAINER_ROLE]: fresh,
     };
-    const freshDispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': freshContainers });
+    const freshDispatcher = new Dagonizer<NodeStateInterface>({ 'containers': freshContainers });
     freshDispatcher.registerBundle(bundle);
 
     const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state, 'fan');

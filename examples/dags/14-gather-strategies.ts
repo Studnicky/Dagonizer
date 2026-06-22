@@ -65,7 +65,7 @@ export class TagNode extends ScalarNode<GatherDemoState, 'done'> {
   }
 
   protected override async executeOne(state: GatherDemoState) {
-    const item = state.getMetadata<string>('item') ?? '?';
+    const item = state.getter.string('item', '?');
     // Side-effect: visible even under `discard` gather (clone state is
     // discarded, but direct writes to *shared* parent state via reference
     // are the `discard` pattern for signalling execution happened).

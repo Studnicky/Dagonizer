@@ -72,7 +72,8 @@ class EmbeddingParser {
   }
 }
 
-export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled', ArchivistServices> {
+export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled'> {
+  private readonly services: ArchivistServices;
   readonly name = 'recall-candidates';
   readonly outputs = ['recalled'] as const;
   override get outputSchema(): Record<'recalled', SchemaObjectType> {
@@ -81,14 +82,19 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
     };
   }
 
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
+
   /** Public per-item entry point for tests and dispatch delegation. */
-  public async runItem(state: ArchivistState, context: NodeContextType<ArchivistServices>): Promise<NodeOutputType<'recalled'>> {
+  public async runItem(state: ArchivistState, context: NodeContextType): Promise<NodeOutputType<'recalled'>> {
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    const memory   = context.services.memory;
-    const embedder = context.services.embedder;
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+    const memory   = this.services.memory;
+    const embedder = this.services.embedder;
 
     // Use extracted terms when available; fall back to raw query tokens.
     const queryText     = state.terms.length > 0 ? state.terms.join(' ') : state.query;
@@ -221,5 +227,3 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
   }
 }
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const recallCandidates = new RecallCandidatesNode();

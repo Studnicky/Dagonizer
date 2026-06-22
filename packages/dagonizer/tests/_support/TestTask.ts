@@ -15,9 +15,6 @@
  * `TestTask.of` covers the correlation/loopback variant (state defaults to
  * a fresh `NodeStateBase`). When a test supplies its own typed state it
  * passes it as the third positional argument.
- *
- * The `services` type parameter follows the same convention as
- * `DagTaskInterface`: default `undefined` = no services bag.
  */
 
 import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
@@ -30,14 +27,13 @@ export class TestTask {
   private constructor() { /* static class */ }
 
   /**
-   * Build a minimal `DagTaskInterface<TState, TServices>` for use in tests
-   * that exercise container/channel correlation paths.
+   * Build a minimal `DagTaskInterface` for use in tests that exercise
+   * container/channel correlation paths.
    *
    * Defaults:
    *   - `dagName`       → `'test-dag'`
    *   - `placementPath` → `[]`
    *   - `timeout`       → `Timeout.none()`
-   *   - `services`      → `undefined`
    *
    * `toRequest()` snapshots the live state into a single-item wire request.
    *
@@ -49,12 +45,12 @@ export class TestTask {
     correlationId: string,
     signal: AbortSignal,
     state: TState,
-  ): DagTaskInterface<undefined> {
+  ): DagTaskInterface {
     const dagName = 'test-dag';
 
-    const context = NodeContextBuilder.of<undefined>(dagName, 'test-node', signal, undefined);
+    const context = NodeContextBuilder.of(dagName, 'test-node', signal);
 
-    const task: DagTaskInterface<undefined> = {
+    const task: DagTaskInterface = {
       'dagName':       dagName,
       'placementPath': [],
       correlationId,

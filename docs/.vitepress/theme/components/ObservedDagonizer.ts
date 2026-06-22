@@ -1,6 +1,6 @@
 /**
  * ObservedDagonizer: `Dagonizer` subclass that re-exposes the
- * protected lifecycle hooks as a typed observer bag.
+ * protected lifecycle hooks as a typed observer record.
  *
  * Class extension is Dagonizer's only extension surface. The Vue
  * runner needs to react to every node start / end / error / flow-end;
@@ -28,17 +28,16 @@ export interface DispatcherObserver<TState extends NodeStateInterface> {
   readonly onError?:      (nodeName: string, error: Error, state: TState, placementPath: readonly string[]) => void;
 }
 
-export interface ObservedDagonizerOptions<TState extends NodeStateInterface, TServices> extends DagonizerOptionsType<TServices> {
+export interface ObservedDagonizerOptions<TState extends NodeStateInterface> extends DagonizerOptionsType {
   readonly observer?: DispatcherObserver<TState>;
 }
 
 export class ObservedDagonizer<
   TState extends NodeStateInterface,
-  TServices = undefined,
-> extends Dagonizer<TState, TServices> {
+> extends Dagonizer<TState> {
   #observer: DispatcherObserver<TState>;
 
-  constructor(options: ObservedDagonizerOptions<TState, TServices> = {}) {
+  constructor(options: ObservedDagonizerOptions<TState> = {}) {
     super(options);
     this.#observer = options.observer ?? {};
   }

@@ -9,7 +9,6 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { Customs } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
@@ -18,7 +17,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region customs-dwell-node
-export class CustomsDwellNode extends ScalarNode<CartographerState, 'dwelled', CartographerServices> {
+export class CustomsDwellNode extends ScalarNode<CartographerState, 'dwelled'> {
   readonly 'name' = 'customs-dwell';
   readonly 'outputs' = ['dwelled'] as const;
 
@@ -28,7 +27,7 @@ export class CustomsDwellNode extends ScalarNode<CartographerState, 'dwelled', C
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'dwelled'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'dwelled'>> {
     const v = state.canonicalVariant;
     const customsStatus = v.eventType === 'customs-event' ? v.body.customsStatus : '';
     state.customsDwellHours = Customs.dwellHours(customsStatus);

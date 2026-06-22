@@ -209,6 +209,26 @@ const DELIVERY_BODY_DEFAULT: DeliveryConfirmationEvent['body'] = {
 };
 
 export class CanonicalEventVariantBuilder {
+  /**
+   * Type-guard for CanonicalEventVariant. Narrows `unknown` to the discriminated
+   * union by verifying the object shape and eventType discriminant.
+   */
+  static is(value: unknown): value is CanonicalEventVariant {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    if (!('eventType' in value)) return false;
+    const et = value.eventType;
+    if (
+      et !== 'position-ping' &&
+      et !== 'facility-scan' &&
+      et !== 'sensor-reading' &&
+      et !== 'customs-event' &&
+      et !== 'delivery-confirmation'
+    ) return false;
+    if (!('shipmentId' in value) || typeof value.shipmentId !== 'string') return false;
+    if (!('body' in value) || typeof value.body !== 'object' || value.body === null) return false;
+    return true;
+  }
+
   static from(partial: Partial<PositionPingEvent> = {}): CanonicalEventVariant {
     return {
       ...POSITION_PING_DEFAULT,

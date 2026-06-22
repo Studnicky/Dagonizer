@@ -77,7 +77,7 @@ class ScatterContainerState extends NodeStateBase {
 
 /** Reads item from metadata and sets value on the clone. */
 const counterNode = TestNode.make<ScatterContainerState>('counter', ['done'], (state) => {
-  const item = state.getMetadata<number>('item') ?? 0;
+  const item = state.getter.number('item');
   // value is a declared field on ScatterContainerState; no cast required.
   state.value = item;
   return 'done';
@@ -229,72 +229,76 @@ const nodeBodyRunnerDag: DAGType = Validator.dag.validate({
 // outcome. This lets us test the seam wiring without a real isolate.
 // ---------------------------------------------------------------------------
 
-function buildTestContainer(): DagContainerInterface {
-  const innerDispatcher = new Dagonizer<ScatterContainerState>();
-  innerDispatcher.registerNode(counterNode);
-  innerDispatcher.registerDAG(bodyDag);
+class TestContainer {
+  private constructor() {}
 
-  return {
-    async runDag(task: DagTaskInterface<unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
-      const cloneState = task.state;
-      const intermediates: Array<{ output: string | null; skipped: boolean; nodeName: string }> = [];
+  static inProcess(): DagContainerInterface {
+    const innerDispatcher = new Dagonizer<ScatterContainerState>();
+    innerDispatcher.registerNode(counterNode);
+    innerDispatcher.registerDAG(bodyDag);
 
-      if (!(cloneState instanceof ScatterContainerState)) {
-        return {
-          'terminalOutput': 'failed',
-          'errors': [{
-            'code': 'UNEXPECTED_STATE_TYPE',
-            'context': {},
-            'message': 'expected ScatterContainerState',
-            'operation': 'runDag',
-            'recoverable': false,
-            'timestamp': new Date().toISOString(),
-          }],
-          'stateSnapshot': null,
-          'intermediates': [],
-        };
-      }
+    return {
+      async runDag(task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+        const cloneState = task.state;
+        const intermediates: Array<{ output: string | null; skipped: boolean; nodeName: string }> = [];
 
-      try {
-        // Drain the execution iterator: collect intermediates and capture the
-        // terminal result. Execution is a PromiseLike AND AsyncIterable;
-        // iterate manually so we capture both.
-        const exec = innerDispatcher.execute(task.dagName, cloneState);
-        const iter = exec[Symbol.asyncIterator]();
-        let step = await iter.next();
-        while (!step.done) {
-          const nr = step.value;
-          intermediates.push({
-            'output': nr.output,
-            'skipped': nr.skipped,
-            'nodeName': nr.nodeName,
-          });
-          step = await iter.next();
+        if (!(cloneState instanceof ScatterContainerState)) {
+          return {
+            'terminalOutput': 'failed',
+            'errors': [{
+              'code': 'UNEXPECTED_STATE_TYPE',
+              'context': {},
+              'message': 'expected ScatterContainerState',
+              'operation': 'runDag',
+              'recoverable': false,
+              'timestamp': new Date().toISOString(),
+            }],
+            'stateSnapshot': null,
+            'intermediates': [],
+          };
         }
-        const terminal = step.value;
-        return {
-          'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
-          'errors': [...terminal.state.errors],
-          'stateSnapshot': terminal.state.snapshot(),
-          'intermediates': intermediates,
-        };
-      } catch (err: unknown) {
-        return {
-          'terminalOutput': 'failed',
-          'errors': [{
-            'code': 'CONTAINER_ERROR',
-            'context': {},
-            'message': err instanceof Error ? err.message : String(err),
-            'operation': 'runDag',
-            'recoverable': false,
-            'timestamp': new Date().toISOString(),
-          }],
-          'stateSnapshot': null,
-          'intermediates': [],
-        };
-      }
-    },
-  };
+
+        try {
+          // Drain the execution iterator: collect intermediates and capture the
+          // terminal result. Execution is a PromiseLike AND AsyncIterable;
+          // iterate manually so we capture both.
+          const exec = innerDispatcher.execute(task.dagName, cloneState);
+          const iter = exec[Symbol.asyncIterator]();
+          let step = await iter.next();
+          while (!step.done) {
+            const nr = step.value;
+            intermediates.push({
+              'output': nr.output,
+              'skipped': nr.skipped,
+              'nodeName': nr.nodeName,
+            });
+            step = await iter.next();
+          }
+          const terminal = step.value;
+          return {
+            'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
+            'errors': [...terminal.state.errors],
+            'stateSnapshot': terminal.state.snapshot(),
+            'intermediates': intermediates,
+          };
+        } catch (err: unknown) {
+          return {
+            'terminalOutput': 'failed',
+            'errors': [{
+              'code': 'CONTAINER_ERROR',
+              'context': {},
+              'message': err instanceof Error ? err.message : String(err),
+              'operation': 'runDag',
+              'recoverable': false,
+              'timestamp': new Date().toISOString(),
+            }],
+            'stateSnapshot': null,
+            'intermediates': [],
+          };
+        }
+      },
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +325,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
   // ── (b) Container bound: dag-body routes through container ───────────────
   void it('scatter dag-body with container routes through container; state round-trips', async () => {
-    const testContainer = buildTestContainer();
+    const testContainer = TestContainer.inProcess();
 
     let runDagCallCount = 0;
     const trackingContainer: DagContainerInterface = {
@@ -459,7 +463,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
       const dispatcher = useContainer
         ? new Dagonizer<ScatterContainerState>({
-            'containers': { [CONTAINER_ROLE]: buildTestContainer() },
+            'containers': { [CONTAINER_ROLE]: TestContainer.inProcess() },
           })
         : new Dagonizer<ScatterContainerState>();
 
