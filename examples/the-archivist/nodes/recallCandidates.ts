@@ -30,7 +30,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeOutputType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { NodeOutputType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import { BookBuilder } from '../entities/Book.ts';
@@ -88,11 +88,11 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled'>
   }
 
   /** Public per-item entry point for tests and dispatch delegation. */
-  public async runItem(state: ArchivistState, context: NodeContextType): Promise<NodeOutputType<'recalled'>> {
-    return this.executeOne(state, context);
+  public async runItem(state: ArchivistState): Promise<NodeOutputType<'recalled'>> {
+    return this.executeOne(state);
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     const memory   = this.services.memory;
     const embedder = this.services.embedder;
 

@@ -34,7 +34,7 @@ export class RespondToVisitorNode extends ScalarNode<ArchivistState, 'success'> 
     };
   }
 
-  protected override async executeOne(_state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne() {
     return NodeOutputBuilder.of('success');
   }
 }
@@ -48,7 +48,7 @@ export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success'> {
     };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     state.draft = "I only help with finding and identifying books. What title or topic interests you?";
     return NodeOutputBuilder.of('success');
   }

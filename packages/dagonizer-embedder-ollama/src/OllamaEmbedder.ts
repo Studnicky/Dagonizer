@@ -36,7 +36,6 @@
 
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
@@ -194,7 +193,7 @@ export class OllamaEmbedder extends BaseEmbedder {
    * cascade routes around the embedder. Symmetric with
    * `OllamaApiAdapter.probe`.
    */
-  override async probe(_options?: AbortableOptionsType): Promise<boolean> {
+  override async probe(): Promise<boolean> {
     const controller = new AbortController();
     const timer = setTimeout(() => { controller.abort(); }, PROBE_TIMEOUT_MS);
     const headers: Record<string, string> = {};

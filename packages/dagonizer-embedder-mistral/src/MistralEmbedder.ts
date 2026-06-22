@@ -26,7 +26,6 @@
 
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
-import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
@@ -108,7 +107,7 @@ export class MistralEmbedder extends BaseEmbedder {
    * Probe true when a non-empty API key was supplied. Never throws.
    * Symmetric with `MistralApiAdapter.probe`.
    */
-  override async probe(_options?: AbortableOptionsType): Promise<boolean> {
+  override async probe(): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 

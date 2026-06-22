@@ -14,7 +14,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 
@@ -33,7 +33,7 @@ export class ExtractQuerySalvageNode extends ScalarNode<ArchivistState, 'done'> 
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     state.terms = state.query
       .toLowerCase()
       .split(/\s+/u)
@@ -55,7 +55,7 @@ export class DecideToolsSalvageNode extends ScalarNode<ArchivistState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
     return NodeOutputBuilder.of('done');
   }
@@ -73,7 +73,7 @@ export class ClassifyIntentSalvageNode extends ScalarNode<ArchivistState, 'done'
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     state.intent = 'search';
     return NodeOutputBuilder.of('done');
   }
@@ -91,7 +91,7 @@ export class RankCandidatesSalvageNode extends ScalarNode<ArchivistState, 'done'
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne() {
     return NodeOutputBuilder.of('done');
   }
 }
@@ -112,7 +112,7 @@ export class ComposeResponseSalvageNode extends ScalarNode<ArchivistState, 'done
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     state.draft = COMPOSE_SALVAGE_DRAFT;
     return NodeOutputBuilder.of('done');
   }
@@ -134,7 +134,7 @@ export class ComposeEmptyResponseSalvageNode extends ScalarNode<ArchivistState, 
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     state.draft = EMPTY_SALVAGE_DRAFT;
     return NodeOutputBuilder.of('done');
   }
@@ -155,7 +155,7 @@ export class ComposeMemoryResponseSalvageNode extends ScalarNode<ArchivistState,
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     state.draft = MEMORY_SALVAGE_DRAFT;
     return NodeOutputBuilder.of('done');
   }

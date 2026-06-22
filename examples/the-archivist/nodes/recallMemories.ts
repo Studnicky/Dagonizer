@@ -30,7 +30,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { MemoryDigest } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -85,7 +85,7 @@ export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled'> {
     this.services = services;
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  protected override async executeOne(state: ArchivistState) {
     const memory = this.services.memory;
     const currentGraphIri = state.runId !== '' ? MemoryStore.stateGraphIri(state.runId).value : null;
 

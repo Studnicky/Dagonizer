@@ -98,7 +98,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
    * No network or browser API is required to enumerate it. The
    * returned Promise always resolves immediately.
    */
-  override listModels(_options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
+  override listModels(): Promise<readonly LlmModelType[]> {
     return Promise.resolve([{ 'name': GEMINI_NANO_MODEL_ID, 'variant': 'chat', 'cloud': false }]);
   }
 

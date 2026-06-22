@@ -4,7 +4,7 @@
  * Uses `CanonicalId.dedupe` to collapse multi-source hits sharing the
  * same canonical id (ISBN-13 → ISBN-10 → work URN). A book seen by
  * both OpenLibrary and Google Books becomes one richer `Candidate` with
- * `notes._sources: ['web-search', 'google-books']`. Wikipedia enrichment
+ * `notes.sources: ['web-search', 'google-books']`. Wikipedia enrichment
  * folds in the same way.
  *
  * After dedupe the shortlist is sorted by score and capped at five.
@@ -80,7 +80,7 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
 
     // #region merge-aggregation
     // Cross-source dedupe: collapses hits sharing the same canonical id,
-    // accumulating notes._sources[] and keeping the richest fields.
+    // accumulating notes.sources[] and keeping the richest fields.
     const deduped = CanonicalId.dedupe(pool);
     // Defensive language filter: scouts already filter, but a candidate
     // can land here from a stale checkpoint or a future source that

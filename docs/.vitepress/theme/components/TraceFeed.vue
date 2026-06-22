@@ -4,8 +4,8 @@
  * logger output.
  *
  * Merges two sources:
- *   • `entries`: node start/end/error events from the ObservedDagonizer
- *     observer (passed down from ArchivistRunner as the `trace` ref).
+ *   • `entries`: node start/end/error events from the ArchivistBrowserObserver
+ *     lifecycle hooks (passed down from ArchivistRunner as the `trace` ref).
  *   • `logEvents`: the reactive `DomConsoleLogger.events` array (info/warn/
  *     result lines), owned by ArchivistRunner and appended to by the logger's
  *     `onEmit` override — no subscribe callback.

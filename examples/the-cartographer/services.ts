@@ -545,14 +545,15 @@ export class CountryCodes {
  * Units: weight conversion to grams.
  */
 export class Units {
+  private static readonly toGramsDispatch: Readonly<Record<string, (value: number) => number>> = {
+    'g':  (value) => value,
+    'kg': (value) => value * 1000,
+    'lb': (value) => value * 453.592,
+    'oz': (value) => value * 28.3495,
+  };
+
   static toGrams(value: number, unit: string): number {
-    switch (unit) {
-      case 'g':  return value;
-      case 'kg': return value * 1000;
-      case 'lb': return value * 453.592;
-      case 'oz': return value * 28.3495;
-      default:   return value;
-    }
+    return (Units.toGramsDispatch[unit] ?? ((v: number) => v))(value);
   }
 }
 // #endregion units-service
@@ -894,7 +895,46 @@ export class Consent {
  *   typedScansGenerator consumes journeyGenerator lazily — no full-feed array.
  *   buildRawScans(n) pulls n journeys, collects then time-sorts — O(n journeys).
  */
+interface TypedScanContext {
+  readonly scan: RawShipmentEvent;
+  readonly pickCustoms: () => 'held' | 'cleared' | 'inspection';
+}
+
 export class ShipmentEvents {
+  private static readonly typedScanDispatch: Readonly<Record<string, (ctx: TypedScanContext) => TypedScan>> = {
+    'sensor-reading': ({ scan }) => {
+      const h = ShipmentEvents.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
+      const b0 = (h >>> 24) & 0xff;
+      const b1 = (h >>> 16) & 0xff;
+      const b2 = (h >>> 8)  & 0xff;
+      return {
+        ...scan,
+        'eventType':   'sensor-reading',
+        'tempC':       Math.round((2 + (b0 / 255) * 6) * 10) / 10,
+        'humidityPct': Math.round(40 + (b1 / 255) * 40),
+        'shockG':      Math.round((b2 / 255) * 30) / 10,
+      };
+    },
+    'customs-event': ({ scan, pickCustoms }) => ({
+      ...scan,
+      'eventType':     'customs-event',
+      'customsStatus': pickCustoms(),
+    }),
+    'delivery-confirmation': ({ scan }) => {
+      const dh = ShipmentEvents.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:delivery`);
+      const deliveredAtMs = 1735689600000 + (dh % 31_536_000_000); // within 2026
+      return {
+        ...scan,
+        'eventType':    'delivery-confirmation',
+        'delivered':    true,
+        'podSignature': `SIG-${scan.shipmentId}-${scan.scanSeq}`,
+        'deliveredAt':  new Date(deliveredAtMs).toISOString(),
+      };
+    },
+    'position-ping':  ({ scan }) => ({ ...scan, 'eventType': 'position-ping' }),
+    'facility-scan':  ({ scan }) => ({ ...scan, 'eventType': 'facility-scan' }),
+  };
+
   private static lcg(seed: number): () => number {
     let state = seed >>> 0;
     return (): number => {
@@ -1361,51 +1401,8 @@ export class ShipmentEvents {
       if (scan === undefined) continue;
 
       // Materialise the typed scan with per-type fields.
-      let typed: TypedScan;
-      switch (slot.eventType) {
-        case 'sensor-reading': {
-          const h = ShipmentEvents.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
-          const b0 = (h >>> 24) & 0xff;
-          const b1 = (h >>> 16) & 0xff;
-          const b2 = (h >>> 8)  & 0xff;
-          typed = {
-            ...scan,
-            'eventType':   'sensor-reading',
-            'tempC':       Math.round((2 + (b0 / 255) * 6) * 10) / 10,
-            'humidityPct': Math.round(40 + (b1 / 255) * 40),
-            'shockG':      Math.round((b2 / 255) * 30) / 10,
-          };
-          break;
-        }
-        case 'customs-event': {
-          typed = {
-            ...scan,
-            'eventType':     'customs-event',
-            'customsStatus': pickCustoms(),
-          };
-          break;
-        }
-        case 'delivery-confirmation': {
-          const dh = ShipmentEvents.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:delivery`);
-          const deliveredAtMs = 1735689600000 + (dh % 31_536_000_000); // within 2026
-          typed = {
-            ...scan,
-            'eventType':    'delivery-confirmation',
-            'delivered':    true,
-            'podSignature': `SIG-${scan.shipmentId}-${scan.scanSeq}`,
-            'deliveredAt':  new Date(deliveredAtMs).toISOString(),
-          };
-          break;
-        }
-        case 'position-ping': {
-          typed = { ...scan, 'eventType': 'position-ping' };
-          break;
-        }
-        case 'facility-scan': {
-          typed = { ...scan, 'eventType': 'facility-scan' };
-          break;
-        }
-      }
+      const handler = ShipmentEvents.typedScanDispatch[slot.eventType] ?? (({ scan: s }) => ({ ...s, 'eventType': 'position-ping' as const }));
+      const typed: TypedScan = handler({ scan, pickCustoms });
 
       yield typed;
       slot.remaining--;

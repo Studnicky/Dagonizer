@@ -17,7 +17,7 @@
 
 // #region node-class
 import type { ArchivistState } from '../ArchivistState.ts';
-import type { ArchivistServices } from '../services.ts';
+import type { ArchivistServices, ClassifiedIntent } from '../services.ts';
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -73,17 +73,33 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput>
 
     try {
       const intent = await this.services.llm.classifyIntent(state.query, summary, conversation, signal);
+      // Guard: empty or unrecognised intent is a classification failure — treat
+      // it the same as a thrown error so the retry/salvage flow decides the path.
+      // The classifier never fabricates an intent it didn't receive.
+      if (intent.length === 0) {
+        if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
+          return NodeOutputBuilder.of('retry');
+        }
+        state.clearAttempts(context.nodeName);
+        return NodeOutputBuilder.of('salvage');
+      }
       state.intent = intent;
       state.clearAttempts(context.nodeName);
-      switch (intent) {
-        case 'off-topic':         return NodeOutputBuilder.of('off-topic');
-        case 'lookup-author':     return NodeOutputBuilder.of('lookup-author');
-        case 'find-reviews':      return NodeOutputBuilder.of('find-reviews');
-        case 'describe-book':     return NodeOutputBuilder.of('describe-book');
-        case 'recommend-similar': return NodeOutputBuilder.of('recommend-similar');
-        case 'recall-memories':   return NodeOutputBuilder.of('recall-memories');
-        default:                  return NodeOutputBuilder.of('on-topic');
-      }
+      // Map every ClassifiedIntent variant to its node output port.
+      // 'search', 'describe', 'recommend' are general on-topic intents that
+      // route through the main pipeline (extract-query → decide-tools → …).
+      const intentDispatch: Record<ClassifiedIntent, IntentOutput> = {
+        'off-topic':         'off-topic',
+        'lookup-author':     'lookup-author',
+        'find-reviews':      'find-reviews',
+        'describe-book':     'describe-book',
+        'recommend-similar': 'recommend-similar',
+        'recall-memories':   'recall-memories',
+        'search':            'on-topic',
+        'describe':          'on-topic',
+        'recommend':         'on-topic',
+      };
+      return NodeOutputBuilder.of(intentDispatch[intent]);
     } catch (err) {
       // External cancellation / run deadline propagates unchanged.
       if (context.signal.aborted) throw err;

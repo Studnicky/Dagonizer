@@ -8,7 +8,7 @@
 
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { QuadType } from '@studnicky/dagonizer/patterns';
-import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { GraphNode } from './GraphNode.js';
 
@@ -22,7 +22,6 @@ export abstract class RecordFindingsNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextType,
   ): Promise<NodeOutputType<'success'>> {
     const entities = this.selectEntities(state);
     for (const entity of entities) {

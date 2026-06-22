@@ -300,17 +300,20 @@ export class CytoscapeRenderer {
       "classes": classes,
     };
 
-    switch (placement['@type']) {
-      case 'SingleNode':
-        return { ...base, "data": { ...base.data, "node": placement.node } };
-      case 'ScatterNode': {
-        const bodyRef = 'node' in placement.body ? placement.body.node : ('dag' in placement.body ? placement.body.dag : `dagFrom:${placement.body.dagFrom}`);
+    const nodeDispatch: Record<PlacementEntryType['@type'], (p: PlacementEntryType) => CytoscapeNodeElementType> = {
+      'SingleNode': (p) => {
+        const sp = p as PlacementEntryType & { '@type': 'SingleNode' };
+        return { ...base, "data": { ...base.data, "node": sp.node } };
+      },
+      'ScatterNode': (p) => {
+        const sp = p as PlacementEntryType & { '@type': 'ScatterNode' };
+        const bodyRef = 'node' in sp.body ? sp.body.node : ('dag' in sp.body ? sp.body.dag : `dagFrom:${sp.body.dagFrom}`);
         // Add dag-reservoir class when reservoir config is present, so a
         // stylesheet or animation layer can target it for the glyph and
         // per-key fill. Per-key fill and per-firing batch size are runtime
         // values — the animation layer renders them from observer buffer-size
         // deltas; this renderer populates the static config only.
-        const scatterClasses = placement.reservoir !== undefined
+        const scatterClasses = sp.reservoir !== undefined
           ? `${base.classes} dag-reservoir`
           : base.classes;
         return {
@@ -319,43 +322,50 @@ export class CytoscapeRenderer {
           "data": {
             ...base.data,
             "body":        bodyRef,
-            "source":      placement.source,
-            "gather":      placement.gather,
-            ...(placement.reducer  !== undefined ? { "reducer":  placement.reducer }  : {}),
-            ...(placement.reservoir !== undefined
+            "source":      sp.source,
+            "gather":      sp.gather,
+            ...(sp.reducer  !== undefined ? { "reducer":  sp.reducer }  : {}),
+            ...(sp.reservoir !== undefined
               ? {
                   "reservoir": {
-                    "keyField": placement.reservoir.keyField,
-                    "capacity": placement.reservoir.capacity,
-                    ...(placement.reservoir.idleMs !== undefined
-                      ? { "idleMs": placement.reservoir.idleMs }
+                    "keyField": sp.reservoir.keyField,
+                    "capacity": sp.reservoir.capacity,
+                    ...(sp.reservoir.idleMs !== undefined
+                      ? { "idleMs": sp.reservoir.idleMs }
                       : {}),
                   },
                 }
               : {}),
           },
         };
-      }
-      case 'EmbeddedDAGNode':
-        return { ...base, "data": { ...base.data, ...(placement.dag !== undefined && { "dag": placement.dag }), ...(placement.dagFrom !== undefined && { "dagFrom": placement.dagFrom }) } };
-      case 'TerminalNode':
+      },
+      'EmbeddedDAGNode': (p) => {
+        const ep = p as PlacementEntryType & { '@type': 'EmbeddedDAGNode' };
+        return { ...base, "data": { ...base.data, ...(ep.dag !== undefined && { "dag": ep.dag }), ...(ep.dagFrom !== undefined && { "dagFrom": ep.dagFrom }) } };
+      },
+      'TerminalNode': (p) => {
+        const tp = p as PlacementEntryType & { '@type': 'TerminalNode' };
         return {
           ...base,
           "data": {
             ...base.data,
-            "outcome": placement.outcome,
+            "outcome": tp.outcome,
           },
         };
-      case 'PhaseNode':
+      },
+      'PhaseNode': (p) => {
+        const pp = p as PlacementEntryType & { '@type': 'PhaseNode' };
         return {
           ...base,
           "data": {
             ...base.data,
-            "phase": placement.phase,
-            "node":  placement.node,
+            "phase": pp.phase,
+            "node":  pp.node,
           },
         };
-    }
+      },
+    };
+    return nodeDispatch[placement['@type']](placement);
   }
 
   /**

@@ -253,11 +253,12 @@ export class GeminiApiAdapter extends BaseAdapter {
   }
 
   #toGeminiToolConfig(choice: ToolChoiceType): Record<string, unknown> {
-    switch (choice.type) {
-      case 'auto':     return { 'mode': 'AUTO' };
-      case 'required': return { 'mode': 'ANY' };
-      case 'none':     return { 'mode': 'NONE' };
-      case 'tool':     return { 'mode': 'ANY', 'allowedFunctionNames': [choice.name] };
-    }
+    const choiceDispatch: Record<ToolChoiceType['type'], (c: ToolChoiceType) => Record<string, unknown>> = {
+      'auto':     () => ({ 'mode': 'AUTO' }),
+      'required': () => ({ 'mode': 'ANY' }),
+      'none':     () => ({ 'mode': 'NONE' }),
+      'tool':     (c) => ({ 'mode': 'ANY', 'allowedFunctionNames': [(c as ToolChoiceType & { type: 'tool' }).name] }),
+    };
+    return choiceDispatch[choice.type](choice);
   }
 }

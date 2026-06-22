@@ -9,7 +9,7 @@
  *
  * Wiring:
  *   - Call `project(state, store)` after every `onNodeEnd` (the
- *     ObservedDagonizer's observer does this automatically).
+ *     ObservedDag subclass does this automatically).
  *   - Call `clear(state, store)` on flow start so a fresh run begins
  *     with no leftover triples in the run's named graph.
  *

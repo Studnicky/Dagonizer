@@ -128,7 +128,7 @@ export class WebWorkerContainer extends DagContainerBase<WebWorkerLikeInterface>
    * Web Workers have no exit event; `terminate()` is synchronous. Resolve
    * immediately so the base's graceful-shutdown race proceeds without delay.
    */
-  protected override awaitWorkerExit(_worker: WebWorkerLikeInterface): Promise<void> {
+  protected override awaitWorkerExit(): Promise<void> {
     return Promise.resolve();
   }
 

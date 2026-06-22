@@ -63,7 +63,7 @@ export class OpenLibraryDocs {
       const summary  = OpenLibraryDocs.pickDescription(doc);
       const subjects = doc.subject?.slice(0, MAX_SUBJECTS);
       const notes: Record<string, unknown> = {
-        '_sources': [sourcesLabel],
+        'sources': [sourcesLabel],
         ...(doc.key !== undefined && { 'openlibraryKey': doc.key }),
       };
       result.push({
