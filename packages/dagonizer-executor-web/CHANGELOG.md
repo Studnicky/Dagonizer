@@ -1,5 +1,14 @@
 # @studnicky/dagonizer-executor-web
 
+## 0.26.0
+
+### Patch Changes
+
+- Updated dependencies [a79da55]
+- Updated dependencies [a79da55]
+- Updated dependencies [a79da55]
+  - @studnicky/dagonizer@0.26.0
+
 ## 0.25.0
 
 ### Patch Changes
