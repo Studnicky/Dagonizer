@@ -102,6 +102,22 @@ import { DAGBuilder } from '@studnicky/dagonizer';
 import type { DispatcherBundleType } from '@studnicky/dagonizer';
 
 // #region dispatcher-bundle
+//
+// IRI identity: DAGBuilder embeds the canonical DAG_CONTEXT in every built
+// DAG's `@context` field. The archivist uses bare node names (e.g.
+// 'recall-context', 'classify-intent') which expand to the default namespace:
+//   https://noocodex.dev/dag/default#recall-context
+//   https://noocodex.dev/dag/default#classify-intent
+//
+// @id values on each node placement follow the urn:noocodex:dag:<dagName>/node/<placementName>
+// convention produced by DAGIdentity.placementId(), e.g.:
+//   urn:noocodex:dag:the-archivist/node/recall-context
+//
+// A plugin shipping nodes under its own namespace would declare a prefix in
+// the bundle's `context` field — e.g. { context: { archivist: 'https://archivist.example.com/' } }
+// — and use prefixed names like 'archivist:recallContext' to prevent collisions
+// with other plugins that might register a node named 'recallContext'.
+// See docs/guide/iri-identity.md for the full expansion rule set.
 export class ArchivistBundleFactory {
   static create(nodes: ArchivistNodes): DispatcherBundleType<ArchivistState> {
     const dag = new DAGBuilder('the-archivist', '6.0')

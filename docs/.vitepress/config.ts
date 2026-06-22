@@ -100,6 +100,8 @@ const sidebar = [
       { text: 'Example 19: Phase nodes',               link: '/examples/19-phase-nodes' },
       { text: 'Example 20: Streaming execution',       link: '/examples/20-streaming' },
       { text: 'Example 21: Per-node timeout',          link: '/examples/21-per-node-timeout' },
+      { text: 'Example 28: DagRunner',                link: '/examples/28-runner' },
+      { text: 'Example 30: EventBus and SseStream',    link: '/examples/30-progress' },
     ],
   },
   {
@@ -128,9 +130,10 @@ const sidebar = [
     text: 'Examples — LLM / Agent',
     collapsed: false,
     items: [
-      { text: 'Example 24: LLM adapter', link: '/examples/24-llm-adapter' },
-      { text: 'Example 25: Embedder',    link: '/examples/25-embedder' },
-      { text: 'Example 26: Tool use',    link: '/examples/26-tool-use' },
+      { text: 'Example 24: LLM adapter',  link: '/examples/24-llm-adapter' },
+      { text: 'Example 25: Embedder',     link: '/examples/25-embedder' },
+      { text: 'Example 26: Tool use',     link: '/examples/26-tool-use' },
+      { text: 'Example 29: AgentBuilder', link: '/examples/29-agent-builder' },
     ],
   },
   {
@@ -144,6 +147,7 @@ const sidebar = [
       { text: 'Example: State accessor',              link: '/examples/state-accessor' },
       { text: 'Example: Remote store',                link: '/examples/store-remote' },
       { text: 'Example: Virtual clock',               link: '/examples/virtual-clock' },
+      { text: 'Example 31: IRI identity',             link: '/examples/31-iri-identity' },
     ],
   },
   {
@@ -169,6 +173,7 @@ const sidebar = [
       { text: 'Checkpoint persistence',    link: '/guide/persistence' },
       { text: 'Visualization',             link: '/guide/visualization' },
       { text: 'Distribution and cloud',    link: '/guide/distribution' },
+      { text: 'IRI identity',              link: '/guide/iri-identity' },
     ],
   },
   {
@@ -196,6 +201,7 @@ const sidebar = [
       { text: 'Store',      link: '/reference/store' },
       { text: 'Entities',   link: '/reference/entities' },
       { text: 'Testing',    link: '/reference/testing' },
+      { text: 'Runner',    link: '/reference/runner' },
       { text: 'Container', link: '/reference/container' },
       { text: 'Channels',  link: '/reference/channels' },
       { text: 'Errors',    link: '/reference/errors' },

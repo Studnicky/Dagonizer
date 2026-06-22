@@ -1,6 +1,6 @@
 ---
 title: 'Conversational & interactive nodes'
-description: 'Patterns for slot-filling, turn-based dialogs, and human-in-the-loop workflows within a DAG.'
+description: 'Patterns for slot-filling, turn-based dialogs, human-in-the-loop workflows, and the canonical 8-node agent loop (AgentBuilder) within a DAG.'
 seeAlso:
   - text: 'State & metadata'
     link: './shared-state'
@@ -11,6 +11,9 @@ seeAlso:
   - text: 'Dependency injection'
     link: './services'
     description: 'inject IO adapters via node constructors'
+  - text: 'Example 29: AgentBuilder'
+    link: '../examples/29-agent-builder'
+    description: 'working example of the 8-node agent loop with stub LLM'
   - text: 'Lifecycle phases'
     link: './lifecycle-phases'
     description: 'understand when a DAG completes vs. when it pauses'
@@ -515,3 +518,128 @@ Both nocturne and Foundersmax demonstrate these patterns. To adopt:
 5. **Plan for persistence**: You own the state store. Use a database, file system, Redis, or whatever fits your deployment.
 
 Future versions of `@studnicky/dagonizer` will export `HandoffMachine` and an `InteractiveNode` base class as optional consumables, reducing boilerplate across projects.
+
+---
+
+## Agent loop {#agent-loop}
+
+The patterns above describe how to structure a single DAG turn. When the agent
+needs to call tools and loop back to the model with the results, the turn
+contains the inner loop itself: build request → call model → inspect variant →
+dispatch tools → collect results → loop.
+
+### The canonical 8-node topology
+
+```
+build-request
+  └─ ready ──► call-model
+                └─ text|tools|mixed ──► normalize-response
+                     ├─ text  ──► append-assistant ──► end-done (completed)
+                     └─ tools|mixed ──► decode-tools
+                                          └─ decoded ──► normalize-tools
+                                               └─ valid ──► worksets
+                                                    └─ ready ──► dispatch-tools
+                                                         (scatter: dagFrom: dagName)
+                                                         └─ collect-results ──► build-request
+```
+
+Every LLM-with-tools agent repeats this structure. `AgentBuilder.loop` captures
+the verified topology so callers subclass rather than re-wire.
+
+### AgentBuilder.loop
+
+```ts
+import {
+  AgentBuilder,
+  BuildChatRequestNode,
+  CallModelNode,
+  NormalizeResponseNode,
+  DecodeTextToolCallsNode,
+  NormalizeToolCallsNode,
+  BuildToolWorksetsNode,
+  CollectToolResultsNode,
+  AppendAssistantNode,
+} from '@studnicky/dagonizer/patterns';
+import type { AgentLoopNodesType } from '@studnicky/dagonizer/patterns';
+
+const nodes: AgentLoopNodesType = {
+  chatRequest:         new MyBuildChatRequestNode(),
+  callModel:           new MyCallModelNode(llm),
+  normalizeResponse:   new MyNormalizeResponseNode(),
+  decodeTextToolCalls: new MyDecodeTextToolCallsNode(),
+  normalizeToolCalls:  new MyNormalizeToolCallsNode(),
+  toolWorksets:        new MyBuildToolWorksetsNode(),
+  collectToolResults:  new MyCollectToolResultsNode(),
+  appendAssistant:     new MyAppendAssistantNode(),
+};
+
+// Assemble the DAGType in one call.
+const dag = AgentBuilder.loop(nodes, { name: 'my-agent', version: '1' });
+
+const dispatcher = new Dagonizer<AgentState>();
+// Register all 8 nodes, tool bundle, and the assembled DAG.
+dispatcher.registerNode(nodes.chatRequest);
+dispatcher.registerNode(nodes.callModel);
+// … register remaining nodes …
+dispatcher.registerBundle(toolRegistry.bundle()); // tool:<name> DAGs
+dispatcher.registerDAG(dag);
+```
+
+### Subclassing each base node
+
+Each abstract base node separates framework concerns (error wrapping, routing)
+from domain concerns (state reads and writes). Implement only the abstract
+template methods for your state shape:
+
+| Node | Template methods |
+|------|-----------------|
+| `BuildChatRequestNode` | `buildRequest(state, ctx): ChatRequestType` |
+| `CallModelNode` | `getRequest(state, ctx)`, `storeResponse(state, response, ctx)` |
+| `NormalizeResponseNode` | `getResponse(state, ctx): ChatResponseType \| null` |
+| `DecodeTextToolCallsNode` | `getText(state, ctx)`, `storeToolCalls(state, calls, ctx)` |
+| `NormalizeToolCallsNode` | `getToolCalls(state, ctx)`, `writeNormalized(state, calls, ctx)` |
+| `BuildToolWorksetsNode` | `getToolCalls`, `classifyCall`, `writeSafeWorkset`, `writeExclusiveWorkset` |
+| `CollectToolResultsNode` | `getGatheredResults(state, ctx)`, `writeResult(state, results, ctx)` |
+| `AppendAssistantNode` | `getResponse(state, ctx)`, `append(state, response, ctx)` |
+
+`CallModelNode` receives the `LlmAdapterInterface` via its constructor —
+dependency injection at the node level:
+
+```ts
+class MyCallModelNode extends CallModelNode<AgentState> {
+  readonly name = 'call-model';
+  constructor(llm: LlmAdapterInterface) { super(llm); }
+
+  protected getRequest(state: AgentState, _ctx: NodeContextType): ChatRequestType {
+    if (state.chatRequest === null) throw new Error('chatRequest not set');
+    return state.chatRequest;
+  }
+
+  protected storeResponse(state: AgentState, response: ChatResponseType, _ctx: NodeContextType): void {
+    state.chatResponse = response;
+  }
+}
+```
+
+### Tool dispatch via dagFrom
+
+`BuildToolWorksetsNode` stamps each scatter item with
+`dagName: 'tool:' + call.name`. The scatter placement uses
+`{ dagFrom: 'dagName' }` so the engine resolves the body DAG from each item at
+runtime. Register tool DAGs with `toolRegistry.bundle()`:
+
+```ts
+import { ToolRegistry } from '@studnicky/dagonizer/tool';
+
+const tools = new ToolRegistry();
+tools.register(new MyCalculatorTool());
+tools.register(new MySearchTool());
+
+dispatcher.registerBundle(tools.bundle());
+// Registers tool:calculator and tool:search as embeddable DAGs.
+```
+
+### Cross-reference
+
+See [Example 29: AgentBuilder](../examples/29-agent-builder) for a complete
+working example with a stub LLM adapter and all 8 subclasses wired end-to-end.

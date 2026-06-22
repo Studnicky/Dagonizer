@@ -1,6 +1,6 @@
 ---
 title: 'Observability'
-description: 'Subclass Dagonizer and override protected on* hooks to observe every execution boundary.'
+description: 'Subclass Dagonizer and override protected on* hooks to observe every execution boundary. Wire hooks to an EventBus for decoupled multi-consumer observability.'
 seeAlso:
   - text: 'Cancellation'
     link: './cancellation'
@@ -11,6 +11,9 @@ seeAlso:
   - text: 'Dependency injection'
     link: './services'
     description: 'pass loggers or tracers via constructor injection'
+  - text: 'Example 30: EventBus and SseStream'
+    link: '../examples/30-progress'
+    description: 'complete example: hooks → bus → console + SSE + metrics'
 ---
 
 # Observability
@@ -82,6 +85,94 @@ Wire `@opentelemetry/api` in through the constructor as a `Tracer` instance. The
 When one consumer owns the dispatcher, the subclass pattern is sufficient. For multiple observers (logger plus tracer plus metrics), accept each as a constructor parameter and dispatch to all inside the relevant hook overrides:
 
 <<< @/../examples/18-observability.ts#multi-observer
+
+## EventBus: decoupled multi-consumer observability
+
+The subclass pattern works when one consumer owns the dispatcher. When multiple orthogonal consumers need to observe the same run — a console logger, an SSE endpoint, and a metrics counter — the `EventBus` from `@studnicky/dagonizer/progress` decouples the hook implementation from each consumer.
+
+Instead of dispatching to every observer inside each hook body, the subclass publishes one structured event per hook, and each observer subscribes independently. Adding a new observer does not require touching the dispatcher.
+
+```ts
+import { Dagonizer } from '@studnicky/dagonizer';
+import { EventBus } from '@studnicky/dagonizer/progress';
+import type { BusEventEnvelopeType } from '@studnicky/dagonizer/progress';
+
+type LifecyclePayloadType =
+  | { event: 'flowStart'; dagName: string }
+  | { event: 'flowEnd';   dagName: string; outcome: string }
+  | { event: 'nodeStart'; nodeName: string; path: string }
+  | { event: 'nodeEnd';   nodeName: string; output: string | null; path: string }
+  | { event: 'nodeError'; nodeName: string; message: string };
+
+class ObservingDispatcher extends Dagonizer<MyState> {
+  readonly #bus: EventBus;
+  readonly #topic: string;
+
+  constructor(bus: EventBus, topic: string) {
+    super();
+    this.#bus = bus;
+    this.#topic = topic;
+  }
+
+  protected override onFlowStart(dagName: string): void {
+    this.#bus.publish(this.#topic, { event: 'flowStart', dagName });
+  }
+
+  protected override onFlowEnd(dagName: string, _state: MyState, result): void {
+    const outcome = result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none';
+    this.#bus.publish(this.#topic, { event: 'flowEnd', dagName, outcome });
+  }
+
+  protected override onNodeStart(nodeName: string, _state: MyState, path: readonly string[]): void {
+    this.#bus.publish(this.#topic, { event: 'nodeStart', nodeName, path: path.join('/') });
+  }
+
+  protected override onNodeEnd(nodeName: string, output: string | null, _state: MyState, path: readonly string[]): void {
+    this.#bus.publish(this.#topic, { event: 'nodeEnd', nodeName, output, path: path.join('/') });
+  }
+
+  protected override onError(nodeName: string, error: Error, _state: MyState, path: readonly string[]): void {
+    this.#bus.publish(this.#topic, { event: 'nodeError', nodeName, message: error.message });
+  }
+}
+```
+
+Wire consumers before executing:
+
+```ts
+const bus = new EventBus();
+
+// Consumer A: console logger
+bus.subscribe('lifecycle', (e: BusEventEnvelopeType) => {
+  const p = e.payload as LifecyclePayloadType;
+  console.log(`[log] ${p.event}`);
+});
+
+// Consumer B: metrics counter
+const metrics = { nodeStart: 0, nodeEnd: 0 };
+bus.subscribe('lifecycle', (e: BusEventEnvelopeType) => {
+  const p = e.payload as LifecyclePayloadType;
+  if (p.event === 'nodeStart') metrics.nodeStart++;
+  if (p.event === 'nodeEnd')   metrics.nodeEnd++;
+});
+
+// Consumer C: SSE endpoint (ReadableStream piped as response body)
+import { SseStream } from '@studnicky/dagonizer/progress';
+const stream = SseStream.of(bus, ['lifecycle'], { heartbeatMs: 15_000 });
+// return new Response(stream.readable, { headers: { 'Content-Type': 'text/event-stream' } });
+
+const dispatcher = new ObservingDispatcher(bus, 'lifecycle');
+// register nodes + DAG ...
+await dispatcher.execute('my-dag', state);
+
+bus.dispose(); // unsubscribes all consumers
+```
+
+**EventBus delivery is synchronous.** Every subscriber fires inline before `publish` returns, in subscription order. A throwing subscriber is caught and ignored so that sibling subscribers still receive the event.
+
+**SseStream heartbeats.** The default heartbeat interval is 15 000 ms (a `: heartbeat\n\n` SSE comment frame, invisible to `EventSource` listeners). Set `heartbeatMs: 0` to disable in tests. The heartbeat timer is cleared when the consumer cancels the stream.
+
+See [Example 30: EventBus and SseStream](../examples/30-progress) for a complete runnable demonstration.
 
 ## Related reference
 
