@@ -14,10 +14,9 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
-import type { ArchivistServices } from '../services.ts';
 
 /** Cap on naive split terms. */
 const MAX_NAIVE_TERMS = 6;
@@ -27,14 +26,14 @@ const MAX_NAIVE_TERMS = 6;
  * caps at six. Deterministic; no LLM. Writes `state.terms` and rejoins at
  * decide-tools.
  */
-export class ExtractQuerySalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
+export class ExtractQuerySalvageNode extends ScalarNode<ArchivistState, 'done'> {
   readonly name = 'extract-query-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState) {
     state.terms = state.query
       .toLowerCase()
       .split(/\s+/u)
@@ -49,14 +48,14 @@ export class ExtractQuerySalvageNode extends ScalarNode<ArchivistState, 'done', 
  * arg; each scout falls back to `state.terms.join(' ')`. Rejoins at
  * recall-candidates.
  */
-export class DecideToolsSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
+export class DecideToolsSalvageNode extends ScalarNode<ArchivistState, 'done'> {
   readonly name = 'decide-tools-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState) {
     state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
     return NodeOutputBuilder.of('done');
   }
@@ -67,14 +66,14 @@ export class DecideToolsSalvageNode extends ScalarNode<ArchivistState, 'done', A
  * so the visitor still gets a book search. Rejoins at the on-topic search
  * branch.
  */
-export class ClassifyIntentSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
+export class ClassifyIntentSalvageNode extends ScalarNode<ArchivistState, 'done'> {
   readonly name = 'classify-intent-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState) {
     state.intent = 'search';
     return NodeOutputBuilder.of('done');
   }
@@ -85,14 +84,14 @@ export class ClassifyIntentSalvageNode extends ScalarNode<ArchivistState, 'done'
  * (deterministic given the same inputs). No fabricated scores. Rejoins at
  * merge-candidates, which soft-gates on emptiness.
  */
-export class RankCandidatesSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
+export class RankCandidatesSalvageNode extends ScalarNode<ArchivistState, 'done'> {
   readonly name = 'rank-candidates-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne() {
     return NodeOutputBuilder.of('done');
   }
 }
@@ -106,14 +105,14 @@ const COMPOSE_SALVAGE_DRAFT =
  * budget. Emit a deterministic acknowledgement rather than fabricating a
  * fluent answer, then exit the compose loop.
  */
-export class ComposeResponseSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
+export class ComposeResponseSalvageNode extends ScalarNode<ArchivistState, 'done'> {
   readonly name = 'compose-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState) {
     state.draft = COMPOSE_SALVAGE_DRAFT;
     return NodeOutputBuilder.of('done');
   }
@@ -128,14 +127,14 @@ const EMPTY_SALVAGE_DRAFT =
  * after retries. Emit the deterministic acknowledgement so the visitor always
  * gets a response, then route on to respond-to-visitor.
  */
-export class ComposeEmptyResponseSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
+export class ComposeEmptyResponseSalvageNode extends ScalarNode<ArchivistState, 'done'> {
   readonly name = 'compose-empty-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState) {
     state.draft = EMPTY_SALVAGE_DRAFT;
     return NodeOutputBuilder.of('done');
   }
@@ -149,14 +148,14 @@ const MEMORY_SALVAGE_DRAFT =
  * compose-memory-response salvage: the recall composer exhausted its budget.
  * Emit a deterministic acknowledgement and route on to respond-to-visitor.
  */
-export class ComposeMemoryResponseSalvageNode extends ScalarNode<ArchivistState, 'done', ArchivistServices> {
+export class ComposeMemoryResponseSalvageNode extends ScalarNode<ArchivistState, 'done'> {
   readonly name = 'compose-memory-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState) {
     state.draft = MEMORY_SALVAGE_DRAFT;
     return NodeOutputBuilder.of('done');
   }

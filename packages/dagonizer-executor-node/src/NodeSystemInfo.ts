@@ -28,7 +28,7 @@ export interface OsServicesInterface {
 }
 
 // ---------------------------------------------------------------------------
-// NodeSystemInfoServicesType: top-level DI bag
+// NodeSystemInfoServicesType: top-level DI record
 // ---------------------------------------------------------------------------
 
 export type NodeSystemInfoServicesType = {

@@ -15,11 +15,11 @@ import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
 import type { ClassifiedIntent } from '../../services.ts';
 import {
-  cosineSimilarity,
   DEFAULT_CONFIDENCE_FLOOR,
   IntentClassifier,
   INTENT_DESCRIPTIONS,
   INTENT_LABELS,
+  Vector,
 } from '../../providers/IntentClassifier.ts';
 
 const DIM = INTENT_LABELS.length;
@@ -75,24 +75,24 @@ class IntentVectors {
 }
 
 void test('cosineSimilarity: orthogonal vectors score 0', () => {
-  assert.equal(cosineSimilarity([1, 0, 0], [0, 1, 0]), 0);
+  assert.equal(Vector.cosineSimilarity([1, 0, 0], [0, 1, 0]), 0);
 });
 
 void test('cosineSimilarity: identical vectors score 1', () => {
   const v = [0.5, 0.5, 0.7];
-  assert.equal(Math.abs(cosineSimilarity(v, v) - 1) < 1e-9, true);
+  assert.equal(Math.abs(Vector.cosineSimilarity(v, v) - 1) < 1e-9, true);
 });
 
 void test('cosineSimilarity: opposite vectors score -1', () => {
-  assert.equal(cosineSimilarity([1, 0], [-1, 0]), -1);
+  assert.equal(Vector.cosineSimilarity([1, 0], [-1, 0]), -1);
 });
 
 void test('cosineSimilarity: length mismatch returns 0', () => {
-  assert.equal(cosineSimilarity([1, 0], [1, 0, 0]), 0);
+  assert.equal(Vector.cosineSimilarity([1, 0], [1, 0, 0]), 0);
 });
 
 void test('cosineSimilarity: zero-norm input returns 0', () => {
-  assert.equal(cosineSimilarity([0, 0, 0], [1, 0, 0]), 0);
+  assert.equal(Vector.cosineSimilarity([0, 0, 0], [1, 0, 0]), 0);
 });
 
 void test('IntentClassifier.create embeds every anchor once', async () => {

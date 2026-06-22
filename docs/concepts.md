@@ -34,8 +34,8 @@ A single item is a batch of one; the engine never processes a scalar specially. 
 
 You almost never write `execute` by hand. Nodes descend from the **taxonomy**:
 
-- **`MonadicNode<TState, TOutput, TServices>`** — the root node base (the *monad*). Implements `NodeInterface` and supplies `name` / `outputs` / `contract` / `timeout` / `validate` / `destroy`, leaving `execute(batch)` abstract. Extend it directly to author a **batch-native** node — the hot path where one call processes the whole batch and hits shared caches across it.
-- **`ScalarNode<TState, TOutput, TServices>`** — extends `MonadicNode` and is the **per-item** specialization. You implement `protected executeOne(state, context): Promise<NodeOutputType<TOutput>>`; the base loops it over the batch and groups items by the returned port. This is the common case.
+- **`MonadicNode<TState, TOutput>`** — the root node base (the *monad*). Implements `NodeInterface` and supplies `name` / `outputs` / `contract` / `timeout` / `validate` / `destroy`, leaving `execute(batch)` abstract. Extend it directly to author a **batch-native** node — the hot path where one call processes the whole batch and hits shared caches across it.
+- **`ScalarNode<TState, TOutput>`** — extends `MonadicNode` and is the **per-item** specialization. You implement `protected executeOne(state, context): Promise<NodeOutputType<TOutput>>`; the base loops it over the batch and groups items by the returned port. This is the common case.
 
 The classify-intent node in the Archivist is a typical `ScalarNode`: its `executeOne` reads the user query, writes a classification to state, and returns one of `'discover' | 'identify' | 'recall' | 'rejected'`.
 
@@ -73,7 +73,7 @@ Five kinds:
 
 ## State
 
-**State** is the shared data bag that travels through every node. It implements `NodeStateInterface` and typically extends `NodeStateBase`. The Archivist's `ArchivistState` carries the user query, classification, retrieved candidates, scout results, composed answer, and persistence metadata.
+**State** is the shared data record that travels through every node. It implements `NodeStateInterface` and typically extends `NodeStateBase`. The Archivist's `ArchivistState` carries the user query, classification, retrieved candidates, scout results, composed answer, and persistence metadata.
 
 All mutations happen in place on the state object. The dispatcher returns the same reference it received.
 
@@ -81,7 +81,7 @@ All mutations happen in place on the state object. The dispatcher returns the sa
 
 - `lifecycle`: discriminated union of the current lifecycle variant plus timestamps
 - `errors` and `warnings`: arrays collected from every node
-- `metadata`: generic key-value bag for cross-node messages
+- `metadata`: generic key-value record for cross-node messages
 - `collectError`, `collectWarning`, `setMetadata`, lifecycle mark methods
 
 `clone()` is called by the dispatcher before scatter clones. The clone carries a copy of `metadata` but resets `lifecycle` to `pending` and clears `errors` and `warnings`. Each child execution is a fresh run.

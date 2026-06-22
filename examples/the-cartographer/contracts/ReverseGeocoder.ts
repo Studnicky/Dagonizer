@@ -7,10 +7,10 @@
  * swappable adapter; the shipped implementation is `OfflineReverseGeocoder`
  * (the `@rapideditor/country-coder` boundary dataset — deterministic, offline,
  * no key/CORS, runs identically in Node 18+ and the browser), used by BOTH the
- * live and the recorded service bags.
+ * live and recorded service configurations.
  *
- * Implementations are injected via the dispatcher services bag and reached at
- * `context.services.reverseGeocoder`. `lookup` honours the abort signal.
+ * Implementations are injected via constructor DI into `ReverseGeocodeNode`.
+ * `lookup` honours the abort signal.
  */
 
 // #region reverse-geocoder-contract

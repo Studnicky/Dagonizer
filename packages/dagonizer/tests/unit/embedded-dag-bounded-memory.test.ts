@@ -108,34 +108,38 @@ const COUNTER_MAPPING = {
 
 // ── DAG builders ──────────────────────────────────────────────────────────────
 
-function singlePlacement(dag: string, name: string, outputs: Record<string, string>): DAGType['nodes'][number] {
-  return {
-    '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
-    '@type': 'SingleNode',
-    name,
-    'node':  name,
-    outputs,
-  };
-}
+class PlacementFixture {
+  private constructor() {}
 
-function embedPlacement(
-  dag: string,
-  name: string,
-  childDag: string,
-  stateMapping: { input: Record<string, string>; output: Record<string, string> },
-): DAGType['nodes'][number] {
-  return {
-    '@id':          `urn:noocodex:dag:${dag}/node/${name}`,
-    '@type':        'EmbeddedDAGNode',
-    name,
-    'dag':          childDag,
-    stateMapping,
-    'outputs':      { 'success': 'end', 'error': 'end' },
-  };
-}
+  static single(dag: string, name: string, outputs: Record<string, string>): DAGType['nodes'][number] {
+    return {
+      '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
+      '@type': 'SingleNode',
+      name,
+      'node':  name,
+      outputs,
+    };
+  }
 
-function terminalPlacement(dag: string): DAGType['nodes'][number] {
-  return { '@id': `urn:noocodex:dag:${dag}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' };
+  static embed(
+    dag: string,
+    name: string,
+    childDag: string,
+    stateMapping: { input: Record<string, string>; output: Record<string, string> },
+  ): DAGType['nodes'][number] {
+    return {
+      '@id':          `urn:noocodex:dag:${dag}/node/${name}`,
+      '@type':        'EmbeddedDAGNode',
+      name,
+      'dag':          childDag,
+      stateMapping,
+      'outputs':      { 'success': 'end', 'error': 'end' },
+    };
+  }
+
+  static terminal(dag: string): DAGType['nodes'][number] {
+    return { '@id': `urn:noocodex:dag:${dag}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' };
+  }
 }
 
 // ── 3-level nesting fixture (outer → mid → inner, each with one node) ─────────
@@ -145,20 +149,20 @@ function terminalPlacement(dag: string): DAGType['nodes'][number] {
 // inner: inc-inner(+1)    → terminal
 
 const innerDAG3 = Validator.dag.validate(TestDag.of('emb3-inner', 'inc-inner', [
-  singlePlacement('emb3-inner', 'inc-inner', { 'done': 'end' }),
-  terminalPlacement('emb3-inner'),
+  PlacementFixture.single('emb3-inner', 'inc-inner', { 'done': 'end' }),
+  PlacementFixture.terminal('emb3-inner'),
 ]));
 
 const midDAG3 = Validator.dag.validate(TestDag.of('emb3-mid', 'inc-mid', [
-  singlePlacement('emb3-mid', 'inc-mid', { 'done': 'embed-inner' }),
-  embedPlacement('emb3-mid', 'embed-inner', 'emb3-inner', VALUE_MAPPING),
-  terminalPlacement('emb3-mid'),
+  PlacementFixture.single('emb3-mid', 'inc-mid', { 'done': 'embed-inner' }),
+  PlacementFixture.embed('emb3-mid', 'embed-inner', 'emb3-inner', VALUE_MAPPING),
+  PlacementFixture.terminal('emb3-mid'),
 ]));
 
 const outerDAG3 = Validator.dag.validate(TestDag.of('emb3-outer', 'inc-outer', [
-  singlePlacement('emb3-outer', 'inc-outer', { 'done': 'embed-mid' }),
-  embedPlacement('emb3-outer', 'embed-mid', 'emb3-mid', VALUE_MAPPING),
-  terminalPlacement('emb3-outer'),
+  PlacementFixture.single('emb3-outer', 'inc-outer', { 'done': 'embed-mid' }),
+  PlacementFixture.embed('emb3-outer', 'embed-mid', 'emb3-mid', VALUE_MAPPING),
+  PlacementFixture.terminal('emb3-outer'),
 ]));
 
 // ── gather for scatter tests ──────────────────────────────────────────────────
@@ -172,7 +176,8 @@ class EmbedCounterGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
-    const current = accessor.get<number>(state, 'counter') ?? 0;
+    const rawCounter = accessor.get(state, 'counter');
+    const current = typeof rawCounter === 'number' ? rawCounter : 0;
     accessor.set(state, 'counter', current + batch.size);
   }
 
@@ -192,9 +197,9 @@ GatherStrategies.register(new EmbedCounterGather());
 // This creates depth-2 nesting inside the scatter body.
 
 const scatterBodyDAG = Validator.dag.validate(TestDag.of('emb-scatter-body', 'inc-counter', [
-  singlePlacement('emb-scatter-body', 'inc-counter', { 'done': 'embed-mid' }),
-  embedPlacement('emb-scatter-body', 'embed-mid', 'emb3-mid', COUNTER_MAPPING),
-  terminalPlacement('emb-scatter-body'),
+  PlacementFixture.single('emb-scatter-body', 'inc-counter', { 'done': 'embed-mid' }),
+  PlacementFixture.embed('emb-scatter-body', 'embed-mid', 'emb3-mid', COUNTER_MAPPING),
+  PlacementFixture.terminal('emb-scatter-body'),
 ]));
 
 class TestEmbedDag {

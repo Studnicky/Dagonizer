@@ -9,16 +9,15 @@ import {
   parentDag,
   MemoryStore,
 } from '../dags/10-shared-state.ts';
-import type { Services } from '../dags/10-shared-state.ts';
 
-describe('10-shared-state: MemoryStore shared across nodes via services bag', () => {
+describe('10-shared-state: MemoryStore shared across nodes via constructor injection', () => {
   it('entries accumulate in order: step-a, child-step, step-b', async () => {
     const logStore = new MemoryStore();
-    const dispatcher = new Dagonizer<NodeStateBase, Services>({ services: { log: logStore } });
+    const dispatcher = new Dagonizer<NodeStateBase>();
 
-    dispatcher.registerNode(new StepANode());
-    dispatcher.registerNode(new StepBNode());
-    dispatcher.registerNode(new ChildStepNode());
+    dispatcher.registerNode(new StepANode(logStore));
+    dispatcher.registerNode(new StepBNode(logStore));
+    dispatcher.registerNode(new ChildStepNode(logStore));
     dispatcher.registerDAG(childDag);
     dispatcher.registerDAG(parentDag);
 
@@ -27,7 +26,8 @@ describe('10-shared-state: MemoryStore shared across nodes via services bag', ()
 
     assert.equal(result.terminalOutcome, 'completed');
 
-    const entries = await logStore.get<string>('entries') ?? '';
+    const rawEntries = await logStore.get('entries');
+    const entries = typeof rawEntries === 'string' ? rawEntries : '';
     assert.ok(
       entries.includes('step-a'),
       `Expected entries to include "step-a" but got: "${entries}"`,
@@ -44,17 +44,18 @@ describe('10-shared-state: MemoryStore shared across nodes via services bag', ()
 
   it('entries appear in step-a → child-step → step-b order', async () => {
     const logStore = new MemoryStore();
-    const dispatcher = new Dagonizer<NodeStateBase, Services>({ services: { log: logStore } });
+    const dispatcher = new Dagonizer<NodeStateBase>();
 
-    dispatcher.registerNode(new StepANode());
-    dispatcher.registerNode(new StepBNode());
-    dispatcher.registerNode(new ChildStepNode());
+    dispatcher.registerNode(new StepANode(logStore));
+    dispatcher.registerNode(new StepBNode(logStore));
+    dispatcher.registerNode(new ChildStepNode(logStore));
     dispatcher.registerDAG(childDag);
     dispatcher.registerDAG(parentDag);
 
     await dispatcher.execute('main-flow', new NodeStateBase());
 
-    const entries = await logStore.get<string>('entries') ?? '';
+    const rawEntries2 = await logStore.get('entries');
+    const entries = typeof rawEntries2 === 'string' ? rawEntries2 : '';
     const parts = entries.split(',').filter(Boolean);
 
     const indexA = parts.indexOf('step-a');

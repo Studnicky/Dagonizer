@@ -22,12 +22,11 @@
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer';
+import type { NodeOutputType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/types';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
-import type { ArchivistServices } from '../services.ts';
 import { ScoutUtils } from './scouts.ts';
 
 /** A single scatter workset entry: names the tool DAG and its call arguments. */
@@ -36,7 +35,7 @@ export type BookWorksetItemType = {
   readonly arguments: JsonObjectType;
 };
 
-export class BuildBookWorksetsNode extends ScalarNode<ArchivistState, 'ready', ArchivistServices> {
+export class BuildBookWorksetsNode extends ScalarNode<ArchivistState, 'ready'> {
   readonly name = 'build-book-worksets';
   readonly outputs = ['ready'] as const;
 
@@ -48,7 +47,6 @@ export class BuildBookWorksetsNode extends ScalarNode<ArchivistState, 'ready', A
 
   protected override async executeOne(
     state: ArchivistState,
-    _context: NodeContextType<ArchivistServices>,
   ): Promise<NodeOutputType<'ready'>> {
     const worksets: BookWorksetItemType[] = [];
 

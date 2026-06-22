@@ -39,8 +39,8 @@ import { strict as assert } from 'node:assert';
 import { Dagonizer } from '@studnicky/dagonizer';
 
 import { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { cartographerBundle, eventPipelineBundle } from '../dag.ts';
+import { GeoResolveDAG } from '../embedded-dags/GeoResolveDAG.ts';
 import { ingestSourceBundle } from '../embedded-dags/IngestSourceDAG.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 
@@ -67,70 +67,71 @@ let failures = 0;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function check(name: string, fn: () => void): void {
-  try {
-    fn();
-    console.log(`✓ ${name}`);
-  } catch (err) {
-    failures++;
-    console.error(`✗ ${name}\n  ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
-/** Call global.gc() when --expose-gc is active; no-op otherwise. */
-function tryGC(): void {
-  // Reach `gc` through `globalThis` so it is a safe property access (undefined
-  // when --expose-gc is absent) rather than a bare reference that throws a
-  // ReferenceError on the missing global.
-  (globalThis as { gc?: () => void }).gc?.();
-}
-
 class Harness {
-  static dispatcher(): Dagonizer<CartographerState, CartographerServices> {
-    const services: CartographerServices = GeoResolvers.recorded();
-    const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ 'services': services });
+  static check(name: string, fn: () => void): void {
+    try {
+      fn();
+      console.log(`✓ ${name}`);
+    } catch (err) {
+      failures++;
+      console.error(`✗ ${name}\n  ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** Call global.gc() when --expose-gc is active; no-op otherwise. */
+  static tryGC(): void {
+    if ('gc' in globalThis) {
+      const gc = Reflect.get(globalThis, 'gc');
+      if (typeof gc === 'function') gc();
+    }
+  }
+
+  static dispatcher(): Dagonizer<CartographerState> {
+    const services = GeoResolvers.recorded();
+    const dispatcher = new Dagonizer<CartographerState>({});
+    dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
     dispatcher.registerBundle(eventPipelineBundle);
     dispatcher.registerBundle(ingestSourceBundle);
     dispatcher.registerBundle(cartographerBundle);
     return dispatcher;
   }
-}
 
-/** Scale eventConfig so that approximately `n` scans are generated. */
-function scaleConfig(state: CartographerState, n: number): void {
-  const factor = Math.max(1, Math.round(n / BASE_SUM));
-  state.eventConfig = state.eventConfig.map((e) => ({
-    'eventType': e.eventType,
-    'count': e.count * factor,
-    'formatMix': e.formatMix.map((m) => ({ ...m })),
-  }));
-}
-
-/** Run the streaming cartographer DAG and return peak heapUsed in bytes. */
-async function runStreaming(n: number): Promise<{ state: CartographerState; peakBytes: number }> {
-  const dispatcher = Harness.dispatcher();
-  const state = new CartographerState();
-  state.useStreamingSource = true;
-  scaleConfig(state, n);
-
-  // Force GC before starting so the baseline is clean.
-  tryGC();
-  let peakBytes = process.memoryUsage().heapUsed;
-
-  const execution = dispatcher.execute('cartographer', state);
-
-  // Sample peak heap on every stage iteration — O(1) per sample, no array accumulation.
-  for await (const _stage of execution) {
-    const current = process.memoryUsage().heapUsed;
-    if (current > peakBytes) peakBytes = current;
+  /** Scale eventConfig so that approximately `n` scans are generated. */
+  static scaleConfig(state: CartographerState, n: number): void {
+    const factor = Math.max(1, Math.round(n / BASE_SUM));
+    state.eventConfig = state.eventConfig.map((e) => ({
+      'eventType': e.eventType,
+      'count': e.count * factor,
+      'formatMix': e.formatMix.map((m) => ({ ...m })),
+    }));
   }
-  await execution;
 
-  // One final sample after execution completes.
-  const finalHeap = process.memoryUsage().heapUsed;
-  if (finalHeap > peakBytes) peakBytes = finalHeap;
+  /** Run the streaming cartographer DAG and return peak heapUsed in bytes. */
+  static async runStreaming(n: number): Promise<{ state: CartographerState; peakBytes: number }> {
+    const dispatcher = Harness.dispatcher();
+    const state = new CartographerState();
+    state.useStreamingSource = true;
+    Harness.scaleConfig(state, n);
 
-  return { state, peakBytes };
+    // Force GC before starting so the baseline is clean.
+    Harness.tryGC();
+    let peakBytes = process.memoryUsage().heapUsed;
+
+    const execution = dispatcher.execute('cartographer', state);
+
+    // Sample peak heap on every stage iteration — O(1) per sample, no array accumulation.
+    for await (const _stage of execution) {
+      const current = process.memoryUsage().heapUsed;
+      if (current > peakBytes) peakBytes = current;
+    }
+    await execution;
+
+    // One final sample after execution completes.
+    const finalHeap = process.memoryUsage().heapUsed;
+    if (finalHeap > peakBytes) peakBytes = finalHeap;
+
+    return { state, peakBytes };
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -140,12 +141,12 @@ async function runStreaming(n: number): Promise<{ state: CartographerState; peak
 console.log('\n── Proof 1: Bounded fold accumulators + heap ratio ──────────────────────────');
 console.log(`Running ${N_SMALL.toLocaleString()} events…`);
 
-const runSmallHeap = await runStreaming(N_SMALL);
+const runSmallHeap = await Harness.runStreaming(N_SMALL);
 const mbSmall      = Math.round(runSmallHeap.peakBytes / 1_048_576);
 
 console.log(`Running ${N_LARGE.toLocaleString()} events (${N_LARGE / N_SMALL}x multiplier)…`);
 
-const runLargeHeap = await runStreaming(N_LARGE);
+const runLargeHeap = await Harness.runStreaming(N_LARGE);
 const mbLarge      = Math.round(runLargeHeap.peakBytes / 1_048_576);
 
 const ratio = runLargeHeap.peakBytes / runSmallHeap.peakBytes;
@@ -163,21 +164,21 @@ if (ratio >= HEAP_RATIO_WARN) {
 
 // Hard assertion: the fold strategy accumulators for N_LARGE must be bounded.
 // These are the quantities that the insights-fold gather controls directly.
-check(`fold accumulators bounded at N=${N_LARGE.toLocaleString()} — sampleRecords ≤ ${MAX_SAMPLE_RECORDS}`, () => {
+Harness.check(`fold accumulators bounded at N=${N_LARGE.toLocaleString()} — sampleRecords ≤ ${MAX_SAMPLE_RECORDS}`, () => {
   assert.ok(
     runLargeHeap.state.sampleRecords.length <= MAX_SAMPLE_RECORDS,
     `sampleRecords.length=${runLargeHeap.state.sampleRecords.length} exceeds cap ${MAX_SAMPLE_RECORDS}`,
   );
 });
 
-check(`fold accumulators bounded at N=${N_LARGE.toLocaleString()} — journeys ≤ ${MAX_SAMPLE_JOURNEYS}`, () => {
+Harness.check(`fold accumulators bounded at N=${N_LARGE.toLocaleString()} — journeys ≤ ${MAX_SAMPLE_JOURNEYS}`, () => {
   assert.ok(
     runLargeHeap.state.journeys.size <= MAX_SAMPLE_JOURNEYS,
     `journeys.size=${runLargeHeap.state.journeys.size} exceeds cap ${MAX_SAMPLE_JOURNEYS}`,
   );
 });
 
-check(`fold accumulators bounded at N=${N_LARGE.toLocaleString()} — insights ≤ 10 continent keys`, () => {
+Harness.check(`fold accumulators bounded at N=${N_LARGE.toLocaleString()} — insights ≤ 10 continent keys`, () => {
   assert.ok(
     runLargeHeap.state.insights.size <= 10,
     `insights.size=${runLargeHeap.state.insights.size} exceeds continent-level cap (expected ~6-8 keys)`,
@@ -192,21 +193,21 @@ console.log('\n── Proof 2: No full-set materialization ───────
 
 const stateLarge = runLargeHeap.state;
 
-check(`sampleRecords is capped at ${MAX_SAMPLE_RECORDS} after ${N_LARGE.toLocaleString()} scans`, () => {
+Harness.check(`sampleRecords is capped at ${MAX_SAMPLE_RECORDS} after ${N_LARGE.toLocaleString()} scans`, () => {
   assert.ok(
     stateLarge.sampleRecords.length <= MAX_SAMPLE_RECORDS,
     `sampleRecords.length=${stateLarge.sampleRecords.length} exceeds cap ${MAX_SAMPLE_RECORDS}`,
   );
 });
 
-check(`journeys is capped at ${MAX_SAMPLE_JOURNEYS} after ${N_LARGE.toLocaleString()} scans`, () => {
+Harness.check(`journeys is capped at ${MAX_SAMPLE_JOURNEYS} after ${N_LARGE.toLocaleString()} scans`, () => {
   assert.ok(
     stateLarge.journeys.size <= MAX_SAMPLE_JOURNEYS,
     `journeys.size=${stateLarge.journeys.size} exceeds cap ${MAX_SAMPLE_JOURNEYS}`,
   );
 });
 
-check(`insights shipmentCount sum is ~${N_LARGE.toLocaleString()} — all scans flowed through`, () => {
+Harness.check(`insights shipmentCount sum is ~${N_LARGE.toLocaleString()} — all scans flowed through`, () => {
   let total = 0;
   for (const [, r] of stateLarge.insights) total += r.shipmentCount;
   // Allow ~15% drop for invalid-coord rejects and geo failures.
@@ -218,7 +219,7 @@ check(`insights shipmentCount sum is ~${N_LARGE.toLocaleString()} — all scans 
   console.log(`  insights shipmentCount total: ${total.toLocaleString()} across ${stateLarge.insights.size} regions`);
 });
 
-check('sampleRecords is non-empty (fold is working)', () => {
+Harness.check('sampleRecords is non-empty (fold is working)', () => {
   assert.ok(stateLarge.sampleRecords.length > 0, 'sampleRecords is empty — gather never fired');
 });
 
@@ -228,21 +229,21 @@ check('sampleRecords is non-empty (fold is working)', () => {
 
 console.log('\n── Proof 3: Correctness (N=210 reference run) ───────────────────────────────');
 
-const runRef = await runStreaming(210);
+const runRef = await Harness.runStreaming(210);
 const stateRef = runRef.state;
 
-check('insights map is populated with at least one region', () => {
+Harness.check('insights map is populated with at least one region', () => {
   assert.ok(stateRef.insights.size > 0, `Expected insights entries, got 0`);
 });
 
-check('insights contains the International Waters / Maritime bucket', () => {
+Harness.check('insights contains the International Waters / Maritime bucket', () => {
   assert.ok(
     stateRef.insights.has('International Waters / Maritime'),
     `Expected 'International Waters / Maritime' in insights, keys: ${[...stateRef.insights.keys()].join(', ')}`,
   );
 });
 
-check('insights keys are continent-level (not bare ISO codes)', () => {
+Harness.check('insights keys are continent-level (not bare ISO codes)', () => {
   for (const key of stateRef.insights.keys()) {
     assert.ok(
       !/^[A-Z]{2,3}$/.test(key),
@@ -251,7 +252,7 @@ check('insights keys are continent-level (not bare ISO codes)', () => {
   }
 });
 
-check('sampleRecords covers >=3 distinct lanes including the order lane', () => {
+Harness.check('sampleRecords covers >=3 distinct lanes including the order lane', () => {
   const lanes = new Set(stateRef.sampleRecords.map((r) => r.routing.path));
   assert.ok(
     lanes.size >= 3,
@@ -263,7 +264,7 @@ check('sampleRecords covers >=3 distinct lanes including the order lane', () => 
   );
 });
 
-check('journeys is non-empty and bounded after small run', () => {
+Harness.check('journeys is non-empty and bounded after small run', () => {
   assert.ok(stateRef.journeys.size > 0, `Expected journeys to be populated, got 0`);
   assert.ok(
     stateRef.journeys.size <= MAX_SAMPLE_JOURNEYS,
@@ -271,7 +272,7 @@ check('journeys is non-empty and bounded after small run', () => {
   );
 });
 
-check('at least one journey has >=2 scans (multi-scan reconstruction works)', () => {
+Harness.check('at least one journey has >=2 scans (multi-scan reconstruction works)', () => {
   const multiScan = [...stateRef.journeys.values()].filter((j) => j.scanCount >= 2);
   assert.ok(
     multiScan.length > 0,
@@ -279,7 +280,7 @@ check('at least one journey has >=2 scans (multi-scan reconstruction works)', ()
   );
 });
 
-check('insights shipmentCount sum matches scan throughput for reference run', () => {
+Harness.check('insights shipmentCount sum matches scan throughput for reference run', () => {
   let total = 0;
   for (const [, r] of stateRef.insights) total += r.shipmentCount;
   assert.ok(total > 0, `shipmentCount sum is 0 — no scans folded into insights`);

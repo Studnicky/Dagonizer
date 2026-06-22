@@ -16,7 +16,6 @@
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
 import { TimeNormalizer } from '../../services.ts';
 import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 import type { GeoErrorRecordType } from '../../errors/GeoErrorRecord.ts';
@@ -35,7 +34,7 @@ const NUMERIC_FIELDS = [
 
 const BOOLEAN_FIELDS = ['marketingConsent', 'delivered'] as const;
 
-export class CoerceTypesNode extends ScalarNode<CartographerState, 'validate-event', CartographerServices> {
+export class CoerceTypesNode extends ScalarNode<CartographerState, 'validate-event'> {
   readonly 'name' = 'coerce-types';
   readonly 'outputs' = ['validate-event'] as const;
 
@@ -60,7 +59,7 @@ export class CoerceTypesNode extends ScalarNode<CartographerState, 'validate-eve
     return false;
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'validate-event'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'validate-event'>> {
     const lineItemErrors: GeoErrorRecordType[] = [];
     const coerced: Array<Record<string, unknown>> = state.mappedRecords.map((rec) => {
       const out: Record<string, unknown> = { ...rec };

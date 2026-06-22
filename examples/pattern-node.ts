@@ -6,7 +6,7 @@
  * call, retry, and abort propagation. IntentClassifier supplies only the four
  * domain methods. A tiny in-process LLM (FixedIntentLlm) returns a deterministic
  * intent word so the example runs offline; production passes a real adapter as
- * the `llm` service.
+ * the `llm` constructor argument.
  *
  * Definition (the DecisionNode subclass): examples/dags/pattern-node.ts
  *
@@ -17,7 +17,6 @@ import { DAG_CONTEXT, Dagonizer } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
 import type { ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
 import type { LlmClientInterface } from '@studnicky/dagonizer/contracts';
-import type { RagServicesType } from '@studnicky/dagonizer-patterns-rag';
 
 import { IntentClassifier, IntentState } from './dags/pattern-node.js';
 
@@ -63,10 +62,8 @@ const dag: DAGType = {
 
 process.stdout.write('\n=== pattern-node: IntentClassifier extends DecisionNode ===\n\n');
 
-const dispatcher = new Dagonizer<IntentState, RagServicesType>({
-  services: { llm: new FixedIntentLlm('search') },
-});
-dispatcher.registerNode(new IntentClassifier());
+const dispatcher = new Dagonizer<IntentState>();
+dispatcher.registerNode(new IntentClassifier(new FixedIntentLlm('search')));
 dispatcher.registerDAG(dag);
 
 const state = new IntentState();

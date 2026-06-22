@@ -38,6 +38,7 @@ export const GeoErrorRecordSchema = {
 
 export type GeoErrorRecordType = FromSchema<typeof GeoErrorRecordSchema>;
 
+
 /** Longest `input` summary retained per record; longer summaries are truncated. */
 const MAX_INPUT_SUMMARY = 80;
 
@@ -45,6 +46,26 @@ const MAX_INPUT_SUMMARY = 80;
 const MAX_MESSAGE = 200;
 
 export class GeoErrorRecord {
+  /**
+   * Type-guard for GeoErrorRecordType. Narrows `unknown` to the schema-derived type.
+   */
+  static is(value: unknown): value is GeoErrorRecordType {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    return (
+      'source' in value && typeof value.source === 'string' &&
+      'variant' in value && typeof value.variant === 'string' &&
+      'message' in value && typeof value.message === 'string' &&
+      'input' in value && typeof value.input === 'string'
+    );
+  }
+
+  /**
+   * Type-guard for an array of GeoErrorRecordType.
+   */
+  static isArray(value: unknown): value is GeoErrorRecordType[] {
+    return Array.isArray(value) && value.every((item) => GeoErrorRecord.is(item));
+  }
+
   /**
    * Capture a caught value into a `GeoErrorRecordType`. `error` is the value a
    * `catch` bound (typed `unknown`); a thrown `Error` yields its class name and

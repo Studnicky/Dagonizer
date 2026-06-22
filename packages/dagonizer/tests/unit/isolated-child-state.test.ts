@@ -109,61 +109,65 @@ class EmbedBodyNode extends ScalarNode<EmbedChildState, 'success'> {
 const embedChildFactory: ChildStateFactoryType = (_parent: NodeStateInterface): EmbedChildState =>
   new EmbedChildState();
 
-function buildEmbedChildDag(name: string): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    'name':     name,
-    'version':  '1',
-    'entrypoint': 'embedBody',
-    'nodes': [
-      {
-        '@id':   `urn:noocodex:dag:${name}/node/embedBody`,
-        '@type': 'SingleNode',
-        'name':  'embedBody',
-        'node':  'embedBody',
-        'outputs': { 'success': 'end' },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  };
-}
+class EmbedDag {
+  private constructor() {}
 
-/** Outer DAG: embeds the child DAG with shared→shared mapping. */
-function buildEmbedOuterDag(name: string, childDagName: string): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    'name':     name,
-    'version':  '1',
-    'entrypoint': 'embed',
-    'nodes': [
-      {
-        '@id':   `urn:noocodex:dag:${name}/node/embed`,
-        '@type': 'EmbeddedDAGNode',
-        'name':  'embed',
-        'dag':   childDagName,
-        'stateMapping': {
-          'input':  { 'shared': 'shared' },
-          'output': { 'shared': 'shared' },
+  static child(name: string): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'embedBody',
+      'nodes': [
+        {
+          '@id':   `urn:noocodex:dag:${name}/node/embedBody`,
+          '@type': 'SingleNode',
+          'name':  'embedBody',
+          'node':  'embedBody',
+          'outputs': { 'success': 'end' },
         },
-        'outputs': { 'success': 'end', 'error': 'end' },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  };
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+  }
+
+  /** Outer DAG: embeds the child DAG with shared→shared mapping. */
+  static outer(name: string, childDagName: string): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'embed',
+      'nodes': [
+        {
+          '@id':   `urn:noocodex:dag:${name}/node/embed`,
+          '@type': 'EmbeddedDAGNode',
+          'name':  'embed',
+          'dag':   childDagName,
+          'stateMapping': {
+            'input':  { 'shared': 'shared' },
+            'output': { 'shared': 'shared' },
+          },
+          'outputs': { 'success': 'end', 'error': 'end' },
+        },
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+  }
 }
 
 void describe('Isolated child state: embedded DAG', () => {
@@ -178,8 +182,8 @@ void describe('Isolated child state: embedded DAG', () => {
 
     dispatcher.registerNode(new EmbedBodyNode());
 
-    const childDag = buildEmbedChildDag('iso-embed-child');
-    const outerDag = buildEmbedOuterDag('iso-embed-outer', 'iso-embed-child');
+    const childDag = EmbedDag.child('iso-embed-child');
+    const outerDag = EmbedDag.outer('iso-embed-outer', 'iso-embed-child');
 
     // Register the child DAG with the isolation factory (fresh EmbedChildState).
     dispatcher.registerDAG(childDag, embedChildFactory);
@@ -236,8 +240,8 @@ void describe('Isolated child state: embedded DAG', () => {
     // Must register the body node so DAG validation passes.
     dispatcher.registerNode(new EmbedBodyNode());
 
-    const childDag = buildEmbedChildDag('iso-factories-child');
-    const outerDag = buildEmbedOuterDag('iso-factories-outer', 'iso-factories-child');
+    const childDag = EmbedDag.child('iso-factories-child');
+    const outerDag = EmbedDag.outer('iso-factories-outer', 'iso-factories-child');
 
     // No explicit factory — should use DEFAULT.
     dispatcher.registerDAG(childDag);
@@ -310,7 +314,7 @@ class ScatterBodyNode extends ScalarNode<ScatterItemState, 'success'> {
 
   protected async executeOne(state: ScatterItemState, _ctx: NodeContextType): Promise<NodeOutputType<'success'>> {
     scatterBodyClassSeen.add(state.constructor.name);
-    const item = state.getMetadata<number>('item') ?? 0;
+    const item = state.getter.number('item');
     state.itemResult = item * 2;
     return { 'errors': [], 'output': 'success' };
   }
@@ -322,65 +326,69 @@ const scatterBodyNode = new ScatterBodyNode();
 const scatterItemFactory: ChildStateFactoryType = (_parent: NodeStateInterface): ScatterItemState =>
   new ScatterItemState();
 
-function buildScatterBodyDag(name: string): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    'name':     name,
-    'version':  '1',
-    'entrypoint': 'scatterBody',
-    'nodes': [
-      {
-        '@id':   `urn:noocodex:dag:${name}/node/scatterBody`,
-        '@type': 'SingleNode',
-        'name':  'scatterBody',
-        'node':  'scatterBody',
-        'outputs': { 'success': 'end' },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  };
-}
+class ScatterDag {
+  private constructor() {}
 
-function buildScatterOuterDag(name: string, bodyDagName: string): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${name}`,
-    '@type':    'DAG',
-    'name':     name,
-    'version':  '1',
-    'entrypoint': 'fan',
-    'nodes': [
-      {
-        '@id':         `urn:noocodex:dag:${name}/node/fan`,
-        '@type':       'ScatterNode',
-        'name':        'fan',
-        'body':        { 'dag': bodyDagName },
-        'source':      'items',
-        'itemKey':     'item',
-        'concurrency': 4,
-        'gather':      { 'strategy': 'item-result-gather', 'target': 'results' },
-        'outputs': {
-          'all-success': 'end',
-          'partial':     'end',
-          'all-error':   'end',
-          'empty':       'end',
+  static body(name: string): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'scatterBody',
+      'nodes': [
+        {
+          '@id':   `urn:noocodex:dag:${name}/node/scatterBody`,
+          '@type': 'SingleNode',
+          'name':  'scatterBody',
+          'node':  'scatterBody',
+          'outputs': { 'success': 'end' },
         },
-      },
-      {
-        '@id':     `urn:noocodex:dag:${name}/node/end`,
-        '@type':   'TerminalNode',
-        'name':    'end',
-        'outcome': 'completed',
-      },
-    ],
-  };
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+  }
+
+  static outer(name: string, bodyDagName: string): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${name}`,
+      '@type':    'DAG',
+      'name':     name,
+      'version':  '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':         `urn:noocodex:dag:${name}/node/fan`,
+          '@type':       'ScatterNode',
+          'name':        'fan',
+          'body':        { 'dag': bodyDagName },
+          'source':      'items',
+          'itemKey':     'item',
+          'concurrency': 4,
+          'gather':      { 'strategy': 'item-result-gather', 'target': 'results' },
+          'outputs': {
+            'all-success': 'end',
+            'partial':     'end',
+            'all-error':   'end',
+            'empty':       'end',
+          },
+        },
+        {
+          '@id':     `urn:noocodex:dag:${name}/node/end`,
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+  }
 }
 
 /**
@@ -398,8 +406,10 @@ class ItemResultGather extends GatherStrategy {
   ): void {
     for (const item of batch) {
       const record = item.state;
-      const current = accessor.get<number[]>(state, 'results') ?? [];
-      const itemResult = accessor.get<number>(record.cloneState, 'itemResult') ?? 0;
+      const rawCurrent = accessor.get(state, 'results');
+      const current: number[] = Array.isArray(rawCurrent) ? rawCurrent.filter((x): x is number => typeof x === 'number') : [];
+      const rawItemResult = accessor.get(record.cloneState, 'itemResult');
+      const itemResult: number = typeof rawItemResult === 'number' ? rawItemResult : 0;
       accessor.set(state, 'results', [...current, itemResult]);
     }
   }
@@ -422,8 +432,8 @@ void describe('Isolated child state: scatter with isolation factory', () => {
     const dispatcher = new Dagonizer<ScatterParentState>();
     dispatcher.registerNode(scatterBodyNode);
 
-    const bodyDag  = buildScatterBodyDag('scatter-iso-body');
-    const outerDag = buildScatterOuterDag('scatter-iso-outer', 'scatter-iso-body');
+    const bodyDag  = ScatterDag.body('scatter-iso-body');
+    const outerDag = ScatterDag.outer('scatter-iso-outer', 'scatter-iso-body');
 
     // Register body DAG with isolation factory (fresh ScatterItemState per item).
     dispatcher.registerDAG(bodyDag, scatterItemFactory);
@@ -455,8 +465,8 @@ void describe('Isolated child state: scatter with isolation factory', () => {
     const dispatcher = new Dagonizer<ScatterParentState>();
     dispatcher.registerNode(scatterBodyNode);
 
-    const bodyDag  = buildScatterBodyDag('scatter-iso-fields-body');
-    const outerDag = buildScatterOuterDag('scatter-iso-fields-outer', 'scatter-iso-fields-body');
+    const bodyDag  = ScatterDag.body('scatter-iso-fields-body');
+    const outerDag = ScatterDag.outer('scatter-iso-fields-outer', 'scatter-iso-fields-body');
 
     dispatcher.registerDAG(bodyDag, scatterItemFactory);
     dispatcher.registerDAG(outerDag);

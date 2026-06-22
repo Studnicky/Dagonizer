@@ -37,7 +37,7 @@ import type { JourneyInsights } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
 import { cartographerBundle, cartographerWorkersBundle } from './dag.ts';
 import { gdprComplianceBundle } from './embedded-dags/GdprComplianceDAG.ts';
-import { geoResolveBundle } from './embedded-dags/GeoResolveDAG.ts';
+import { GeoResolveDAG } from './embedded-dags/GeoResolveDAG.ts';
 import { ingestSourceBundle } from './embedded-dags/IngestSourceDAG.ts';
 import { orderEnrichmentBundle } from './embedded-dags/OrderEnrichmentDAG.ts';
 import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
@@ -212,11 +212,10 @@ if (useWorkers) {
   // worker threads (the registry module reconstructs them per-worker); registering
   // them on the parent satisfies the validator without running them here.
   dispatcher = new ObservedCartographer({
-    'services':   services,
     'containers': { 'cpu': container },
   });
   // Sub-DAG bundles (needed for DAG validator; execution stays in the workers).
-  dispatcher.registerBundle(geoResolveBundle);
+  dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
   // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
@@ -224,8 +223,8 @@ if (useWorkers) {
   // Top-level DAG (cartographerWorkersDAG has container: 'cpu' on process-events).
   dispatcher.registerBundle(cartographerWorkersBundle);
 } else {
-  dispatcher = new ObservedCartographer({ 'services': services });
-  dispatcher.registerBundle(geoResolveBundle);
+  dispatcher = new ObservedCartographer({});
+  dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
   // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
@@ -454,7 +453,10 @@ for (const r of sampleProcessed) {
   actualNodes += rt.redactionRun ? REDACTION_NODES : REDACTION_SKIP_ADAPTER;
 }
 const sampleTotal = sampleProcessed.length;
-const pct = (n: number, base: number): string => base > 0 ? `${Math.round((n / base) * 100)}%` : '0%';
+class Percent {
+  private constructor() { /* static-only */ }
+  static of(n: number, base: number): string { return base > 0 ? `${Math.round((n / base) * 100)}%` : '0%'; }
+}
 const skippedNodes = naiveNodes - actualNodes;
 const redactionPassesAvoided = redSkip;
 const pricingEtaAvoided = priceSkip * ORDER_ENRICH_NODES;
@@ -468,16 +470,16 @@ const ipGeolocateAvoided = geoSkip + ipgeoSkip;          // skipped sub-DAG + GP
 logger.result('\n=== (b2) Routing Savings — from a bounded sample of recent scans ===\n');
 logger.result(`  Sample size: ${sampleTotal} scans (representative bounded FIFO, cap 200 — routing distribution is consistent across the full run)\n`);
 logger.result(`  HEADLINE: deterministic routing skipped ${skippedNodes.toLocaleString('en-US')} node-executions in sample ` +
-  `(~${pct(skippedNodes, naiveNodes)} of the ${naiveNodes.toLocaleString('en-US')} always-run maximum).\n`);
+  `(~${Percent.of(skippedNodes, naiveNodes)} of the ${naiveNodes.toLocaleString('en-US')} always-run maximum).\n`);
 logger.result('  Geo resolution (the real-world win — don\'t hammer the API):');
 logger.result(`    • reverse-geocode (offline country-coder, no network): RESOLVED ${revgeoRun} events · 0 API calls (deterministic, free, no key)`);
 logger.result(`    • ip-geolocate (freeipapi.com, REAL API):              RAN for ${ipgeoRun} events · AVOIDED ${ipGeolocateAvoided} (pre-resolved or no gateway IP)`);
 logger.result(`    • caching collapses repeated IPs → the actual UNIQUE upstream IP calls are far fewer (per-IP cache).`);
 logger.result(`    • multi-modal fusion: ${fusedGpsIp} events fused GPS+IP (agreement → high confidence); the rest are GPS-only.`);
 logger.result('');
-logger.result(`  geo-resolve: RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${pct(geoSkip, sampleTotal)} — source already resolved → geo sub-DAG + IP call avoided)`);
-logger.result(`  redaction:   RAN ${redRun}  ·  SKIPPED ${redSkip} (${pct(redSkip, sampleTotal)} — no PII / not required → redaction sub-DAG bypassed)`);
-logger.result(`  pricing+eta: RAN ${sampleTotal - priceSkip}  ·  SKIPPED ${priceSkip} (${pct(priceSkip, sampleTotal)} — non-order event types carry no basket/delivery)`);
+logger.result(`  geo-resolve: RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${Percent.of(geoSkip, sampleTotal)} — source already resolved → geo sub-DAG + IP call avoided)`);
+logger.result(`  redaction:   RAN ${redRun}  ·  SKIPPED ${redSkip} (${Percent.of(redSkip, sampleTotal)} — no PII / not required → redaction sub-DAG bypassed)`);
+logger.result(`  pricing+eta: RAN ${sampleTotal - priceSkip}  ·  SKIPPED ${priceSkip} (${Percent.of(priceSkip, sampleTotal)} — non-order event types carry no basket/delivery)`);
 logger.result(`  per-event-type lanes: ${[...pathCounts.entries()].sort().map(([p, n]) => `${p}=${n}`).join('  ')}`);
 logger.result(`  cold-chain-check RAN ${coldRun} (sensor lane only) · customs-dwell RAN ${customsRun} (customs lane only)`);
 logger.result('\n  Compute avoided in sample (extrapolates across full run):');

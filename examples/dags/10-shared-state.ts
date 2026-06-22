@@ -1,75 +1,84 @@
 /**
- * 10-shared-state/dags: pure module — services interface, nodes, and DAG consts.
+ * 10-shared-state/dags: pure module — nodes, and DAG consts.
  * No side effects, no dispatcher, no execute.
  * Imported by examples/10-shared-state.ts (the executable entry point).
  */
 
 import {
-  DAGBuilder,
+  DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
+  Validator,
 } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import { MemoryStore } from '@studnicky/dagonizer/store';
 import type { StoreInterface } from '@studnicky/dagonizer/contracts';
-
-// ---------------------------------------------------------------------------
-// Services bag type
-// ---------------------------------------------------------------------------
-
-// #region services
-export interface Services {
-  log: StoreInterface;
-}
-// #endregion services
 
 // ---------------------------------------------------------------------------
 // Nodes: each appends its own name to the store's 'entries' key
 // ---------------------------------------------------------------------------
 
-export class StepANode extends ScalarNode<NodeStateBase, 'done', Services> {
+export class StepANode extends ScalarNode<NodeStateBase, 'done'> {
+  private readonly log: StoreInterface;
   readonly name = 'step-a';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextType<Services>) {
-    await context.services.log.update<string>('entries', (current) => {
-      const existing = current?.split(',').filter(Boolean) ?? [];
+  constructor(log: StoreInterface) {
+    super();
+    this.log = log;
+  }
+
+  protected override async executeOne(_state: NodeStateBase) {
+    await this.log.update('entries', (current) => {
+      const existing = (typeof current === 'string' ? current : '').split(',').filter(Boolean);
       return [...existing, 'step-a'].join(',');
     });
     return NodeOutputBuilder.of('done');
   }
 }
 
-export class StepBNode extends ScalarNode<NodeStateBase, 'done', Services> {
+export class StepBNode extends ScalarNode<NodeStateBase, 'done'> {
+  private readonly log: StoreInterface;
   readonly name = 'step-b';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextType<Services>) {
-    await context.services.log.update<string>('entries', (current) => {
-      const existing = current?.split(',').filter(Boolean) ?? [];
+  constructor(log: StoreInterface) {
+    super();
+    this.log = log;
+  }
+
+  protected override async executeOne(_state: NodeStateBase) {
+    await this.log.update('entries', (current) => {
+      const existing = (typeof current === 'string' ? current : '').split(',').filter(Boolean);
       return [...existing, 'step-b'].join(',');
     });
     return NodeOutputBuilder.of('done');
   }
 }
 
-export class ChildStepNode extends ScalarNode<NodeStateBase, 'done', Services> {
+export class ChildStepNode extends ScalarNode<NodeStateBase, 'done'> {
+  private readonly log: StoreInterface;
   readonly name = 'child-step';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextType<Services>) {
-    await context.services.log.update<string>('entries', (current) => {
-      const existing = current?.split(',').filter(Boolean) ?? [];
+  constructor(log: StoreInterface) {
+    super();
+    this.log = log;
+  }
+
+  protected override async executeOne(_state: NodeStateBase) {
+    await this.log.update('entries', (current) => {
+      const existing = (typeof current === 'string' ? current : '').split(',').filter(Boolean);
       return [...existing, 'child-step'].join(',');
     });
     return NodeOutputBuilder.of('done');
@@ -80,28 +89,73 @@ export class ChildStepNode extends ScalarNode<NodeStateBase, 'done', Services> {
 // DAGs: child DAG placed inside the parent
 // ---------------------------------------------------------------------------
 
-const childStepNode = new ChildStepNode();
-
 // #region child-dag
-export const childDag = new DAGBuilder('sub-flow', '1')
-  .node('child-step', childStepNode, { "done": 'child-end' })
-  .terminal('child-end')
-  .build();
+export const childDag: DAGType = {
+  '@context':   DAG_CONTEXT,
+  '@id':        'urn:noocodex:dag:sub-flow',
+  '@type':      'DAG',
+  "name":       'sub-flow',
+  "version":    '1',
+  "entrypoint": 'child-step',
+  "nodes": [
+    {
+      '@id':     'urn:noocodex:dag:sub-flow/node/child-step',
+      '@type':   'SingleNode',
+      "name":    'child-step',
+      "node":    'child-step',
+      "outputs": { "done": 'child-end' },
+    },
+    {
+      '@id':     'urn:noocodex:dag:sub-flow/node/child-end',
+      '@type':   'TerminalNode',
+      "name":    'child-end',
+      "outcome": 'completed',
+    },
+  ],
+};
 // #endregion child-dag
-
-const stepANode = new StepANode();
-const stepBNode = new StepBNode();
 
 // #region parent-dag
 // run-child is an EmbeddedDAGNode whose body is the registered 'sub-flow' DAG.
-// The child shares the same services bag, so child-step appends to the same
+// The child uses the same injected log store, so child-step appends to the same
 // MemoryStore between step-a and step-b.
-export const parentDag = new DAGBuilder('main-flow', '1')
-  .node('step-a', stepANode, { "done": 'run-child' })
-  .embeddedDAG('run-child', 'sub-flow', { "success": 'step-b', "error": 'step-b' })
-  .node('step-b', stepBNode, { "done": 'end' })
-  .terminal('end')
-  .build();
+export const parentDag: DAGType = {
+  '@context':   DAG_CONTEXT,
+  '@id':        'urn:noocodex:dag:main-flow',
+  '@type':      'DAG',
+  "name":       'main-flow',
+  "version":    '1',
+  "entrypoint": 'step-a',
+  "nodes": [
+    {
+      '@id':     'urn:noocodex:dag:main-flow/node/step-a',
+      '@type':   'SingleNode',
+      "name":    'step-a',
+      "node":    'step-a',
+      "outputs": { "done": 'run-child' },
+    },
+    {
+      '@id':         'urn:noocodex:dag:main-flow/node/run-child',
+      '@type':       'EmbeddedDAGNode',
+      "name":        'run-child',
+      "dag":         'sub-flow',
+      "outputs":     { "success": 'step-b', "error": 'step-b' },
+    },
+    {
+      '@id':     'urn:noocodex:dag:main-flow/node/step-b',
+      '@type':   'SingleNode',
+      "name":    'step-b',
+      "node":    'step-b',
+      "outputs": { "done": 'end' },
+    },
+    {
+      '@id':     'urn:noocodex:dag:main-flow/node/end',
+      '@type':   'TerminalNode',
+      "name":    'end',
+      "outcome": 'completed',
+    },
+  ],
+};
 // #endregion parent-dag
 
 // Re-export MemoryStore so the executable entry point can import it from here
@@ -114,6 +168,8 @@ export { MemoryStore };
 
 // #region typed-store
 import { TypedStore } from '@studnicky/dagonizer/store';
+import { StoreError } from '@studnicky/dagonizer/store';
+import type { RemoteStoreInterface } from '@studnicky/dagonizer/contracts';
 
 interface PipelineSchema {
   tokenBudget:  number;
@@ -121,64 +177,74 @@ interface PipelineSchema {
   lastNodeName: string;
 }
 
-export async function typedStoreDemo(): Promise<void> {
-  const inner = new MemoryStore();
-  const typed = new TypedStore<PipelineSchema>(inner);
+const PipelineTokenBudgetSchema = { '$id': 'urn:example:PipelineSchema/tokenBudget', 'type': 'number' } as const;
+const PipelineMessagesSchema    = { '$id': 'urn:example:PipelineSchema/messages', 'type': 'array', 'items': { 'type': 'string' } } as const;
+const PipelineLastNodeNameSchema = { '$id': 'urn:example:PipelineSchema/lastNodeName', 'type': 'string' } as const;
 
-  await typed.set('tokenBudget', 4096);
-  const budget = await typed.get('tokenBudget');   // number | null
-  await typed.update('messages', (msgs) => [...(msgs ?? []), 'hello']);
+const pipelineValidators = {
+  tokenBudget:  Validator.compile<PipelineSchema['tokenBudget']>(PipelineTokenBudgetSchema),
+  messages:     Validator.compile<PipelineSchema['messages']>(PipelineMessagesSchema),
+  lastNodeName: Validator.compile<PipelineSchema['lastNodeName']>(PipelineLastNodeNameSchema),
+};
 
-  // TypeScript rejects wrong keys and wrong value types at compile time.
-  // await typed.set('unknown', 'x');              // TS error: key not in schema
-  // await typed.set('tokenBudget', 'not a num');  // TS error: expected number
+export class StoreDemos {
+  static async typed(): Promise<void> {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<PipelineSchema>(inner, pipelineValidators);
 
-  const raw: StoreInterface = typed.inner;
-  await raw.set<boolean>('someFlag', true);
-  void budget;
-}
-// #endregion typed-store
+    await typed.set('tokenBudget', 4096);
+    const budget = await typed.get('tokenBudget');   // number | null
+    await typed.update('messages', (msgs) => [...(msgs ?? []), 'hello']);
 
-// ---------------------------------------------------------------------------
-// StoreInterface concurrency: lost-update vs atomic update
-// ---------------------------------------------------------------------------
+    // TypeScript rejects wrong keys and wrong value types at compile time.
+    // await typed.set('unknown', 'x');              // TS error: key not in schema
+    // await typed.set('tokenBudget', 'not a num');  // TS error: expected number
 
-// #region store-concurrency
-export async function storeConcurrencyDemo(): Promise<void> {
-  const store = new MemoryStore();
+    const raw: StoreInterface = typed.inner;
+    await raw.set('someFlag', true);
+    void budget;
+  }
+  // #endregion typed-store
 
-  // Race: two paths increment independently. Both read 0, both write 1. Final: 1 (lost update).
-  const current = await store.get<number>('counter') ?? 0;
-  await store.set<number>('counter', current + 1);
+  // ---------------------------------------------------------------------------
+  // StoreInterface concurrency: lost-update vs atomic update
+  // ---------------------------------------------------------------------------
 
-  // Atomic: update holds the RMW as one indivisible operation. Final: 2.
-  await store.update<number>('counter', (n) => (n ?? 0) + 1);
-  await store.update<number>('counter', (n) => (n ?? 0) + 1);
-}
-// #endregion store-concurrency
+  // #region store-concurrency
+  static async concurrency(): Promise<void> {
+    const store = new MemoryStore();
 
-// ---------------------------------------------------------------------------
-// StoreError discrimination
-// ---------------------------------------------------------------------------
+    // Race: two paths increment independently. Both read 0, both write 1. Final: 1 (lost update).
+    const rawCounter = await store.get('counter');
+    const current = typeof rawCounter === 'number' ? rawCounter : 0;
+    await store.set('counter', current + 1);
 
-// #region store-error-discrimination
-import { StoreError } from '@studnicky/dagonizer/store';
-import type { RemoteStoreInterface } from '@studnicky/dagonizer/contracts';
+    // Atomic: update holds the RMW as one indivisible operation. Final: 2.
+    await store.update('counter', (n) => (typeof n === 'number' ? n : 0) + 1);
+    await store.update('counter', (n) => (typeof n === 'number' ? n : 0) + 1);
+  }
+  // #endregion store-concurrency
 
-export async function storeErrorDemo(store: RemoteStoreInterface): Promise<void> {
-  try {
-    await store.acquireLease('run-abc', 5_000, 1_000);
-  } catch (err) {
-    if (err instanceof StoreError && err.classification.reason === 'LEASE_DENIED') {
-      const { subject, holder } = err.classification;
-      process.stdout.write(`lease for ${subject} held by ${holder}\n`);
+  // ---------------------------------------------------------------------------
+  // StoreError discrimination
+  // ---------------------------------------------------------------------------
+
+  // #region store-error-discrimination
+  static async errorDiscrimination(store: RemoteStoreInterface): Promise<void> {
+    try {
+      await store.acquireLease('run-abc', 5_000, 1_000);
+    } catch (err) {
+      if (err instanceof StoreError && err.classification.reason === 'LEASE_DENIED') {
+        const { subject, holder } = err.classification;
+        process.stdout.write(`lease for ${subject} held by ${holder}\n`);
+      }
     }
   }
+  // #endregion store-error-discrimination
 }
-// #endregion store-error-discrimination
 
 // ---------------------------------------------------------------------------
-// Services node: reads from context.services bag
+// Services node: reads from constructor-injected dependencies
 // ---------------------------------------------------------------------------
 
 // #region services-node
@@ -188,24 +254,30 @@ interface AppServices {
   db:     { query(sql: string): Promise<unknown> };
 }
 
-export class DbFetchNode extends ScalarNode<NodeStateBase, 'success' | 'error', AppServices> {
+export class DbFetchNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
+  private readonly services: AppServices;
   readonly name    = 'db-fetch';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextType<AppServices>): Promise<ReturnType<typeof NodeOutputBuilder.of<'success' | 'error'>>> {
-    context.services.logger.info('fetch start');
-    const cached = await context.services.cache.get('key');
+  constructor(services: AppServices) {
+    super();
+    this.services = services;
+  }
+
+  protected override async executeOne(_state: NodeStateBase): Promise<ReturnType<typeof NodeOutputBuilder.of<'success' | 'error'>>> {
+    this.services.logger.info('fetch start');
+    const cached = await this.services.cache.get('key');
     if (cached !== null) {
       return NodeOutputBuilder.of('success');
     }
     try {
-      await context.services.db.query('SELECT 1');
+      await this.services.db.query('SELECT 1');
       return NodeOutputBuilder.of('success');
     } catch (error) {
-      context.services.logger.error({ err: error }, 'fetch failed');
+      this.services.logger.error({ err: error }, 'fetch failed');
       return NodeOutputBuilder.of('error');
     }
   }

@@ -30,7 +30,6 @@ const registry: RegistryModuleInterface = {
         "nodes": [new SquareWorkerNode()],
         "dags":  [workerDag, dag],
       },
-      "services":        undefined,
       "registryVersion": '1.0.0',
       "restoreState":    CheckpointRestoreAdapter.wrap((snapshot: JsonObjectType) => WorkState.restore(snapshot)),
     };

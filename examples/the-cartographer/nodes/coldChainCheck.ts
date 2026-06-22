@@ -9,7 +9,6 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { ColdChain } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
@@ -18,7 +17,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region cold-chain-check-node
-export class ColdChainCheckNode extends ScalarNode<CartographerState, 'checked', CartographerServices> {
+export class ColdChainCheckNode extends ScalarNode<CartographerState, 'checked'> {
   readonly 'name' = 'cold-chain-check';
   readonly 'outputs' = ['checked'] as const;
 
@@ -28,7 +27,7 @@ export class ColdChainCheckNode extends ScalarNode<CartographerState, 'checked',
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'checked'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'checked'>> {
     const v = state.canonicalVariant;
     const tempC = v.eventType === 'sensor-reading' ? v.body.tempC : 0;
     const shockG = v.eventType === 'sensor-reading' ? v.body.shockG : 0;

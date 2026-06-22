@@ -68,21 +68,25 @@ class TestHostPair {
   }
 }
 
-/** Initialize the host and assert it replied 'ready'. */
-async function initHost(parentSide: MessageChannelInterface): Promise<void> {
-  const readyPromise = new Promise<BridgeMessageType>((resolve) => {
-    parentSide.onMessage((msg) => {
-      if (msg.variant === 'ready' || msg.variant === 'error') resolve(msg);
+class HostSetup {
+  private constructor() {}
+
+  /** Initialize the host and assert it replied 'ready'. */
+  static async init(parentSide: MessageChannelInterface): Promise<void> {
+    const readyPromise = new Promise<BridgeMessageType>((resolve) => {
+      parentSide.onMessage((msg) => {
+        if (msg.variant === 'ready' || msg.variant === 'error') resolve(msg);
+      });
     });
-  });
-  parentSide.send({
-    'variant': 'init',
-    'registryModule': REGISTRY_MODULE_URL,
-    'registryVersion': REGISTRY_VERSION,
-    'servicesConfig': {},
-  });
-  const reply = await readyPromise;
-  assert.strictEqual(reply.variant, 'ready', `DagHost init must reply 'ready'; got '${reply.variant}'`);
+    parentSide.send({
+      'variant': 'init',
+      'registryModule': REGISTRY_MODULE_URL,
+      'registryVersion': REGISTRY_VERSION,
+      'servicesConfig': {},
+    });
+    const reply = await readyPromise;
+    assert.strictEqual(reply.variant, 'ready', `DagHost init must reply 'ready'; got '${reply.variant}'`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +106,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
    */
   void it('batch response carries empty intermediates[] while live intermediate messages are still forwarded', async () => {
     const { parentSide } = TestHostPair.create();
-    await initHost(parentSide);
+    await HostSetup.init(parentSide);
 
     const N = 5; // Small N — we test the structural contract, not heap scale
     const initialState = new NodeStateBase();
@@ -183,7 +187,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
    */
   void it('single-item (N=1) response still carries non-empty intermediates for top-level streaming', async () => {
     const { parentSide } = TestHostPair.create();
-    await initHost(parentSide);
+    await HostSetup.init(parentSide);
 
     const initialState = new NodeStateBase();
 
@@ -220,7 +224,7 @@ void describe('DagHost — batch request: intermediates are empty, live messages
    */
   void it('large batch (N=50) produces empty intermediates in response', async () => {
     const { parentSide } = TestHostPair.create();
-    await initHost(parentSide);
+    await HostSetup.init(parentSide);
 
     const N = 50;
     const initialState = new NodeStateBase();
@@ -294,7 +298,7 @@ void describe('DagHost — batch response intermediates heap (GC-gated)', () => 
     const gc = (): void => { maybeGc.call(null); };
 
     const { parentSide } = TestHostPair.create();
-    await initHost(parentSide);
+    await HostSetup.init(parentSide);
 
     const BATCH_SIZE = 100;
     const NUM_BATCHES = 5;

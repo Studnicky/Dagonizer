@@ -19,7 +19,7 @@
  * CanonicalId normalises each candidate so `CanonicalId.dedupe` in the
  * merge node can collapse cross-source duplicates.
  *
- * Notes carry `_sources: ['openlibrary-subject']` so the trace UI can
+ * Notes carry `sources: ['openlibrary-subject']` so the trace UI can
  * distinguish this tool's output from the keyword-search results.
  *
  * Schema design notes:

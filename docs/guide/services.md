@@ -1,113 +1,142 @@
 ---
-title: 'Services container'
-description: 'Typed services bag wired into the dispatcher; every node reads it via context.services.'
+title: 'Dependency injection'
+description: 'Nodes receive external dependencies through their constructors and hold them as fields. The dispatcher carries no ambient services record.'
 seeAlso:
   - text: 'Subclassing State'
     link: './subclassing'
-    description: 'services are dispatcher-scoped; per-execution data lives on state'
+    description: 'per-execution data lives on state; constructor deps are dispatcher-scoped'
   - text: 'Observability'
     link: './observability'
-    description: 'pass loggers or tracers through the services bag'
+    description: 'subclass Dagonizer to wire loggers and tracers at the dispatcher level'
   - text: 'State accessors'
     link: './state-accessor'
-    description: 'accessor + services together customize what nodes see'
+    description: 'how dotted-path reads and writes resolve on state'
 ---
 
-# Services container
+# Dependency injection
 
-`DagonizerOptionsType.services` accepts a typed bag of dependencies. The same reference flows through every node as `context.services`. Nodes never construct their own clients; they read from `context.services`.
+Nodes receive external dependencies through their constructors and hold them as private fields. The dispatcher is generic over state only — `Dagonizer<TState>`. There is no ambient services record and no `context.services`.
 
-## API surface
+## Pattern
 
-| Symbol | Source | Role |
-|--------|--------|------|
-| `Dagonizer<TState, TServices>` | `@studnicky/dagonizer` | Carries the services type as a generic parameter |
-| `DagonizerOptionsType.services` | `@studnicky/dagonizer` | The bag passed at construction |
-| `NodeInterface<TState, TOutput, TServices>` | `@studnicky/dagonizer` | Propagates `TServices` to `context.services` |
-| `NodeContextType.services` | `@studnicky/dagonizer` | The per-call view of the bag |
+Declare the dependency as a private field on the node class. Accept it via the constructor. Register the node with an injected instance: `dispatcher.registerNode(new FetchNode(db))`.
 
-`TServices` defaults to `undefined`. Dispatchers that need nothing typed through services work as `new Dagonizer<S>()`.
+```ts
+import { ScalarNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { NodeStateBase } from '@studnicky/dagonizer';
+import type { StoreInterface } from '@studnicky/dagonizer/contracts';
 
-## Defining the bag
+class WriteNode extends ScalarNode<NodeStateBase, 'done'> {
+  private readonly store: StoreInterface;
+  readonly name    = 'write';
+  readonly outputs = ['done'] as const;
 
-Consumers declare a plain interface. There is no DI container, no provider scope, no factory step.
+  constructor(store: StoreInterface) {
+    super();
+    this.store = store;
+  }
 
-<<< @/../examples/the-archivist/services.ts#services-shape
-
-## Constructing the dispatcher
-
-<<< @/../examples/the-archivist/main.ts#wire-services
-
-## How services flow
-
-```mermaid
-flowchart TB
-  ctor([new Dagonizer]):::svc
-  bag([services bag]):::svc
-  dispatch[dispatcher]:::svc
-  ctx([NodeContext.services]):::svc
-  node[node.execute]
-  bag --> ctor
-  ctor --> dispatch
-  dispatch -->|every node| ctx
-  ctx --> node
-  classDef svc fill:transparent,stroke:var(--mermaid-state-stroke,#b18cff),stroke-dasharray:3 3
+  protected override async executeOne(_state: NodeStateBase) {
+    await this.store.set('key', 'value');
+    return NodeOutputBuilder.of('done');
+  }
+}
 ```
 
-The diagram captures the wiring, not a DAG. The bag is constructor-scoped; the dispatcher hands the same reference to every node in every execution.
+Registration with the injected dependency:
 
-## Receiving services in a node
+```ts
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import { MemoryStore } from '@studnicky/dagonizer/store';
 
-`NodeInterface<TState, TOutput, TServices>` propagates the same parameter to `context.services`:
+const store  = new MemoryStore();
+const d      = new Dagonizer<NodeStateBase>();
+d.registerNode(new WriteNode(store));
+```
 
-<<< @/../examples/dags/10-shared-state.ts#services-node
+## Why constructor injection
 
-The generic parameter narrows `context.services` inside the node body.
+Constructor injection is explicit, statically typed, and testable. Each node declares its dependencies in its constructor signature — there is no implicit runtime contract to read through. Tests instantiate nodes with stubs or fakes passed directly, with no dispatcher scaffolding required.
 
-## Mixing services-aware and services-free nodes
+The dispatcher carries no ambient state. Every object a node needs is held by that node as a field, visible in the class declaration and verifiable at construction time.
 
-Nodes without a services parameter (`NodeInterface<S, 'success'>`, default `TServices = undefined`) cannot register on a dispatcher with non-`undefined` services because the registration signature requires the same `TServices`. Either:
+## Multiple dependencies
 
-- Always declare the bag (most consistent).
-- Or split into two dispatchers, one with services and one without, when nodes truly cannot share a bag.
+Accept multiple dependencies as individual constructor parameters or as a single typed record. Either form is fine; the key constraint is that the dependencies are positional or named at the call site, not injected through a runtime registry.
 
-In practice the bag is wide enough to cover everything a flow needs, and every node accepts the same parameter.
+```ts
+interface CartographerDeps {
+  readonly geo:    GeoResolverInterface;
+  readonly logger: LoggerInterface;
+}
+
+class GeoEnrichNode extends ScalarNode<CartographerState, 'enriched' | 'error'> {
+  private readonly deps: CartographerDeps;
+  readonly name    = 'geo-enrich';
+  readonly outputs = ['enriched', 'error'] as const;
+
+  constructor(deps: CartographerDeps) {
+    super();
+    this.deps = deps;
+  }
+
+  protected override async executeOne(state: CartographerState) {
+    const result = await this.deps.geo.resolve(state.ipAddress);
+    if (result === null) return NodeOutputBuilder.of('error');
+    state.geoData = result;
+    return NodeOutputBuilder.of('enriched');
+  }
+}
+```
+
+## Shared dependencies across nodes
+
+When several nodes share the same dependency — a store, a logger, an LLM adapter — construct the dependency once and pass the same reference to each node's constructor.
+
+```ts
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import { MemoryStore } from '@studnicky/dagonizer/store';
+
+const log  = new MemoryStore();
+const d    = new Dagonizer<NodeStateBase>();
+
+d.registerNode(new StepANode(log));
+d.registerNode(new ChildStepNode(log));
+d.registerNode(new StepBNode(log));
+```
+
+All three nodes share the same `MemoryStore` instance. Any write by one is visible to the others within the same execution. See [Shared state](./shared-state) for the concurrency contract and checkpoint integration.
 
 ## Lifetime
 
-Services live on the dispatcher instance. There is no per-execution scope; the same bag is handed to every node in every execution, including scatter clones and sub-DAG bodies.
+A node's dependencies live on the node instance. The node instance lives on the dispatcher. Construct dependencies before constructing nodes; construct nodes before registering them. There is no per-execution scope — the same instance is used across every execution, including scatter clones and sub-DAG bodies.
 
-If a service needs per-execution state (such as a request ID), put the per-execution data in `state` instead. The bag is for things that outlive any one execution.
+If a dependency needs per-execution state (such as a request identifier), put that data on `state` instead. Constructor-injected dependencies are for things that outlive any single execution.
 
-## `AgentServicesType`
+## Testing nodes in isolation
 
-`AgentServicesType` is the canonical services bag for agent-flow dispatchers. It is exported from `@studnicky/dagonizer/contracts` and typed as:
+Because dependencies are constructor arguments, a node can be tested directly without wiring a dispatcher:
 
 ```ts
-import type { LlmAdapterInterface } from '@studnicky/dagonizer/contracts';
-import type { ToolRegistry } from '@studnicky/dagonizer/tool';
+import { NodeStateBase, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch } from '@studnicky/dagonizer';
 
-type AgentServicesType = {
-  readonly llm: LlmAdapterInterface;
-  readonly tools: ToolRegistry;
+const fakeStore: StoreInterface = {
+  async set() { /* no-op */ },
+  async get() { return null; },
+  // ... other stubs
 };
+
+const node  = new WriteNode(fakeStore);
+const state = new NodeStateBase();
 ```
 
-Wire it at dispatcher construction time:
-
-```ts
-import { Dagonizer } from '@studnicky/dagonizer';
-import type { AgentServicesType } from '@studnicky/dagonizer/contracts';
-
-const dispatcher = new Dagonizer<MyState, AgentServicesType>({
-  services: { llm: myLlmAdapter, tools: myToolRegistry },
-});
-```
-
-Nodes receive `context.services.llm` (the `LlmAdapterInterface` for chat calls) and `context.services.tools` (the `ToolRegistry` for tool dispatch). No `dispatcher` field exists on this bag; the engine wires the dispatcher internally and it is not exposed through the services surface.
+Stub the dependencies at construction time, call `execute` or `executeOne` directly, and assert on state mutations and routing output.
 
 ## Related reference
 
 - [Reference: Dagonizer](../reference/dagonizer)
 - [Reference: Contracts](../reference/contracts)
-- [Demo: The Archivist](../examples/the-archivist) wires a real services bag
+- [Guide: Shared state](./shared-state)
+- [Demo: The Archivist](../examples/the-archivist) — nodes receive an LLM adapter through their constructors
+- [Demo: The Cartographer](../examples/the-cartographer) — nodes receive geo resolvers through their constructors

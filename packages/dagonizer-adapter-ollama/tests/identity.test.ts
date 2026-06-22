@@ -33,18 +33,22 @@ void test('OllamaApiAdapter accepts custom apiKey for proxied deployments', () =
   assert.equal(adapter.id, 'ollama');
 });
 
-const originalFetch: typeof fetch | undefined = globalThis.fetch;
+class FetchStub {
+  private constructor() {}
 
-function installFetch(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): void {
-  Object.assign(globalThis, { 'fetch': impl });
-}
+  private static readonly original: typeof fetch | undefined = globalThis.fetch;
 
-function restoreFetch(): void {
-  Object.assign(globalThis, { 'fetch': originalFetch });
+  static install(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): void {
+    Object.assign(globalThis, { 'fetch': impl });
+  }
+
+  static restore(): void {
+    Object.assign(globalThis, { 'fetch': FetchStub.original });
+  }
 }
 
 void test('OllamaApiAdapter.probe returns true when /api/tags answers 200', async () => {
-  installFetch(async (input: string | URL | Request) => {
+  FetchStub.install(async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     assert.ok(url.endsWith('/api/tags'));
     return new Response('{"models":[]}', { "status": 200 });
@@ -53,32 +57,32 @@ void test('OllamaApiAdapter.probe returns true when /api/tags answers 200', asyn
   try {
     assert.equal(await adapter.probe(), true);
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
 void test('OllamaApiAdapter.probe returns false when /api/tags answers non-2xx', async () => {
-  installFetch(async () => new Response('nope', { "status": 500 }));
+  FetchStub.install(async () => new Response('nope', { "status": 500 }));
   const adapter = new OllamaApiAdapter();
   try {
     assert.equal(await adapter.probe(), false);
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
 void test('OllamaApiAdapter.probe returns false when fetch rejects (daemon down)', async () => {
-  installFetch(async () => { throw new Error('ECONNREFUSED'); });
+  FetchStub.install(async () => { throw new Error('ECONNREFUSED'); });
   const adapter = new OllamaApiAdapter();
   try {
     assert.equal(await adapter.probe(), false);
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
 void test('OllamaApiAdapter.probe returns false on abort/timeout without throwing', async () => {
-  installFetch((_input: string | URL | Request, init?: RequestInit) => {
+  FetchStub.install((_input: string | URL | Request, init?: RequestInit) => {
     return new Promise<Response>((_resolve, reject) => {
       const signal = init?.signal ?? undefined;
       if (signal !== undefined) {
@@ -90,13 +94,13 @@ void test('OllamaApiAdapter.probe returns false on abort/timeout without throwin
   try {
     assert.equal(await adapter.probe(), false);
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
 void test('OllamaApiAdapter.probe hits the configured baseUrl, not the default', async () => {
   let seen = '';
-  installFetch(async (input: string | URL | Request) => {
+  FetchStub.install(async (input: string | URL | Request) => {
     seen = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     return new Response('{}', { "status": 200 });
   });
@@ -105,6 +109,6 @@ void test('OllamaApiAdapter.probe hits the configured baseUrl, not the default',
     await adapter.probe();
     assert.equal(seen, 'http://10.0.0.5:11434/api/tags');
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });

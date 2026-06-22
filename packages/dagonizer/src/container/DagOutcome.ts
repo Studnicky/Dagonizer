@@ -42,7 +42,7 @@ export class DagOutcome {
    * Build a transport-error `DagOutcomeType`: `terminalOutput: 'failed'`
    * with a single unrecoverable `NodeError` carrying `code` and `message`.
    *
-   * SC-12: required positional `correlationId`; optional trailing options bag
+   * SC-12: required positional `correlationId`; optional trailing options object
    * for `code` and `message` overrides.
    */
   static transportError(

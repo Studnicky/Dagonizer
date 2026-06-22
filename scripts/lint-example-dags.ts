@@ -19,12 +19,86 @@
  * Run: tsx scripts/lint-example-dags.ts  (npm: pnpm run lint:dags)
  */
 
-import type { DAG } from '../packages/dagonizer/src/entities/dag/DAG.js';
+import type { DAGType } from '../packages/dagonizer/src/entities/dag/DAG.js';
 import { WellFormedValidator } from '../packages/dagonizer/src/validation/WellFormedValidator.js';
 
-import { BookSearchScatterDAG } from '../examples/the-archivist/embedded-dags/BookSearchScatterDAG.js';
-import { ComposeRetryLoopDAG }  from '../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.js';
-import { archivistDAG }         from '../examples/the-archivist/dag.js';
+// ── The Archivist: build DAGs via their factories ─────────────────────────────
+// Services-injected nodes must be constructed before factories can run.
+// Use recorded/offline services so importing stays side-effect-free (no network).
+import { ArchivistNodes }                from '../examples/the-archivist/nodes/ArchivistNodes.js';
+import { ArchivistBundleFactory }        from '../examples/the-archivist/dag.js';
+import { BookSearchScatterBundleFactory } from '../examples/the-archivist/embedded-dags/BookSearchScatterDAG.js';
+import { ComposeRetryLoopBundleFactory } from '../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.js';
+import { MemoryStore }                   from '../examples/the-archivist/memory/MemoryStore.js';
+import { OpenLibrarySearchTool }         from '@studnicky/dagonizer-tool-openlibrary';
+import { SubjectSearchTool }             from '@studnicky/dagonizer-tool-openlibrary';
+import { GoogleBooksTool }               from '@studnicky/dagonizer-tool-googlebooks';
+import { WikipediaSummaryTool }          from '@studnicky/dagonizer-tool-wikipedia';
+import type { ArchivistServices }        from '../examples/the-archivist/services.js';
+import type { LlmClientInterface }       from '../examples/the-archivist/services.js';
+
+// Stub LLM: satisfies LlmClientInterface type for DAG construction only.
+// None of these methods are called during DAG building — they are stored as
+// node field references and executed only when the dispatcher runs.
+class StubLlm implements LlmClientInterface {
+  classifyIntent():    Promise<never> { return Promise.reject(new Error('stub')); }
+  extractTerms():      Promise<never> { return Promise.reject(new Error('stub')); }
+  decideTools():       Promise<never> { return Promise.reject(new Error('stub')); }
+  rankCandidates():    Promise<never> { return Promise.reject(new Error('stub')); }
+  compose():           Promise<never> { return Promise.reject(new Error('stub')); }
+  composeAuthor():     Promise<never> { return Promise.reject(new Error('stub')); }
+  composeReviews():    Promise<never> { return Promise.reject(new Error('stub')); }
+  describeBook():      Promise<never> { return Promise.reject(new Error('stub')); }
+  composeSimilar():    Promise<never> { return Promise.reject(new Error('stub')); }
+  validate():          Promise<never> { return Promise.reject(new Error('stub')); }
+  composeMemoryRecall(): Promise<never> { return Promise.reject(new Error('stub')); }
+  composeEmptyResponse(): Promise<never> { return Promise.reject(new Error('stub')); }
+  suggestStarterQuery(): Promise<never> { return Promise.reject(new Error('stub')); }
+  suggestGreeting():   Promise<never> { return Promise.reject(new Error('stub')); }
+  suggestVisitorReplyTo(): Promise<never> { return Promise.reject(new Error('stub')); }
+  explainTool():       Promise<never> { return Promise.reject(new Error('stub')); }
+}
+
+const archivistServices: ArchivistServices = {
+  webSearch:        new OpenLibrarySearchTool(),
+  googleBooks:      new GoogleBooksTool(),
+  subjectSearch:    new SubjectSearchTool(),
+  wikipediaSummary: new WikipediaSummaryTool(),
+  memory:           new MemoryStore(),
+  llm:              new StubLlm(),
+  embedder:         null,
+  nodeTimeouts:     {},
+};
+
+const archivistNodes = ArchivistNodes.build(archivistServices);
+const bookSearchBundle   = BookSearchScatterBundleFactory.create(archivistNodes);
+const composeLoopBundle  = ComposeRetryLoopBundleFactory.create(archivistNodes);
+const parentBundle       = ArchivistBundleFactory.create(archivistNodes);
+
+const archivistDAG        = parentBundle.dags[0];
+const bookSearchScatterDAG = bookSearchBundle.dags[0];
+const composeRetryLoopDAG  = composeLoopBundle.dags[0];
+
+if (archivistDAG === undefined || bookSearchScatterDAG === undefined || composeRetryLoopDAG === undefined) {
+  process.stdout.write('lint-example-dags: archivist factory returned no DAGs.\n');
+  process.exit(1);
+}
+
+// ── The Cartographer: build geo-resolve DAG via GeoResolveDAG.build() ─────────
+import { GeoResolveDAG }      from '../examples/the-cartographer/embedded-dags/GeoResolveDAG.js';
+import { GeoResolvers }       from '../examples/the-cartographer/services/GeoResolvers.js';
+
+const cartographerServices = GeoResolvers.recorded();
+const geoBundle = GeoResolveDAG.build(
+  cartographerServices.reverseGeocoder,
+  cartographerServices.ipGeolocator,
+);
+const geoResolveDAG = geoBundle.dags[0];
+
+if (geoResolveDAG === undefined) {
+  process.stdout.write('lint-example-dags: GeoResolveDAG.build() returned no DAGs.\n');
+  process.exit(1);
+}
 
 import { dag as linearDAG }          from '../examples/dags/01-linear.js';
 import { dag as builderDAG }         from '../examples/dags/02-builder.topology.js';
@@ -47,14 +121,13 @@ import { childDag as sharedChildDAG, parentDag as sharedParentDAG } from '../exa
 import { cartographerDAG, eventPipelineTypedDAG }  from '../examples/the-cartographer/dag.js';
 import { streamEventDAG }                          from '../examples/the-cartographer/embedded-dags/StreamEventDAG.js';
 import { gdprComplianceDAG }                       from '../examples/the-cartographer/embedded-dags/GdprComplianceDAG.js';
-import { geoResolveDAG }                           from '../examples/the-cartographer/embedded-dags/GeoResolveDAG.js';
 import { ingestSourceDAG }                         from '../examples/the-cartographer/embedded-dags/IngestSourceDAG.js';
 import { orderEnrichmentDAG }                      from '../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.js';
 
-const dags: ReadonlyArray<readonly [string, DAG]> = [
+const dags: ReadonlyArray<readonly [string, DAGType]> = [
   ['the-archivist / archivistDAG',           archivistDAG],
-  ['the-archivist / BookSearchScatterDAG',   BookSearchScatterDAG],
-  ['the-archivist / ComposeRetryLoopDAG',    ComposeRetryLoopDAG],
+  ['the-archivist / BookSearchScatterDAG',   bookSearchScatterDAG],
+  ['the-archivist / ComposeRetryLoopDAG',    composeRetryLoopDAG],
   ['dags / 01-linear (chat)',                linearDAG],
   ['dags / 02-builder.topology (chat)',      builderDAG],
   ['dags / 03-schema (from-json)',           schemaDAG],

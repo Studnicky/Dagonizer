@@ -1,14 +1,14 @@
 /**
- * 10-shared-state: MemoryStore on the services bag, with checkpoint round-trip.
+ * 10-shared-state: MemoryStore constructor-injected into nodes, with checkpoint round-trip.
  *
  * Demonstrates:
- *   1. A MemoryStore threaded through the services bag.
+ *   1. A MemoryStore injected into each node via its constructor.
  *   2. Two nodes and an embedded sub-DAG that accumulate entries to the
  *      same store.
  *   3. Checkpoint.capture() snapshots the store alongside parent state.
  *   4. Checkpoint.load() + restoreStores() recovers the store on resume.
  *
- * DAG definition (services type, step nodes, child/parent dags): examples/dags/10-shared-state.ts
+ * DAG definition (nodes and DAG consts): examples/dags/10-shared-state.ts
  *
  * Run: npx tsx examples/10-shared-state.ts
  */
@@ -27,19 +27,18 @@ import {
   childDag,
   parentDag,
 } from './dags/10-shared-state.js';
-import type { Services } from './dags/10-shared-state.js';
 
 // Part 1: Normal run (all three steps accumulate to the store)
 // #region run
 {
   // #region store-init
   const logStore = new MemoryStore();
-  const dispatcher = new Dagonizer<NodeStateBase, Services>({ "services": { "log": logStore } });
+  const dispatcher = new Dagonizer<NodeStateBase>();
   // #endregion store-init
 
-  dispatcher.registerNode(new StepANode());
-  dispatcher.registerNode(new StepBNode());
-  dispatcher.registerNode(new ChildStepNode());
+  dispatcher.registerNode(new StepANode(logStore));
+  dispatcher.registerNode(new StepBNode(logStore));
+  dispatcher.registerNode(new ChildStepNode(logStore));
   dispatcher.registerDAG(childDag);
   dispatcher.registerDAG(parentDag);
 
@@ -57,11 +56,11 @@ import type { Services } from './dags/10-shared-state.js';
 // #region store-checkpoint
 {
   const logStore = new MemoryStore();
-  const dispatcher = new Dagonizer<NodeStateBase, Services>({ "services": { "log": logStore } });
+  const dispatcher = new Dagonizer<NodeStateBase>();
 
-  dispatcher.registerNode(new StepANode());
-  dispatcher.registerNode(new StepBNode());
-  dispatcher.registerNode(new ChildStepNode());
+  dispatcher.registerNode(new StepANode(logStore));
+  dispatcher.registerNode(new StepBNode(logStore));
+  dispatcher.registerNode(new ChildStepNode(logStore));
   dispatcher.registerDAG(childDag);
   dispatcher.registerDAG(parentDag);
 
@@ -94,10 +93,10 @@ import type { Services } from './dags/10-shared-state.js';
     const restoredEntries = await freshLog.get('entries') ?? '';
     process.stdout.write(`  log after restoreStores = "${restoredEntries}"\n`);
 
-    const resumeDispatcher = new Dagonizer<NodeStateBase, Services>({ "services": { "log": freshLog } });
-    resumeDispatcher.registerNode(new StepANode());
-    resumeDispatcher.registerNode(new StepBNode());
-    resumeDispatcher.registerNode(new ChildStepNode());
+    const resumeDispatcher = new Dagonizer<NodeStateBase>();
+    resumeDispatcher.registerNode(new StepANode(freshLog));
+    resumeDispatcher.registerNode(new StepBNode(freshLog));
+    resumeDispatcher.registerNode(new ChildStepNode(freshLog));
     resumeDispatcher.registerDAG(childDag);
     resumeDispatcher.registerDAG(parentDag);
 

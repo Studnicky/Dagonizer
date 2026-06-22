@@ -1,6 +1,6 @@
 ---
 title: 'Shared state'
-description: 'Store on the services bag for cross-DAG accumulation; TypedStore for narrowed key sets; checkpoint integration; RemoteStore for distributed coordination.'
+description: 'Store injected via node constructors for cross-DAG accumulation; TypedStore for narrowed key sets; checkpoint integration; RemoteStore for distributed coordination.'
 seeAlso:
   - text: 'DAGBuilder'
     link: './builder'
@@ -20,21 +20,19 @@ seeAlso:
 import { DAGBuilder, NodeOutputBuilder, NodeStateBase } from '@studnicky/dagonizer';
 import type { NodeInterface } from '@studnicky/dagonizer/contracts';
 
-interface Services { log: { update: (k: string, fn: (c?: string) => string) => Promise<void> } }
-
-class StepANode implements NodeInterface<NodeStateBase, 'done', Services> {
+class StepANode implements NodeInterface<NodeStateBase, 'done'> {
   readonly name = 'step-a';
   readonly outputs = ['done'] as const;
   async execute() { return NodeOutputBuilder.of('done'); }
 }
 
-class StepBNode implements NodeInterface<NodeStateBase, 'done', Services> {
+class StepBNode implements NodeInterface<NodeStateBase, 'done'> {
   readonly name = 'step-b';
   readonly outputs = ['done'] as const;
   async execute() { return NodeOutputBuilder.of('done'); }
 }
 
-class ChildStepNode implements NodeInterface<NodeStateBase, 'done', Services> {
+class ChildStepNode implements NodeInterface<NodeStateBase, 'done'> {
   readonly name = 'child-step';
   readonly outputs = ['done'] as const;
   async execute() { return NodeOutputBuilder.of('done'); }
@@ -72,9 +70,9 @@ Two mechanisms cross the scatter boundary in Dagonizer. The choice depends on th
 
 ## DAG that exercises shared state
 
-The runnable demo wires a `MemoryStore` onto the services bag of a parent DAG with a scatter sub-DAG child. Both write to the same store:
+The runnable demo creates a `MemoryStore` and passes it into each node's constructor. A parent DAG with an embedded sub-DAG child writes to the same store:
 
-<DagGraph :dag="parentDag" :embedded-d-a-gs="sharedStateRegistry" :expand-all="true" aria-label="Parent main-flow with embedded sub-flow; both DAGs share one Store via the services bag." />
+<DagGraph :dag="parentDag" :embedded-d-a-gs="sharedStateRegistry" :expand-all="true" aria-label="Parent main-flow with embedded sub-flow; both DAGs share one Store injected into their nodes' constructors." />
 
 ## When to use what
 
@@ -82,7 +80,7 @@ The runnable demo wires a `MemoryStore` onto the services bag of a parent DAG wi
 |---|---|---|
 | Embed a registered sub-DAG exactly once and transfer specific fields in/out | `inputs` / `outputs` on `.embeddedDAG()` | Single-direction, isolated, checkpoint-friendly without extra wiring |
 | Scatter across an array and seed each clone with a parent field | `inputs` option on `.scatter()` (`stateMapping.input`) | Parent field copied into each clone state before the body runs |
-| Multiple nodes accumulate growing shared state (agent memory, RAG context, audit log) | `MemoryStore` (or another `Store`) on the services bag | Cross-node and cross-scatter; survives execution boundaries within a run |
+| Multiple nodes accumulate growing shared state (agent memory, RAG context, audit log) | `MemoryStore` (or another `Store`) injected into each node's constructor | Cross-node and cross-scatter; survives execution boundaries within a run |
 | RDF graph patterns (`RecallContextNode`, `RecordFindingsNode`, etc.) need a Store that is also a `TripleStore` | `RdfStore` from `@studnicky/dagonizer-patterns-graph` | Implements both contracts; key-value side reifies as triples; quad side exposes native RDF |
 | Known, fixed key set; compile-time safety without explicit `<T>` at every call | `TypedStore<Schema>` wrapping any `Store` | Keys and value types inferred from the schema |
 | Long-running flow that survives restart | `MemoryStore.snapshot()` via `Checkpoint.capture({ stores })` | Resume captures shared state alongside parent state |
@@ -92,9 +90,9 @@ The runnable demo wires a `MemoryStore` onto the services bag of a parent DAG wi
 
 A `Store` is a live, shared, mutable map. Use it when multiple placements accumulate to the same structure (a message list, a token budget, an event log) and that accumulation must persist across placement boundaries without threading every value through state-mapping options at every hop.
 
-## Services-bag wiring
+## Constructor wiring
 
-The runnable example declares a `Services` interface whose `log` field has type `Store`, then instantiates the dispatcher with a `MemoryStore` bound to that field:
+The runnable example creates a `MemoryStore` and passes it into each node's constructor. The same instance is shared across `step-a`, `child-step`, and `step-b`:
 
 <<< @/../examples/dags/10-shared-state.ts#services
 
@@ -106,7 +104,7 @@ The runnable example declares a `Services` interface whose `log` field has type 
 
 <<< @/../examples/dags/10-shared-state.ts#parent-dag
 
-`step-a`, `child-step`, and `step-b` all call `context.services.log.update('entries', ...)` against the same store. The resulting `entries` value is `step-a,child-step,step-b`, ordered by execution.
+`step-a`, `child-step`, and `step-b` all call `this.log.update('entries', ...)` against the same constructor-injected store. The resulting `entries` value is `step-a,child-step,step-b`, ordered by execution.
 
 ## RdfStore: RDF-backed shared state for graph patterns
 
@@ -114,7 +112,7 @@ The runnable example declares a `Services` interface whose `log` field has type 
 
 The Store side exposes `set`, `get`, `has`, `delete`, `update`, `snapshot`, and `restore`. The TripleStore side exposes `assert`, `ask`, `select`, `count`, `clearGraph`, and `triples`. The Store-side `set(key, value)` reifies as a single triple under `urn:dagonizer:store:{key}`. The subject prefix and value predicate are configurable via `RdfStoreOptions`. No external dependencies; the backing is a plain `Quad[]`.
 
-See `@studnicky/dagonizer-patterns-graph` for `RdfStoreOptions`, subclassing guidance, and snapshot trade-offs.
+Pattern nodes that need a `TripleStore` accept it as a constructor argument. See `@studnicky/dagonizer-patterns-graph` for `RdfStoreOptions`, subclassing guidance, and snapshot trade-offs.
 
 ## TypedStore: narrowing for known key sets
 

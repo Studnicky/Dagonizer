@@ -76,23 +76,23 @@ export class RdfStore extends BaseStore implements TripleStoreInterface {
    * Atomic RMW: reads directly from `#quads` without any intermediate
    * `await`, so no microtask can interleave between the read and the write.
    */
-  override async update<T extends JsonValueType>(
+  override async update(
     key: string,
-    fn: (current: T | undefined) => T,
-  ): Promise<T> {
+    fn: (current: JsonValueType | undefined) => JsonValueType,
+  ): Promise<JsonValueType> {
     const qualified = this.qualifyKey(key);
     const subject   = this.#keyToSubject(qualified);
-    const current   = this.#readValue<T>(subject);
+    const current   = this.#readValue(subject);
     const next      = fn(current);
     this.#writeValue(subject, next);
     return next;
   }
 
-  protected async performGet<T extends JsonValueType>(key: string): Promise<T | null> {
-    return this.#readValue<T>(this.#keyToSubject(key)) ?? null;
+  protected async performGet(key: string): Promise<JsonValueType | null> {
+    return this.#readValue(this.#keyToSubject(key)) ?? null;
   }
 
-  protected async performSet<T extends JsonValueType>(key: string, value: T): Promise<void> {
+  protected async performSet(key: string, value: JsonValueType): Promise<void> {
     this.#writeValue(this.#keyToSubject(key), value);
   }
 
@@ -175,14 +175,14 @@ export class RdfStore extends BaseStore implements TripleStoreInterface {
     return `${this.#subjectPrefix}${key}`;
   }
 
-  #readValue<T extends JsonValueType>(subject: string): T | undefined {
+  #readValue(subject: string): JsonValueType | undefined {
     // Iterate backwards: the latest write wins.
     for (let i = this.#quads.length - 1; i >= 0; i -= 1) {
       const quad = this.#quads[i];
       if (quad === undefined)                        continue;
       if (quad.subject.value !== subject)             continue;
       if (quad.predicate.value !== this.#valuePredicate) continue;
-      return this.narrowStored<T>(JsonValue.from(JSON.parse(quad.object.value))) ?? undefined;
+      return JsonValue.from(JSON.parse(quad.object.value)) ?? undefined;
     }
     return undefined;
   }

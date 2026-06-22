@@ -53,7 +53,7 @@ export class ConsoleLogger {
   readonly #maxBuffer: number;
 
   constructor(options: { readonly maxBuffer?: number } = {}) {
-    this.#maxBuffer = options.maxBuffer ?? 500;
+    this.#maxBuffer = options.maxBuffer ?? 1000;
   }
 
   /** All events captured so far (most recent last). */
@@ -105,7 +105,8 @@ export class ConsoleLogger {
    * the engine path (level method → buffer + stdout/stderr) runs
    * identically whether or not a subclass extends the hook.
    */
-  protected onEmit(_event: LogEvent): void {
+  protected onEmit(event: LogEvent): void {
+    void event;
     // No-op in the base class. Subclasses mirror the event to a UI surface.
   }
 

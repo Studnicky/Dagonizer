@@ -10,6 +10,7 @@ import { BaseStore, type BaseStoreOptionsType } from '../../src/store/BaseStore.
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError, type StoreErrorClassificationType } from '../../src/store/StoreError.js';
 import { TypedStore } from '../../src/store/TypedStore.js';
+import { Validator } from '../../src/validation/Validator.js';
 
 // ── Minimum-viable test plugin ──────────────────────────────────────────────
 //
@@ -67,7 +68,7 @@ class PassThroughStore extends BaseStore {
    * test-only store: the backing is an in-memory record with no concurrency
    * guarantees, so the default sequential RMW is sufficient.
    */
-  override async update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
+  override async update(key: string, fn: (current: JsonValueType | undefined) => JsonValueType): Promise<JsonValueType> {
     return this.performUpdateRmw(key, fn);
   }
 }
@@ -122,12 +123,12 @@ class MockRemoteStore extends BaseStore implements RemoteStoreInterface {
   }
 
   // Atomic override: Map access is synchronous, no interleaving possible.
-  override async update<T extends JsonValueType>(
+  override async update(
     key: string,
-    fn: (current: T | undefined) => T,
-  ): Promise<T> {
+    fn: (current: JsonValueType | undefined) => JsonValueType,
+  ): Promise<JsonValueType> {
     const qualified = this.qualifyKey(key);
-    const raw       = this.narrowStored<T>(this.#backing.get(qualified) ?? null);
+    const raw       = this.#backing.get(qualified) ?? null;
     const next      = fn(raw === null ? undefined : raw);
     this.#backing.set(qualified, next);
     return next;
@@ -161,6 +162,25 @@ type AppSchema = {
   config:  { readonly retries: number; readonly timeout: number };
 }
 
+// ── Per-key JSON schemas for AppSchema validators ─────────────────────────────
+
+const CountJsonSchema = { '$id': 'urn:test:store:AppSchema/count', 'type': 'number' } as const;
+const LabelJsonSchema = { '$id': 'urn:test:store:AppSchema/label', 'type': 'string' } as const;
+const TagsJsonSchema  = { '$id': 'urn:test:store:AppSchema/tags',  'type': 'array', 'items': { 'type': 'string' } } as const;
+const ConfigJsonSchema = {
+  '$id':        'urn:test:store:AppSchema/config',
+  'type':       'object',
+  'properties': { 'retries': { 'type': 'number' }, 'timeout': { 'type': 'number' } },
+  'required':   ['retries', 'timeout'],
+} as const;
+
+const appValidators = {
+  "count":  Validator.compile<AppSchema['count']>(CountJsonSchema),
+  "label":  Validator.compile<AppSchema['label']>(LabelJsonSchema),
+  "tags":   Validator.compile<AppSchema['tags']>(TagsJsonSchema),
+  "config": Validator.compile<AppSchema['config']>(ConfigJsonSchema),
+};
+
 // ── MemoryStore tests ───────────────────────────────────────────────────────
 
 void describe('MemoryStore', () => {
@@ -184,7 +204,7 @@ void describe('MemoryStore', () => {
 
   void it('update(key, fn) returns the new value; get() reads the same', async () => {
     const store = new MemoryStore();
-    const result = await store.update<number>('counter', (n) => (n ?? 0) + 1);
+    const result = await store.update('counter', (n) => (typeof n === 'number' ? n : 0) + 1);
     assert.equal(result, 1);
     assert.equal(await store.get('counter'), 1);
   });
@@ -195,8 +215,8 @@ void describe('MemoryStore', () => {
     // Map operations inside each update run uninterrupted, so the final value
     // must be 2 (no lost update).
     await Promise.all([
-      store.update<number>('k', (n) => (n ?? 0) + 1),
-      store.update<number>('k', (n) => (n ?? 0) + 1),
+      store.update('k', (n) => (typeof n === 'number' ? n : 0) + 1),
+      store.update('k', (n) => (typeof n === 'number' ? n : 0) + 1),
     ]);
     assert.equal(await store.get('k'), 2);
   });
@@ -291,8 +311,8 @@ void describe('PassThroughStore (BaseStore plugin smoke test)', () => {
     const backing: Record<string, JsonValueType> = {};
     const store = new PassThroughStore(backing);
 
-    await store.set<string>('p', 'plugin-value');
-    await store.set<number>('q', 99);
+    await store.set('p', 'plugin-value');
+    await store.set('q', 99);
     assert.equal(await store.has('p'), true);
     assert.equal(await store.get('q'), 99);
 
@@ -316,8 +336,8 @@ void describe('PassThroughStore (BaseStore plugin smoke test)', () => {
   void it('update works through the default RMW path', async () => {
     const backing: Record<string, JsonValueType> = {};
     const store = new PassThroughStore(backing);
-    await store.update<number>('n', (v) => (v ?? 0) + 5);
-    await store.update<number>('n', (v) => (v ?? 0) + 5);
+    await store.update('n', (v) => (typeof v === 'number' ? v : 0) + 5);
+    await store.update('n', (v) => (typeof v === 'number' ? v : 0) + 5);
     assert.equal(await store.get('n'), 10);
   });
 });
@@ -327,13 +347,13 @@ void describe('PassThroughStore (BaseStore plugin smoke test)', () => {
 void describe('TypedStore', () => {
   void it('construction wraps a MemoryStore without error', () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
     assert.ok(typed instanceof TypedStore);
   });
 
   void it('set + get round-trip infers value type from Schema[K]', async () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     await typed.set('count', 42);
     const n = await typed.get('count');
@@ -347,7 +367,7 @@ void describe('TypedStore', () => {
 
   void it('has() returns true after set, false before', async () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     assert.equal(await typed.has('count'), false);
     await typed.set('count', 1);
@@ -356,7 +376,7 @@ void describe('TypedStore', () => {
 
   void it('delete() removes the key and returns correct boolean', async () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     await typed.set('label', 'to-delete');
     const deleted = await typed.delete('label');
@@ -368,7 +388,7 @@ void describe('TypedStore', () => {
 
   void it('update(key, fn): fn receives Schema[K] | undefined as current', async () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     // First update: current is undefined; default to 0.
     const first = await typed.update('count', (current) => (current ?? 0) + 10);
@@ -383,7 +403,7 @@ void describe('TypedStore', () => {
 
   void it('update works with object values', async () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     const result = await typed.update(
       'config',
@@ -394,7 +414,7 @@ void describe('TypedStore', () => {
 
   void it('inner.snapshot() / inner.restore() pass-through preserves typed values', async () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     await typed.set('count', 99);
     await typed.set('label', 'snap-test');
@@ -404,7 +424,7 @@ void describe('TypedStore', () => {
     assert.equal(snap.version, 1);
 
     // Restore into a fresh TypedStore wrapping a new MemoryStore.
-    const fresh = new TypedStore<AppSchema>(new MemoryStore());
+    const fresh = new TypedStore<AppSchema>(new MemoryStore(), appValidators);
     await fresh.inner.restore(snap);
 
     assert.equal(await fresh.get('count'), 99);
@@ -413,12 +433,12 @@ void describe('TypedStore', () => {
 
   void it('.inner provides access to the underlying StoreInterface for un-narrowed ops', async () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     await typed.set('count', 7);
 
-    // .inner exposes the wide StoreInterface interface; caller specifies <T> directly.
-    const raw = await typed.inner.get<number>('count');
+    // .inner exposes the wide StoreInterface; read returns JsonValueType | null.
+    const raw = await typed.inner.get('count');
     assert.equal(raw, 7);
 
     // .inner === the original MemoryStore instance.
@@ -427,7 +447,7 @@ void describe('TypedStore', () => {
 
   void it('inner.connect() and inner.disconnect() pass through to the inner store', async () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     // MemoryStore no-ops both; callers use .inner for lifecycle operations.
     await assert.doesNotReject(() => typed.inner.connect());
@@ -437,10 +457,10 @@ void describe('TypedStore', () => {
   void it('TypedStore composes with a MemoryStore that already has prior data', async () => {
     const inner = new MemoryStore();
     // Write directly into the inner store before wrapping.
-    await inner.set<number>('count', 100);
-    await inner.set<string[]>('tags', ['a', 'b']);
+    await inner.set('count', 100);
+    await inner.set('tags', ['a', 'b']);
 
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     // TypedStore reads the pre-existing values with correct inferred types.
     assert.equal(await typed.get('count'), 100);
@@ -448,7 +468,7 @@ void describe('TypedStore', () => {
 
     // Snapshot round-trip preserves those values via .inner lifecycle ops.
     const snap = await typed.inner.snapshot();
-    const restored = new TypedStore<AppSchema>(new MemoryStore());
+    const restored = new TypedStore<AppSchema>(new MemoryStore(), appValidators);
     await restored.inner.restore(snap);
     assert.equal(await restored.get('count'), 100);
     assert.deepEqual(await restored.get('tags'), ['a', 'b']);
@@ -463,7 +483,7 @@ void describe('TypedStore', () => {
 
   void it('@ts-expect-error: set with a key absent from Schema is rejected', async () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     // @ts-expect-error: 'missing-key' is not a key of AppSchema.
     await typed.set('missing-key', 'x');
@@ -471,7 +491,7 @@ void describe('TypedStore', () => {
 
   void it('@ts-expect-error: set with wrong value type for a Schema key is rejected', async () => {
     const inner = new MemoryStore();
-    const typed = new TypedStore<AppSchema>(inner);
+    const typed = new TypedStore<AppSchema>(inner, appValidators);
 
     // @ts-expect-error: AppSchema['count'] is number; 'wrong-type' is a string.
     await typed.set('count', 'wrong-type');
@@ -524,7 +544,7 @@ void describe('RemoteStoreInterface contract', () => {
 
   void it('StoreInterface surface (get/set/has/delete) works through RemoteStoreInterface', async () => {
     const store: RemoteStoreInterface = new MockRemoteStore({ 'url': 'http://localhost:6379', 'region': '' });
-    await store.set<string>('greeting', 'hello');
+    await store.set('greeting', 'hello');
     assert.equal(await store.get('greeting'), 'hello');
     assert.equal(await store.has('greeting'), true);
     const deleted = await store.delete('greeting');

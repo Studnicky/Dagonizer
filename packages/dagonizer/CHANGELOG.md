@@ -18,16 +18,6 @@
   - **`MermaidRenderer.render(dag, options?)`** gains a `MermaidRenderOptionsType` (`orientation` default `'TB'`, `sanitizeNodeIds` default `true`, `terminalAnnotations` default `'strip'`, and a concrete-colour `theme` with per-role `containerTints`). The renderer now emits parse-safe Mermaid by default: colon-bearing placement ids are sanitized to keyword-safe ids (labels keep their colons), `\n(outcome)` terminal annotations that break the lexer are stripped, and the orientation is configurable. Existing `render(dag)` callers get the safe output with no change.
   - **`MermaidExplorer`** (`@studnicky/dagonizer/viz`) is a vanilla-TS, framework-agnostic enhancer that attaches the same D-pad (zoom · pan ×4 · centre · fit) and fullscreen-explore modal to rendered Mermaid SVGs that the interactive graph canvases use — one consistent navigation rule set across diagrams and live graphs. `MermaidExplorer.install(options?)` wires a `MutationObserver` for async-rendered diagrams; `MermaidExplorer.enhance(frame, options?)` upgrades one. A companion stylesheet ships at `@studnicky/dagonizer/viz/explorer.css`.
 
-## [Unreleased]
-
-### Added
-
-- **Agent-flow template-method node family (`./patterns` subpath).** Nine abstract base classes replace the deleted callback-based `AgentFlowNodes`: `BuildChatRequestNode`, `CallModelNode`, `NormalizeResponseNode`, `DecodeTextToolCallsNode`, `AppendAssistantNode`, `NormalizeToolCallsNode`, `BuildToolWorksetsNode`, `CollectToolResultsNode`. Each base carries `protected abstract` template methods; consumer subclasses override them — zero callbacks, zero function injection. `AgentServicesType` (`{ llm: LlmAdapterInterface; tools: ToolRegistry }`) is the typed services bag injected via `Dagonizer({ services })`. `ToolCallScatterItemType` stamps each normalized tool call with `dagName: 'tool:<name>'` so a scatter placement using `{ dagFrom: 'dagName' }` resolves the body DAG from `ToolRegistry` at runtime. `ToolInvokeNode` gains a scatter-path fallback: when `state.input` is empty, it reads `state.getMetadata('currentItem').arguments` so scatter-dispatched tools receive their call arguments without parent-state coupling. `registerNode` and `registerBundle` on `Dagonizer` and `DagRegistrar` now accept any `TNodeServices`/`TBundleServices` generics, allowing `ToolInvokeNode` (services-free) nodes to be registered on a services-typed dispatcher.
-
-### Changed
-
-- **Breaking: `TState` generic removed from engine internals (semver-major).** The engine now threads state through `NodeStateInterface` uniformly across all internal modules. `DagTaskInterface<TState, TServices>` drops `TState` (now `DagTaskInterface<TServices>`); `DagContainerInterface<TState>` drops `TState` (now `DagContainerInterface`); `GatherExecutionType<TState, TItem>` drops `TState` (`state` field is `NodeStateInterface`). The public boundary (`Dagonizer<TState, TServices>`, `execute`, `resume`, `Execution<TState>`, `NodeResultType<TState>`, `ExecutionResultType<TState>`) is unchanged. This reflects the engine's actual design: embedded/scatter child DAGs run on their own heterogeneous state classes — each child state implements `NodeStateInterface` but is not `TState`. The prior `TState` threading was a fiction that forced `as`/`as unknown as` casts at every containment boundary. Consumers who pass a concrete `TState` generic to `DagContainerInterface` or `DagTaskInterface` remove that type argument; all other public-API call sites are source-compatible.
-
 ## 0.24.0
 
 ### Minor Changes
@@ -115,7 +105,7 @@
 
 - 0296d9d: Node and DAG registration is idempotent by identity — re-registering the same instance (reference equality) is a no-op, enabling node reuse across multiple bundles. Only a different implementation claiming an already-registered name throws `DAGError`, with the message updated to `'X' is already registered with a different implementation` to distinguish the collision from the no-op case.
 
-## [Unreleased]
+## [Pre-1.0 migration notes (around 0.21.0)]
 
 ### Removed
 
@@ -171,7 +161,7 @@
 
 ### Internal
 
-- **`Dagonizer.ts` god-file decomposition.** The engine class file drops from 2969 to 2200 lines by extracting cohesive domain seams into dedicated modules and promoting every object-literal-of-closures "function bag" to a named class with a stable V8 shape. The public API is unchanged: every export, subpath, type, and the `DagonizerInterface` contract are byte-identical, and all 873 tests pass without modification. New engine-internal modules: `execution/ScatterDispatch.ts` (the `ScatterPoolDriver` driver, the `ScatterDispatchAdapter` adapter class + its interface, and the engine-private scatter result/option/context types), `execution/PlacementDispatch.ts` (the `@type`-keyed placement router, replacing the constructor's `dispatch` closure map), `execution/NodeInvoker.ts` (the `custom`-gather node invoker, replacing the inline `NodeInvokerInterface` literal), `execution/ScatterSource.ts` (scatter source-to-`AsyncIterator` normalization), `observer/ObserverRelay.ts` (the `ObserverRelay` relay class + its `DispatcherHooksInterface` contract), and `observer/DispatcherHooks.ts` (the `DispatcherHooks` relay-hooks adapter, replacing the constructor's `#relayHooks` closure literal). The scatter watermark-accounting helper and checkpoint-restore logic move to their canonical home on `ScatterCheckpoint` (`advanceWatermark`, `restoreRunState` → `ScatterRunStateType`). Each promoted class holds a reference to the dispatcher (or a narrow source interface it satisfies) and initialises every field in constructor-declaration order.
+- **`Dagonizer.ts` god-file decomposition.** The engine class file drops from 2969 to 2200 lines by extracting cohesive domain seams into dedicated modules and promoting every object-literal-of-closures "object-of-closures" to a named class with a stable V8 shape. The public API is unchanged: every export, subpath, type, and the `DagonizerInterface` contract are byte-identical, and all 873 tests pass without modification. New engine-internal modules: `execution/ScatterDispatch.ts` (the `ScatterPoolDriver` driver, the `ScatterDispatchAdapter` adapter class + its interface, and the engine-private scatter result/option/context types), `execution/PlacementDispatch.ts` (the `@type`-keyed placement router, replacing the constructor's `dispatch` closure map), `execution/NodeInvoker.ts` (the `custom`-gather node invoker, replacing the inline `NodeInvokerInterface` literal), `execution/ScatterSource.ts` (scatter source-to-`AsyncIterator` normalization), `observer/ObserverRelay.ts` (the `ObserverRelay` relay class + its `DispatcherHooksInterface` contract), and `observer/DispatcherHooks.ts` (the `DispatcherHooks` relay-hooks adapter, replacing the constructor's `#relayHooks` closure literal). The scatter watermark-accounting helper and checkpoint-restore logic move to their canonical home on `ScatterCheckpoint` (`advanceWatermark`, `restoreRunState` → `ScatterRunStateType`). Each promoted class holds a reference to the dispatcher (or a narrow source interface it satisfies) and initialises every field in constructor-declaration order.
 
 - **Registration/validation extracted to `dag/DagRegistrar.ts`.** `Dagonizer.ts` drops to a thin composition root: the `registerDAG` / `registerNode` / `registerBundle` bodies — the duplicate-name throw, the `Validator.dag` schema pass, the `DAGValidator.validateDAGConfig` semantic pass, the `ContractRegistryValidator` contract pass, and the container-role-binding gate — move to a single-responsibility `DagRegistrar` class. The class depends only on the narrow `DagRegistrarSourceInterface` (the live `dags` / `nodes` / `nodeIndex` registries plus `resolveContainer` / `hasContainers`), constructed once in the dispatcher constructor against a source backed by the dispatcher's own registries. The public method signatures and throw behavior are unchanged; the three methods are now thin delegates to `this.dagRegistrar`. `Dagonizer.#hasContainers` becomes the public `hasContainers()` so the registrar reads it through the port. The public API surface and all 873 tests are byte-identical.
 
@@ -181,7 +171,7 @@
 
 - dcbc4b5: Codebase-wide audit and hardening pass: collapse dual representations, remove callback extension seams, enforce schema-as-source-of-truth at every JSON ingest boundary, and align the sibling packages to one opinionated shape.
 
-  Breaking changes (pre-1.0; see CHANGELOG `[Unreleased]` for full migration notes): `NodeInterface.contract` and `NodeInterface.timeout` are now required (`EMPTY_CONTRACT_FRAGMENT` / `Timeout.none()` defaults; `MonadicNode` unaffected); `RetryPolicy` is constructed via `RetryPolicy.from()`; `BaseStore.update` is abstract; `HttpTransport.validate` callback removed; `ChatMessage` is a role-discriminated union; DAG-document (de)serialization moved to `DAGDocument` (the static `Dagonizer.load/serialize` delegates are removed); `TypedStore` lifecycle access moved to `.inner`; `GatherStrategies`/`OutcomeReducers` registries throw on duplicate (`replace()` for intentional overrides); adapter wire-shape entities relocated to `entities/adapter/` (breaking the `contracts → adapter` cycle); adapter option-type aliases removed; the `Book` entity is composed into `BookIdentity`/`BookPublication`/`BookAvailability` with a `BookBuilder.from()` factory.
+  Breaking changes (pre-1.0; see the Pre-1.0 migration notes sections below for full migration notes): `NodeInterface.contract` and `NodeInterface.timeout` are now required (`EMPTY_CONTRACT_FRAGMENT` / `Timeout.none()` defaults; `MonadicNode` unaffected); `RetryPolicy` is constructed via `RetryPolicy.from()`; `BaseStore.update` is abstract; `HttpTransport.validate` callback removed; `ChatMessage` is a role-discriminated union; DAG-document (de)serialization moved to `DAGDocument` (the static `Dagonizer.load/serialize` delegates are removed); `TypedStore` lifecycle access moved to `.inner`; `GatherStrategies`/`OutcomeReducers` registries throw on duplicate (`replace()` for intentional overrides); adapter wire-shape entities relocated to `entities/adapter/` (breaking the `contracts → adapter` cycle); adapter option-type aliases removed; the `Book` entity is composed into `BookIdentity`/`BookPublication`/`BookAvailability` with a `BookBuilder.from()` factory.
 
   Additions: public `EMPTY_CONTRACT_FRAGMENT`, `IncrementalGatherStrategy`, `DAGDocument`, `ScatterWorkerPool`, `StoreSnapshotSchema`, shared `SystemInfo.recommendedWorkerCount`, `'ABORTED'` `ToolErrorReason`, uniform adapter `maxAttempts`, `OpenRouter` `referer`/`title` options, Ollama-Cloud API-key support, and `ForkEntry`/`SpawnEntry`/`WorkerEntry` static node entries.
 
@@ -208,12 +198,12 @@
 
   **Breaking — type-shape conventions**
 
-  - Canonical defaults: every options/config bag resolves through a co-located defaults object applied as both the default argument and a spread over caller input; defaulted fields are optional input, never required-of-caller.
+  - Canonical defaults: every options/config object resolves through a co-located defaults object applied as both the default argument and a spread over caller input; defaulted fields are optional input, never required-of-caller.
   - Data-shape types are mutable: `readonly`/`ReadonlyArray`/`Readonly<Record>` removed from entity, wire, and options/config declarations to match the schema-derived shapes. Consumers apply `Readonly<>` at their boundary; class instance fields and `as const` schema literals keep their immutability. Compile-time only.
 
   Dispatch maps replace switch chains throughout; schema-as-source-of-truth gaps closed; all workspace consumer packages migrated. Validation: typecheck + lint clean, 698 dagonizer tests pass, every workspace package and example builds.
 
-## [Unreleased]
+## [Pre-1.0 migration notes (around 0.19.0)]
 
 Codebase-wide audit-and-harden pass: function-signature normalisation,
 type-safety tightening, V8 shape stability, runtime robustness, public-export
@@ -257,7 +247,7 @@ single trailing `options` object.
 - **`DagOutcome.transportError(correlationId, options?: { code?, message? })`** (SC-12).
 - **`ContractRegistryValidator.validate(contracts, warningEmitter, options?: { entrypointName? })`** — second argument is `WarningEmitter` (was `(message: string) => void`). `DAGBuilder.build({ warningEmitter? })` option renamed from `onContractWarning`.
 - **`NodeErrorBuilder.from(code, message, operation, recoverable, timestamp, options?)`** — required args are positional (previously a single partial object).
-- **`DagContainerError` constructor migrated to the options bag.**
+- **`DagContainerError` constructor migrated to the options object.**
 - **`DagContainerInterface.runDag(task, options?: { relay? })`** — trailing `relay` positional moved into the options object.
 
 ### Breaking — registry & validation
@@ -357,7 +347,7 @@ Shared adapter behaviour and config live on the canonical base class; concrete c
 
 ### Changed — required-with-defaults & schema-derived
 
-- **Engine-wide options resolution policy**: every options or config bag resolves through a co-located defaults object applied as both the default argument and a spread over caller input (`{ ...DEFAULTS, ...options }`). Defaulted fields are optional input, never required-of-caller. This is the canonical required-with-defaults form across the engine; each option type's defaulted fields are explicitly `?` in the type.
+- **Engine-wide options resolution policy**: every options or config object resolves through a co-located defaults object applied as both the default argument and a spread over caller input (`{ ...DEFAULTS, ...options }`). Defaulted fields are optional input, never required-of-caller. This is the canonical required-with-defaults form across the engine; each option type's defaulted fields are explicitly `?` in the type.
 - **`ScatterOptions.from(partial)`** materialises static scatter-placement defaults at build time: `itemKey` defaults to `'currentItem'`, `reducer` defaults to `'aggregate'`. Data-dependent defaults (`concurrency`, `inputs`, `container`) remain resolved at dispatch. `./builder` exports `ScatterOptions`, `SCATTER_ITEM_KEY_DEFAULT`, `SCATTER_REDUCER_DEFAULT`, and `ResolvedScatterOptions`.
 - **`InterruptionInfo`** is derived from `InterruptionInfoSchema` (JSON Schema 2020-12). The type is no longer hand-written.
 - **Dispatch maps replace switch/if-else chains** in `DagHost`, `ChannelDispatch`, `DAGDeriver`, `OpenAiCompatibleAdapter`, and the lifecycle/gather dispatch paths.

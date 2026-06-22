@@ -30,7 +30,7 @@ process.stdout.write(`health ok=${String(healthy)}\n\n`);
 
 // ── put/get round-trip ───────────────────────────────────────────────────────
 await store.set('catalogue:entry:001', { title: 'The Archivist Compendium', volume: 1 });
-const entry = await store.get<{ title: string; volume: number }>('catalogue:entry:001');
+const entry = await store.get('catalogue:entry:001');
 process.stdout.write(`get after set: ${JSON.stringify(entry)}\n`);
 
 // ── has ──────────────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ const notExists = await store.has('catalogue:entry:999');
 process.stdout.write(`has '001'=${String(exists)}  has '999'=${String(notExists)}\n`);
 
 // ── update (atomic read-modify-write) ────────────────────────────────────────
-const updated = await store.update<number>('catalogue:count', (n) => (n ?? 0) + 1);
+const updated = await store.update('catalogue:count', (n) => (typeof n === 'number' ? n : 0) + 1);
 process.stdout.write(`update counter: ${String(updated)}\n`);
 
 // ── delete ───────────────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ process.stdout.write(`\nsnapshot entries=${String(snap.entries.length)}\n`);
 
 const fresh = new GrpcStore('grpc://archivist.internal:50051', 'eu-west-1');
 await fresh.restore(snap);
-const restored = await fresh.get<string>('persist:a');
+const restored = await fresh.get('persist:a');
 process.stdout.write(`restored persist:a=${String(restored)}\n`);
 
 await store.disconnect();

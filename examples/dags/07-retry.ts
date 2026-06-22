@@ -67,7 +67,7 @@ export class FetchNode extends ScalarNode<FetchState, 'success' | 'error'> {
     const downstream = new FlakyDownstream();
     try {
       // policy.run() re-invokes downstream.call() until it succeeds or
-      // maxAttempts is reached. The options bag passes context.signal so
+      // maxAttempts is reached. The options object passes context.signal so
       // an abort cancels the wait between retries immediately.
       state.result = await policy.run(() => downstream.call(), { signal: context.signal });
       return NodeOutputBuilder.of('success');
@@ -105,13 +105,12 @@ export const filteredPolicy = RetryPolicy.from({
  *  If the signal fires during a backoff wait, run() throws immediately
  *  rather than waiting for the next attempt window to expire.
  */
-export async function runWithAbort(
-  task: () => Promise<string>,
-  signal: AbortSignal,
-): Promise<string> {
-  const policy = RetryPolicy.from({ maxAttempts: 10, baseDelay: 1000 });
-  // If signal aborts during a 1 s sleep, run() throws immediately.
-  return policy.run(task, { signal });
+export class AbortRunner {
+  static async run(task: () => Promise<string>, signal: AbortSignal): Promise<string> {
+    const policy = RetryPolicy.from({ maxAttempts: 10, baseDelay: 1000 });
+    // If signal aborts during a 1 s sleep, run() throws immediately.
+    return policy.run(task, { signal });
+  }
 }
 // #endregion abort-cooperation
 

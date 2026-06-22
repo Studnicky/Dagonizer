@@ -14,12 +14,11 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import type { NodeInterface, SchemaObjectType } from '../../src/contracts/NodeInterface.js';
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { ReservoirDriverInterface, ScatterItemBatchResultType } from '../../src/contracts/ReservoirDriver.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { ScatterProgressType } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
@@ -75,39 +74,43 @@ class ReservoirState extends NodeStateBase {
   }
 }
 
-/** Build a reservoir DAG whose scatter node uses the given keyField + capacity. */
-function makeReservoirDag(dagName: string, keyField: string, capacity: number): DAGType {
-  return {
-    '@context': DAG_CONTEXT,
-    '@id':      `urn:noocodex:dag:${dagName}`,
-    '@type':    'DAG',
-    'name': dagName, 'version': '1', 'entrypoint': 'fan',
-    'nodes': [
-      {
-        '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
-        '@type':  'ScatterNode',
-        'name':   'fan',
-        'body':   { 'node': 'worker' },
-        'source': 'items',
-        'itemKey': 'currentItem',
-        'reservoir': { keyField, 'capacity': capacity },
-        // No `field`: append strategy appends record.item (the ReservoirItem) to target.
-        'gather': { 'strategy': 'append', 'target': 'gathered' },
-        'outputs': {
-          'all-success': 'end',
-          'partial':     'end',
-          'all-error':   'end',
-          'empty':       'end',
+/** Builds reservoir DAGs for tests. */
+class ReservoirDag {
+  private constructor() {}
+
+  static withCapacity(dagName: string, keyField: string, capacity: number): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${dagName}`,
+      '@type':    'DAG',
+      'name': dagName, 'version': '1', 'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
+          '@type':  'ScatterNode',
+          'name':   'fan',
+          'body':   { 'node': 'worker' },
+          'source': 'items',
+          'itemKey': 'currentItem',
+          'reservoir': { keyField, 'capacity': capacity },
+          // No `field`: append strategy appends record.item (the ReservoirItem) to target.
+          'gather': { 'strategy': 'append', 'target': 'gathered' },
+          'outputs': {
+            'all-success': 'end',
+            'partial':     'end',
+            'all-error':   'end',
+            'empty':       'end',
+          },
         },
-      },
-      {
-        '@id':    `urn:noocodex:dag:${dagName}/node/end`,
-        '@type':  'TerminalNode',
-        'name':   'end',
-        'outcome': 'completed',
-      },
-    ],
-  };
+        {
+          '@id':    `urn:noocodex:dag:${dagName}/node/end`,
+          '@type':  'TerminalNode',
+          'name':   'end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+  }
 }
 
 /**
@@ -133,8 +136,16 @@ class BatchTrackingNode extends MonadicNode<ReservoirState, string> {
   }
 }
 
-function makeBatchTrackingNode(batchSizes: number[]): NodeInterface<ReservoirState> {
-  return new BatchTrackingNode(batchSizes);
+/** Type guard for ReservoirItem shape read from metadata. */
+class ReservoirItemGuard {
+  private constructor() {}
+
+  static is(v: unknown): v is ReservoirItem {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+    const key = Reflect.get(v, 'key');
+    const value = Reflect.get(v, 'value');
+    return typeof key === 'string' && typeof value === 'number';
+  }
 }
 
 /** Passthrough node — routes everything to 'success'. No state mutation. */
@@ -162,8 +173,8 @@ void describe('Reservoir scatter — capacity release', () => {
     const dispatcher = new Dagonizer<ReservoirState>();
     const batchSizes: number[] = [];
 
-    dispatcher.registerNode(makeBatchTrackingNode(batchSizes));
-    dispatcher.registerDAG(makeReservoirDag('reservoir-capacity', 'key', 100));
+    dispatcher.registerNode(new BatchTrackingNode(batchSizes));
+    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-capacity', 'key', 100));
 
     const state = new ReservoirState();
     // 1000 items with a single key 'k', capacity 100 → 10 capacity releases.
@@ -203,10 +214,10 @@ class KeyedPartitionNode extends MonadicNode<ReservoirState, string> {
     const keys = new Set<string>();
     const batchItems: ReservoirItem[] = [];
     for (const batchItem of batch) {
-      const val = batchItem.state.getMetadata<ReservoirItem>('currentItem');
-      if (val !== undefined) {
-        keys.add(val.key);
-        batchItems.push(val);
+      const raw = batchItem.state.getMetadata('currentItem');
+      if (ReservoirItemGuard.is(raw)) {
+        keys.add(raw.key);
+        batchItems.push(raw);
       }
     }
     // All items in one reservoir batch must share the same key.
@@ -231,7 +242,7 @@ void describe('Reservoir scatter — keyed partitioning', () => {
     const node = new KeyedPartitionNode(batchesByKey);
 
     dispatcher.registerNode(node);
-    dispatcher.registerDAG(makeReservoirDag('reservoir-keyed', 'key', 100));
+    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-keyed', 'key', 100));
 
     const state = new ReservoirState();
     // 300 items across 3 keys, 100 per key.
@@ -282,7 +293,7 @@ void describe('Reservoir scatter — complete-flush', () => {
 
     dispatcher.registerNode(node);
     // capacity 100, but only 50 items per key → complete-flush fires at drain.
-    dispatcher.registerDAG(makeReservoirDag('reservoir-flush', 'key', 100));
+    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-flush', 'key', 100));
 
     const state = new ReservoirState();
     // 3 keys × 50 items = 150 total (all below capacity of 100).
@@ -307,9 +318,9 @@ void describe('Reservoir scatter — gather exactly-once', () => {
     const dispatcher = new Dagonizer<ReservoirState>();
     const batchSizes: number[] = [];
 
-    dispatcher.registerNode(makeBatchTrackingNode(batchSizes));
+    dispatcher.registerNode(new BatchTrackingNode(batchSizes));
     // capacity 5, 2 keys × 10 items → 4 capacity releases (2 per key).
-    dispatcher.registerDAG(makeReservoirDag('reservoir-exactonce', 'key', 5));
+    dispatcher.registerDAG(ReservoirDag.withCapacity('reservoir-exactonce', 'key', 5));
 
     const state = new ReservoirState();
     for (let i = 0; i < 10; i++) state.items.push({ 'key': 'p', 'value': i });
@@ -360,7 +371,7 @@ void describe('Reservoir scatter — crash-safe resume', () => {
 
     dispatcher1.registerNode(crashingNode);
     // 3 keys × 5 items, capacity 5 → 3 capacity releases (one crashes).
-    dispatcher1.registerDAG(makeReservoirDag('reservoir-crash', 'key', 5));
+    dispatcher1.registerDAG(ReservoirDag.withCapacity('reservoir-crash', 'key', 5));
 
     const state1 = new ReservoirState();
     for (let i = 0; i < 5; i++) state1.items.push({ 'key': 'a', 'value': i });
@@ -375,14 +386,14 @@ void describe('Reservoir scatter — crash-safe resume', () => {
       `expected 10 gathered after crash, got ${partial.state.gathered.length}`);
 
     // Checkpoint must have survived.
-    const stored = partial.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
+    const stored = partial.state.getMetadata(SCATTER_PROGRESS_KEY);
     assert.ok(stored !== undefined, 'expected checkpoint metadata after crash');
 
     // ── Phase 2: resume ──────────────────────────────────────────────────────
     const dispatcher2 = new Dagonizer<ReservoirState>();
 
     dispatcher2.registerNode(PASSTHROUGH_NODE);
-    dispatcher2.registerDAG(makeReservoirDag('reservoir-crash', 'key', 5));
+    dispatcher2.registerDAG(ReservoirDag.withCapacity('reservoir-crash', 'key', 5));
 
     const result = await dispatcher2.resume('reservoir-crash', partial.state, 'fan');
     assert.equal(result.cursor, null);
@@ -408,7 +419,7 @@ void describe('Reservoir scatter — no-reservoir parity', () => {
     const dispatcher = new Dagonizer<ReservoirState>();
     const batchSizes: number[] = [];
 
-    dispatcher.registerNode(makeBatchTrackingNode(batchSizes));
+    dispatcher.registerNode(new BatchTrackingNode(batchSizes));
 
     // No `reservoir` field → non-reservoir path (ScatterWorkerPool).
     const dag: DAGType = {
@@ -461,65 +472,82 @@ void describe('Reservoir scatter — no-reservoir parity', () => {
 // ---------------------------------------------------------------------------
 
 /** Yield to the microtask / setImmediate queue. */
-const tick = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
+class Tick {
+  private constructor() {}
+
+  static next(): Promise<void> {
+    return new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
 
 /** Item shape used by the idle tests. */
 type IdleItem = { key: string; value: number };
 
-type Deferred<T> = {
+type DeferredHandle<T> = {
   promise: Promise<T>;
   resolve: (value: T) => void;
   reject:  (reason: unknown) => void;
 };
 
-function makeDeferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!:  (reason: unknown) => void;
-  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
-  return { promise, resolve, reject };
+class Deferred {
+  private constructor() {}
+
+  static of<T>(): DeferredHandle<T> {
+    let resolveRef: ((value: T) => void) | undefined;
+    let rejectRef:  ((reason: unknown) => void) | undefined;
+    const promise = new Promise<T>((res, rej) => { resolveRef = res; rejectRef = rej; });
+    if (resolveRef === undefined || rejectRef === undefined) {
+      throw new Error('Promise executor did not run synchronously');
+    }
+    return { promise, "resolve": resolveRef, "reject": rejectRef };
+  }
 }
 
-/**
- * Build an async iterator that yields `items` synchronously then parks on a
- * deferred before returning `done: true`. Lets tests advance virtual time
- * while the pull loop is blocked waiting for the next item.
- */
-function makeControlledSource(items: IdleItem[], gate: Deferred<void>): AsyncIterator<unknown> {
-  let index = 0;
-  return {
-    async next(): Promise<IteratorResult<unknown>> {
-      if (index < items.length) {
-        return { 'value': items[index++], 'done': false };
-      }
-      await gate.promise;
-      return { 'value': undefined, 'done': true };
-    },
-  };
+/** Async iterator that yields items then parks on a gate deferred. */
+class ControlledSource {
+  private constructor() {}
+
+  static of(items: IdleItem[], gate: DeferredHandle<void>): AsyncIterator<unknown> {
+    let index = 0;
+    return {
+      async next(): Promise<IteratorResult<unknown>> {
+        if (index < items.length) {
+          return { 'value': items[index++], 'done': false };
+        }
+        await gate.promise;
+        return { 'value': undefined, 'done': true };
+      },
+    };
+  }
 }
 
-/**
- * Build a fake driver that records released batches. Items carry `bufferKey`;
- * each batch is recorded as `{ size, key }`.
- */
-function makeFakeDriver(releases: { size: number; key: string }[]): ReservoirDriverInterface {
-  return {
-    async executeBatch(items): Promise<ScatterItemBatchResultType> {
-      const key = String((items[0] as { bufferKey: string } | undefined)?.bufferKey ?? '');
-      releases.push({ 'size': items.length, key });
-      return {
-        'results': items.map((it) => ({
-          'index':           it.index,
-          'item':            it.item,
-          'output':          'success',
-          'terminalOutcome': null,
-          'cloneState':      new NodeStateBase(),
-        })),
-      };
-    },
-    async ackBatch(_batchResult): Promise<void> {
-      // No-op for unit tests — no real checkpoint needed.
-    },
-  };
+/** Fake reservoir driver that records released batches as `{ size, key }`. */
+class FakeDriver {
+  private constructor() {}
+
+  static recording(releases: { size: number; key: string }[]): ReservoirDriverInterface {
+    return {
+      async executeBatch(items): Promise<ScatterItemBatchResultType> {
+        const first = items[0];
+        const bufferKey = (first !== undefined && typeof Reflect.get(first, 'bufferKey') === 'string')
+          ? String(Reflect.get(first, 'bufferKey'))
+          : '';
+        releases.push({ 'size': items.length, 'key': bufferKey });
+        return {
+          'results': items.map((it) => ({
+            'index':           it.index,
+            'item':            it.item,
+            'output':          'success',
+            'terminalOutcome': null,
+            'cloneState':      new NodeStateBase(),
+          })),
+        };
+      },
+      async ackBatch(_batchResult): Promise<void> {
+        // No-op for unit tests — no real checkpoint needed.
+      },
+    };
+  }
 }
 
 /** Simple `StateAccessorInterface` that reads/writes a top-level property on a plain object. */
@@ -543,15 +571,15 @@ void describe('Reservoir scatter — idle release (partial buffer)', () => {
     const items: IdleItem[] = [];
     for (let i = 0; i < ITEM_COUNT; i++) items.push({ 'key': 'k', 'value': i });
 
-    const gate = makeDeferred<void>();
+    const gate = Deferred.of<void>();
     const releases: { size: number; key: string }[] = [];
 
     const buf = new ReservoirBuffer(
-      makeFakeDriver(releases),
+      FakeDriver.recording(releases),
       {
         'concurrencyLimit': 10,
         'inbox':            [],
-        'freshIter':        makeControlledSource(items, gate),
+        'freshIter':        ControlledSource.of(items, gate),
         'nextIndex':        0,
         'signal':           null,
         'reservoir':        { 'keyField': 'key', 'capacity': CAPACITY, 'idleMs': IDLE_MS },
@@ -564,7 +592,7 @@ void describe('Reservoir scatter — idle release (partial buffer)', () => {
     // Each `await freshIter.next()` costs at least one microtask turn.
     // ITEM_COUNT=3 items → 3 awaits + 1 final await that blocks.
     // 8 ticks lets those pulls complete and the idle timer register.
-    for (let i = 0; i < 8; i++) await tick();
+    for (let i = 0; i < 8; i++) await Tick.next();
 
     assert.ok(sched.pendingCount >= 1, `expected idle timer to be registered; pending=${sched.pendingCount}`);
 
@@ -572,14 +600,14 @@ void describe('Reservoir scatter — idle release (partial buffer)', () => {
     sched.advance(IDLE_MS + 1);
 
     // Flush the .then(() => #onIdle(…)) microtask.
-    await tick();
-    await tick();
+    await Tick.next();
+    await Tick.next();
 
     // Open the gate so the source returns done: true.
     gate.resolve();
 
     // Let the pull loop exit, abort idleAbort, run complete-flush (empty buffer).
-    for (let i = 0; i < 6; i++) await tick();
+    for (let i = 0; i < 6; i++) await Tick.next();
 
     await drainPromise;
 
@@ -609,15 +637,15 @@ void describe('Reservoir scatter — idle timer invalidated by capacity release'
     const items: IdleItem[] = [];
     for (let i = 0; i < CAPACITY; i++) items.push({ 'key': 'k', 'value': i });
 
-    const gate = makeDeferred<void>();
+    const gate = Deferred.of<void>();
     const releases: { size: number; key: string }[] = [];
 
     const buf = new ReservoirBuffer(
-      makeFakeDriver(releases),
+      FakeDriver.recording(releases),
       {
         'concurrencyLimit': 10,
         'inbox':            [],
-        'freshIter':        makeControlledSource(items, gate),
+        'freshIter':        ControlledSource.of(items, gate),
         'nextIndex':        0,
         'signal':           null,
         'reservoir':        { 'keyField': 'key', 'capacity': CAPACITY, 'idleMs': IDLE_MS },
@@ -628,18 +656,18 @@ void describe('Reservoir scatter — idle timer invalidated by capacity release'
     const drainPromise = buf.drain();
 
     // Wait for pull loop to drain all CAPACITY items and block on gate.
-    for (let i = 0; i < 8; i++) await tick();
+    for (let i = 0; i < 8; i++) await Tick.next();
 
     // The capacity release bumps the key's generation, so a later idle timer is
     // stale: advancing past idleMs fires it but #onIdle no-ops (no double-release).
     sched.advance(IDLE_MS + 1);
-    await tick();
+    await Tick.next();
     sched.runAll();
-    await tick();
+    await Tick.next();
 
     // Open the gate.
     gate.resolve();
-    for (let i = 0; i < 6; i++) await tick();
+    for (let i = 0; i < 6; i++) await Tick.next();
     await drainPromise;
 
     // Exactly one release: the capacity release. No second (empty) release.
@@ -666,16 +694,16 @@ void describe('Reservoir scatter — no idleMs, no idle timers', () => {
       { 'key': 'k', 'value': 2 },
     ];
 
-    const gate = makeDeferred<void>();
+    const gate = Deferred.of<void>();
     const releases: { size: number; key: string }[] = [];
 
     // No idleMs — complete-flush only.
     const buf = new ReservoirBuffer(
-      makeFakeDriver(releases),
+      FakeDriver.recording(releases),
       {
         'concurrencyLimit': 10,
         'inbox':            [],
-        'freshIter':        makeControlledSource(items, gate),
+        'freshIter':        ControlledSource.of(items, gate),
         'nextIndex':        0,
         'signal':           null,
         'reservoir':        { 'keyField': 'key', 'capacity': CAPACITY },
@@ -686,18 +714,18 @@ void describe('Reservoir scatter — no idleMs, no idle timers', () => {
     const drainPromise = buf.drain();
 
     // Wait for pull loop to drain all items and block on gate.
-    for (let i = 0; i < 8; i++) await tick();
+    for (let i = 0; i < 8; i++) await Tick.next();
 
     // No idle timers should be registered.
     assert.equal(sched.pendingCount, 0, `expected 0 idle timers; got ${sched.pendingCount}`);
 
     // Advance a lot — nothing should fire.
     sched.advance(999_999);
-    await tick();
+    await Tick.next();
 
     // Open gate → complete-flush fires.
     gate.resolve();
-    for (let i = 0; i < 6; i++) await tick();
+    for (let i = 0; i < 6; i++) await Tick.next();
     await drainPromise;
 
     // Complete-flush fires exactly one batch of 3 items.

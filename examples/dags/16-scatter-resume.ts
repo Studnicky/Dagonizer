@@ -106,7 +106,7 @@ export class ProcessJobNode extends ScalarNode<ResumeState, 'done'> {
   }
 
   protected override async executeOne(state: ResumeState) {
-    const job   = state.getMetadata<string>('job') ?? '?';
+    const job   = state.getter.string('job', '?');
     const label = `${job}(run-${observable.run})`;
     // Write a scalar to `processed` on the clone. The map gather reads
     // this and appends it to the parent's `completed` array.

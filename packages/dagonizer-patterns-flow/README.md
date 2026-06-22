@@ -12,7 +12,7 @@ npm install @studnicky/dagonizer @studnicky/dagonizer-patterns-flow
 
 ```
 MonadicNode (root)
-└── FlowNode<TState>                          (no services bag)
+└── FlowNode<TState>                          (no services record)
     ├── SelectNode<TState, TItem>             (pick/sort from list)
     │   ├── PickByScoreNode<TItem>
     │   └── SortByNode<TItem>
@@ -108,7 +108,7 @@ class RespondToVisitor extends RespondNode<MyState> {
   readonly name = 'respond-to-visitor';
   protected emit(s: MyState, draft: string): void {
     s.conversation = [...s.conversation, { role: 'agent', text: draft }];
-    s.lifecycle = { kind: 'completed' };
+    s.markCompleted();
   }
 }
 ```

@@ -101,8 +101,9 @@ for (const payload of payloads) {
 
 await SmokeRunner.check('(a) every variant eventType matches its source payload eventType', async () => {
   for (let i = 0; i < payloads.length; i++) {
-    const payload = payloads[i]!;
-    const variant = variants[i]!;
+    const payload = payloads[i];
+    const variant = variants[i];
+    if (payload === undefined || variant === undefined) continue;
     assert.strictEqual(
       variant.eventType,
       payload.eventType,
@@ -207,8 +208,9 @@ await SmokeRunner.check('all 5 eventTypes are represented in the decoded variant
 
 await SmokeRunner.check('provenance is wired: sourceId/sourceFormat/sourceCompression match payload', async () => {
   for (let i = 0; i < payloads.length; i++) {
-    const payload = payloads[i]!;
-    const variant = variants[i]!;
+    const payload = payloads[i];
+    const variant = variants[i];
+    if (payload === undefined || variant === undefined) continue;
     assert.strictEqual(variant.sourceId,          payload.sourceId,    `sourceId mismatch at index ${i}`);
     assert.strictEqual(variant.sourceFormat,      payload.format,      `sourceFormat mismatch at index ${i}`);
     assert.strictEqual(variant.sourceCompression, payload.compression, `sourceCompression mismatch at index ${i}`);

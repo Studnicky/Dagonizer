@@ -43,16 +43,20 @@ class TestPlacement {
   }
 }
 
-function baseDAG(nodes: DAGType['nodes']): DAGType {
-  return {
-    '@context':   DAG_CONTEXT,
-    '@id':        'urn:noocodex:dag:test',
-    '@type':      'DAG',
-    'name':       'test',
-    'version':    '1',
-    'entrypoint': nodes[0]?.name ?? 'start',
-    'nodes':      nodes,
-  };
+class TestDagFixture {
+  private constructor() {}
+
+  static ofNodes(nodes: DAGType['nodes']): DAGType {
+    return {
+      '@context':   DAG_CONTEXT,
+      '@id':        'urn:noocodex:dag:test',
+      '@type':      'DAG',
+      'name':       'test',
+      'version':    '1',
+      'entrypoint': nodes[0]?.name ?? 'start',
+      'nodes':      nodes,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +68,7 @@ void describe('WellFormedValidator', () => {
   // ── Rule 1: clean DAG → no violations ───────────────────────────────────
 
   void it('returns no violations for a well-formed DAG with TerminalNode end', () => {
-    const dag = baseDAG([
+    const dag = TestDagFixture.ofNodes([
       TestPlacement.singleNode('start', { 'ok': 'end' }),
       TestPlacement.terminal('end', 'completed'),
     ]);
@@ -73,7 +77,7 @@ void describe('WellFormedValidator', () => {
   });
 
   void it('returns no violations for a chained DAG with TerminalNode end', () => {
-    const dag = baseDAG([
+    const dag = TestDagFixture.ofNodes([
       TestPlacement.singleNode('a', { 'done': 'b' }),
       TestPlacement.singleNode('b', { 'done': 'end' }),
       TestPlacement.terminal('end', 'completed'),
@@ -85,7 +89,7 @@ void describe('WellFormedValidator', () => {
   // ── Rule 1: dangling target → violation ──────────────────────────────────
 
   void it('reports a violation when an output targets a non-existent placement', () => {
-    const dag = baseDAG([
+    const dag = TestDagFixture.ofNodes([
       TestPlacement.singleNode('start', { 'done': 'ghost' }),  // 'ghost' does not exist
     ]);
     const violations = WellFormedValidator.check(dag);
@@ -96,7 +100,7 @@ void describe('WellFormedValidator', () => {
   });
 
   void it('reports one violation per dangling target', () => {
-    const dag = baseDAG([
+    const dag = TestDagFixture.ofNodes([
       TestPlacement.singleNode('start', { 'ok': 'also-ghost', 'fail': 'ghost-too' }),
     ]);
     const violations = WellFormedValidator.check(dag);
@@ -106,7 +110,7 @@ void describe('WellFormedValidator', () => {
   // ── Rule 2: ScatterNode checks ────────────────────────────────────────────
 
   void it('reports no violation for a well-formed ScatterNode', () => {
-    const dag = baseDAG([
+    const dag = TestDagFixture.ofNodes([
       {
         '@id':    'urn:noocodex:dag:test/node/scatter',
         '@type':  'ScatterNode',
@@ -125,7 +129,7 @@ void describe('WellFormedValidator', () => {
   // ── Rule 2: EmbeddedDAGNode checks ───────────────────────────────────────
 
   void it('reports no violation for a well-formed EmbeddedDAGNode', () => {
-    const dag = baseDAG([
+    const dag = TestDagFixture.ofNodes([
       {
         '@id':    'urn:noocodex:dag:test/node/embed',
         '@type':  'EmbeddedDAGNode',
@@ -142,7 +146,7 @@ void describe('WellFormedValidator', () => {
   // ── Rule: TerminalNode with valid outcome ─────────────────────────────────
 
   void it('accepts a TerminalNode with outcome completed', () => {
-    const dag = baseDAG([
+    const dag = TestDagFixture.ofNodes([
       TestPlacement.singleNode('start', { 'ok': 'end' }),
       TestPlacement.terminal('end', 'completed'),
     ]);
@@ -151,7 +155,7 @@ void describe('WellFormedValidator', () => {
   });
 
   void it('accepts a TerminalNode with outcome failed', () => {
-    const dag = baseDAG([
+    const dag = TestDagFixture.ofNodes([
       TestPlacement.singleNode('start', { 'ok': 'end' }),
       TestPlacement.terminal('end', 'failed'),
     ]);
@@ -162,7 +166,7 @@ void describe('WellFormedValidator', () => {
   // ── Self-loop (legal targeting) ───────────────────────────────────────────
 
   void it('accepts a self-loop (retry pattern) as a valid target', () => {
-    const dag = baseDAG([
+    const dag = TestDagFixture.ofNodes([
       TestPlacement.singleNode('fetch', { 'success': 'end', 'retry': 'fetch' }),  // self-loop on retry
       TestPlacement.terminal('end', 'completed'),
     ]);
@@ -173,7 +177,7 @@ void describe('WellFormedValidator', () => {
   // ── Multiple placements mixed clean and violating ────────────────────────
 
   void it('reports violations only for offending placements in a mixed DAG', () => {
-    const dag = baseDAG([
+    const dag = TestDagFixture.ofNodes([
       TestPlacement.singleNode('a', { 'ok': 'b' }),                          // clean
       TestPlacement.singleNode('b', { 'ok': 'nowhere' }),                    // VIOLATION: dangling target
       TestPlacement.singleNode('c', { 'ok': 'a' }),                          // clean

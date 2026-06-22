@@ -1,5 +1,5 @@
 /**
- * ArchivistServices: the dispatcher's services bag.
+ * ArchivistServices: the dispatcher's services record.
  *
  * The Archivist does not cheat with hand-crafted in-process catalogs.
  * Every candidate comes from an authoritative source (the OpenLibrary
@@ -16,8 +16,8 @@
  *                and validates the response.
  *
  * Observability is not a service. Nodes are pure: they route to outputs and
- * never log. Logging is the `ObservedArchivist` subclass's lifecycle-hook
- * responsibility, which owns its own `ConsoleLogger`.
+ * never log. Logging is the `ObservedDag` subclass's lifecycle-hook
+ * responsibility via the injected `ConsoleLogger`.
  */
 
 import type { ConversationTurn, MemoryDigest } from './ArchivistState.ts';

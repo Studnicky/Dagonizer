@@ -1,14 +1,18 @@
 /**
- * TypedStore: schema-narrowed view over any `StoreInterface`.
+ * TypedStore: schema-validated view over any `StoreInterface`.
  *
- * Wraps a base StoreInterface and exposes get/set/has/delete/update keyed by
- * `Schema` keys. The value type is inferred from `Schema[K]`; callers
- * never specify `<T>` at the call site.
+ * Wraps a base `StoreInterface` (which is type-erased — `get` returns
+ * `JsonValueType`) and exposes get/set/has/delete/update keyed by `Schema`
+ * keys. The value type is `Schema[K]`; callers never specify `<T>` at the
+ * call site.
  *
- * `TypedStore` does not implement `StoreInterface` (its `set` signature is
- * narrower than the contract). It is a separate ergonomic surface; use
- * the underlying `StoreInterface` instance directly when you need the
- * heterogeneous contract.
+ * Typed reads are CONFIGURED runtime validation — the same opt-in shape as the
+ * dispatcher's `validateOutputs`. The constructor takes a per-key validator
+ * record; `get`/`update` call `validator.validate(raw)` on each read, and the
+ * validator IS the type-guard (an Ajv `ValidateFunction<Schema[K]>`), so the
+ * typed value is produced without a cast. A stored value that does not match
+ * its key's schema throws a `ValidationError` on read. For raw, unvalidated
+ * access, use the underlying `StoreInterface` (`typedStore.inner`).
  *
  * `Schema` is constrained so every value type must extend `JsonValueType`.
  * Plain interfaces with named keys satisfy this constraint without needing
@@ -19,29 +23,42 @@
  *   users: User[];
  *   count: number;
  * }
- * const inner  = new MemoryStore();
- * const typed  = new TypedStore<AppSchema>(inner);
+ * const inner = new MemoryStore();
+ * const typed = new TypedStore<AppSchema>(inner, {
+ *   users: Validator.compile(UsersSchema),
+ *   count: Validator.compile(CountSchema),
+ * });
  * await typed.set('count', 42);            // ok
- * const n = await typed.get('count');      // n: number | null
+ * const n = await typed.get('count');      // n: number | null (validated)
  * await typed.set('count', 'wrong');       // TS error
  */
 
 import type { StoreInterface } from '../contracts/StoreInterface.js';
 import type { JsonValueType } from '../entities/json.js';
+import type { EntityValidatorInterface } from '../validation/Validator.js';
+
+/** Per-key validator record: one `EntityValidatorInterface` per `Schema` key. */
+export type TypedStoreValidatorsType<Schema> = {
+  readonly [K in keyof Schema]: EntityValidatorInterface<Schema[K]>;
+};
 
 export class TypedStore<Schema extends { [K in keyof Schema]: JsonValueType }> {
   readonly #inner: StoreInterface;
+  readonly #validators: TypedStoreValidatorsType<Schema>;
 
-  constructor(inner: StoreInterface) {
+  constructor(inner: StoreInterface, validators: TypedStoreValidatorsType<Schema>) {
     this.#inner = inner;
+    this.#validators = validators;
   }
 
   async get<K extends keyof Schema & string>(key: K): Promise<Schema[K] | null> {
-    return this.#inner.get<Schema[K]>(key);
+    const raw = await this.#inner.get(key);
+    if (raw === null) return null;
+    return this.#validators[key].validate(raw);
   }
 
   async set<K extends keyof Schema & string>(key: K, value: Schema[K]): Promise<void> {
-    await this.#inner.set<Schema[K]>(key, value);
+    await this.#inner.set(key, value);
   }
 
   async has<K extends keyof Schema & string>(key: K): Promise<boolean> {
@@ -56,7 +73,11 @@ export class TypedStore<Schema extends { [K in keyof Schema]: JsonValueType }> {
     key: K,
     fn: (current: Schema[K] | undefined) => Schema[K],
   ): Promise<Schema[K]> {
-    return this.#inner.update<Schema[K]>(key, fn);
+    const validator = this.#validators[key];
+    const result = await this.#inner.update(key, (raw) =>
+      fn(raw === undefined ? undefined : validator.validate(raw)),
+    );
+    return validator.validate(result);
   }
 
   /**

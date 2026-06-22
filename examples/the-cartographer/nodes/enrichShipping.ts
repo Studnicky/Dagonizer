@@ -15,7 +15,6 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { ShippingCalculator } from '../services.ts';
 
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -23,7 +22,7 @@ import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
 import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 
 // #region enrich-shipping-node
-export class EnrichShippingNode extends MonadicNode<CartographerState, 'shipping-quoted', CartographerServices> {
+export class EnrichShippingNode extends MonadicNode<CartographerState, 'shipping-quoted'> {
   readonly 'name' = 'enrich-shipping';
   readonly 'outputs' = ['shipping-quoted'] as const;
 
@@ -35,7 +34,7 @@ export class EnrichShippingNode extends MonadicNode<CartographerState, 'shipping
 
   override async execute(
     batch: Batch<CartographerState>,
-    _context: NodeContextType<CartographerServices>,
+    _context: NodeContextType,
   ): Promise<RoutedBatchType<'shipping-quoted', CartographerState>> {
     for (const item of batch) {
       const norm = item.state.normalized;

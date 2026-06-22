@@ -14,17 +14,21 @@ import type { RecommendedWorkerCountConfigType } from '@studnicky/dagonizer/enti
 import { WebSystemInfo } from '../../src/WebSystemInfo.js';
 
 // ---------------------------------------------------------------------------
-// Helpers
+// WorkerCountConfig: default config with optional overrides
 // ---------------------------------------------------------------------------
 
-function config(overrides: Partial<RecommendedWorkerCountConfigType> = {}): RecommendedWorkerCountConfigType {
-  return {
-    'maximumWorkers': 8,
-    'mainThreadReservation': 1,
-    'fallbackWorkerCount': 1,
-    'memoryPerWorkerBytes': null,
-    ...overrides,
-  };
+class WorkerCountConfig {
+  private constructor() {}
+
+  static of(overrides: Partial<RecommendedWorkerCountConfigType> = {}): RecommendedWorkerCountConfigType {
+    return {
+      'maximumWorkers': 8,
+      'mainThreadReservation': 1,
+      'fallbackWorkerCount': 1,
+      'memoryPerWorkerBytes': null,
+      ...overrides,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -37,33 +41,33 @@ void describe('WebSystemInfo', () => {
 
   void it('returns hardwareConcurrency − mainThreadReservation for a normal 8-core machine', () => {
     const info = new WebSystemInfo({ 'hardwareConcurrency': 8 });
-    const count = info.recommendedWorkerCount(config({ 'maximumWorkers': 16, 'mainThreadReservation': 1, 'fallbackWorkerCount': 1 }));
+    const count = info.recommendedWorkerCount(WorkerCountConfig.of({ 'maximumWorkers': 16, 'mainThreadReservation': 1, 'fallbackWorkerCount': 1 }));
     assert.strictEqual(count, 7);
   });
 
   void it('clamps to maximumWorkers when raw count exceeds it', () => {
     const info = new WebSystemInfo({ 'hardwareConcurrency': 32 });
-    const count = info.recommendedWorkerCount(config({ 'maximumWorkers': 4, 'mainThreadReservation': 1, 'fallbackWorkerCount': 1 }));
+    const count = info.recommendedWorkerCount(WorkerCountConfig.of({ 'maximumWorkers': 4, 'mainThreadReservation': 1, 'fallbackWorkerCount': 1 }));
     assert.strictEqual(count, 4);
   });
 
   void it('returns fallbackWorkerCount when raw count is zero (single-core minus reservation)', () => {
     const info = new WebSystemInfo({ 'hardwareConcurrency': 1 });
-    const count = info.recommendedWorkerCount(config({ 'maximumWorkers': 8, 'mainThreadReservation': 1, 'fallbackWorkerCount': 2 }));
+    const count = info.recommendedWorkerCount(WorkerCountConfig.of({ 'maximumWorkers': 8, 'mainThreadReservation': 1, 'fallbackWorkerCount': 2 }));
     // raw = 1 − 1 = 0; fallback = 2; max(0, 2) = 2
     assert.strictEqual(count, 2);
   });
 
   void it('returns fallbackWorkerCount when raw count is negative', () => {
     const info = new WebSystemInfo({ 'hardwareConcurrency': 1 });
-    const count = info.recommendedWorkerCount(config({ 'maximumWorkers': 8, 'mainThreadReservation': 2, 'fallbackWorkerCount': 1 }));
+    const count = info.recommendedWorkerCount(WorkerCountConfig.of({ 'maximumWorkers': 8, 'mainThreadReservation': 2, 'fallbackWorkerCount': 1 }));
     // raw = 1 − 2 = −1; fallback = 1; max(−1, 1) = 1
     assert.strictEqual(count, 1);
   });
 
   void it('handles mainThreadReservation of 0 — uses full concurrency', () => {
     const info = new WebSystemInfo({ 'hardwareConcurrency': 4 });
-    const count = info.recommendedWorkerCount(config({ 'maximumWorkers': 8, 'mainThreadReservation': 0, 'fallbackWorkerCount': 1 }));
+    const count = info.recommendedWorkerCount(WorkerCountConfig.of({ 'maximumWorkers': 8, 'mainThreadReservation': 0, 'fallbackWorkerCount': 1 }));
     assert.strictEqual(count, 4);
   });
 
@@ -72,7 +76,7 @@ void describe('WebSystemInfo', () => {
   void it('treats absent, zero, and negative concurrency probes as hardwareConcurrency=1', () => {
     // Each unusable probe normalizes to 1; with reservation=0 → raw=1; min(1,8)=1.
     // Construction styles covered: no-arg, empty probe object, explicit bad values.
-    const fallbackConfig = config({ 'maximumWorkers': 8, 'mainThreadReservation': 0, 'fallbackWorkerCount': 1 });
+    const fallbackConfig = WorkerCountConfig.of({ 'maximumWorkers': 8, 'mainThreadReservation': 0, 'fallbackWorkerCount': 1 });
 
     assert.strictEqual(
       new WebSystemInfo().recommendedWorkerCount(fallbackConfig),
@@ -100,8 +104,8 @@ void describe('WebSystemInfo', () => {
 
   void it('memoryPerWorkerBytes in config does not throw and result is unchanged', () => {
     const info = new WebSystemInfo({ 'hardwareConcurrency': 4 });
-    const countWithout = info.recommendedWorkerCount(config({ 'memoryPerWorkerBytes': null }));
-    const countWith = info.recommendedWorkerCount(config({ 'memoryPerWorkerBytes': 512 * 1024 * 1024 }));
+    const countWithout = info.recommendedWorkerCount(WorkerCountConfig.of({ 'memoryPerWorkerBytes': null }));
+    const countWith = info.recommendedWorkerCount(WorkerCountConfig.of({ 'memoryPerWorkerBytes': 512 * 1024 * 1024 }));
     // Memory-based clamping is not implemented for browsers; both return same value.
     assert.strictEqual(countWithout, countWith);
   });
@@ -110,7 +114,7 @@ void describe('WebSystemInfo', () => {
 
   void it('respects maximumWorkers=1 regardless of concurrency', () => {
     const info = new WebSystemInfo({ 'hardwareConcurrency': 16 });
-    const count = info.recommendedWorkerCount(config({ 'maximumWorkers': 1, 'mainThreadReservation': 1, 'fallbackWorkerCount': 1 }));
+    const count = info.recommendedWorkerCount(WorkerCountConfig.of({ 'maximumWorkers': 1, 'mainThreadReservation': 1, 'fallbackWorkerCount': 1 }));
     assert.strictEqual(count, 1);
   });
 
@@ -122,7 +126,7 @@ void describe('WebSystemInfo', () => {
         for (const fallback of [1, 2]) {
           for (const maximum of [1, 2, 4, 8]) {
             const info = new WebSystemInfo({ 'hardwareConcurrency': concurrency });
-            const result = info.recommendedWorkerCount(config({
+            const result = info.recommendedWorkerCount(WorkerCountConfig.of({
               'maximumWorkers': maximum,
               'mainThreadReservation': reservation,
               'fallbackWorkerCount': fallback,

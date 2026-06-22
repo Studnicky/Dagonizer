@@ -151,7 +151,7 @@ class MyState extends NodeStateBase {}
 declare const ckpt: Checkpoint;
 // ---cut---
 const { dagName, state, cursor } = ckpt.restoreState(
-  CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap as JsonObjectType)),
+  CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap)),
 );
 ```
 
@@ -222,7 +222,7 @@ import type { CheckpointRestoreAdapterInterface } from '@studnicky/dagonizer/con
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const adapter: CheckpointRestoreAdapterInterface<{ value: number }>;
-const _result: { value: number } = adapter.restore({ key: 1 } as JsonObjectType);
+const _result: { value: number } = adapter.restore({ key: 1 });
 ```
 
 Contract for restoring a state instance from a JSON snapshot. Wrap a plain function with `CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap))`. Ships from `@studnicky/dagonizer/checkpoint`.
@@ -269,7 +269,6 @@ Derived from `CheckpointDataSchema` via `json-schema-to-ts`.
 import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const data: CheckpointDataType;
-const _version: string = data.version;
 const _dagName: string = data.dagName;
 const _cursor: string | null = data.cursor;
 const _state: Record<string, unknown> = data.state;
@@ -281,20 +280,6 @@ const _stores: CheckpointDataType['stores'] = data.stores;
 `stores` is a required field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshotType` envelopes when stores are supplied. Any checkpoint payload lacking the field is rejected by `Checkpoint.load`.
 
 `restoreStores` treats an empty `stores` field as a no-op, so state-only checkpoints resume cleanly. Named stores captured at checkpoint time must be supplied by name in the `restoreStores` map; a name present in the checkpoint but absent from the map throws `DAGError`.
-
-The `version` field tracks the wire format, independent of the DAG's own version. Increment `CHECKPOINT_DATA_VERSION` when the shape changes incompatibly.
-
----
-
-## Const: `CHECKPOINT_DATA_VERSION`
-
-```ts twoslash
-import { CHECKPOINT_DATA_VERSION } from '@studnicky/dagonizer/entities';
-// ---cut---
-const _version: typeof CHECKPOINT_DATA_VERSION = CHECKPOINT_DATA_VERSION;
-```
-
-Current wire-format version for `CheckpointData`. Written into every checkpoint record and checked during `Checkpoint.load` validation.
 
 ---
 

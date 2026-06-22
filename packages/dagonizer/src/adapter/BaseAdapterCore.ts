@@ -15,7 +15,6 @@
  * consume a single canonical name with a single canonical value.
  */
 
-import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
 import { BackoffStrategyNames } from '../entities/runtime/BackoffStrategy.js';
 
 import { Classifications, LlmError, type ErrorClassificationType } from './LlmError.js';
@@ -104,12 +103,12 @@ export abstract class BaseAdapterCore {
   }
 
   /** No-op default. Subclasses with a session lifecycle override. */
-  async connect(_options?: AbortableOptionsType): Promise<void> {
+  async connect(): Promise<void> {
     return Promise.resolve();
   }
 
   /** No-op default. Subclasses with a session lifecycle override. */
-  async disconnect(_options?: AbortableOptionsType): Promise<void> {
+  async disconnect(): Promise<void> {
     return Promise.resolve();
   }
 
@@ -118,7 +117,7 @@ export abstract class BaseAdapterCore {
    * can run unless the concrete subclass knows better. Implementations
    * MUST NOT throw; return false instead.
    */
-  async probe(_options?: AbortableOptionsType): Promise<boolean> {
+  async probe(): Promise<boolean> {
     return Promise.resolve(true);
   }
 

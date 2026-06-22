@@ -6,7 +6,7 @@
  * Swappable: `LiveIpGeolocator` (real freeipapi.com HTTPS) online,
  * `RecordedIpGeolocator` (committed fixture replay) for the deterministic smoke.
  *
- * Injected via the dispatcher services bag, reached at `context.services.ipGeolocator`.
+ * Injected via constructor DI into `IpGeolocateNode`.
  */
 
 // #region ip-geolocator-contract

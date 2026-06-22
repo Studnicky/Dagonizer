@@ -24,7 +24,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
 import { PROV, ProvIris } from '../provenance/PROV.ts';
@@ -49,7 +49,8 @@ const dagQueryEmbedding    = MemoryStore.dagIri('queryEmbedding');
 // asserted as type prov:SoftwareAgent.
 const ARCHIVIST_AGENT      = ProvIris.agent('archivist-software');
 
-export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded', ArchivistServices> {
+export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded'> {
+  private readonly services: ArchivistServices;
   readonly name = 'record-findings';
   readonly outputs = ['recorded'] as const;
   override get outputSchema(): Record<'recorded', SchemaObjectType> {
@@ -58,9 +59,14 @@ export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded', A
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    const memory = context.services.memory;
-    const embedder = context.services.embedder;
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
+
+  protected override async executeOne(state: ArchivistState) {
+    const memory = this.services.memory;
+    const embedder = this.services.embedder;
     const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.identity.isbn));
     for (const candidate of state.candidates) {
       const book = MemoryStore.bookIri(candidate.book.identity.isbn);
@@ -147,5 +153,3 @@ export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded', A
   }
 }
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const recordFindings = new RecordFindingsNode();

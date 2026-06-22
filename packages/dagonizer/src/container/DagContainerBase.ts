@@ -227,7 +227,7 @@ export abstract class DagContainerBase<TWorker = unknown>
   // runDag
   // ---------------------------------------------------------------------------
 
-  async runDag(task: DagTaskInterface<unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+  async runDag(task: DagTaskInterface, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
     const relay: ObserverRelayInterface | null = options?.relay ?? null;
 
     return this.#withChannel(
@@ -257,7 +257,7 @@ export abstract class DagContainerBase<TWorker = unknown>
    * entries, one per item.
    */
   async runDagBatch(
-    task: DagTaskInterface<unknown>,
+    task: DagTaskInterface,
     batch: Batch<NodeStateInterface>,
     options?: { readonly relay?: ObserverRelayInterface },
   ): Promise<BatchRunResultType[]> {
@@ -270,7 +270,7 @@ export abstract class DagContainerBase<TWorker = unknown>
         const baseRequest = task.toRequest();
         const batchItems = batch.items().map((item: ItemType<NodeStateInterface>) => ({
           'id': item.id,
-          'snapshot': item.state.snapshot() as { [key: string]: unknown },
+          'snapshot': item.state.snapshot(),
         }));
 
         const batchRequest = {

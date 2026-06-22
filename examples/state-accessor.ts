@@ -85,7 +85,8 @@ class AverageGather extends GatherStrategy {
     if (config.target === undefined) return;
     const all: number[] = [];
     for (const item of batch) {
-      all.push(accessor.get<number>(item.state.cloneState, config.field ?? 'score') ?? 0);
+      const raw = accessor.get(item.state.cloneState, config.field ?? 'score');
+      all.push(typeof raw === 'number' ? raw : 0);
     }
     const avg = all.reduce((a, b) => a + b, 0) / Math.max(1, all.length);
     accessor.set(state, config.target, avg);

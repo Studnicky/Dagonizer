@@ -15,7 +15,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
+import { ComposeRetryLoopDAG } from '../.vitepress/theme/exampleDags.ts';
 </script>
 
 # Phase 07: Retry

@@ -77,19 +77,23 @@ class AbortingEmbedder extends BaseEmbedder {
   }
 }
 
-function descriptorOf(provider: string, model: string): AdapterDescriptorShapeType {
-  return {
-    'provider':     provider,
-    'model':        model,
-    'capabilities': FULL_CAPABILITIES,
-  };
+class AdapterDescriptorFixture {
+  private constructor() {}
+
+  static of(provider: string, model: string): AdapterDescriptorShapeType {
+    return {
+      'provider':     provider,
+      'model':        model,
+      'capabilities': FULL_CAPABILITIES,
+    };
+  }
 }
 
 void describe('EmbedderRegistry', () => {
   void it('registers, queries, resolves, and lists embedders', () => {
     const registry = new EmbedderRegistry();
-    const descA = descriptorOf('provA', 'modelA');
-    const descB = descriptorOf('provB', 'modelB');
+    const descA = AdapterDescriptorFixture.of('provA', 'modelA');
+    const descB = AdapterDescriptorFixture.of('provB', 'modelB');
     registry.register(descA, () => new TestEmbedder('A', true));
     registry.register(descB, () => new TestEmbedder('B', true));
 
@@ -112,7 +116,7 @@ void describe('EmbedderRegistry', () => {
 
   void it('throws CONFIGURATION on duplicate registration', () => {
     const registry = new EmbedderRegistry();
-    const desc = descriptorOf('dup', 'one');
+    const desc = AdapterDescriptorFixture.of('dup', 'one');
     registry.register(desc, () => new TestEmbedder('first', true));
     assert.throws(
       () => { registry.register(desc, () => new TestEmbedder('second', true)); },
@@ -133,7 +137,7 @@ void describe('EmbedderRegistry', () => {
 
   void it('produces a fresh instance per resolve call', () => {
     const registry = new EmbedderRegistry();
-    registry.register(descriptorOf('p', 'm'), () => new TestEmbedder('p:m', true));
+    registry.register(AdapterDescriptorFixture.of('p', 'm'), () => new TestEmbedder('p:m', true));
     const first  = registry.resolve('p', 'm');
     const second = registry.resolve('p', 'm');
     assert.notEqual(first, null);
@@ -145,8 +149,8 @@ void describe('EmbedderRegistry', () => {
 void describe('EmbedderCascade', () => {
   void it('returns the first embedder when both probe true', async () => {
     const registry = new EmbedderRegistry();
-    registry.register(descriptorOf('first',  'm'), () => new TestEmbedder('first',  true));
-    registry.register(descriptorOf('second', 'm'), () => new TestEmbedder('second', true));
+    registry.register(AdapterDescriptorFixture.of('first',  'm'), () => new TestEmbedder('first',  true));
+    registry.register(AdapterDescriptorFixture.of('second', 'm'), () => new TestEmbedder('second', true));
     const cascade = new EmbedderCascade(registry, [
       { 'provider': 'first',  'model': 'm' },
       { 'provider': 'second', 'model': 'm' },
@@ -157,8 +161,8 @@ void describe('EmbedderCascade', () => {
 
   void it('skips probe-false embedder and picks next', async () => {
     const registry = new EmbedderRegistry();
-    registry.register(descriptorOf('cold', 'm'), () => new TestEmbedder('cold', false));
-    registry.register(descriptorOf('warm', 'm'), () => new TestEmbedder('warm', true));
+    registry.register(AdapterDescriptorFixture.of('cold', 'm'), () => new TestEmbedder('cold', false));
+    registry.register(AdapterDescriptorFixture.of('warm', 'm'), () => new TestEmbedder('warm', true));
     const cascade = new EmbedderCascade(registry, [
       { 'provider': 'cold', 'model': 'm' },
       { 'provider': 'warm', 'model': 'm' },
@@ -169,8 +173,8 @@ void describe('EmbedderCascade', () => {
 
   void it('throws NO_ADAPTER_AVAILABLE when every probe fails', async () => {
     const registry = new EmbedderRegistry();
-    registry.register(descriptorOf('a', 'm'), () => new TestEmbedder('a', false));
-    registry.register(descriptorOf('b', 'm'), () => new TestEmbedder('b', false));
+    registry.register(AdapterDescriptorFixture.of('a', 'm'), () => new TestEmbedder('a', false));
+    registry.register(AdapterDescriptorFixture.of('b', 'm'), () => new TestEmbedder('b', false));
     const cascade = new EmbedderCascade(registry, [
       { 'provider': 'a', 'model': 'm' },
       { 'provider': 'b', 'model': 'm' },
@@ -190,7 +194,7 @@ void describe('EmbedderCascade', () => {
 
   void it('logs unregistered preferences in the failure message', async () => {
     const registry = new EmbedderRegistry();
-    registry.register(descriptorOf('known', 'm'), () => new TestEmbedder('known', false));
+    registry.register(AdapterDescriptorFixture.of('known', 'm'), () => new TestEmbedder('known', false));
     const cascade = new EmbedderCascade(registry, [
       { 'provider': 'ghost', 'model': 'm' },
       { 'provider': 'known', 'model': 'm' },
@@ -209,7 +213,7 @@ void describe('EmbedderCascade', () => {
 
   void it('skips unregistered preference and selects next', async () => {
     const registry = new EmbedderRegistry();
-    registry.register(descriptorOf('real', 'm'), () => new TestEmbedder('real', true));
+    registry.register(AdapterDescriptorFixture.of('real', 'm'), () => new TestEmbedder('real', true));
     const cascade = new EmbedderCascade(registry, [
       { 'provider': 'fake', 'model': 'm' },
       { 'provider': 'real', 'model': 'm' },

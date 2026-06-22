@@ -30,12 +30,16 @@ import { NdjsonChannel } from '../../src/NdjsonChannel.js';
 // Shared fixtures
 // ---------------------------------------------------------------------------
 
-function readyMessage(): BridgeMessageType {
-  return { 'variant': 'ready', 'registryVersion': '1.0.0', 'capabilities': [] };
-}
+class BridgeMessages {
+  private constructor() {}
 
-function errorMessage(): BridgeMessageType {
-  return { 'variant': 'error', 'correlationId': null, 'code': 'TEST', 'message': 'hi', 'recoverable': false };
+  static ready(): BridgeMessageType {
+    return { 'variant': 'ready', 'registryVersion': '1.0.0', 'capabilities': [] };
+  }
+
+  static error(): BridgeMessageType {
+    return { 'variant': 'error', 'correlationId': null, 'code': 'TEST', 'message': 'hi', 'recoverable': false };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -51,12 +55,12 @@ class NdjsonChannelFixture {
     const channel = new NdjsonChannel(readable, writable);
     return { 'channel': channel, 'readable': readable, 'writable': writable };
   }
-}
 
-function collectNdjsonMessages(channel: NdjsonChannel): BridgeMessageType[] {
-  const messages: BridgeMessageType[] = [];
-  channel.onMessage((msg) => { messages.push(msg); });
-  return messages;
+  static collectMessages(channel: NdjsonChannel): BridgeMessageType[] {
+    const messages: BridgeMessageType[] = [];
+    channel.onMessage((msg) => { messages.push(msg); });
+    return messages;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +131,7 @@ void describe('NdjsonChannel.send', () => {
       done();
     });
 
-    channel.send(readyMessage());
+    channel.send(BridgeMessages.ready());
     writable.end();
   });
 });
@@ -139,10 +143,10 @@ void describe('NdjsonChannel.send', () => {
 void describe('NdjsonChannel.onMessage — framing', () => {
   void it('dispatches a single message from one complete line', async () => {
     const { channel, readable } = NdjsonChannelFixture.of();
-    const messages = collectNdjsonMessages(channel);
+    const messages = NdjsonChannelFixture.collectMessages(channel);
 
     await new Promise<void>((resolve) => {
-      readable.write(JSON.stringify(readyMessage()) + '\n', () => resolve());
+      readable.write(JSON.stringify(BridgeMessages.ready()) + '\n', () => resolve());
     });
 
     assert.strictEqual(messages.length, 1);
@@ -151,9 +155,9 @@ void describe('NdjsonChannel.onMessage — framing', () => {
 
   void it('assembles a message split across two chunks, emitting nothing before the newline', async () => {
     const { channel, readable } = NdjsonChannelFixture.of();
-    const messages = collectNdjsonMessages(channel);
+    const messages = NdjsonChannelFixture.collectMessages(channel);
 
-    const full = JSON.stringify(readyMessage()) + '\n';
+    const full = JSON.stringify(BridgeMessages.ready()) + '\n';
     const half = Math.floor(full.length / 2);
 
     await new Promise<void>((resolve) => { readable.write(full.slice(0, half), () => resolve()); });
@@ -167,10 +171,10 @@ void describe('NdjsonChannel.onMessage — framing', () => {
 
   void it('dispatches multiple messages from a single chunk in order', async () => {
     const { channel, readable } = NdjsonChannelFixture.of();
-    const messages = collectNdjsonMessages(channel);
+    const messages = NdjsonChannelFixture.collectMessages(channel);
 
-    const m1 = JSON.stringify(readyMessage()) + '\n';
-    const m2 = JSON.stringify(errorMessage() satisfies BridgeMessageType) + '\n';
+    const m1 = JSON.stringify(BridgeMessages.ready()) + '\n';
+    const m2 = JSON.stringify(BridgeMessages.error() satisfies BridgeMessageType) + '\n';
 
     await new Promise<void>((resolve) => { readable.write(m1 + m2, () => resolve()); });
 
@@ -181,12 +185,12 @@ void describe('NdjsonChannel.onMessage — framing', () => {
 
   void it('stops delivering messages after close', async () => {
     const { channel, readable } = NdjsonChannelFixture.of();
-    const messages = collectNdjsonMessages(channel);
+    const messages = NdjsonChannelFixture.collectMessages(channel);
 
     channel.close();
 
     await new Promise<void>((resolve) => {
-      readable.write(JSON.stringify(readyMessage()) + '\n', () => resolve());
+      readable.write(JSON.stringify(BridgeMessages.ready()) + '\n', () => resolve());
     });
 
     assert.strictEqual(messages.length, 0, 'no messages delivered after close');
@@ -205,7 +209,7 @@ void describe('NdjsonChannel.onMessage — framing', () => {
 void describe('NdjsonChannel.onMessage — ingest validation', () => {
   void it('surfaces a malformed JSON line as an NDJSON_PARSE_ERROR error message', async () => {
     const { channel, readable } = NdjsonChannelFixture.of();
-    const messages = collectNdjsonMessages(channel);
+    const messages = NdjsonChannelFixture.collectMessages(channel);
 
     await new Promise<void>((resolve) => { readable.write('not-json\n', () => resolve()); });
 
@@ -219,7 +223,7 @@ void describe('NdjsonChannel.onMessage — ingest validation', () => {
 
   void it('surfaces a valid-JSON-but-invalid-BridgeMessageType line as an NDJSON_VALIDATION_ERROR', async () => {
     const { channel, readable } = NdjsonChannelFixture.of();
-    const messages = collectNdjsonMessages(channel);
+    const messages = NdjsonChannelFixture.collectMessages(channel);
 
     const invalidMsg = JSON.stringify({ 'variant': 'not-a-real-variant', 'extra': 'data' });
     await new Promise<void>((resolve) => { readable.write(invalidMsg + '\n', () => resolve()); });
@@ -280,7 +284,7 @@ for (const { name, make } of ingestChannels) {
       const received: BridgeMessageType[] = [];
       transport.onMessage((m) => received.push(m));
 
-      transport.deliver(readyMessage());
+      transport.deliver(BridgeMessages.ready());
 
       assert.strictEqual(received.length, 1);
       assert.strictEqual(received[0]?.variant, 'ready');

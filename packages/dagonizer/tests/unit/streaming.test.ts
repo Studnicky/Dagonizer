@@ -1,18 +1,25 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
 
-const node = (name: string, outputs: readonly string[]) => TestNode.make<NodeStateBase>(name, outputs, () => outputs[0] ?? '');
+class StreamNode {
+  private constructor() {}
+
+  static of(name: string, outputs: readonly string[]): NodeInterface<NodeStateBase> {
+    return TestNode.make<NodeStateBase>(name, outputs, () => outputs[0] ?? '');
+  }
+}
 
 void describe('Execution streaming (async-iterable)', () => {
   void it('yields each node stage incrementally, then resolves to the final result', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(node('a', ['success']));
-    dispatcher.registerNode(node('b', ['success']));
+    dispatcher.registerNode(StreamNode.of('a', ['success']));
+    dispatcher.registerNode(StreamNode.of('b', ['success']));
     dispatcher.registerDAG(TestDag.of('linear', 'a', [
       { '@id': 'urn:noocodex:dag:linear/node/a', '@type': 'SingleNode', 'name': 'a', 'node': 'a', 'outputs': { 'success': 'b' } },
       { '@id': 'urn:noocodex:dag:linear/node/b', '@type': 'SingleNode', 'name': 'b', 'node': 'b', 'outputs': { 'success': 'end' } },
@@ -33,8 +40,8 @@ void describe('Execution streaming (async-iterable)', () => {
 
   void it('streams a composite node’s intermediate results before the node itself', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(node('start', ['success']));
-    dispatcher.registerNode(node('inner', ['success']));
+    dispatcher.registerNode(StreamNode.of('start', ['success']));
+    dispatcher.registerNode(StreamNode.of('inner', ['success']));
 
     dispatcher.registerDAG(TestDag.of('child', 'inner', [
       { '@id': 'urn:noocodex:dag:child/node/inner', '@type': 'SingleNode', 'name': 'inner', 'node': 'inner', 'outputs': { 'success': 'child-end' } },

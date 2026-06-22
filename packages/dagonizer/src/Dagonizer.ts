@@ -6,6 +6,7 @@ import type { HandoffChannelInterface } from './contracts/HandoffChannelInterfac
 import type { NodeInterface, OutputSchemaValidatorInterface, SchemaObjectType } from './contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
+import { ContextResolver } from './dag/ContextResolver.js';
 import type { DagRegistrar, DagRegistrarSourceInterface } from './dag/DagRegistrar.js';
 import { Batch } from './entities/batch/Batch.js';
 import type { DAGType } from './entities/dag/DAG.js';
@@ -75,8 +76,6 @@ const EMPTY_CHANNELS: Readonly<Record<string, never>> = Object.freeze({});
  *
  * Every field that has a default is present here. The constructor resolves
  * all options in one spread: `{ ...DAGONIZER_OPTION_DEFAULTS, ...options }`.
- * `services` is intentionally absent — it has no meaningful default and
- * requires a type-unsafe cast at the assignment site regardless.
  */
 const DAGONIZER_OPTION_DEFAULTS = {
   'accessor': DEFAULT_STATE_ACCESSOR,
@@ -93,24 +92,16 @@ export type { ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType,
 /**
  * Constructor options for `Dagonizer`.
  *
- * `TServices` is the consumer-defined services bag that the dispatcher
- * passes through every `NodeContextType`. Default `undefined` means
- * nodes receive `context.services === undefined`.
+ * A node's external dependencies are injected into the node's constructor, not
+ * threaded through the dispatcher; there is no services option here.
  */
-export type DagonizerOptionsType<TServices = undefined> = {
+export type DagonizerOptionsType = {
   /**
    * Path resolver used for scatter source reads, gather writes, and
    * embedded-DAG state mapping. Defaults to a `DottedPathAccessor` that
    * walks `path.split('.')`.
    */
   accessor?: StateAccessorInterface;
-  /**
-   * Services bag exposed to every node via `context.services`. Construct
-   * the dispatcher with `{ services: { logger, db, ... } }` and the same
-   * reference flows into every `NodeInterface.execute(state, context)`
-   * call.
-   */
-  services?: TServices;
   /**
    * Named container backends. Keys are logical role names declared on
    * `EmbeddedDAGNode.container` and `ScatterNode.container` (dag-body
@@ -159,14 +150,9 @@ export { Placement } from './entities/dag/Placement.js';
  * Interface for Dagonizer. Both `execute()` and `resume()` return an
  * `Execution`, which is async-iterable (each stage as it completes) and
  * awaitable (the final summary).
- *
- * `TServices` flows through every node's `NodeContextType.services`
- * field; defaults to `undefined` when the dispatcher is constructed
- * without a services bag.
  */
 export interface DagonizerInterface<
   TState extends NodeStateInterface,
-  TServices = undefined,
 > {
   /**
    * Clean up all registered nodes.
@@ -193,7 +179,7 @@ export interface DagonizerInterface<
    * Consumers that registered a `NodeInterface<MyState,...>` and need to call it
    * directly should retain their own typed reference rather than looking it up here.
    */
-  getNode(name: string): NodeInterface<NodeStateInterface, string, TServices> | undefined;
+  getNode(name: string): NodeInterface<NodeStateInterface, string> | undefined;
 
   /**
    * List every registered DAG. Useful for visualization, contract checks,
@@ -206,7 +192,7 @@ export interface DagonizerInterface<
    * Returns base-typed `NodeInterface<NodeStateInterface,...>` for the same reason as
    * `getNode`: the registry stores nodes with potentially heterogeneous state types.
    */
-  listNodes(): readonly NodeInterface<NodeStateInterface, string, TServices>[];
+  listNodes(): readonly NodeInterface<NodeStateInterface, string>[];
 
   /**
    * Resume a DAG from a given node name. The caller is responsible for
@@ -226,24 +212,20 @@ export interface DagonizerInterface<
 
   /**
    * Register a DAG node. Accepts nodes typed against any `TNodeState extends
-   * NodeStateInterface` and any `TNodeServices` so child-state nodes (isolation
-   * factory bodies) and service-free nodes (e.g. `ToolInvokeNode` with
-   * `TServices = undefined`) can be registered on a services-typed dispatcher
-   * without casts.
+   * NodeStateInterface` so child-state nodes (isolation factory bodies) and
+   * plain nodes can both be registered on the dispatcher.
    */
   registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
-    node: NodeInterface<TNodeState, TOutput, TServices>,
+    node: NodeInterface<TNodeState, TOutput>,
   ): void;
 
   /**
    * Register every node, then every DAG, in the supplied bundle. Accepts
-   * bundles typed against any `TBundleState extends NodeStateInterface` and any
-   * `TBundleServices` so child-state bundles (e.g. tool bundles whose nodes run
-   * inside isolated child DAGs with no parent services) can be registered on a
-   * services-typed dispatcher without casts. The bundle's nodes run only inside
-   * their own child-DAG context where the parent's `TServices` is not injected.
+   * bundles typed against any `TBundleState extends NodeStateInterface` so
+   * child-state bundles (e.g. tool bundles whose nodes run inside isolated
+   * child DAGs) can be registered on the dispatcher.
    */
-  registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState, TServices>): void;
+  registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void;
 }
 
 /**
@@ -288,34 +270,28 @@ export interface DagonizerInterface<
  * // result.cursor === null (completed via TerminalNode)
  * ```
  */
-export class Dagonizer<TState extends NodeStateInterface, TServices = undefined>
+export class Dagonizer<TState extends NodeStateInterface>
 implements
-  DagonizerInterface<TState, TServices>,
+  DagonizerInterface<TState>,
   DispatcherRelaySourceInterface,
-  GatherSourceInterface<TServices>,
-  LeafExecutorSourceInterface<TServices>,
+  GatherSourceInterface,
+  LeafExecutorSourceInterface,
   EmbeddedDagExecutorSourceType,
-  BodyRunPortInterface<TServices>,
-  ScatterDispatchSourceInterface<TServices>,
-  NodeSchedulerSourceInterface<TServices>,
-  DagRegistrarSourceInterface<TServices> {
+  BodyRunPortInterface,
+  ScatterDispatchSourceInterface,
+  NodeSchedulerSourceInterface,
+  DagRegistrarSourceInterface {
   // Read by NodeScheduler via NodeSchedulerSourceInterface.
   readonly dags = new Map<string, DAGType>();
   // Read by ScatterDispatchAdapter / NodeScheduler via their source interfaces.
   // Typed NodeStateInterface so heterogeneous child-node states (whose concrete
   // class may differ from TState) are stored without casts. TState remains on the
   // public execute/resume/executeBatch boundary; internally nodes are base-typed.
-  readonly nodes = new Map<string, NodeInterface<NodeStateInterface, string, TServices>>();
+  readonly nodes = new Map<string, NodeInterface<NodeStateInterface, string>>();
   // Read by NodeScheduler via NodeSchedulerSourceInterface.
   readonly nodeIndex = new Map<string, DAGNodeType>();
   // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
   readonly accessor: StateAccessorInterface;
-  // Declared as TServices so NodeContextType<TServices>.services is
-  // satisfied. When TServices = undefined (the default), the field is undefined.
-  // The cast in the constructor is required because options.services is optional
-  // (TServices | undefined); when the caller passes undefined for a non-undefined
-  // TServices the error surfaces at the call site, not here.
-  private readonly services: TServices;
   // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
   readonly stateMapper: StateMapper;
   // Every registered DAG has an entry here; ChildStateFactory.cloneParent is stored
@@ -356,7 +332,7 @@ implements
    * this instance via the narrow `NodeSchedulerSourceInterface`. Owns the
    * streaming DAG traversal; `runNodes` delegates to `this.nodeScheduler.run`.
    */
-  private readonly nodeScheduler: NodeScheduler<TServices>;
+  private readonly nodeScheduler: NodeScheduler;
 
   /**
    * Registration + validation cluster. Built once per dispatcher instance, bound
@@ -365,7 +341,7 @@ implements
    * The public `registerDAG` / `registerNode` / `registerBundle` methods delegate
    * here so `Dagonizer` stays the composition root.
    */
-  private readonly dagRegistrar: DagRegistrar<TServices>;
+  private readonly dagRegistrar: DagRegistrar;
 
   /**
    * Construct a dispatcher. Subclass and override the protected hooks
@@ -375,14 +351,10 @@ implements
    * `options.accessor` swaps the path resolver used for scatter source
    * reads, gather writes, and embedded-DAG state mapping. Defaults to
    * `DottedPathAccessor`.
-   *
-   * `options.services` is the typed services bag exposed to every node
-   * via `context.services`. Defaults to `undefined`.
    */
-  constructor(options: DagonizerOptionsType<TServices> = {}) {
-    const resolved = Dagonizer.options<TServices>(options);
+  constructor(options: DagonizerOptionsType = {}) {
+    const resolved = Dagonizer.options(options);
     this.accessor = resolved.accessor;
-    this.services = resolved.services;
     this.stateMapper = new StateMapper(this.accessor);
     this.containers = resolved.containers;
     this.channels = resolved.channels;
@@ -399,7 +371,7 @@ implements
     // `embeddedDagExecutor`, `scatterExecutor`) are wired into the graph by the
     // composer and held only by their consumers, so the root keeps no field for
     // them. Wire in declaration order to keep the hidden class stable.
-    const engine = EngineComposer.compose<TServices>(this);
+    const engine = EngineComposer.compose(this);
     this.#relayHooks = engine.relayHooks;
     this.placementDispatch = engine.placementDispatch;
     this.nodeScheduler = engine.nodeScheduler;
@@ -559,11 +531,10 @@ implements
    * Build a node context for a sub-DAG body invocation. Forwards to
    * `NodeContextBuilder.of`, substituting a never-firing signal when the run
    * has none. Satisfies both `BodyRunPortInterface` (the embedded/scatter DAG
-   * body run) and `ScatterDispatchSourceInterface` (the scatter node body),
-   * where the dispatcher's `services` field is otherwise out of scope.
+   * body run) and `ScatterDispatchSourceInterface` (the scatter node body).
    */
-  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices> {
-    return NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.services, this.validateOutputs, this.#outputSchemaValidator);
+  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType {
+    return NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.validateOutputs, this.#outputSchemaValidator);
   }
 
   /**
@@ -572,8 +543,8 @@ implements
    * `LeafExecutorSourceInterface` so `Gather` and `LeafExecutor` can build
    * contexts without importing `SignalComposer` directly.
    */
-  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType<TServices> {
-    return NodeContextBuilder.of(dagName, placementName, signal ?? SignalComposer.never(), this.services, this.validateOutputs, this.#outputSchemaValidator);
+  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType {
+    return NodeContextBuilder.of(dagName, placementName, signal ?? SignalComposer.never(), this.validateOutputs, this.#outputSchemaValidator);
   }
 
   /**
@@ -593,9 +564,9 @@ implements
    * one route with exactly one item (invariant violation for size-1 dispatch).
    */
   async runNodeOnState(
-    node: NodeInterface<TState, string, TServices>,
+    node: NodeInterface<TState, string>,
     state: TState,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ): Promise<string> {
     const batch = Batch.of(state);
     const routed = await node.execute(batch, context);
@@ -689,15 +660,15 @@ implements
    * not been registered.
    */
   getDAG(name: string): DAGType | undefined {
-    return this.dags.get(name);
+    return this.dags.get(ContextResolver.expand(name, {}));
   }
 
   /**
    * Look up a registered node by name. Returns `undefined` when the node
    * has not been registered.
    */
-  getNode(name: string): NodeInterface<NodeStateInterface, string, TServices> | undefined {
-    return this.nodes.get(name);
+  getNode(name: string): NodeInterface<NodeStateInterface, string> | undefined {
+    return this.nodes.get(ContextResolver.expand(name, {}));
   }
 
   /**
@@ -712,7 +683,7 @@ implements
    * Snapshot of every registered node. The returned array is a fresh
    * shallow copy; mutating it does not affect the registry.
    */
-  listNodes(): readonly NodeInterface<NodeStateInterface, string, TServices>[] {
+  listNodes(): readonly NodeInterface<NodeStateInterface, string>[] {
     return [...this.nodes.values()];
   }
 
@@ -821,7 +792,7 @@ implements
    * Timer and parent-abort listener are cleaned up in `finally`.
    */
   async withNodeTimeout<TResult>(
-    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    dagNode: NodeInterface<NodeStateInterface, string>,
     parentSignal: AbortSignal | null,
     fn: (signal: AbortSignal) => Promise<TResult>,
   ): Promise<TResult> {
@@ -926,19 +897,11 @@ implements
    * resolved options record. This is the single place where defaults are
    * applied; no code inside the constructor or engine internals ever sees
    * optional fields.
-   *
-   * `services` has no sensible default: when the caller does not supply it,
-   * it resolves to `undefined` cast to `TServices`. This is sound when
-   * `TServices = undefined` (the default type parameter). Callers that
-   * specify a non-`undefined` `TServices` must provide `services`; if they
-   * do not, the cast is unsound at their call site — the type system surfaces
-   * the error there, not here.
    */
-  static options<TServices = undefined>(
-    partial: DagonizerOptionsType<TServices> = {},
+  static options(
+    partial: DagonizerOptionsType = {},
   ): Readonly<{
     accessor: StateAccessorInterface;
-    services: TServices;
     containers: Readonly<Record<string, DagContainerInterface>>;
     channels: Readonly<Record<string, HandoffChannelInterface>>;
     registryVersion: string;
@@ -946,7 +909,6 @@ implements
   }> {
     return {
       'accessor':        partial.accessor ?? DAGONIZER_OPTION_DEFAULTS.accessor,
-      'services':        partial.services as TServices,
       'containers':      partial.containers ?? DAGONIZER_OPTION_DEFAULTS.containers,
       'channels':        partial.channels ?? DAGONIZER_OPTION_DEFAULTS.channels,
       'registryVersion': partial.registryVersion ?? DAGONIZER_OPTION_DEFAULTS.registryVersion,
@@ -956,14 +918,14 @@ implements
 
   /**
    * Register a node. Accepts narrowly-typed nodes
-   * (`NodeInterface<TState, 'success' | 'error', TServices>`) and stores
-   * them widened to `NodeInterface<TState, string, TServices>`; narrow
-   * wide is sound covariantly on both `outputs` and the result `output`.
+   * (`NodeInterface<TState, 'success' | 'error'>`) and stores them widened to
+   * `NodeInterface<TState, string>`; narrow → wide is sound covariantly on
+   * both `outputs` and the result `output`.
    *
    * Throws `DAGError` when a node with the same name is already registered.
    */
   registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
-    node: NodeInterface<TNodeState, TOutput, TServices>,
+    node: NodeInterface<TNodeState, TOutput>,
   ): void {
     this.dagRegistrar.registerNode(node);
   }
@@ -975,7 +937,7 @@ implements
    * registration throws (validation failure, duplicate name, etc.);
    * registrations that ran before the failing one remain installed.
    */
-  registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState, TServices>): void {
+  registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void {
     this.dagRegistrar.registerBundle(bundle);
   }
 }

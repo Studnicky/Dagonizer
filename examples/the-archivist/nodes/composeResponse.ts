@@ -22,7 +22,7 @@
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
-import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistState, ConversationTurn } from '../ArchivistState.ts';
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistServices } from '../services.ts';
 
@@ -31,9 +31,15 @@ const MAX_COMPOSE_ATTEMPTS = 3;
 /** Default wall-clock budget for the compose phase (ms). Overridden at runtime by the runner. */
 export const COMPOSE_TIMEOUT_MS = 60_000;
 
-export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
+export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
+  private readonly services: ArchivistServices;
   readonly name = 'compose-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
+
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
   override get outputSchema(): Record<'drafted' | 'retry' | 'salvage', SchemaObjectType> {
     return {
       'drafted': { 'type': 'object' },
@@ -42,9 +48,9 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
     state.recordAttempt('compose');
-    const llm = context.services.llm;
+    const llm = this.services.llm;
     const prior = state.priorContext.length > 0 ? state.priorContext : undefined;
     const recalledSummary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
@@ -55,25 +61,40 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     // engine hard-fail. The compose methods are signal-aware, so the abort
     // cancels the in-flight call.
     const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS);
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
 
     // Each per-intent branch keeps the same `compose-response` node
     // (the retry loop and validate-response wiring stays one
     // implementation), and dispatches to the intent-flavoured prompt
     // builder so the LLM gets the right directives + framing.
-    let draftPromise: Promise<string>;
-    switch (state.intent) {
-      case 'lookup-author':     draftPromise = llm.composeAuthor(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
-      case 'find-reviews':      draftPromise = llm.composeReviews(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
-      case 'describe-book':     draftPromise = llm.describeBook(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
-      case 'recommend-similar': draftPromise = llm.composeSimilar(state.query, state.shortlist, prior, recalledSummary, conversation, signal); break;
-      default:                  draftPromise = llm.compose(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
-    }
+    type ComposeMethod = (
+      query: string,
+      shortlist: readonly CandidateType[],
+      prior: readonly { variant: string; text: string }[] | undefined,
+      recalledSummary: string | undefined,
+      conversation: readonly ConversationTurn[] | undefined,
+      signal: AbortSignal,
+    ) => Promise<string>;
+    const composeDispatch: Partial<Record<string, ComposeMethod>> = {
+      'lookup-author':     (q, sl, p, rs, cv, sig) => llm.composeAuthor(q, sl, p, rs, cv, sig),
+      'find-reviews':      (q, sl, p, rs, cv, sig) => llm.composeReviews(q, sl, p, rs, cv, sig),
+      'describe-book':     (q, sl, p, rs, cv, sig) => llm.describeBook(q, sl, p, rs, cv, sig),
+      'recommend-similar': (q, sl, p, rs, cv, sig) => llm.composeSimilar(q, sl, p, rs, cv, sig),
+    };
+    const composeFn: ComposeMethod = composeDispatch[state.intent] ??
+      ((q, sl, p, rs, cv, sig) => llm.compose(q, sl, p, rs, cv, sig));
     try {
-      state.draft = await draftPromise;
-      if (state.priorContext.length > 0) {
+      const draft = await composeFn(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
+      // Guard: an empty draft is a fabrication gap — route to retry/salvage
+      // so the validate-response node does not receive an empty string.
+      if (draft.length === 0) {
+        if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
+          return NodeOutputBuilder.of('retry');
+        }
+        return NodeOutputBuilder.of('salvage');
       }
+      state.draft = draft;
       return NodeOutputBuilder.of('drafted');
     } catch (err) {
       // External cancellation / run deadline propagates unchanged.
@@ -195,11 +216,16 @@ export class ResponseAnalysis {
 
 export class ValidateResponseNode extends ScalarNode<
   ArchivistState,
-  'approved' | 'retry' | 'exhausted',
-  ArchivistServices
+  'approved' | 'retry' | 'exhausted'
 > {
+  private readonly services: ArchivistServices;
   readonly name = 'validate-response';
   readonly outputs = ['approved', 'retry', 'exhausted'] as const;
+
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
   override get outputSchema(): Record<'approved' | 'retry' | 'exhausted', SchemaObjectType> {
     return {
       'approved':  { 'type': 'object' },
@@ -208,7 +234,7 @@ export class ValidateResponseNode extends ScalarNode<
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
     // ── Deterministic anti-hallucination pre-check ───────────────────────
     // Runs BEFORE the LLM validator. When it fails we force a retry
     // without paying for an LLM round-trip; we accumulate a
@@ -223,7 +249,7 @@ export class ValidateResponseNode extends ScalarNode<
       return NodeOutputBuilder.of('retry');
     }
 
-    const ok = await context.services.llm.validate(state.draft, state.shortlist);
+    const ok = await this.services.llm.validate(state.draft, state.shortlist);
     state.approvalState = ok ? 'approved' : 'rejected';
     if (ok) return NodeOutputBuilder.of('approved');
     if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
@@ -233,6 +259,3 @@ export class ValidateResponseNode extends ScalarNode<
   }
 }
 
-/** Singleton node instances referenced by the DAG wiring. */
-export const composeResponse = new ComposeResponseNode();
-export const validateResponse = new ValidateResponseNode();

@@ -36,15 +36,15 @@ import { ScatterExecutor } from './ScatterExecutor.js';
  * whole engine module graph, so the explicit dependency ordering lives in one
  * place rather than being implied by constructor statement order on the root.
  */
-export type EngineHostType<TServices> =
+export type EngineHostType =
   & DispatcherRelaySourceInterface
-  & BodyRunPortInterface<TServices>
-  & GatherSourceInterface<TServices>
-  & LeafExecutorSourceInterface<TServices>
+  & BodyRunPortInterface
+  & GatherSourceInterface
+  & LeafExecutorSourceInterface
   & EmbeddedDagExecutorSourceType
-  & ScatterDispatchSourceInterface<TServices>
-  & NodeSchedulerSourceInterface<TServices>
-  & DagRegistrarSourceInterface<TServices>;
+  & ScatterDispatchSourceInterface
+  & NodeSchedulerSourceInterface
+  & DagRegistrarSourceInterface;
 
 /**
  * Immutable record of every engine module constructed for one dispatcher
@@ -53,16 +53,16 @@ export type EngineHostType<TServices> =
  * composition root reads each field onto its own `this.X` slots in declaration
  * order, preserving V8 shape stability and every existing internal call site.
  */
-export type EngineBundleType<TServices> = {
+export type EngineBundleType = {
   readonly relayHooks: DispatcherHooksInterface;
-  readonly bodyExecutor: BodyExecutor<TServices>;
-  readonly gather: Gather<TServices>;
-  readonly leafExecutor: LeafExecutor<TServices>;
-  readonly embeddedDagExecutor: EmbeddedDagExecutor<TServices>;
-  readonly scatterExecutor: ScatterExecutor<TServices>;
+  readonly bodyExecutor: BodyExecutor;
+  readonly gather: Gather;
+  readonly leafExecutor: LeafExecutor;
+  readonly embeddedDagExecutor: EmbeddedDagExecutor;
+  readonly scatterExecutor: ScatterExecutor;
   readonly placementDispatch: PlacementDispatch;
-  readonly nodeScheduler: NodeScheduler<TServices>;
-  readonly dagRegistrar: DagRegistrar<TServices>;
+  readonly nodeScheduler: NodeScheduler;
+  readonly dagRegistrar: DagRegistrar;
 };
 
 /**
@@ -85,18 +85,18 @@ export type EngineBundleType<TServices> = {
 export class EngineComposer {
   private constructor() { /* static class */ }
 
-  static compose<TServices>(
-    host: EngineHostType<TServices>,
-  ): EngineBundleType<TServices> {
+  static compose(
+    host: EngineHostType,
+  ): EngineBundleType {
     const relayHooks = new DispatcherHooks(host);
-    const bodyExecutor = new BodyExecutor<TServices>(host);
-    const gather = new Gather<TServices>(host);
-    const leafExecutor = new LeafExecutor<TServices>(host);
-    const embeddedDagExecutor = new EmbeddedDagExecutor<TServices>(host, bodyExecutor);
-    const scatterExecutor = new ScatterExecutor<TServices>(host, bodyExecutor, gather);
+    const bodyExecutor = new BodyExecutor(host);
+    const gather = new Gather(host);
+    const leafExecutor = new LeafExecutor(host);
+    const embeddedDagExecutor = new EmbeddedDagExecutor(host, bodyExecutor);
+    const scatterExecutor = new ScatterExecutor(host, bodyExecutor, gather);
     const placementDispatch = new PlacementDispatch(leafExecutor, embeddedDagExecutor, scatterExecutor);
-    const nodeScheduler = new NodeScheduler<TServices>(host);
-    const dagRegistrar = new DagRegistrar<TServices>(host);
+    const nodeScheduler = new NodeScheduler(host);
+    const dagRegistrar = new DagRegistrar(host);
     return {
       relayHooks,
       bodyExecutor,

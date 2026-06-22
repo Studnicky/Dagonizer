@@ -3,12 +3,16 @@ import { test } from 'node:test';
 
 import { WebLlmAdapter } from '../src/index.js';
 
-function installNavigator(nav: unknown): void {
-  Object.assign(globalThis, { 'navigator': nav });
-}
+class NavigatorStub {
+  private constructor() {}
 
-function removeNavigator(): void {
-  Reflect.deleteProperty(globalThis, 'navigator');
+  static install(nav: unknown): void {
+    Object.assign(globalThis, { 'navigator': nav });
+  }
+
+  static remove(): void {
+    Reflect.deleteProperty(globalThis, 'navigator');
+  }
 }
 
 void test('WebLlmAdapter identity', () => {
@@ -58,53 +62,53 @@ void test('WebLlmAdapter.probe returns false in node (no navigator)', async () =
 });
 
 void test('WebLlmAdapter.probe returns false when navigator is absent', async () => {
-  removeNavigator();
+  NavigatorStub.remove();
   const a = new WebLlmAdapter();
   assert.equal(await a.probe(), false);
 });
 
 void test('WebLlmAdapter.probe returns false when navigator.gpu is missing', async () => {
-  installNavigator({});
+  NavigatorStub.install({});
   const a = new WebLlmAdapter();
   try {
     assert.equal(await a.probe(), false);
   } finally {
-    removeNavigator();
+    NavigatorStub.remove();
   }
 });
 
 void test('WebLlmAdapter.probe returns true when requestAdapter resolves to a non-null adapter', async () => {
-  installNavigator({
+  NavigatorStub.install({
     "gpu": { "requestAdapter": async () => Promise.resolve({}) },
   });
   const a = new WebLlmAdapter();
   try {
     assert.equal(await a.probe(), true);
   } finally {
-    removeNavigator();
+    NavigatorStub.remove();
   }
 });
 
 void test('WebLlmAdapter.probe returns false when requestAdapter resolves to null (no hardware)', async () => {
-  installNavigator({
+  NavigatorStub.install({
     "gpu": { "requestAdapter": async () => Promise.resolve(null) },
   });
   const a = new WebLlmAdapter();
   try {
     assert.equal(await a.probe(), false);
   } finally {
-    removeNavigator();
+    NavigatorStub.remove();
   }
 });
 
 void test('WebLlmAdapter.probe does not throw when requestAdapter rejects', async () => {
-  installNavigator({
+  NavigatorStub.install({
     "gpu": { "requestAdapter": async () => Promise.reject(new Error('driver fail')) },
   });
   const a = new WebLlmAdapter();
   try {
     assert.equal(await a.probe(), false);
   } finally {
-    removeNavigator();
+    NavigatorStub.remove();
   }
 });

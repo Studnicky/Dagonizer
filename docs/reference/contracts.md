@@ -69,13 +69,12 @@ import { Timeout } from '@studnicky/dagonizer';
 interface NodeInterface<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = string,
-  TServices = undefined,
 > {
   readonly name: string;
   readonly outputs: readonly TOutput[];
   readonly outputSchema: Record<TOutput, SchemaObjectType>;
   readonly timeout: Timeout;
-  execute(batch: Batch<TState>, context: NodeContextType<TServices>): Promise<RoutedBatchType<TOutput, TState>>;
+  execute(batch: Batch<TState>, context: NodeContextType): Promise<RoutedBatchType<TOutput, TState>>;
   destroy?(): Promise<void>;
   validate?(): ValidationResultType;
 }
@@ -245,14 +244,14 @@ import type { DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer';
 import type { ObserverRelayInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface DagContainerInterface {
-  runDag(task: DagTaskInterface<unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
+  runDag(task: DagTaskInterface, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
   destroy?(): Promise<void>;
 }
 ```
 
 Adapter contract for running an embedded DAG in an isolate (worker thread, forked child, spawned process, Web Worker). Bound to the dispatcher via `DagonizerOptionsType.containers` keyed by logical role name. On a dispatcher with a non-empty `containers` registry, a declared-but-unbound role throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats declared roles as inert and runs every body in-process.
 
-`runDag` must never throw. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeType.errors` with `recoverable: false`. The `TServices` parameter on the task is unconstrained (`unknown`) so the interface stays decoupled from the dispatcher's services bag.
+`runDag` must never throw. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeType.errors` with `recoverable: false`.
 
 `destroy()` is optional. Implement it to release pool resources when the dispatcher shuts down.
 
@@ -291,8 +290,7 @@ import type { DispatcherBundleType, NodeStateInterface } from '@studnicky/dagoni
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface RegistryBundleInterface {
-  readonly bundle:          DispatcherBundleType<NodeStateInterface, unknown>;
-  readonly services:        unknown;
+  readonly bundle:          DispatcherBundleType<NodeStateInterface>;
   readonly registryVersion: string;
   readonly restoreState:    CheckpointRestoreAdapterInterface<NodeStateInterface>;
   destroy?():               Promise<void>;
@@ -305,7 +303,7 @@ interface RegistryModuleInterface {
 
 `RegistryModuleInterface` is the default export shape of a registry module loaded by `DagHost` via dynamic import. `instantiate` receives the opaque `servicesConfig` JSON from the `init` message and returns a fully initialised `RegistryBundleInterface`.
 
-`RegistryBundleInterface` bundles the node+DAG registry (`bundle`), the locally constructed services bag (`services`), the semantic version for the init ↔ ready handshake (`registryVersion`), and the state restore factory (`restoreState`). Services never cross the isolate boundary — each isolate constructs its own via its registry module.
+`RegistryBundleInterface` bundles the node+DAG registry (`bundle`), the semantic version for the init ↔ ready handshake (`registryVersion`), and the state restore factory (`restoreState`). Node instances are constructed inside the registry module (with their constructor-injected dependencies); the constructed instances cross no isolate boundary — each isolate builds its own graph via its registry module.
 
 ## DagOutcomeType
 
@@ -328,13 +326,13 @@ Result returned by `DagContainerInterface.runDag()` after an embedded DAG comple
 ```ts twoslash
 import type { NodeStateInterface, NodeContextType, ExecutionRequestType, Timeout } from '@studnicky/dagonizer';
 // ---cut---
-interface DagTaskInterface<TServices = undefined> {
+interface DagTaskInterface {
   dagName:        string;
   placementPath:  string[];
   correlationId:  string;
   timeout:        Timeout;
   state:          NodeStateInterface;
-  context:        NodeContextType<TServices>;
+  context:        NodeContextType;
   toRequest(): ExecutionRequestType;
 }
 ```
@@ -399,7 +397,7 @@ Typed contract for dispatching a registered node back through the engine. Lives 
 ## Related guides
 
 - [Cancellation](../guide/cancellation)
-- [Services](../guide/services)
+- [Dependency injection](../guide/services)
 - [State accessors](../guide/state-accessor)
 - [Persistence](../guide/persistence)
 - [Shared state](../guide/shared-state)

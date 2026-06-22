@@ -19,16 +19,15 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
-import type { ArchivistServices } from '../services.ts';
 import { TextSimilarity } from './textUtils.ts';
 
 const TOP_K = 3;
 
-export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked', ArchivistServices> {
+export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked'> {
   readonly name = 'pick-best-match';
   readonly outputs = ['picked'] as const;
   override get outputSchema(): Record<'picked', SchemaObjectType> {
@@ -37,7 +36,7 @@ export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked', Arch
     };
   }
 
-  protected override executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState) {
     if (state.candidates.length === 0) {
       return Promise.resolve(NodeOutputBuilder.of('picked'));
     }

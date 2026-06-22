@@ -9,8 +9,8 @@
  * implement. The "monadic" framing captures three traits the pattern taxonomy
  * depends on:
  *
- *   1. Context-carrying: execution sees the dispatcher's services bag and the
- *      abort signal alongside the batch, not as ambient globals.
+ *   1. Context-carrying: execution sees the abort signal alongside the batch,
+ *      not as an ambient global.
  *   2. Composable: output-port routing chains nodes into larger flows via the
  *      dispatcher's placement graph (the bind operation in Dagonizer terms).
  *   3. Total: every item is routed to one of the declared ports; nothing throws
@@ -29,8 +29,6 @@
  * @typeParam TState    the node state the dispatcher threads through the batch.
  * @typeParam TOutput   the literal union of output port names. Narrows the
  *                      placement-routing surface at compile time.
- * @typeParam TServices the services bag shape. `undefined` for nodes that need
- *                      no service.
  */
 
 import type { NodeInterface, SchemaObjectType } from '../contracts/NodeInterface.js';
@@ -45,8 +43,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 export abstract class MonadicNode<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = 'success' | 'empty' | 'error',
-  TServices = undefined,
-> implements NodeInterface<TState, TOutput, TServices> {
+> implements NodeInterface<TState, TOutput> {
   /** Stable identifier used at registration with the dispatcher. */
   abstract readonly name: string;
 
@@ -78,7 +75,7 @@ export abstract class MonadicNode<
    */
   abstract execute(
     batch: Batch<TState>,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ): Promise<RoutedBatchType<TOutput, TState>>;
 
   /**

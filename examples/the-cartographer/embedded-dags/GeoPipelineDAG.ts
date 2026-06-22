@@ -26,7 +26,6 @@ import { routeGeo } from '../nodes/routeGeo.ts';
 import { applyGeo } from '../nodes/applyGeo.ts';
 import { validateCoords } from '../nodes/validateCoords.ts';
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
@@ -81,7 +80,7 @@ export const geoPipelineDAG: DAGType = new DAGBuilder('geo-pipeline', '1.0')
 
   .build();
 
-export const geoPipelineBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const geoPipelineBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [routeGeo, applyGeo, validateCoords],
   'dags':  [geoPipelineDAG],
 };

@@ -17,7 +17,7 @@
 
 // #region node-class
 import type { ArchivistState } from '../ArchivistState.ts';
-import type { ArchivistServices } from '../services.ts';
+import type { ArchivistServices, ClassifiedIntent } from '../services.ts';
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -39,8 +39,13 @@ const NODE_TIMEOUT_MS = 30_000;
 /** Total attempts (initial + retries) before routing to salvage. */
 const RETRY_BUDGET = 2;
 
-export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput, ArchivistServices> {
+export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput> {
+  private readonly services: ArchivistServices;
   readonly name = 'classify-intent';
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
   readonly outputs = ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'off-topic', 'retry', 'salvage'] as const;
   override get outputSchema(): Record<'lookup-author' | 'find-reviews' | 'describe-book' | 'recommend-similar' | 'recall-memories' | 'on-topic' | 'off-topic' | 'retry' | 'salvage', SchemaObjectType> {
     return {
@@ -56,29 +61,45 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput,
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
     const summary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;
     const conversation = state.conversation.length > 0 ? state.conversation : undefined;
 
     const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
 
     try {
-      const intent = await context.services.llm.classifyIntent(state.query, summary, conversation, signal);
+      const intent = await this.services.llm.classifyIntent(state.query, summary, conversation, signal);
+      // Guard: empty or unrecognised intent is a classification failure — treat
+      // it the same as a thrown error so the retry/salvage flow decides the path.
+      // The classifier never fabricates an intent it didn't receive.
+      if (intent.length === 0) {
+        if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
+          return NodeOutputBuilder.of('retry');
+        }
+        state.clearAttempts(context.nodeName);
+        return NodeOutputBuilder.of('salvage');
+      }
       state.intent = intent;
       state.clearAttempts(context.nodeName);
-      switch (intent) {
-        case 'off-topic':         return NodeOutputBuilder.of('off-topic');
-        case 'lookup-author':     return NodeOutputBuilder.of('lookup-author');
-        case 'find-reviews':      return NodeOutputBuilder.of('find-reviews');
-        case 'describe-book':     return NodeOutputBuilder.of('describe-book');
-        case 'recommend-similar': return NodeOutputBuilder.of('recommend-similar');
-        case 'recall-memories':   return NodeOutputBuilder.of('recall-memories');
-        default:                  return NodeOutputBuilder.of('on-topic');
-      }
+      // Map every ClassifiedIntent variant to its node output port.
+      // 'search', 'describe', 'recommend' are general on-topic intents that
+      // route through the main pipeline (extract-query → decide-tools → …).
+      const intentDispatch: Record<ClassifiedIntent, IntentOutput> = {
+        'off-topic':         'off-topic',
+        'lookup-author':     'lookup-author',
+        'find-reviews':      'find-reviews',
+        'describe-book':     'describe-book',
+        'recommend-similar': 'recommend-similar',
+        'recall-memories':   'recall-memories',
+        'search':            'on-topic',
+        'describe':          'on-topic',
+        'recommend':         'on-topic',
+      };
+      return NodeOutputBuilder.of(intentDispatch[intent]);
     } catch (err) {
       // External cancellation / run deadline propagates unchanged.
       if (context.signal.aborted) throw err;
@@ -96,5 +117,3 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput,
 }
 // #endregion node-class
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const classifyIntent = new ClassifyIntentNode();

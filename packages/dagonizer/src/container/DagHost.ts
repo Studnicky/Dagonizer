@@ -34,6 +34,7 @@ import type { RegistryModuleInterface } from '../contracts/RegistryModuleInterfa
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 import type { ExecutionResponseType } from '../entities/executor/ExecutionResponse.js';
 import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
+import { JsonObject } from '../entities/json.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { NodeErrorBuilder } from '../entities/node/NodeError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -113,48 +114,59 @@ export class DagHost {
       return;
     }
 
-    // Exhaustive typed switch: TypeScript narrows `message` on each `variant` arm,
-    // eliminating the need for `as` casts inside each handler. The R3
-    // fire-and-forget pattern for 'execute' is preserved — the error is
-    // captured and sent as a channel message rather than leaking an unhandled
-    // rejection. Unknown variants (host→parent messages) are unexpected here but
-    // must not crash the host.
-    switch (message.variant) {
-      case 'init':
-        await this.#handleInit(message.registryModule, message.registryVersion, message.servicesConfig as JsonObjectType);
-        break;
-      case 'execute':
+    // Dispatch map over variant: handlers are keyed by message variant.
+    // DagHost receives only parent→host messages; host→parent messages are
+    // unexpected on this side but must not crash the host — the fallback
+    // sends an UNEXPECTED_MESSAGE error for any unknown variant.
+    type HostMsg = typeof message;
+    const variantDispatch: Partial<Record<HostMsg['variant'], (m: HostMsg) => Promise<void> | void>> = {
+      'init': async (m) => {
+        const im = m as HostMsg & { variant: 'init' };
+        const servicesConfig = JsonObject.is(im.servicesConfig) ? im.servicesConfig : {};
+        await this.#handleInit(
+          im.registryModule,
+          im.registryVersion,
+          servicesConfig,
+          im.keyingScheme ?? 'name',
+        );
+      },
+      'execute': (m) => {
+        const em = m as HostMsg & { variant: 'execute' };
         // R3: fire-and-forget with error capture so failures reach the caller.
-        this.#handleExecute(message.request.correlationId, message.request).catch((err: unknown) => {
+        this.#handleExecute(em.request.correlationId, em.request).catch((err: unknown) => {
           const errMsg = err instanceof Error ? err.message : String(err);
           try {
             this.#channel.send({
               'variant': 'error',
-              'correlationId': message.request.correlationId,
+              'correlationId': em.request.correlationId,
               'code': 'INTERNAL_ERROR',
               'message': `DagHost execute error: ${errMsg}`,
               'recoverable': false,
             });
           } catch { /* channel closed — suppress */ }
         });
-        break;
-      case 'abort':
-        this.#handleAbort(message.correlationId, message.reason);
-        break;
-      case 'shutdown':
+      },
+      'abort': (m) => {
+        const am = m as HostMsg & { variant: 'abort' };
+        this.#handleAbort(am.correlationId, am.reason);
+      },
+      'shutdown': async () => {
         await this.#handleShutdown();
-        break;
-      default:
-        // DagHost receives only parent→host messages; host→parent messages are
-        // unexpected on this side but must not crash the host.
-        this.#channel.send({
-          'variant': 'error',
-          'correlationId': null,
-          'code': 'UNEXPECTED_MESSAGE',
-          'message': `DagHost received unexpected message variant: ${(message as { variant: string }).variant}`,
-          'recoverable': true,
-        });
-        break;
+      },
+    };
+
+    const handler = variantDispatch[message.variant];
+    if (handler !== undefined) {
+      await handler(message);
+    } else {
+      // Unknown variant: host→parent messages arriving on this side are unexpected.
+      this.#channel.send({
+        'variant': 'error',
+        'correlationId': null,
+        'code': 'UNEXPECTED_MESSAGE',
+        'message': `DagHost received unexpected message variant: ${String(message.variant)}`,
+        'recoverable': true,
+      });
     }
   }
 
@@ -162,10 +174,23 @@ export class DagHost {
   // init
   // ---------------------------------------------------------------------------
 
+  /**
+   * Type-guard predicate confirming a dynamically-imported default export
+   * implements `RegistryModuleInterface` (an object exposing an `instantiate`
+   * function). Narrows the module-ingest boundary cast-free.
+   */
+  static #isRegistryModule(value: unknown): value is RegistryModuleInterface {
+    return value !== null
+      && typeof value === 'object'
+      && 'instantiate' in value
+      && typeof value.instantiate === 'function';
+  }
+
   async #handleInit(
     registryModule: string,
     expectedVersion: string,
     servicesConfig: JsonObjectType,
+    parentKeyingScheme: 'name' | 'iri' = 'name',
   ): Promise<void> {
     try {
       let registry: RegistryModuleInterface;
@@ -174,20 +199,14 @@ export class DagHost {
         registry = this.#registry;
       } else {
         // Dynamic import is the module ingest boundary: the loaded module is
-        // unknown at compile time, so the cast to { default?: unknown } is the
-        // entry point for runtime narrowing that follows.
-        const mod = await import(registryModule) as { default?: unknown };
+        // unknown at compile time. A typed declaration narrows it without a cast.
+        const mod: { default?: unknown } = await import(registryModule);
 
-        // Runtime-narrow the default export via typeof checks before the cast.
-        // The guard below confirms `instantiate` is a function before the cast
-        // to RegistryModuleInterface, making the subsequent typed call safe.
+        // `DagHost.#isRegistryModule` is a type-guard predicate that confirms the
+        // default export implements `RegistryModuleInterface` (object with an
+        // `instantiate` function) — cast-free narrowing at the ingest boundary.
         const registryInterface = mod.default;
-        if (
-          registryInterface === null ||
-          typeof registryInterface !== 'object' ||
-          !('instantiate' in registryInterface) ||
-          typeof (registryInterface as { instantiate: unknown }).instantiate !== 'function'
-        ) {
+        if (!DagHost.#isRegistryModule(registryInterface)) {
           this.#channel.send({
             'variant': 'error',
             'correlationId': null,
@@ -198,8 +217,7 @@ export class DagHost {
           return;
         }
 
-        // Cast is safe: the typeof guard above confirms instantiate exists as a function.
-        registry = registryInterface as RegistryModuleInterface;
+        registry = registryInterface;
       }
 
       const bundle = await registry.instantiate(servicesConfig);
@@ -210,6 +228,21 @@ export class DagHost {
           'correlationId': null,
           'code': 'VERSION_MISMATCH',
           'message': `Registry version mismatch: expected '${expectedVersion}', got '${bundle.registryVersion}'`,
+          'recoverable': false,
+        });
+        return;
+      }
+
+      // Keying-scheme handshake: parent and bundle must agree on whether names
+      // are bare or IRI-expanded. A mismatch means the bundle was built for a
+      // different namespace strategy and cannot run in this host.
+      const bundleKeyingScheme = bundle.keyingScheme ?? 'name';
+      if (parentKeyingScheme !== bundleKeyingScheme) {
+        this.#channel.send({
+          'variant': 'error',
+          'correlationId': null,
+          'code': 'VERSION_MISMATCH',
+          'message': `Keying scheme mismatch: parent expects '${parentKeyingScheme}', bundle provides '${bundleKeyingScheme}'`,
           'recoverable': false,
         });
         return;
@@ -274,7 +307,7 @@ export class DagHost {
     const requestItems = request.items;
     const restoredItems = requestItems.map(({ id, snapshot }: { id: string; snapshot: Record<string, unknown> }) => ({
       'id': id,
-      'state': bundle.restoreState.restore(snapshot as JsonObjectType),
+      'state': bundle.restoreState.restore(JsonObject.is(snapshot) ? snapshot : {}),
     }));
 
     // Set up timeout abort if specified.
@@ -289,11 +322,14 @@ export class DagHost {
     // correct correlationId. The request.placementPath is used as the basePath
     // so that forwarded placementPaths are the full composite path (parent path
     // + inner body path), making them non-empty on the parent side.
+    // A node's dependencies are constructed with the node inside the isolate's
+    // registry module (from the init message's `servicesConfig`); the dispatcher
+    // carries no services option, so the worker dispatcher needs no options here.
     const dagonizer = new WorkerObserver<NodeStateInterface>(
       this.#channel,
       correlationId,
       request.placementPath,
-      { 'services': bundle.services },
+      {},
     );
     dagonizer.registerBundle(bundle.bundle);
 

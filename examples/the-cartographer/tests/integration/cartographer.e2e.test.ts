@@ -25,11 +25,10 @@ import { Dagonizer } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { cartographerBundle } from '../../dag.ts';
 import { ingestSourceBundle } from '../../embedded-dags/IngestSourceDAG.ts';
-import { geoResolveBundle } from '../../embedded-dags/GeoResolveDAG.ts';
+import { GeoResolveDAG } from '../../embedded-dags/GeoResolveDAG.ts';
 import { orderEnrichmentBundle } from '../../embedded-dags/OrderEnrichmentDAG.ts';
 import { gdprComplianceBundle } from '../../embedded-dags/GdprComplianceDAG.ts';
 import { GeoResolvers } from '../../services/GeoResolvers.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
 
 // ── Shared setup ───────────────────────────────────────────────────────────────
 
@@ -38,10 +37,10 @@ class Harness {
    * Build a fresh Dagonizer instance with all bundles registered.
    * Uses the recorded (offline) geo backend for determinism.
    */
-  static dispatcher(): Dagonizer<CartographerState, CartographerServices> {
+  static dispatcher(): Dagonizer<CartographerState> {
     const services = GeoResolvers.recorded();
-    const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ services });
-    dispatcher.registerBundle(geoResolveBundle);
+    const dispatcher = new Dagonizer<CartographerState>({});
+    dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
     dispatcher.registerBundle(ingestSourceBundle);

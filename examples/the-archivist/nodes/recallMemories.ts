@@ -30,7 +30,7 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { MemoryDigest } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -70,7 +70,8 @@ class MemorySummarizer {
   }
 }
 
-export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled', ArchivistServices> {
+export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled'> {
+  private readonly services: ArchivistServices;
   readonly name = 'recall-memories';
   readonly outputs = ['recalled'] as const;
   override get outputSchema(): Record<'recalled', SchemaObjectType> {
@@ -79,8 +80,13 @@ export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled', A
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    const memory = context.services.memory;
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
+
+  protected override async executeOne(state: ArchivistState) {
+    const memory = this.services.memory;
     const currentGraphIri = state.runId !== '' ? MemoryStore.stateGraphIri(state.runId).value : null;
 
     // ── Query 1: distinct books in the default graph ─────────────────────
@@ -191,5 +197,3 @@ export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled', A
   }
 }
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const recallMemories = new RecallMemoriesNode();

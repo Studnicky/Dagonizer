@@ -25,7 +25,8 @@ import type { ArchivistServices } from '../services.ts';
 const dagSource      = MemoryStore.dagIri('source');
 const dagInShortlist = MemoryStore.dagIri('inShortlist');
 
-export class HasCitationsGateNode extends ScalarNode<ArchivistState, 'pass' | 'fail', ArchivistServices> {
+export class HasCitationsGateNode extends ScalarNode<ArchivistState, 'pass' | 'fail'> {
+  private readonly services: ArchivistServices;
   readonly name = 'has-citations-gate';
   readonly outputs = ['pass', 'fail'] as const;
   override get outputSchema(): Record<'pass' | 'fail', SchemaObjectType> {
@@ -35,8 +36,13 @@ export class HasCitationsGateNode extends ScalarNode<ArchivistState, 'pass' | 'f
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    const memory = context.services.memory;
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
+
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+    const memory = this.services.memory;
     const graph = MemoryStore.stateGraphIri(state.runId);
     const shortlisted = memory.select({
       'subject':   '?book',
@@ -69,5 +75,3 @@ export class HasCitationsGateNode extends ScalarNode<ArchivistState, 'pass' | 'f
   }
 }
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const hasCitationsGate = new HasCitationsGateNode();

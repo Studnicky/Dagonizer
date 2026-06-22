@@ -20,14 +20,22 @@ import type {
   JourneyScan,
   RegionInsights,
 } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
+type SizeTierKey = 'envelope' | 'small' | 'medium' | 'large' | 'freight';
+
 // #region summarize-insights-node
-export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'success', CartographerServices> {
+export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'success'> {
+  private static readonly sizeTierDispatch: Readonly<Record<SizeTierKey, (entry: RegionInsights) => void>> = {
+    'envelope': (entry) => { entry.sizeTierEnvelope++; },
+    'small':    (entry) => { entry.sizeTierSmall++; },
+    'medium':   (entry) => { entry.sizeTierMedium++; },
+    'large':    (entry) => { entry.sizeTierLarge++; },
+    'freight':  (entry) => { entry.sizeTierFreight++; },
+  };
   readonly 'name' = 'summarize';
   readonly 'outputs' = ['success'] as const;
 
@@ -37,7 +45,7 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'success'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'success'>> {
     // Streaming path: insights-fold gather already produced state.insights,
     // state.journeys, and state.sampleRecords with bounded memory. Nothing to do.
     if (state.insights.size > 0 || state.journeys.size > 0) {
@@ -112,13 +120,7 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
       if (record.consentStatus === 'missing') entry.consentMissing++;
       if (record.consentStatus === 'expired') entry.consentExpired++;
 
-      switch (record.sizeTier) {
-        case 'envelope': entry.sizeTierEnvelope++; break;
-        case 'small':    entry.sizeTierSmall++;    break;
-        case 'medium':   entry.sizeTierMedium++;   break;
-        case 'large':    entry.sizeTierLarge++;    break;
-        case 'freight':  entry.sizeTierFreight++;  break;
-      }
+      SummarizeInsightsNode.sizeTierDispatch[record.sizeTier as SizeTierKey]?.(entry);
 
       // ── (b) collect the scan for this journey ───────────────────────────────
       let scans = scansByShipment.get(record.shipmentId);

@@ -16,14 +16,13 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region aggregate-event-node
-export class AggregateEventNode extends ScalarNode<CartographerState, 'done', CartographerServices> {
+export class AggregateEventNode extends ScalarNode<CartographerState, 'done'> {
   readonly 'name' = 'aggregate-event';
   readonly 'outputs' = ['done'] as const;
 
@@ -33,7 +32,7 @@ export class AggregateEventNode extends ScalarNode<CartographerState, 'done', Ca
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'done'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
     const norm = state.normalized;
     const geo  = state.geoContext;
     const gdpr = state.gdprResult;

@@ -23,7 +23,6 @@ class TestRecall extends RecallContextNode<TestState, string> {
 }
 
 void test('RecallContextNode reads + writes via the store', async () => {
-  const node = new TestRecall();
   const state = new TestState();
   const mockStore: TripleStoreInterface = {
     'select': () => [{ 's': { 'termType': 'NamedNode', 'value': 'urn:test:a' } }],
@@ -33,7 +32,8 @@ void test('RecallContextNode reads + writes via the store', async () => {
     'clearGraph': () => undefined,
     'triples': function* () { /* empty */ },
   };
-  const ctx = NodeContextBuilder.of('test-dag', 'test-recall', new AbortController().signal, { 'memory': mockStore });
+  const node = new TestRecall(mockStore);
+  const ctx = NodeContextBuilder.of('test-dag', 'test-recall', new AbortController().signal);
   const result = await node.execute(state, ctx);
   assert.equal(result.output, 'success');
   assert.deepEqual(state.recalled, ['urn:test:a']);

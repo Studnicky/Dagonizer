@@ -3,12 +3,16 @@ import { test } from 'node:test';
 
 import { GeminiNanoAdapter } from '../src/index.js';
 
-function installLanguageModel(stub: unknown): void {
-  Object.assign(globalThis, { 'LanguageModel': stub });
-}
+class LanguageModelStub {
+  private constructor() {}
 
-function removeLanguageModel(): void {
-  Reflect.deleteProperty(globalThis, 'LanguageModel');
+  static install(stub: unknown): void {
+    Object.assign(globalThis, { 'LanguageModel': stub });
+  }
+
+  static remove(): void {
+    Reflect.deleteProperty(globalThis, 'LanguageModel');
+  }
 }
 
 void test('GeminiNanoAdapter identity', () => {
@@ -23,13 +27,13 @@ void test('GeminiNanoAdapter.detect returns unavailable in node', async () => {
 });
 
 void test('GeminiNanoAdapter.probe returns false when window.LanguageModel is absent', async () => {
-  removeLanguageModel();
+  LanguageModelStub.remove();
   const a = new GeminiNanoAdapter();
   assert.equal(await a.probe(), false);
 });
 
 void test('GeminiNanoAdapter.probe returns true when availability() reports "available"', async () => {
-  installLanguageModel({
+  LanguageModelStub.install({
     "availability": async () => Promise.resolve('available'),
     "create": async () => Promise.resolve({ "prompt": async () => Promise.resolve(''), "destroy": () => {} }),
   });
@@ -37,12 +41,12 @@ void test('GeminiNanoAdapter.probe returns true when availability() reports "ava
   try {
     assert.equal(await a.probe(), true);
   } finally {
-    removeLanguageModel();
+    LanguageModelStub.remove();
   }
 });
 
 void test('GeminiNanoAdapter.probe returns false when availability() reports "downloadable"', async () => {
-  installLanguageModel({
+  LanguageModelStub.install({
     "availability": async () => Promise.resolve('downloadable'),
     "create": async () => Promise.resolve({ "prompt": async () => Promise.resolve(''), "destroy": () => {} }),
   });
@@ -50,12 +54,12 @@ void test('GeminiNanoAdapter.probe returns false when availability() reports "do
   try {
     assert.equal(await a.probe(), false);
   } finally {
-    removeLanguageModel();
+    LanguageModelStub.remove();
   }
 });
 
 void test('GeminiNanoAdapter.probe does not throw when availability() rejects', async () => {
-  installLanguageModel({
+  LanguageModelStub.install({
     "availability": async () => Promise.reject(new Error('boom')),
     "create": async () => Promise.resolve({ "prompt": async () => Promise.resolve(''), "destroy": () => {} }),
   });
@@ -63,7 +67,7 @@ void test('GeminiNanoAdapter.probe does not throw when availability() rejects', 
   try {
     assert.equal(await a.probe(), false);
   } finally {
-    removeLanguageModel();
+    LanguageModelStub.remove();
   }
 });
 
@@ -79,7 +83,7 @@ void test('GeminiNanoAdapter.listModels returns single gemini-nano descriptor', 
 });
 
 void test('GeminiNanoAdapter.listModels requires no window.LanguageModel', async () => {
-  removeLanguageModel();
+  LanguageModelStub.remove();
   const a = new GeminiNanoAdapter();
   const models = await a.listModels();
   assert.equal(models.length, 1);

@@ -377,51 +377,36 @@ export class BackendMatrix {
 export class ProviderInstantiator {
   static instantiate(id: ProviderId, inputs: InstantiateInputs = {}): LlmClientInterface {
     const keys = inputs.apiKeys ?? {};
-    switch (id) {
-      case 'gemini-nano':
-        return new BaseLlmClient(new GeminiNanoAdapter());
-      case 'gemini-api': {
+
+    /** Require a non-empty API key for cloud-backend providers. */
+    const requireKey = (providerId: ProviderId, label: string): string => {
+      const key = keys[providerId];
+      if (typeof key !== 'string' || key.length === 0) {
+        throw new LlmError(`${label} requires an API key`, { 'reason': 'AUTH_FAILED', 'retryable': false });
+      }
+      return key;
+    };
+
+    const providerDispatch: Record<ProviderId, () => LlmClientInterface> = {
+      'gemini-nano': () => new BaseLlmClient(new GeminiNanoAdapter()),
+      'gemini-api':  () => {
         const key = keys['gemini-api'];
         if (typeof key !== 'string' || key.length === 0) {
           throw new LlmError('gemini-api requires an AI Studio API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
         }
         return new BaseLlmClient(new GeminiApiAdapter(key));
-      }
-      case 'web-llm': {
+      },
+      'web-llm': () => {
         const options: { model?: string; onProgress?: (report: WebLlmInitReportType) => void } = {};
         if (inputs.webLlmModel !== undefined) options.model = inputs.webLlmModel;
         if (inputs.onWebLlmProgress !== undefined) options.onProgress = inputs.onWebLlmProgress;
         return new BaseLlmClient(new WebLlmAdapter(options));
-      }
-      case 'groq': {
-        const key = keys['groq'];
-        if (typeof key !== 'string' || key.length === 0) {
-          throw new LlmError('groq requires an API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
-        }
-        return new BaseLlmClient(new GroqApiAdapter(key));
-      }
-      case 'cerebras': {
-        const key = keys['cerebras'];
-        if (typeof key !== 'string' || key.length === 0) {
-          throw new LlmError('cerebras requires an API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
-        }
-        return new BaseLlmClient(new CerebrasApiAdapter(key));
-      }
-      case 'mistral': {
-        const key = keys['mistral'];
-        if (typeof key !== 'string' || key.length === 0) {
-          throw new LlmError('mistral requires an API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
-        }
-        return new BaseLlmClient(new MistralApiAdapter(key));
-      }
-      case 'openrouter': {
-        const key = keys['openrouter'];
-        if (typeof key !== 'string' || key.length === 0) {
-          throw new LlmError('openrouter requires an API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
-        }
-        return new BaseLlmClient(new OpenRouterApiAdapter(key));
-      }
-      case 'ollama': {
+      },
+      'groq':       () => new BaseLlmClient(new GroqApiAdapter(requireKey('groq', 'groq'))),
+      'cerebras':   () => new BaseLlmClient(new CerebrasApiAdapter(requireKey('cerebras', 'cerebras'))),
+      'mistral':    () => new BaseLlmClient(new MistralApiAdapter(requireKey('mistral', 'mistral'))),
+      'openrouter': () => new BaseLlmClient(new OpenRouterApiAdapter(requireKey('openrouter', 'openrouter'))),
+      'ollama': () => {
         // No API key required. Ollama's loopback daemon accepts a
         // placeholder Bearer header. Pass the installed model the picker
         // resolved; an empty string means "no explicit model" and is treated
@@ -430,12 +415,11 @@ export class ProviderInstantiator {
         return new BaseLlmClient(new OllamaApiAdapter(
           typeof model === 'string' && model.length > 0 ? { 'model': model } : {},
         ));
-      }
-      default: {
-        const exhaustive: never = id;
-        throw new LlmError(`unknown provider id: ${String(exhaustive)}`, { 'reason': 'UNKNOWN', 'retryable': false });
-      }
-    }
+      },
+    };
+
+    const factory = providerDispatch[id];
+    return factory();
   }
 }
 

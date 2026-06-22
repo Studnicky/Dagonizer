@@ -152,7 +152,7 @@ export class ScatterCheckpoint {
     state: NodeStateInterface,
     placementName: string,
   ): ScatterProgressType | undefined {
-    const raw = state.getMetadata<unknown>(SCATTER_PROGRESS_KEY);
+    const raw = state.getMetadata(SCATTER_PROGRESS_KEY);
     if (raw === undefined) return undefined;
     // Validate at the read boundary so corrupt/migrated checkpoints surface
     // here rather than causing silent type mismatches in the scatter loop.
@@ -170,8 +170,9 @@ export class ScatterCheckpoint {
     inbox: readonly ScatterInboxItemType[],
     ackedResults: readonly ScatterAckedResultType[],
   ): void {
-    const raw = state.getMetadata<StoredScatterProgressType>(SCATTER_PROGRESS_KEY) ?? {};
-    const next: Record<string, ScatterProgressType> = { ...raw };
+    const raw = state.getMetadata(SCATTER_PROGRESS_KEY);
+    const current: StoredScatterProgressType = raw === undefined ? {} : Validator.storedScatterProgress.validate(raw);
+    const next: Record<string, ScatterProgressType> = { ...current };
     next[placementName] = { 'mode': 'retained', placementName, 'inbox': [...inbox], 'ackedResults': [...ackedResults] };
     state.setMetadata(SCATTER_PROGRESS_KEY, next);
   }
@@ -188,8 +189,9 @@ export class ScatterCheckpoint {
     aheadAcked: readonly { index: number; output: string }[],
     outcomeTally: Readonly<Record<string, number>>,
   ): void {
-    const raw = state.getMetadata<StoredScatterProgressType>(SCATTER_PROGRESS_KEY) ?? {};
-    const next: Record<string, ScatterProgressType> = { ...raw };
+    const raw = state.getMetadata(SCATTER_PROGRESS_KEY);
+    const current: StoredScatterProgressType = raw === undefined ? {} : Validator.storedScatterProgress.validate(raw);
+    const next: Record<string, ScatterProgressType> = { ...current };
     next[placementName] = { 'mode': 'bounded', placementName, 'inbox': [...inbox], watermark, 'aheadAcked': [...aheadAcked], 'outcomeTally': { ...outcomeTally } };
     state.setMetadata(SCATTER_PROGRESS_KEY, next);
   }
@@ -201,8 +203,9 @@ export class ScatterCheckpoint {
    * omits it.
    */
   static clear(state: NodeStateInterface, placementName: string): void {
-    const stored = state.getMetadata<StoredScatterProgressType>(SCATTER_PROGRESS_KEY);
-    if (stored === undefined) return;
+    const raw = state.getMetadata(SCATTER_PROGRESS_KEY);
+    if (raw === undefined) return;
+    const stored = Validator.storedScatterProgress.validate(raw);
     if (!(placementName in stored)) return;
     const next: Record<string, ScatterProgressType> = { ...stored };
     delete next[placementName];

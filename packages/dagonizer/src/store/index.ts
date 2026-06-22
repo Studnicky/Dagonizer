@@ -15,6 +15,7 @@ export { StoreError } from './StoreError.js';
 export type { StoreErrorClassificationType } from './StoreError.js';
 
 export { TypedStore } from './TypedStore.js';
+export type { TypedStoreValidatorsType } from './TypedStore.js';
 
 // Re-export the contract from /contracts for ergonomic single-import:
 export type { StoreInterface } from '../contracts/StoreInterface.js';

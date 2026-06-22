@@ -190,13 +190,13 @@ export class EventLogStore extends BaseStore {
    * Under JS single-threaded execution the body cannot interleave with another
    * `update()` on the same instance, satisfying the atomicity contract.
    */
-  override async update<T extends JsonValueType>(
+  override async update(
     key: string,
-    fn: (current: T | undefined) => T,
-  ): Promise<T> {
+    fn: (current: JsonValueType | undefined) => JsonValueType,
+  ): Promise<JsonValueType> {
     const qualified = this.qualifyKey(key);
     const stored    = this.#latest(qualified);
-    const current   = stored === undefined ? undefined : this.narrowStored<T>(stored) ?? undefined;
+    const current   = stored === undefined ? undefined : stored;
     const next      = fn(current);
     await this.#append({ 'variant': 'set', 'at': Date.now(), 'key': qualified, 'value': next });
     return next;

@@ -115,8 +115,8 @@ export class BaseLlmClient implements LlmClientInterface {
       const start = raw.indexOf('{');
       const end   = raw.lastIndexOf('}');
       if (start >= 0 && end >= 0) {
-        const parsed = JSON.parse(raw.slice(start, end + 1)) as { tools?: readonly unknown[] };
-        if (Array.isArray(parsed.tools)) {
+        const parsed: unknown = JSON.parse(raw.slice(start, end + 1));
+        if (typeof parsed === 'object' && parsed !== null && 'tools' in parsed && Array.isArray(parsed.tools)) {
           indices = parsed.tools.filter((n): n is number => typeof n === 'number' && Number.isInteger(n));
         }
       }
@@ -129,7 +129,7 @@ export class BaseLlmClient implements LlmClientInterface {
       seen.add(n);
       const tool = available[n - 1];
       if (tool === undefined) continue;
-      calls.push({ 'name': tool.name, 'arguments': BaseLlmClient.defaultToolArguments(tool.name, query, this.language) });
+      calls.push({ 'name': tool.name, 'arguments': BaseLlmClient.defaultToolArguments(tool.name, this.language) });
     }
     return calls;
   }
@@ -150,8 +150,8 @@ export class BaseLlmClient implements LlmClientInterface {
       const start = raw.indexOf('{');
       const end   = raw.lastIndexOf('}');
       if (start >= 0 && end >= 0) {
-        const parsed = JSON.parse(raw.slice(start, end + 1)) as { order?: readonly unknown[] };
-        if (Array.isArray(parsed.order)) {
+        const parsed: unknown = JSON.parse(raw.slice(start, end + 1));
+        if (typeof parsed === 'object' && parsed !== null && 'order' in parsed && Array.isArray(parsed.order)) {
           order = parsed.order.filter((n): n is number => typeof n === 'number' && Number.isInteger(n));
         }
       }
@@ -295,18 +295,13 @@ export class BaseLlmClient implements LlmClientInterface {
    * sentence means OpenLibrary / Google Books / Subject Search receive
    * proper keyword queries, not prose questions.
    */
-  private static defaultToolArguments(name: string, _query: string, language: string): Record<string, unknown> {
-    switch (name) {
-      case 'web_search_books':
-        return { 'limit': 8, 'lang': language };
-      case 'google_books_search':
-        return { 'maxResults': 8, 'langRestrict': language };
-      case 'subject_search':
-        return { 'limit': 8, 'lang': language };
-      case 'wikipedia_summary':
-        return { 'lang': language };
-      default:
-        return {};
-    }
+  private static defaultToolArguments(name: string, language: string): Record<string, unknown> {
+    const toolDefaults: Record<string, Record<string, unknown>> = {
+      'web_search_books':    { 'limit': 8, 'lang': language },
+      'google_books_search': { 'maxResults': 8, 'langRestrict': language },
+      'subject_search':      { 'limit': 8, 'lang': language },
+      'wikipedia_summary':   { 'lang': language },
+    };
+    return toolDefaults[name] ?? {};
   }
 }

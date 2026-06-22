@@ -18,13 +18,12 @@
  */
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
-import type { ArchivistServices } from '../services.ts';
 
-export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked', ArchivistServices> {
+export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked'> {
   readonly name = 'rank-by-rating';
   readonly outputs = ['ranked'] as const;
   override get outputSchema(): Record<'ranked', SchemaObjectType> {
@@ -33,7 +32,7 @@ export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked', Archi
     };
   }
 
-  protected override executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState) {
     if (state.candidates.length === 0) {
       return Promise.resolve(NodeOutputBuilder.of('ranked'));
     }

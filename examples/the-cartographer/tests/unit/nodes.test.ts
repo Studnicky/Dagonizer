@@ -19,9 +19,6 @@ import assert from 'node:assert/strict';
 import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer/types';
 import { CartographerState } from '../../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
-import type { IpGeolocator } from '../../contracts/IpGeolocator.ts';
-import type { ReverseGeocoder } from '../../contracts/ReverseGeocoder.ts';
 
 import { ValidateCoordsNode } from '../../nodes/validateCoords.ts';
 import { RouteGeoNode } from '../../nodes/routeGeo.ts';
@@ -38,7 +35,7 @@ import { EnrichLegNode } from '../../nodes/enrichLeg.ts';
 class PublicValidateCoordsNode extends ValidateCoordsNode {
   public override async executeOne(
     state: CartographerState,
-    context: NodeContextType<CartographerServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'valid' | 'rejected'>> {
     return super.executeOne(state, context);
   }
@@ -47,7 +44,7 @@ class PublicValidateCoordsNode extends ValidateCoordsNode {
 class PublicRouteGeoNode extends RouteGeoNode {
   public override async executeOne(
     state: CartographerState,
-    context: NodeContextType<CartographerServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'has-geo' | 'needs-geo'>> {
     return super.executeOne(state, context);
   }
@@ -56,7 +53,7 @@ class PublicRouteGeoNode extends RouteGeoNode {
 class PublicRouteRedactionNode extends RouteRedactionNode {
   public override async executeOne(
     state: CartographerState,
-    context: NodeContextType<CartographerServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'needs-redaction' | 'skip-redaction'>> {
     return super.executeOne(state, context);
   }
@@ -65,7 +62,7 @@ class PublicRouteRedactionNode extends RouteRedactionNode {
 class PublicColdChainCheckNode extends ColdChainCheckNode {
   public override async executeOne(
     state: CartographerState,
-    context: NodeContextType<CartographerServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'checked'>> {
     return super.executeOne(state, context);
   }
@@ -74,7 +71,7 @@ class PublicColdChainCheckNode extends ColdChainCheckNode {
 class PublicCustomsDwellNode extends CustomsDwellNode {
   public override async executeOne(
     state: CartographerState,
-    context: NodeContextType<CartographerServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'dwelled'>> {
     return super.executeOne(state, context);
   }
@@ -83,7 +80,7 @@ class PublicCustomsDwellNode extends CustomsDwellNode {
 class PublicEnrichLegNode extends EnrichLegNode {
   public override async executeOne(
     state: CartographerState,
-    context: NodeContextType<CartographerServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'leg-measured'>> {
     return super.executeOne(state, context);
   }
@@ -92,28 +89,16 @@ class PublicEnrichLegNode extends EnrichLegNode {
 class PublicAggregateEventNode extends AggregateEventNode {
   public override async executeOne(
     state: CartographerState,
-    context: NodeContextType<CartographerServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'done'>> {
     return super.executeOne(state, context);
   }
 }
 
-// Minimal stub service implementations — nodes under test use state only, not context.services
-class StubReverseGeocoder implements ReverseGeocoder {
-  async lookup(_lat: number, _lng: number, _signal: AbortSignal) {
-    return { candidate: { modality: 'gps' as const, resolved: false, country: '', countryName: '', continent: '', region: '', locality: '', lat: 0, lng: 0, water: false }, error: null };
-  }
-}
-class StubIpGeolocator implements IpGeolocator {
-  async lookup(_ip: string, _signal: AbortSignal) {
-    return { candidate: { modality: 'ip' as const, resolved: false, country: '', countryName: '', continent: '', region: '', locality: '', lat: 0, lng: 0, water: false }, error: null };
-  }
-}
-const CTX: NodeContextType<CartographerServices> = {
+const CTX: NodeContextType = {
   'dagName': 'test',
   'nodeName': 'test',
   'signal': new AbortController().signal,
-  'services': { 'reverseGeocoder': new StubReverseGeocoder(), 'ipGeolocator': new StubIpGeolocator() },
   'validateOutputs': false,
   'outputSchemaValidator': null,
 };

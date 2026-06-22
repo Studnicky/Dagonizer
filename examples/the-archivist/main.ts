@@ -20,13 +20,14 @@
  */
 
 import { ArchivistState } from './ArchivistState.ts';
-import { archivistBundle } from './dag.ts';
+import { ArchivistNodes } from './nodes/ArchivistNodes.ts';
+import { ArchivistBundleFactory } from './dag.ts';
 import { UserLanguage } from './language/UserLanguage.ts';
-import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
-import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
+import { BookSearchScatterBundleFactory } from './embedded-dags/BookSearchScatterDAG.ts';
+import { ComposeRetryLoopBundleFactory } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { DomConsoleLogger } from './logger/DomConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
-import { ObservedArchivist } from './ObservedArchivist.ts';
+import { ObservedDag } from './ObservedDag.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import type { ArchivistServices, LlmClientInterface } from './services.ts';
 
@@ -219,26 +220,30 @@ const services: ArchivistServices = {
   'nodeTimeouts':     {},
 };
 
-// ObservedArchivist: a Dagonizer subclass that wires every lifecycle hook to
-// its own internally-owned logger via protected hook overrides (the sole
-// observability surface). The DOM driver keeps its own `DomConsoleLogger`
-// (above) to stream its stage / result display lines into the `<pre>` panel.
-const dispatcher = new ObservedArchivist({ services });
+// ObservedDag: generic Dagonizer subclass wiring every lifecycle hook to an
+// injected logger. The DOM driver's `DomConsoleLogger` is passed in so the
+// dispatcher's hook log lines stream into the `<pre>` panel alongside the
+// driver's own stage / result lines.
+const dispatcher = new ObservedDag<ArchivistState>(logger);
 // #endregion wire-services
 
 // #region register-bundle
 // Tool registry: each book-search tool becomes an embeddable `tool:<name>` DAG.
-// Register before bookSearchScatterBundle so the embedded-DAG references resolve.
+// Register before BookSearchScatterBundleFactory so the embedded-DAG references resolve.
 const toolRegistry = new ToolRegistry();
 toolRegistry.register(new OpenLibrarySearchTool());
 toolRegistry.register(new GoogleBooksTool());
 toolRegistry.register(new SubjectSearchTool());
 toolRegistry.register(new WikipediaSummaryTool());
-dispatcher.registerBundle(toolRegistry.bundle<ArchivistServices>());
+dispatcher.registerBundle(toolRegistry.bundle());
 
-dispatcher.registerBundle(bookSearchScatterBundle);
-dispatcher.registerBundle(composeRetryLoopBundle);
-dispatcher.registerBundle(archivistBundle);
+// Construct every services-injected node exactly once; the shared set is
+// passed to all three factories so duplicate registrations refer to identical
+// instances and the registrar accepts them.
+const nodes = ArchivistNodes.build(services);
+dispatcher.registerBundle(BookSearchScatterBundleFactory.create(nodes));
+dispatcher.registerBundle(ComposeRetryLoopBundleFactory.create(nodes));
+dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
 // #endregion register-bundle
 
 // #region run-loop

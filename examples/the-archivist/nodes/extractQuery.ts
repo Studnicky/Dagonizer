@@ -30,8 +30,13 @@ const NODE_TIMEOUT_MS = 30_000;
 const RETRY_BUDGET = 2;
 
 // #region retry-salvage-node
-export class ExtractQueryNode extends ScalarNode<ArchivistState, 'success' | 'retry' | 'salvage', ArchivistServices> {
+export class ExtractQueryNode extends ScalarNode<ArchivistState, 'success' | 'retry' | 'salvage'> {
+  private readonly services: ArchivistServices;
   readonly name = 'extract-query';
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
   readonly outputs = ['success', 'retry', 'salvage'] as const;
   override get outputSchema(): Record<'success' | 'retry' | 'salvage', SchemaObjectType> {
     return {
@@ -41,12 +46,20 @@ export class ExtractQueryNode extends ScalarNode<ArchivistState, 'success' | 're
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
     const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
     try {
-      state.terms = await context.services.llm.extractTerms(state.query, signal);
+      const terms = await this.services.llm.extractTerms(state.query, signal);
+      if (terms.length === 0) {
+        if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
+          return NodeOutputBuilder.of('retry');
+        }
+        state.clearAttempts(context.nodeName);
+        return NodeOutputBuilder.of('salvage');
+      }
+      state.terms = terms;
       state.clearAttempts(context.nodeName);
       return NodeOutputBuilder.of('success');
     } catch (err) {
@@ -65,5 +78,3 @@ export class ExtractQueryNode extends ScalarNode<ArchivistState, 'success' | 're
 }
 // #endregion retry-salvage-node
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const extractQuery = new ExtractQueryNode();

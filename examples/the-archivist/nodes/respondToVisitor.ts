@@ -25,7 +25,7 @@ import type { ArchivistServices } from '../services.ts';
 const EMPTY_TIMEOUT_MS = 60_000;
 const EMPTY_RETRY_BUDGET = 2;
 
-export class RespondToVisitorNode extends ScalarNode<ArchivistState, 'success', ArchivistServices> {
+export class RespondToVisitorNode extends ScalarNode<ArchivistState, 'success'> {
   readonly name = 'respond-to-visitor';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
@@ -34,12 +34,12 @@ export class RespondToVisitorNode extends ScalarNode<ArchivistState, 'success', 
     };
   }
 
-  protected override async executeOne(_state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne() {
     return NodeOutputBuilder.of('success');
   }
 }
 
-export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success', ArchivistServices> {
+export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success'> {
   readonly name = 'decline-off-topic';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
@@ -48,7 +48,7 @@ export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success', A
     };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState) {
     state.draft = "I only help with finding and identifying books. What title or topic interests you?";
     return NodeOutputBuilder.of('success');
   }
@@ -68,7 +68,8 @@ export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success', A
  * salvage edge; not in this node's catch. No in-node `RetryPolicy`, no engine
  * `timeoutMs` crutch.
  */
-export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
+export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
+  private readonly services: ArchivistServices;
   readonly name = 'compose-empty';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
   override get outputSchema(): Record<'drafted' | 'retry' | 'salvage', SchemaObjectType> {
@@ -79,7 +80,12 @@ export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafte
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
+
+  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
     state.collectWarning({
       "code":      'EMPTY_SHORTLIST',
       "message":   'no candidates after merge; composing empty response',
@@ -88,10 +94,10 @@ export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafte
     });
     const conversation = state.conversation.length > 0 ? state.conversation : undefined;
     const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? EMPTY_TIMEOUT_MS);
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? EMPTY_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
     try {
-      state.draft = await context.services.llm.composeEmptyResponse(state.query, state.failureCause, conversation, signal);
+      state.draft = await this.services.llm.composeEmptyResponse(state.query, state.failureCause, conversation, signal);
       state.clearAttempts(context.nodeName);
       return NodeOutputBuilder.of('drafted');
     } catch (err) {
@@ -110,4 +116,3 @@ export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafte
 /** Singleton node instances referenced by the DAG wiring. */
 export const respondToVisitor = new RespondToVisitorNode();
 export const declineOffTopic = new DeclineOffTopicNode();
-export const composeEmptyResponse = new ComposeEmptyResponseNode();

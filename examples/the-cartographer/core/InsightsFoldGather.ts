@@ -23,9 +23,9 @@ import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
 import type { GatherConfigType, NodeStateInterface } from '@studnicky/dagonizer/types';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
 
-import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
+import { EnrichedShipmentGuard, type EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { JourneyInsights, JourneyScan, RegionInsights } from '../CartographerState.ts';
-import type { GeoErrorRecordType } from '../errors/GeoErrorRecord.ts';
+import { GeoErrorRecord } from '../errors/GeoErrorRecord.ts';
 import { ErrorRollup, type ErrorRollupType } from '../errors/ErrorRollup.ts';
 
 // ── Module constants ───────────────────────────────────────────────────────────
@@ -66,7 +66,16 @@ interface JourneyAccumulator {
 
 // ── InsightsFoldGather ────────────────────────────────────────────────────────
 
+type SizeTierKey = 'envelope' | 'small' | 'medium' | 'large' | 'freight';
+
 export class InsightsFoldGather extends GatherStrategy {
+  private static readonly sizeTierDispatch: Readonly<Record<SizeTierKey, (entry: import('../CartographerState.ts').RegionInsights) => void>> = {
+    'envelope': (entry) => { entry.sizeTierEnvelope++; },
+    'small':    (entry) => { entry.sizeTierSmall++; },
+    'medium':   (entry) => { entry.sizeTierMedium++; },
+    'large':    (entry) => { entry.sizeTierLarge++; },
+    'freight':  (entry) => { entry.sizeTierFreight++; },
+  };
   readonly name = 'insights-fold';
 
   // Per-execution accumulators (reset in initial() before each scatter).
@@ -112,8 +121,9 @@ export class InsightsFoldGather extends GatherStrategy {
       // carries its captured RangeError even if enrichment degraded.
       this.foldErrors(record.cloneState, state, accessor);
 
-      const enriched = accessor.get<EnrichedShipment>(record.cloneState, 'enriched');
-      if (enriched === null || !enriched.shipmentId) continue;
+      const rawEnriched = accessor.get(record.cloneState, 'enriched');
+      if (!EnrichedShipmentGuard.is(rawEnriched) || !rawEnriched.shipmentId) continue;
+      const enriched: EnrichedShipment = rawEnriched;
 
       this.foldRegion(enriched, state, accessor);
       this.foldJourney(enriched);
@@ -192,9 +202,9 @@ export class InsightsFoldGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
-    const errors = accessor.get<readonly GeoErrorRecordType[]>(cloneState, 'capturedErrors');
-    if (errors === null || errors.length === 0) return;
-    for (const error of errors) {
+    const rawErrors = accessor.get(cloneState, 'capturedErrors');
+    if (!GeoErrorRecord.isArray(rawErrors) || rawErrors.length === 0) return;
+    for (const error of rawErrors) {
       ErrorRollup.fold(this.errorRollup, error);
     }
     // Write the rollup back to parent state after folding. The rollup is bounded
@@ -257,13 +267,7 @@ export class InsightsFoldGather extends GatherStrategy {
     if (enriched.consentStatus === 'missing') entry.consentMissing++;
     if (enriched.consentStatus === 'expired') entry.consentExpired++;
 
-    switch (enriched.sizeTier) {
-      case 'envelope': entry.sizeTierEnvelope++; break;
-      case 'small':    entry.sizeTierSmall++;    break;
-      case 'medium':   entry.sizeTierMedium++;   break;
-      case 'large':    entry.sizeTierLarge++;    break;
-      case 'freight':  entry.sizeTierFreight++;  break;
-    }
+    InsightsFoldGather.sizeTierDispatch[enriched.sizeTier as SizeTierKey]?.(entry);
 
     // Write the internal map back to parent state after every mutation.
     // The map is bounded to ~6-8 continent keys regardless of event count.

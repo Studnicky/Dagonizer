@@ -37,12 +37,13 @@
  */
 
 import { ArchivistState } from './ArchivistState.ts';
-import { archivistBundle } from './dag.ts';
-import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
-import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
+import { ArchivistNodes } from './nodes/ArchivistNodes.ts';
+import { ArchivistBundleFactory } from './dag.ts';
+import { BookSearchScatterBundleFactory } from './embedded-dags/BookSearchScatterDAG.ts';
+import { ComposeRetryLoopBundleFactory } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
-import { ObservedArchivist } from './ObservedArchivist.ts';
+import { ObservedDag } from './ObservedDag.ts';
 import { CerebrasApiAdapter }   from '@studnicky/dagonizer-adapter-cerebras';
 import { GeminiApiAdapter }     from '@studnicky/dagonizer-adapter-gemini-api';
 import { GroqApiAdapter }       from '@studnicky/dagonizer-adapter-groq';
@@ -278,11 +279,10 @@ const services: ArchivistServices = {
 
 // #region linear-run
 // ── Dispatcher ───────────────────────────────────────────────────────────
-// ObservedArchivist: Dagonizer subclass wiring every lifecycle hook to its
-// own internally-owned logger via protected hook overrides (the sole
-// observability surface). The driver reads `dispatcher.logger` for its own
-// stage / result display so both streams share one console sink.
-const dispatcher = new ObservedArchivist({ services });
+// ObservedDag: generic Dagonizer subclass wiring every lifecycle hook to an
+// injected logger. The driver passes the top-level `logger` so both streams
+// share one console sink; `dispatcher.logger` reads it back for convenience.
+const dispatcher = new ObservedDag<ArchivistState>(logger);
 
 // ── Tool registry (molecular pattern) ────────────────────────────────────
 // Register each book-search tool as an embeddable `tool:<name>` DAG.
@@ -296,14 +296,18 @@ toolRegistry.register(new OpenLibrarySearchTool());
 toolRegistry.register(new GoogleBooksTool());
 toolRegistry.register(new SubjectSearchTool());
 toolRegistry.register(new WikipediaSummaryTool());
-dispatcher.registerBundle(toolRegistry.bundle<ArchivistServices>());
+dispatcher.registerBundle(toolRegistry.bundle());
 
 // ── Bundle registration (molecular pattern) ──────────────────────────────
 // Each bundle packages its nodes + DAG. Embedded-DAG bundles register first
 // so the parent's semantic validator can resolve embedded references by name.
-dispatcher.registerBundle(bookSearchScatterBundle);
-dispatcher.registerBundle(composeRetryLoopBundle);
-dispatcher.registerBundle(archivistBundle);
+// Construct every services-injected node exactly once; the shared set is
+// passed to all three factories so duplicate registrations refer to identical
+// instances and the registrar accepts them.
+const nodes = ArchivistNodes.build(services);
+dispatcher.registerBundle(BookSearchScatterBundleFactory.create(nodes));
+dispatcher.registerBundle(ComposeRetryLoopBundleFactory.create(nodes));
+dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
 
 // ── Demo run ─────────────────────────────────────────────────────────────
 const visitor = new ArchivistState();
@@ -362,20 +366,23 @@ const cancelResult = await dispatcher.execute('the-archivist', cancelVisitor, {
 });
 
 // #region lifecycle-state-switch
-// lifecycle.variant is a discriminated union: 'completed' | 'cancelled' | 'timed_out'.
+// lifecycle.variant is a discriminated union:
+//   'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out'.
 // Each arm carries only the fields relevant to that outcome (e.g. reason, finishedAt).
 const lc = cancelResult.state.lifecycle;
-switch (lc.variant) {
-  case 'completed':
-    logger.result(`responded: ${cancelResult.state.draft}`);
-    break;
-  case 'cancelled':
-    logger.result(`visitor abandoned at: ${lc.reason}`);
-    break;
-  case 'timed_out':
-    logger.result(`hit deadline at: ${lc.finishedAt}`);
-    break;
-}
+type LifecycleVariant = typeof lc.variant;
+const lifecycleLog: Record<LifecycleVariant, () => void> = {
+  'completed': () => { logger.result(`responded: ${cancelResult.state.draft}`); },
+  'cancelled': () => {
+    const cancelled = lc as Extract<typeof lc, { variant: 'cancelled' }>;
+    logger.result(`visitor abandoned at: ${cancelled.reason}`);
+  },
+  'timed_out': () => { logger.result(`hit deadline at: ${lc.finishedAt}`); },
+  'failed':    () => { logger.result(`execution failed at: ${lc.finishedAt}`); },
+  'pending':   () => { logger.result('lifecycle: pending'); },
+  'running':   () => { logger.result('lifecycle: running'); },
+};
+lifecycleLog[lc.variant]();
 // #endregion lifecycle-state-switch
 
 // result.cursor is the next node that would have run; pass it to

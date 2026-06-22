@@ -1,4 +1,5 @@
 import type { NodeInterface } from '../contracts/NodeInterface.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
@@ -12,9 +13,10 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 export class DAGValidator {
   private constructor() { /* static class */ }
 
-  static validateDAGConfig<TState extends NodeStateInterface, TServices>(
+  static validateDAGConfig<TState extends NodeStateInterface>(
     dag: DAGType,
-    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
     dags: Map<string, DAGType>,
   ): void {
     const errors: string[] = [];
@@ -32,7 +34,7 @@ export class DAGValidator {
     }
 
     for (const node of dag.nodes) {
-      DAGValidator.validateDAGNode(node, nodes, dags, nodeNames, errors);
+      DAGValidator.validateDAGNode(node, context, nodes, dags, nodeNames, errors);
     }
 
     // No sub-DAG cycle detection is needed. `registerDAG` is append-only (a
@@ -46,42 +48,47 @@ export class DAGValidator {
     }
   }
 
-  private static validateDAGNode<TState extends NodeStateInterface, TServices>(
+  private static validateDAGNode<TState extends NodeStateInterface>(
     entry: DAGNodeType,
-    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
     dags: Map<string, DAGType>,
     nodeNames: Set<string>,
     errors: string[],
   ): void {
     if (Placement.isEmbeddedDAG(entry)) {
-      DAGValidator.validateEmbeddedDAGNode(entry, dags, nodeNames, errors);
+      DAGValidator.validateEmbeddedDAGNode(entry, context, dags, nodeNames, errors);
     } else if (Placement.isScatter(entry)) {
-      DAGValidator.validateScatterNode(entry, nodes, dags, nodeNames, errors);
+      DAGValidator.validateScatterNode(entry, context, nodes, dags, nodeNames, errors);
     } else if (Placement.isSingle(entry)) {
-      DAGValidator.validateSingleNode(entry, nodes, nodeNames, errors);
+      DAGValidator.validateSingleNode(entry, context, nodes, nodeNames, errors);
     } else if (Placement.isPhase(entry)) {
-      DAGValidator.validatePhaseNode(entry, nodes, errors);
+      DAGValidator.validatePhaseNode(entry, context, nodes, errors);
     }
     // TerminalNode: no outputs to validate; schema pass is sufficient.
   }
 
-  private static validatePhaseNode<TState extends NodeStateInterface, TServices>(
+  private static validatePhaseNode<TState extends NodeStateInterface>(
     phase: PhaseNodeType,
-    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
     errors: string[],
   ): void {
-    if (!nodes.has(phase.node)) {
+    const nodeIri = ContextResolver.expand(phase.node, context);
+    if (!nodes.has(nodeIri)) {
       errors.push(`PhaseNode '${phase.name}' references unknown registered node: ${phase.node}`);
     }
   }
 
-  private static validateSingleNode<TState extends NodeStateInterface, TServices>(
+  private static validateSingleNode<TState extends NodeStateInterface>(
     nodeConfig: SingleNodePlacementType,
-    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
     nodeNames: Set<string>,
     errors: string[],
   ): void {
-    const dagNode = nodes.get(nodeConfig.node);
+    const nodeIri = ContextResolver.expand(nodeConfig.node, context);
+    const dagNode = nodes.get(nodeIri);
 
     if (!dagNode) {
       errors.push(`Node '${nodeConfig.name}' references unknown registered node: ${nodeConfig.node}`);
@@ -95,6 +102,7 @@ export class DAGValidator {
     }
 
     for (const [output, target] of Object.entries(nodeConfig.outputs)) {
+      // target is a placement name (intra-DAG identifier), not an IRI — nodeNames are bare.
       if (!nodeNames.has(target)) {
         errors.push(`Node '${nodeConfig.name}': output '${output}' routes to unknown node '${target}'`);
       }
@@ -103,6 +111,7 @@ export class DAGValidator {
 
   private static validateEmbeddedDAGNode(
     placement: EmbeddedDAGNodeType,
+    context: Record<string, unknown>,
     dags: Map<string, DAGType>,
     nodeNames: Set<string>,
     errors: string[],
@@ -114,22 +123,27 @@ export class DAGValidator {
       errors.push(`EmbeddedDAGNode '${placement.name}': requires exactly one of dag or dagFrom`);
     }
 
-    // `dag` is the build-time literal name; validate it against the registry.
+    // `dag` is the build-time literal name; validate it against the registry using IRI expansion.
     // `dagFrom` resolves at runtime from state — no static validation is possible.
-    if (placement.dag !== undefined && !dags.has(placement.dag)) {
-      errors.push(`EmbeddedDAGNode '${placement.name}': unknown registered DAG '${placement.dag}'`);
+    if (placement.dag !== undefined) {
+      const dagIri = ContextResolver.expand(placement.dag, context);
+      if (!dags.has(dagIri)) {
+        errors.push(`EmbeddedDAGNode '${placement.name}': unknown registered DAG '${placement.dag}'`);
+      }
     }
 
     for (const [output, target] of Object.entries(placement.outputs)) {
+      // target is a placement name (intra-DAG identifier) — bare, not IRI-expanded.
       if (!nodeNames.has(target)) {
         errors.push(`EmbeddedDAGNode '${placement.name}': output '${output}' routes to unknown node '${target}'`);
       }
     }
   }
 
-  private static validateScatterNode<TState extends NodeStateInterface, TServices>(
+  private static validateScatterNode<TState extends NodeStateInterface>(
     scatter: ScatterNodeType,
-    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
     dags: Map<string, DAGType>,
     nodeNames: Set<string>,
     errors: string[],
@@ -143,22 +157,28 @@ export class DAGValidator {
           `ScatterNode '${scatter.name}' has a node body; 'container' is only valid for a dag body`,
         );
       }
-      if (!nodes.has(scatter.body.node)) {
+      const bodyNodeIri = ContextResolver.expand(scatter.body.node, context);
+      if (!nodes.has(bodyNodeIri)) {
         errors.push(`ScatterNode '${scatter.name}': unknown registered node '${scatter.body.node}'`);
       }
     } else if ('dag' in scatter.body) {
-      if (!dags.has(scatter.body.dag)) {
+      const bodyDagIri = ContextResolver.expand(scatter.body.dag, context);
+      if (!dags.has(bodyDagIri)) {
         errors.push(`ScatterNode '${scatter.name}': unknown registered DAG '${scatter.body.dag}'`);
       }
     }
     // 'dagFrom' bodies reference a runtime-resolved DAG name; not validated at registration time.
 
     const gather = scatter.gather;
-    if (gather.strategy === 'custom' && gather.customNode !== undefined && !nodes.has(gather.customNode)) {
-      errors.push(`ScatterNode '${scatter.name}': custom gather node '${gather.customNode}' not found`);
+    if (gather.strategy === 'custom' && gather.customNode !== undefined) {
+      const customNodeIri = ContextResolver.expand(gather.customNode, context);
+      if (!nodes.has(customNodeIri)) {
+        errors.push(`ScatterNode '${scatter.name}': custom gather node '${gather.customNode}' not found`);
+      }
     }
 
     for (const [output, target] of Object.entries(scatter.outputs)) {
+      // target is a placement name (intra-DAG identifier) — bare, not IRI-expanded.
       if (!nodeNames.has(target)) {
         errors.push(`ScatterNode '${scatter.name}': output '${output}' routes to unknown node '${target}'`);
       }

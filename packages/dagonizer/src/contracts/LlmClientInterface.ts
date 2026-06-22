@@ -3,7 +3,7 @@
  *
  * Any `LlmAdapterInterface` satisfies this interface (the adapter contract
  * shipped at `@studnicky/dagonizer/adapter` is structurally a superset).
- * Pattern bases accept the bag shape `{ llm: LlmClientInterface }` so consumers
+ * Pattern bases accept the record shape `{ llm: LlmClientInterface }` so consumers
  * can pass either a raw adapter or a higher-level client wrapper.
  *
  * Concrete capability metadata (`adapter.capabilities`) is consulted by

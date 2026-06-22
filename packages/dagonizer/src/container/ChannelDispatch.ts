@@ -25,7 +25,7 @@ import type { MessageChannelInterface } from '../contracts/MessageChannelInterfa
 import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
 import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
-import type { JsonObjectType } from '../entities/json.js';
+import { JsonObject } from '../entities/json.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 
 import { DagOutcome } from './DagOutcome.js';
@@ -301,107 +301,107 @@ export class ChannelDispatch {
   // ---------------------------------------------------------------------------
 
   #route(msg: BridgeMessageType): void {
-    switch (msg.variant) {
-      case 'ready': {
+    // Dispatch map over variant: handlers are keyed by message variant.
+    // Unknown variants (e.g. 'intermediate') are observability-only and
+    // require no correlation action — the fallback is a no-op.
+    type RouteMsg = BridgeMessageType;
+    const variantDispatch: Partial<Record<RouteMsg['variant'], (m: RouteMsg) => void>> = {
+      'ready': (m) => {
+        const rm = m as RouteMsg & { variant: 'ready' };
         const waiter = this.#initWaiter;
         if (waiter === null) return;
         this.#initWaiter = null;
-        if (msg.registryVersion !== waiter.expectedVersion) {
+        if (rm.registryVersion !== waiter.expectedVersion) {
           waiter.reject(new Error(
-            `Channel registry version mismatch: expected '${waiter.expectedVersion}', got '${msg.registryVersion}'`,
+            `Channel registry version mismatch: expected '${waiter.expectedVersion}', got '${rm.registryVersion}'`,
           ));
         } else {
           waiter.resolve();
         }
-        break;
-      }
+      },
 
-      case 'result': {
-        const correlationId = msg.response.correlationId;
+      'result': (m) => {
+        const rm = m as RouteMsg & { variant: 'result' };
+        const correlationId = rm.response.correlationId;
         const entry = this.#pending.get(correlationId);
         if (entry === undefined) return;
-        // Protocol-boundary narrowing: BridgeMessage's 'result' branch carries
-        // inline schema copies (InlineNodeErrorShape, InlineExecutionResponseShape)
-        // that are structurally identical to the canonical NodeError and JsonObjectType
-        // types but produce distinct FromSchema derivations. Ajv has validated the
-        // wire message, so these casts are safe:
-        //   errors: same required fields/types as NodeErrorSchema; only nominal gap.
-        //   items[*].snapshot: schema { type: ['object', 'null'] } → Ajv-validated JSON
-        //     object, values confirmed JSON-compatible by the validator; safe to narrow
-        //     from { [k: string]: unknown } | null to JsonObjectType | null.
+        // Protocol-boundary narrowing: the BridgeMessage 'result' branch carries
+        // an inline error shape structurally identical to the canonical
+        // `NodeErrorWireType`. `item.snapshot` (schema `{ type: ['object','null'] }`)
+        // is narrowed to `JsonObjectType | null` via `JsonObject.is`.
+        const errors: readonly NodeErrorWireType[] = rm.response.errors;
 
         if (entry.variant === 'single') {
           // Single-item (N=1): unpack items[0] into a flat DagOutcomeType.
-          const firstItem = msg.response.items[0];
+          const firstItem = rm.response.items[0];
+          const firstSnapshot = firstItem?.snapshot;
           entry.settle({
             'terminalOutput': firstItem?.terminalOutcome ?? 'failed',
-            'errors': msg.response.errors as readonly NodeErrorWireType[],
-            'stateSnapshot': (firstItem?.snapshot ?? null) as JsonObjectType | null,
-            'intermediates': msg.response.intermediates,
+            'errors': errors,
+            'stateSnapshot': JsonObject.is(firstSnapshot) ? firstSnapshot : null,
+            'intermediates': rm.response.intermediates,
           });
         } else {
           // Batch (N>1): produce one BatchRunResultType per item.
-          const batchErrors = msg.response.errors as readonly NodeErrorWireType[];
-          const results: BatchRunResultType[] = msg.response.items.map((item: { id: string; terminalOutcome: string; snapshot?: Record<string, unknown> | null }) => ({
+          const results: BatchRunResultType[] = rm.response.items.map((item: { id: string; terminalOutcome: string; snapshot?: Record<string, unknown> | null }) => ({
             'id': item.id,
             'terminalOutput': item.terminalOutcome,
-            'errors': batchErrors,
-            'stateSnapshot': (item.snapshot ?? null) as JsonObjectType | null,
-            'intermediates': msg.response.intermediates,
+            'errors': errors,
+            'stateSnapshot': JsonObject.is(item.snapshot) ? item.snapshot : null,
+            'intermediates': rm.response.intermediates,
           }));
           entry.settle(results);
         }
-        break;
-      }
+      },
 
-      case 'instrumentation': {
-        const entry = this.#pending.get(msg.correlationId);
+      'instrumentation': (m) => {
+        const im = m as RouteMsg & { variant: 'instrumentation' };
+        const entry = this.#pending.get(im.correlationId);
         if (entry === undefined || entry.relay === null) return;
         const { relay } = entry;
-        // Ajv-validated boundary: placementPath is confirmed an array of strings
-        // by the BridgeMessage schema; cast from schema-inferred type to the
-        // narrower readonly string[] used by ObserverRelayInterface.
-        const path = msg.placementPath as readonly string[];
-        // Dispatch map over switch: each hook handler is a closed-over function
-        // that forwards the instrumentation event to the relay.
-        type InstrMsg = typeof msg & { variant: 'instrumentation' };
-        const hookDispatch: Partial<Record<InstrMsg['hook'], (m: InstrMsg) => void>> = {
-          'nodeStart': (m) => {
-            relay.onNodeStart(m.nodeName, path);
+        // Ajv-validated boundary: placementPath is an array of strings by the
+        // BridgeMessage schema; a `string[]` widens to the `readonly string[]`
+        // the ObserverRelayInterface expects with no cast.
+        const path: readonly string[] = im.placementPath;
+        // Dispatch map over hook type: each hook handler forwards the event to the relay.
+        type InstrMsg = typeof im & { variant: 'instrumentation' };
+        const hookDispatch: Partial<Record<InstrMsg['hook'], (hm: InstrMsg) => void>> = {
+          'nodeStart': (hm) => {
+            relay.onNodeStart(hm.nodeName, path);
           },
-          'nodeEnd': (m) => {
-            relay.onNodeEnd(m.nodeName, m.output, path);
+          'nodeEnd': (hm) => {
+            relay.onNodeEnd(hm.nodeName, hm.output, path);
           },
-          'error': (m) => {
-            relay.onError(m.nodeName, new Error(m.message), path);
+          'error': (hm) => {
+            relay.onError(hm.nodeName, new Error(hm.message), path);
           },
-          'phaseEnter': (m) => {
-            if (m.phase === 'pre' || m.phase === 'post') {
-              relay.onPhaseEnter(m.dagName, m.phase, m.nodeName, path);
+          'phaseEnter': (hm) => {
+            if (hm.phase === 'pre' || hm.phase === 'post') {
+              relay.onPhaseEnter(hm.dagName, hm.phase, hm.nodeName, path);
             }
           },
-          'phaseExit': (m) => {
-            if (m.phase === 'pre' || m.phase === 'post') {
-              relay.onPhaseExit(m.dagName, m.phase, m.nodeName, path);
+          'phaseExit': (hm) => {
+            if (hm.phase === 'pre' || hm.phase === 'post') {
+              relay.onPhaseExit(hm.dagName, hm.phase, hm.nodeName, path);
             }
           },
         };
-        hookDispatch[msg.hook]?.(msg as InstrMsg);
-        break;
-      }
+        hookDispatch[im.hook]?.(im);
+      },
 
-      case 'error': {
-        const correlationId = msg.correlationId;
+      'error': (m) => {
+        const em = m as RouteMsg & { variant: 'error' };
+        const correlationId = em.correlationId;
         if (correlationId !== null) {
           // Request-scoped error: settle that specific pending entry.
           const entry = this.#pending.get(correlationId);
           if (entry !== undefined) {
             if (entry.variant === 'single') {
-              entry.settle(DagOutcome.transportError(correlationId, { 'code': msg.code, 'message': msg.message }));
+              entry.settle(DagOutcome.transportError(correlationId, { 'code': em.code, 'message': em.message }));
             } else {
               entry.settle(
                 entry.itemIds.map((id) =>
-                  DagOutcome.batchItemTransportError(id, correlationId, { 'code': msg.code, 'message': msg.message }),
+                  DagOutcome.batchItemTransportError(id, correlationId, { 'code': em.code, 'message': em.message }),
                 ),
               );
             }
@@ -410,16 +410,12 @@ export class ChannelDispatch {
           // Channel-scoped error (null correlationId): the host is in a bad state.
           // Single code path — failAll rejects an in-flight init and settles
           // every pending request as a transport error.
-          this.failAll(msg.code, msg.message);
+          this.failAll(em.code, em.message);
         }
-        break;
-      }
+      },
+    };
 
-      // 'intermediate' and all other message kinds are observability-only and
-      // do not require correlation action at this layer.
-      default:
-        break;
-    }
+    variantDispatch[msg.variant]?.(msg);
   }
 }
 

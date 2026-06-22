@@ -25,3 +25,18 @@ export type JsonObjectType = { [key: string]: JsonValueType };
  * Used wherever a top-level JSON array is the expected wire shape.
  */
 export type JsonArrayType = JsonValueType[];
+
+/**
+ * Narrowing primitive for the JSON-object boundary: turns a schema-validated
+ * but loosely-typed value (`unknown` / `Record<string, unknown>`) into a
+ * `JsonObjectType` via a type-guard predicate, so call sites never reach for an
+ * `as` cast. The shallow object check is the sanctioned narrowing point — the
+ * upstream JSON Schema validation already guarantees the values are JSON.
+ */
+export class JsonObject {
+  private constructor() { /* static class */ }
+
+  static is(value: unknown): value is JsonObjectType {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+}

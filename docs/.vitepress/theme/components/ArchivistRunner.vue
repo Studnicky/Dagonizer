@@ -22,7 +22,7 @@ import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/check
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
-import { archivistBundle, archivistDAG } from '../../../../examples/the-archivist/dag.ts';
+import { ArchivistBundleFactory } from '../../../../examples/the-archivist/dag.ts';
 import { DomConsoleLogger } from '../../../../examples/the-archivist/logger/DomConsoleLogger.ts';
 import type { LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
@@ -31,6 +31,7 @@ import { SeedLibrary } from '../../../../examples/the-archivist/data/SeedLibrary
 import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/RdfProvObserver.ts';
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
 import { NODE_VARIANTS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
+import { ArchivistNodes } from '../../../../examples/the-archivist/nodes/ArchivistNodes.ts';
 import { ApiKeyStore, BackendMatrix, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
@@ -40,10 +41,11 @@ import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
-import { BookSearchScatterDAG, bookSearchScatterBundle } from '../../../../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts';
-import { ComposeRetryLoopDAG, composeRetryLoopBundle } from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
+import { BookSearchScatterBundleFactory } from '../../../../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts';
+import { ComposeRetryLoopBundleFactory } from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
+import type { DAGType } from '@studnicky/dagonizer';
 
-import { ObservedDagonizer } from './ObservedDagonizer.ts';
+import { ObservedDag } from '../../../../examples/the-archivist/ObservedDag.ts';
 import BackendPicker from './BackendPicker.vue';
 import CheckpointControls from './CheckpointControls.vue';
 import Conversation from './Conversation.vue';
@@ -238,19 +240,32 @@ async function resumeFromCheckpoint(): Promise<void> {
     'dispatcherAgentId':  `dispatcher:${activeBackend.value}`,
   });
 
-  let dispatcher: ObservedDagonizer<ArchivistState, ArchivistServices> | null = null;
+  let dispatcher: ArchivistBrowserObserver | null = null;
 
   try {
     const services = buildServices();
-    dispatcher = new ObservedDagonizer<ArchivistState, ArchivistServices>({
-      services,
-      'observer': buildObserver(restored.cursor, prov),
-    });
+    const nodes = ArchivistNodes.build(services);
+    const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
+    const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
+    const parentBundle     = ArchivistBundleFactory.create(nodes);
 
-    dispatcher.registerBundle(archivistToolRegistry.bundle<ArchivistServices>());
-    dispatcher.registerBundle(bookSearchScatterBundle);
-    dispatcher.registerBundle(composeRetryLoopBundle);
-    dispatcher.registerBundle(archivistBundle);
+    const parentDag = parentBundle.dags[0];
+    if (parentDag !== undefined) archivistDag.value = parentDag;
+    const bookSearchDag = bookSearchBundle.dags[0];
+    const composeRetryDag = composeBundle.dags[0];
+    if (bookSearchDag !== undefined && composeRetryDag !== undefined) {
+      embeddedDagRegistry.value = new Map([
+        ['book-search-scatter', bookSearchDag],
+        ['compose-retry-loop', composeRetryDag],
+      ]);
+    }
+
+    dispatcher = new ArchivistBrowserObserver(logger, { 'fromCursor': restored.cursor, 'prov': prov });
+
+    dispatcher.registerBundle(archivistToolRegistry.bundle());
+    dispatcher.registerBundle(bookSearchBundle);
+    dispatcher.registerBundle(composeBundle);
+    dispatcher.registerBundle(parentBundle);
 
     activeAbortController = new AbortController();
     const deadlineMs = overallDeadlineMs();
@@ -396,14 +411,14 @@ const rightTabs = computed(() => {
   ];
 });
 
-// Stable embedded-DAG registry for the DagGraph self-render path. Passed to
-// DagGraph with `:expand-all`, so every embedded sub-DAG (book-search-scatter,
-// compose-retry-loop) renders fully expanded as a connected subgraph from the
-// first paint — every node in every DAG is visible.
-const embeddedDagRegistry = new Map([
-  ['book-search-scatter', BookSearchScatterDAG],
-  ['compose-retry-loop', ComposeRetryLoopDAG],
-]);
+// Lazily-populated top-level archivist DAG reference for DagGraph display.
+// Set on the first call to buildRunBundles() (ask() or resumeFromCheckpoint()),
+// so the graph renders the DAG structure once a real LLM/services set exists.
+const archivistDag = ref<DAGType | null>(null);
+
+// Lazily-populated embedded-DAG registry. Keys match the embeddedDAG placement
+// names in the parent DAG. Built alongside archivistDag from the same factory call.
+const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map());
 
 // Stable tool instances. The scout nodes call `tool.execute(...)`, which is an
 // instance method on each Tool class (`new OpenLibrarySearchTool()`), so the
@@ -442,93 +457,153 @@ function buildServices(): ArchivistServices {
 }
 
 /**
- * Shared observer used by both `ask()` (fresh run) and
- * `resumeFromCheckpoint()` (resume from a cursor).
+ * Dispatch map: after key nodes complete, log what the search pipeline did.
+ * Lives here (not in ObservedDag) because it reads ArchivistState-specific fields.
  */
-function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
-  // Collected errors are DATA the engine routes (a node may route to its
-  // 'error' output without throwing). Surface every newly-collected
-  // ArchivistState error in the trace so routed/collected failures are
-  // visible, not silently swallowed. Tracks how many have already been shown.
-  let shownErrorCount = 0;
-  return {
-    onFlowStart(dagName: string) {
-      // reset() is awaited by the caller (ask / resumeFromCheckpoint) before
-      // execute() fires, so the fade-out completes before this point.
-      if (fromCursor !== null) dagGraph.value?.setActive(fromCursor);
-      prov.recordFlowStart(dagName);
-    },
-    onNodeStart(nodeName: string, _state: ArchivistState, placementPath: readonly string[] = []) {
-      // `placementPath` is the ordered list of parent embedded-DAG
-      // placement names that led to this node. Join with the node name
-      // to form the cytoscape id used by `DagGraph`; this is what
-      // disambiguates same-named inner placements (e.g. `extract-query`
-      // inside `on-topic-search` vs `author-search` vs `similar-search`)
-      // so only the placement currently executing lights up.
-      const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'start' }];
-      dagGraph.value?.setActive(fullId);
-      prov.recordNodeStart(nodeName);
-      runnerMachine.pulse({ 'type': 'nodeStart', 'node': nodeName });
-    },
-    onNodeEnd(nodeName: string, output: string | null, state: ArchivistState, placementPath: readonly string[] = []) {
-      const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'variant': 'end' }];
-      dagGraph.value?.setCompleted(fullId);
-      if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
-      // The parent observer also fires for nodes inside isolated child states
-      // (e.g. the tool:<name> scatter bodies), whose state is NOT an
-      // ArchivistState — only project the parent's ArchivistState into memory.
-      if (state instanceof ArchivistState) {
-        StateProjection.project(state, memoryStore);
-        // Surface any errors the parent state collected since the last node end
-        // (routed-to-'error' failures collect without throwing onError).
-        for (let i = shownErrorCount; i < state.errors.length; i++) {
-          const err = state.errors[i];
-          if (err === undefined) continue;
-          trace.value = [...trace.value, {
-            'node': err.operation !== '' ? err.operation : fullId,
-            'ts': Date.now(),
-            'variant': 'error',
-            'message': `${err.code}: ${err.message}`,
-          }];
-        }
-        shownErrorCount = state.errors.length;
-      }
-      prov.recordNodeEnd(nodeName, output ?? undefined);
-      memoryTick.value++;
-      runnerMachine.pulse(output === null
-        ? { 'type': 'nodeEnd', 'node': nodeName }
-        : { 'type': 'nodeEnd', 'node': nodeName, 'output': output });
-    },
-    onError(nodeName: string, error: Error, _state: ArchivistState, placementPath: readonly string[] = []) {
-      const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'error', 'message': error.message !== '' ? error.message : String(error) }];
-      dagGraph.value?.setErrored(fullId);
-      prov.recordError(nodeName, error);
-      runnerMachine.pulse({ 'type': 'nodeError', 'node': nodeName, 'error': error });
-    },
-    onFlowEnd(_dagName: string, state: ArchivistState, result: { cursor: string | null }) {
-      const lifecycleVariant = state.lifecycle.variant;
-      if (lifecycleVariant === 'completed' || lifecycleVariant === 'failed' || lifecycleVariant === 'cancelled' || lifecycleVariant === 'timed_out') {
-        terminalVariant.value = lifecycleVariant;
-      }
-      if (state.draft.length > 0) {
-        conversation.value = [...conversation.value, {
-          'role': 'archivist',
-          'text': state.draft,
+const ARCHIVIST_NODE_TRACE: Readonly<Record<string, (state: ArchivistState, log: DomConsoleLogger) => void>> = {
+  'extract-query': (state, log) => {
+    log.info(`terms: [${state.terms.join(', ')}]`);
+  },
+  'build-book-worksets': (state, log) => {
+    for (const ws of state.bookWorksets) {
+      const a = ws.arguments;
+      const q = a['query'] ?? a['isbn'] ?? a['author'] ?? a['subject'] ?? '?';
+      log.info(`search: ${ws.dagName.replace('tool:', '')} → "${String(q)}"`);
+    }
+    if (state.bookWorksets.length === 0) {
+      log.warn('search: no worksets built — no tools will run');
+    }
+  },
+  'rank-candidates': (state, log) => {
+    log.info(`candidates from tools: ${state.candidates.length}`);
+  },
+  'merge-candidates': (state, log) => {
+    log.info(`shortlist: ${state.shortlist.length} · prior-memory: ${state.priorCandidates.length}`);
+  },
+};
+
+/**
+ * Browser-specific Archivist observer. Extends ObservedDag so every lifecycle
+ * hook emits a leveled log line through the injected DomConsoleLogger AND drives
+ * the Vue reactive state (trace feed, DAG graph, prov recording, etc.).
+ *
+ * Constructed once per run inside `ask()` / `resumeFromCheckpoint()`.
+ */
+class ArchivistBrowserObserver extends ObservedDag<ArchivistState> {
+  readonly #domLogger: DomConsoleLogger;
+  readonly #fromCursor: string | null;
+  readonly #prov: RdfProvObserver;
+  #shownErrorCount = 0;
+
+  constructor(
+    log: DomConsoleLogger,
+    options: { readonly fromCursor: string | null; readonly prov: RdfProvObserver },
+  ) {
+    super(log);
+    this.#domLogger = log;
+    this.#fromCursor = options.fromCursor;
+    this.#prov = options.prov;
+  }
+
+  protected override onFlowStart(dagName: string): void {
+    super.onFlowStart(dagName);
+    if (this.#fromCursor !== null) dagGraph.value?.setActive(this.#fromCursor);
+    this.#prov.recordFlowStart(dagName);
+  }
+
+  protected override onNodeStart(
+    nodeName: string,
+    state: ArchivistState,
+    placementPath: readonly string[],
+  ): void {
+    super.onNodeStart(nodeName, state, placementPath);
+    // `placementPath` is the ordered list of parent embedded-DAG placement names.
+    // Join with the node name to form the cytoscape id used by `DagGraph`; this
+    // disambiguates same-named inner placements so only the executing one lights up.
+    const fullId = [...placementPath, nodeName].join('/');
+    trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'start' }];
+    dagGraph.value?.setActive(fullId);
+    this.#prov.recordNodeStart(nodeName);
+    runnerMachine.pulse({ 'type': 'nodeStart', 'node': nodeName });
+  }
+
+  protected override onNodeEnd(
+    nodeName: string,
+    output: string | null,
+    state: ArchivistState,
+    placementPath: readonly string[],
+  ): void {
+    super.onNodeEnd(nodeName, output, state, placementPath);
+    const fullId = [...placementPath, nodeName].join('/');
+    trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'variant': 'end' }];
+    dagGraph.value?.setCompleted(fullId);
+    if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
+    // The parent observer also fires for nodes inside isolated child states
+    // (e.g. the tool:<name> scatter bodies), whose state is NOT an
+    // ArchivistState — only project the parent's ArchivistState into memory.
+    if (state instanceof ArchivistState) {
+      StateProjection.project(state, memoryStore);
+      // Surface any errors the parent state collected since the last node end
+      // (routed-to-'error' failures collect without throwing onError).
+      for (let i = this.#shownErrorCount; i < state.errors.length; i++) {
+        const err = state.errors[i];
+        if (err === undefined) continue;
+        trace.value = [...trace.value, {
+          'node': err.operation !== '' ? err.operation : fullId,
           'ts': Date.now(),
+          'variant': 'error',
+          'message': `${err.code}: ${err.message}`,
         }];
       }
-      lastResult = result as never;
-      lastDagName = _dagName;
-      if (result.cursor !== null) checkpointNode.value = result.cursor;
-      prov.recordFlowEnd(lifecycleVariant);
-      memoryTick.value++;
-      logger.result(`intent=${state.intent} · shortlist=${String(state.shortlist.length)} · triples=${String(memoryStore.size)} · lifecycle=${lifecycleVariant}`);
-      runnerMachine.dispatch({ 'type': 'flowEnd', 'lifecycle': lifecycleVariant });
-    },
-  };
+      this.#shownErrorCount = state.errors.length;
+      ARCHIVIST_NODE_TRACE[nodeName]?.(state, this.#domLogger);
+    }
+    this.#prov.recordNodeEnd(nodeName, output ?? undefined);
+    memoryTick.value++;
+    runnerMachine.pulse(output === null
+      ? { 'type': 'nodeEnd', 'node': nodeName }
+      : { 'type': 'nodeEnd', 'node': nodeName, 'output': output });
+  }
+
+  protected override onError(
+    nodeName: string,
+    error: Error,
+    state: ArchivistState,
+    placementPath: readonly string[],
+  ): void {
+    super.onError(nodeName, error, state, placementPath);
+    const fullId = [...placementPath, nodeName].join('/');
+    trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'error', 'message': error.message !== '' ? error.message : String(error) }];
+    dagGraph.value?.setErrored(fullId);
+    this.#prov.recordError(nodeName, error);
+    runnerMachine.pulse({ 'type': 'nodeError', 'node': nodeName, 'error': error });
+  }
+
+  protected override onFlowEnd(
+    dagName: string,
+    state: ArchivistState,
+    result: ExecutionResultType<ArchivistState>,
+  ): void {
+    super.onFlowEnd(dagName, state, result);
+    const lifecycleVariant = state.lifecycle.variant;
+    if (lifecycleVariant === 'completed' || lifecycleVariant === 'failed' || lifecycleVariant === 'cancelled' || lifecycleVariant === 'timed_out') {
+      terminalVariant.value = lifecycleVariant;
+    }
+    if (state.draft.length > 0) {
+      conversation.value = [...conversation.value, {
+        'role': 'archivist',
+        'text': state.draft,
+        'ts': Date.now(),
+      }];
+    }
+    lastResult = result;
+    lastDagName = dagName;
+    if (result.cursor !== null) checkpointNode.value = result.cursor;
+    this.#prov.recordFlowEnd(lifecycleVariant);
+    memoryTick.value++;
+    this.#domLogger.result(`intent=${state.intent} · shortlist=${String(state.shortlist.length)} · triples=${String(memoryStore.size)} · lifecycle=${lifecycleVariant}`);
+    runnerMachine.dispatch({ 'type': 'flowEnd', 'lifecycle': lifecycleVariant });
+  }
 }
 
 // ── Static fallback pools ────────────────────────────────────────────────
@@ -688,18 +763,31 @@ async function ask(): Promise<void> {
       'wikipedia-scout':         webSearchMs,
     },
   };
-  let dispatcher: ObservedDagonizer<ArchivistState, ArchivistServices> | null = null;
+  let dispatcher: ArchivistBrowserObserver | null = null;
 
   try {
-    dispatcher = new ObservedDagonizer<ArchivistState, ArchivistServices>({
-      services,
-      'observer': buildObserver(null, prov),
-    });
+    const nodes = ArchivistNodes.build(services);
+    const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
+    const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
+    const parentBundle     = ArchivistBundleFactory.create(nodes);
 
-    dispatcher.registerBundle(archivistToolRegistry.bundle<ArchivistServices>());
-    dispatcher.registerBundle(bookSearchScatterBundle);
-    dispatcher.registerBundle(composeRetryLoopBundle);
-    dispatcher.registerBundle(archivistBundle);
+    const parentDag = parentBundle.dags[0];
+    if (parentDag !== undefined) archivistDag.value = parentDag;
+    const bookSearchDag = bookSearchBundle.dags[0];
+    const composeRetryDag = composeBundle.dags[0];
+    if (bookSearchDag !== undefined && composeRetryDag !== undefined) {
+      embeddedDagRegistry.value = new Map([
+        ['book-search-scatter', bookSearchDag],
+        ['compose-retry-loop', composeRetryDag],
+      ]);
+    }
+
+    dispatcher = new ArchivistBrowserObserver(logger, { 'fromCursor': null, 'prov': prov });
+
+    dispatcher.registerBundle(archivistToolRegistry.bundle());
+    dispatcher.registerBundle(bookSearchBundle);
+    dispatcher.registerBundle(composeBundle);
+    dispatcher.registerBundle(parentBundle);
 
     const visitor = new ArchivistState();
     visitor.query = queryText;
@@ -949,8 +1037,9 @@ function reset(): void {
             <template #dag>
               <div class="graph-pane">
                 <DagGraph
+                  v-if="archivistDag !== null"
                   ref="dagGraph"
-                  :dag="archivistDAG"
+                  :dag="archivistDag"
                   :embedded-d-a-gs="embeddedDagRegistry"
                   :node-variants="NODE_VARIANTS"
                   :expand-all="true"

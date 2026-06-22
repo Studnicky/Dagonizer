@@ -16,7 +16,7 @@
 
 import type { ClockProviderInterface } from '../contracts/ClockProviderInterface.js';
 
-const PERF: { now(): number } = (globalThis as { performance: { now(): number } }).performance;
+const PERF: { now(): number } = globalThis.performance;
 
 class RealTimeClockProvider implements ClockProviderInterface {
   hrtime(): bigint {

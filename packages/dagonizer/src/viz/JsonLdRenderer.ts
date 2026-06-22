@@ -162,65 +162,75 @@ export class JsonLdRenderer {
       'dag:name': placement.name,
     } as const;
 
-    switch (placement['@type']) {
-      case 'SingleNode':
+    const placementDispatch: Record<PlacementEntryType['@type'], (p: PlacementEntryType) => JsonLdGraphEntryType> = {
+      'SingleNode': (p) => {
+        const sp = p as PlacementEntryType & { '@type': 'SingleNode' };
         return {
           ...base,
-          'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
-          'dag:node':   placement.node,
+          'dag:routes': JsonLdRenderer.renderRoutes(dagName, sp.outputs),
+          'dag:node':   sp.node,
         };
-      case 'ScatterNode': {
+      },
+      'ScatterNode': (p) => {
+        const sp = p as PlacementEntryType & { '@type': 'ScatterNode' };
         // ScatterNode carries several optional fields (source, itemKey, concurrency,
         // stateMapping, gather, reducer, container). Build a mutable accumulator
         // then freeze on return. The open index is required because JSON-LD
         // property keys are arbitrary vocabulary-prefixed strings.
         const out: JsonLdGraphEntryType & Record<string, unknown> = {
           ...base,
-          'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
-          'dag:body':   'node' in placement.body
-            ? { 'dag:node': placement.body.node }
-            : 'dag' in placement.body
-              ? { 'dag:dag': JsonLdRenderer.dagIri(placement.body.dag) }
-              : { 'dag:dagFrom': placement.body.dagFrom },
+          'dag:routes': JsonLdRenderer.renderRoutes(dagName, sp.outputs),
+          'dag:body':   'node' in sp.body
+            ? { 'dag:node': sp.body.node }
+            : 'dag' in sp.body
+              ? { 'dag:dag': JsonLdRenderer.dagIri(sp.body.dag) }
+              : { 'dag:dagFrom': sp.body.dagFrom },
         };
-        if (placement.source !== undefined)       out['dag:source']       = placement.source;
-        if (placement.itemKey !== undefined)      out['dag:itemKey']      = placement.itemKey;
-        if (placement.concurrency !== undefined)  out['dag:concurrency']  = placement.concurrency;
-        if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
-        if (placement.gather !== undefined)       out['dag:gather']       = placement.gather;
-        if (placement.reducer !== undefined)      out['dag:reducer']      = placement.reducer;
+        if (sp.source !== undefined)       out['dag:source']       = sp.source;
+        if (sp.itemKey !== undefined)      out['dag:itemKey']      = sp.itemKey;
+        if (sp.concurrency !== undefined)  out['dag:concurrency']  = sp.concurrency;
+        if (sp.stateMapping !== undefined) out['dag:stateMapping'] = sp.stateMapping;
+        if (sp.gather !== undefined)       out['dag:gather']       = sp.gather;
+        if (sp.reducer !== undefined)      out['dag:reducer']      = sp.reducer;
         // container is a placement property mapped in DAG_CONTEXT; include when present.
-        if (placement.container !== undefined)    out['dag:container']    = placement.container;
+        if (sp.container !== undefined)    out['dag:container']    = sp.container;
         return out;
-      }
-      case 'EmbeddedDAGNode': {
+      },
+      'EmbeddedDAGNode': (p) => {
+        const ep = p as PlacementEntryType & { '@type': 'EmbeddedDAGNode' };
         // EmbeddedDAGNode may carry optional stateMapping and container fields.
         // Either `dag` (build-time literal) or `dagFrom` (runtime path) is present.
         const out: JsonLdGraphEntryType & Record<string, unknown> = {
           ...base,
-          'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
+          'dag:routes': JsonLdRenderer.renderRoutes(dagName, ep.outputs),
         };
-        if (placement.dag !== undefined)     out['dag:dag']     = JsonLdRenderer.dagIri(placement.dag);
-        if (placement.dagFrom !== undefined) out['dag:dagFrom'] = placement.dagFrom;
-        if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
+        if (ep.dag !== undefined)     out['dag:dag']     = JsonLdRenderer.dagIri(ep.dag);
+        if (ep.dagFrom !== undefined) out['dag:dagFrom'] = ep.dagFrom;
+        if (ep.stateMapping !== undefined) out['dag:stateMapping'] = ep.stateMapping;
         // container is a placement property mapped in DAG_CONTEXT; include when present.
-        if (placement.container !== undefined)    out['dag:container']    = placement.container;
+        if (ep.container !== undefined)    out['dag:container']    = ep.container;
         return out;
-      }
-      case 'TerminalNode':
+      },
+      'TerminalNode': (p) => {
+        const tp = p as PlacementEntryType & { '@type': 'TerminalNode' };
         // TerminalNode placements end the flow; no routing, no dag:routes field.
         return {
           ...base,
-          'dag:outcome': placement.outcome,
+          'dag:outcome': tp.outcome,
         };
-      case 'PhaseNode':
+      },
+      'PhaseNode': (p) => {
+        const pp = p as PlacementEntryType & { '@type': 'PhaseNode' };
         // PhaseNode placements are out-of-band; they have no outputs/routes.
         return {
           ...base,
-          'dag:phase': placement.phase,
-          'dag:node':  placement.node,
+          'dag:phase': pp.phase,
+          'dag:node':  pp.node,
         };
-    }
+      },
+    };
+
+    return placementDispatch[placement['@type']](placement);
   }
 
   /** Render the DAG-level root entry that points at every placement. */

@@ -25,7 +25,6 @@ import { canonicalizeCore } from '../nodes/canonicalizeCore.ts';
 import { enrichLeg } from '../nodes/enrichLeg.ts';
 import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
@@ -82,7 +81,7 @@ export const pipelinePositionPingDAG: DAGType = new DAGBuilder('pipeline-positio
 
   .build();
 
-export const pipelinePositionPingBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const pipelinePositionPingBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [parseVariant, canonicalizeCore, enrichLeg, aggregateEvent],
   'dags':  [pipelinePositionPingDAG],
 };

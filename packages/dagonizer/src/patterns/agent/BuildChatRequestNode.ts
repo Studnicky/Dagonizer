@@ -8,7 +8,6 @@
  * Outputs: `'ready'` on success, `'error'` on failure.
  */
 
-import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ChatRequestType } from '../../entities/adapter/ChatRequest.js';
@@ -20,7 +19,7 @@ import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class BuildChatRequestNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'ready' | 'error', AgentServicesType> {
+> extends ScalarNode<TState, 'ready' | 'error'> {
   readonly outputs = ['ready', 'error'] as const;
 
   override get outputSchema(): Record<'ready' | 'error', SchemaObjectType> {
@@ -37,12 +36,12 @@ export abstract class BuildChatRequestNode<
    */
   protected abstract buildRequest(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): ChatRequestType;
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'ready' | 'error'>> {
     try {
       this.buildRequest(state, context);

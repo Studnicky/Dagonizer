@@ -25,9 +25,10 @@ const store = new SqliteStore({
   tableName: 'app_kv',     // optional, default: 'dagonizer_kv'
 });
 
-await store.set<number>('counter', 0);
-await store.update<number>('counter', (n) => (n ?? 0) + 1);
-const value = await store.get<number>('counter'); // 1
+await store.set('counter', 0);
+await store.update('counter', (n) => (typeof n === 'number' ? n : 0) + 1);
+const raw = await store.get('counter');
+const value = typeof raw === 'number' ? raw : 0; // 1
 
 // Snapshot / restore
 const snap = await store.snapshot();

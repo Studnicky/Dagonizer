@@ -24,7 +24,6 @@ const registry: RegistryModuleInterface = {
         "nodes": [new SquareNode(), new SumNode()],
         "dags":  [squareItemDag, sumResultsDag, dag],
       },
-      "services":        undefined,
       "registryVersion": '1.0.0',
       "restoreState":    CheckpointRestoreAdapter.wrap((snapshot: JsonObjectType) => MultiBackendState.restore(snapshot)),
     };

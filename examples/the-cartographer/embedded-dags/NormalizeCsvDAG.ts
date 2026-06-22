@@ -16,7 +16,6 @@
 import { normalizeCsv } from '../nodes/ingest/normalizeCsv.ts';
 
 import type { CartographerState }    from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
@@ -31,7 +30,7 @@ export const normalizeCsvDAG: DAGType = new DAGBuilder('normalize-csv', '1.0')
 
   .build();
 
-export const normalizeCsvBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const normalizeCsvBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [normalizeCsv],
   'dags':  [normalizeCsvDAG],
 };

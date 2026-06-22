@@ -102,11 +102,15 @@ class FakeWorkerPair {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: wait for the next setImmediate tick
+// Tick: wait for the next setImmediate tick
 // ---------------------------------------------------------------------------
 
-function nextTick(): Promise<void> {
-  return new Promise<void>((resolve) => setImmediate(resolve));
+class Tick {
+  private constructor() {}
+
+  static next(): Promise<void> {
+    return new Promise<void>((resolve) => setImmediate(resolve));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -130,7 +134,7 @@ void describe('PostMessageChannel', () => {
     };
     mainChannel.send(msg);
 
-    await nextTick();
+    await Tick.next();
     assert.strictEqual(received.length, 1);
     assert.strictEqual(received[0]?.variant, 'shutdown');
   });
@@ -150,7 +154,7 @@ void describe('PostMessageChannel', () => {
     };
     workerChannel.send(msg);
 
-    await nextTick();
+    await Tick.next();
     assert.strictEqual(received.length, 1);
     assert.strictEqual(received[0]?.variant, 'ready');
   });
@@ -171,7 +175,7 @@ void describe('PostMessageChannel', () => {
     };
     mainChannel.send(msg);
 
-    await nextTick();
+    await Tick.next();
     assert.strictEqual(received.length, 1, 'must have received exactly one message');
     const msg2 = received[0];
     assert.ok(msg2 !== undefined, 'received[0] must exist');
@@ -202,7 +206,7 @@ void describe('PostMessageChannel', () => {
     // Mutate the original after send — receiver should not see this change.
     // Since BridgeMessageType is readonly-typed, we verify via structuredClone
     // behaviour: the sent message is a value copy.
-    await nextTick();
+    await Tick.next();
     assert.ok(received !== null);
     // Received is a different object reference (structuredClone).
     assert.notStrictEqual(received, msg);
@@ -225,7 +229,7 @@ void describe('PostMessageChannel', () => {
 
       pair.workerSide.postMessage(badPayload);
 
-      await nextTick();
+      await Tick.next();
       assert.strictEqual(received.length, 1, `payload ${JSON.stringify(badPayload)} yields exactly one message`);
       const msg = received[0];
       assert.ok(msg !== undefined);
@@ -250,7 +254,7 @@ void describe('PostMessageChannel', () => {
     mainChannel.close();
     mainChannel.send({ 'variant': 'shutdown' });
 
-    await nextTick();
+    await Tick.next();
     assert.strictEqual(received.length, 0);
   });
 
@@ -266,7 +270,7 @@ void describe('PostMessageChannel', () => {
     workerChannel.close();
     mainChannel.send({ 'variant': 'shutdown' });
 
-    await nextTick();
+    await Tick.next();
     assert.strictEqual(received.length, 0);
   });
 
@@ -283,7 +287,7 @@ void describe('PostMessageChannel', () => {
 
     mainChannel.send({ 'variant': 'shutdown' });
 
-    await nextTick();
+    await Tick.next();
     assert.strictEqual(first.length, 0, 'first handler must be replaced');
     assert.strictEqual(second.length, 1, 'second handler must receive the message');
   });

@@ -35,11 +35,8 @@ export class UserLanguage {
    * always a lower-case ISO 639-1 alpha-2 string.
    */
   static detect(): string {
-    if (typeof globalThis !== 'undefined') {
-      const nav = (globalThis as { navigator?: { language?: string } }).navigator;
-      if (nav !== undefined && typeof nav.language === 'string' && nav.language.length > 0) {
-        return UserLanguage.normalize(nav.language);
-      }
+    if (typeof navigator !== 'undefined' && typeof navigator.language === 'string' && navigator.language.length > 0) {
+      return UserLanguage.normalize(navigator.language);
     }
     if (typeof process !== 'undefined' && process.env !== undefined) {
       const lang = process.env['LANG'];

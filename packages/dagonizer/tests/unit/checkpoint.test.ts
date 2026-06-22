@@ -145,7 +145,6 @@ class FactLog implements SnapshottableInterface {
 }
 
 const SAMPLE_CHECKPOINT: CheckpointDataType = {
-  'version': '2',
   'dagName': 'demo',
   'cursor': 'next-node',
   'state': { 'metadata': {}, 'errors': [], 'warnings': [], 'value': 7 },
@@ -360,7 +359,7 @@ void describe('Checkpoint round-trip', () => {
     // A completed run stores cursor=null in CheckpointData (no resumable position).
     // restoreState must reject this because there is no node to resume from.
     const data = {
-      'version': '2', 'dagName': 'x', 'cursor': null,
+      'dagName': 'x', 'cursor': null,
       'state': {}, 'executedNodes': ['a', 'b'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
@@ -369,7 +368,7 @@ void describe('Checkpoint round-trip', () => {
 
   void it('CheckpointRestoreAdapter.wrap wraps a restore function in the adapter contract', () => {
     const data = {
-      'version': '2', 'dagName': 'wrap-test', 'cursor': 'node-b',
+      'dagName': 'wrap-test', 'cursor': 'node-b',
       'state': { 'count': 5 }, 'executedNodes': ['node-a'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
@@ -545,7 +544,6 @@ void describe('Checkpoint.capture + restoreStores', () => {
   void it('restoreStores propagates StoreError with INCOMPATIBLE_SNAPSHOT from store.restore', async () => {
     // Hand-construct a checkpoint whose stores.memory has the wrong type.
     const badRaw = {
-      'version': '2',
       'dagName': 'test-dag',
       'cursor': 'next-node',
       'state': {},

@@ -99,6 +99,17 @@ export abstract class GatherStrategy {
     _config: GatherConfigType,
     _execution: GatherExecutionType,
   ): Promise<void> { /* no-op */ }
+
+  /**
+   * Narrow an accessor read (typed `unknown`) to a list for append-style
+   * reducers. Returns the value when it is an array, otherwise an empty list —
+   * cast-free; the `readonly unknown[]` annotation keeps `Array.isArray`'s
+   * `any[]` from leaking.
+   */
+  protected static asList(value: unknown): readonly unknown[] {
+    const list: readonly unknown[] = Array.isArray(value) ? value : [];
+    return list;
+  }
 }
 
 class MapGatherStrategy extends GatherStrategy {
@@ -115,7 +126,7 @@ class MapGatherStrategy extends GatherStrategy {
       const record = item.state;
       for (const [clonePath, parentPath] of Object.entries(mapping)) {
         const value = accessor.get(record.cloneState, clonePath);
-        const existing = accessor.get<readonly unknown[]>(state, parentPath) ?? [];
+        const existing = GatherStrategy.asList(accessor.get(state, parentPath));
         accessor.set(state, parentPath, [...existing, value]);
       }
     }
@@ -139,7 +150,7 @@ class AppendGatherStrategy extends GatherStrategy {
       const value = config.field !== undefined
         ? accessor.get(record.cloneState, config.field)
         : record.item;
-      const existing = accessor.get<readonly unknown[]>(state, config.target) ?? [];
+      const existing = GatherStrategy.asList(accessor.get(state, config.target));
       accessor.set(state, config.target, [...existing, value]);
     }
   }
@@ -162,7 +173,7 @@ class PartitionGatherStrategy extends GatherStrategy {
       const value = config.field !== undefined
         ? accessor.get(record.cloneState, config.field)
         : record.item;
-      const existing = accessor.get<readonly unknown[]>(state, targetPath) ?? [];
+      const existing = GatherStrategy.asList(accessor.get(state, targetPath));
       accessor.set(state, targetPath, [...existing, value]);
     }
   }
@@ -243,7 +254,7 @@ class CollectGatherStrategy extends GatherStrategy {
       const value = config.field !== undefined
         ? accessor.get(record.cloneState, config.field)
         : record.output;
-      const existing = accessor.get<readonly unknown[]>(state, config.target) ?? [];
+      const existing = GatherStrategy.asList(accessor.get(state, config.target));
       accessor.set(state, config.target, [...existing, value]);
     }
   }

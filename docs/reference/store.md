@@ -16,8 +16,8 @@ seeAlso:
 `@studnicky/dagonizer/store`
 
 The store module provides the shared key-value store contract and its
-implementations. Stores live in the services bag and survive scatter clone
-boundaries within a run. Checkpoint integration snapshots named stores
+implementations. Stores are passed into node constructors and survive scatter
+clone boundaries within a run. Checkpoint integration snapshots named stores
 alongside parent state for deterministic resume.
 
 ```ts twoslash
@@ -79,14 +79,14 @@ interface SnapshottableInterface {
   restore(snapshot: StoreSnapshotType): Promise<void>;
 }
 interface StoreInterface extends SnapshottableInterface {
-  get<T extends JsonValueType>(key: string): Promise<T | null>;
-  set<T extends JsonValueType>(key: string, value: T): Promise<void>;
+  get(key: string): Promise<JsonValueType | null>;
+  set(key: string, value: JsonValueType): Promise<void>;
   has(key: string): Promise<boolean>;
   delete(key: string): Promise<boolean>;
-  update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T>;
+  update(key: string, fn: (current: JsonValueType | undefined) => JsonValueType): Promise<JsonValueType>;
   // snapshot() / restore() inherited from SnapshottableInterface.
-  connect?(): Promise<void>;
-  disconnect?(): Promise<void>;
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
 }
 ```
 
@@ -235,8 +235,8 @@ Reference implementation of `BaseStore` backed by a `Map`.
 import { MemoryStore } from '@studnicky/dagonizer/store';
 
 const store = new MemoryStore();
-await store.set<string>('greeting', 'hello');
-const v = await store.get<string>('greeting'); // 'hello'
+await store.set('greeting', 'hello');
+const v = await store.get('greeting'); // 'hello' (JsonValueType | null; narrow with typeof)
 ```
 
 ### Constructor
@@ -271,10 +271,11 @@ const store = new MemoryStore();
 // ---cut---
 // Concurrent updates produce no lost writes.
 await Promise.all([
-  store.update<number>('counter', (n) => (n ?? 0) + 1),
-  store.update<number>('counter', (n) => (n ?? 0) + 1),
+  store.update('counter', (n) => (typeof n === 'number' ? n : 0) + 1),
+  store.update('counter', (n) => (typeof n === 'number' ? n : 0) + 1),
 ]);
-const v = await store.get<number>('counter'); // → 2
+const raw = await store.get('counter');
+const v = typeof raw === 'number' ? raw : 0; // → 2
 ```
 
 ---
@@ -457,10 +458,15 @@ wider, heterogeneous contract.
 
 ```ts twoslash
 import { TypedStore, MemoryStore } from '@studnicky/dagonizer/store';
-import type { JsonValueType } from '@studnicky/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer';
 // ---cut---
 interface MySchema { count: number; label: string; }
-const store = new TypedStore<MySchema>(new MemoryStore());
+const CountSchema = { '$id': 'urn:docs:MySchema/count', 'type': 'number' } as const;
+const LabelSchema = { '$id': 'urn:docs:MySchema/label', 'type': 'string' } as const;
+const store = new TypedStore<MySchema>(new MemoryStore(), {
+  count: Validator.compile<MySchema['count']>(CountSchema),
+  label: Validator.compile<MySchema['label']>(LabelSchema),
+});
 ```
 
 `Schema` must be a `Record<string, JsonValueType>`: every value type must be JSON-serializable.

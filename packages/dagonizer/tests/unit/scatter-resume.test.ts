@@ -3,12 +3,13 @@ import { describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { ScatterProgressType } from '../../src/Dagonizer.js';
+import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
 
 /** State carrying a typed items / processed array plus an optional second
@@ -55,7 +56,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     let calls = 0;
     dispatcher.registerNode(TestNode.make<ScatterState>('worker', ['success'], (state) => {
       calls++;
-      const item = state.getMetadata<number>('item') ?? 0;
+      const item = state.getMetadata('item') ?? 0;
       state.setMetadata('processedItem', item);
       return 'success';
     }));
@@ -84,7 +85,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.deepEqual([...result.state.processed].sort((a, b) => a - b), [10, 20, 30, 40, 50]);
 
     // No scatter progress entry should remain after clean completion.
-    const stored = result.state.getMetadata<Record<string, unknown>>(SCATTER_PROGRESS_KEY);
+    const stored = result.state.getMetadata(SCATTER_PROGRESS_KEY);
     assert.equal(stored, undefined, 'progress key should be deleted after clean completion');
   });
 
@@ -124,8 +125,9 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // Scatter threw; cursor stays on 'fan'.
     assert.equal(result.cursor, 'fan');
 
-    const stored = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
-    assert.ok(stored !== undefined, 'expected progress entry after interruption');
+    const storedRaw = result.state.getMetadata(SCATTER_PROGRESS_KEY);
+    assert.ok(storedRaw !== undefined, 'expected progress entry after interruption');
+    const stored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRaw);
     const entry = stored['fan'];
     assert.ok(entry !== undefined, 'expected an entry under scatter name');
     // append is a compactable strategy (retainsRecordsForFinalize=false), so the
@@ -184,7 +186,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(calls, 3, `expected 3 fresh worker calls, got ${calls}`);
     assert.equal(result.cursor, null);
     // Progress entry cleared on clean completion.
-    const stored = result.state.getMetadata<Record<string, unknown>>(SCATTER_PROGRESS_KEY);
+    const stored = result.state.getMetadata(SCATTER_PROGRESS_KEY);
     assert.equal(stored, undefined);
   });
 
@@ -246,7 +248,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     const interruptDispatcher = new Dagonizer<ScatterState>();
     let runCount = 0;
     interruptDispatcher.registerNode(TestNode.make<ScatterState>('producer', ['success'], (state) => {
-      const item = state.getMetadata<number>('item') ?? 0;
+      const item = state.getter.number('item');
       const idx = ++runCount;
       if (idx === 3) {
         // Throw on the third executed item so the scatter aborts after
@@ -279,8 +281,9 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // Scatter aborted on the third item; cursor stays on 'fan', and the
     // first two indices are persisted with their produced values.
     assert.equal(partial.cursor, 'fan');
-    const persisted = partial.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
-    assert.ok(persisted !== undefined, 'expected progress after interruption');
+    const persistedRaw = partial.state.getMetadata(SCATTER_PROGRESS_KEY);
+    assert.ok(persistedRaw !== undefined, 'expected progress after interruption');
+    const persisted: StoredScatterProgressType = Validator.storedScatterProgress.validate(persistedRaw);
     const persistedEntry = persisted['fan'];
     assert.ok(persistedEntry !== undefined);
     // map is a compactable strategy (retainsRecordsForFinalize=false), so the
@@ -306,7 +309,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     let resumeRunCount = 0;
     resumeDispatcher.registerNode(TestNode.make<ScatterState>('producer', ['success'], (state) => {
       resumeRunCount++;
-      const item = state.getMetadata<number>('item') ?? 0;
+      const item = state.getter.number('item');
       state.produced = f(item);
       return 'success';
     }));
@@ -329,7 +332,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       `expected ${interruptState.items.length} results, got ${result.state.results.length}`);
 
     // Progress cleared after clean completion.
-    const stored = result.state.getMetadata<Record<string, unknown>>(SCATTER_PROGRESS_KEY);
+    const stored = result.state.getMetadata(SCATTER_PROGRESS_KEY);
     assert.equal(stored, undefined);
   });
 
@@ -399,7 +402,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(bCalls, 2, `expected 2 workerB calls, got ${bCalls}`);
     assert.equal(result.cursor, null);
     // Both placement entries cleared after their respective scatters complete.
-    const stored = result.state.getMetadata<Record<string, unknown>>(SCATTER_PROGRESS_KEY);
+    const stored = result.state.getMetadata(SCATTER_PROGRESS_KEY);
     assert.equal(stored, undefined);
     // Aggregate outputs include every item (prior + fresh).
     assert.equal(result.state.processed.length, 3);
@@ -492,8 +495,9 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     });
     const snap = state.snapshot();
     const restored = ScatterState.restore(snap);
-    const storedRestored = restored.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
-    assert.ok(storedRestored !== undefined);
+    const storedRestoredRaw = restored.getMetadata(SCATTER_PROGRESS_KEY);
+    assert.ok(storedRestoredRaw !== undefined);
+    const storedRestored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRestoredRaw);
     const fanEntry = storedRestored['fan'];
     assert.ok(fanEntry !== undefined);
     // Bounded checkpoint survives snapshot/restore; shape changed from retained.
@@ -567,9 +571,10 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const { 'state': rehydrated, cursor, dagName } = ckpt2.restoreState(CheckpointRestoreAdapter.wrap((snap) => ScatterState.restore(snap)));
     assert.equal(cursor, 'fan');
 
-    const stored = rehydrated.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
-    assert.ok(stored !== undefined, 'progress key should survive checkpoint codec');
+    const storedRaw2 = rehydrated.getMetadata(SCATTER_PROGRESS_KEY);
+    assert.ok(storedRaw2 !== undefined, 'progress key should survive checkpoint codec');
     // At minimum one item should have been acked (the pre-seeded entry or any fresh ack).
+    const stored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRaw2);
     const fanStored = stored['fan'];
     assert.ok(fanStored !== undefined, 'expected progress entry for fan scatter');
     const ackedCount = fanStored.mode === 'bounded'

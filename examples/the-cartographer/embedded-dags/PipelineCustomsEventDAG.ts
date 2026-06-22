@@ -28,7 +28,6 @@ import { customsDwell } from '../nodes/customsDwell.ts';
 import { enrichLeg } from '../nodes/enrichLeg.ts';
 import { aggregateEvent } from '../nodes/aggregateEvent.ts';
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
@@ -89,7 +88,7 @@ export const pipelineCustomsEventDAG: DAGType = new DAGBuilder('pipeline-customs
 
   .build();
 
-export const pipelineCustomsEventBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const pipelineCustomsEventBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [parseVariant, canonicalizeCore, customsDwell, enrichLeg, aggregateEvent],
   'dags':  [pipelineCustomsEventDAG],
 };

@@ -16,7 +16,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
+import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
 </script>
 
 # Phase 03: Tool schemas
@@ -45,6 +45,6 @@ Every tool produces `Candidate[]` with a `book.isbn` field set by `CanonicalId.p
 - **Shape-only `examples`.** `'<subject-or-theme>'`, `'<plot-motif>'` are descriptive placeholders. Never use real data in `examples` fields when the LLM will see the schema; it may copy them back verbatim into responses.
 - **`strict: true`.** Signals to the Gemini API that the tool definition should be treated as a strict JSON schema. The field is passed through to the model's function declaration.
 - **`CanonicalId.pick`.** Resolves ISBN-13, ISBN-10, then `urn:work:<slug>` in priority order. All four scouts call it so `CanonicalId.dedupe` in `mergeCandidates` can collapse cross-source duplicates by the same stable key.
-- **`CanonicalId.merge`.** When two candidates share the same canonical id, `merge` unions their authors, subjects, publishers, and `_sources[]` arrays, keeping the richer description and higher score.
+- **`CanonicalId.merge`.** When two candidates share the same canonical id, `merge` unions their authors, subjects, publishers, and `sources[]` arrays, keeping the richer description and higher score.
 
 See this in action in the [Archivist live demo](./the-archivist).

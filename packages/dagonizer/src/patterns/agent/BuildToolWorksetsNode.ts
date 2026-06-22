@@ -14,7 +14,6 @@
  * Outputs: `'ready'` when worksets built, `'empty'` when no calls, `'error'` on failure.
  */
 
-import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ToolCallType } from '../../entities/adapter/ToolCall.js';
@@ -38,7 +37,7 @@ export type ToolCallScatterItemType = ToolCallType & {
 
 export abstract class BuildToolWorksetsNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'ready' | 'empty' | 'error', AgentServicesType> {
+> extends ScalarNode<TState, 'ready' | 'empty' | 'error'> {
   readonly outputs = ['ready', 'empty', 'error'] as const;
 
   override get outputSchema(): Record<'ready' | 'empty' | 'error', SchemaObjectType> {
@@ -52,7 +51,7 @@ export abstract class BuildToolWorksetsNode<
   /** Read the validated tool calls from state. */
   protected abstract getToolCalls(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): readonly ToolCallType[];
 
   /**
@@ -62,26 +61,26 @@ export abstract class BuildToolWorksetsNode<
   protected abstract classifyCall(
     call: ToolCallType,
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): 'safe' | 'exclusive';
 
   /** Write the safe (concurrent) scatter items to state. */
   protected abstract writeSafeWorkset(
     state: TState,
     calls: readonly ToolCallScatterItemType[],
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): void;
 
   /** Write the exclusive (serial) scatter items to state. */
   protected abstract writeExclusiveWorkset(
     state: TState,
     calls: readonly ToolCallScatterItemType[],
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): void;
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'ready' | 'empty' | 'error'>> {
     try {
       const calls = this.getToolCalls(state, context);

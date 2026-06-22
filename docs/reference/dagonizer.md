@@ -17,23 +17,20 @@ seeAlso:
 
 `@studnicky/dagonizer` root export.
 
-## Class: `Dagonizer<TState, TServices>`
+## Class: `Dagonizer<TState>`
 
 The DAG dispatcher. Holds node and DAG registries, validates configurations at registration time, and runs the node-graph iterator.
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 
-interface MyServices { logger: Console }
 class MyState extends NodeStateBase {}
 
 // ---cut---
 const dispatcher = new Dagonizer<MyState>();
-// With services:
-const dispatcher2 = new Dagonizer<MyState, MyServices>({ services: { logger: console } });
 ```
 
-`TState` must satisfy `NodeStateInterface`. In practice, always extend `NodeStateBase`. `TServices` is the optional services bag exposed to every node via `context.services`; defaults to `undefined`.
+`TState` must satisfy `NodeStateInterface`. In practice, always extend `NodeStateBase`.
 
 ### Constructor
 
@@ -41,12 +38,12 @@ const dispatcher2 = new Dagonizer<MyState, MyServices>({ services: { logger: con
 import { Dagonizer } from '@studnicky/dagonizer';
 import type { DagonizerOptionsType, NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
-// constructor(options?: DagonizerOptionsType<TServices>)
+// constructor(options?: DagonizerOptionsType)
 declare const options: DagonizerOptionsType;
 const d = new Dagonizer(options);
 ```
 
-`options.accessor` swaps the path resolver for scatter source reads, state-mapping input copies, and gather writes. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
+`options.accessor` swaps the path resolver for scatter source reads, state-mapping input copies, and gather writes. Defaults to `DottedPathAccessor`.
 
 ### `DagonizerOptionsType`
 
@@ -61,7 +58,6 @@ import type { StateAccessorInterface } from '@studnicky/dagonizer/types';
 // ---cut---
 declare const _opts: DagonizerOptionsType;
 // accessor?: StateAccessorInterface
-// services?: TServices
 // containers?: Readonly<Record<string, DagContainerInterface>>
 // channels?: Readonly<Record<string, HandoffChannelInterface>>
 // registryVersion?: string
@@ -72,7 +68,6 @@ export {};
 | Field | Type | Description |
 |---|---|---|
 | `accessor` | `StateAccessorInterface` | Path resolver for scatter source reads, gather writes, and state-mapping copies. Defaults to `DottedPathAccessor`. |
-| `services` | `TServices` | Typed services bag exposed to every node via `context.services`. Defaults to `undefined`. |
 | `containers` | `Readonly<Record<string, DagContainerInterface>>` | Named container backends keyed by logical role name. On a non-empty registry, a placement that declares a role this map does not bind throws `DAGError` at `registerDAG` time. Defaults to an empty registry, where declared roles are inert and all placements run in-process. |
 | `channels` | `Readonly<Record<string, HandoffChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
 | `registryVersion` | `string` | Registry version string included in every `DAGHandoff` envelope for receiver version-handshake validation. Defaults to `'0'`. |
@@ -87,14 +82,14 @@ import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 import type { NodeInterface } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
-declare const node: NodeInterface<MyState, string, undefined>;
+declare const node: NodeInterface<MyState, string>;
 const d = new Dagonizer<MyState>();
 d.registerNode(node);
 ```
 
 Registers a node in the dispatcher's node registry. If the node defines an optional `validate()` method, it is called immediately and throws `DAGError` if it returns `{ valid: false }`.
 
-Nodes are stored widened to `NodeInterface<NodeStateInterface, string, TServices>`. `TState` is widened to `NodeStateInterface` so heterogeneous child-node states (whose concrete class may differ from `TState`) are stored without casts. Narrowing `TOutput` to wide `string` is sound covariantly.
+Nodes are stored widened to `NodeInterface<NodeStateInterface, string>`. `TState` is widened to `NodeStateInterface` so heterogeneous child-node states (whose concrete class may differ from `TState`) are stored without casts. Narrowing `TOutput` to wide `string` is sound covariantly.
 
 ---
 
@@ -121,7 +116,7 @@ import type {
 } from '@studnicky/dagonizer';
 // ---cut---
 declare const _b: DispatcherBundleType<NodeStateInterface>;
-// readonly nodes: readonly NodeInterface<TState, string, TServices>[]
+// readonly nodes: readonly NodeInterface<TState, string>[]
 // readonly dags:  readonly DAGType[]
 export {};
 ```
@@ -164,7 +159,7 @@ Returns `DAG | undefined`. `undefined` when the DAG has not been registered.
 
 ### `getNode(name)`
 
-Returns `NodeInterface<NodeStateInterface, string, TServices> | undefined`. `undefined` when the node has not been registered.
+Returns `NodeInterface<NodeStateInterface, string> | undefined`. `undefined` when the node has not been registered.
 
 ### `listDAGs()`
 
@@ -351,7 +346,7 @@ import type {
 } from '@studnicky/dagonizer';
 // ---cut---
 declare const bundle: DispatcherBundleType<NodeStateInterface>;
-const _nodes: readonly NodeInterface<NodeStateInterface, string, undefined>[] = bundle.nodes;
+const _nodes: readonly NodeInterface<NodeStateInterface, string>[] = bundle.nodes;
 const _dags: readonly DAGType[] = bundle.dags;
 ```
 

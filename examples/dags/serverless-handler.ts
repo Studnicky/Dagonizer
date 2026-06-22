@@ -19,13 +19,8 @@
 import { DAG_CONTEXT, Dagonizer, NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
+import { JsonObject } from '@studnicky/dagonizer/entities';
 import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
-
-// Runtime guard: narrows { [x: string]: unknown } to JsonObjectType.
-// json-schema-to-ts derives stateSnapshot as the wider record type; the engine
-// always produces JSON-safe values, so this confirms the outer shape.
-const isJsonObject = (v: { [x: string]: unknown }): v is JsonObjectType =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
 
 export const REGISTRY_VERSION = '1.0.0';
 
@@ -115,33 +110,36 @@ export class InMemoryQueueChannel implements HandoffChannelInterface {
 // ---------------------------------------------------------------------------
 
 // #region handler
-export async function handle(
-  envelope: DAGHandoffType,
-  egress: HandoffChannelInterface,
-): Promise<OrderState> {
-  // 1. Verify version before executing.
-  if (envelope.registryVersion !== REGISTRY_VERSION) {
-    throw new Error(`Version mismatch: expected ${REGISTRY_VERSION}, got ${envelope.registryVersion}`);
-  }
+export class ServerlessHandler {
+  static async handle(
+    envelope: DAGHandoffType,
+    egress: HandoffChannelInterface,
+  ): Promise<OrderState> {
+    // 1. Verify version before executing.
+    if (envelope.registryVersion !== REGISTRY_VERSION) {
+      throw new Error(`Version mismatch: expected ${REGISTRY_VERSION}, got ${envelope.registryVersion}`);
+    }
 
-  // 2. Restore state. DAGHandoff is a oneOf: stateSnapshot (by-value) or
-  //    stateSnapshotRef (by-reference URI). Narrow before restore.
-  if (!('stateSnapshot' in envelope)) {
-    throw new Error('stateSnapshotRef envelopes require fetching the URI before restore');
-  }
-  if (!isJsonObject(envelope.stateSnapshot)) {
-    throw new Error('stateSnapshot is not a JSON object');
-  }
-  const state = OrderState.restore(envelope.stateSnapshot);
+    // 2. Restore state. DAGHandoff is a oneOf: stateSnapshot (by-value) or
+    //    stateSnapshotRef (by-reference URI). Narrow before restore.
+    if (!('stateSnapshot' in envelope)) {
+      throw new Error('stateSnapshotRef envelopes require fetching the URI before restore');
+    }
+    const snapshot: unknown = envelope.stateSnapshot;
+    if (!JsonObject.is(snapshot)) {
+      throw new Error('stateSnapshot is not a JSON object');
+    }
+    const state = OrderState.restore(snapshot);
 
-  // 3. Build a per-invocation dispatcher with egress channels bound to terminal
-  //    names. The channel publishes the next envelope after the terminal.
-  const dispatcher = new Dagonizer<OrderState>({ channels: { done: egress } });
-  dispatcher.registerNode(new SettleNode());
-  dispatcher.registerDAG(settleDag);
+    // 3. Build a per-invocation dispatcher with egress channels bound to terminal
+    //    names. The channel publishes the next envelope after the terminal.
+    const dispatcher = new Dagonizer<OrderState>({ channels: { done: egress } });
+    dispatcher.registerNode(new SettleNode());
+    dispatcher.registerDAG(settleDag);
 
-  // 4. Execute. The dispatcher is constructed, used, and discarded per call.
-  const result = await dispatcher.execute('settle', state);
-  return result.state;
+    // 4. Execute. The dispatcher is constructed, used, and discarded per call.
+    const result = await dispatcher.execute('settle', state);
+    return result.state;
+  }
 }
 // #endregion handler

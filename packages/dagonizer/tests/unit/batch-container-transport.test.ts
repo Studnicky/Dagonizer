@@ -61,32 +61,32 @@ const NOOP_INIT: DagContainerOptionsType['init'] = {
   'servicesConfig': {},
 };
 
-/**
- * Build a minimal DagTaskInterface for the given correlationId and state.
- * `toRequest()` produces the new items-based wire format (single-item N=1).
- */
-function makeTask(
-  correlationId: string,
-  signal: AbortSignal,
-  state: TestState = new TestState(),
-): DagTaskInterface<undefined> {
-  return {
-    'dagName': 'test-dag',
-    'placementPath': [],
-    correlationId,
-    'timeout': Timeout.none(),
-    state,
-    'context': NodeContextBuilder.of('test-dag', 'test-node', signal, undefined),
-    toRequest(): ExecutionRequestType {
-      return {
-        'dagName': 'test-dag',
-        'placementPath': [],
-        'items': [{ 'id': correlationId, 'snapshot': state.snapshot() }],
-        'timeoutMs': null,
-        correlationId,
-      };
-    },
-  };
+class BatchTestTask {
+  private constructor() {}
+
+  static of(
+    correlationId: string,
+    signal: AbortSignal,
+    state: TestState = new TestState(),
+  ): DagTaskInterface {
+    return {
+      'dagName': 'test-dag',
+      'placementPath': [],
+      correlationId,
+      'timeout': Timeout.none(),
+      state,
+      'context': NodeContextBuilder.of('test-dag', 'test-node', signal),
+      toRequest(): ExecutionRequestType {
+        return {
+          'dagName': 'test-dag',
+          'placementPath': [],
+          'items': [{ 'id': correlationId, 'snapshot': state.snapshot() }],
+          'timeoutMs': null,
+          correlationId,
+        };
+      },
+    };
+  }
 }
 
 /**
@@ -151,7 +151,7 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
     });
 
     const ac = new AbortController();
-    const task = makeTask('single-1', ac.signal);
+    const task = BatchTestTask.of('single-1', ac.signal);
     const outcome: DagOutcomeType = await container.runDag(task);
 
     // items[0].terminalOutcome → outcome.terminalOutput
@@ -184,7 +184,7 @@ void describe('batch-container-transport: (a) single-item request unpacks items[
     });
 
     const ac = new AbortController();
-    const outcome = await container.runDag(makeTask('single-null', ac.signal));
+    const outcome = await container.runDag(BatchTestTask.of('single-null', ac.signal));
     assert.strictEqual(outcome.terminalOutput, 'failed');
     assert.strictEqual(outcome.stateSnapshot, null);
   });
@@ -241,7 +241,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
     ]);
 
     // Use the first item's task for task identity (correlationId / abort signal).
-    const task = makeTask('batch-1', ac.signal, stateA);
+    const task = BatchTestTask.of('batch-1', ac.signal, stateA);
 
     const results: BatchRunResultType[] = await container.runDagBatch(task, batch);
 
@@ -294,7 +294,7 @@ void describe('batch-container-transport: (b) multi-item requestBatch returns N 
       { 'id': 'x1', 'state': stateX1 },
       { 'id': 'x2', 'state': stateX2 },
     ]);
-    const task = makeTask('batch-single-msg', ac.signal, stateX1);
+    const task = BatchTestTask.of('batch-single-msg', ac.signal, stateX1);
     await container.runDagBatch(task, batch);
 
     // Exactly one execute message sent (the batch round-trip).
@@ -366,7 +366,7 @@ void describe('batch-container-transport: (d) send failure returns transport-err
       { 'id': 'fail-1', 'state': stateFail1 },
       { 'id': 'fail-2', 'state': stateFail2 },
     ]);
-    const task = makeTask('batch-fail', ac.signal, stateFail1);
+    const task = BatchTestTask.of('batch-fail', ac.signal, stateFail1);
     const results = await container.runDagBatch(task, batch);
 
     // Both items must get transport-error results.

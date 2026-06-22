@@ -33,7 +33,6 @@ import { enrichPricing }  from '../nodes/enrichPricing.ts';
 import { enrichShipping } from '../nodes/enrichShipping.ts';
 import { enrichEta }      from '../nodes/enrichEta.ts';
 import type { CartographerState }   from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
@@ -61,7 +60,7 @@ export const orderEnrichmentDAG: DAGType = new DAGBuilder('order-enrichment', '1
 
   .build();
 
-export const orderEnrichmentBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const orderEnrichmentBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [enrichPricing, enrichShipping, enrichEta],
   'dags':  [orderEnrichmentDAG],
 };

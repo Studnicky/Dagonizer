@@ -1,5 +1,5 @@
 /**
- * GeoResolvers: assembles the CartographerServices bag with the chosen geo
+ * GeoResolvers: assembles the CartographerServices record with the chosen geo
  * transport backend.
  *
  * GPS reverse-geocode is always the offline `OfflineReverseGeocoder` (backed

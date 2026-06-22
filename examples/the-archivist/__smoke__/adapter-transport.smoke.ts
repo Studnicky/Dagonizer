@@ -37,11 +37,11 @@ interface OpenAiToolEntry {
 class SmokeAssert {
   static isOpenAiToolEntry(entry: unknown): entry is OpenAiToolEntry {
     if (entry === null || typeof entry !== 'object') return false;
-    if (!('type' in entry) || typeof (entry as { type: unknown }).type !== 'string') return false;
+    if (!('type' in entry) || typeof entry.type !== 'string') return false;
     if (!('function' in entry)) return false;
-    const fn: unknown = (entry as { function: unknown }).function;
+    const fn: unknown = entry.function;
     if (fn === null || typeof fn !== 'object') return false;
-    return 'name' in fn && typeof (fn as { name: unknown }).name === 'string';
+    return 'name' in fn && typeof fn.name === 'string';
   }
 
   static isOpenAiToolArray(value: unknown): value is readonly OpenAiToolEntry[] {

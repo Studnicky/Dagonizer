@@ -1,5 +1,5 @@
 /**
- * CartographerServices: the dispatcher's services bag (DI).
+ * CartographerServices: the dispatcher's services record (DI).
  *
  * Geo resolution is performed by real geo APIs reached through swappable
  * TRANSPORT adapters injected here. The geo

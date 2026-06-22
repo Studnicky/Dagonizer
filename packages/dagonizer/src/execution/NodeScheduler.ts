@@ -7,6 +7,7 @@ import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import { PlacementRank } from '../core/PlacementRank.js';
 import { WorkSet } from '../core/WorkSet.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import type { DAGType } from '../entities/dag/DAG.js';
@@ -17,7 +18,7 @@ import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { ExecutionResultType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
 import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
-import type { JsonObjectType } from '../entities/json.js';
+import { JsonObject } from '../entities/json.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { WorkSetProgressType } from '../entities/workset/WorkSetProgress.js';
@@ -41,11 +42,11 @@ import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './Sca
  * stays the orchestration layer that wires this source and owns the protected
  * observability hooks the relay forwarders fan into.
  */
-export interface NodeSchedulerSourceInterface<TServices> {
+export interface NodeSchedulerSourceInterface {
   /** Registered DAGs keyed by name. */
   readonly dags: ReadonlyMap<string, DAGType>;
   /** Registered nodes keyed by name. Typed at the base so heterogeneous child-node states store without casts. */
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   /** Placement index keyed by `${dagName}:${placementName}`. */
   readonly nodeIndex: ReadonlyMap<string, DAGNodeType>;
   /** Child-state cloning + output mapping for the in-process embedded-DAG path. */
@@ -89,14 +90,14 @@ export interface NodeSchedulerSourceInterface<TServices> {
   resolveContainer(role: string | undefined): DagContainerInterface | null;
   /** Wrap a node execute call with its per-node timeout budget. */
   withNodeTimeout<TResult>(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
   /** Mint a monotonic correlation id for a hand-off envelope. */
   nextCorrelationId(dagName: string): string;
-  /** Build a node context for a placement execution, injecting the services bag. */
-  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType<TServices>;
+  /** Build a node context for a placement execution. */
+  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType;
 }
 
 /**
@@ -114,10 +115,10 @@ export interface NodeSchedulerSourceInterface<TServices> {
  * embedded re-entry recurses into `this.run` so the same generator drives every
  * nesting level.
  */
-export class NodeScheduler<TServices> {
-  readonly #source: NodeSchedulerSourceInterface<TServices>;
+export class NodeScheduler {
+  readonly #source: NodeSchedulerSourceInterface;
 
-  constructor(source: NodeSchedulerSourceInterface<TServices>) {
+  constructor(source: NodeSchedulerSourceInterface) {
     this.#source = source;
   }
 
@@ -143,7 +144,11 @@ export class NodeScheduler<TServices> {
     batch: RunNodesBatchType = {},
   ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TReturn>, void> {
     const { inputBatch, terminalByItemId } = batch;
-    const dag = this.#source.dags.get(dagName);
+    // Expand the bare dagName to its IRI key for all registry map lookups.
+    // The original dagName string is retained for human-readable error messages,
+    // lifecycle hooks, and hand-off envelopes.
+    const dagIri = ContextResolver.expand(dagName, {});
+    const dag = this.#source.dags.get(dagIri);
 
     if (!dag) {
       // Unknown DAG: synthesize an error result without starting the
@@ -163,6 +168,9 @@ export class NodeScheduler<TServices> {
       }
       return result;
     }
+
+    // Extract the DAG's @context prefix map for node-name IRI expansion during execution.
+    const dagContext: Record<string, unknown> = ContextResolver.contextOf(dag['@context']);
 
     const signal = SignalComposer.compose(options);
 
@@ -195,7 +203,7 @@ export class NodeScheduler<TServices> {
       for (const phase of prePhases) {
         this.#source.relayPhaseEnter(dagName, 'pre', phase.name, state, placementPath);
         try {
-          await this.#executePhasePlacement(phase, state, dagName, signal);
+          await this.#executePhasePlacement(phase, state, dagName, signal, dagContext);
           executedNodes.push(phase.name);
         } catch (err) {
           const error = err instanceof Error ? err : new ExecutionError(String(err));
@@ -257,10 +265,9 @@ export class NodeScheduler<TServices> {
             for (const workItem of entry.items) {
               const itemState = state.clone();
               // workItem.snapshot is typed as `{}` by json-schema-to-ts for
-              // `{ type: 'object' }`. The engine contract requires snapshots to
-              // be JSON-safe objects (they were produced by `state.snapshot()`
-              // which returns `JsonObjectType`). Cast at the single ingest boundary.
-              itemState.applySnapshot(workItem.snapshot as JsonObjectType);
+              // `{ type: 'object' }`; `JsonObject.is` narrows it to JsonObjectType
+              // (cast-free) at the snapshot ingest boundary.
+              itemState.applySnapshot(JsonObject.is(workItem.snapshot) ? workItem.snapshot : {});
               items.push({ 'id': workItem.id, 'state': itemState });
             }
             pending.add(entry.placement, Batch.from(items));
@@ -356,7 +363,7 @@ export class NodeScheduler<TServices> {
         // name from the live #entries map, so takeExpected() is safe here.
         const batch = pending.takeExpected(currentPlacementName);
 
-        const node = this.#source.nodeIndex.get(`${dagName}:${currentPlacementName}`);
+        const node = this.#source.nodeIndex.get(`${dagIri}:${currentPlacementName}`);
 
         if (!node) {
           const error = new DAGError(`Unknown node: ${currentPlacementName} in DAG ${dagName}`);
@@ -420,7 +427,7 @@ export class NodeScheduler<TServices> {
         if (Placement.isSingle(node)) {
           let nodeResult: NodeResultType<NodeStateInterface>;
           try {
-            const fired = await this.#fireSinglePlacement(node, batch, dagName, signal);
+            const fired = await this.#fireSinglePlacement(node, batch, dagName, signal, dagContext);
             const validated = this.#validateOutputContract(fired.dagNode, fired.routed);
             nodeResult = this.#routeToPending(node, fired.dagNode, validated, batch, pending);
           } catch (caughtError) {
@@ -471,8 +478,9 @@ export class NodeScheduler<TServices> {
           // result means the path did not resolve to a string; an unregistered
           // name means dagFrom resolved to a string not in the registry.
           // Both cases route all items to their error outputs without executing.
-          const childDagName = EmbeddedDAGNodeDefaults.resolveDagName(node, repState, this.#source.accessor);
-          if (childDagName === null || !this.#source.dags.has(childDagName)) {
+          const resolvedChildDagName = EmbeddedDAGNodeDefaults.resolveDagName(node, repState, this.#source.accessor);
+          const childDagIri = resolvedChildDagName !== null ? ContextResolver.expand(resolvedChildDagName, {}) : null;
+          if (resolvedChildDagName === null || childDagIri === null || !this.#source.dags.has(childDagIri)) {
             for (const item of parentItems) {
               const routeOutput = 'error';
               const nextPlacement = node.outputs[routeOutput] ?? null;
@@ -482,11 +490,14 @@ export class NodeScheduler<TServices> {
             }
             continue scheduleLoop;
           }
+          // resolvedChildDagName is a non-null string beyond this point.
+          const childDagName: string = resolvedChildDagName;
 
           // Build child batch: one clone per parent item, seeded via inputMapping.
           // Use the registered isolation factory for this DAG when one is present
           // (spawnChild returns NodeStateInterface; isolation factory may produce a
           // different class). cloneChild also returns NodeStateInterface.
+          // stateFactories is bare-name keyed; childDagName is the bare/short name.
           const childFactory = this.#source.stateFactories.get(childDagName);
           const childItems: Array<{ 'id': string; 'state': NodeStateInterface }> = [];
           for (const item of parentItems) {
@@ -536,9 +547,12 @@ export class NodeScheduler<TServices> {
           const routeOutputByItemId = new Map<string, string>();
           for (let i = 0; i < parentItems.length; i++) {
             // parentItems and childItems are parallel arrays built above, so both
-            // index i are always within bounds inside this loop.
-            const parentItem = parentItems[i] as (typeof parentItems)[number];
-            const childClone = (childItems[i] as (typeof childItems)[number]).state;
+            // index i are always within bounds inside this loop; the guard narrows
+            // the `noUncheckedIndexedAccess` `| undefined` without a cast.
+            const parentItem = parentItems[i];
+            const childItem = childItems[i];
+            if (parentItem === undefined || childItem === undefined) continue;
+            const childClone = childItem.state;
 
             // Propagate errors and warnings from child clone to parent.
             for (const err of childClone.errors) parentItem.state.collectError(err);
@@ -785,6 +799,8 @@ export class NodeScheduler<TServices> {
       return;
     }
 
+    const postDagContext: Record<string, unknown> = ContextResolver.contextOf(dag['@context']);
+
     const postPhases = dag.nodes.filter(
       (n): n is PhaseNodeType =>
         n['@type'] === 'PhaseNode' && n.phase === 'post',
@@ -792,7 +808,7 @@ export class NodeScheduler<TServices> {
     for (const phase of postPhases) {
       this.#source.relayPhaseEnter(dagName, 'post', phase.name, state, placementPath);
       try {
-        await this.#executePhasePlacement(phase, state, dagName, null);
+        await this.#executePhasePlacement(phase, state, dagName, null, postDagContext);
         result.executedNodes.push(phase.name);
       } catch (err) {
         const error = err instanceof Error ? err : new ExecutionError(String(err));
@@ -857,8 +873,10 @@ export class NodeScheduler<TServices> {
     state: NodeStateInterface,
     dagName: string,
     signal: AbortSignal | null,
+    dagContext: Record<string, unknown>,
   ): Promise<void> {
-    const node = this.#source.nodes.get(phase.node);
+    const nodeIri = ContextResolver.expand(phase.node, dagContext);
+    const node = this.#source.nodes.get(nodeIri);
     if (node === undefined) {
       throw new DAGError(
         `PhaseNode '${phase.name}' references unknown registered node: ${phase.node}`,
@@ -885,9 +903,9 @@ export class NodeScheduler<TServices> {
    * one route with exactly one item (invariant violation for size-1 dispatch).
    */
   async #runNodeOnState(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     state: NodeStateInterface,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ): Promise<string> {
     const batch = Batch.of(state);
     const routed = await node.execute(batch, context);
@@ -923,8 +941,10 @@ export class NodeScheduler<TServices> {
     batch: Batch<NodeStateInterface>,
     dagName: string,
     signal: AbortSignal | null,
-  ): Promise<{ 'dagNode': NodeInterface<NodeStateInterface, string, TServices>; 'routed': RoutedBatchType<string, NodeStateInterface> }> {
-    const dagNode = this.#source.nodes.get(nodeConfig.node);
+    dagContext: Record<string, unknown>,
+  ): Promise<{ 'dagNode': NodeInterface<NodeStateInterface, string>; 'routed': RoutedBatchType<string, NodeStateInterface> }> {
+    const nodeIri = ContextResolver.expand(nodeConfig.node, dagContext);
+    const dagNode = this.#source.nodes.get(nodeIri);
 
     if (!dagNode) {
       throw new DAGError(`Unknown node: ${nodeConfig.node}`);
@@ -947,7 +967,7 @@ export class NodeScheduler<TServices> {
    * `outputContractViolation` NodeError.
    */
   #validateOutputContract(
-    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    dagNode: NodeInterface<NodeStateInterface, string>,
     routed: RoutedBatchType<string, NodeStateInterface>,
   ): RoutedBatchType<string, NodeStateInterface> {
     return OutputContractApplier.applyToRouted(
@@ -975,7 +995,7 @@ export class NodeScheduler<TServices> {
    */
   #routeToPending(
     nodeConfig: SingleNodePlacementType,
-    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    dagNode: NodeInterface<NodeStateInterface, string>,
     routed: RoutedBatchType<string, NodeStateInterface>,
     batch: Batch<NodeStateInterface>,
     pending: WorkSet<NodeStateInterface>,
@@ -1012,7 +1032,8 @@ export class NodeScheduler<TServices> {
    * entrypoints or resume targets for the main loop.
    */
   #isPhaseEntry(dagName: string, name: string): boolean {
-    const entry = this.#source.nodeIndex.get(`${dagName}:${name}`);
+    const expandedDagIri = ContextResolver.expand(dagName, {});
+    const entry = this.#source.nodeIndex.get(`${expandedDagIri}:${name}`);
     return entry?.['@type'] === 'PhaseNode';
   }
 

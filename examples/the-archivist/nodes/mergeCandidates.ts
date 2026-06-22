@@ -4,7 +4,7 @@
  * Uses `CanonicalId.dedupe` to collapse multi-source hits sharing the
  * same canonical id (ISBN-13 → ISBN-10 → work URN). A book seen by
  * both OpenLibrary and Google Books becomes one richer `Candidate` with
- * `notes._sources: ['web-search', 'google-books']`. Wikipedia enrichment
+ * `notes.sources: ['web-search', 'google-books']`. Wikipedia enrichment
  * folds in the same way.
  *
  * After dedupe the shortlist is sorted by score and capped at five.
@@ -29,12 +29,11 @@ import type { NodeContextType, NodeOutputType, SchemaObjectType } from '@studnic
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
-import type { ArchivistServices } from '../services.ts';
 import { CanonicalId } from '@studnicky/dagonizer-book-entities';
 
 const SHORTLIST_LIMIT = 5;
 
-export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'empty', ArchivistServices> {
+export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'empty'> {
   readonly name = 'merge-candidates';
   readonly outputs = ['ranked', 'empty'] as const;
   override get outputSchema(): Record<'ranked' | 'empty', SchemaObjectType> {
@@ -45,11 +44,11 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
   }
 
   /** Public per-item entry point for tests and dispatch delegation. */
-  public async runItem(state: ArchivistState, context: NodeContextType<ArchivistServices>): Promise<NodeOutputType<'ranked' | 'empty'>> {
+  public async runItem(state: ArchivistState, context: NodeContextType): Promise<NodeOutputType<'ranked' | 'empty'>> {
     return this.executeOne(state, context);
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
     const targetIso2 = UserLanguage.toIso6392(state.userLanguage);
 
     // ── Both pools empty → soft gate ──────────────────────────────────────
@@ -81,7 +80,7 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
 
     // #region merge-aggregation
     // Cross-source dedupe: collapses hits sharing the same canonical id,
-    // accumulating notes._sources[] and keeping the richest fields.
+    // accumulating notes.sources[] and keeping the richest fields.
     const deduped = CanonicalId.dedupe(pool);
     // Defensive language filter: scouts already filter, but a candidate
     // can land here from a stale checkpoint or a future source that

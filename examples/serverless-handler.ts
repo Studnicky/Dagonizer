@@ -18,7 +18,7 @@ import type { DAGHandoffType } from '@studnicky/dagonizer/entities';
 import {
   InMemoryQueueChannel,
   REGISTRY_VERSION,
-  handle,
+  ServerlessHandler,
 } from './dags/serverless-handler.js';
 
 process.stdout.write('\n=== serverless-handler: envelope-in / envelope-out over an in-memory queue ===\n\n');
@@ -40,7 +40,7 @@ const inbound: DAGHandoffType = {
 
 process.stdout.write(`[inbound]  correlationId="${inbound.correlationId}" status="pending"\n`);
 
-const settled = await handle(inbound, egress);
+const settled = await ServerlessHandler.handle(inbound, egress);
 
 process.stdout.write(`[handler]  orderId="${settled.orderId}" status="${settled.status}"\n`);
 process.stdout.write(`[egress]   downstream queue depth=${String(downstreamQueue.length)}\n`);

@@ -8,9 +8,9 @@
 
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { TripleStoreInterface } from '@studnicky/dagonizer/patterns';
-import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
-import { GraphNode, type GraphServicesType } from './GraphNode.js';
+import { GraphNode } from './GraphNode.js';
 
 export abstract class MemoryDigestNode<
   TState extends NodeStateInterface,
@@ -22,9 +22,8 @@ export abstract class MemoryDigestNode<
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<GraphServicesType>,
   ): Promise<NodeOutputType<'success'>> {
-    const digest = this.composeDigest(context.services.memory, state);
+    const digest = this.composeDigest(this.memory, state);
     this.applyDigest(state, digest);
     return NodeOutputBuilder.of('success');
   }

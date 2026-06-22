@@ -1,4 +1,5 @@
 import type { NodeInterface } from '../contracts/NodeInterface.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import { DAGError } from '../errors/index.js';
@@ -12,15 +13,15 @@ import type { RunNodeResultType } from './ScatterDispatch.js';
  * `Dagonizer` implements this interface so `LeafExecutor` depends only on a
  * narrow port, not on the whole dispatcher.
  */
-export interface LeafExecutorSourceInterface<TServices> {
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+export interface LeafExecutorSourceInterface {
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   withNodeTimeout<TResult>(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
-  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType<TServices>;
-  runNodeOnState(node: NodeInterface<NodeStateInterface, string, TServices>, state: NodeStateInterface, context: NodeContextType<TServices>): Promise<string>;
+  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType;
+  runNodeOnState(node: NodeInterface<NodeStateInterface, string>, state: NodeStateInterface, context: NodeContextType): Promise<string>;
 }
 
 /**
@@ -34,10 +35,10 @@ export interface LeafExecutorSourceInterface<TServices> {
  * used to build the node context, so `LeafExecutor` has no direct dependency
  * on `SignalComposer`.
  */
-export class LeafExecutor<TServices> {
-  readonly #source: LeafExecutorSourceInterface<TServices>;
+export class LeafExecutor {
+  readonly #source: LeafExecutorSourceInterface;
 
-  constructor(source: LeafExecutorSourceInterface<TServices>) {
+  constructor(source: LeafExecutorSourceInterface) {
     this.#source = source;
   }
 
@@ -47,7 +48,8 @@ export class LeafExecutor<TServices> {
     dagName: string,
     signal: AbortSignal | null,
   ): Promise<RunNodeResultType> {
-    const dagNode = this.#source.nodes.get(nodeConfig.node);
+    const nodeIri = ContextResolver.expand(nodeConfig.node, {});
+    const dagNode = this.#source.nodes.get(nodeIri);
 
     if (!dagNode) {
       throw new DAGError(`Unknown node: ${nodeConfig.node}`);

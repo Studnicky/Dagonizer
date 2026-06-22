@@ -9,8 +9,7 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
-import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
+import { CanonicalEventVariantBuilder, type CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
@@ -18,7 +17,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-variant-node
-export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | 'invalid', CartographerServices> {
+export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | 'invalid'> {
   readonly 'name' = 'parse-variant';
   readonly 'outputs' = ['parsed', 'invalid'] as const;
 
@@ -40,11 +39,12 @@ export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | '
     return s.length > 0 ? s : 'in transit';
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'parsed' | 'invalid'>> {
-    const variant = state.getMetadata<CanonicalEventVariant>('canonical-event');
-    if (variant === null || variant === undefined || !variant.shipmentId) {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'parsed' | 'invalid'>> {
+    const raw = state.getMetadata('canonical-event');
+    if (!CanonicalEventVariantBuilder.is(raw)) {
       return NodeOutputBuilder.of('invalid');
     }
+    const variant = raw;
     state.canonicalVariant = variant;
     // Mirror onto state.canonical so routeGeo can branch on 'has-geo' / 'needs-geo'
     // and routeModalities can read ipAddress from state.canonical.body.ipAddress.

@@ -4,28 +4,19 @@
  * Contains the flow name, the next-node cursor (`null` if the flow has
  * completed), the state snapshot as a JsonObjectType, and the executed /
  * skipped node history.
- *
- * The schema's `version` field tracks the wire format itself, not the
- * user's flow version; independent so wire migrations can ship without
- * invalidating existing checkpoints.
- *
- * jsontology migration: replace `FromSchema<typeof CheckpointDataSchema>`
- * with `EntityType<typeof CheckpointDataSchema['$id']>` and register the
- * schema in `entities/jt.ts`.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-/** Current wire-format version for `CheckpointData`. Increment when the schema changes incompatibly. */
-export const CHECKPOINT_DATA_VERSION = '2' as const;
+import type { StoreSnapshotType } from '../../contracts/SnapshottableInterface.js';
+import type { JsonObjectType } from '../json.js';
 
 export const CheckpointDataSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/CheckpointData',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['version', 'dagName', 'cursor', 'state', 'executedNodes', 'skippedNodes', 'stores'],
+  'required': ['dagName', 'cursor', 'state', 'executedNodes', 'skippedNodes', 'stores'],
   'properties': {
-    'version': { 'type': 'string', 'const': '2' },
     'dagName': { 'type': 'string', 'minLength': 1 },
     'cursor': { 'type': ['string', 'null'] },
     'state': { 'type': 'object', 'additionalProperties': true },
@@ -64,5 +55,15 @@ export const CheckpointDataSchema = {
   'additionalProperties': false,
 } as const;
 
-/** TypeScript type derived from `CheckpointDataSchema` via `json-schema-to-ts`. */
-export type CheckpointDataType = FromSchema<typeof CheckpointDataSchema>;
+/**
+ * TypeScript type derived from `CheckpointDataSchema` via `json-schema-to-ts`.
+ *
+ * `state` and `stores` are narrowed from the schema's open `object` shapes to
+ * the precise in-process types (`JsonObjectType`, `StoreSnapshotType`): the
+ * schema validates the wire structure at the ingest boundary, and the JSON it
+ * admits is exactly these types, so every call site reads them without a cast.
+ */
+export type CheckpointDataType = Omit<FromSchema<typeof CheckpointDataSchema>, 'state' | 'stores'> & {
+  state: JsonObjectType;
+  stores: Record<string, StoreSnapshotType>;
+};

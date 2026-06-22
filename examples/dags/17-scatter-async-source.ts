@@ -86,7 +86,7 @@ export class ConsumeNode extends ScalarNode<AsyncSourceState, 'done'> {
   }
 
   protected override async executeOne(state: AsyncSourceState) {
-    const raw = state.getMetadata<string>('stream-item') ?? '?';
+    const raw = state.getter.string('stream-item', '?');
     state.item = `[processed:${raw}]`;
     eventLog.push(`process  ${raw}`);
     return NodeOutputBuilder.of('done');

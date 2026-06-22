@@ -12,15 +12,23 @@ npm install @studnicky/dagonizer @studnicky/dagonizer-patterns-graph
 
 ```
 MonadicNode (root)
-└── GraphNode<TState>                   (uses services.memory: TripleStore)
+└── GraphNode<TState>                   (injects a TripleStore via its constructor)
     ├── RecallContextNode<TState, TBinding>
     ├── RecordFindingsNode<TState, TEntity>
     └── MemoryDigestNode<TState, TDigest>
 ```
 
-## Services contract
+## Dependency injection
 
-Every pattern expects `services.memory: TripleStore` (the canonical interface lives at `@studnicky/dagonizer/patterns`). Any n3-backed quad store satisfies it.
+Each pattern receives a `TripleStoreInterface` through its constructor and holds
+it as `this.memory` — there is no ambient services record. The canonical
+interface lives at `@studnicky/dagonizer/patterns`; any n3-backed quad store
+satisfies it. Construct the node with the store and register it:
+
+```ts
+const node = new MyRecallContextNode(tripleStore);
+dispatcher.registerNode(node);
+```
 
 ## Pattern reference
 
@@ -80,7 +88,8 @@ const store = new RdfStore();
 
 // Store contract: reifies key-value as a triple.
 await store.set('tokenBudget', 4096);
-const budget = await store.get<number>('tokenBudget'); // 4096
+const raw = await store.get('tokenBudget');
+const budget = typeof raw === 'number' ? raw : 0; // 4096
 
 // TripleStore contract: native quad operations.
 store.assert(
@@ -93,7 +102,9 @@ const rows = store.select({ predicate: { termType: 'NamedNode', value: 'urn:pred
 // rows[0]['doc'].value === 'urn:doc:1'
 ```
 
-The backing is a plain `Quad[]` with no external dependencies. Use it directly with the existing `RecallContextNode`, `RecordFindingsNode`, and `MemoryDigestNode` patterns via `services.memory`.
+The backing is a plain `Quad[]` with no external dependencies. Pass it to the
+constructor of the `RecallContextNode`, `RecordFindingsNode`, and
+`MemoryDigestNode` patterns.
 
 ### Reification scheme
 

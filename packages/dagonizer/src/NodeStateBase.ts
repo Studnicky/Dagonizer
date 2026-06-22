@@ -1,10 +1,11 @@
-import type { JsonObjectType, JsonValueType } from './entities/json.js';
+import type { JsonObjectType } from './entities/json.js';
 import { JsonValue } from './entities/JsonValue.js';
 import type { NodeErrorType } from './entities/node/NodeError.js';
 import type { NodeWarningType } from './entities/node/NodeWarning.js';
 import { DAGError } from './errors/DAGError.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { DAGLifecycleStateType } from './lifecycle/DAGLifecycleState.js';
+import { MetadataGetter } from './MetadataGetter.js';
 import { Clock } from './runtime/Clock.js';
 import { Validator } from './validation/Validator.js';
 
@@ -50,7 +51,15 @@ export interface NodeStateInterface {
   /**
    * Get a metadata value with type casting.
    */
-  getMetadata<T>(key: string): T | undefined;
+  getMetadata(key: string): unknown;
+
+  /**
+   * Strict-typed reads over this state's metadata. `state.getter.string('url')`
+   * narrows the `unknown` from `getMetadata` to a concrete type with a required
+   * default — cast-free, never `undefined`. Use this in nodes instead of
+   * narrowing `getMetadata` at the call site.
+   */
+  readonly 'getter': MetadataGetter;
 
   /**
    * Current DAG lifecycle state (full discriminated union).
@@ -199,81 +208,88 @@ export interface NodeStateInterface {
  * ```
  */
 export class NodeStateBase implements NodeStateInterface {
-  private readonly _errors: NodeErrorType[] = [];
-  private _lifecycle: DAGLifecycleStateType = DAGLifecycleMachine.initial();
-  private _metadata: Record<string, JsonValueType> = {};
-  private _retries: Map<string, number> = new Map();
-  private readonly _warnings: NodeWarningType[] = [];
+  // Retype the `constructor` property to the no-arg constructor convention every
+  // state class follows, so `clone()` can `new this.constructor()` cast-free.
+  declare ['constructor']: new () => this;
+
+  readonly #errors: NodeErrorType[] = [];
+  #lifecycle: DAGLifecycleStateType = DAGLifecycleMachine.initial();
+  #metadata: Record<string, unknown> = {};
+  #retries: Map<string, number> = new Map();
+  readonly #warnings: NodeWarningType[] = [];
+
+  // Strict-typed metadata reads (state.getter.string('k')). Constructed once
+  // against this state so the public face is stable; reads route through
+  // getMetadata, so it survives #metadata being replaced on clone/applySnapshot.
+  readonly getter: MetadataGetter;
 
   constructor() {
     // Canonical instantiation. Subclass to add domain-specific state.
+    this.getter = new MetadataGetter(this);
   }
 
   clone(): this {
     // Instantiate the actual (sub)class so domain fields and the
     // snapshotData/restoreData hooks survive clone-then-applySnapshot.
     // State classes follow the no-arg constructor convention.
-    const Constructor = this.constructor as new () => this;
-    const cloned = new Constructor();
+    const cloned = new this.constructor();
 
     // Lifecycle resets to `pending`, errors/warnings empty for fresh
     // sub-execution. Only metadata is preserved for data passing between
     // parent and child.
-    cloned._metadata = { ...this._metadata };
+    cloned.#metadata = { ...this.#metadata };
 
     return cloned;
   }
 
   collectError(error: NodeErrorType): void {
     // context is required on NodeErrorType; spread to a stable shape.
-    this._errors.push({ ...error });
+    this.#errors.push({ ...error });
   }
 
   collectWarning(warning: NodeWarningType): void {
-    this._warnings.push(warning);
+    this.#warnings.push(warning);
   }
 
   get errors(): readonly NodeErrorType[] {
-    return this._errors;
+    return this.#errors;
   }
 
-  getMetadata<T>(key: string): T | undefined {
-    // Sound narrowing: `_metadata` values are `JsonValueType` (JSON-safe by the
-    // `setMetadata` contract). The cast to `T | undefined` is the single
-    // permitted caller-trust boundary for metadata reads; callers are
-    // responsible for using the same type `T` they wrote via `setMetadata`.
-    return this._metadata[key] as T | undefined;
+  getMetadata(key: string): unknown {
+    // Metadata holds heterogeneous JSON-serialisable values typed as `unknown`
+    // at the boundary; callers narrow to the concrete shape they wrote.
+    return this.#metadata[key];
   }
 
   /**
    * Current DAG lifecycle state (full discriminated union).
    */
   get lifecycle(): DAGLifecycleStateType {
-    return this._lifecycle;
+    return this.#lifecycle;
   }
 
   markCancelled(reason: string): void {
-    this.dispatch({ "type": 'cancel', reason, "at": Clock.monotonicMs() }, 'cancelled');
+    this.#dispatch({ "type": 'cancel', reason, "at": Clock.monotonicMs() }, 'cancelled');
   }
 
   markCompleted(): void {
-    this.dispatch({ "type": 'succeed', "at": Clock.monotonicMs() }, 'completed');
+    this.#dispatch({ "type": 'succeed', "at": Clock.monotonicMs() }, 'completed');
   }
 
   markFailed(error: Error): void {
-    this.dispatch({ "type": 'fail', error, "at": Clock.monotonicMs() }, 'failed');
+    this.#dispatch({ "type": 'fail', error, "at": Clock.monotonicMs() }, 'failed');
   }
 
   markRunning(): void {
-    this.dispatch({ "type": 'start', "at": Clock.monotonicMs() }, 'running');
+    this.#dispatch({ "type": 'start', "at": Clock.monotonicMs() }, 'running');
   }
 
   markTimedOut(): void {
-    this.dispatch({ "type": 'timeout', "at": Clock.monotonicMs() }, 'timed_out');
+    this.#dispatch({ "type": 'timeout', "at": Clock.monotonicMs() }, 'timed_out');
   }
 
   resetLifecycle(): void {
-    this._lifecycle = DAGLifecycleMachine.initial();
+    this.#lifecycle = DAGLifecycleMachine.initial();
   }
 
   get metadata(): Readonly<Record<string, unknown>> {
@@ -281,36 +297,32 @@ export class NodeStateBase implements NodeStateInterface {
     // this reference (e.g. gather map strategy writes `metadata.result`), so
     // the returned object must be the same reference every call to preserve
     // write semantics: `state.metadata.result = value` must persist.
-    return this._metadata;
+    return this.#metadata;
   }
 
   setMetadata(key: string, value: unknown): void {
-    // Metadata is the JSON serialisation boundary. The cast is the single
-    // permitted ingest point: callers must supply JSON-serialisable values,
-    // enforced by convention (schema-derived types + engine discipline) rather
-    // than at the TypeScript type level (scatter items carry `unknown` payloads
-    // in their schema-derived types, making a strict `JsonValueType` parameter
-    // break legitimate engine write sites).
-    this._metadata[key] = value as JsonValueType;
+    // Metadata stores heterogeneous JSON-serialisable values at the `unknown`
+    // boundary; the assignment needs no narrowing.
+    this.#metadata[key] = value;
   }
 
   deleteMetadata(key: string): void {
-    delete this._metadata[key];
+    delete this.#metadata[key];
   }
 
   recordAttempt(key: string): number {
-    const next = (this._retries.get(key) ?? 0) + 1;
-    this._retries.set(key, next);
+    const next = (this.#retries.get(key) ?? 0) + 1;
+    this.#retries.set(key, next);
     return next;
   }
 
   retriesFor(key: string): number {
-    return this._retries.get(key) ?? 0;
+    return this.#retries.get(key) ?? 0;
   }
 
   clearAttempts(key: string): void {
     // Map.delete never alters the object shape — no hidden-class demotion.
-    this._retries.delete(key);
+    this.#retries.delete(key);
   }
 
   withinRetryBudget(key: string, maxAttempts: number): boolean {
@@ -318,21 +330,21 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   get warnings(): readonly NodeWarningType[] {
-    return this._warnings;
+    return this.#warnings;
   }
 
-  private dispatch(
+  #dispatch(
     event: Parameters<typeof DAGLifecycleMachine.transition>[1],
     targetVariant: DAGLifecycleStateType['variant'],
   ): void {
-    const next = DAGLifecycleMachine.transition(this._lifecycle, event);
+    const next = DAGLifecycleMachine.transition(this.#lifecycle, event);
 
-    if (next === this._lifecycle) {
+    if (next === this.#lifecycle) {
       throw new DAGError(
-        `Cannot mark ${targetVariant}: lifecycle is ${this._lifecycle.variant}`,
+        `Cannot mark ${targetVariant}: lifecycle is ${this.#lifecycle.variant}`,
       );
     }
-    this._lifecycle = next;
+    this.#lifecycle = next;
   }
 
   /**
@@ -347,14 +359,14 @@ export class NodeStateBase implements NodeStateInterface {
    */
   snapshot(): JsonObjectType {
     return {
-      // Spread to a stable snapshot object; the live record is not passed
-      // by reference so checkpoint consumers cannot mutate internal state.
-      'metadata': { ...this._metadata },
+      // `JsonValue.from` deep-copies into a stable snapshot and confirms the
+      // heterogeneous `unknown` metadata values are JSON-safe.
+      'metadata': JsonValue.from(this.#metadata),
       // Convert Map → plain Record at the wire boundary; JsonValue.from confirms JSON-safety.
-      'retries': JsonValue.from(Object.fromEntries(this._retries)),
+      'retries': JsonValue.from(Object.fromEntries(this.#retries)),
       // NodeWarning fields are all primitive strings/numbers (schema-derived).
       // Spread copies them to plain objects; JsonValue.from confirms JSON-safety.
-      'warnings': JsonValue.from(this._warnings.map((w) => ({ ...w }))),
+      'warnings': JsonValue.from(this.#warnings.map((w) => ({ ...w }))),
       ...this.snapshotData(),
     };
   }
@@ -397,19 +409,19 @@ export class NodeStateBase implements NodeStateInterface {
     // Reset base fields to empty before populating from the snapshot so
     // this method is idempotent (replace-semantics, not append-semantics).
     // Errors are intentionally excluded — they flow via outcome.errors, not
-    // via the snapshot, so _errors is left as-is for the caller to populate.
-    this._warnings.splice(0);
+    // via the snapshot, so #errors is left as-is for the caller to populate.
+    this.#warnings.splice(0);
     // Replace the metadata record wholesale. Reassignment keeps the hidden
     // class stable (the property type stays `Record<string, JsonValueType>`);
     // no existing key is deleted in place, so the backing object starts fresh.
-    this._metadata = {};
-    this._retries.clear();
+    this.#metadata = {};
+    this.#retries.clear();
 
     const metadata = snapshot['metadata'];
     if (metadata !== undefined && typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
       // Populate from the plain Record wire shape.
       for (const [k, v] of Object.entries(metadata)) {
-        this._metadata[k] = v;
+        this.#metadata[k] = v;
       }
     }
     const retries = snapshot['retries'];
@@ -417,7 +429,7 @@ export class NodeStateBase implements NodeStateInterface {
       // Validate each entry is a number to guard against corrupted snapshots.
       for (const [k, v] of Object.entries(retries)) {
         if (typeof v === 'number') {
-          this._retries.set(k, v);
+          this.#retries.set(k, v);
         }
       }
     }
@@ -425,7 +437,7 @@ export class NodeStateBase implements NodeStateInterface {
     if (Array.isArray(warnings)) {
       for (const w of warnings) {
         if (Validator.nodeWarning.is(w)) {
-          this._warnings.push(w);
+          this.#warnings.push(w);
         } else {
           this.collectWarning({
             'code': 'SNAPSHOT_INVALID_WARNING',
@@ -442,5 +454,5 @@ export class NodeStateBase implements NodeStateInterface {
   /**
    * Subclass hook for restoring additional fields. Default is a no-op.
    */
-  protected restoreData(_snapshot: JsonObjectType): void { /* override */ }
+  protected restoreData(snapshot: JsonObjectType): void { void snapshot; /* override */ }
 }

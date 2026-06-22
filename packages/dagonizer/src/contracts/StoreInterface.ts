@@ -30,25 +30,20 @@ import type { SnapshottableInterface } from './SnapshottableInterface.js';
  * Plugin authors implement this interface (typically by extending
  * `BaseStore`) to swap the backing without touching DAG topology.
  *
- * Values are typed per-call via the method's `<T extends JsonValueType>`
- * parameter; there is no class-level value generic. This keeps stores
- * heterogeneous (one store can hold strings, numbers, and records under
- * different keys) and keeps a `StoreInterface` assignable into any
- * `Record<string, StoreInterface>` boundary without variance casts.
- *
- * Every value crosses a serialization boundary at `snapshot()` time, so
- * stored values must be `JsonValueType`. Domain types that aren't JSON-shaped
- * (class instances, Date, Map) serialize to a JSON form before `set` and
- * rehydrate after `get`.
- *
- * The generic `T` has no default; callers MUST specify the value type
- * at every call site. The engine never uses `unknown` here.
+ * The store is type-erased: every value crosses a serialization boundary at
+ * `snapshot()` time, so stored values are `JsonValueType` and `get` returns
+ * `JsonValueType` (callers narrow with a `typeof`/`Array.isArray` check or a
+ * `Validator`). Domain types that aren't JSON-shaped (class instances, Date,
+ * Map) serialize to a JSON form before `set` and rehydrate after `get`. For
+ * schema-checked typed reads, wrap a store in `TypedStore`, which validates
+ * each read against a configured per-key validator — the validator IS the
+ * type-guard, so the typed value is produced without a cast.
  */
 export interface StoreInterface extends SnapshottableInterface {
-  /** Read the value at `key`, or `null` when the key is absent. */
-  get<T extends JsonValueType>(key: string): Promise<T | null>;
+  /** Read the value at `key` as `JsonValueType`, or `null` when the key is absent. */
+  get(key: string): Promise<JsonValueType | null>;
   /** Write `value` at `key`; last-write-wins. */
-  set<T extends JsonValueType>(key: string, value: T): Promise<void>;
+  set(key: string, value: JsonValueType): Promise<void>;
   /** True when `key` is present. */
   has(key: string): Promise<boolean>;
   /** Remove `key`; resolves true when a value was removed, false when absent. */
@@ -57,11 +52,12 @@ export interface StoreInterface extends SnapshottableInterface {
   /**
    * Atomic read-modify-write. The callback receives the current value
    * (or `undefined` when the key is absent) and returns the new value.
+   * Both are `JsonValueType`; narrow inside the callback as needed.
    *
    * Permitted callback under the "zero callbacks in topology" rule:
    * this is in-process composition, not dispatch behavior.
    */
-  update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T>;
+  update(key: string, fn: (current: JsonValueType | undefined) => JsonValueType): Promise<JsonValueType>;
 
   // snapshot() / restore() are inherited from SnapshottableInterface.
 

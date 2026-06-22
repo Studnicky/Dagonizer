@@ -11,7 +11,6 @@
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
 
 import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 import type { GeoErrorRecordType } from '../../errors/GeoErrorRecord.ts';
@@ -22,7 +21,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-ndjson-node
-export class ParseNdjsonNode extends ScalarNode<CartographerState, 'normalized' | 'invalid', CartographerServices> {
+export class ParseNdjsonNode extends ScalarNode<CartographerState, 'normalized' | 'invalid'> {
   readonly 'name' = 'parse-ndjson';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
 
@@ -38,7 +37,7 @@ export class ParseNdjsonNode extends ScalarNode<CartographerState, 'normalized' 
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized' | 'invalid'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'normalized' | 'invalid'>> {
     // Use decompressed text when available (gzip path), else the raw payload.
     const text = state.decodedText.length > 0 ? state.decodedText : state.currentSource.payload;
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
