@@ -49,44 +49,42 @@ Change `OLLAMA_MODEL` in the example to any model you have pulled.
 - **`LlmAdapterCascade`.** Accepts a preference list and a registry. `cascade.select()` walks the list in order, calls `adapter.probe()` on each, and returns the first available adapter. Throws when no adapter is available.
 - **Response routing.** `response.message.variant` is `'text'` for a plain completion or `'tools'` when the model makes tool calls. The DAG node routes on `variant` to separate the two paths.
 
-## Builder vs manual construction
+## Builder
 
-`LlmAdapterCascadeBuilder.build(catalogue)` is the preferred path when your provider set is known at startup and every factory is a synchronous zero-arg function:
+`LlmAdapterCascadeBuilder.build(catalogue)` assembles a cascade from data. Async discovery runs **before** the builder call — resolve models, filter nulls, then pass the finished catalogue. Each factory closes over the already-constructed adapter; `probe()` runs lazily inside `cascade.select()`.
 
 ```ts
 import { LlmAdapterCascadeBuilder, type CatalogueEntryType } from '@studnicky/dagonizer/adapter';
 
-const catalogue: CatalogueEntryType[] = [
-  {
-    descriptor: { provider: 'ollama-remote', model: 'llama3.2:3b', capabilities: { toolUse: 'partial', structuredOutput: true, jsonMode: true } },
-    factory:    () => new OllamaApiAdapter({ model: 'llama3.2:3b', baseUrl: 'http://remote:11434' }),
-  },
-  {
-    descriptor: { provider: 'ollama-local', model: 'llama3.2:3b', capabilities: { toolUse: 'partial', structuredOutput: true, jsonMode: true } },
-    factory:    () => new OllamaApiAdapter({ model: 'llama3.2:3b' }),
-  },
-];
+// Async discovery step — happens before build()
+const catalogue: CatalogueEntryType[] = [];
 
-const cascade = LlmAdapterCascadeBuilder.build(catalogue);
-const adapter = await cascade.select(); // probes in preference order
-```
-
-Use the lower-level `LlmAdapterRegistry` + `LlmAdapterCascade` directly when you need **async conditional registration** — for example, probing or discovering available models before deciding which entries to register:
-
-```ts
-// Async discovery: only register providers whose env keys are present
-// and whose models are available right now.
-const registry = new LlmAdapterRegistry();
-for (const provider of PROVIDERS) {
-  if (!process.env[provider.envKey]) continue;
-  const model = await provider.selectModel(); // async probe/discovery
-  if (model === null) continue;
-  registry.register({ provider: provider.name, model, capabilities: provider.caps }, provider.factory(model));
+const ollamaAdapter = new OllamaApiAdapter();
+const ollamaModel = await ollamaAdapter.selectChatModel();
+if (ollamaModel !== null) {
+  catalogue.push({
+    descriptor: { provider: 'ollama', model: ollamaModel, capabilities: { toolUse: 'partial', structuredOutput: true, jsonMode: true } },
+    factory:    () => ollamaAdapter,   // synchronous; closes over already-constructed adapter
+  });
 }
-const cascade = new LlmAdapterCascade(registry, preferences);
+
+if (process.env.GROQ_API_KEY) {
+  const groqAdapter = new GroqApiAdapter(process.env.GROQ_API_KEY);
+  const groqModel = await groqAdapter.selectChatModel();
+  if (groqModel !== null) {
+    catalogue.push({
+      descriptor: { provider: 'groq', model: groqModel, capabilities: { toolUse: 'full', structuredOutput: true, jsonMode: true } },
+      factory:    () => groqAdapter,
+    });
+  }
+}
+
+// build() is synchronous — catalogue is already resolved
+const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+const adapter  = await cascade.select(); // probes in catalogue order
 ```
 
-The Archivist demo (`examples/the-archivist/`) uses this pattern: each provider awaits `selectChatModel()` and is skipped entirely when no model is available — a step that cannot be expressed as a synchronous factory.
+The Archivist CLI (`examples/the-archivist/runArchivist.ts`) uses this exact pattern across six providers.
 
 ## Run
 

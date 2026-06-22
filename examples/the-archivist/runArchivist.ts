@@ -65,9 +65,9 @@ import { ToolRegistry } from '@studnicky/dagonizer/tool';
 import {
   EmbedderCascade,
   EmbedderRegistry,
-  LlmAdapterCascade,
-  LlmAdapterRegistry,
+  LlmAdapterCascadeBuilder,
   LlmError,
+  type CatalogueEntryType,
 } from '@studnicky/dagonizer/adapter';
 import { ExecutionError, NodeTimeoutError } from '@studnicky/dagonizer/errors';
 import type { AdapterCapabilitiesType } from '@studnicky/dagonizer/adapter';
@@ -97,42 +97,38 @@ const CAPS_FULL_TOOLS:    AdapterCapabilitiesType = { 'toolUse': 'full',    'str
 const CAPS_PARTIAL_TOOLS: AdapterCapabilitiesType = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
 
 // #region adapter-cascade
-// Local-first: construct the Ollama adapter, then discover and set the best
-// available chat model via `selectChatModel`. The env override (`OLLAMA_MODEL`)
-// is honored when present and the daemon has it pulled; otherwise the first
-// installed non-embedding model is selected. Returns null when the daemon is
-// down or has no chat model, causing the registry entry to be skipped.
+// Build a preference-ordered catalogue: probe each provider, discover the best
+// available chat model, and add a catalogue entry only when a model resolves.
+// The async discovery runs BEFORE LlmAdapterCascadeBuilder.build() — the builder
+// call itself is synchronous. Each factory closes over the already-constructed
+// adapter instance; probe() runs lazily when cascade.select() is called.
+const catalogue: CatalogueEntryType[] = [];
+
+// Local-first: Ollama — no key required. Skip when daemon is unreachable or
+// no chat model is installed.
 const ollamaAdapter = new OllamaApiAdapter({ 'baseUrl': OLLAMA_BASE_URL });
 const resolvedOllamaModel = await ollamaAdapter.selectChatModel({
   ...(Env.get('OLLAMA_MODEL').length > 0 ? { 'preferred': Env.get('OLLAMA_MODEL') } : {}),
 });
-
-const registry = new LlmAdapterRegistry();
-
-// Register Ollama only when a usable chat model was discovered.
 if (resolvedOllamaModel !== null) {
-  registry.register(
-    { 'provider': 'ollama', 'model': resolvedOllamaModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-    () => ollamaAdapter,
-  );
+  catalogue.push({
+    'descriptor': { 'provider': 'ollama', 'model': resolvedOllamaModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+    'factory': () => ollamaAdapter,
+  });
 }
 
-// Keyed providers: skip registration when the key is missing so the
-// `NO_ADAPTER_AVAILABLE` message lists only the providers the user
-// actually configured. Each adapter discovers and sets its model via
-// `selectChatModel` before the cascade probe; the env var override
-// is honored when the provider lists it, otherwise the adapter's own
-// default is used.
+// Keyed providers: skip when the key is missing so `NO_ADAPTER_AVAILABLE`
+// lists only the providers the user actually configured.
 if (Env.get('GEMINI_API_KEY').length > 0) {
   const geminiAdapter = new GeminiApiAdapter(Env.get('GEMINI_API_KEY'));
   const geminiModel = await geminiAdapter.selectChatModel({
     ...(Env.get('GEMINI_MODEL').length > 0 ? { 'preferred': Env.get('GEMINI_MODEL') } : {}),
   });
   if (geminiModel !== null) {
-    registry.register(
-      { 'provider': 'gemini-api', 'model': geminiModel, 'capabilities': CAPS_FULL_TOOLS },
-      () => geminiAdapter,
-    );
+    catalogue.push({
+      'descriptor': { 'provider': 'gemini-api', 'model': geminiModel, 'capabilities': CAPS_FULL_TOOLS },
+      'factory': () => geminiAdapter,
+    });
   }
 }
 if (Env.get('CEREBRAS_API_KEY').length > 0) {
@@ -141,10 +137,10 @@ if (Env.get('CEREBRAS_API_KEY').length > 0) {
     ...(Env.get('CEREBRAS_MODEL').length > 0 ? { 'preferred': Env.get('CEREBRAS_MODEL') } : {}),
   });
   if (cerebrasModel !== null) {
-    registry.register(
-      { 'provider': 'cerebras', 'model': cerebrasModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-      () => cerebrasAdapter,
-    );
+    catalogue.push({
+      'descriptor': { 'provider': 'cerebras', 'model': cerebrasModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+      'factory': () => cerebrasAdapter,
+    });
   }
 }
 if (Env.get('GROQ_API_KEY').length > 0) {
@@ -153,10 +149,10 @@ if (Env.get('GROQ_API_KEY').length > 0) {
     ...(Env.get('GROQ_MODEL').length > 0 ? { 'preferred': Env.get('GROQ_MODEL') } : {}),
   });
   if (groqModel !== null) {
-    registry.register(
-      { 'provider': 'groq', 'model': groqModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-      () => groqAdapter,
-    );
+    catalogue.push({
+      'descriptor': { 'provider': 'groq', 'model': groqModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+      'factory': () => groqAdapter,
+    });
   }
 }
 if (Env.get('MISTRAL_API_KEY').length > 0) {
@@ -165,10 +161,10 @@ if (Env.get('MISTRAL_API_KEY').length > 0) {
     ...(Env.get('MISTRAL_MODEL').length > 0 ? { 'preferred': Env.get('MISTRAL_MODEL') } : {}),
   });
   if (mistralModel !== null) {
-    registry.register(
-      { 'provider': 'mistral', 'model': mistralModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-      () => mistralAdapter,
-    );
+    catalogue.push({
+      'descriptor': { 'provider': 'mistral', 'model': mistralModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+      'factory': () => mistralAdapter,
+    });
   }
 }
 if (Env.get('OPENROUTER_API_KEY').length > 0) {
@@ -177,21 +173,14 @@ if (Env.get('OPENROUTER_API_KEY').length > 0) {
     ...(Env.get('OPENROUTER_MODEL').length > 0 ? { 'preferred': Env.get('OPENROUTER_MODEL') } : {}),
   });
   if (openRouterModel !== null) {
-    registry.register(
-      { 'provider': 'openrouter', 'model': openRouterModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-      () => openRouterAdapter,
-    );
+    catalogue.push({
+      'descriptor': { 'provider': 'openrouter', 'model': openRouterModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+      'factory': () => openRouterAdapter,
+    });
   }
 }
 
-// Cascade preference order matches the registration order above.
-// `registry.list()` returns only the registered (available) providers,
-// so the cascade probe always has a valid model name on each entry.
-const cascade = new LlmAdapterCascade(registry, registry.list().map((entry) => ({
-  'provider': entry.provider,
-  'model': entry.model,
-})));
-
+const cascade = LlmAdapterCascadeBuilder.build(catalogue);
 const adapter = await cascade.select();
 logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 // #endregion adapter-cascade
