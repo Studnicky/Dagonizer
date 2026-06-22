@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-adapter-ollama",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "LLM adapter plugin for @studnicky/dagonizer: OllamaApiAdapter (local-first via Ollama's OpenAI-compatible endpoint).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

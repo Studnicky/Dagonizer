@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-embedder-mistral",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "description": "Embedder plugin for @studnicky/dagonizer: MistralEmbedder (mistral-embed).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
