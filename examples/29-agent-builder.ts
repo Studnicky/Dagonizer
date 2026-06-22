@@ -88,9 +88,10 @@ class StubLlmAdapter implements LlmAdapterInterface {
     };
   }
 
-  async connect():    Promise<void>    { /* no-op */ }
-  async disconnect(): Promise<void>    { /* no-op */ }
-  async probe():      Promise<boolean> { return true; }
+  async connect():    Promise<void>              { /* no-op */ }
+  async disconnect(): Promise<void>              { /* no-op */ }
+  async probe():      Promise<boolean>           { return true; }
+  async listModels(): Promise<readonly never[]>  { return []; }
 }
 
 // ---------------------------------------------------------------------------

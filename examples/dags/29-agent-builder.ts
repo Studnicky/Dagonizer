@@ -171,9 +171,10 @@ const _nullLlm: LlmAdapterInterface = {
   async chat(_r: ChatRequestType): Promise<ChatResponseType> {
     return { 'message': { 'variant': 'text', 'content': '' }, 'finishReason': 'stop', 'usage': { 'promptTokens': 0, 'completionTokens': 0 } };
   },
-  async connect():    Promise<void>    { /* no-op */ },
-  async disconnect(): Promise<void>    { /* no-op */ },
-  async probe():      Promise<boolean> { return false; },
+  async connect():    Promise<void>              { /* no-op */ },
+  async disconnect(): Promise<void>              { /* no-op */ },
+  async probe():      Promise<boolean>           { return false; },
+  async listModels(): Promise<readonly never[]>  { return []; },
 };
 
 /**

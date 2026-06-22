@@ -5,6 +5,7 @@ import type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
 import type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface, SchemaObjectType } from './contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
+import type { PluginInterface } from './contracts/PluginInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
 import { ContextResolver } from './dag/ContextResolver.js';
 import type { DagRegistrar, DagRegistrarSourceInterface } from './dag/DagRegistrar.js';
@@ -71,6 +72,9 @@ const EMPTY_CONTAINERS: Readonly<Record<string, never>> = Object.freeze({});
 /** Empty channels map: the canonical "no channels" sentinel. */
 const EMPTY_CHANNELS: Readonly<Record<string, never>> = Object.freeze({});
 
+/** Empty observers array: the canonical "no observers" sentinel. */
+const EMPTY_OBSERVERS: ReadonlyArray<DispatcherObserverType> = Object.freeze([]);
+
 /**
  * Canonical defaults for `DagonizerOptionsType`.
  *
@@ -83,11 +87,32 @@ const DAGONIZER_OPTION_DEFAULTS = {
   'channels': EMPTY_CHANNELS,
   'registryVersion': DEFAULT_REGISTRY_VERSION,
   'validateOutputs': false,
+  'observers': EMPTY_OBSERVERS,
 } as const;
 
 // Scatter progress types originate in entities/scatter/ScatterProgress.ts;
 // re-exported here for public consumers.
 export type { ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './entities/scatter/ScatterProgress.js';
+
+/**
+ * Observer record for the multi-observer mux.
+ *
+ * Each field mirrors the corresponding protected lifecycle hook on `Dagonizer`.
+ * Every callback is optional — include only the hooks you need. Observers are
+ * called in array order, after any subclass override.
+ *
+ * Use the `observers` option on `DagonizerOptionsType` to supply an array of
+ * these records to a dispatcher that does not use subclassing.
+ */
+export type DispatcherObserverType = {
+  readonly onFlowStart?:  (dagName: string, state: NodeStateInterface) => void;
+  readonly onFlowEnd?:    (dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>) => void;
+  readonly onNodeStart?:  (nodeName: string, state: NodeStateInterface, placementPath: readonly string[]) => void;
+  readonly onNodeEnd?:    (nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]) => void;
+  readonly onError?:      (nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]) => void;
+  readonly onPhaseEnter?: (dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]) => void;
+  readonly onPhaseExit?:  (dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]) => void;
+};
 
 /**
  * Constructor options for `Dagonizer`.
@@ -138,6 +163,16 @@ export type DagonizerOptionsType = {
    * Enable in dev/test to catch contract violations early.
    */
   validateOutputs?: boolean;
+  /**
+   * Optional array of observer records. Each observer's callbacks are muxed
+   * into the corresponding lifecycle hook, called in array order after any
+   * subclass override. The subclass hook-override pattern remains the primary
+   * mechanism; this option is for the per-turn-rebuilt dispatcher pattern where
+   * subclassing is impractical.
+   *
+   * Observers are called in array order, after any subclass override.
+   */
+  observers?: ReadonlyArray<DispatcherObserverType>;
 }
 
 
@@ -226,6 +261,15 @@ export interface DagonizerInterface<
    * child DAGs) can be registered on the dispatcher.
    */
   registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void;
+
+  /**
+   * Register a plugin on this dispatcher. The plugin's `register()` method is
+   * called immediately with this dispatcher as the receiver.
+   *
+   * Plugin registration order matches call order. Register embedded-DAG plugin
+   * bundles before the parent DAG that references their names.
+   */
+  registerPlugin(plugin: PluginInterface): void;
 }
 
 /**
@@ -317,6 +361,12 @@ implements
    * hidden class) without a fresh closure-bearing adapter on each invocation.
    */
   readonly #relayHooks: DispatcherHooksInterface;
+  /**
+   * Muxed observer records supplied via `DagonizerOptionsType.observers`.
+   * Each lifecycle hook iterates this array after calling the subclass override.
+   * Empty (frozen) array when no observers are supplied — zero overhead.
+   */
+  readonly #observers: ReadonlyArray<DispatcherObserverType>;
   #correlationSeq = 0;
 
   /**
@@ -361,6 +411,7 @@ implements
     this.registryVersion = resolved.registryVersion;
     this.validateOutputs = resolved.validateOutputs;
     this.#outputSchemaValidator = resolved.validateOutputs ? new DispatcherOutputSchemaValidator() : null;
+    this.#observers = resolved.observers;
     // Construct the engine module graph in one place. `EngineComposer.compose`
     // owns the dependency ordering (bodyExecutor before its consumers, the three
     // executors before placementDispatch); `this` satisfies `EngineHostType`
@@ -431,39 +482,81 @@ implements
   // protected access is in scope. They satisfy `DispatcherRelaySourceInterface`.
   // ---------------------------------------------------------------------------
 
-  /** Relay a flow-start event from the node scheduler into `onFlowStart`. */
+  /**
+   * Relay a flow-start event from the node scheduler into `onFlowStart`, then
+   * call each muxed observer's `onFlowStart` callback in registration order.
+   */
   relayFlowStart(dagName: string, state: NodeStateInterface): void {
     this.onFlowStart(dagName, state);
+    for (const obs of this.#observers) {
+      obs.onFlowStart?.(dagName, state);
+    }
   }
 
-  /** Relay a flow-end event from the node scheduler into `onFlowEnd`. */
+  /**
+   * Relay a flow-end event from the node scheduler into `onFlowEnd`, then
+   * call each muxed observer's `onFlowEnd` callback in registration order.
+   */
   relayFlowEnd(dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>): void {
     this.onFlowEnd(dagName, state, result);
+    for (const obs of this.#observers) {
+      obs.onFlowEnd?.(dagName, state, result);
+    }
   }
 
-  /** Relay a node-start event from a worker/contained sub-DAG into `onNodeStart`. */
+  /**
+   * Relay a node-start event from a worker/contained sub-DAG into `onNodeStart`,
+   * then call each muxed observer's `onNodeStart` callback in registration order.
+   */
   relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.onNodeStart(nodeName, state, placementPath);
+    for (const obs of this.#observers) {
+      obs.onNodeStart?.(nodeName, state, placementPath);
+    }
   }
 
-  /** Relay a node-end event from a worker/contained sub-DAG into `onNodeEnd`. */
+  /**
+   * Relay a node-end event from a worker/contained sub-DAG into `onNodeEnd`,
+   * then call each muxed observer's `onNodeEnd` callback in registration order.
+   */
   relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.onNodeEnd(nodeName, output, state, placementPath);
+    for (const obs of this.#observers) {
+      obs.onNodeEnd?.(nodeName, output, state, placementPath);
+    }
   }
 
-  /** Relay an error event from a worker/contained sub-DAG into `onError`. */
+  /**
+   * Relay an error event from a worker/contained sub-DAG into `onError`,
+   * then call each muxed observer's `onError` callback in registration order.
+   */
   relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.onError(nodeName, error, state, placementPath);
+    for (const obs of this.#observers) {
+      obs.onError?.(nodeName, error, state, placementPath);
+    }
   }
 
-  /** Relay a phase-enter event from a worker/contained sub-DAG into `onPhaseEnter`. */
+  /**
+   * Relay a phase-enter event from a worker/contained sub-DAG into `onPhaseEnter`,
+   * then call each muxed observer's `onPhaseEnter` callback in registration order.
+   */
   relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.onPhaseEnter(dagName, phase, placementName, state, placementPath);
+    for (const obs of this.#observers) {
+      obs.onPhaseEnter?.(dagName, phase, placementName, state, placementPath);
+    }
   }
 
-  /** Relay a phase-exit event from a worker/contained sub-DAG into `onPhaseExit`. */
+  /**
+   * Relay a phase-exit event from a worker/contained sub-DAG into `onPhaseExit`,
+   * then call each muxed observer's `onPhaseExit` callback in registration order.
+   */
   relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
     this.onPhaseExit(dagName, phase, placementName, state, placementPath);
+    for (const obs of this.#observers) {
+      obs.onPhaseExit?.(dagName, phase, placementName, state, placementPath);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -906,6 +999,7 @@ implements
     channels: Readonly<Record<string, HandoffChannelInterface>>;
     registryVersion: string;
     validateOutputs: boolean;
+    observers: ReadonlyArray<DispatcherObserverType>;
   }> {
     return {
       'accessor':        partial.accessor ?? DAGONIZER_OPTION_DEFAULTS.accessor,
@@ -913,6 +1007,7 @@ implements
       'channels':        partial.channels ?? DAGONIZER_OPTION_DEFAULTS.channels,
       'registryVersion': partial.registryVersion ?? DAGONIZER_OPTION_DEFAULTS.registryVersion,
       'validateOutputs': partial.validateOutputs ?? DAGONIZER_OPTION_DEFAULTS.validateOutputs,
+      'observers':       partial.observers ?? DAGONIZER_OPTION_DEFAULTS.observers,
     };
   }
 
@@ -939,5 +1034,16 @@ implements
    */
   registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void {
     this.dagRegistrar.registerBundle(bundle);
+  }
+
+  /**
+   * Register a plugin on this dispatcher. The plugin's `register()` method is
+   * called immediately with this dispatcher as the receiver.
+   *
+   * Plugin registration order matches call order. Register embedded-DAG plugin
+   * bundles before the parent DAG that references their names.
+   */
+  registerPlugin(plugin: PluginInterface): void {
+    plugin.register(this);
   }
 }

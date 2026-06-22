@@ -88,3 +88,6 @@ export type { ChildStateFactoryType } from './ChildStateFactoryType.js';
 
 // Trigger: drives a `DagRunner` (once / cli / event / request).
 export type { TriggerInterface } from './TriggerInterface.js';
+
+// Plugin: one-method contract for packages that register bundles on the dispatcher.
+export type { PluginInterface, PluginReceiverType } from './PluginInterface.js';

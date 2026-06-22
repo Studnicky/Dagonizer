@@ -96,6 +96,7 @@ export {
   NodeResultSchema,
   NodeStateDataSchema,
   ExecutionResultSchema,
+  ParkedSchema,
   ValidationResultSchema,
   DAGErrorJSONSchema,
   GatherStrategySchema,
@@ -137,6 +138,7 @@ export type {
   ExecutionResultWireType,
   ExecutionResultType,
   InterruptionInfoType,
+  ParkedType,
   ValidationResultType,
   DAGErrorJSONType,
   JsonSchemaType,
@@ -203,7 +205,7 @@ export type { DagContainerOptionsType } from './container/DagContainerBase.js';
 
 export { Dagonizer } from './Dagonizer.js';
 export { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './entities/constants/ProgressKey.js';
-export type { DagonizerOptionsType, ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './Dagonizer.js';
+export type { DagonizerOptionsType, DispatcherObserverType, ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './Dagonizer.js';
 export { Execution } from './Execution.js';
 
 // =============================================================================
@@ -279,6 +281,7 @@ export type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js
 
 export type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
+export type { PluginInterface, PluginReceiverType } from './contracts/PluginInterface.js';
 export type { DagOutcomeType } from './contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
 export type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';

@@ -96,6 +96,9 @@ export class DAGValidator {
     }
 
     for (const output of dagNode.outputs) {
+      // 'parked' is a reserved engine-level output for HITL park-and-correlate.
+      // The engine intercepts it before routing; no placement-level routing entry is required.
+      if (output === 'parked') continue;
       if (!(output in nodeConfig.outputs)) {
         errors.push(`Node '${nodeConfig.name}': registered node '${dagNode.name}' declares output '${output}' but no routing is defined`);
       }

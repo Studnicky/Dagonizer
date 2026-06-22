@@ -18,13 +18,14 @@ export const DAGLifecycleStateSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/DAGLifecycleStateType',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['variant', 'startedAt', 'finishedAt', 'error', 'reason'],
+  'required': ['variant', 'startedAt', 'finishedAt', 'error', 'reason', 'correlationKey'],
   'properties': {
-    'variant': { 'type': 'string', 'enum': ['pending', 'running', 'completed', 'failed', 'cancelled', 'timed_out'] },
+    'variant': { 'type': 'string', 'enum': ['pending', 'running', 'awaiting-input', 'completed', 'failed', 'cancelled', 'timed_out'] },
     'startedAt': { 'type': ['integer', 'null'], 'minimum': 0 },
     'finishedAt': { 'type': ['integer', 'null'], 'minimum': 0 },
     'error': { 'type': ['object', 'null'] },
     'reason': { 'type': ['string', 'null'] },
+    'correlationKey': { 'type': ['string', 'null'] },
   },
   'additionalProperties': false,
 } as const;

@@ -102,6 +102,8 @@ const sidebar = [
       { text: 'Example 21: Per-node timeout',          link: '/examples/21-per-node-timeout' },
       { text: 'Example 28: DagRunner',                link: '/examples/28-runner' },
       { text: 'Example 30: EventBus and SseStream',    link: '/examples/30-progress' },
+      { text: 'Example 31: HITL park-and-correlate',   link: '/examples/31-hitl' },
+      { text: 'Example 33: Plugin loader + multi-observer mux', link: '/examples/33-plugin' },
     ],
   },
   {
@@ -170,6 +172,7 @@ const sidebar = [
       { text: 'State accessors',           link: '/guide/state-accessor' },
       { text: 'Shared state',              link: '/guide/shared-state' },
       { text: 'Checkpoint and resume',     link: '/guide/checkpoint' },
+      { text: 'HITL park-and-correlate',  link: '/guide/hitl' },
       { text: 'Checkpoint persistence',    link: '/guide/persistence' },
       { text: 'Visualization',             link: '/guide/visualization' },
       { text: 'Distribution and cloud',    link: '/guide/distribution' },
@@ -182,6 +185,7 @@ const sidebar = [
     collapsed: false,
     items: [
       { text: 'Plugins overview', link: '/guide/plugins' },
+      { text: 'Plugin loader',    link: '/guide/plugins#plugin-loader' },
     ],
   },
   {

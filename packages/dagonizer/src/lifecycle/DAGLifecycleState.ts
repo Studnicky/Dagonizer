@@ -15,17 +15,23 @@
  */
 
 /**
- * Uniform 5-field discriminated union of the six DAG lifecycle states.
+ * Uniform 5-field discriminated union of the seven DAG lifecycle states.
  * Timestamps are monotonic milliseconds from `Clock.monotonicMs()`.
  * Fields that are not meaningful for a given `variant` are `null`.
+ *
+ * The `awaiting-input` variant is the HITL park state: execution is
+ * suspended pending an external signal. It is NOT terminal — the run can
+ * resume via `dispatcher.resume()`. The `correlationKey` field is an opaque
+ * caller-supplied key used to correlate the resume with the parked run.
  */
 export type DAGLifecycleStateType =
-  | { variant: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
-  | { variant: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
-  | { variant: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
-  | { variant: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
-  | { variant: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
-  | { variant: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null };
+  | { variant: 'pending';        startedAt: null;   finishedAt: null;   error: null;  reason: null; correlationKey: null }
+  | { variant: 'running';        startedAt: number; finishedAt: null;   error: null;  reason: null; correlationKey: null }
+  | { variant: 'awaiting-input'; startedAt: number; finishedAt: null;   error: null;  reason: null; correlationKey: string }
+  | { variant: 'completed';      startedAt: number; finishedAt: number; error: null;  reason: null; correlationKey: null }
+  | { variant: 'failed';         startedAt: number; finishedAt: number; error: Error; reason: null; correlationKey: null }
+  | { variant: 'cancelled';      startedAt: number; finishedAt: number; error: null;  reason: string; correlationKey: null }
+  | { variant: 'timed_out';      startedAt: number; finishedAt: number; error: null;  reason: null; correlationKey: null };
 
 /**
  * Events consumed by `DAGLifecycleMachine.transition()`. The `at` field
@@ -38,4 +44,5 @@ export type DAGLifecycleEventType =
   | { type: 'succeed'; at: number }
   | { type: 'fail'; error: Error; at: number }
   | { type: 'cancel'; reason: string; at: number }
-  | { type: 'timeout'; at: number };
+  | { type: 'timeout'; at: number }
+  | { type: 'park'; correlationKey: string; at: number };

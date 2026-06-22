@@ -67,6 +67,7 @@ export type { NodeErrorType } from '../entities/node/NodeError.js';
 export type { NodeOutputType } from '../entities/node/NodeOutput.js';
 export type { NodeResultType } from '../entities/node/NodeResult.js';
 export type { ExecutionResultType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
+export type { ParkedType } from '../entities/execution/Parked.js';
 export type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ export type { ScatterOptionsType, TypedEmbeddedDAGOptionsType } from '../builder
 // ---------------------------------------------------------------------------
 
 export type { Execution } from '../Execution.js';
-export type { DagonizerOptionsType } from '../Dagonizer.js';
+export type { DagonizerOptionsType, DispatcherObserverType } from '../Dagonizer.js';
 export type { GatherExecutionType, GatherRecordType } from '../contracts/GatherExecution.js';
 export type { GatherStrategy } from '../core/GatherStrategies.js';
 export type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
@@ -177,6 +178,7 @@ export type {
 
 export type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
 export type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface.js';
+export type { PluginInterface, PluginReceiverType } from '../contracts/PluginInterface.js';
 
 // ---------------------------------------------------------------------------
 // Checkpoint

@@ -95,6 +95,22 @@ export interface NodeStateInterface {
   markTimedOut(): void;
 
   /**
+   * Transition lifecycle to `awaiting-input` (HITL park). The node calls
+   * this before routing to the reserved `'parked'` output. The engine reads
+   * the correlationKey from state metadata and surfaces it in
+   * `ExecutionResultType.parked`. Stores `correlationKey` in state metadata
+   * under the `'correlationKey'` key as a side-effect.
+   */
+  park(correlationKey: string): void;
+
+  /**
+   * True iff the lifecycle is in the `awaiting-input` (parked) state.
+   * Use this in post-execution checks to determine whether the flow is
+   * waiting for human input.
+   */
+  readonly 'parked': boolean;
+
+  /**
    * Reset the lifecycle to `pending`. Called by the dispatcher before
    * re-entering a flow on resume when the prior run ended in a terminal
    * state (failed, cancelled, timed_out) due to a crash or interrupt.
@@ -286,6 +302,15 @@ export class NodeStateBase implements NodeStateInterface {
 
   markTimedOut(): void {
     this.#dispatch({ "type": 'timeout', "at": Clock.monotonicMs() }, 'timed_out');
+  }
+
+  park(correlationKey: string): void {
+    this.#dispatch({ "type": 'park', correlationKey, "at": Clock.monotonicMs() }, 'awaiting-input');
+    this.setMetadata('correlationKey', correlationKey);
+  }
+
+  get parked(): boolean {
+    return DAGLifecycleMachine.isParked(this.#lifecycle);
   }
 
   resetLifecycle(): void {

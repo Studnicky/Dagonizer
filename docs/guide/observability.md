@@ -80,6 +80,35 @@ OpenTelemetry spans map directly onto the `onFlowStart` / `onFlowEnd` and `onNod
 
 Wire `@opentelemetry/api` in through the constructor as a `Tracer` instance. The subclass holds the `Map<string, Span>` as a private field; nothing leaks to Dagonizer's public surface.
 
+## `observers` option: mux without subclassing
+
+Per-turn-rebuilt dispatchers (serverless handlers, per-request factories) cannot use subclassing because the dispatcher is constructed fresh each turn. The `observers` option accepts a `ReadonlyArray<DispatcherObserverType>` — each record's callbacks are muxed into the corresponding lifecycle hook in array order, after any subclass override.
+
+```ts
+import { Dagonizer } from '@studnicky/dagonizer';
+import type { DispatcherObserverType } from '@studnicky/dagonizer';
+
+const logObserver: DispatcherObserverType = {
+  onFlowStart: (dagName) => console.log('[flow] start', dagName),
+  onFlowEnd:   (dagName, _, res) => console.log('[flow] end', dagName, res.terminalOutcome),
+  onNodeEnd:   (name, output) => console.log('[node]', name, '->', output),
+};
+
+const metrics = { nodeStart: 0, nodeEnd: 0 };
+const metricsObserver: DispatcherObserverType = {
+  onNodeStart: () => { metrics.nodeStart++; },
+  onNodeEnd:   () => { metrics.nodeEnd++; },
+};
+
+const dispatcher = new Dagonizer<MyState>({
+  observers: [logObserver, metricsObserver],
+});
+```
+
+The `DispatcherObserverType` record mirrors the seven protected hooks. Every callback is optional — include only the hooks you need. Observers fire after the subclass override (if any), so both mechanisms are composable: a subclass can still call `super.onFlowStart(...)` and the muxed observers fire after it.
+
+See also the full example: `npx tsx examples/33-plugin.ts` (the `#observers-option` region).
+
 ## Multi-observer composition
 
 When one consumer owns the dispatcher, the subclass pattern is sufficient. For multiple observers (logger plus tracer plus metrics), accept each as a constructor parameter and dispatch to all inside the relevant hook overrides:

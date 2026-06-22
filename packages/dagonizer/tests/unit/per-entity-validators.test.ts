@@ -200,6 +200,7 @@ void describe('Validator per-entity sub-validators', () => {
         'finishedAt': null,
         'error': null,
         'reason': null,
+        'correlationKey': null,
       }),
       true,
     );

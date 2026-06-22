@@ -468,20 +468,21 @@ const cancelResult = await dispatcher.execute('the-archivist', cancelVisitor, {
 
 // #region lifecycle-state-switch
 // lifecycle.variant is a discriminated union:
-//   'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out'.
+//   'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'awaiting-input'.
 // Each arm carries only the fields relevant to that outcome (e.g. reason, finishedAt).
 const lc = cancelResult.state.lifecycle;
 type LifecycleVariant = typeof lc.variant;
 const lifecycleLog: Record<LifecycleVariant, () => void> = {
-  'completed': () => { logger.result(`responded: ${cancelResult.state.draft}`); },
-  'cancelled': () => {
+  'completed':      () => { logger.result(`responded: ${cancelResult.state.draft}`); },
+  'cancelled':      () => {
     const cancelled = lc as Extract<typeof lc, { variant: 'cancelled' }>;
     logger.result(`visitor abandoned at: ${cancelled.reason}`);
   },
-  'timed_out': () => { logger.result(`hit deadline at: ${lc.finishedAt}`); },
-  'failed':    () => { logger.result(`execution failed at: ${lc.finishedAt}`); },
-  'pending':   () => { logger.result('lifecycle: pending'); },
-  'running':   () => { logger.result('lifecycle: running'); },
+  'timed_out':      () => { logger.result(`hit deadline at: ${lc.finishedAt}`); },
+  'failed':         () => { logger.result(`execution failed at: ${lc.finishedAt}`); },
+  'pending':        () => { logger.result('lifecycle: pending'); },
+  'running':        () => { logger.result('lifecycle: running'); },
+  'awaiting-input': () => { logger.result(`parked — awaiting human input (key: ${lc.correlationKey})`); },
 };
 lifecycleLog[lc.variant]();
 // #endregion lifecycle-state-switch

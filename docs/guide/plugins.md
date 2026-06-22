@@ -121,6 +121,64 @@ Each contract subpath is independently consumable:
 
 Consumers install only what they use. The dependency graph stays acyclic.
 
+## Plugin loader
+
+### `PluginInterface`
+
+A plugin package implements `PluginInterface` — one method, `register(dispatcher)` — to install its nodes and DAGs onto any dispatcher. The receiver is typed as `PluginReceiverType`, a narrow view that only exposes `registerBundle`. The plugin cannot reach any other dispatcher surface.
+
+```ts
+import type { PluginInterface, PluginReceiverType, DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
+
+export class NormalizePlugin implements PluginInterface {
+  private bundle(): DispatcherBundleType<NodeStateInterface> {
+    return {
+      nodes: [new NormalizeNode(), new SummarizeNode()],
+      dags:  [pluginDag],
+    };
+  }
+
+  register(dispatcher: PluginReceiverType): void {
+    dispatcher.registerBundle(this.bundle());
+  }
+}
+```
+
+### `Dagonizer.registerPlugin(plugin)`
+
+The caller installs a plugin with a single call. Order matters: register plugins before the parent DAG that references their sub-DAG names.
+
+```ts
+import { Dagonizer } from '@studnicky/dagonizer';
+
+const dispatcher = new Dagonizer<MyState>();
+dispatcher.registerPlugin(new NormalizePlugin());   // installs nodes + sub-DAG
+dispatcher.registerDAG(parentDag);                  // parent references plugin's sub-DAG
+```
+
+### `PluginDiscovery` (static DAG-walker)
+
+`PluginDiscovery` from `@studnicky/dagonizer/plugin` provides two static utilities for discovering which plugin DAGs a given entry DAG transitively needs:
+
+```ts
+import { PluginDiscovery } from '@studnicky/dagonizer/plugin';
+
+// Immediate literal dag references in one DAG's placement graph
+const names = PluginDiscovery.referencedDagNames(myDag);
+
+// Breadth-first walk of the full reachable forest
+const registry = new Map(dispatcher.listDAGs().map(d => [d.name, d]));
+const all = PluginDiscovery.walk(myDag, registry);
+```
+
+`dagFrom` references (runtime-resolved paths) are excluded from static discovery; only build-time `dag` literals are collected.
+
+### Full example
+
+<<< @/../examples/33-plugin.ts#plugin-registration
+
+Run: `npx tsx examples/33-plugin.ts`
+
 ## Related reference
 
 - [Architecture](../architecture)

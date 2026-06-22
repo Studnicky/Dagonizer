@@ -53,6 +53,8 @@ import { DAGErrorJSONSchema } from '../entities/errors/DAGErrorJSON.js';
 import type { DAGErrorJSONType } from '../entities/errors/DAGErrorJSON.js';
 import { ExecutionResultSchema, InterruptionInfoSchema } from '../entities/execution/ExecutionResult.js';
 import type { ExecutionResultWireType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
+import { ParkedSchema } from '../entities/execution/Parked.js';
+import type { ParkedType } from '../entities/execution/Parked.js';
 import type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 import { BridgeMessageSchema } from '../entities/executor/BridgeMessage.js';
 import { ExecutionRequestSchema } from '../entities/executor/ExecutionRequest.js';
@@ -228,6 +230,7 @@ export class Validator {
   static readonly executionResult:   EntityValidatorInterface<ExecutionResultWireType>      = Validator.compileNamed('ExecutionResult',   ExecutionResultSchema);
   static readonly interruptionInfo:  EntityValidatorInterface<InterruptionInfoType>     = Validator.compileNamed('InterruptionInfo',  InterruptionInfoSchema);
   static readonly dagLifecycleState: EntityValidatorInterface<DAGLifecycleStateDataType> = Validator.compileNamed('DAGLifecycleStateType', DAGLifecycleStateSchema);
+  static readonly parked:            EntityValidatorInterface<ParkedType>               = Validator.compileNamed('Parked',             ParkedSchema);
 
   // Persistence + reporting
   static readonly checkpoint:       EntityValidatorInterface<CheckpointDataType>    = Validator.compileNamed('CheckpointData',    CheckpointDataSchema);

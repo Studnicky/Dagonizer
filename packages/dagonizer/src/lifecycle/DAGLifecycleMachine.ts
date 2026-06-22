@@ -8,14 +8,19 @@
  *
  * Transitions:
  *
- *   pending  + start         → running   (startedAt)
- *   running  + succeed       → completed (finishedAt)
- *   running  + fail(error)   → failed    (finishedAt, error carried)
- *   running  + cancel(reason)→ cancelled (finishedAt, reason carried)
- *   running  + timeout       → timed_out (finishedAt)
+ *   pending        + start              → running        (startedAt)
+ *   running        + succeed            → completed      (finishedAt)
+ *   running        + fail(error)        → failed         (finishedAt, error carried)
+ *   running        + cancel(reason)     → cancelled      (finishedAt, reason carried)
+ *   running        + timeout            → timed_out      (finishedAt)
+ *   running        + park(correlationKey) → awaiting-input (finishedAt: null, correlationKey stored)
+ *   awaiting-input + start              → running        (restarts execution)
  *
  * Terminal stickiness: every variant in {completed, failed, cancelled, timed_out}
  * ignores all events and returns itself unchanged (by reference).
+ *
+ * The `awaiting-input` variant is NOT terminal — execution can resume.
+ * `isTerminal()` excludes it; `isParked()` detects it.
  *
  * Illegal transitions return the input state by reference. `NodeStateBase`
  * detects `next === current` after dispatch and throws a `DAGError`.
@@ -45,7 +50,7 @@ export class DAGLifecycleMachine {
   }
 
   static initial(): DAGLifecycleStateType {
-    return { 'variant': 'pending', 'startedAt': null, 'finishedAt': null, 'error': null, 'reason': null };
+    return { 'variant': 'pending', 'startedAt': null, 'finishedAt': null, 'error': null, 'reason': null, 'correlationKey': null };
   }
 
   static transition(
@@ -59,8 +64,8 @@ export class DAGLifecycleMachine {
     }
 
     // `isTerminal` is a type-predicate, so the early return above narrows
-    // `state` to the active (pending | running) variants — no cast.
-    type ActiveState = Extract<DAGLifecycleStateType, { variant: 'pending' | 'running' }>;
+    // `state` to the active (pending | running | awaiting-input) variants — no cast.
+    type ActiveState = Extract<DAGLifecycleStateType, { variant: 'pending' | 'running' | 'awaiting-input' }>;
     const activeState: ActiveState = state;
     // The TRANSITION_TABLE is keyed on `ActiveState['variant']` × `EventType`,
     // but the index signature returns `Handler<K,T> | undefined`. The wider
@@ -73,7 +78,7 @@ export class DAGLifecycleMachine {
     return transition ? transition(activeState, event) : state;
   }
 
-  /** True iff `state` has reached one of the four terminal variants. */
+  /** True iff `state` has reached one of the four terminal variants. `awaiting-input` is NOT terminal. */
   static isTerminal(
     state: DAGLifecycleStateType,
   ): state is Extract<DAGLifecycleStateType, { variant: 'completed' | 'failed' | 'cancelled' | 'timed_out' }> {
@@ -85,11 +90,18 @@ export class DAGLifecycleMachine {
     );
   }
 
+  /** True iff `state` is parked (`awaiting-input`). The run can resume via `dispatcher.resume()`. */
+  static isParked(
+    state: DAGLifecycleStateType,
+  ): state is Extract<DAGLifecycleStateType, { variant: 'awaiting-input' }> {
+    return state.variant === 'awaiting-input';
+  }
+
   private static handlePendingStart(
     _state: Extract<DAGLifecycleStateType, { variant: 'pending' }>,
     event: Extract<DAGLifecycleEventType, { type: 'start' }>,
   ): DAGLifecycleStateType {
-    return { 'variant': 'running', 'startedAt': event.at, 'finishedAt': null, 'error': null, 'reason': null };
+    return { 'variant': 'running', 'startedAt': event.at, 'finishedAt': null, 'error': null, 'reason': null, 'correlationKey': null };
   }
 
   private static handleRunningSucceed(
@@ -102,6 +114,7 @@ export class DAGLifecycleMachine {
       'finishedAt': event.at,
       'error': null,
       'reason': null,
+      'correlationKey': null,
     };
   }
 
@@ -115,6 +128,7 @@ export class DAGLifecycleMachine {
       'finishedAt': event.at,
       'error': event.error,
       'reason': null,
+      'correlationKey': null,
     };
   }
 
@@ -128,6 +142,7 @@ export class DAGLifecycleMachine {
       'finishedAt': event.at,
       'error': null,
       'reason': event.reason,
+      'correlationKey': null,
     };
   }
 
@@ -141,10 +156,32 @@ export class DAGLifecycleMachine {
       'finishedAt': event.at,
       'error': null,
       'reason': null,
+      'correlationKey': null,
     };
   }
 
-  private static readonly TRANSITION_TABLE: { [K in 'pending' | 'running']: { [T in EventType]?: Handler<K, T> } } = {
+  private static handleRunningPark(
+    state: Extract<DAGLifecycleStateType, { variant: 'running' }>,
+    event: Extract<DAGLifecycleEventType, { type: 'park' }>,
+  ): DAGLifecycleStateType {
+    return {
+      'variant': 'awaiting-input',
+      'startedAt': state.startedAt,
+      'finishedAt': null,
+      'error': null,
+      'reason': null,
+      'correlationKey': event.correlationKey,
+    };
+  }
+
+  private static handleAwaitingInputStart(
+    _state: Extract<DAGLifecycleStateType, { variant: 'awaiting-input' }>,
+    event: Extract<DAGLifecycleEventType, { type: 'start' }>,
+  ): DAGLifecycleStateType {
+    return { 'variant': 'running', 'startedAt': event.at, 'finishedAt': null, 'error': null, 'reason': null, 'correlationKey': null };
+  }
+
+  private static readonly TRANSITION_TABLE: { [K in 'pending' | 'running' | 'awaiting-input']: { [T in EventType]?: Handler<K, T> } } = {
     'pending': {
       'start': DAGLifecycleMachine.handlePendingStart,
     },
@@ -153,6 +190,10 @@ export class DAGLifecycleMachine {
       'fail': DAGLifecycleMachine.handleRunningFail,
       'cancel': DAGLifecycleMachine.handleRunningCancel,
       'timeout': DAGLifecycleMachine.handleRunningTimeout,
+      'park': DAGLifecycleMachine.handleRunningPark,
+    },
+    'awaiting-input': {
+      'start': DAGLifecycleMachine.handleAwaitingInputStart,
     },
   };
 }
