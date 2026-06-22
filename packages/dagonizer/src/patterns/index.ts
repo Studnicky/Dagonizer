@@ -2,15 +2,15 @@
  * @studnicky/dagonizer/patterns: pattern-tier public surface.
  *
  * Ships:
- *   - `MonadicNode<TState, TOutput, TServices>`: the root node base (the monad —
+ *   - `MonadicNode<TState, TOutput>`: the root node base (the monad —
  *     `execute(batch) → RoutedBatchType`), re-exported here from `core` for
  *     co-import with the pattern surface. Per-item pattern bases extend
  *     `ScalarNode` (which extends `MonadicNode`); hot-path nodes extend
  *     `MonadicNode` directly.
- *   - `AgentServicesType`: typed services record for agent-flow nodes.
  *   - Agent-flow template-method bases: `BuildChatRequestNode`, `CallModelNode`,
  *     `NormalizeResponseNode`, `DecodeTextToolCallsNode`, `AppendAssistantNode`,
  *     `NormalizeToolCallsNode`, `BuildToolWorksetsNode`, `CollectToolResultsNode`.
+ *     Agent nodes receive dependencies via constructor injection.
  *   - `LlmClientInterface`: minimal chat-shaped service contract; any
  *     `LlmAdapterInterface` satisfies it.
  *   - `TripleStoreInterface`: minimal RDF quad-store service contract.
@@ -25,8 +25,6 @@
  */
 
 export { MonadicNode } from '../core/MonadicNode.js';
-
-export type { AgentServicesType } from '../contracts/AgentServicesType.js';
 
 export {
   AgentBuilder,

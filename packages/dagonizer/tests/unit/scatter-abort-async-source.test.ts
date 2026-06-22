@@ -21,12 +21,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { ScatterProgressType } from '../../src/Dagonizer.js';
+import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ── test state ────────────────────────────────────────────────────────────────
@@ -127,7 +128,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
       if (n === ABORT_AFTER_COMPLETE) {
         controller.abort(new Error('test-abort'));
       }
-      state.processed.push(state.getMetadata<number>('item') ?? -1);
+      state.processed.push(state.getter.number('item', -1));
       return 'success';
     });
 
@@ -153,9 +154,10 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
       `cursor should be 'fan' after abort; got '${result.cursor}'`);
 
     // 2. The checkpoint must survive — progress entry must still be present.
-    const stored = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
-    assert.ok(stored !== undefined,
+    const storedRaw = result.state.getMetadata(SCATTER_PROGRESS_KEY);
+    assert.ok(storedRaw !== undefined,
       'checkpoint must be present after abort (ScatterCheckpoint.clear must NOT have run)');
+    const stored: StoredScatterProgressType = Validator.storedScatterProgress.validate(storedRaw);
 
     const entry = stored['fan'];
     assert.ok(entry !== undefined, 'expected a progress entry for placement "fan"');
@@ -183,7 +185,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     //    to confirm the checkpoint is usable.)
     const resumeDispatcher = new Dagonizer<AbortState>();
     resumeDispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], (state) => {
-      state.processed.push(state.getMetadata<number>('item') ?? -1);
+      state.processed.push(state.getter.number('item', -1));
       return 'success';
     }));
 
@@ -216,7 +218,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     // array source (index-stable), preserve the checkpoint metadata.
     const resumeState = new AbortState();
     // Copy the checkpoint metadata from the aborted state.
-    const abortedCheckpoint = result.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
+    const abortedCheckpoint = result.state.getMetadata(SCATTER_PROGRESS_KEY);
     if (abortedCheckpoint !== undefined) {
       resumeState.setMetadata(SCATTER_PROGRESS_KEY, abortedCheckpoint);
     }
@@ -247,7 +249,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
   void it('pre-aborted signal: pull-loop exits before processing any items', async () => {
     const dispatcher = new Dagonizer<AbortState>();
     dispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], (state) => {
-      state.processed.push(state.getMetadata<number>('item') ?? -1);
+      state.processed.push(state.getter.number('item', -1));
       return 'success';
     }));
     dispatcher.registerDAG(TestAbortDag.ofConcurrency('pre-aborted', 2));
@@ -292,7 +294,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
           reject(context.signal.reason);
         }, { 'once': true });
       });
-      const item = state.getMetadata<number>('item') ?? -1;
+      const item = state.getter.number('item', -1);
       executedItems.push(item);
       if (++completedCount === ABORT_AFTER) {
         controller.abort(new Error('abort-at-5'));
@@ -337,7 +339,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     const resumeItems: number[] = [];
     const resumeDispatcher = new Dagonizer<AbortState>();
     resumeDispatcher.registerNode(TestNode.make<AbortState>('worker', ['success'], (state) => {
-      const item = state.getMetadata<number>('item') ?? -1;
+      const item = state.getter.number('item', -1);
       resumeItems.push(item);
       state.processed.push(item);
       return 'success';
@@ -346,7 +348,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
 
     // Restore state for resume.
     const resumeState = new AbortState();
-    const checkpoint = partial.state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
+    const checkpoint = partial.state.getMetadata(SCATTER_PROGRESS_KEY);
     if (checkpoint !== undefined) {
       resumeState.setMetadata(SCATTER_PROGRESS_KEY, checkpoint);
     }

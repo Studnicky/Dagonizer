@@ -21,7 +21,7 @@ import type { RunNodesBatchType, RunOptionsType } from './ScatterDispatch.js';
  * provide a concrete implementation so the body-run primitive depends only on
  * these methods, never on private dispatcher members.
  */
-export interface BodyRunPortInterface<TServices> {
+export interface BodyRunPortInterface {
   /**
    * Run a named sub-DAG body in-process through the canonical `runNodes`
    * generator. The returned generator yields each inner node result and returns
@@ -43,7 +43,7 @@ export interface BodyRunPortInterface<TServices> {
   /** Build an observer relay bound to `state` for worker-side event forwarding. */
   relayFor(state: NodeStateInterface): ObserverRelayInterface;
   /** Build a node context for a body invocation, substituting a never-firing signal when absent. */
-  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
+  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType;
 }
 
 /**
@@ -83,10 +83,10 @@ export type BodyRunResultType = {
  * `infrastructureError` field carries the first transport failure (if any) so
  * the caller applies the routing policy its cardinality requires.
  */
-export class BodyExecutor<TServices> {
-  readonly #source: BodyRunPortInterface<TServices>;
+export class BodyExecutor {
+  readonly #source: BodyRunPortInterface;
 
-  constructor(source: BodyRunPortInterface<TServices>) {
+  constructor(source: BodyRunPortInterface) {
     this.#source = source;
   }
 

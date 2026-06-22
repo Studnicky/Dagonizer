@@ -51,9 +51,8 @@ export abstract class RequestTrigger<
   TInput,
   TState extends NodeStateInterface,
   TOutput,
-  TServices = undefined,
-> implements TriggerInterface<TInput, TState, TOutput, TServices> {
-  #runner: DagRunnerInterface<TInput, TState, TOutput, TServices> | null;
+> implements TriggerInterface<TInput, TState, TOutput> {
+  #runner: DagRunnerInterface<TInput, TState, TOutput> | null;
 
   constructor() {
     this.#runner = null;
@@ -63,7 +62,7 @@ export abstract class RequestTrigger<
    * Attach to a runner. Stores the runner reference for use in `fire`.
    * Resolves immediately — no subscription is registered.
    */
-  async attach(runner: DagRunnerInterface<TInput, TState, TOutput, TServices>): Promise<void> {
+  async attach(runner: DagRunnerInterface<TInput, TState, TOutput>): Promise<void> {
     this.#runner = runner;
   }
 

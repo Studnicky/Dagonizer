@@ -37,9 +37,10 @@
  */
 
 import { ArchivistState } from './ArchivistState.ts';
-import { archivistBundle } from './dag.ts';
-import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
-import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
+import { ArchivistNodes } from './nodes/ArchivistNodes.ts';
+import { ArchivistBundleFactory } from './dag.ts';
+import { BookSearchScatterBundleFactory } from './embedded-dags/BookSearchScatterDAG.ts';
+import { ComposeRetryLoopBundleFactory } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedArchivist } from './ObservedArchivist.ts';
@@ -282,7 +283,7 @@ const services: ArchivistServices = {
 // own internally-owned logger via protected hook overrides (the sole
 // observability surface). The driver reads `dispatcher.logger` for its own
 // stage / result display so both streams share one console sink.
-const dispatcher = new ObservedArchivist({ services });
+const dispatcher = new ObservedArchivist();
 
 // ── Tool registry (molecular pattern) ────────────────────────────────────
 // Register each book-search tool as an embeddable `tool:<name>` DAG.
@@ -296,14 +297,18 @@ toolRegistry.register(new OpenLibrarySearchTool());
 toolRegistry.register(new GoogleBooksTool());
 toolRegistry.register(new SubjectSearchTool());
 toolRegistry.register(new WikipediaSummaryTool());
-dispatcher.registerBundle(toolRegistry.bundle<ArchivistServices>());
+dispatcher.registerBundle(toolRegistry.bundle());
 
 // ── Bundle registration (molecular pattern) ──────────────────────────────
 // Each bundle packages its nodes + DAG. Embedded-DAG bundles register first
 // so the parent's semantic validator can resolve embedded references by name.
-dispatcher.registerBundle(bookSearchScatterBundle);
-dispatcher.registerBundle(composeRetryLoopBundle);
-dispatcher.registerBundle(archivistBundle);
+// Construct every services-injected node exactly once; the shared set is
+// passed to all three factories so duplicate registrations refer to identical
+// instances and the registrar accepts them.
+const nodes = ArchivistNodes.build(services);
+dispatcher.registerBundle(BookSearchScatterBundleFactory.create(nodes));
+dispatcher.registerBundle(ComposeRetryLoopBundleFactory.create(nodes));
+dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
 
 // ── Demo run ─────────────────────────────────────────────────────────────
 const visitor = new ArchivistState();

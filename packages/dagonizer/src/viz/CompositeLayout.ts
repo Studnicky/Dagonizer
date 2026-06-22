@@ -87,6 +87,15 @@ type Resolved = {
 export class CompositeLayout {
   private constructor() { /* static class */ }
 
+  // dagre's graphlib types `g.node()` as a geometry-less `Label`, but after
+  // `dagreLib.layout(g)` the runtime value carries `{ x, y }`. This `noun.is`
+  // guard narrows that value cast-free; a missing node yields `undefined`.
+  private static hasPosition(node: unknown): node is { readonly x: number; readonly y: number } {
+    if (typeof node !== 'object' || node === null) return false;
+    if (!('x' in node) || !('y' in node)) return false;
+    return typeof node.x === 'number' && typeof node.y === 'number';
+  }
+
   // Separation tuned so cytoscape's round-taxi edges have room to route
   // orthogonally without colliding with sibling nodes, AND so edge labels
   // (route names as mid-edge pills) don't overlap node bodies. rankSep
@@ -261,12 +270,11 @@ export class CompositeLayout {
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
       const nodeId = PlacementUtils.idIn(prefix, placement.name);
-      // dagre's graphlib types `g.node()` as `Label` (a plain object with no
-      // geometry properties). The actual runtime value is always `{x, y, width,
-      // height}` after `dagreLib.layout(g)` has run; the cast makes this
-      // accessible. `undefined` is returned for ids not present in the graph.
-      const dagrePos = g.node(nodeId) as { x: number; y: number } | undefined;
-      if (dagrePos === undefined) continue;
+      // dagre's graphlib types `g.node()` as `Label` (no geometry properties).
+      // After `dagreLib.layout(g)` the runtime value carries `{x, y}`; the
+      // `hasPosition` guard narrows it cast-free (and rejects missing ids).
+      const dagrePos = g.node(nodeId);
+      if (!CompositeLayout.hasPosition(dagrePos)) continue;
 
       if (PlacementUtils.embeddedDagName(placement) !== null) {
         const sub = subLayouts.get(placement.name);

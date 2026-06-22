@@ -21,7 +21,7 @@ import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { Timeout } from '../entities/Timeout.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-export interface DagTaskInterface<TServices = undefined> {
+export interface DagTaskInterface {
   /** Name of the registered DAG to run. */
   dagName: string;
   /** Nesting path of embedded-DAG placement names leading to this execution, for observability. */
@@ -32,8 +32,8 @@ export interface DagTaskInterface<TServices = undefined> {
   timeout: Timeout;
   /** Live seeded child clone. In-process containers execute against this directly. */
   state: NodeStateInterface;
-  /** Composed `NodeContext` carrying the abort signal and services record for this task. */
-  context: NodeContextType<TServices>;
+  /** Composed `NodeContext` carrying the abort signal for this task. */
+  context: NodeContextType;
   /**
    * Materialise the wire form by snapshotting the live clone. Isolating
    * containers call this to obtain the `ExecutionRequest` they send across

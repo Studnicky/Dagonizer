@@ -1,6 +1,6 @@
 ---
 title: 'Phase 10: Shared state'
-description: 'Cross-DAG shared state via Store, MemoryStore, and TypedStore. Parent and child DAGs read and write the same backing store through the services record, with a checkpoint round-trip that preserves the store across resume.'
+description: 'Cross-DAG shared state via Store, MemoryStore, and TypedStore. Parent and child DAGs read and write the same backing store injected into each node constructor, with a checkpoint round-trip that preserves the store across resume.'
 seeAlso:
   - text: 'Shared state guide'
     link: '../guide/shared-state'
@@ -19,21 +19,19 @@ seeAlso:
 import { DAGBuilder, NodeOutputBuilder, NodeStateBase } from '@studnicky/dagonizer';
 import type { NodeInterface } from '@studnicky/dagonizer/contracts';
 
-interface Services { log: { update: (k: string, fn: (c?: string) => string) => Promise<void> } }
-
-class StepANode implements NodeInterface<NodeStateBase, 'done', Services> {
+class StepANode implements NodeInterface<NodeStateBase, 'done'> {
   readonly name = 'step-a';
   readonly outputs = ['done'] as const;
   async execute() { return NodeOutputBuilder.of('done'); }
 }
 
-class StepBNode implements NodeInterface<NodeStateBase, 'done', Services> {
+class StepBNode implements NodeInterface<NodeStateBase, 'done'> {
   readonly name = 'step-b';
   readonly outputs = ['done'] as const;
   async execute() { return NodeOutputBuilder.of('done'); }
 }
 
-class ChildStepNode implements NodeInterface<NodeStateBase, 'done', Services> {
+class ChildStepNode implements NodeInterface<NodeStateBase, 'done'> {
   readonly name = 'child-step';
   readonly outputs = ['done'] as const;
   async execute() { return NodeOutputBuilder.of('done'); }
@@ -56,15 +54,15 @@ const sharedStateRegistry = new Map([['sub-flow', childDag]]);
 
 # Phase 10: Shared state
 
-A `MemoryStore` lives on the services record, threaded through every node and every scatter clone. Parent and child append entries to the same store without passing values through `inputs` or `gather`. `Checkpoint.capture` snapshots the store alongside the parent state; `Checkpoint.load` + `restoreStores` restores it on resume.
+A `MemoryStore` is passed into each node's constructor. Parent and child append entries to the same store without passing values through `inputs` or `gather`. `Checkpoint.capture` snapshots the store alongside the parent state; `Checkpoint.load` + `restoreStores` restores it on resume.
 
 <DagGraph :dag="parentDag" :embedded-d-a-gs="sharedStateRegistry" :expand-all="true" aria-label="Parent DAG with embedded-DAG sub-flow; both write to the same shared store." />
 
 ## Code
 
-### Services record with a `Store`
+### Constructor injection
 
-The services record declares one field of type `Store`. The dispatcher binds a concrete `MemoryStore` instance at construction time; every node sees the same instance via `context.services.log`:
+Each node accepts a `StoreInterface` in its constructor. The same `MemoryStore` instance is passed to all three nodes at registration time; every node accesses it as a private field:
 
 <<< @/../examples/dags/10-shared-state.ts#services
 
@@ -76,13 +74,13 @@ The child DAG runs a single `child-step` placement; it never references the stor
 
 ### Parent DAG with embedded-DAG placement
 
-`run-child` is the embedded-DAG placement. Parent and child both call `context.services.log.update(...)` against the same backing store, so `step-a`, `child-step`, and `step-b` accumulate to one entry list in execution order:
+`run-child` is the embedded-DAG placement. Parent and child both call `this.log.update(...)` against the same constructor-injected store, so `step-a`, `child-step`, and `step-b` accumulate to one entry list in execution order:
 
 <<< @/../examples/dags/10-shared-state.ts#parent-dag
 
 ### Store initialisation + run
 
-The dispatcher takes the store on `services`. After execution, the same instance carries the writes from every node:
+The `MemoryStore` is constructed before the nodes and passed into each node at registration. After execution, the same instance carries the writes from every node:
 
 <<< @/../examples/10-shared-state.ts#store-init
 
@@ -94,11 +92,11 @@ The runnable example covers the full lifecycle: a normal run, then a second run 
 
 ## What it demonstrates
 
-- **`Store` on the services record.** `Dagonizer<TState, TServices>` is generic over the services shape. The `MemoryStore` instance is the same reference every node receives via `context.services.log`. See the `services` region.
-- **Single store, many writers.** `step-a`, `child-step`, `step-b` all call `log.update('entries', ...)` against one instance. Order of the resulting entries reflects execution order, not topology.
-- **Scatter clones inherit the services record.** `child-step` sees the same `log` as the parent without any `inputs` or `gather` for the store. `inputs`/`gather` are for parent/clone state transfer; stores are orthogonal.
-- **`Checkpoint.capture({ stores })`.** Capturing a checkpoint with the `stores` option snapshots each named store alongside the state. The capture is keyed by the same name the services record uses (`log`).
-- **`Checkpoint.load(...).restoreStores({ log: freshLog })`.** Restores the store contents into a fresh instance. The resumed dispatcher uses the fresh instance on its services record, so the resume continues from the captured store contents.
+- **Constructor injection.** Each node accepts a `StoreInterface` in its constructor. The `MemoryStore` is constructed once and passed to `new StepANode(log)`, `new ChildStepNode(log)`, and `new StepBNode(log)` at registration time.
+- **Single store, many writers.** `step-a`, `child-step`, `step-b` all call `this.log.update('entries', ...)` against the same instance. Order of the resulting entries reflects execution order, not topology.
+- **Embedded-DAG child shares the store.** `child-step` holds the same `log` instance as the parent nodes — passed via constructor, not threaded through `inputs` or `gather`. `inputs`/`gather` are for parent/clone state transfer; stores are orthogonal.
+- **`Checkpoint.capture({ stores })`.** Capturing a checkpoint with the `stores` option snapshots each named store alongside the state. The store is keyed by a name matching what `restoreStores` expects (`log`).
+- **`Checkpoint.load(...).restoreStores({ log: freshLog })`.** Restores the store contents into a fresh instance. The resumed nodes are constructed with the fresh store instance, so the resume continues from the captured store contents.
 - **Resume is order-preserving.** After restoreStores plus resume, the final `entries` value is `step-a,child-step,step-b` with no duplication, identical to the normal-run output.
 
 See [Shared state](../guide/shared-state) for the decision matrix between `inputs`/`gather` (point-to-point transfer) and `Store` (accumulating shared structure), and the concurrency contract for write-write races across concurrent scatter clones.

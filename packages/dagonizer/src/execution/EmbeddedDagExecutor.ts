@@ -46,13 +46,13 @@ export type EmbeddedDagExecutorSourceType = {
  * error to the placement's `'error'` output. `body.infrastructureError` is
  * intentionally ignored here (no re-queue).
  */
-export class EmbeddedDagExecutor<TServices> {
+export class EmbeddedDagExecutor {
   readonly #source: EmbeddedDagExecutorSourceType;
-  readonly #bodyExecutor: BodyExecutor<TServices>;
+  readonly #bodyExecutor: BodyExecutor;
 
   constructor(
     source: EmbeddedDagExecutorSourceType,
-    bodyExecutor: BodyExecutor<TServices>,
+    bodyExecutor: BodyExecutor,
   ) {
     this.#source = source;
     this.#bodyExecutor = bodyExecutor;

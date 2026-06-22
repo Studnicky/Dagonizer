@@ -85,6 +85,10 @@ type DomElementType = {
   'disabled':    boolean;
   'type':        string;
   'style':       Record<string, string>;
+  // Standard DOM serialisation properties, declared on the minimal stub so the
+  // explorer reads/writes them without a cast.
+  'innerHTML':   string;
+  'outerHTML':   string;
   'dataset':     Record<string, string | undefined>;
   'classList': {
     add(name: string): void;
@@ -746,35 +750,27 @@ export class MermaidExplorer {
     // resets any inline transforms from the source diagram, giving a clean
     // camera for the modal's independent CameraStateType.
     //
-    // Both `innerHTML` and `outerHTML` are standard DOM properties not in our
-    // minimal type stubs. We access them through an ambient index-signature
-    // cast on the raw object — no `as` keyword cast, just property access via
-    // index notation on a widened `Record` intersection.
-    const stageRecord = stage.style as unknown as Record<string, string>;
-    stageRecord['position']    = 'relative';
-    stageRecord['overflow']    = 'hidden';
-    stageRecord['flex']        = '1 1 auto';
-    stageRecord['cursor']      = 'grab';
-    stageRecord['userSelect']  = 'none';
-    stageRecord['touchAction'] = 'none';
+    // `style`, `innerHTML`, and `outerHTML` are declared on the minimal DOM
+    // stub (DomElementType), so these read/write directly — no cast.
+    const stageStyle = stage.style;
+    stageStyle['position']    = 'relative';
+    stageStyle['overflow']    = 'hidden';
+    stageStyle['flex']        = '1 1 auto';
+    stageStyle['cursor']      = 'grab';
+    stageStyle['userSelect']  = 'none';
+    stageStyle['touchAction'] = 'none';
 
     // Temporarily clear the source transform so the cloned SVG starts at
     // scale 1 / translate 0 (independent camera).
-    const svgRecord = svg.style as unknown as Record<string, string>;
-    const savedTransform: string = svgRecord['transform'] ?? '';
-    svgRecord['transform'] = '';
+    const svgStyle = svg.style;
+    const savedTransform: string = svgStyle['transform'] ?? '';
+    svgStyle['transform'] = '';
 
-    // innerHTML / outerHTML: access through Record<string, unknown> to avoid
-    // needing the DOM lib. We type-narrow via the actual property name string.
-    const stageHtml  = stage as unknown as Record<string, unknown>;
-    const svgHtml    = svg   as unknown as Record<string, unknown>;
-    const outerHtml  = svgHtml['outerHTML'];
-    if (typeof outerHtml === 'string') {
-      stageHtml['innerHTML'] = outerHtml;
-    }
+    // Transfer the SVG into the stage via outerHTML → innerHTML.
+    stage.innerHTML = svg.outerHTML;
 
     // Restore source SVG transform.
-    svgRecord['transform'] = savedTransform;
+    svgStyle['transform'] = savedTransform;
 
     const hint = document.createElement('div');
     hint.className   = 'dag-mermaid-modal-hint';
@@ -856,9 +852,14 @@ export class MermaidExplorer {
       MermaidExplorer.#paint(clonedSvg, modalCamera);
     }));
 
+    // Escape key closes; defined first so close-handlers can reference it.
+    const onKey: DomListenerType = (e) => {
+      if (e.key === 'Escape') MermaidExplorer.#dismiss(overlay, onKey);
+    };
+
     // Row 3: close (expand slot → close in modal) · pan-down · fit
     grid.appendChild(MermaidExplorer.#btn('✕', 'Close (Esc)', () => {
-      destroy();
+      MermaidExplorer.#dismiss(overlay, onKey);
     }));
     grid.appendChild(MermaidExplorer.#btn('▼', 'Pan down', () => {
       modalCamera.ty -= PAN_STEP;
@@ -873,19 +874,16 @@ export class MermaidExplorer {
 
     // Backdrop click (overlay itself, not stage or buttons) closes the modal.
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) destroy();
+      if (e.target === overlay) MermaidExplorer.#dismiss(overlay, onKey);
     });
 
-    // Escape key closes.
-    const onKey: DomListenerType = (e) => {
-      if (e.key === 'Escape') destroy();
-    };
     document.addEventListener('keydown', onKey);
+  }
 
-    function destroy(): void {
-      document.body.style['overflow'] = '';
-      document.removeEventListener('keydown', onKey);
-      overlay.remove();
-    }
+  /** Tear down the expanded modal overlay and its document-level key listener. */
+  static #dismiss(overlay: DomElementType, onKey: DomListenerType): void {
+    document.body.style['overflow'] = '';
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
   }
 }

@@ -1,10 +1,11 @@
 /**
  * RegistryBundleInterface: what `RegistryModuleInterface.instantiate` returns.
  *
- * Bundles the DAG/node registry, locally constructed services, the semantic
- * version for the version handshake, and the state restore factory. Services
- * never cross the boundary — each isolate constructs its own services record via
- * its registry module.
+ * Bundles the DAG/node registry, the semantic version for the version
+ * handshake, and the state restore factory. A node's dependencies never cross
+ * the worker boundary — the registry module constructs each node with its
+ * dependencies (derived from the init message's `servicesConfig`) inside the
+ * isolate.
  */
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -14,24 +15,14 @@ import type { DispatcherBundleType } from './DispatcherBundle.js';
 
 /**
  * Returned by `RegistryModuleInterface.instantiate`. Bundles the DAG/node
- * registry, locally constructed services, the semantic version for the
- * version handshake, and the state restore factory.
+ * registry, the semantic version for the version handshake, and the state
+ * restore factory.
  */
-export interface RegistryBundleInterface<TServices = unknown> {
+export interface RegistryBundleInterface {
   /**
-   * Nodes and DAGs to register in the host dispatcher. Typed to the bundle's
-   * own `TServices` so a registry that knows its services shape (e.g. a
-   * services-free conformance registry, `TServices = undefined`) registers into
-   * a matching dispatcher without a cast. Defaults to `unknown`, so existing
-   * call sites are unaffected.
+   * Nodes and DAGs to register in the host dispatcher.
    */
-  bundle: DispatcherBundleType<NodeStateInterface, TServices>;
-  /**
-   * Locally constructed services record. Opaque to the protocol; `TServices`
-   * defaults to `unknown` so existing call sites stay source-compatible,
-   * while a registry that knows its services shape narrows it without a cast.
-   */
-  services: TServices;
+  bundle: DispatcherBundleType<NodeStateInterface>;
   /** Semantic version used for the init ↔ ready version handshake. */
   registryVersion: string;
   /**

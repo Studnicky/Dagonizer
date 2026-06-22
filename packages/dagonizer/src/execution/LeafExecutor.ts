@@ -13,15 +13,15 @@ import type { RunNodeResultType } from './ScatterDispatch.js';
  * `Dagonizer` implements this interface so `LeafExecutor` depends only on a
  * narrow port, not on the whole dispatcher.
  */
-export interface LeafExecutorSourceInterface<TServices> {
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+export interface LeafExecutorSourceInterface {
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   withNodeTimeout<TResult>(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
-  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType<TServices>;
-  runNodeOnState(node: NodeInterface<NodeStateInterface, string, TServices>, state: NodeStateInterface, context: NodeContextType<TServices>): Promise<string>;
+  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType;
+  runNodeOnState(node: NodeInterface<NodeStateInterface, string>, state: NodeStateInterface, context: NodeContextType): Promise<string>;
 }
 
 /**
@@ -35,10 +35,10 @@ export interface LeafExecutorSourceInterface<TServices> {
  * used to build the node context, so `LeafExecutor` has no direct dependency
  * on `SignalComposer`.
  */
-export class LeafExecutor<TServices> {
-  readonly #source: LeafExecutorSourceInterface<TServices>;
+export class LeafExecutor {
+  readonly #source: LeafExecutorSourceInterface;
 
-  constructor(source: LeafExecutorSourceInterface<TServices>) {
+  constructor(source: LeafExecutorSourceInterface) {
     this.#source = source;
   }
 

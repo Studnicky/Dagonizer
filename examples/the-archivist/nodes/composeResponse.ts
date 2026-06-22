@@ -31,9 +31,15 @@ const MAX_COMPOSE_ATTEMPTS = 3;
 /** Default wall-clock budget for the compose phase (ms). Overridden at runtime by the runner. */
 export const COMPOSE_TIMEOUT_MS = 60_000;
 
-export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
+export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
+  private readonly services: ArchivistServices;
   readonly name = 'compose-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
+
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
   override get outputSchema(): Record<'drafted' | 'retry' | 'salvage', SchemaObjectType> {
     return {
       'drafted': { 'type': 'object' },
@@ -42,9 +48,9 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
     state.recordAttempt('compose');
-    const llm = context.services.llm;
+    const llm = this.services.llm;
     const prior = state.priorContext.length > 0 ? state.priorContext : undefined;
     const recalledSummary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
@@ -55,7 +61,7 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     // engine hard-fail. The compose methods are signal-aware, so the abort
     // cancels the in-flight call.
     const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS);
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
 
     // Each per-intent branch keeps the same `compose-response` node
@@ -195,11 +201,16 @@ export class ResponseAnalysis {
 
 export class ValidateResponseNode extends ScalarNode<
   ArchivistState,
-  'approved' | 'retry' | 'exhausted',
-  ArchivistServices
+  'approved' | 'retry' | 'exhausted'
 > {
+  private readonly services: ArchivistServices;
   readonly name = 'validate-response';
   readonly outputs = ['approved', 'retry', 'exhausted'] as const;
+
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
   override get outputSchema(): Record<'approved' | 'retry' | 'exhausted', SchemaObjectType> {
     return {
       'approved':  { 'type': 'object' },
@@ -208,7 +219,7 @@ export class ValidateResponseNode extends ScalarNode<
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
     // ── Deterministic anti-hallucination pre-check ───────────────────────
     // Runs BEFORE the LLM validator. When it fails we force a retry
     // without paying for an LLM round-trip; we accumulate a
@@ -223,7 +234,7 @@ export class ValidateResponseNode extends ScalarNode<
       return NodeOutputBuilder.of('retry');
     }
 
-    const ok = await context.services.llm.validate(state.draft, state.shortlist);
+    const ok = await this.services.llm.validate(state.draft, state.shortlist);
     state.approvalState = ok ? 'approved' : 'rejected';
     if (ok) return NodeOutputBuilder.of('approved');
     if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
@@ -233,6 +244,3 @@ export class ValidateResponseNode extends ScalarNode<
   }
 }
 
-/** Singleton node instances referenced by the DAG wiring. */
-export const composeResponse = new ComposeResponseNode();
-export const validateResponse = new ValidateResponseNode();

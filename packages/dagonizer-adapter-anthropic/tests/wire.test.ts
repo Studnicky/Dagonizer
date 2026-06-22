@@ -23,11 +23,15 @@ import { AnthropicApiAdapter } from '../src/index.js';
 
 let originalFetch: typeof globalThis.fetch;
 
-function makeOkResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    'status': 200,
-    'headers': { 'content-type': 'application/json' },
-  });
+class OkResponse {
+  private constructor() {}
+
+  static of(body: unknown): Response {
+    return new Response(JSON.stringify(body), {
+      'status': 200,
+      'headers': { 'content-type': 'application/json' },
+    });
+  }
 }
 
 /** Capture the last outgoing request so tests can assert wire shape. */
@@ -46,14 +50,25 @@ class FetchCapture {
       if (rawHeaders instanceof Headers) {
         rawHeaders.forEach((v, k) => { this.headers[k] = v; });
       } else if (rawHeaders !== undefined && typeof rawHeaders === 'object' && !Array.isArray(rawHeaders)) {
-        Object.assign(this.headers, rawHeaders as Record<string, string>);
+        for (const [k, v] of Object.entries(rawHeaders)) {
+          if (typeof v === 'string') {
+            this.headers[k] = v;
+          }
+        }
       }
 
       if (typeof init?.body === 'string') {
-        this.body = JSON.parse(init.body) as Record<string, unknown>;
+        const parsed: unknown = JSON.parse(init.body);
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+          // Rebuild a typed record from the narrowed object (same cast-free
+          // pattern as the headers loop above) — no `as`.
+          const body: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(parsed)) { body[k] = v; }
+          this.body = body;
+        }
       }
 
-      return makeOkResponse(responseBody);
+      return OkResponse.of(responseBody);
     };
   }
 }
@@ -172,11 +187,12 @@ void test('system messages are extracted into top-level system field', async () 
   }));
 
   assert.equal(capture.body['system'], 'You are helpful.');
-  const messages = capture.body['messages'] as unknown[];
+  const messages = capture.body['messages'];
+  assert.ok(Array.isArray(messages), 'messages must be an array');
   assert.equal(messages.length, 1);
-  const first = messages[0] as { role: string; content: string };
-  assert.equal(first.role, 'user');
-  assert.equal(first.content, 'Hello');
+  const firstMsg: Record<string, unknown> = messages[0];
+  assert.equal(firstMsg['role'], 'user');
+  assert.equal(firstMsg['content'], 'Hello');
 });
 
 void test('system messages are absent from wire body when none supplied', async () => {
@@ -201,14 +217,15 @@ void test('tool definitions map to Anthropic tools array with input_schema', asy
     'tools': [SEARCH_TOOL],
   }));
 
-  const tools = capture.body['tools'] as Array<{ name: string; description: string; input_schema: unknown }>;
+  const tools = capture.body['tools'];
+  assert.ok(Array.isArray(tools), 'tools must be an array');
   assert.equal(tools.length, 1);
-  const tool = tools[0];
+  const tool: Record<string, unknown> = tools[0];
   assert.ok(tool !== undefined);
-  assert.equal(tool.name, 'search');
-  assert.equal(tool.description, 'Search for information.');
+  assert.equal(tool['name'], 'search');
+  assert.equal(tool['description'], 'Search for information.');
   assert.deepEqual(
-    tool.input_schema,
+    tool['input_schema'],
     { 'type': 'object', 'properties': { 'query': { 'type': 'string' } } },
   );
 });
@@ -272,15 +289,17 @@ void test('tool result message maps to user role with tool_result content block'
     ],
   }));
 
-  const messages = capture.body['messages'] as Array<{ role: string; content: unknown }>;
-  const toolResultMsg = messages[1] as { role: string; content: Array<{ type: string; tool_use_id: string; content: string }> };
-  assert.equal(toolResultMsg.role, 'user');
-  assert.ok(Array.isArray(toolResultMsg.content));
-  const block = toolResultMsg.content[0];
+  const messages = capture.body['messages'];
+  assert.ok(Array.isArray(messages), 'messages must be an array');
+  const toolResultMsg: Record<string, unknown> = messages[1];
+  assert.equal(toolResultMsg['role'], 'user');
+  const toolResultContent = toolResultMsg['content'];
+  assert.ok(Array.isArray(toolResultContent), 'content must be an array');
+  const block: Record<string, unknown> = toolResultContent[0];
   assert.ok(block !== undefined);
-  assert.equal(block.type, 'tool_result');
-  assert.equal(block.tool_use_id, 'toolu_01abc');
-  assert.equal(block.content, '{"result":"cats found"}');
+  assert.equal(block['type'], 'tool_result');
+  assert.equal(block['tool_use_id'], 'toolu_01abc');
+  assert.equal(block['content'], '{"result":"cats found"}');
 });
 
 void test('text response decodes to { variant: "text", content } message', async () => {

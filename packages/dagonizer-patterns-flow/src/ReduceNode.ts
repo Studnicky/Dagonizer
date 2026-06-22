@@ -20,7 +20,7 @@ export abstract class ReduceNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextType<undefined>,
+    _context: NodeContextType,
   ): Promise<NodeOutputType<'success'>> {
     const items = this.readItems(state);
     const result = this.reduce(items);

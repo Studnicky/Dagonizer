@@ -24,7 +24,7 @@ describe('03-schema: DAGDocument.load from JSON string', () => {
     const state = new NodeStateBase();
     await dispatcher.execute('from-json', state);
 
-    assert.equal(state.getMetadata('seen'), true);
+    assert.equal(state.getter.boolean('seen'), true);
   });
 
   it('executedNodes includes echo', async () => {

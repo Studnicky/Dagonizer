@@ -15,8 +15,8 @@ import { OpenLibrarySearchTool, SubjectSearchTool, CanonicalId } from '@studnick
 
 const candidates = await OpenLibrarySearchTool.execute({ query: 'Piranesi', limit: 5 });
 
-// Or via the dispatcher's services record:
-dispatcher.register({ services: { webSearch: OpenLibrarySearchTool } });
+// Or inject the tool into the node that calls it (constructor DI):
+dispatcher.registerNode(new MyScoutNode(new OpenLibrarySearchTool()));
 ```
 
 ## Exports

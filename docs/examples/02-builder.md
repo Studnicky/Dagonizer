@@ -17,9 +17,9 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { archivistDAG } from '@archivist/dag.ts';
-import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
-import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
+import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
+import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
+import { ComposeRetryLoopDAG } from '../.vitepress/theme/exampleDags.ts';
 
 const archivistRegistry = new Map([
   ['book-search-scatter', BookSearchScatterDAG],

@@ -17,7 +17,6 @@
  * - `TUserOutput` — the output ports the subclass declares (never include
  *   `'error'`; the base adds it). Example: `'success' | 'skip'`.
  * - `TState` — the node-state type flowing through the batch.
- * - `TServices` — the services record; `undefined` for service-free nodes.
  *
  * The effective `TOutput` seen by `ScalarNode` is `TUserOutput | 'error'`,
  * which means `'error'` is always a valid return port — the base adds it
@@ -87,13 +86,11 @@ const DEFAULT_OPTIONS: LoggedScalarNodeOptionsType = { 'devMode': true };
  * @typeParam TUserOutput  Output ports the subclass declares. Do not include
  *                         `'error'`; the base adds it automatically.
  * @typeParam TState       Node state flowing through the batch.
- * @typeParam TServices    Services record; `undefined` for service-free nodes.
  */
 export abstract class LoggedScalarNode<
   TState extends NodeStateInterface,
   TUserOutput extends string,
-  TServices = undefined,
-> extends ScalarNode<TState, TUserOutput | 'error', TServices> {
+> extends ScalarNode<TState, TUserOutput | 'error'> {
 
   /** Options controlling dev-mode contract assertion. */
   readonly options: LoggedScalarNodeOptionsType;
@@ -114,7 +111,7 @@ export abstract class LoggedScalarNode<
    */
   protected abstract runOne(
     state: TState,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<TUserOutput>>;
 
   /**
@@ -128,7 +125,7 @@ export abstract class LoggedScalarNode<
    */
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<TUserOutput | 'error'>> {
     try {
       return await this.runOne(state, context);

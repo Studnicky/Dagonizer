@@ -25,8 +25,11 @@ const store = new MapStore({ namespace: 'demo' });
 await store.set('user:1', { name: 'Alice', score: 0 });
 await store.set('user:2', { name: 'Bob',   score: 0 });
 
-const alice = await store.get<{ name: string; score: number }>('user:1');
-const bob   = await store.get<{ name: string; score: number }>('user:2');
+// The base store is type-erased: `get` returns `JsonValueType | null`. These
+// values are only printed, so no narrowing is needed; wrap a store in
+// `TypedStore` with per-key validators when you want validated typed reads.
+const alice = await store.get('user:1');
+const bob   = await store.get('user:2');
 
 process.stdout.write(`[get] user:1 = ${JSON.stringify(alice)}\n`);
 process.stdout.write(`[get] user:2 = ${JSON.stringify(bob)}\n`);
@@ -47,9 +50,9 @@ process.stdout.write(`[has]    user:2 after delete:  ${String(hasAfter)}\n`);
 // in a single synchronous step (no await between read and write on Map).
 // Concurrent microtasks cannot interleave — the lock-free atomicity guarantee.
 
-const score1 = await store.update<number>('counter', (c) => (c ?? 0) + 10);
-const score2 = await store.update<number>('counter', (c) => (c ?? 0) + 10);
-const score3 = await store.update<number>('counter', (c) => (c ?? 0) + 10);
+const score1 = await store.update('counter', (c) => (typeof c === 'number' ? c : 0) + 10);
+const score2 = await store.update('counter', (c) => (typeof c === 'number' ? c : 0) + 10);
+const score3 = await store.update('counter', (c) => (typeof c === 'number' ? c : 0) + 10);
 
 process.stdout.write(`[update] counter after +10: ${String(score1)}\n`);
 process.stdout.write(`[update] counter after +10: ${String(score2)}\n`);
@@ -68,8 +71,8 @@ process.stdout.write(`[snapshot] keys: ${snap.entries.map((e) => e.key).join(', 
 const fresh = new MapStore({ namespace: 'demo' });
 await fresh.restore(snap);
 
-const counterRestored = await fresh.get<number>('counter');
-const aliceRestored   = await fresh.get<{ name: string; score: number }>('user:1');
+const counterRestored = await fresh.get('counter');
+const aliceRestored   = await fresh.get('user:1');
 
 process.stdout.write(`[restore] counter  = ${String(counterRestored)}\n`);
 process.stdout.write(`[restore] user:1   = ${JSON.stringify(aliceRestored)}\n`);
@@ -79,8 +82,11 @@ process.stdout.write(`[restore] user:1   = ${JSON.stringify(aliceRestored)}\n`);
 if (counterRestored !== 30) {
   throw new Error(`Expected counter=30 after restore, got ${String(counterRestored)}`);
 }
-if (aliceRestored?.name !== 'Alice') {
-  throw new Error(`Expected user:1.name='Alice' after restore, got ${String(aliceRestored?.name)}`);
+const aliceRestoredName = aliceRestored !== null && typeof aliceRestored === 'object' && !Array.isArray(aliceRestored)
+  ? String(aliceRestored['name'])
+  : undefined;
+if (aliceRestoredName !== 'Alice') {
+  throw new Error(`Expected user:1.name='Alice' after restore, got ${String(aliceRestoredName)}`);
 }
 
 process.stdout.write('\nAll assertions passed.\n');

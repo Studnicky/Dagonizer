@@ -9,9 +9,6 @@
  *
  * Implementations are free to pool resources internally. `destroy()` releases
  * pool resources when the dispatcher shuts down.
- *
- * The `TServices` on `DagTaskInterface` in `runDag` is `unknown` so the container
- * interface remains decoupled from the dispatcher's services record.
  */
 
 import type { DagOutcomeType } from './DagOutcomeType.js';
@@ -27,11 +24,6 @@ export interface DagContainerInterface {
    * `task.toRequest()` to snapshot the clone for transport; in-process
    * containers may use `task.state` directly.
    *
-   * The `TServices` on the task is intentionally unconstrained (unknown) so
-   * the container interface remains decoupled from the dispatcher's services
-   * record. Containers access only `task.state`, `task.toRequest()`, and
-   * `task.context.signal` — they never read `task.context.services`.
-   *
    * The optional `options.relay` is an internal observer provided by the parent
    * `Dagonizer` so that worker-side hook events (nodeStart, nodeEnd, error,
    * phaseEnter, phaseExit) are forwarded to the parent's protected hooks.
@@ -41,7 +33,7 @@ export interface DagContainerInterface {
    * errors are returned as collected errors in `DagOutcomeType.errors`
    * with `recoverable: false`.
    */
-  runDag(task: DagTaskInterface<unknown>, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
+  runDag(task: DagTaskInterface, options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType>;
 
   /**
    * Release pool resources. Called by the dispatcher's `destroy()`. Optional:

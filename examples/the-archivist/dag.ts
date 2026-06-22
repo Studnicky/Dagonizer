@@ -94,288 +94,269 @@
  */
 
 
-import { classifyIntent }      from './nodes/classifyIntent.ts';
-import { composeMemoryResponse } from './nodes/composeMemoryResponse.ts';
-import { decideTools }          from './nodes/decideTools.ts';
-import { extractQuery }         from './nodes/extractQuery.ts';
-import { groupByYear }          from './nodes/groupByYear.ts';
-import { hasCitationsGate }     from './nodes/hasCitationsGate.ts';
-import { mergeCandidates }      from './nodes/mergeCandidates.ts';
-import { pickBestMatch }        from './nodes/pickBestMatch.ts';
-import { preRunSetup }          from './nodes/preRunSetup.ts';
-import { rankByRating }         from './nodes/rankByRating.ts';
-import { recallContext }        from './nodes/recallContext.ts';
-import { recallMemories }       from './nodes/recallMemories.ts';
-import { recallPastVisits }     from './nodes/recallPastVisits.ts';
-import { recommendSimilar }     from './nodes/recommendSimilar.ts';
-import { recordFindings }       from './nodes/recordFindings.ts';
-import { classifyIntentSalvage, composeEmptyResponseSalvage, composeMemoryResponseSalvage, decideToolsSalvage, extractQuerySalvage } from './nodes/salvage.ts';
-import { declineOffTopic, respondToVisitor, composeEmptyResponse } from './nodes/respondToVisitor.ts';
-import { buildBookWorksets } from './nodes/buildBookWorksets.ts';
+import type { ArchivistState } from './ArchivistState.ts';
+import type { ArchivistNodes } from './nodes/ArchivistNodes.ts';
 import './nodes/scouts.ts'; // registers 'tool-candidate-merge' gather strategy
 
 import { DAGBuilder } from '@studnicky/dagonizer';
 import type { DispatcherBundleType } from '@studnicky/dagonizer';
-import type { ArchivistServices } from './services.ts';
-import type { ArchivistState } from './ArchivistState.ts';
-
-export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
-
-  // ── pre-phase: setup ─────────────────────────────────────────────────────
-  // Stamps state.runId and clears any stale draft before the main loop starts.
-  // PhaseNode placement: runs before the entrypoint node; errors abort the run.
-  // No routing: phase placements are out-of-band and never set the entrypoint.
-  .phase('setup', 'pre', preRunSetup)
-
-  // ── 0. recall-context ────────────────────────────────────────────────────
-  // First added → auto-entrypoint. Runs before classifyIntent so the
-  // classifier can benefit from prior-session continuity hints.
-  .node('recall-context', recallContext, {
-    'recalled': 'classify-intent',
-  })
-
-  // #region intent-routes
-  // ── 1. classify-intent ───────────────────────────────────────────────────
-  // Wide output union routes to six branches. EmbeddedDAG placements and inline
-  // branches share the same shared terminal: compose-loop and compose-empty.
-  // recall-memories routes directly to memory-recall → compose-memory-recall
-  // → memory-respond (no search needed; the memory store is the source).
-  .node('classify-intent', classifyIntent, {
-    'lookup-author':     'author-search',
-    'find-reviews':      'reviews-extract',
-    'describe-book':     'describe-extract',
-    'recommend-similar': 'recommend-similar',
-    'recall-memories':   'memory-recall',
-    'on-topic':          'on-topic-search',
-    'off-topic':         'decline-off-topic',
-    // Own timeout / classifier failure → retry budget decides. 'retry' loops
-    // back; 'salvage' defaults to the broadest on-topic search via a node.
-    'retry':             'classify-intent',
-    'salvage':           'classify-intent-salvage',
-  })
-  .node('classify-intent-salvage', classifyIntentSalvage, {
-    'done': 'on-topic-search',
-  })
-  // #endregion intent-routes
-
-  // #region embedded-dag-placements
-  // ── on-topic branch ──────────────────────────────────────────────────────
-  // EmbeddedDAGNode: book-search-scatter handles extract-query, decide-tools,
-  // all four scouts, rank-candidates, merge, record, gate, and recall.
-  // One packaged cluster; first of three placements of the same sub-DAG.
-  // gather.map copies the fields the sub-DAG writes back to the parent state
-  // so compose-loop and group-by-year can read them.
-  .embeddedDAG('on-topic-search', 'book-search-scatter', {
-    'success': 'compose-loop',
-    'error':   'compose-empty',
-  }, {
-    'outputs': {
-      'terms':         'terms',
-      'toolPlan':      'toolPlan',
-      'candidates':    'candidates',
-      'shortlist':     'shortlist',
-      'priorContext':  'priorContext',
-      'failureCause':  'failureCause',
-    },
-  })
-
-  // ── lookup-author branch ─────────────────────────────────────────────────
-  // EmbeddedDAGNode: same book-search-scatter cluster, second placement.
-  // After success, group-by-year sorts results chronologically before the
-  // compose loop; author surveys read better in publication-timeline order.
-  .embeddedDAG('author-search', 'book-search-scatter', {
-    'success': 'group-by-year',
-    'error':   'compose-empty',
-  }, {
-    'outputs': {
-      'terms':         'terms',
-      'toolPlan':      'toolPlan',
-      'candidates':    'candidates',
-      'shortlist':     'shortlist',
-      'priorContext':  'priorContext',
-      'failureCause':  'failureCause',
-    },
-  })
-  // group-by-year is author-branch-specific: sorts shortlist chronologically.
-  .node('group-by-year', groupByYear, {
-    'ordered': 'compose-loop',
-  })
-
-  // ── find-reviews branch ───────────────────────────────────────────────────
-  // Inlined. Uses rankByRating (deterministic, rating-weighted) in place of
-  // rankCandidates (LLM-driven). The Google Books scout carries notes.rating /
-  // notes.ratingsCount; rankByRating weights those for reviews-style output.
-  .node('reviews-extract', extractQuery, {
-    'success': 'reviews-decide-tools',
-    'retry':   'reviews-extract',
-    'salvage': 'reviews-extract-salvage',
-  })
-  .node('reviews-extract-salvage', extractQuerySalvage, {
-    'done': 'reviews-decide-tools',
-  })
-  .node('reviews-decide-tools', decideTools, {
-    'tools':    'reviews-build-worksets',
-    'no-tools': 'reviews-build-worksets',
-    'retry':    'reviews-decide-tools',
-    'salvage':  'reviews-decide-tools-salvage',
-  })
-  .node('reviews-decide-tools-salvage', decideToolsSalvage, {
-    'done': 'reviews-build-worksets',
-  })
-  // Build scatter worksets: converts toolPlan into bookWorksets items so the
-  // scatter can dispatch to each tool:<name> embedded DAG via dagFrom.
-  .node('reviews-build-worksets', buildBookWorksets, {
-    'ready': 'reviews-scatter',
-  })
-  // Tool-registry scatter: each bookWorksets item names its own tool:<name>
-  // embedded DAG. tool-candidate-merge gather reads each clone's output via
-  // accessor (no cast) and folds CandidateType[] into parent candidates.
-  .scatter('reviews-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
-    'success': 'reviews-rank',
-    'error':   'reviews-rank',
-    'empty':   'reviews-rank',
-  }, {
-    'concurrency': 4,
-    'gather': { 'strategy': 'tool-candidate-merge' },
-    'reducer': 'any-success',
-  })
-  .node('reviews-rank',    rankByRating,     { 'ranked': 'reviews-merge' })
-  .node('reviews-merge',   mergeCandidates,  { 'ranked': 'reviews-record', 'empty': 'compose-empty' })
-  .node('reviews-record',  recordFindings,   { 'recorded': 'reviews-gate' })
-  .node('reviews-gate',    hasCitationsGate, { 'pass': 'reviews-recall', 'fail': 'compose-empty' })
-  .node('reviews-recall',  recallPastVisits, { 'recalled': 'compose-loop' })
-
-  // ── describe-book branch ─────────────────────────────────────────────────
-  // Inlined. Uses pickBestMatch to narrow multi-hit results to the top-3
-  // title-similar candidates before merge. Ensures the composer receives the
-  // specific book the visitor named, not arbitrary top-5 hits.
-  .node('describe-extract',      extractQuery,     { 'success': 'describe-decide-tools', 'retry': 'describe-extract', 'salvage': 'describe-extract-salvage' })
-  .node('describe-extract-salvage', extractQuerySalvage, { 'done': 'describe-decide-tools' })
-  .node('describe-decide-tools', decideTools,      { 'tools': 'describe-build-worksets', 'no-tools': 'describe-build-worksets', 'retry': 'describe-decide-tools', 'salvage': 'describe-decide-tools-salvage' })
-  .node('describe-decide-tools-salvage', decideToolsSalvage, { 'done': 'describe-build-worksets' })
-  // Build scatter worksets before dispatch.
-  .node('describe-build-worksets', buildBookWorksets, {
-    'ready': 'describe-scatter',
-  })
-  // Tool-registry scatter: dagFrom resolves body DAG from each item's dagName.
-  // any-success reducer: 'success' → describe-pick, 'error' → compose-empty.
-  // 'error' fires when all tool scouts return empty.
-  .scatter('describe-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
-    'success': 'describe-pick',
-    'error':   'compose-empty',
-    'empty':   'compose-empty',
-  }, {
-    'concurrency': 4,
-    'gather': { 'strategy': 'tool-candidate-merge' },
-    'reducer': 'any-success',
-  })
-  .node('describe-pick',   pickBestMatch,    { 'picked': 'describe-merge' })
-  .node('describe-merge',  mergeCandidates,  { 'ranked': 'describe-record', 'empty': 'compose-empty' })
-  .node('describe-record', recordFindings,   { 'recorded': 'describe-gate' })
-  .node('describe-gate',   hasCitationsGate, { 'pass': 'describe-recall', 'fail': 'compose-empty' })
-  .node('describe-recall', recallPastVisits, { 'recalled': 'compose-loop' })
-
-  // ── recommend-similar branch ─────────────────────────────────────────────
-  // recommendSimilar seeds state.terms from prior-run shortlist memory.
-  // 'seeded' routes to the book-search-scatter sub-DAG; third placement of
-  // the same packaged cluster. 'empty' routes to the compose-empty terminal.
-  .node('recommend-similar', recommendSimilar, {
-    'seeded': 'similar-search',
-    'empty':  'compose-empty',
-  })
-
-  // EmbeddedDAGNode: same book-search-scatter, third and final placement.
-  .embeddedDAG('similar-search', 'book-search-scatter', {
-    'success': 'compose-loop',
-    'error':   'compose-empty',
-  }, {
-    'outputs': {
-      'terms':         'terms',
-      'toolPlan':      'toolPlan',
-      'candidates':    'candidates',
-      'shortlist':     'shortlist',
-      'priorContext':  'priorContext',
-      'failureCause':  'failureCause',
-    },
-  })
-
-  // ── compose-loop: shared compose/validate sub-DAG ──────────────────────────
-  // All branches that successfully find candidates converge here.
-  // composeResponse → validateResponse (retry loop, bounded by the retry budget on state (retriesFor('compose'))).
-  // One sub-DAG definition serves all four convergent branches.
-  // stateMapping.outputs copies the compose loop's writes back to the parent.
-  //
-  // Convergence policy: 'success' routes to the shared respond-to-visitor terminal
-  // at the parent level; the sub-DAG produces state.draft and exits cleanly;
-  // exactly ONE respond-to-visitor fires per run regardless of branch count.
-  // 'error' (retry budget exhausted) falls through to compose-empty so the
-  // visitor always receives an in-character response rather than a silent drop.
-  .embeddedDAG('compose-loop', 'compose-retry-loop', {
-    'success': 'respond-to-visitor',
-    'error':   'compose-empty',
-  }, {
-    'outputs': {
-      'draft':         'draft',
-      'approvalState': 'approvalState',
-    },
-  })
-  // #endregion embedded-dag-placements
-
-  // ── respond-to-visitor: single shared happy-path terminal ───────────────
-  // Every branch that successfully composes a response converges here.
-  // compose-loop (success) and both memory + empty-result paths all route
-  // through this one placement. Convergence policy: exactly ONE respond-to-visitor
-  // fires per run with the full converged state.draft in context. Success routes
-  // to the canonical `end` TerminalNode rather than a bare null end-of-flow.
-  .node('respond-to-visitor', respondToVisitor, { 'success': 'end' })
-
-  // ── recall-memories branch ───────────────────────────────────────────────
-  // No search needed; the memory store is queried directly.
-  // recallMemories → composeMemoryResponse → respond-to-visitor (shared terminal).
-  .node('memory-recall',          recallMemories,       { 'recalled': 'compose-memory-recall' })
-  .node('compose-memory-recall',  composeMemoryResponse, {
-    'drafted': 'respond-to-visitor',
-    'retry':   'compose-memory-recall',
-    'salvage': 'compose-memory-salvage',
-  })
-  .node('compose-memory-salvage', composeMemoryResponseSalvage, { 'done': 'respond-to-visitor' })
-
-  // #region terminal-placements
-  // ── Terminal nodes ───────────────────────────────────────────────────────
-  .node('decline-off-topic', declineOffTopic, { 'success': 'end' })
-  .node('compose-empty',     composeEmptyResponse,  {
-    'drafted': 'respond-to-visitor',
-    'retry':   'compose-empty',
-    'salvage': 'compose-empty-salvage',
-  })
-  .node('compose-empty-salvage', composeEmptyResponseSalvage, { 'done': 'respond-to-visitor' })
-
-  // Canonical end-of-flow: every completed path (a composed answer or an
-  // off-topic decline) routes to this one `TerminalNode(completed)` instead of
-  // a bare `null` route. The flow ends explicitly, not by absence of a route.
-  .terminal('end', { outcome: 'completed' })
-  // #endregion terminal-placements
-
-  .build();
 
 // #region dispatcher-bundle
-/**
- * Bundle of the parent-level nodes plus the `the-archivist` DAG itself.
- * Register AFTER the embedded-DAG bundles so the validator can resolve the
- * embedded-DAG references the parent placements make by name.
- */
-export const archivistBundle: DispatcherBundleType<ArchivistState, ArchivistServices> = {
-  'nodes': [
-    preRunSetup,
-    recallContext, classifyIntent, extractQuery, decideTools,
-    buildBookWorksets,
-    rankByRating, pickBestMatch, mergeCandidates, recordFindings,
-    hasCitationsGate, groupByYear, recallPastVisits, recommendSimilar,
-    recallMemories, composeMemoryResponse, respondToVisitor,
-    declineOffTopic, composeEmptyResponse,
-    classifyIntentSalvage, extractQuerySalvage, decideToolsSalvage,
-    composeMemoryResponseSalvage, composeEmptyResponseSalvage,
-  ],
-  'dags': [archivistDAG],
-};
+export class ArchivistBundleFactory {
+  static create(nodes: ArchivistNodes): DispatcherBundleType<ArchivistState> {
+    const dag = new DAGBuilder('the-archivist', '6.0')
+
+      // ── pre-phase: setup ─────────────────────────────────────────────────────
+      // Stamps state.runId and clears any stale draft before the main loop starts.
+      // PhaseNode placement: runs before the entrypoint node; errors abort the run.
+      // No routing: phase placements are out-of-band and never set the entrypoint.
+      .phase('setup', 'pre', nodes.preRunSetup)
+
+      // ── 0. recall-context ────────────────────────────────────────────────────
+      // First added → auto-entrypoint. Runs before classifyIntent so the
+      // classifier can benefit from prior-session continuity hints.
+      .node('recall-context', nodes.recallContext, {
+        'recalled': 'classify-intent',
+      })
+
+      // #region intent-routes
+      // ── 1. classify-intent ───────────────────────────────────────────────────
+      // Wide output union routes to six branches. EmbeddedDAG placements and inline
+      // branches share the same shared terminal: compose-loop and compose-empty.
+      // recall-memories routes directly to memory-recall → compose-memory-recall
+      // → memory-respond (no search needed; the memory store is the source).
+      .node('classify-intent', nodes.classifyIntent, {
+        'lookup-author':     'author-search',
+        'find-reviews':      'reviews-extract',
+        'describe-book':     'describe-extract',
+        'recommend-similar': 'recommend-similar',
+        'recall-memories':   'memory-recall',
+        'on-topic':          'on-topic-search',
+        'off-topic':         'decline-off-topic',
+        // Own timeout / classifier failure → retry budget decides. 'retry' loops
+        // back; 'salvage' defaults to the broadest on-topic search via a node.
+        'retry':             'classify-intent',
+        'salvage':           'classify-intent-salvage',
+      })
+      .node('classify-intent-salvage', nodes.classifyIntentSalvage, {
+        'done': 'on-topic-search',
+      })
+      // #endregion intent-routes
+
+      // #region embedded-dag-placements
+      // ── on-topic branch ──────────────────────────────────────────────────────
+      // EmbeddedDAGNode: book-search-scatter handles extract-query, decide-tools,
+      // all four scouts, rank-candidates, merge, record, gate, and recall.
+      // One packaged cluster; first of three placements of the same sub-DAG.
+      // gather.map copies the fields the sub-DAG writes back to the parent state
+      // so compose-loop and group-by-year can read them.
+      .embeddedDAG('on-topic-search', 'book-search-scatter', {
+        'success': 'compose-loop',
+        'error':   'compose-empty',
+      }, {
+        'outputs': {
+          'terms':         'terms',
+          'toolPlan':      'toolPlan',
+          'candidates':    'candidates',
+          'shortlist':     'shortlist',
+          'priorContext':  'priorContext',
+          'failureCause':  'failureCause',
+        },
+      })
+
+      // ── lookup-author branch ─────────────────────────────────────────────────
+      // EmbeddedDAGNode: same book-search-scatter cluster, second placement.
+      // After success, group-by-year sorts results chronologically before the
+      // compose loop; author surveys read better in publication-timeline order.
+      .embeddedDAG('author-search', 'book-search-scatter', {
+        'success': 'group-by-year',
+        'error':   'compose-empty',
+      }, {
+        'outputs': {
+          'terms':         'terms',
+          'toolPlan':      'toolPlan',
+          'candidates':    'candidates',
+          'shortlist':     'shortlist',
+          'priorContext':  'priorContext',
+          'failureCause':  'failureCause',
+        },
+      })
+      // group-by-year is author-branch-specific: sorts shortlist chronologically.
+      .node('group-by-year', nodes.groupByYear, {
+        'ordered': 'compose-loop',
+      })
+
+      // ── find-reviews branch ───────────────────────────────────────────────────
+      // Inlined. Uses rankByRating (deterministic, rating-weighted) in place of
+      // rankCandidates (LLM-driven). The Google Books scout carries notes.rating /
+      // notes.ratingsCount; rankByRating weights those for reviews-style output.
+      .node('reviews-extract', nodes.extractQuery, {
+        'success': 'reviews-decide-tools',
+        'retry':   'reviews-extract',
+        'salvage': 'reviews-extract-salvage',
+      })
+      .node('reviews-extract-salvage', nodes.extractQuerySalvage, {
+        'done': 'reviews-decide-tools',
+      })
+      .node('reviews-decide-tools', nodes.decideTools, {
+        'tools':    'reviews-build-worksets',
+        'no-tools': 'reviews-build-worksets',
+        'retry':    'reviews-decide-tools',
+        'salvage':  'reviews-decide-tools-salvage',
+      })
+      .node('reviews-decide-tools-salvage', nodes.decideToolsSalvage, {
+        'done': 'reviews-build-worksets',
+      })
+      // Build scatter worksets: converts toolPlan into bookWorksets items so the
+      // scatter can dispatch to each tool:<name> embedded DAG via dagFrom.
+      .node('reviews-build-worksets', nodes.buildBookWorksets, {
+        'ready': 'reviews-scatter',
+      })
+      // Tool-registry scatter: each bookWorksets item names its own tool:<name>
+      // embedded DAG. tool-candidate-merge gather reads each clone's output via
+      // accessor (no cast) and folds CandidateType[] into parent candidates.
+      .scatter('reviews-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
+        'success': 'reviews-rank',
+        'error':   'reviews-rank',
+        'empty':   'reviews-rank',
+      }, {
+        'concurrency': 4,
+        'gather': { 'strategy': 'tool-candidate-merge' },
+        'reducer': 'any-success',
+      })
+      .node('reviews-rank',    nodes.rankByRating,     { 'ranked': 'reviews-merge' })
+      .node('reviews-merge',   nodes.mergeCandidates,  { 'ranked': 'reviews-record', 'empty': 'compose-empty' })
+      .node('reviews-record',  nodes.recordFindings,   { 'recorded': 'reviews-gate' })
+      .node('reviews-gate',    nodes.hasCitationsGate, { 'pass': 'reviews-recall', 'fail': 'compose-empty' })
+      .node('reviews-recall',  nodes.recallPastVisits, { 'recalled': 'compose-loop' })
+
+      // ── describe-book branch ─────────────────────────────────────────────────
+      // Inlined. Uses pickBestMatch to narrow multi-hit results to the top-3
+      // title-similar candidates before merge. Ensures the composer receives the
+      // specific book the visitor named, not arbitrary top-5 hits.
+      .node('describe-extract',      nodes.extractQuery,     { 'success': 'describe-decide-tools', 'retry': 'describe-extract', 'salvage': 'describe-extract-salvage' })
+      .node('describe-extract-salvage', nodes.extractQuerySalvage, { 'done': 'describe-decide-tools' })
+      .node('describe-decide-tools', nodes.decideTools,      { 'tools': 'describe-build-worksets', 'no-tools': 'describe-build-worksets', 'retry': 'describe-decide-tools', 'salvage': 'describe-decide-tools-salvage' })
+      .node('describe-decide-tools-salvage', nodes.decideToolsSalvage, { 'done': 'describe-build-worksets' })
+      // Build scatter worksets before dispatch.
+      .node('describe-build-worksets', nodes.buildBookWorksets, {
+        'ready': 'describe-scatter',
+      })
+      // Tool-registry scatter: dagFrom resolves body DAG from each item's dagName.
+      // any-success reducer: 'success' → describe-pick, 'error' → compose-empty.
+      // 'error' fires when all tool scouts return empty.
+      .scatter('describe-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
+        'success': 'describe-pick',
+        'error':   'compose-empty',
+        'empty':   'compose-empty',
+      }, {
+        'concurrency': 4,
+        'gather': { 'strategy': 'tool-candidate-merge' },
+        'reducer': 'any-success',
+      })
+      .node('describe-pick',   nodes.pickBestMatch,    { 'picked': 'describe-merge' })
+      .node('describe-merge',  nodes.mergeCandidates,  { 'ranked': 'describe-record', 'empty': 'compose-empty' })
+      .node('describe-record', nodes.recordFindings,   { 'recorded': 'describe-gate' })
+      .node('describe-gate',   nodes.hasCitationsGate, { 'pass': 'describe-recall', 'fail': 'compose-empty' })
+      .node('describe-recall', nodes.recallPastVisits, { 'recalled': 'compose-loop' })
+
+      // ── recommend-similar branch ─────────────────────────────────────────────
+      // recommendSimilar seeds state.terms from prior-run shortlist memory.
+      // 'seeded' routes to the book-search-scatter sub-DAG; third placement of
+      // the same packaged cluster. 'empty' routes to the compose-empty terminal.
+      .node('recommend-similar', nodes.recommendSimilar, {
+        'seeded': 'similar-search',
+        'empty':  'compose-empty',
+      })
+
+      // EmbeddedDAGNode: same book-search-scatter, third and final placement.
+      .embeddedDAG('similar-search', 'book-search-scatter', {
+        'success': 'compose-loop',
+        'error':   'compose-empty',
+      }, {
+        'outputs': {
+          'terms':         'terms',
+          'toolPlan':      'toolPlan',
+          'candidates':    'candidates',
+          'shortlist':     'shortlist',
+          'priorContext':  'priorContext',
+          'failureCause':  'failureCause',
+        },
+      })
+
+      // ── compose-loop: shared compose/validate sub-DAG ──────────────────────────
+      // All branches that successfully find candidates converge here.
+      // composeResponse → validateResponse (retry loop, bounded by the retry budget on state (retriesFor('compose'))).
+      // One sub-DAG definition serves all four convergent branches.
+      // stateMapping.outputs copies the compose loop's writes back to the parent.
+      //
+      // Convergence policy: 'success' routes to the shared respond-to-visitor terminal
+      // at the parent level; the sub-DAG produces state.draft and exits cleanly;
+      // exactly ONE respond-to-visitor fires per run regardless of branch count.
+      // 'error' (retry budget exhausted) falls through to compose-empty so the
+      // visitor always receives an in-character response rather than a silent drop.
+      .embeddedDAG('compose-loop', 'compose-retry-loop', {
+        'success': 'respond-to-visitor',
+        'error':   'compose-empty',
+      }, {
+        'outputs': {
+          'draft':         'draft',
+          'approvalState': 'approvalState',
+        },
+      })
+      // #endregion embedded-dag-placements
+
+      // ── respond-to-visitor: single shared happy-path terminal ───────────────
+      // Every branch that successfully composes a response converges here.
+      // compose-loop (success) and both memory + empty-result paths all route
+      // through this one placement. Convergence policy: exactly ONE respond-to-visitor
+      // fires per run with the full converged state.draft in context. Success routes
+      // to the canonical `end` TerminalNode rather than a bare null end-of-flow.
+      .node('respond-to-visitor', nodes.respondToVisitor, { 'success': 'end' })
+
+      // ── recall-memories branch ───────────────────────────────────────────────
+      // No search needed; the memory store is queried directly.
+      // recallMemories → composeMemoryResponse → respond-to-visitor (shared terminal).
+      .node('memory-recall',          nodes.recallMemories,       { 'recalled': 'compose-memory-recall' })
+      .node('compose-memory-recall',  nodes.composeMemoryResponse, {
+        'drafted': 'respond-to-visitor',
+        'retry':   'compose-memory-recall',
+        'salvage': 'compose-memory-salvage',
+      })
+      .node('compose-memory-salvage', nodes.composeMemoryResponseSalvage, { 'done': 'respond-to-visitor' })
+
+      // #region terminal-placements
+      // ── Terminal nodes ───────────────────────────────────────────────────────
+      .node('decline-off-topic', nodes.declineOffTopic, { 'success': 'end' })
+      .node('compose-empty',     nodes.composeEmptyResponse,  {
+        'drafted': 'respond-to-visitor',
+        'retry':   'compose-empty',
+        'salvage': 'compose-empty-salvage',
+      })
+      .node('compose-empty-salvage', nodes.composeEmptyResponseSalvage, { 'done': 'respond-to-visitor' })
+
+      // Canonical end-of-flow: every completed path (a composed answer or an
+      // off-topic decline) routes to this one `TerminalNode(completed)` instead of
+      // a bare `null` route. The flow ends explicitly, not by absence of a route.
+      .terminal('end', { outcome: 'completed' })
+      // #endregion terminal-placements
+
+      .build();
+
+    return {
+      'nodes': [
+        nodes.preRunSetup,
+        nodes.recallContext, nodes.classifyIntent, nodes.extractQuery, nodes.decideTools,
+        nodes.buildBookWorksets,
+        nodes.rankByRating, nodes.pickBestMatch, nodes.mergeCandidates, nodes.recordFindings,
+        nodes.hasCitationsGate, nodes.groupByYear, nodes.recallPastVisits, nodes.recommendSimilar,
+        nodes.recallMemories, nodes.composeMemoryResponse, nodes.respondToVisitor,
+        nodes.declineOffTopic, nodes.composeEmptyResponse,
+        nodes.classifyIntentSalvage, nodes.extractQuerySalvage, nodes.decideToolsSalvage,
+        nodes.composeMemoryResponseSalvage, nodes.composeEmptyResponseSalvage,
+      ],
+      'dags': [dag],
+    };
+  }
+}
 // #endregion dispatcher-bundle

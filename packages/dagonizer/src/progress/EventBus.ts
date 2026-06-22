@@ -38,10 +38,15 @@ export type BusUnsubscribeType = () => void;
  * Lives in the same file as the class per the three-tier taxonomy.
  */
 export interface EventBusInterface {
-  /** Publish `payload` to all listeners on `topic`. */
-  publish<TPayload>(topic: string, payload: TPayload): void;
-  /** Subscribe to `topic`. Returns a zero-arg unsubscribe handle. */
-  subscribe<TPayload>(topic: string, listener: BusListenerType<TPayload>): BusUnsubscribeType;
+  /**
+   * Publish `payload` to all listeners on `topic`. The payload is `unknown`:
+   * the bus cannot statically correlate a topic to a payload shape, so
+   * subscribers narrow what they receive. This keeps storage and delivery
+   * cast-free.
+   */
+  publish(topic: string, payload: unknown): void;
+  /** Subscribe to `topic`. The listener receives `BusEventEnvelopeType` (payload `unknown`). Returns a zero-arg unsubscribe handle. */
+  subscribe(topic: string, listener: BusListenerType): BusUnsubscribeType;
   /** Remove all listeners for `topic`. */
   clear(topic: string): void;
   /** Remove all listeners on every topic. Renders the bus inert. */
@@ -67,14 +72,14 @@ export class EventBus implements EventBusInterface {
    * Delivery is synchronous. A listener that throws is caught and ignored so
    * that subsequent listeners still receive the event.
    */
-  publish<TPayload>(topic: string, payload: TPayload): void {
+  publish(topic: string, payload: unknown): void {
     const bucket = this.#listeners.get(topic);
     if (bucket === undefined || bucket.size === 0) return;
 
     const envelope = BusEventEnvelopeBuilder.of(topic, payload);
     for (const listener of bucket) {
       try {
-        (listener as BusListenerType<TPayload>)(envelope);
+        listener(envelope);
       } catch {
         // Swallow: one misbehaving listener must not starve the rest.
       }
@@ -82,23 +87,21 @@ export class EventBus implements EventBusInterface {
   }
 
   /**
-   * Subscribe to `topic`. The listener receives a typed
-   * `BusEventEnvelopeInterface<TPayload>` on each publish.
+   * Subscribe to `topic`. The listener receives a `BusEventEnvelopeType` whose
+   * `payload` is `unknown` on each publish; narrow it inside the listener.
    *
    * Returns a zero-arg function that removes the listener.
    */
-  subscribe<TPayload>(topic: string, listener: BusListenerType<TPayload>): BusUnsubscribeType {
+  subscribe(topic: string, listener: BusListenerType): BusUnsubscribeType {
     let bucket = this.#listeners.get(topic);
     if (bucket === undefined) {
       bucket = new Set();
       this.#listeners.set(topic, bucket);
     }
-    // The internal map stores the untyped form; the typed cast is safe because
-    // the subscriber controls the call site type parameter.
-    bucket.add(listener as BusListenerType);
+    bucket.add(listener);
 
     return (): void => {
-      this.#listeners.get(topic)?.delete(listener as BusListenerType);
+      this.#listeners.get(topic)?.delete(listener);
     };
   }
 

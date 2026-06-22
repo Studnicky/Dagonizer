@@ -42,11 +42,11 @@ import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './Sca
  * stays the orchestration layer that wires this source and owns the protected
  * observability hooks the relay forwarders fan into.
  */
-export interface NodeSchedulerSourceInterface<TServices> {
+export interface NodeSchedulerSourceInterface {
   /** Registered DAGs keyed by name. */
   readonly dags: ReadonlyMap<string, DAGType>;
   /** Registered nodes keyed by name. Typed at the base so heterogeneous child-node states store without casts. */
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   /** Placement index keyed by `${dagName}:${placementName}`. */
   readonly nodeIndex: ReadonlyMap<string, DAGNodeType>;
   /** Child-state cloning + output mapping for the in-process embedded-DAG path. */
@@ -90,14 +90,14 @@ export interface NodeSchedulerSourceInterface<TServices> {
   resolveContainer(role: string | undefined): DagContainerInterface | null;
   /** Wrap a node execute call with its per-node timeout budget. */
   withNodeTimeout<TResult>(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
   /** Mint a monotonic correlation id for a hand-off envelope. */
   nextCorrelationId(dagName: string): string;
-  /** Build a node context for a placement execution, injecting the services record. */
-  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType<TServices>;
+  /** Build a node context for a placement execution. */
+  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType;
 }
 
 /**
@@ -115,10 +115,10 @@ export interface NodeSchedulerSourceInterface<TServices> {
  * embedded re-entry recurses into `this.run` so the same generator drives every
  * nesting level.
  */
-export class NodeScheduler<TServices> {
-  readonly #source: NodeSchedulerSourceInterface<TServices>;
+export class NodeScheduler {
+  readonly #source: NodeSchedulerSourceInterface;
 
-  constructor(source: NodeSchedulerSourceInterface<TServices>) {
+  constructor(source: NodeSchedulerSourceInterface) {
     this.#source = source;
   }
 
@@ -547,9 +547,12 @@ export class NodeScheduler<TServices> {
           const routeOutputByItemId = new Map<string, string>();
           for (let i = 0; i < parentItems.length; i++) {
             // parentItems and childItems are parallel arrays built above, so both
-            // index i are always within bounds inside this loop.
-            const parentItem = parentItems[i] as (typeof parentItems)[number];
-            const childClone = (childItems[i] as (typeof childItems)[number]).state;
+            // index i are always within bounds inside this loop; the guard narrows
+            // the `noUncheckedIndexedAccess` `| undefined` without a cast.
+            const parentItem = parentItems[i];
+            const childItem = childItems[i];
+            if (parentItem === undefined || childItem === undefined) continue;
+            const childClone = childItem.state;
 
             // Propagate errors and warnings from child clone to parent.
             for (const err of childClone.errors) parentItem.state.collectError(err);
@@ -900,9 +903,9 @@ export class NodeScheduler<TServices> {
    * one route with exactly one item (invariant violation for size-1 dispatch).
    */
   async #runNodeOnState(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     state: NodeStateInterface,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ): Promise<string> {
     const batch = Batch.of(state);
     const routed = await node.execute(batch, context);
@@ -939,7 +942,7 @@ export class NodeScheduler<TServices> {
     dagName: string,
     signal: AbortSignal | null,
     dagContext: Record<string, unknown>,
-  ): Promise<{ 'dagNode': NodeInterface<NodeStateInterface, string, TServices>; 'routed': RoutedBatchType<string, NodeStateInterface> }> {
+  ): Promise<{ 'dagNode': NodeInterface<NodeStateInterface, string>; 'routed': RoutedBatchType<string, NodeStateInterface> }> {
     const nodeIri = ContextResolver.expand(nodeConfig.node, dagContext);
     const dagNode = this.#source.nodes.get(nodeIri);
 
@@ -964,7 +967,7 @@ export class NodeScheduler<TServices> {
    * `outputContractViolation` NodeError.
    */
   #validateOutputContract(
-    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    dagNode: NodeInterface<NodeStateInterface, string>,
     routed: RoutedBatchType<string, NodeStateInterface>,
   ): RoutedBatchType<string, NodeStateInterface> {
     return OutputContractApplier.applyToRouted(
@@ -992,7 +995,7 @@ export class NodeScheduler<TServices> {
    */
   #routeToPending(
     nodeConfig: SingleNodePlacementType,
-    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    dagNode: NodeInterface<NodeStateInterface, string>,
     routed: RoutedBatchType<string, NodeStateInterface>,
     batch: Batch<NodeStateInterface>,
     pending: WorkSet<NodeStateInterface>,

@@ -43,16 +43,13 @@ import { canonicalizeRecipient } from './nodes/canonicalizeRecipient.ts';
 import { confirmDelivery }   from './nodes/confirmDelivery.ts';
 import { decodePayload }     from './nodes/decodePayload.ts';
 
-import { reverseGeocode }  from './nodes/geo/reverseGeocode.ts';
 import { routeModalities } from './nodes/geo/routeModalities.ts';
-import { ipGeolocate }     from './nodes/geo/ipGeolocate.ts';
 import { fuseGeo }         from './nodes/geo/fuseGeo.ts';
 import { enrichPricing }   from './nodes/enrichPricing.ts';
 import { enrichShipping }  from './nodes/enrichShipping.ts';
 import { enrichEta }       from './nodes/enrichEta.ts';
 import { consentGate, classifyPii, redactPii } from './nodes/gdprNodes.ts';
 
-import { geoResolveDAG }      from './embedded-dags/GeoResolveDAG.ts';
 import { geoPipelineDAG }     from './embedded-dags/GeoPipelineDAG.ts';
 import { orderEnrichmentDAG } from './embedded-dags/OrderEnrichmentDAG.ts';
 import { gdprComplianceDAG }  from './embedded-dags/GdprComplianceDAG.ts';
@@ -64,7 +61,6 @@ import { pipelineDeliveryConfirmationDAG } from './embedded-dags/PipelineDeliver
 import { streamEventDAG } from './embedded-dags/StreamEventDAG.ts';
 
 import type { CartographerState } from './CartographerState.ts';
-import type { CartographerServices } from './CartographerServices.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
@@ -359,7 +355,7 @@ export class CartographerWorkersDag {
    */
   static bundle(
     capacity: number = DEFAULT_RESERVOIR_CAPACITY,
-  ): DispatcherBundleType<CartographerState, CartographerServices> {
+  ): DispatcherBundleType<CartographerState> {
     return {
       'nodes': [
         ...eventPipelineBundle.nodes,
@@ -400,10 +396,10 @@ export const cartographerWorkersDAG: DAGType = CartographerWorkersDag.build();
  * in multiple bundle.nodes arrays; since they are the same singleton instances,
  * repeated registration is a no-op.
  */
-export const eventPipelineBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const eventPipelineBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [
-    // geo-resolve leaf nodes
-    reverseGeocode, routeModalities, ipGeolocate, fuseGeo,
+    // geo-resolve routing + fuse (per-call nodes are in GeoResolveDAG.build())
+    routeModalities, fuseGeo,
     // geo-pipeline nodes
     routeGeo, applyGeo, validateCoords,
     // order-enrichment nodes
@@ -423,7 +419,7 @@ export const eventPipelineBundle: DispatcherBundleType<CartographerState, Cartog
   ],
   'dags': [
     // Leaf embedded DAG first, then DAGs that embed it.
-    geoResolveDAG,
+    // geo-resolve DAG is built per-call via GeoResolveDAG.build() — registered at call site.
     geoPipelineDAG,
     orderEnrichmentDAG,
     gdprComplianceDAG,
@@ -454,7 +450,7 @@ export const eventPipelineBundle: DispatcherBundleType<CartographerState, Cartog
  * routeEventType appearing in both eventPipelineBundle.nodes and streamEventBundle.nodes
  * is safe: the bundle registrar is idempotent for same-instance re-registration.
  */
-export const cartographerBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const cartographerBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [
     ...eventPipelineBundle.nodes,
     // Top-level cartographer nodes
@@ -474,5 +470,5 @@ export const cartographerBundle: DispatcherBundleType<CartographerState, Cartogr
  * cartographerWorkersDAG, which binds container: 'cpu' on the process-stream
  * scatter. Used by runCartographer.ts when --workers is active.
  */
-export const cartographerWorkersBundle: DispatcherBundleType<CartographerState, CartographerServices> = CartographerWorkersDag.bundle();
+export const cartographerWorkersBundle: DispatcherBundleType<CartographerState> = CartographerWorkersDag.bundle();
 // #endregion dispatcher-bundle

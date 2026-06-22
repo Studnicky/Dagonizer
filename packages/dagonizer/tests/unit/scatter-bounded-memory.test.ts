@@ -84,7 +84,8 @@ class CountingGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
-    const current = accessor.get<number>(state, 'counter') ?? 0;
+    const rawCounter = accessor.get(state, 'counter');
+    const current = typeof rawCounter === 'number' ? rawCounter : 0;
     accessor.set(state, 'counter', current + batch.size);
   }
 
@@ -474,7 +475,8 @@ class MultiNodeBodyGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
-    const current = accessor.get<number>(state, 'counter') ?? 0;
+    const rawCounter = accessor.get(state, 'counter');
+    const current = typeof rawCounter === 'number' ? rawCounter : 0;
     accessor.set(state, 'counter', current + batch.size);
   }
 

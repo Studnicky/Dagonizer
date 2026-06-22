@@ -11,20 +11,20 @@
  * that plug in a specific ToolInterface instance.
  */
 
-import { DAGError, NodeOutputBuilder, ScalarNode  } from '@studnicky/dagonizer';
+import { NodeOutputBuilder, ScalarNode  } from '@studnicky/dagonizer';
 import type { ToolInterface } from '@studnicky/dagonizer/tool';
 import type { NodeContextType, NodeOutputType, NodeStateInterface  } from '@studnicky/dagonizer/types';
-
-export type ScoutServicesType<TInput extends Record<string, unknown>, TOutput> = {
-  readonly tool: ToolInterface<TInput, TOutput>;
-};
 
 export abstract class ScoutNode<
   TState extends NodeStateInterface,
   TInput extends Record<string, unknown>,
   TToolOutput,
   TItem,
-> extends ScalarNode<TState, 'success' | 'empty' | 'error', ScoutServicesType<TInput, TToolOutput>> {
+> extends ScalarNode<TState, 'success' | 'empty' | 'error'> {
+  constructor(protected readonly tool: ToolInterface<TInput, TToolOutput>) {
+    super();
+  }
+
   /** Build the input the tool's `run()` expects, from state. */
   protected abstract composeInput(state: TState): TInput;
 
@@ -37,15 +37,11 @@ export abstract class ScoutNode<
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<ScoutServicesType<TInput, TToolOutput>>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'success' | 'empty' | 'error'>> {
     const input = this.composeInput(state);
-    const services = context.services;
-    if (services === undefined) {
-      throw new DAGError('ScoutNode requires a services record carrying a `tool`; the dispatcher was constructed without `services`.');
-    }
     try {
-      const raw = await services.tool.execute(input, { "signal": context.signal });
+      const raw = await this.tool.execute(input, { "signal": context.signal });
       const items = this.normalize(raw);
       this.writeBack(state, items);
       return NodeOutputBuilder.of(items.length === 0 ? 'empty' : 'success');

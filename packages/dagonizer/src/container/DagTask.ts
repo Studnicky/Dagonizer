@@ -5,8 +5,6 @@
  * in-process path can execute against it directly. Isolating containers call
  * `toRequest()` to snapshot the clone into a wire-safe `ExecutionRequest`.
  *
- * `TServices` parameterises the services record on the composed `NodeContext`.
- *
  * Constructor args are required positional in declaration order (V8 shape
  * stability). All fields are readonly and initialized in the constructor.
  */
@@ -19,15 +17,15 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 
 export type { DagTaskInterface };
 
-export class DagTask<TServices = undefined>
-  implements DagTaskInterface<TServices>
+export class DagTask
+  implements DagTaskInterface
 {
   readonly dagName: string;
   readonly placementPath: string[];
   readonly correlationId: string;
   readonly timeout: Timeout;
   readonly state: NodeStateInterface;
-  readonly context: NodeContextType<TServices>;
+  readonly context: NodeContextType;
 
   constructor(
     dagName: string,
@@ -35,7 +33,7 @@ export class DagTask<TServices = undefined>
     correlationId: string,
     timeout: Timeout,
     state: NodeStateInterface,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ) {
     this.dagName = dagName;
     this.placementPath = [...placementPath];

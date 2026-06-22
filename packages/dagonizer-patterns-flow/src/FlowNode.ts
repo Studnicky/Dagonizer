@@ -12,4 +12,4 @@ import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 export abstract class FlowNode<
   TState extends NodeStateInterface,
   TOutput extends string = string,
-> extends ScalarNode<TState, TOutput, undefined> {}
+> extends ScalarNode<TState, TOutput> {}

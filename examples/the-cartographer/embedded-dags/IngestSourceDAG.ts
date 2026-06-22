@@ -38,7 +38,6 @@ import { normalizeNdjsonDAG } from './NormalizeNdjsonDAG.ts';
 import { normalizeYamlDAG }  from './NormalizeYamlDAG.ts';
 
 import type { CartographerState }    from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
@@ -157,7 +156,7 @@ export const ingestSourceDAG: DAGType = new DAGBuilder('ingest-source', '1.0')
 
   .build();
 
-export const ingestSourceBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const ingestSourceBundle: DispatcherBundleType<CartographerState> = {
   // Normalize DAGs registered FIRST so the embeddedDAG placements above resolve.
   'nodes': [
     selectSource, decompress, routeFormat,

@@ -18,11 +18,11 @@
  *   const runPromise = dispatcher.execute(...);
  *   // Start a concurrent advance loop
  *   const advancer = (async () => {
- *     await tick(); // let node execute start
+ *     await Tick.next(); // let node execute start
  *     sched.advance(budgetMs + 1);
- *     await tick(); // flush .then() microtasks
+ *     await Tick.next(); // flush .then() microtasks
  *     sched.runAll();
- *     await tick(); // flush abort/race microtasks
+ *     await Tick.next(); // flush abort/race microtasks
  *   })();
  *   const result = await runPromise;
  *   await advancer; // ensure advancer completes
@@ -49,7 +49,13 @@ import { TestNode } from '../_support/TestNode.js';
 // ---------------------------------------------------------------------------
 
 /** Yield to the microtask queue (one setImmediate cycle). */
-const tick = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
+class Tick {
+  private constructor() {}
+
+  static next(): Promise<void> {
+    return new Promise<void>((resolve) => setImmediate(resolve));
+  }
+}
 
 class TestHarness {
   private constructor() {}
@@ -123,11 +129,11 @@ void describe('per-node timeout', () => {
     // The execution is lazy; we must start awaiting it BEFORE advancing,
     // then yield so the scheduler entry is registered in VirtualScheduler.
     const advancer = (async (): Promise<void> => {
-      await tick();                // let the generator start and register .after(500)
+      await Tick.next();                // let the generator start and register .after(500)
       sched.advance(501);          // trigger the timeout
-      await tick();                // flush .then() → deadlineReject + childCtrl.abort
+      await Tick.next();                // flush .then() → deadlineReject + childCtrl.abort
       sched.runAll();              // drain any remaining entries
-      await tick();                // flush abort propagation to node signal
+      await Tick.next();                // flush abort propagation to node signal
     })();
 
     const result = await runPromise;
@@ -179,11 +185,11 @@ void describe('per-node timeout', () => {
     const runPromise = dispatcher.execute('err-dag', state);
 
     const advancer = (async (): Promise<void> => {
-      await tick();
+      await Tick.next();
       sched.advance(201);
-      await tick();
+      await Tick.next();
       sched.runAll();
-      await tick();
+      await Tick.next();
     })();
 
     await runPromise;
@@ -243,9 +249,9 @@ void describe('per-node timeout', () => {
     const runPromise = dispatcher.execute('cancel-dag', state, { 'signal': ctrl.signal });
 
     const advancer = (async (): Promise<void> => {
-      await tick(); // let node execute start
+      await Tick.next(); // let node execute start
       ctrl.abort(new Error('visitor cancelled'));
-      await tick(); // flush the abort propagation
+      await Tick.next(); // flush the abort propagation
     })();
 
     const result = await runPromise;

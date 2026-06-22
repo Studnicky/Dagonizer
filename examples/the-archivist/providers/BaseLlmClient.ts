@@ -115,8 +115,8 @@ export class BaseLlmClient implements LlmClientInterface {
       const start = raw.indexOf('{');
       const end   = raw.lastIndexOf('}');
       if (start >= 0 && end >= 0) {
-        const parsed = JSON.parse(raw.slice(start, end + 1)) as { tools?: readonly unknown[] };
-        if (Array.isArray(parsed.tools)) {
+        const parsed: unknown = JSON.parse(raw.slice(start, end + 1));
+        if (typeof parsed === 'object' && parsed !== null && 'tools' in parsed && Array.isArray(parsed.tools)) {
           indices = parsed.tools.filter((n): n is number => typeof n === 'number' && Number.isInteger(n));
         }
       }
@@ -150,8 +150,8 @@ export class BaseLlmClient implements LlmClientInterface {
       const start = raw.indexOf('{');
       const end   = raw.lastIndexOf('}');
       if (start >= 0 && end >= 0) {
-        const parsed = JSON.parse(raw.slice(start, end + 1)) as { order?: readonly unknown[] };
-        if (Array.isArray(parsed.order)) {
+        const parsed: unknown = JSON.parse(raw.slice(start, end + 1));
+        if (typeof parsed === 'object' && parsed !== null && 'order' in parsed && Array.isArray(parsed.order)) {
           order = parsed.order.filter((n): n is number => typeof n === 'number' && Number.isInteger(n));
         }
       }

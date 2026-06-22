@@ -51,19 +51,17 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * TInput  — trigger-specific input; `seedState(input)` converts it to `TState`.
  * TState  — the domain state that flows through the DAG nodes.
  * TOutput — the projected output type returned by `run`/`resume`.
- * TServices — the services record injected into every node context (defaults to `undefined`).
  */
 export interface DagRunnerInterface<
   TInput,
   TState extends NodeStateInterface,
   TOutput,
-  TServices = undefined,
 > {
   /**
    * Register a `DispatcherBundleType` on the runner's dispatcher.
    * Delegates to `Dagonizer.registerBundle`. Call before `run`.
    */
-  registerBundle(bundle: DispatcherBundleType<TState, TServices>): void;
+  registerBundle(bundle: DispatcherBundleType<TState>): void;
 
   /**
    * Execute the named DAG from its entrypoint with a freshly seeded state.
@@ -84,18 +82,16 @@ export interface DagRunnerInterface<
 /**
  * Options accepted by `DagRunner` constructor.
  *
- * TState    — the concrete state type the runner operates on.
- * TServices — the services record type (defaults to `undefined`).
+ * TState — the concrete state type the runner operates on.
  */
 export type DagRunnerOptionsType<
   TState extends NodeStateInterface = NodeStateInterface,
-  TServices = undefined,
 > = {
   /**
    * The configured `Dagonizer` instance that the runner drives.
    * Injected via constructor (DI via class extension, no callbacks).
    */
-  dispatcher: Dagonizer<TState, TServices>;
+  dispatcher: Dagonizer<TState>;
 };
 
 /**
@@ -107,24 +103,23 @@ export type DagRunnerOptionsType<
  *
  * The runner intentionally holds a reference to the dispatcher instance rather
  * than owning construction of it, so consumers can configure the dispatcher
- * (services, containers, channels) before handing it to the runner.
+ * (containers, channels) before handing it to the runner.
  */
 export abstract class DagRunner<
   TInput,
   TState extends NodeStateInterface,
   TOutput,
-  TServices = undefined,
-> implements DagRunnerInterface<TInput, TState, TOutput, TServices> {
-  protected readonly dispatcher: Dagonizer<TState, TServices>;
+> implements DagRunnerInterface<TInput, TState, TOutput> {
+  protected readonly dispatcher: Dagonizer<TState>;
 
-  constructor(options: DagRunnerOptionsType<TState, TServices>) {
+  constructor(options: DagRunnerOptionsType<TState>) {
     this.dispatcher = options.dispatcher;
   }
 
   /**
    * Register a `DispatcherBundleType` on the runner's dispatcher.
    */
-  registerBundle(bundle: DispatcherBundleType<TState, TServices>): void {
+  registerBundle(bundle: DispatcherBundleType<TState>): void {
     this.dispatcher.registerBundle(bundle);
   }
 

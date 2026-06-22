@@ -32,40 +32,44 @@ import { TestDag } from '../_support/TestDag.js';
 // DAG builder helpers
 // ===========================================================================
 
-function singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
-  return {
-    '@id': `urn:noocodex:dag:${dag}/node/${name}`,
-    '@type': 'SingleNode',
-    name,
-    node,
-    outputs,
-  };
-}
+class PlacementFixture {
+  private constructor() {}
 
-function terminalNode(dag: string, name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
-  return {
-    '@id': `urn:noocodex:dag:${dag}/node/${name}`,
-    '@type': 'TerminalNode',
-    name,
-    outcome,
-  };
-}
+  static singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
+    return {
+      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@type': 'SingleNode',
+      name,
+      node,
+      outputs,
+    };
+  }
 
-function embedNode(
-  dag: string,
-  name: string,
-  childDag: string,
-  outputs: Record<string, string>,
-  stateMapping: { input: Record<string, string>; output: Record<string, string> },
-): DAGType['nodes'][number] {
-  return {
-    '@id': `urn:noocodex:dag:${dag}/node/${name}`,
-    '@type': 'EmbeddedDAGNode',
-    name,
-    'dag': childDag,
-    outputs,
-    'stateMapping': stateMapping,
-  };
+  static terminalNode(dag: string, name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
+    return {
+      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@type': 'TerminalNode',
+      name,
+      outcome,
+    };
+  }
+
+  static embedNode(
+    dag: string,
+    name: string,
+    childDag: string,
+    outputs: Record<string, string>,
+    stateMapping: { input: Record<string, string>; output: Record<string, string> },
+  ): DAGType['nodes'][number] {
+    return {
+      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@type': 'EmbeddedDAGNode',
+      name,
+      'dag': childDag,
+      outputs,
+      'stateMapping': stateMapping,
+    };
+  }
 }
 
 // ===========================================================================
@@ -200,13 +204,13 @@ void describe('Batch-native executor — Fix 1: multi-item batch re-converges at
     const collected: ValueState[] = [];
 
     const dag = TestDag.of('bne-converge', 'fan', [
-      singleNode('bne-converge', 'fan', 'fanout', { 'out': 'dispatch' }),
-      singleNode('bne-converge', 'dispatch', 'dispatch', { 'high': 'high-step', 'low': 'low-step' }),
-      singleNode('bne-converge', 'high-step', 'high-branch', { 'done': 'converge-step' }),
-      singleNode('bne-converge', 'low-step', 'low-branch', { 'done': 'converge-step' }),
-      singleNode('bne-converge', 'converge-step', 'converge', { 'done': 'acc-step' }),
-      singleNode('bne-converge', 'acc-step', 'acc', { 'done': 'finish' }),
-      terminalNode('bne-converge', 'finish', 'completed'),
+      PlacementFixture.singleNode('bne-converge', 'fan', 'fanout', { 'out': 'dispatch' }),
+      PlacementFixture.singleNode('bne-converge', 'dispatch', 'dispatch', { 'high': 'high-step', 'low': 'low-step' }),
+      PlacementFixture.singleNode('bne-converge', 'high-step', 'high-branch', { 'done': 'converge-step' }),
+      PlacementFixture.singleNode('bne-converge', 'low-step', 'low-branch', { 'done': 'converge-step' }),
+      PlacementFixture.singleNode('bne-converge', 'converge-step', 'converge', { 'done': 'acc-step' }),
+      PlacementFixture.singleNode('bne-converge', 'acc-step', 'acc', { 'done': 'finish' }),
+      PlacementFixture.terminalNode('bne-converge', 'finish', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
@@ -298,13 +302,13 @@ void describe('Batch-native executor — Fix 1: multi-item batch reaches differe
     }
 
     const dag = TestDag.of('bne-diverge', 'fan', [
-      singleNode('bne-diverge', 'fan', 'fanout', { 'out': 'router-step' }),
-      singleNode('bne-diverge', 'router-step', 'router', {
+      PlacementFixture.singleNode('bne-diverge', 'fan', 'fanout', { 'out': 'router-step' }),
+      PlacementFixture.singleNode('bne-diverge', 'router-step', 'router', {
         'success-path': 'success-term',
         'failure-path': 'failure-term',
       }),
-      terminalNode('bne-diverge', 'success-term', 'completed'),
-      terminalNode('bne-diverge', 'failure-term', 'failed'),
+      PlacementFixture.terminalNode('bne-diverge', 'success-term', 'completed'),
+      PlacementFixture.terminalNode('bne-diverge', 'failure-term', 'failed'),
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
@@ -379,8 +383,8 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     }
 
     const childDAG = TestDag.of('bne-child', 'inc-step', [
-      singleNode('bne-child', 'inc-step', 'inc', { 'done': 'child-end' }),
-      terminalNode('bne-child', 'child-end', 'completed'),
+      PlacementFixture.singleNode('bne-child', 'inc-step', 'inc', { 'done': 'child-end' }),
+      PlacementFixture.terminalNode('bne-child', 'child-end', 'completed'),
     ]);
 
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
@@ -388,16 +392,16 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     const collected: ValueState[] = [];
 
     const parentDAG = TestDag.of('bne-parent', 'fan', [
-      singleNode('bne-parent', 'fan', 'fanout', { 'out': 'embed-step' }),
-      embedNode(
+      PlacementFixture.singleNode('bne-parent', 'fan', 'fanout', { 'out': 'embed-step' }),
+      PlacementFixture.embedNode(
         'bne-parent',
         'embed-step',
         'bne-child',
         { 'success': 'acc-step', 'error': 'finish' },
         valueMapping,
       ),
-      singleNode('bne-parent', 'acc-step', 'acc', { 'done': 'finish' }),
-      terminalNode('bne-parent', 'finish', 'completed'),
+      PlacementFixture.singleNode('bne-parent', 'acc-step', 'acc', { 'done': 'finish' }),
+      PlacementFixture.terminalNode('bne-parent', 'finish', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<ValueState>();
@@ -460,22 +464,22 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     }
 
     const childDAG = TestDag.of('bne-child42', 'inc-step', [
-      singleNode('bne-child42', 'inc-step', 'inc42', { 'done': 'child-end' }),
-      terminalNode('bne-child42', 'child-end', 'completed'),
+      PlacementFixture.singleNode('bne-child42', 'inc-step', 'inc42', { 'done': 'child-end' }),
+      PlacementFixture.terminalNode('bne-child42', 'child-end', 'completed'),
     ]);
 
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
     const parentDAG = TestDag.of('bne-parent42', 'entry', [
-      singleNode('bne-parent42', 'entry', 'entry-node', { 'ok': 'embed-step' }),
-      embedNode(
+      PlacementFixture.singleNode('bne-parent42', 'entry', 'entry-node', { 'ok': 'embed-step' }),
+      PlacementFixture.embedNode(
         'bne-parent42',
         'embed-step',
         'bne-child42',
         { 'success': 'finish', 'error': 'finish' },
         valueMapping,
       ),
-      terminalNode('bne-parent42', 'finish', 'completed'),
+      PlacementFixture.terminalNode('bne-parent42', 'finish', 'completed'),
     ]);
 
     // Passthrough entry node.

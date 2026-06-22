@@ -23,6 +23,9 @@ export type { CheckpointStoreInterface } from './CheckpointStoreInterface.js';
 // Channels.
 export type { MessageChannelInterface } from './MessageChannelInterface.js';
 
+// Metadata read surface for the typed metadata getter.
+export type { MetadataReadableInterface } from './MetadataReadableInterface.js';
+
 // Registry composition: bundles and modules a plugin package registers as a unit.
 export type { RegistryBundleInterface } from './RegistryBundleInterface.js';
 export type { RegistryModuleInterface } from './RegistryModuleInterface.js';

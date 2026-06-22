@@ -16,7 +16,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { AgentServicesType } from '../../src/contracts/AgentServicesType.js';
+import type { LlmAdapterInterface } from '../../src/contracts/LlmAdapterInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ChatRequestType } from '../../src/entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../../src/entities/adapter/ChatResponse.js';
@@ -67,7 +67,7 @@ class LoopState extends NodeStateBase {
 
 class StubBuildChatRequestNode extends BuildChatRequestNode<LoopState> {
   readonly name = 'build-request';
-  protected buildRequest(state: LoopState, context: NodeContextType<AgentServicesType>): ChatRequestType {
+  protected buildRequest(state: LoopState, context: NodeContextType): ChatRequestType {
     const req: ChatRequestType = {
       'messages': [{ 'role': 'user', 'content': state.prompt }],
       'tools': [],
@@ -84,11 +84,12 @@ class StubBuildChatRequestNode extends BuildChatRequestNode<LoopState> {
 
 class StubCallModelNode extends CallModelNode<LoopState> {
   readonly name = 'call-model';
-  protected getRequest(state: LoopState, _ctx: NodeContextType<AgentServicesType>): ChatRequestType {
+  constructor(llm: LlmAdapterInterface) { super(llm); }
+  protected getRequest(state: LoopState, _ctx: NodeContextType): ChatRequestType {
     if (state.chatRequest === null) throw new Error('chatRequest not set');
     return state.chatRequest;
   }
-  protected storeResponse(state: LoopState, response: ChatResponseType, _ctx: NodeContextType<AgentServicesType>): void {
+  protected storeResponse(state: LoopState, response: ChatResponseType, _ctx: NodeContextType): void {
     state.chatResponse = response;
     if (response.message.variant === 'text') {
       state.assistantText = response.message.content;
@@ -98,63 +99,63 @@ class StubCallModelNode extends CallModelNode<LoopState> {
 
 class StubNormalizeResponseNode extends NormalizeResponseNode<LoopState> {
   readonly name = 'normalize-response';
-  protected getResponse(state: LoopState, _ctx: NodeContextType<AgentServicesType>): ChatResponseType | null {
+  protected getResponse(state: LoopState, _ctx: NodeContextType): ChatResponseType | null {
     return state.chatResponse;
   }
 }
 
 class StubDecodeTextToolCallsNode extends DecodeTextToolCallsNode<LoopState> {
   readonly name = 'decode-tools';
-  protected getText(state: LoopState, _ctx: NodeContextType<AgentServicesType>): string {
+  protected getText(state: LoopState, _ctx: NodeContextType): string {
     return state.assistantText;
   }
-  protected storeToolCalls(state: LoopState, calls: readonly ToolCallType[], _ctx: NodeContextType<AgentServicesType>): void {
+  protected storeToolCalls(state: LoopState, calls: readonly ToolCallType[], _ctx: NodeContextType): void {
     state.decodedCalls = [...calls];
   }
 }
 
 class StubNormalizeToolCallsNode extends NormalizeToolCallsNode<LoopState> {
   readonly name = 'normalize-tools';
-  protected getToolCalls(state: LoopState, _ctx: NodeContextType<AgentServicesType>): readonly ToolCallType[] {
+  protected getToolCalls(state: LoopState, _ctx: NodeContextType): readonly ToolCallType[] {
     return state.decodedCalls;
   }
-  protected writeNormalized(state: LoopState, calls: readonly ToolCallType[], _ctx: NodeContextType<AgentServicesType>): void {
+  protected writeNormalized(state: LoopState, calls: readonly ToolCallType[], _ctx: NodeContextType): void {
     state.decodedCalls = [...calls];
   }
 }
 
 class StubBuildToolWorksetsNode extends BuildToolWorksetsNode<LoopState> {
   readonly name = 'build-worksets';
-  protected getToolCalls(state: LoopState, _ctx: NodeContextType<AgentServicesType>): readonly ToolCallType[] {
+  protected getToolCalls(state: LoopState, _ctx: NodeContextType): readonly ToolCallType[] {
     return state.decodedCalls;
   }
-  protected classifyCall(_call: ToolCallType, _state: LoopState, _ctx: NodeContextType<AgentServicesType>): 'safe' | 'exclusive' {
+  protected classifyCall(_call: ToolCallType, _state: LoopState, _ctx: NodeContextType): 'safe' | 'exclusive' {
     return 'safe';
   }
-  protected writeSafeWorkset(state: LoopState, calls: readonly ToolCallScatterItemType[], _ctx: NodeContextType<AgentServicesType>): void {
+  protected writeSafeWorkset(state: LoopState, calls: readonly ToolCallScatterItemType[], _ctx: NodeContextType): void {
     state.safeWorkset = [...calls];
   }
-  protected writeExclusiveWorkset(state: LoopState, calls: readonly ToolCallScatterItemType[], _ctx: NodeContextType<AgentServicesType>): void {
+  protected writeExclusiveWorkset(state: LoopState, calls: readonly ToolCallScatterItemType[], _ctx: NodeContextType): void {
     state.exclusiveWorkset = [...calls];
   }
 }
 
 class StubCollectToolResultsNode extends CollectToolResultsNode<LoopState> {
   readonly name = 'collect-results';
-  protected getGatheredResults(state: LoopState, _ctx: NodeContextType<AgentServicesType>): readonly unknown[] {
+  protected getGatheredResults(state: LoopState, _ctx: NodeContextType): readonly unknown[] {
     return state.toolOutputs;
   }
-  protected writeResult(state: LoopState, results: readonly unknown[], _ctx: NodeContextType<AgentServicesType>): void {
+  protected writeResult(state: LoopState, results: readonly unknown[], _ctx: NodeContextType): void {
     state.collectedResults = [...results];
   }
 }
 
 class StubAppendAssistantNode extends AppendAssistantNode<LoopState> {
   readonly name = 'append-assistant';
-  protected getResponse(state: LoopState, _ctx: NodeContextType<AgentServicesType>): ChatResponseType | null {
+  protected getResponse(state: LoopState, _ctx: NodeContextType): ChatResponseType | null {
     return state.chatResponse;
   }
-  protected append(state: LoopState, response: ChatResponseType, _ctx: NodeContextType<AgentServicesType>): void {
+  protected append(state: LoopState, response: ChatResponseType, _ctx: NodeContextType): void {
     if (response.message.variant === 'text') {
       state.assistantText = `[appended] ${response.message.content}`;
     }
@@ -166,10 +167,10 @@ class StubAppendAssistantNode extends AppendAssistantNode<LoopState> {
 class LoopFixture {
   private constructor() { /* static class */ }
 
-  static nodes(): AgentLoopNodesType {
+  static nodes(llm: LlmAdapterInterface): AgentLoopNodesType {
     return {
       'chatRequest':         new StubBuildChatRequestNode(),
-      'callModel':           new StubCallModelNode(),
+      'callModel':           new StubCallModelNode(llm),
       'normalizeResponse':   new StubNormalizeResponseNode(),
       'decodeTextToolCalls': new StubDecodeTextToolCallsNode(),
       'normalizeToolCalls':  new StubNormalizeToolCallsNode(),
@@ -179,7 +180,10 @@ class LoopFixture {
     };
   }
 
-  static services(): AgentServicesType {
+  static services(): {
+    llm: LlmAdapterInterface;
+    tools: ToolRegistry;
+  } {
     return {
       'llm': {
         'id': 'stub',
@@ -209,7 +213,7 @@ class LoopFixture {
 
 void describe('AgentBuilder.loop: topology', () => {
   void it('returns a valid DAGType with the canonical name and version defaults', () => {
-    const dag = AgentBuilder.loop(LoopFixture.nodes());
+    const dag = AgentBuilder.loop(LoopFixture.nodes(LoopFixture.services().llm));
 
     assert.equal(dag['@type'], 'DAG');
     assert.equal(dag.name, 'agent-loop');
@@ -220,7 +224,7 @@ void describe('AgentBuilder.loop: topology', () => {
 
   void it('accepts name and version overrides via options', () => {
     const options: AgentLoopOptionsType = { 'name': 'my-agent', 'version': '2.0' };
-    const dag = AgentBuilder.loop(LoopFixture.nodes(), options);
+    const dag = AgentBuilder.loop(LoopFixture.nodes(LoopFixture.services().llm), options);
 
     assert.equal(dag.name, 'my-agent');
     assert.equal(dag.version, '2.0');
@@ -228,12 +232,12 @@ void describe('AgentBuilder.loop: topology', () => {
   });
 
   void it('entrypoint is build-request', () => {
-    const dag = AgentBuilder.loop(LoopFixture.nodes());
+    const dag = AgentBuilder.loop(LoopFixture.nodes(LoopFixture.services().llm));
     assert.equal(dag.entrypoint, 'build-request');
   });
 
   void it('contains exactly the expected placement names', () => {
-    const dag = AgentBuilder.loop(LoopFixture.nodes());
+    const dag = AgentBuilder.loop(LoopFixture.nodes(LoopFixture.services().llm));
     const names = dag.nodes.map((n) => n.name);
     const expected = [
       'build-request',
@@ -254,7 +258,7 @@ void describe('AgentBuilder.loop: topology', () => {
   });
 
   void it('collect-results routes back to build-request (loop-back edge)', () => {
-    const dag = AgentBuilder.loop(LoopFixture.nodes());
+    const dag = AgentBuilder.loop(LoopFixture.nodes(LoopFixture.services().llm));
     const collectNode = dag.nodes.find((n) => n.name === 'collect-results');
     assert.ok(collectNode !== undefined, 'collect-results placement must exist');
     assert.equal(collectNode['@type'], 'SingleNode', 'collect-results must be a SingleNode');
@@ -268,7 +272,7 @@ void describe('AgentBuilder.loop: topology', () => {
   });
 
   void it('append-assistant routes to end-done on success', () => {
-    const dag = AgentBuilder.loop(LoopFixture.nodes());
+    const dag = AgentBuilder.loop(LoopFixture.nodes(LoopFixture.services().llm));
     const appendNode = dag.nodes.find((n) => n.name === 'append-assistant');
     assert.ok(appendNode !== undefined, 'append-assistant must exist');
     if (appendNode['@type'] === 'SingleNode') {
@@ -278,7 +282,7 @@ void describe('AgentBuilder.loop: topology', () => {
   });
 
   void it('dispatch-tools scatter uses dagFrom body', () => {
-    const dag = AgentBuilder.loop(LoopFixture.nodes());
+    const dag = AgentBuilder.loop(LoopFixture.nodes(LoopFixture.services().llm));
     const scatter = dag.nodes.find((n) => n.name === 'dispatch-tools');
     assert.ok(scatter !== undefined, 'dispatch-tools must exist');
     assert.equal(scatter['@type'], 'ScatterNode', 'dispatch-tools must be a ScatterNode');
@@ -293,7 +297,7 @@ void describe('AgentBuilder.loop: topology', () => {
   });
 
   void it('scatter gather strategy is map with canonical mapping', () => {
-    const dag = AgentBuilder.loop(LoopFixture.nodes());
+    const dag = AgentBuilder.loop(LoopFixture.nodes(LoopFixture.services().llm));
     const scatter = dag.nodes.find((n) => n.name === 'dispatch-tools');
     assert.ok(scatter !== undefined);
     if (scatter['@type'] === 'ScatterNode') {
@@ -309,7 +313,7 @@ void describe('AgentBuilder.loop: topology', () => {
   });
 
   void it('end-done is a completed terminal; end-error is a failed terminal', () => {
-    const dag = AgentBuilder.loop(LoopFixture.nodes());
+    const dag = AgentBuilder.loop(LoopFixture.nodes(LoopFixture.services().llm));
 
     const endDone = dag.nodes.find((n) => n.name === 'end-done');
     assert.ok(endDone !== undefined, 'end-done must exist');
@@ -329,11 +333,11 @@ void describe('AgentBuilder.loop: topology', () => {
 
 void describe('AgentBuilder.loop: Dagonizer registration', () => {
   void it('assembled DAG registers cleanly in a Dagonizer (no schema errors)', () => {
-    const nodes = LoopFixture.nodes();
-    const dag = AgentBuilder.loop(nodes);
     const services = LoopFixture.services();
+    const nodes = LoopFixture.nodes(services.llm);
+    const dag = AgentBuilder.loop(nodes);
 
-    const dispatcher = new Dagonizer<LoopState, AgentServicesType>({ 'services': services });
+    const dispatcher = new Dagonizer<LoopState>();
     dispatcher.registerNode(nodes.chatRequest);
     dispatcher.registerNode(nodes.callModel);
     dispatcher.registerNode(nodes.normalizeResponse);
@@ -350,11 +354,11 @@ void describe('AgentBuilder.loop: Dagonizer registration', () => {
   });
 
   void it('executes a text-answer turn to completion without tool calls', async () => {
-    const nodes = LoopFixture.nodes();
-    const dag = AgentBuilder.loop(nodes);
     const services = LoopFixture.services();
+    const nodes = LoopFixture.nodes(services.llm);
+    const dag = AgentBuilder.loop(nodes);
 
-    const dispatcher = new Dagonizer<LoopState, AgentServicesType>({ 'services': services });
+    const dispatcher = new Dagonizer<LoopState>();
     dispatcher.registerNode(nodes.chatRequest);
     dispatcher.registerNode(nodes.callModel);
     dispatcher.registerNode(nodes.normalizeResponse);

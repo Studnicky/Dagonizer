@@ -23,8 +23,7 @@ export class OnceTrigger<
   TInput,
   TState extends NodeStateInterface,
   TOutput,
-  TServices = undefined,
-> implements TriggerInterface<TInput, TState, TOutput, TServices> {
+> implements TriggerInterface<TInput, TState, TOutput> {
   readonly #dagName: string;
   readonly #input: TInput;
   readonly #options: ExecuteOptionsType;
@@ -48,7 +47,7 @@ export class OnceTrigger<
     return this.#result;
   }
 
-  async attach(runner: DagRunnerInterface<TInput, TState, TOutput, TServices>): Promise<void> {
+  async attach(runner: DagRunnerInterface<TInput, TState, TOutput>): Promise<void> {
     if (this.#detached) return;
     this.#result = await runner.run(this.#dagName, this.#input, this.#options);
   }

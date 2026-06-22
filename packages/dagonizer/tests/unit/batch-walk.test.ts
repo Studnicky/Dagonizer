@@ -35,40 +35,44 @@ import { TestNode } from '../_support/TestNode.js';
 // DAG builder helpers
 // ===========================================================================
 
-function singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
-  return {
-    '@id': `urn:noocodex:dag:${dag}/node/${name}`,
-    '@type': 'SingleNode',
-    name,
-    node,
-    outputs,
-  };
-}
+class PlacementFixture {
+  private constructor() {}
 
-function terminalNode(dag: string, name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
-  return {
-    '@id': `urn:noocodex:dag:${dag}/node/${name}`,
-    '@type': 'TerminalNode',
-    'name': name,
-    outcome,
-  };
-}
+  static singleNode(dag: string, name: string, node: string, outputs: Record<string, string>): DAGType['nodes'][number] {
+    return {
+      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@type': 'SingleNode',
+      name,
+      node,
+      outputs,
+    };
+  }
 
-function embedNode(
-  dag: string,
-  name: string,
-  childDag: string,
-  outputs: Record<string, string>,
-  stateMapping: { input: Record<string, string>; output: Record<string, string> },
-): DAGType['nodes'][number] {
-  return {
-    '@id': `urn:noocodex:dag:${dag}/node/${name}`,
-    '@type': 'EmbeddedDAGNode',
-    name,
-    'dag': childDag,
-    outputs,
-    'stateMapping': stateMapping,
-  };
+  static terminalNode(dag: string, name: string, outcome: 'completed' | 'failed'): DAGType['nodes'][number] {
+    return {
+      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@type': 'TerminalNode',
+      'name': name,
+      outcome,
+    };
+  }
+
+  static embedNode(
+    dag: string,
+    name: string,
+    childDag: string,
+    outputs: Record<string, string>,
+    stateMapping: { input: Record<string, string>; output: Record<string, string> },
+  ): DAGType['nodes'][number] {
+    return {
+      '@id': `urn:noocodex:dag:${dag}/node/${name}`,
+      '@type': 'EmbeddedDAGNode',
+      name,
+      'dag': childDag,
+      outputs,
+      'stateMapping': stateMapping,
+    };
+  }
 }
 
 // ===========================================================================
@@ -471,23 +475,23 @@ void describe('Batch walk — size-1 parity', () => {
   void it('EmbeddedDAGNode via size-1 batch produces same executedNodes/outcome as direct execute', async () => {
     // Simple child DAG: one transform node → terminal.
     const childDAG = TestDag.of('parity-child', 'transform', [
-      singleNode('parity-child', 'transform', 'transform-node', { 'ok': 'child-end' }),
-      terminalNode('parity-child', 'child-end', 'completed'),
+      PlacementFixture.singleNode('parity-child', 'transform', 'transform-node', { 'ok': 'child-end' }),
+      PlacementFixture.terminalNode('parity-child', 'child-end', 'completed'),
     ]);
 
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
     // Parent DAG: single entry → embed → terminal.
     const parentDAG = TestDag.of('parity-parent', 'entry', [
-      singleNode('parity-parent', 'entry', 'entry-node', { 'ok': 'embed' }),
-      embedNode(
+      PlacementFixture.singleNode('parity-parent', 'entry', 'entry-node', { 'ok': 'embed' }),
+      PlacementFixture.embedNode(
         'parity-parent',
         'embed',
         'parity-child',
         { 'success': 'parity-end', 'error': 'parity-end' },
         valueMapping,
       ),
-      terminalNode('parity-parent', 'parity-end', 'completed'),
+      PlacementFixture.terminalNode('parity-parent', 'parity-end', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<CompositeState>();
@@ -548,7 +552,7 @@ void describe('Batch walk — size-1 parity', () => {
           'empty': 'parity-scatter-end',
         },
       },
-      terminalNode('parity-scatter-1', 'parity-scatter-end', 'completed'),
+      PlacementFixture.terminalNode('parity-scatter-1', 'parity-scatter-end', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<ScatterParentState>();
@@ -761,8 +765,8 @@ void describe('Batch walk — multi-item composites', () => {
 
     // Child DAG: child-incr → child-end (success terminal).
     const childDAG = TestDag.of('embed-uniform-child', 'child-incr', [
-      singleNode('embed-uniform-child', 'child-incr', 'child-incr', { 'done': 'child-end' }),
-      terminalNode('embed-uniform-child', 'child-end', 'completed'),
+      PlacementFixture.singleNode('embed-uniform-child', 'child-incr', 'child-incr', { 'done': 'child-end' }),
+      PlacementFixture.terminalNode('embed-uniform-child', 'child-end', 'completed'),
     ]);
 
     // Value mapping: parent `value` → child `value`; child `value` → parent `value`.
@@ -780,16 +784,16 @@ void describe('Batch walk — multi-item composites', () => {
         'node': 'fan4',
         'outputs': { 'out': 'embed' },
       },
-      embedNode(
+      PlacementFixture.embedNode(
         'embed-uniform-parent',
         'embed',
         'embed-uniform-child',
         { 'success': 'downstream', 'error': 'parent-end' },
         valueMapping,
       ),
-      singleNode('embed-uniform-parent', 'downstream', 'downstream-rec', { 'done': 'acc' }),
-      singleNode('embed-uniform-parent', 'acc', 'acc-node', { 'done': 'parent-end' }),
-      terminalNode('embed-uniform-parent', 'parent-end', 'completed'),
+      PlacementFixture.singleNode('embed-uniform-parent', 'downstream', 'downstream-rec', { 'done': 'acc' }),
+      PlacementFixture.singleNode('embed-uniform-parent', 'acc', 'acc-node', { 'done': 'parent-end' }),
+      PlacementFixture.terminalNode('embed-uniform-parent', 'parent-end', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<CompositeState>();
@@ -860,8 +864,8 @@ void describe('Batch walk — multi-item composites', () => {
         'node': 'child-router',
         'outputs': { 'success': 'child-success-end', 'failure': 'child-fail-end' },
       },
-      terminalNode('embed-split-child', 'child-success-end', 'completed'),
-      terminalNode('embed-split-child', 'child-fail-end', 'failed'),
+      PlacementFixture.terminalNode('embed-split-child', 'child-success-end', 'completed'),
+      PlacementFixture.terminalNode('embed-split-child', 'child-fail-end', 'failed'),
     ]);
 
     // Parent DAG: fan → embed → split to even-acc (success) or odd-acc (error).
@@ -878,16 +882,16 @@ void describe('Batch walk — multi-item composites', () => {
         'node': 'fan6',
         'outputs': { 'out': 'embed' },
       },
-      embedNode(
+      PlacementFixture.embedNode(
         'embed-split-parent',
         'embed',
         'embed-split-child',
         { 'success': 'even-acc', 'error': 'odd-acc' },
         valueMapping,
       ),
-      singleNode('embed-split-parent', 'even-acc', 'even-collector', { 'done': 'parent-end' }),
-      singleNode('embed-split-parent', 'odd-acc', 'odd-collector', { 'done': 'parent-end' }),
-      terminalNode('embed-split-parent', 'parent-end', 'completed'),
+      PlacementFixture.singleNode('embed-split-parent', 'even-acc', 'even-collector', { 'done': 'parent-end' }),
+      PlacementFixture.singleNode('embed-split-parent', 'odd-acc', 'odd-collector', { 'done': 'parent-end' }),
+      PlacementFixture.terminalNode('embed-split-parent', 'parent-end', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<CompositeState>();
@@ -993,8 +997,8 @@ void describe('Batch walk — multi-item composites', () => {
           'empty': 'downstream',
         },
       },
-      singleNode('scatter-per-parent', 'downstream', 'downstream', { 'done': 'end' }),
-      terminalNode('scatter-per-parent', 'end', 'completed'),
+      PlacementFixture.singleNode('scatter-per-parent', 'downstream', 'downstream', { 'done': 'end' }),
+      PlacementFixture.terminalNode('scatter-per-parent', 'end', 'completed'),
     ]);
 
     const dispatcher = new Dagonizer<ScatterParentState>();

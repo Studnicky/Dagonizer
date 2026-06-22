@@ -122,12 +122,25 @@ class ReservoirDispatchGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
-    const current = accessor.get<number>(state, 'counter') ?? 0;
+    const rawCounter = accessor.get(state, 'counter');
+    const current = typeof rawCounter === 'number' ? rawCounter : 0;
     accessor.set(state, 'counter', current + batch.size);
   }
 }
 
 GatherStrategies.register(new ReservoirDispatchGather());
+
+/** Type guard for gather record items with `group` and `value` fields. */
+class ReservoirRecordGuard {
+  private constructor() {}
+
+  static is(v: unknown): v is { group: string; value: number } {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+    const group = Reflect.get(v, 'group');
+    const value = Reflect.get(v, 'value');
+    return typeof group === 'string' && typeof value === 'number';
+  }
+}
 
 /**
  * ReservoirRecordingGather: like the counting gather, but also records each
@@ -143,15 +156,18 @@ class ReservoirRecordingGather extends GatherStrategy {
     state: NodeStateInterface,
     accessor: StateAccessorInterface,
   ): void {
-    const current = accessor.get<number>(state, 'counter') ?? 0;
+    const rawCounter2 = accessor.get(state, 'counter');
+    const current = typeof rawCounter2 === 'number' ? rawCounter2 : 0;
     accessor.set(state, 'counter', current + batch.size);
 
-    const recorded = accessor.get<Record<string, string>>(state, 'outputByValue') ?? {};
+    const rawRecorded = accessor.get(state, 'outputByValue');
+    const recorded: Record<string, string> = (typeof rawRecorded === 'object' && rawRecorded !== null && !Array.isArray(rawRecorded))
+      ? Object.fromEntries(Object.entries(rawRecorded).filter((e): e is [string, string] => typeof e[1] === 'string'))
+      : {};
     for (const entry of batch) {
       const record = entry.state;
-      const item = record.item as { group: string; value: number } | undefined;
-      if (item !== undefined) {
-        recorded[String(item.value)] = record.output;
+      if (ReservoirRecordGuard.is(record.item)) {
+        recorded[String(record.item.value)] = record.output;
       }
     }
     accessor.set(state, 'outputByValue', recorded);
@@ -162,13 +178,23 @@ GatherStrategies.register(new ReservoirRecordingGather());
 
 // ── Suite A + B: sub-DAG route body ──────────────────────────────────────────
 
+/** Type guard for items stored in `currentItem` metadata. */
+class CurrentItemGuard {
+  private constructor() {}
+
+  static is(v: unknown): v is { group: string; value: number } {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+    return typeof Reflect.get(v, 'value') === 'number';
+  }
+}
+
 /**
  * RouterNode: reads `currentItem` metadata and routes `value % 2 === 0`
  * → 'even', otherwise → 'odd'.
  *
  * Extends ScalarNode<NodeStateBase> so the node is structurally compatible
  * with NodeInterface<NodeStateInterface> — required for Suite D's bundle
- * (DispatcherBundleType<NodeStateInterface, unknown>) without casting.
+ * (DispatcherBundleType<NodeStateInterface>) without casting.
  * getMetadata is declared on NodeStateBase, so narrowing via the base type
  * is safe.
  */
@@ -181,8 +207,8 @@ class RouterNode extends ScalarNode<NodeStateBase, 'even' | 'odd'> {
   }
 
   protected override async executeOne(state: NodeStateBase): Promise<NodeOutputType<'even' | 'odd'>> {
-    const item = state.getMetadata<{ group: string; value: number }>('currentItem');
-    const output: 'even' | 'odd' = (item !== undefined && item.value % 2 === 0) ? 'even' : 'odd';
+    const raw = state.getMetadata('currentItem');
+    const output: 'even' | 'odd' = (CurrentItemGuard.is(raw) && raw.value % 2 === 0) ? 'even' : 'odd';
     return { 'errors': [], output };
   }
 }
@@ -385,57 +411,56 @@ void describe('Scatter reservoir: DAGType body in-process (Branch B)', () => {
 
 // ── Suite B ───────────────────────────────────────────────────────────────────
 
-/**
- * Build a plain DagContainerInterface loopback that runs the sub-DAG
- * in-process. This is NOT a DagContainerBase subclass, so it exercises the
- * per-item fallback path in Branch C of executeBatch.
- */
-function buildLoopbackContainer(
-  innerDispatcher: Dagonizer<ReservoirDispatchState>,
-  callCounter: { count: number },
-): DagContainerInterface {
-  return {
-    async runDag(
-      task: DagTaskInterface<unknown>,
-      _options?: { readonly relay?: ObserverRelayInterface },
-    ): Promise<DagOutcomeType> {
-      callCounter.count++;
-      const rawState = task.state;
-      if (!(rawState instanceof ReservoirDispatchState)) {
-        throw new Error(`buildLoopbackContainer: expected ReservoirDispatchState, got ${rawState.constructor.name}`);
-      }
-      const cloneState = rawState;
-      try {
-        const exec = innerDispatcher.execute(task.dagName, cloneState);
-        const iter = exec[Symbol.asyncIterator]();
-        let step = await iter.next();
-        while (!step.done) {
-          step = await iter.next();
+/** Loopback DagContainerInterface that runs sub-DAGs in-process for Suite B. */
+class LoopbackContainer {
+  private constructor() {}
+
+  static forDispatcher(
+    innerDispatcher: Dagonizer<ReservoirDispatchState>,
+    callCounter: { count: number },
+  ): DagContainerInterface {
+    return {
+      async runDag(
+        task: DagTaskInterface,
+        _options?: { readonly relay?: ObserverRelayInterface },
+      ): Promise<DagOutcomeType> {
+        callCounter.count++;
+        const rawState = task.state;
+        if (!(rawState instanceof ReservoirDispatchState)) {
+          throw new Error(`LoopbackContainer: expected ReservoirDispatchState, got ${rawState.constructor.name}`);
         }
-        const terminal = step.value;
-        return {
-          'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
-          'errors': [...terminal.state.errors],
-          'stateSnapshot': terminal.state.snapshot(),
-          'intermediates': [],
-        };
-      } catch (err: unknown) {
-        return {
-          'terminalOutput': 'failed',
-          'errors': [{
-            'code': 'CONTAINER_ERROR',
-            'context': {},
-            'message': err instanceof Error ? err.message : String(err),
-            'operation': 'runDag',
-            'recoverable': false,
-            'timestamp': new Date().toISOString(),
-          }],
-          'stateSnapshot': null,
-          'intermediates': [],
-        };
-      }
-    },
-  };
+        try {
+          const exec = innerDispatcher.execute(task.dagName, rawState);
+          const iter = exec[Symbol.asyncIterator]();
+          let step = await iter.next();
+          while (!step.done) {
+            step = await iter.next();
+          }
+          const terminal = step.value;
+          return {
+            'terminalOutput': terminal.state.lifecycle.variant === 'failed' ? 'failed' : 'completed',
+            'errors': [...terminal.state.errors],
+            'stateSnapshot': terminal.state.snapshot(),
+            'intermediates': [],
+          };
+        } catch (err: unknown) {
+          return {
+            'terminalOutput': 'failed',
+            'errors': [{
+              'code': 'CONTAINER_ERROR',
+              'context': {},
+              'message': err instanceof Error ? err.message : String(err),
+              'operation': 'runDag',
+              'recoverable': false,
+              'timestamp': new Date().toISOString(),
+            }],
+            'stateSnapshot': null,
+            'intermediates': [],
+          };
+        }
+      },
+    };
+  }
 }
 
 void describe('Scatter reservoir: DAGType body with container loopback (Branch C fallback)', () => {
@@ -446,7 +471,7 @@ void describe('Scatter reservoir: DAGType body with container loopback (Branch C
     innerDispatcher.registerDAG(routeBodyDag);
 
     const callCounter = { 'count': 0 };
-    const loopbackContainer = buildLoopbackContainer(innerDispatcher, callCounter);
+    const loopbackContainer = LoopbackContainer.forDispatcher(innerDispatcher, callCounter);
 
     const dispatcher = new Dagonizer<ReservoirDispatchState>({
       'containers': { [CONTAINER_ROLE]: loopbackContainer },
@@ -653,7 +678,7 @@ const suiteDRestoreAdapter: CheckpointRestoreAdapterInterface<NodeStateInterface
     return state;
   });
 
-const suiteDBundle: DispatcherBundleType<NodeStateInterface, unknown> = {
+const suiteDBundle: DispatcherBundleType<NodeStateInterface> = {
   // RouterNode extends ScalarNode<NodeStateBase, ...> which is structurally
   // compatible with NodeInterface<NodeStateInterface, string, unknown> —
   // no cast required.

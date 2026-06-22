@@ -28,19 +28,20 @@
  * Usage:
  *
  * ```ts
+ * const llm = new MyLlmAdapter();
  * const dag = AgentBuilder.loop({
- *   buildChatRequest:   new MyBuildChatRequestNode(),
- *   callModel:          new MyCallModelNode(),
- *   normalizeResponse:  new MyNormalizeResponseNode(),
+ *   chatRequest:         new MyBuildChatRequestNode(),
+ *   callModel:           new MyCallModelNode(llm),
+ *   normalizeResponse:   new MyNormalizeResponseNode(),
  *   decodeTextToolCalls: new MyDecodeTextToolCallsNode(),
- *   normalizeToolCalls: new MyNormalizeToolCallsNode(),
- *   buildToolWorksets:  new MyBuildToolWorksetsNode(),
- *   collectToolResults: new MyCollectToolResultsNode(),
- *   appendAssistant:    new MyAppendAssistantNode(),
+ *   normalizeToolCalls:  new MyNormalizeToolCallsNode(),
+ *   toolWorksets:        new MyBuildToolWorksetsNode(),
+ *   collectToolResults:  new MyCollectToolResultsNode(),
+ *   appendAssistant:     new MyAppendAssistantNode(),
  * }, { name: 'my-agent', version: '1' });
  *
- * const dispatcher = new Dagonizer<MyState, AgentServicesType>({ services });
- * dispatcher.registerNode(nodes.buildChatRequest);
+ * const dispatcher = new Dagonizer<MyState>();
+ * dispatcher.registerNode(nodes.chatRequest);
  * // … register all 8 nodes and the tool bundle …
  * dispatcher.registerDAG(dag);
  * ```

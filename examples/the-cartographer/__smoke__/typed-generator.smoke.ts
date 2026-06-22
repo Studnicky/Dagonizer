@@ -132,8 +132,9 @@ await SmokeRunner.check('DETERMINISM: two buildTypedFeed calls with the same con
   const run2 = await Sources.buildTypedFeed(CONFIG);
   assert.strictEqual(run1.length, run2.length, `Length mismatch: ${run1.length} vs ${run2.length}`);
   for (let i = 0; i < run1.length; i++) {
-    const p1 = run1[i]!;
-    const p2 = run2[i]!;
+    const p1 = run1[i];
+    const p2 = run2[i];
+    if (p1 === undefined || p2 === undefined) continue;
     assert.strictEqual(p1.eventType, p2.eventType, `eventType mismatch at index ${i}`);
     assert.strictEqual(p1.payload, p2.payload, `payload mismatch at index ${i} (eventType=${p1.eventType})`);
     assert.strictEqual(p1.sourceId, p2.sourceId, `sourceId mismatch at index ${i}`);

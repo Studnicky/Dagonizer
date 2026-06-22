@@ -27,13 +27,12 @@ export class MemoryStore extends BaseStore {
    * instance. The base-class default uses `performGet` + `performSet`,
    * which has two await points and is not safe under concurrent calls.
    */
-  override async update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
+  override async update(key: string, fn: (current: JsonValueType | undefined) => JsonValueType): Promise<JsonValueType> {
     const qualified = this.qualifyKey(key);
     // Synchronous atomic RMW: read the backing Map directly (no await between
-    // read and write). Narrowing goes through the base's single typed-accessor
-    // boundary helper — no cast in this override.
-    const raw       = this.narrowStored<T>(this.#data.get(qualified) ?? null);
-    const next      = fn(raw === null ? undefined : raw);
+    // read and write). The store is type-erased — values are `JsonValueType`.
+    const raw       = this.#data.get(qualified);
+    const next      = fn(raw === undefined ? undefined : raw);
     this.#data.set(qualified, next);
     return next;
   }

@@ -17,12 +17,11 @@ import type { RegistryBundleInterface } from './RegistryBundleInterface.js';
 /**
  * Default export shape of a registry module loaded by DagHost via dynamic import.
  */
-export interface RegistryModuleInterface<TServices = unknown> {
+export interface RegistryModuleInterface {
   /**
-   * Construct the services record and return the fully initialised bundle.
+   * Construct the module and return the fully initialised bundle.
    * `servicesConfig` is the opaque JSON object from the `init` message —
-   * the registry module interprets it to wire its dependencies. `TServices`
-   * defaults to `unknown`; a module that knows its services shape narrows it.
+   * the registry module interprets it to wire its dependencies.
    */
-  instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface<TServices>>;
+  instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface>;
 }

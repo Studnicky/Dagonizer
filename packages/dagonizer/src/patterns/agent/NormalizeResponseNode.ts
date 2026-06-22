@@ -11,7 +11,6 @@
  *   - `'error'` — on unexpected failure
  */
 
-import type { AgentServicesType } from '../../contracts/AgentServicesType.js';
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ChatResponseType } from '../../entities/adapter/ChatResponse.js';
@@ -23,7 +22,7 @@ import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class NormalizeResponseNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'text' | 'tools' | 'mixed' | 'empty' | 'error', AgentServicesType> {
+> extends ScalarNode<TState, 'text' | 'tools' | 'mixed' | 'empty' | 'error'> {
   readonly outputs = ['text', 'tools', 'mixed', 'empty', 'error'] as const;
 
   override get outputSchema(): Record<'text' | 'tools' | 'mixed' | 'empty' | 'error', SchemaObjectType> {
@@ -39,12 +38,12 @@ export abstract class NormalizeResponseNode<
   /** Read the stored chat response from state. Return `null` when absent. */
   protected abstract getResponse(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): ChatResponseType | null;
 
   protected override async executeOne(
     state: TState,
-    context: NodeContextType<AgentServicesType>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'text' | 'tools' | 'mixed' | 'empty' | 'error'>> {
     try {
       const response = this.getResponse(state, context);

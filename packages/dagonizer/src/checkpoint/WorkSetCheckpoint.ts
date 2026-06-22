@@ -30,7 +30,7 @@ export class WorkSetCheckpoint {
    * satisfy `WorkSetProgressSchema`.
    */
   static read(state: NodeStateInterface): WorkSetProgressType | undefined {
-    const raw = state.getMetadata<unknown>(WORKSET_PROGRESS_KEY);
+    const raw = state.getMetadata(WORKSET_PROGRESS_KEY);
     if (raw === undefined) return undefined;
     return Validator.workSetProgress.validate(raw);
   }

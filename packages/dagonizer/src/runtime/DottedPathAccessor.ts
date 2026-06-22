@@ -21,28 +21,28 @@ import type { StateAccessorInterface } from '../contracts/StateAccessorInterface
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 export class DottedPathAccessor implements StateAccessorInterface {
-  get<T = unknown>(state: object, path: string): T | null {
+  // Narrow an arbitrary value to an indexable record at the traversal boundary
+  // without a cast. `noun.is` type-guard, per the zero-cast rule: every dotted-
+  // path step is gated through this predicate before the value is indexed.
+  private static isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+  }
+
+  get(state: object, path: string): unknown {
     const parts = path.split('.');
     let current: unknown = state;
 
     for (const part of parts) {
-      if (current === null || current === undefined) {
+      if (!DottedPathAccessor.isRecord(current)) {
         return null;
       }
       if (part === '' || FORBIDDEN_KEYS.has(part)) {
         return null;
       }
-      // State-traversal boundary: `current` is verified non-null/undefined above
-      // and is a plain object at every step of the path; the cast to
-      // `Record<string, unknown>` is the single permitted ingest point for
-      // dotted-path traversal over arbitrary state objects.
-      current = (current as Record<string, unknown>)[part];
+      current = current[part];
     }
 
-    if (current === undefined) {
-      return null;
-    }
-    return current as T;
+    return current === undefined ? null : current;
   }
 
   set(state: object, path: string, value: unknown): void {
@@ -57,10 +57,10 @@ export class DottedPathAccessor implements StateAccessorInterface {
         return;
       }
     }
-    // State-traversal boundary: `state` is typed as `object` at the interface
-    // boundary; the cast widens it to an indexable record so the write loop
-    // can traverse and create intermediate plain objects along the path.
-    let current = state as Record<string, unknown>;
+    if (!DottedPathAccessor.isRecord(state)) {
+      return;
+    }
+    let current: Record<string, unknown> = state;
 
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
@@ -71,11 +71,14 @@ export class DottedPathAccessor implements StateAccessorInterface {
       if (!(part in current)) {
         current[part] = {};
       }
-      // State-traversal boundary: the intermediate segment at `part` is a
-      // plain object created by this method (or supplied by the caller as
-      // domain state). The cast to `Record<string, unknown>` advances the
-      // traversal cursor; FORBIDDEN_KEYS guards prevent prototype pollution.
-      current = current[part] as Record<string, unknown>;
+      // Advance the cursor through the FORBIDDEN_KEYS-guarded segment. The
+      // segment was created here as `{}` or supplied by the caller; the
+      // record guard refuses to write through a non-object intermediate.
+      const next = current[part];
+      if (!DottedPathAccessor.isRecord(next)) {
+        return;
+      }
+      current = next;
     }
     const lastPart = parts[parts.length - 1];
 

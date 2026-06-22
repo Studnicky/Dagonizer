@@ -25,14 +25,15 @@ class TestDecision extends DecisionNode<TestState, 'yes' | 'no', 'yes' | 'no'> {
 }
 
 void test('DecisionNode routes by parsed choice + writes state', async () => {
-  const node = new TestDecision();
   const state = new TestState();
   const mockResponse: ChatResponseType = {
     'message': { 'variant': 'text', 'content': 'yes please' },
     'finishReason': 'stop',
     'usage': { 'promptTokens': 0, 'completionTokens': 0 },
   };
-  const ctx = NodeContextBuilder.of('test-dag', 'test-decision', new AbortController().signal, { 'llm': { 'chat': async () => mockResponse } });
+  // The LLM client is injected into the node's constructor (DI), not the context.
+  const node = new TestDecision({ 'chat': async () => mockResponse });
+  const ctx = NodeContextBuilder.of('test-dag', 'test-decision', new AbortController().signal);
   const result = await node.execute(Batch.of(state), ctx);
   assert.equal(result.has('yes'), true);
   assert.equal(result.has('no'), false);

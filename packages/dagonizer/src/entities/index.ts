@@ -255,6 +255,7 @@ export type {
   JsonPrimitiveType,
   JsonValueType,
 } from './json.js';
+export { JsonObject } from './json.js';
 export { JsonValue } from './JsonValue.js';
 
 export type {

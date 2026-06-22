@@ -13,7 +13,7 @@
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
+import type { ReverseGeocoder } from '../../contracts/ReverseGeocoder.ts';
 
 import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
@@ -21,9 +21,15 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region reverse-geocode-node
-export class ReverseGeocodeNode extends ScalarNode<CartographerState, 'geocoded', CartographerServices> {
+export class ReverseGeocodeNode extends ScalarNode<CartographerState, 'geocoded'> {
+  private readonly reverseGeocoder: ReverseGeocoder;
   readonly 'name' = 'reverse-geocode';
   readonly 'outputs' = ['geocoded'] as const;
+
+  constructor(reverseGeocoder: ReverseGeocoder) {
+    super();
+    this.reverseGeocoder = reverseGeocoder;
+  }
 
   override get outputSchema(): Record<'geocoded', SchemaObjectType> {
     return {
@@ -31,8 +37,8 @@ export class ReverseGeocodeNode extends ScalarNode<CartographerState, 'geocoded'
     };
   }
 
-  protected override async executeOne(state: CartographerState, context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'geocoded'>> {
-    const outcome = await context.services.reverseGeocoder.lookup(
+  protected override async executeOne(state: CartographerState, context: NodeContextType): Promise<NodeOutputType<'geocoded'>> {
+    const outcome = await this.reverseGeocoder.lookup(
       state.raw.latitude,
       state.raw.longitude,
       context.signal,
@@ -48,5 +54,3 @@ export class ReverseGeocodeNode extends ScalarNode<CartographerState, 'geocoded'
   }
 }
 // #endregion reverse-geocode-node
-
-export const reverseGeocode = new ReverseGeocodeNode();

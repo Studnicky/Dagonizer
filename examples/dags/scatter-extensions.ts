@@ -56,7 +56,7 @@ export class ScoreNode extends ScalarNode<RankingState, 'success' | 'error'> {
   }
 
   protected override async executeOne(state: RankingState) {
-    const item = state.getMetadata<string>('item') ?? '';
+    const item = state.getter.string('item');
     // Synthetic score: proportional to string length
     state.candidate = { title: item, score: item.length };
     return NodeOutputBuilder.of('success');
@@ -98,20 +98,21 @@ export class BatchEnrichNode extends MonadicNode<RankingState, 'enriched'> {
 // Direct node invocation: create a Batch from a single state and call execute().
 // Returns a RoutedBatchType; check routed.has('success') to inspect results.
 // Used in tests for per-node isolation without a full dispatcher.
-export async function scoreOneItem(item: string): Promise<boolean> {
-  const state = new RankingState();
-  state.candidate = { title: item, score: 0 };
-  const node = new ScoreNode();
-  const ctx: NodeContextType = {
-    signal: new AbortController().signal,
-    dagName: 'test',
-    nodeName: 'score',
-    services: undefined,
-    validateOutputs: false,
-    outputSchemaValidator: null,
-  };
-  const routed = await node.execute(Batch.of(state), ctx);
-  return routed.has('success');
+export class ScoreNodeRunner {
+  static async score(item: string): Promise<boolean> {
+    const state = new RankingState();
+    state.candidate = { title: item, score: 0 };
+    const node = new ScoreNode();
+    const ctx: NodeContextType = {
+      signal: new AbortController().signal,
+      dagName: 'test',
+      nodeName: 'score',
+      validateOutputs: false,
+      outputSchemaValidator: null,
+    };
+    const routed = await node.execute(Batch.of(state), ctx);
+    return routed.has('success');
+  }
 }
 // #endregion call-node-directly
 
@@ -145,8 +146,8 @@ class TopNGatherStrategy extends GatherStrategy {
     const target = config.target ?? 'topCandidates';
     const n = 3;
     const all = execution.records.map((r) =>
-      execution.accessor.get<ScoredItem>(r.cloneState, 'candidate'),
-    ).filter((c): c is ScoredItem => c !== null);
+      execution.accessor.get(r.cloneState, 'candidate'),
+    ).filter((c): c is ScoredItem => typeof c === 'object' && c !== null && 'score' in c && typeof c.score === 'number');
     const sorted = [...all].sort((a, b) => b.score - a.score).slice(0, n);
     execution.accessor.set(execution.state, target, sorted);
   }

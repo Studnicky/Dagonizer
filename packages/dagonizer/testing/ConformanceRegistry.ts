@@ -136,25 +136,33 @@ export class ConformanceState extends NodeStateBase {
 }
 
 /** Restore a ConformanceState from a snapshot (the registry's restoreState). */
-function restoreConformanceState(snapshot: JsonObjectType): ConformanceState {
-  const instance = new ConformanceState();
-  instance.applySnapshot(snapshot);
-  return instance;
+class ConformanceStateRestore {
+  private constructor() {}
+
+  static fromSnapshot(snapshot: JsonObjectType): ConformanceState {
+    const instance = new ConformanceState();
+    instance.applySnapshot(snapshot);
+    return instance;
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Signal-respecting sleep
 // ---------------------------------------------------------------------------
 
-function sleepUntilAborted(signal: AbortSignal, ceilingMs: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-    signal.addEventListener('abort', () => resolve(), { 'once': true });
-    setTimeout(() => resolve(), ceilingMs);
-  });
+class AbortSleep {
+  private constructor() {}
+
+  static until(signal: AbortSignal, ceilingMs: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      if (signal.aborted) {
+        resolve();
+        return;
+      }
+      signal.addEventListener('abort', () => resolve(), { 'once': true });
+      setTimeout(() => resolve(), ceilingMs);
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -165,7 +173,7 @@ class RecorderNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'recorder';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
-  protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'done'>> {
+  protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
     state.executedNodes.push('recorder');
     return { 'errors': [], 'output': 'done' };
   }
@@ -175,7 +183,7 @@ class MutatorNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'mutator';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
-  protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'done'>> {
+  protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
     state.value = 99;
     return { 'errors': [], 'output': 'done' };
   }
@@ -185,7 +193,7 @@ class ErrorEmitterNode extends ScalarNode<ConformanceState, 'error'> {
   override readonly name = 'error-emitter';
   override readonly outputs = ['error'] as const;
   override get outputSchema(): Record<'error', SchemaObjectType> { return { 'error': { 'type': 'object' } }; }
-  protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'error'>> {
+  protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'error'>> {
     state.collectError({
       'code': 'TEST_ERROR',
       'context': {},
@@ -205,9 +213,9 @@ class TimeoutSleeperNode extends ScalarNode<ConformanceState, 'done'> {
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   protected override async executeOne(
     _state: ConformanceState,
-    context: NodeContextType<undefined>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'done'>> {
-    await sleepUntilAborted(context.signal, SLEEPER_SAFETY_CEILING_MS);
+    await AbortSleep.until(context.signal, SLEEPER_SAFETY_CEILING_MS);
     return { 'errors': [], 'output': 'done' };
   }
 }
@@ -218,10 +226,10 @@ class AbortSleeperNode extends ScalarNode<ConformanceState, 'done'> {
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
   protected override async executeOne(
     state: ConformanceState,
-    context: NodeContextType<undefined>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'done'>> {
     state.began = true;
-    await sleepUntilAborted(context.signal, SLEEPER_SAFETY_CEILING_MS);
+    await AbortSleep.until(context.signal, SLEEPER_SAFETY_CEILING_MS);
     return { 'errors': [], 'output': 'done' };
   }
 }
@@ -236,7 +244,7 @@ class ScatterCounterNode extends ScalarNode<ConformanceState, 'done'> {
   override readonly name = 'scatter-counter';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
-  protected override async executeOne(state: ConformanceState, _context: NodeContextType<undefined>): Promise<NodeOutputType<'done'>> {
+  protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
     state.value += 1;
     return { 'errors': [], 'output': 'done' };
   }
@@ -268,164 +276,155 @@ const DAG_CONTEXT = {
   'gather':          { '@id': 'https://noocodex.dev/ontology/dag/gather' },
 } as const;
 
-/**
- * Build a simple single-node DAG (the body DAG that runs inside the host).
- */
-function singleNodeDag(dagName: string, nodeName: string, output: string): DAGType {
-  return Validator.dag.validate({
-    '@context': DAG_CONTEXT,
-    '@id': `urn:conformance:dag:${dagName}`,
-    '@type': 'DAG',
-    'name': dagName,
-    'version': '1',
-    'entrypoint': nodeName,
-    'nodes': [
-      {
-        '@id': `urn:conformance:dag:${dagName}/node/${nodeName}`,
-        '@type': 'SingleNode',
-        'name': nodeName,
-        'node': nodeName,
-        'outputs': { [output]: 'end' },
-      },
-      {
-        '@id': `urn:conformance:dag:${dagName}/node/end`,
-        '@type': 'TerminalNode',
-        'name': 'end',
-        'outcome': 'completed',
-      },
-    ],
-  });
-}
-
-/**
- * Build a parent DAG that runs an embedded child DAG via a container.
- * The EmbeddedDAGNode carries container: CONFORMANCE_CONTAINER_ROLE and
- * stateMapping that propagates all ConformanceState fields back to the parent.
- *
- * The output mapping format is `{ parentKey: childKey }`: for each pair,
- * the child field is read and written to the parent field of the same name.
- * This is required so conformance law assertions on parent state reflect
- * mutations made inside the contained execution.
- */
-function embeddingDag(runnerName: string, childDagName: string, _outputs: string[]): DAGType {
-  // All embedded DAG outputs route to a shared 'end' TerminalNode.
-  // The _outputs parameter names the possible outcomes of the child DAG (e.g. 'done', 'error');
-  // each is routed to the parent's terminal placement.
-  const outputMap: Record<string, string> = { 'done': 'end', 'error': 'end' };
-
-  return Validator.dag.validate({
-    '@context': DAG_CONTEXT,
-    '@id': `urn:conformance:dag:${runnerName}`,
-    '@type': 'DAG',
-    'name': runnerName,
-    'version': '1',
-    'entrypoint': 'run-child',
-    'nodes': [
-      {
-        '@id': `urn:conformance:dag:${runnerName}/node/run-child`,
-        '@type': 'EmbeddedDAGNode',
-        'name': 'run-child',
-        'dag': childDagName,
-        'outputs': outputMap,
-        'container': CONFORMANCE_CONTAINER_ROLE,
-        'stateMapping': {
-          // Propagate all ConformanceState domain fields back to parent after
-          // the contained execution completes. Format: { parentKey: childKey }.
-          'output': {
-            'value': 'value',
-            'executedNodes': 'executedNodes',
-            'began': 'began',
-          },
-        },
-      },
-      {
-        '@id': `urn:conformance:dag:${runnerName}/node/end`,
-        '@type': 'TerminalNode',
-        'name': 'end',
-        'outcome': 'completed',
-      },
-    ],
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Scatter body DAG factory — for Laws 7 & 8
-//
-// The scatter-item-body DAG is the dag-body used by the ScatterNode on each
-// item. It runs scatter-counter, which records the item into state.scatterItems.
-// ---------------------------------------------------------------------------
-
 /** Name of the DAG that runs inside each scatter item clone. */
 export const SCATTER_ITEM_BODY_DAG = 'conformance-scatter-item-body';
 
-function scatterItemBodyDag(): DAGType {
-  return Validator.dag.validate({
-    '@context': DAG_CONTEXT,
-    '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}`,
-    '@type': 'DAG',
-    'name': SCATTER_ITEM_BODY_DAG,
-    'version': '1',
-    'entrypoint': 'scatter-counter',
-    'nodes': [
-      {
-        '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}/node/scatter-counter`,
-        '@type': 'SingleNode',
-        'name': 'scatter-counter',
-        'node': 'scatter-counter',
-        'outputs': { 'done': 'end' },
-      },
-      {
-        '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}/node/end`,
-        '@type': 'TerminalNode',
-        'name': 'end',
-        'outcome': 'completed',
-      },
-    ],
-  });
-}
-
 /**
- * Build a runner DAG that drives a scatter whose each item's dag-body runs
- * through the bound container. Source is `scatterItems` (pre-seeded on state).
- * Uses map gather: reads `value` from each clone and collects into parent
- * `scatterItems` array. The scatter-counter node increments clone.value so
- * the gather result is a per-item integer array — deterministic and comparable.
+ * Builders for the conformance law DAG fixtures.
+ *
+ * - `singleNode` — a simple single-node body DAG (runs inside the host).
+ * - `embedding`  — a parent DAG that runs an embedded child DAG via a
+ *   container; the EmbeddedDAGNode carries container: CONFORMANCE_CONTAINER_ROLE
+ *   and stateMapping `{ parentKey: childKey }` that propagates ConformanceState
+ *   fields back to the parent.
+ * - `scatterItemBody` — the dag-body used by the ScatterNode on each item
+ *   (runs scatter-counter, recording the item into state).
+ * - `scatter` — a runner DAG that drives a scatter whose each item's dag-body
+ *   runs through the bound container; map gather collects clone `value` into the
+ *   parent `gatheredItems` array.
  */
-function scatterDag(runnerName: string): DAGType {
-  return Validator.dag.validate({
-    '@context': DAG_CONTEXT,
-    '@id': `urn:conformance:dag:${runnerName}`,
-    '@type': 'DAG',
-    'name': runnerName,
-    'version': '1',
-    'entrypoint': 'fan',
-    'nodes': [
-      {
-        '@id': `urn:conformance:dag:${runnerName}/node/fan`,
-        '@type': 'ScatterNode',
-        'name': 'fan',
-        'body': { 'dag': SCATTER_ITEM_BODY_DAG },
-        'source': 'scatterItems',
-        'itemKey': 'currentItem',
-        'concurrency': 1,
-        'container': CONFORMANCE_CONTAINER_ROLE,
-        'gather': { 'strategy': 'map', 'mapping': { 'value': 'gatheredItems' } },
-        'reducer': 'aggregate',
-        'outputs': {
-          'all-success': 'end',
-          'partial': 'end',
-          'all-error': 'end',
-          'empty': 'end',
+class ConformanceDags {
+  private constructor() {}
+
+  static singleNode(dagName: string, nodeName: string, output: string): DAGType {
+    return Validator.dag.validate({
+      '@context': DAG_CONTEXT,
+      '@id': `urn:conformance:dag:${dagName}`,
+      '@type': 'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoint': nodeName,
+      'nodes': [
+        {
+          '@id': `urn:conformance:dag:${dagName}/node/${nodeName}`,
+          '@type': 'SingleNode',
+          'name': nodeName,
+          'node': nodeName,
+          'outputs': { [output]: 'end' },
         },
-      },
-      {
-        '@id': `urn:conformance:dag:${runnerName}/node/end`,
-        '@type': 'TerminalNode',
-        'name': 'end',
-        'outcome': 'completed',
-      },
-    ],
-  });
+        {
+          '@id': `urn:conformance:dag:${dagName}/node/end`,
+          '@type': 'TerminalNode',
+          'name': 'end',
+          'outcome': 'completed',
+        },
+      ],
+    });
+  }
+
+  static embedding(runnerName: string, childDagName: string, _outputs: string[]): DAGType {
+    // All embedded DAG outputs route to a shared 'end' TerminalNode.
+    // The _outputs parameter names the possible outcomes of the child DAG (e.g. 'done', 'error');
+    // each is routed to the parent's terminal placement.
+    const outputMap: Record<string, string> = { 'done': 'end', 'error': 'end' };
+
+    return Validator.dag.validate({
+      '@context': DAG_CONTEXT,
+      '@id': `urn:conformance:dag:${runnerName}`,
+      '@type': 'DAG',
+      'name': runnerName,
+      'version': '1',
+      'entrypoint': 'run-child',
+      'nodes': [
+        {
+          '@id': `urn:conformance:dag:${runnerName}/node/run-child`,
+          '@type': 'EmbeddedDAGNode',
+          'name': 'run-child',
+          'dag': childDagName,
+          'outputs': outputMap,
+          'container': CONFORMANCE_CONTAINER_ROLE,
+          'stateMapping': {
+            // Propagate all ConformanceState domain fields back to parent after
+            // the contained execution completes. Format: { parentKey: childKey }.
+            'output': {
+              'value': 'value',
+              'executedNodes': 'executedNodes',
+              'began': 'began',
+            },
+          },
+        },
+        {
+          '@id': `urn:conformance:dag:${runnerName}/node/end`,
+          '@type': 'TerminalNode',
+          'name': 'end',
+          'outcome': 'completed',
+        },
+      ],
+    });
+  }
+
+  static scatterItemBody(): DAGType {
+    return Validator.dag.validate({
+      '@context': DAG_CONTEXT,
+      '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}`,
+      '@type': 'DAG',
+      'name': SCATTER_ITEM_BODY_DAG,
+      'version': '1',
+      'entrypoint': 'scatter-counter',
+      'nodes': [
+        {
+          '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}/node/scatter-counter`,
+          '@type': 'SingleNode',
+          'name': 'scatter-counter',
+          'node': 'scatter-counter',
+          'outputs': { 'done': 'end' },
+        },
+        {
+          '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}/node/end`,
+          '@type': 'TerminalNode',
+          'name': 'end',
+          'outcome': 'completed',
+        },
+      ],
+    });
+  }
+
+  static scatter(runnerName: string): DAGType {
+    return Validator.dag.validate({
+      '@context': DAG_CONTEXT,
+      '@id': `urn:conformance:dag:${runnerName}`,
+      '@type': 'DAG',
+      'name': runnerName,
+      'version': '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id': `urn:conformance:dag:${runnerName}/node/fan`,
+          '@type': 'ScatterNode',
+          'name': 'fan',
+          'body': { 'dag': SCATTER_ITEM_BODY_DAG },
+          'source': 'scatterItems',
+          'itemKey': 'currentItem',
+          'concurrency': 1,
+          'container': CONFORMANCE_CONTAINER_ROLE,
+          'gather': { 'strategy': 'map', 'mapping': { 'value': 'gatheredItems' } },
+          'reducer': 'aggregate',
+          'outputs': {
+            'all-success': 'end',
+            'partial': 'end',
+            'all-error': 'end',
+            'empty': 'end',
+          },
+        },
+        {
+          '@id': `urn:conformance:dag:${runnerName}/node/end`,
+          '@type': 'TerminalNode',
+          'name': 'end',
+          'outcome': 'completed',
+        },
+      ],
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -457,33 +456,33 @@ export const CONFORMANCE_DAG = {
 } as const;
 
 // Body DAGs (registered on the host; run inside the container)
-const bodyLaw1 = singleNodeDag(BODY.law1, 'recorder', 'done');
-const bodyLaw2 = singleNodeDag(BODY.law2, 'mutator', 'done');
-const bodyLaw3 = singleNodeDag(BODY.law3, 'error-emitter', 'error');
-const bodyLaw4 = singleNodeDag(BODY.law4, 'timeout-sleeper', 'done');
-const bodyLaw5 = singleNodeDag(BODY.law5, 'abort-sleeper', 'done');
-const bodyLaw6 = singleNodeDag(BODY.law6, 'recorder', 'done');
-const bodyLaw9 = singleNodeDag(BODY.law9, 'mutator', 'done');
+const bodyLaw1 = ConformanceDags.singleNode(BODY.law1, 'recorder', 'done');
+const bodyLaw2 = ConformanceDags.singleNode(BODY.law2, 'mutator', 'done');
+const bodyLaw3 = ConformanceDags.singleNode(BODY.law3, 'error-emitter', 'error');
+const bodyLaw4 = ConformanceDags.singleNode(BODY.law4, 'timeout-sleeper', 'done');
+const bodyLaw5 = ConformanceDags.singleNode(BODY.law5, 'abort-sleeper', 'done');
+const bodyLaw6 = ConformanceDags.singleNode(BODY.law6, 'recorder', 'done');
+const bodyLaw9 = ConformanceDags.singleNode(BODY.law9, 'mutator', 'done');
 
 // Scatter item body DAG for Laws 7 & 8
-const scatterItemBody = scatterItemBodyDag();
+const scatterItemBody = ConformanceDags.scatterItemBody();
 
 // Runner DAGs (registered both parent and host-side; dispatch child via container)
-const runnerLaw1 = embeddingDag(CONFORMANCE_DAG.law1, BODY.law1, ['done', 'error']);
-const runnerLaw2 = embeddingDag(CONFORMANCE_DAG.law2, BODY.law2, ['done', 'error']);
-const runnerLaw3 = embeddingDag(CONFORMANCE_DAG.law3, BODY.law3, ['done', 'error']);
-const runnerLaw4 = embeddingDag(CONFORMANCE_DAG.law4, BODY.law4, ['done', 'error']);
-const runnerLaw5 = embeddingDag(CONFORMANCE_DAG.law5, BODY.law5, ['done', 'error']);
-const runnerLaw6 = embeddingDag(CONFORMANCE_DAG.law6, BODY.law6, ['done', 'error']);
-const runnerLaw7 = scatterDag(CONFORMANCE_DAG.law7);
-const runnerLaw8 = scatterDag(CONFORMANCE_DAG.law8);
-const runnerLaw9 = embeddingDag(CONFORMANCE_DAG.law9, BODY.law9, ['done', 'error']);
+const runnerLaw1 = ConformanceDags.embedding(CONFORMANCE_DAG.law1, BODY.law1, ['done', 'error']);
+const runnerLaw2 = ConformanceDags.embedding(CONFORMANCE_DAG.law2, BODY.law2, ['done', 'error']);
+const runnerLaw3 = ConformanceDags.embedding(CONFORMANCE_DAG.law3, BODY.law3, ['done', 'error']);
+const runnerLaw4 = ConformanceDags.embedding(CONFORMANCE_DAG.law4, BODY.law4, ['done', 'error']);
+const runnerLaw5 = ConformanceDags.embedding(CONFORMANCE_DAG.law5, BODY.law5, ['done', 'error']);
+const runnerLaw6 = ConformanceDags.embedding(CONFORMANCE_DAG.law6, BODY.law6, ['done', 'error']);
+const runnerLaw7 = ConformanceDags.scatter(CONFORMANCE_DAG.law7);
+const runnerLaw8 = ConformanceDags.scatter(CONFORMANCE_DAG.law8);
+const runnerLaw9 = ConformanceDags.embedding(CONFORMANCE_DAG.law9, BODY.law9, ['done', 'error']);
 
 // ---------------------------------------------------------------------------
 // Bundle assembly
 // ---------------------------------------------------------------------------
 
-const CONFORMANCE_NODES: NodeInterface<NodeStateInterface, string, unknown>[] = [
+const CONFORMANCE_NODES: NodeInterface<NodeStateInterface, string>[] = [
   new RecorderNode(),
   new MutatorNode(),
   new ErrorEmitterNode(),
@@ -516,15 +515,14 @@ export class ConformanceRegistry {
   private constructor() { /* static class */ }
 
   /** Build a fresh RegistryBundleInterface (new array references each call). */
-  static bundle(): RegistryBundleInterface<undefined> {
+  static bundle(): RegistryBundleInterface {
     return {
       'bundle': {
         'nodes': [...CONFORMANCE_NODES],
         'dags': [...CONFORMANCE_DAGS],
       },
-      'services': undefined,
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'restoreState': CheckpointRestoreAdapter.wrap((snap: JsonObjectType) => restoreConformanceState(snap)),
+      'restoreState': CheckpointRestoreAdapter.wrap((snap: JsonObjectType) => ConformanceStateRestore.fromSnapshot(snap)),
     };
   }
 }
@@ -534,7 +532,7 @@ export class ConformanceRegistry {
 // ---------------------------------------------------------------------------
 
 const registryModule: RegistryModuleInterface = {
-  async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface<undefined>> {
+  async instantiate(_servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     return ConformanceRegistry.bundle();
   },
 };

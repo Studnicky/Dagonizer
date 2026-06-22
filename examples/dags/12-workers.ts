@@ -74,7 +74,7 @@ export class SquareWorkerNode extends ScalarNode<WorkState, 'done'> {
 
   protected override async executeOne(state: WorkState) {
     // Each scatter item is written to metadata under the itemKey ('task').
-    const task = state.getMetadata<number>('task') ?? 0;
+    const task = state.getter.number('task');
     // StoreInterface the per-item result in a scalar field. The 'append' gather
     // strategy reads this field from the child clone and appends it to
     // state.results on the parent after all items complete.

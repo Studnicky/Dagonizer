@@ -32,9 +32,10 @@ import assert from 'node:assert/strict';
 import { Dagonizer } from '@studnicky/dagonizer';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
 import { ArchivistState } from '../../ArchivistState.ts';
-import { archivistBundle } from '../../dag.ts';
-import { bookSearchScatterBundle } from '../../embedded-dags/BookSearchScatterDAG.ts';
-import { composeRetryLoopBundle } from '../../embedded-dags/ComposeRetryLoopDAG.ts';
+import { ArchivistNodes } from '../../nodes/ArchivistNodes.ts';
+import { ArchivistBundleFactory } from '../../dag.ts';
+import { BookSearchScatterBundleFactory } from '../../embedded-dags/BookSearchScatterDAG.ts';
+import { ComposeRetryLoopBundleFactory } from '../../embedded-dags/ComposeRetryLoopDAG.ts';
 import { MemoryStore } from '../../memory/MemoryStore.ts';
 import type { ArchivistServices, ClassifiedIntent, LlmClientInterface } from '../../services.ts';
 import type { CandidateType } from '../../entities/Book.ts';
@@ -168,7 +169,7 @@ class ArchivistHarness {
    * Build a Dagonizer instance with all archivist bundles registered.
    * The caller supplies the LLM implementation; tools are empty scouts.
    */
-  static dispatcher(llm: LlmClientInterface): Dagonizer<ArchivistState, ArchivistServices> {
+  static dispatcher(llm: LlmClientInterface): Dagonizer<ArchivistState> {
     const memory = new MemoryStore();
 
     const services: ArchivistServices = {
@@ -182,7 +183,7 @@ class ArchivistHarness {
       'nodeTimeouts':     {},
     };
 
-    const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
+    const dispatcher = new Dagonizer<ArchivistState>();
 
     // Tool registry: register four empty-result scouts so the scatter body
     // DAGs (tool:web_search_books, tool:google_books_search, etc.) exist in
@@ -193,12 +194,17 @@ class ArchivistHarness {
     toolRegistry.register(new EmptyScoutTool('google_books_search'));
     toolRegistry.register(new EmptyScoutTool('subject_search'));
     toolRegistry.register(new EmptyScoutTool('wikipedia_summary'));
-    dispatcher.registerBundle(toolRegistry.bundle<ArchivistServices>());
+    dispatcher.registerBundle(toolRegistry.bundle());
+
+    // Construct every services-injected node exactly once; the shared set is
+    // passed to all three factories so duplicate registrations refer to
+    // identical instances and the registrar accepts them.
+    const nodes = ArchivistNodes.build(services);
 
     // Embedded-DAG bundles register before the parent DAG.
-    dispatcher.registerBundle(bookSearchScatterBundle);
-    dispatcher.registerBundle(composeRetryLoopBundle);
-    dispatcher.registerBundle(archivistBundle);
+    dispatcher.registerBundle(BookSearchScatterBundleFactory.create(nodes));
+    dispatcher.registerBundle(ComposeRetryLoopBundleFactory.create(nodes));
+    dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
 
     return dispatcher;
   }

@@ -24,7 +24,6 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { decodePayload } from '../nodes/decodePayload.ts';
 import { routeEventType } from '../nodes/routeEventType.ts';
 
@@ -166,7 +165,7 @@ export const streamEventDAG: DAGType = new DAGBuilder('stream-event', '1.0')
  * and the stream-event DAG with the dispatcher. routeEventType re-registration is
  * a no-op (same instance; the bundle registrar is idempotent).
  */
-export const streamEventBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const streamEventBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [decodePayload, routeEventType],
   'dags':  [streamEventDAG],
 };

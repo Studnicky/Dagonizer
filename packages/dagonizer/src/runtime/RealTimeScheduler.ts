@@ -19,14 +19,10 @@ import { ExecutionError } from '../errors/DAGError.js';
 
 import { Clock } from './Clock.js';
 
-type TimerGlobals = typeof globalThis & {
-  setTimeout(handler: () => void, delayMs: number): unknown;
-  clearTimeout(handle: unknown): void;
-};
-
-// Platform boundary: globalThis is typed as bare `typeof globalThis`; we widen
-// to TimerGlobals to access setTimeout/clearTimeout with unknown handle types.
-const G = globalThis as TimerGlobals;
+// Platform timers, read straight off `globalThis` (already typed by the
+// platform lib — no cast). The handle stays opaque as the platform's own
+// `ReturnType`, identical between Node and the browser at this call site.
+type TimerHandle = ReturnType<typeof globalThis.setTimeout>;
 
 /**
  * Default `SchedulerProviderInterface`. The single permitted call site for
@@ -34,7 +30,7 @@ const G = globalThis as TimerGlobals;
  * unmodified; both expose `setTimeout` on `globalThis`.
  */
 export class RealTimeScheduler implements SchedulerProviderInterface {
-  readonly #activeHandles = new Set<unknown>();
+  readonly #activeHandles = new Set<TimerHandle>();
 
   async after(delayMs: number, options?: AbortableOptionsType): Promise<void> {
     const signal = options?.signal;
@@ -43,7 +39,7 @@ export class RealTimeScheduler implements SchedulerProviderInterface {
         reject(ExecutionError.ofSignal(signal));
         return;
       }
-      const handle = G.setTimeout(() => {
+      const handle = globalThis.setTimeout(() => {
         this.#activeHandles.delete(handle);
         signal?.removeEventListener('abort', onAbort);
         resolve();
@@ -52,7 +48,7 @@ export class RealTimeScheduler implements SchedulerProviderInterface {
 
       const onAbort = (): void => {
         this.#activeHandles.delete(handle);
-        G.clearTimeout(handle);
+        globalThis.clearTimeout(handle);
         signal?.removeEventListener('abort', onAbort);
         reject(ExecutionError.ofSignal(signal));
       };
@@ -70,27 +66,24 @@ export class RealTimeScheduler implements SchedulerProviderInterface {
       // Track the in-flight handle so a consumer `break` (which triggers the
       // generator's implicit `return`, not a throw) cancels the pending timer
       // immediately rather than leaving it to fire naturally after `intervalMs`.
-      // `unknown` is the correct type: `TimerGlobals.setTimeout` returns
-      // `unknown` (the return type differs between Node and the browser), and
-      // `clearTimeout` accepts `unknown` for the same reason. Using `unknown`
-      // keeps the type opaque and prevents callers from treating it as a number
-      // or `NodeJS.Timeout`.
-      let pendingHandle: unknown;
+      // The handle is `TimerHandle | undefined` until the timer is scheduled.
+      let pendingHandle: TimerHandle | undefined;
       try {
         await new Promise<void>((resolve, reject) => {
           if (signal?.aborted === true) {
             reject(new Error('aborted'));
             return;
           }
-          pendingHandle = G.setTimeout(() => {
-            this.#activeHandles.delete(pendingHandle);
+          const handle = globalThis.setTimeout(() => {
+            this.#activeHandles.delete(handle);
             signal?.removeEventListener('abort', onAbort);
             resolve();
           }, Math.max(0, intervalMs));
-          this.#activeHandles.add(pendingHandle);
+          pendingHandle = handle;
+          this.#activeHandles.add(handle);
           const onAbort = (): void => {
-            this.#activeHandles.delete(pendingHandle);
-            G.clearTimeout(pendingHandle);
+            this.#activeHandles.delete(handle);
+            globalThis.clearTimeout(handle);
             signal?.removeEventListener('abort', onAbort);
             reject(new Error('aborted'));
           };
@@ -103,7 +96,7 @@ export class RealTimeScheduler implements SchedulerProviderInterface {
         // timer fired (pendingHandle was already deleted on normal completion).
         if (pendingHandle !== undefined && this.#activeHandles.has(pendingHandle)) {
           this.#activeHandles.delete(pendingHandle);
-          G.clearTimeout(pendingHandle);
+          globalThis.clearTimeout(pendingHandle);
         }
       }
       yield;
@@ -112,7 +105,7 @@ export class RealTimeScheduler implements SchedulerProviderInterface {
 
   cancelAll(): void {
     for (const handle of this.#activeHandles) {
-      G.clearTimeout(handle);
+      globalThis.clearTimeout(handle);
     }
     this.#activeHandles.clear();
   }

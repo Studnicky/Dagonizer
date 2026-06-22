@@ -31,18 +31,21 @@ void test('MistralEmbedder.probe returns false when apiKey is empty', async () =
   assert.equal(await embedder.probe(), false);
 });
 
-const originalFetch: typeof fetch | undefined = globalThis.fetch;
+class FetchStub {
+  private constructor() {}
+  private static readonly original: typeof fetch | undefined = globalThis.fetch;
 
-function installFetch(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): void {
-  Object.assign(globalThis, { 'fetch': impl });
-}
+  static install(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): void {
+    Object.assign(globalThis, { 'fetch': impl });
+  }
 
-function restoreFetch(): void {
-  Object.assign(globalThis, { 'fetch': originalFetch });
+  static restore(): void {
+    Object.assign(globalThis, { 'fetch': FetchStub.original });
+  }
 }
 
 void test('MistralEmbedder.embed extracts data[0].embedding from response body', async () => {
-  installFetch(async () => new Response(JSON.stringify({
+  FetchStub.install(async () => new Response(JSON.stringify({
     'data': [{ 'embedding': [0.9, 0.8, 0.7] }],
   }), { 'status': 200 }));
   const embedder = new MistralEmbedder('k');
@@ -50,7 +53,7 @@ void test('MistralEmbedder.embed extracts data[0].embedding from response body',
     const vec = await embedder.embed('hello');
     assert.deepEqual(vec, [0.9, 0.8, 0.7]);
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
@@ -65,7 +68,7 @@ void test('MistralEmbedder.listModels classifies embedding and chat models corre
       { 'id': 'mixtral-8x7b-instruct-v0.1' },
     ],
   };
-  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
+  FetchStub.install(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new MistralEmbedder('test-key');
   try {
     const models = await embedder.listModels();
@@ -84,46 +87,46 @@ void test('MistralEmbedder.listModels classifies embedding and chat models corre
     // All Mistral platform models are cloud
     assert.ok(models.every((m) => m.cloud === true), 'Mistral platform models are cloud');
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
 void test('MistralEmbedder.listModels returns [] when apiKey is empty', async () => {
-  installFetch(async () => new Response('{}', { 'status': 200 }));
+  FetchStub.install(async () => new Response('{}', { 'status': 200 }));
   const embedder = new MistralEmbedder('');
   try {
     const models = await embedder.listModels();
     assert.deepEqual(models, [], 'no key → no fetch → empty list');
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
 void test('MistralEmbedder.listModels returns [] on transport failure', async () => {
-  installFetch(async () => { throw new Error('fetch failed'); });
+  FetchStub.install(async () => { throw new Error('fetch failed'); });
   const embedder = new MistralEmbedder('test-key');
   try {
     const models = await embedder.listModels();
     assert.deepEqual(models, []);
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
 void test('MistralEmbedder.listModels returns [] when response fails schema validation', async () => {
-  installFetch(async () => new Response(JSON.stringify({ 'wrong': 'shape' }), { 'status': 200 }));
+  FetchStub.install(async () => new Response(JSON.stringify({ 'wrong': 'shape' }), { 'status': 200 }));
   const embedder = new MistralEmbedder('test-key');
   try {
     const models = await embedder.listModels();
     assert.deepEqual(models, []);
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
 void test('MistralEmbedder.listModels sends Authorization: Bearer header', async () => {
   let capturedHeaders: RequestInit['headers'];
-  installFetch(async (_input: string | URL | Request, init?: RequestInit) => {
+  FetchStub.install(async (_input: string | URL | Request, init?: RequestInit) => {
     capturedHeaders = init?.headers;
     return new Response(JSON.stringify({ 'data': [] }), { 'status': 200 });
   });
@@ -136,7 +139,7 @@ void test('MistralEmbedder.listModels sends Authorization: Bearer header', async
       'Authorization header sent',
     );
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
@@ -147,25 +150,25 @@ void test('MistralEmbedder.selectEmbeddingModel picks an embedding model and ski
       { 'id': 'mistral-embed' },
     ],
   };
-  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
+  FetchStub.install(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new MistralEmbedder('test-key', {});
   try {
     const selected = await embedder.selectEmbeddingModel();
     assert.equal(selected, 'mistral-embed', 'embedding model selected over chat');
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
 void test('MistralEmbedder.selectEmbeddingModel returns null when no embedding models found', async () => {
   const canned = { 'data': [{ 'id': 'mistral-small-latest' }] };
-  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
+  FetchStub.install(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new MistralEmbedder('test-key', {});
   try {
     const selected = await embedder.selectEmbeddingModel();
     assert.equal(selected, null, 'null when no embedding models');
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });
 
@@ -176,12 +179,12 @@ void test('MistralEmbedder.selectEmbeddingModel honors preferred model', async (
       { 'id': 'codestral-embed' },
     ],
   };
-  installFetch(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
+  FetchStub.install(async () => new Response(JSON.stringify(canned), { 'status': 200 }));
   const embedder = new MistralEmbedder('test-key', {});
   try {
     const selected = await embedder.selectEmbeddingModel({ 'preferred': 'codestral-embed' });
     assert.equal(selected, 'codestral-embed', 'preferred model honored');
   } finally {
-    restoreFetch();
+    FetchStub.restore();
   }
 });

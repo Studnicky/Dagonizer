@@ -13,10 +13,10 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 export class DAGValidator {
   private constructor() { /* static class */ }
 
-  static validateDAGConfig<TState extends NodeStateInterface, TServices>(
+  static validateDAGConfig<TState extends NodeStateInterface>(
     dag: DAGType,
     context: Record<string, unknown>,
-    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    nodes: Map<string, NodeInterface<TState, string>>,
     dags: Map<string, DAGType>,
   ): void {
     const errors: string[] = [];
@@ -48,10 +48,10 @@ export class DAGValidator {
     }
   }
 
-  private static validateDAGNode<TState extends NodeStateInterface, TServices>(
+  private static validateDAGNode<TState extends NodeStateInterface>(
     entry: DAGNodeType,
     context: Record<string, unknown>,
-    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    nodes: Map<string, NodeInterface<TState, string>>,
     dags: Map<string, DAGType>,
     nodeNames: Set<string>,
     errors: string[],
@@ -68,10 +68,10 @@ export class DAGValidator {
     // TerminalNode: no outputs to validate; schema pass is sufficient.
   }
 
-  private static validatePhaseNode<TState extends NodeStateInterface, TServices>(
+  private static validatePhaseNode<TState extends NodeStateInterface>(
     phase: PhaseNodeType,
     context: Record<string, unknown>,
-    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    nodes: Map<string, NodeInterface<TState, string>>,
     errors: string[],
   ): void {
     const nodeIri = ContextResolver.expand(phase.node, context);
@@ -80,10 +80,10 @@ export class DAGValidator {
     }
   }
 
-  private static validateSingleNode<TState extends NodeStateInterface, TServices>(
+  private static validateSingleNode<TState extends NodeStateInterface>(
     nodeConfig: SingleNodePlacementType,
     context: Record<string, unknown>,
-    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    nodes: Map<string, NodeInterface<TState, string>>,
     nodeNames: Set<string>,
     errors: string[],
   ): void {
@@ -140,10 +140,10 @@ export class DAGValidator {
     }
   }
 
-  private static validateScatterNode<TState extends NodeStateInterface, TServices>(
+  private static validateScatterNode<TState extends NodeStateInterface>(
     scatter: ScatterNodeType,
     context: Record<string, unknown>,
-    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    nodes: Map<string, NodeInterface<TState, string>>,
     dags: Map<string, DAGType>,
     nodeNames: Set<string>,
     errors: string[],

@@ -27,15 +27,14 @@ import { Dagonizer } from '@studnicky/dagonizer';
 import type { DagonizerOptionsType, ExecutionResultType } from '@studnicky/dagonizer';
 
 import { CartographerState } from './CartographerState.ts';
-import type { CartographerServices } from './CartographerServices.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 
 const COMPONENT = 'ObservedCartographer';
 
-export class ObservedCartographer extends Dagonizer<CartographerState, CartographerServices> {
+export class ObservedCartographer extends Dagonizer<CartographerState> {
   readonly #logger = new ConsoleLogger();
 
-  constructor(options: DagonizerOptionsType<CartographerServices>) {
+  constructor(options: DagonizerOptionsType) {
     super(options);
   }
 

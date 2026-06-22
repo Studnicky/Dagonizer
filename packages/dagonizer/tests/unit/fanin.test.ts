@@ -15,7 +15,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
     const classify = TestNode.make<NodeStateBase>('classify', ['even', 'odd'], (state) => {
-      const n = state.getMetadata<number>('item') ?? 0;
+      const n = state.getter.number('item');
       return n % 2 === 0 ? 'even' : 'odd';
     });
     dispatcher.registerNode(classify);
@@ -46,12 +46,25 @@ void describe('Dagonizer scatter gather strategies', () => {
 
   void it('custom invokes a custom node with gatherResults metadata', async () => {
     interface GatherResultRecord { index: number; item: unknown; output: string }
+
+    class GatherResultRecordGuard {
+      private constructor() {}
+      static isArray(v: unknown): v is GatherResultRecord[] {
+        if (!Array.isArray(v)) return false;
+        return v.every((entry) => {
+          if (typeof entry !== 'object' || entry === null) return false;
+          return 'item' in entry && 'output' in entry;
+        });
+      }
+    }
+
     let seenResults: GatherResultRecord[] | undefined;
 
     const dispatcher = new Dagonizer<NodeStateBase>();
     const cls = TestNode.make('classify', ['success']);
     const merge = TestNode.make('merge', ['success'], (state) => {
-      seenResults = state.getMetadata<GatherResultRecord[]>('gatherResults');
+      const raw = state.getMetadata('gatherResults');
+      seenResults = GatherResultRecordGuard.isArray(raw) ? raw : undefined;
       return 'success';
     });
     dispatcher.registerNode(cls);

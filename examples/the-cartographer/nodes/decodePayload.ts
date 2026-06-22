@@ -16,8 +16,7 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
-import type { SourcePayload } from '../entities/SourcePayload.ts';
+import { SourcePayloadGuard } from '../entities/SourcePayload.ts';
 import { CanonicalEventVariantBuilder } from '../entities/CanonicalEvent.ts';
 import { TypedPayloadDecoder } from '../services.ts';
 
@@ -27,7 +26,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region decode-payload-node
-export class DecodePayloadNode extends ScalarNode<CartographerState, 'decoded' | 'invalid', CartographerServices> {
+export class DecodePayloadNode extends ScalarNode<CartographerState, 'decoded' | 'invalid'> {
   readonly 'name' = 'decode-payload';
   readonly 'outputs' = ['decoded', 'invalid'] as const;
 
@@ -38,14 +37,14 @@ export class DecodePayloadNode extends ScalarNode<CartographerState, 'decoded' |
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'decoded' | 'invalid'>> {
-    const payload = state.getMetadata<SourcePayload>('source-payload');
-    if (payload === undefined || payload === null) {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'decoded' | 'invalid'>> {
+    const raw = state.getMetadata('source-payload');
+    if (!SourcePayloadGuard.is(raw)) {
       return NodeOutputBuilder.of('invalid');
     }
 
-    const decoded = await TypedPayloadDecoder.decode(payload);
-    const variant = CanonicalEventVariantBuilder.fromSourcePayload(payload, decoded);
+    const decoded = await TypedPayloadDecoder.decode(raw);
+    const variant = CanonicalEventVariantBuilder.fromSourcePayload(raw, decoded);
 
     if (!variant.shipmentId) {
       return NodeOutputBuilder.of('invalid');

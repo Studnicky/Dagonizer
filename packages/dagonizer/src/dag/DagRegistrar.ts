@@ -24,11 +24,11 @@ import { ContextResolver } from './ContextResolver.js';
  * `Dagonizer` stays the composition root whose public `registerDAG` /
  * `registerNode` / `registerBundle` methods delegate here.
  */
-export interface DagRegistrarSourceInterface<TServices> {
+export interface DagRegistrarSourceInterface {
   /** Registered DAGs keyed by name. Mutated by `registerDAG`. */
   readonly dags: Map<string, DAGType>;
   /** Registered nodes keyed by name. Mutated by `registerNode`. Base-typed so heterogeneous child-node states store without casts. */
-  readonly nodes: Map<string, NodeInterface<NodeStateInterface, string, TServices>>;
+  readonly nodes: Map<string, NodeInterface<NodeStateInterface, string>>;
   /** Placement index keyed by `${dagName}:${placementName}`. Mutated by `registerDAG`. */
   readonly nodeIndex: Map<string, DAGNodeType>;
   /**
@@ -70,10 +70,10 @@ export interface DagRegistrarSourceInterface<TServices> {
  * Every gate throws `DAGError` (or rethrows a thrown `Error`) before any
  * registry mutation, so a rejected DAG leaves no partial registration behind.
  */
-export class DagRegistrar<TServices> {
-  readonly #source: DagRegistrarSourceInterface<TServices>;
+export class DagRegistrar {
+  readonly #source: DagRegistrarSourceInterface;
 
-  constructor(source: DagRegistrarSourceInterface<TServices>) {
+  constructor(source: DagRegistrarSourceInterface) {
     this.#source = source;
   }
 
@@ -146,17 +146,12 @@ export class DagRegistrar<TServices> {
   /**
    * Register a node. Accepts nodes typed against any `TNodeState extends
    * NodeStateInterface` — including child-state classes that differ from the
-   * dispatcher's state type. The node's services type is the dispatcher's
-   * `TServices`; services-agnostic nodes (e.g. `ToolInvokeNode<TServices>`) are
-   * constructed typed to the dispatcher's `TServices` at bundle time, so they
-   * register against the `NodeInterface<NodeStateInterface, string, TServices>`
-   * map without a cast (`NodeInterface.execute` is a bivariant method, so the
-   * narrower `TNodeState` is structurally assignable).
+   * dispatcher's state type.
    *
    * Throws `DAGError` when a node with the same name is already registered.
    */
   registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
-    node: NodeInterface<TNodeState, TOutput, TServices>,
+    node: NodeInterface<TNodeState, TOutput>,
     context: Record<string, unknown> = {},
   ): void {
     const nodeIri = ContextResolver.expand(node.name, context);
@@ -200,7 +195,7 @@ export class DagRegistrar<TServices> {
    * `registerDAG`. A DAG with no entry in the map receives
    * `ChildStateFactory.cloneParent` (clone-parent).
    */
-  registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState, TServices>): void {
+  registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void {
     const bundleContext = bundle.context ?? {};
     for (const node of bundle.nodes) {
       this.registerNode(node, bundleContext);

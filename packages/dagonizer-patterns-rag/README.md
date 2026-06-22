@@ -11,7 +11,7 @@ npm install @studnicky/dagonizer @studnicky/dagonizer-patterns-rag
 ## Taxonomy
 
 ```
-MonadicNode<TState, TOutput, TServices>     (root: main package's ./patterns)
+MonadicNode<TState, TOutput>                (root: main package's ./patterns)
 ├── DecisionNode<TState, TChoice>           (LLM picks a structured choice)
 │   ├── ClassifyIntentNode<TState, TIntent>
 │   ├── DecideToolsNode<TState>
@@ -25,12 +25,16 @@ MonadicNode<TState, TOutput, TServices>     (root: main package's ./patterns)
 └── ScoutNode<TState, TIn, TOut, TItem>     (calls a Tool, normalises, writes back)
 ```
 
-## Services contract
+## Dependency injection
 
-Every pattern in this package expects `services.llm: LlmClient` (any `LlmAdapter` satisfies it).
+Each pattern receives its dependency through its constructor and holds it as a
+field — there is no ambient services record. `DecisionNode` and `ComposeNode`
+(via `LlmDispatchNode`) take an `LlmClientInterface`; `ScoutNode` takes a
+`ToolInterface`. Construct the node with its dependency and register it:
 
 ```ts
-import type { RagServices } from '@studnicky/dagonizer-patterns-rag';
+const node = new MyClassifyIntentNode(llmClient);
+dispatcher.registerNode(node);
 ```
 
 ## Worked example: extending ClassifyIntentNode

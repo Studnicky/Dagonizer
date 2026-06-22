@@ -66,7 +66,7 @@ Cross-process containers (fork, cluster, spawn, worker) dynamic-import a registr
 
 `registryVersion` must match the string the parent passed to `WorkerThreadContainer` (or the equivalent backend). The `DagHost` inside the worker rejects an `init` message with a mismatched version before accepting any `execute` requests.
 
-Services never cross the isolation boundary — each isolate constructs its own services bag. If an isolate requires a network connection, it opens it locally; the parent does not proxy requests.
+A node's dependencies never cross the isolation boundary — the isolate's registry module constructs each node with its dependencies (derived from the init message's `servicesConfig`) inside the isolate. If an isolate requires a network connection, it opens it locally; the parent does not proxy requests.
 
 ::: warning Trust boundary
 The `registryModule` path passed to a container backend is dynamically imported inside the isolate with full module privileges. Pass only operator-controlled paths. Accepting a `registryModule` value from untrusted input (user data, external queue messages) creates a remote code execution vector.

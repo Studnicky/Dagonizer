@@ -14,9 +14,9 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { archivistDAG } from '@archivist/dag.ts';
-import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
-import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
+import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
+import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
+import { ComposeRetryLoopDAG } from '../.vitepress/theme/exampleDags.ts';
 
 const archivistRegistry = new Map([
   ['book-search-scatter', BookSearchScatterDAG],
@@ -80,5 +80,5 @@ The `.embeddedDAG()` call accepts `TChildState` and `TParentState` generic param
 
 A misspelled parent-state path is a compile error.
 
-`stateMapping` is the right tool when the relationship between parent and child is a pure field transfer at a single boundary. When multiple embedded-DAG placements accumulate to a single growing structure (agent memory, a ranked-results list, an audit log), thread a `Store` through the services record instead. The store lives outside the DAG topology; every placement reads and writes to the same instance without threading values through stateMapping at every hop. See [Shared state](../guide/shared-state) for the decision matrix, the concurrency contract, and checkpoint integration.
+`stateMapping` is the right tool when the relationship between parent and child is a pure field transfer at a single boundary. When multiple embedded-DAG placements accumulate to a single growing structure (agent memory, a ranked-results list, an audit log), pass a `Store` into each node's constructor instead. The store lives outside the DAG topology; every placement reads and writes to the same instance without threading values through stateMapping at every hop. See [Shared state](../guide/shared-state) for the decision matrix, the concurrency contract, and checkpoint integration.
 

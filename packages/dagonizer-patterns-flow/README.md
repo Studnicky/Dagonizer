@@ -108,7 +108,7 @@ class RespondToVisitor extends RespondNode<MyState> {
   readonly name = 'respond-to-visitor';
   protected emit(s: MyState, draft: string): void {
     s.conversation = [...s.conversation, { role: 'agent', text: draft }];
-    s.lifecycle = { kind: 'completed' };
+    s.markCompleted();
   }
 }
 ```

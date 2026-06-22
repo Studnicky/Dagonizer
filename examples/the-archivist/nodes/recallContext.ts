@@ -59,7 +59,8 @@ const MAX_RECENT_CANDIDATES = 6;
 const MAX_PRIOR_CANDIDATES_CONTEXT = 5;
 const JACCARD_THRESHOLD_CONTEXT = 0.35;
 
-export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled', ArchivistServices> {
+export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled'> {
+  private readonly services: ArchivistServices;
   readonly name = 'recall-context';
   readonly outputs = ['recalled'] as const;
   override get outputSchema(): Record<'recalled', SchemaObjectType> {
@@ -68,8 +69,13 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled', Ar
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
-    const memory = context.services.memory;
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
+
+  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+    const memory = this.services.memory;
     const currentGraphIri = MemoryStore.stateGraphIri(state.runId).value;
     const currentTokens   = TextSimilarity.tokenise(state.query);
 
@@ -318,5 +324,3 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled', Ar
   }
 }
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const recallContext = new RecallContextNode();

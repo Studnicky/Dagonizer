@@ -36,8 +36,7 @@ export abstract class CliTrigger<
   TInput,
   TState extends NodeStateInterface,
   TOutput,
-  TServices = undefined,
-> implements TriggerInterface<TInput, TState, TOutput, TServices> {
+> implements TriggerInterface<TInput, TState, TOutput> {
   readonly #command: string;
   readonly #args: readonly string[];
   readonly #options: ExecuteOptionsType;
@@ -66,7 +65,7 @@ export abstract class CliTrigger<
     return this.#result;
   }
 
-  async attach(runner: DagRunnerInterface<TInput, TState, TOutput, TServices>): Promise<void> {
+  async attach(runner: DagRunnerInterface<TInput, TState, TOutput>): Promise<void> {
     if (this.#detached) return;
     const dagName = this.selectDag(this.#command);
     const input = this.parseArgs(this.#command, [...this.#args]);

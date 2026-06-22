@@ -65,12 +65,16 @@ void test('GeminiModelsResponseSchema carries the expected $id', () => {
 // listModels — fetch stubbing helpers
 // ---------------------------------------------------------------------------
 
-function stubFetch(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): () => void {
-  const original: typeof fetch | undefined = globalThis.fetch;
-  Object.assign(globalThis, { 'fetch': impl });
-  return () => {
-    Object.assign(globalThis, { 'fetch': original });
-  };
+class FetchStub {
+  private constructor() {}
+
+  static install(impl: (input: string | URL | Request, init?: RequestInit) => Promise<Response>): () => void {
+    const original: typeof fetch | undefined = globalThis.fetch;
+    Object.assign(globalThis, { 'fetch': impl });
+    return () => {
+      Object.assign(globalThis, { 'fetch': original });
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +82,7 @@ function stubFetch(impl: (input: string | URL | Request, init?: RequestInit) => 
 // ---------------------------------------------------------------------------
 
 void test('listModels returns [] when fetch rejects', async () => {
-  const restore = stubFetch(() => Promise.reject(new Error('network down')));
+  const restore = FetchStub.install(() => Promise.reject(new Error('network down')));
   try {
     const adapter = new GeminiApiAdapter('key');
     const result = await adapter.listModels();
@@ -101,7 +105,7 @@ void test('listModels maps generateContent models to variant chat with name pref
       },
     ],
   };
-  const restore = stubFetch(() =>
+  const restore = FetchStub.install(() =>
     Promise.resolve(new Response(JSON.stringify(cannedBody), { 'status': 200 })),
   );
   try {
@@ -127,7 +131,7 @@ void test('listModels maps embedContent models to variant embedding', async () =
       },
     ],
   };
-  const restore = stubFetch(() =>
+  const restore = FetchStub.install(() =>
     Promise.resolve(new Response(JSON.stringify(cannedBody), { 'status': 200 })),
   );
   try {
@@ -153,7 +157,7 @@ void test('listModels maps models with no recognised methods to variant unknown'
       },
     ],
   };
-  const restore = stubFetch(() =>
+  const restore = FetchStub.install(() =>
     Promise.resolve(new Response(JSON.stringify(cannedBody), { 'status': 200 })),
   );
   try {
@@ -175,7 +179,7 @@ void test('listModels strips models/ prefix only when present', async () => {
       { 'name': 'models/prefixed-model', 'supportedGenerationMethods': ['generateContent'] },
     ],
   };
-  const restore = stubFetch(() =>
+  const restore = FetchStub.install(() =>
     Promise.resolve(new Response(JSON.stringify(cannedBody), { 'status': 200 })),
   );
   try {
@@ -194,7 +198,7 @@ void test('listModels strips models/ prefix only when present', async () => {
 });
 
 void test('listModels returns [] when fetch returns non-ok status', async () => {
-  const restore = stubFetch(() =>
+  const restore = FetchStub.install(() =>
     Promise.resolve(new Response('Forbidden', { 'status': 403 })),
   );
   try {
@@ -207,7 +211,7 @@ void test('listModels returns [] when fetch returns non-ok status', async () => 
 });
 
 void test('listModels returns [] when response body fails schema validation', async () => {
-  const restore = stubFetch(() =>
+  const restore = FetchStub.install(() =>
     Promise.resolve(new Response(JSON.stringify({ 'notModels': [] }), { 'status': 200 })),
   );
   try {

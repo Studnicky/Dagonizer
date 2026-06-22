@@ -14,7 +14,6 @@
 import { normalizeYaml } from '../nodes/ingest/normalizeYaml.ts';
 
 import type { CartographerState }    from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
@@ -29,7 +28,7 @@ export const normalizeYamlDAG: DAGType = new DAGBuilder('normalize-yaml', '1.0')
 
   .build();
 
-export const normalizeYamlBundle: DispatcherBundleType<CartographerState, CartographerServices> = {
+export const normalizeYamlBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [normalizeYaml],
   'dags':  [normalizeYamlDAG],
 };

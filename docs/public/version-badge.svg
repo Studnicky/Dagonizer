@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="146" height="28" role="img" aria-label="version: v0.21.0">
-  <title>version: v0.21.0</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="146" height="28" role="img" aria-label="version: v0.24.0">
+  <title>version: v0.24.0</title>
   <linearGradient id="bg-label" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#141a2e"/>
     <stop offset="1" stop-color="#0a0e1a"/>
@@ -34,5 +34,5 @@
     fill="#0a0e1a"
     text-anchor="middle"
     xml:space="preserve"
-  >v0.21.0</text>
+  >v0.24.0</text>
 </svg>

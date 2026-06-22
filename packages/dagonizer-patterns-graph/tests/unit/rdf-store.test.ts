@@ -8,16 +8,18 @@ import { RdfStore } from '../../src/RdfStore.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function namedNode(value: string): Term {
-  return { "termType": 'NamedNode', value };
-}
+class TestTerm {
+  static namedNode(value: string): Term {
+    return { "termType": 'NamedNode', value };
+  }
 
-function literal(value: string): Term {
-  return { "termType": 'Literal', value };
-}
+  static literal(value: string): Term {
+    return { "termType": 'Literal', value };
+  }
 
-function namedGraph(value: string): Term {
-  return { "termType": 'NamedNode', value };
+  static namedGraph(value: string): Term {
+    return { "termType": 'NamedNode', value };
+  }
 }
 
 const DEFAULT_GRAPH: Term = { "termType": 'DefaultGraph', "value": '' };
@@ -27,31 +29,31 @@ const DEFAULT_GRAPH: Term = { "termType": 'DefaultGraph', "value": '' };
 void describe('RdfStore: StoreInterface contract (reified key-value)', () => {
   void it('set then get returns the stored value', async () => {
     const store = new RdfStore();
-    await store.set<string>('greeting', 'hello');
-    assert.equal(await store.get<string>('greeting'), 'hello');
+    await store.set('greeting', 'hello');
+    assert.equal(await store.get('greeting'), 'hello');
   });
 
   void it('has returns true for existing key, false for missing key', async () => {
     const store = new RdfStore();
-    await store.set<number>('count', 42);
+    await store.set('count', 42);
     assert.equal(await store.has('count'), true);
     assert.equal(await store.has('missing'), false);
   });
 
   void it('delete removes the key and returns true; second delete returns false', async () => {
     const store = new RdfStore();
-    await store.set<boolean>('flag', true);
+    await store.set('flag', true);
     assert.equal(await store.delete('flag'), true);
     assert.equal(await store.has('flag'), false);
-    assert.equal(await store.get<boolean>('flag'), null);
+    assert.equal(await store.get('flag'), null);
     assert.equal(await store.delete('flag'), false);
   });
 
   void it('set overwrites an existing value', async () => {
     const store = new RdfStore();
-    await store.set<number>('n', 1);
-    await store.set<number>('n', 2);
-    assert.equal(await store.get<number>('n'), 2);
+    await store.set('n', 1);
+    await store.set('n', 2);
+    assert.equal(await store.get('n'), 2);
   });
 
   void it('stores complex JsonValueType (object, array)', async () => {
@@ -66,23 +68,23 @@ void describe('RdfStore: StoreInterface contract (reified key-value)', () => {
 void describe('RdfStore: update(key, fn) atomic RMW', () => {
   void it('increments a counter from undefined', async () => {
     const store = new RdfStore();
-    const result = await store.update<number>('counter', (n) => (n ?? 0) + 1);
+    const result = await store.update('counter', (n) => (typeof n === 'number' ? n : 0) + 1);
     assert.equal(result, 1);
-    assert.equal(await store.get<number>('counter'), 1);
+    assert.equal(await store.get('counter'), 1);
   });
 
   void it('increments a counter that already exists', async () => {
     const store = new RdfStore();
-    await store.set<number>('counter', 10);
-    const result = await store.update<number>('counter', (n) => (n ?? 0) + 5);
+    await store.set('counter', 10);
+    const result = await store.update('counter', (n) => (typeof n === 'number' ? n : 0) + 5);
     assert.equal(result, 15);
   });
 
   void it('two sequential updates accumulate correctly', async () => {
     const store = new RdfStore();
-    await store.update<number>('k', (n) => (n ?? 0) + 1);
-    await store.update<number>('k', (n) => (n ?? 0) + 1);
-    assert.equal(await store.get<number>('k'), 2);
+    await store.update('k', (n) => (typeof n === 'number' ? n : 0) + 1);
+    await store.update('k', (n) => (typeof n === 'number' ? n : 0) + 1);
+    assert.equal(await store.get('k'), 2);
   });
 });
 
@@ -91,9 +93,9 @@ void describe('RdfStore: update(key, fn) atomic RMW', () => {
 void describe('RdfStore: TripleStoreInterface contract', () => {
   void it('assert adds a quad; ask returns true for a matching pattern', () => {
     const store = new RdfStore();
-    const s = namedNode('urn:test:subject');
-    const p = namedNode('urn:test:pred');
-    const o = literal('object-value');
+    const s = TestTerm.namedNode('urn:test:subject');
+    const p = TestTerm.namedNode('urn:test:pred');
+    const o = TestTerm.literal('object-value');
 
     store.assert(s, p, o);
 
@@ -102,15 +104,15 @@ void describe('RdfStore: TripleStoreInterface contract', () => {
 
   void it('ask returns false for a non-matching pattern', () => {
     const store = new RdfStore();
-    store.assert(namedNode('urn:test:s'), namedNode('urn:test:p'), literal('o'));
-    assert.equal(store.ask({ "subject": namedNode('urn:test:other') }), false);
+    store.assert(TestTerm.namedNode('urn:test:s'), TestTerm.namedNode('urn:test:p'), TestTerm.literal('o'));
+    assert.equal(store.ask({ "subject": TestTerm.namedNode('urn:test:other') }), false);
   });
 
   void it('select returns bindings for variable slots', () => {
     const store = new RdfStore();
-    const s = namedNode('urn:test:a');
-    const p = namedNode('urn:test:knows');
-    const o = namedNode('urn:test:b');
+    const s = TestTerm.namedNode('urn:test:a');
+    const p = TestTerm.namedNode('urn:test:knows');
+    const o = TestTerm.namedNode('urn:test:b');
     store.assert(s, p, o);
 
     const rows = store.select({ "subject": '?who', "predicate": p, "object": '?target' });
@@ -123,9 +125,9 @@ void describe('RdfStore: TripleStoreInterface contract', () => {
 
   void it('select returns multiple bindings when multiple quads match', () => {
     const store = new RdfStore();
-    const p = namedNode('urn:test:type');
-    store.assert(namedNode('urn:test:x'), p, literal('A'));
-    store.assert(namedNode('urn:test:y'), p, literal('B'));
+    const p = TestTerm.namedNode('urn:test:type');
+    store.assert(TestTerm.namedNode('urn:test:x'), p, TestTerm.literal('A'));
+    store.assert(TestTerm.namedNode('urn:test:y'), p, TestTerm.literal('B'));
 
     const rows = store.select({ "predicate": p, "subject": '?s' });
     assert.equal(rows.length, 2);
@@ -135,10 +137,10 @@ void describe('RdfStore: TripleStoreInterface contract', () => {
 
   void it('count returns the number of matching quads', () => {
     const store = new RdfStore();
-    const p = namedNode('urn:test:rel');
-    store.assert(namedNode('urn:1'), p, literal('v1'));
-    store.assert(namedNode('urn:2'), p, literal('v2'));
-    store.assert(namedNode('urn:3'), namedNode('urn:other'), literal('v3'));
+    const p = TestTerm.namedNode('urn:test:rel');
+    store.assert(TestTerm.namedNode('urn:1'), p, TestTerm.literal('v1'));
+    store.assert(TestTerm.namedNode('urn:2'), p, TestTerm.literal('v2'));
+    store.assert(TestTerm.namedNode('urn:3'), TestTerm.namedNode('urn:other'), TestTerm.literal('v3'));
 
     assert.equal(store.count({ "predicate": p }), 2);
     assert.equal(store.count({}), 3);
@@ -150,13 +152,13 @@ void describe('RdfStore: TripleStoreInterface contract', () => {
 void describe('RdfStore: clearGraph', () => {
   void it('removes only quads in the named graph, leaves others untouched', () => {
     const store = new RdfStore();
-    const p = namedNode('urn:test:p');
-    const graphA = namedGraph('urn:graph:A');
-    const graphB = namedGraph('urn:graph:B');
+    const p = TestTerm.namedNode('urn:test:p');
+    const graphA = TestTerm.namedGraph('urn:graph:A');
+    const graphB = TestTerm.namedGraph('urn:graph:B');
 
-    store.assert(namedNode('urn:s1'), p, literal('in-A'), graphA);
-    store.assert(namedNode('urn:s2'), p, literal('in-B'), graphB);
-    store.assert(namedNode('urn:s3'), p, literal('default'));
+    store.assert(TestTerm.namedNode('urn:s1'), p, TestTerm.literal('in-A'), graphA);
+    store.assert(TestTerm.namedNode('urn:s2'), p, TestTerm.literal('in-B'), graphB);
+    store.assert(TestTerm.namedNode('urn:s3'), p, TestTerm.literal('default'));
 
     store.clearGraph(graphA);
 
@@ -168,8 +170,8 @@ void describe('RdfStore: clearGraph', () => {
 
   void it('clearGraph on an empty or non-existent graph is a no-op', () => {
     const store = new RdfStore();
-    store.assert(namedNode('urn:s'), namedNode('urn:p'), literal('o'));
-    store.clearGraph(namedGraph('urn:graph:empty'));
+    store.assert(TestTerm.namedNode('urn:s'), TestTerm.namedNode('urn:p'), TestTerm.literal('o'));
+    store.clearGraph(TestTerm.namedGraph('urn:graph:empty'));
     assert.equal(store.count({}), 1);
   });
 });
@@ -181,12 +183,12 @@ void describe('RdfStore: triples()', () => {
     const store = new RdfStore();
 
     // User-asserted quads.
-    const p = namedNode('urn:test:p');
-    store.assert(namedNode('urn:a'), p, literal('1'));
-    store.assert(namedNode('urn:b'), p, literal('2'));
+    const p = TestTerm.namedNode('urn:test:p');
+    store.assert(TestTerm.namedNode('urn:a'), p, TestTerm.literal('1'));
+    store.assert(TestTerm.namedNode('urn:b'), p, TestTerm.literal('2'));
 
     // StoreInterface-reified entry.
-    await store.set<string>('key', 'val');
+    await store.set('key', 'val');
 
     const quads = [...store.triples()];
     // 2 user-asserted + 1 reified.
@@ -210,27 +212,27 @@ void describe('RdfStore: triples()', () => {
 void describe('RdfStore: StoreInterface entries and native quads coexist', () => {
   void it('store set/get does not disturb user-asserted quads on other predicates', async () => {
     const store = new RdfStore();
-    const p = namedNode('urn:test:custom');
-    store.assert(namedNode('urn:s'), p, literal('native'));
+    const p = TestTerm.namedNode('urn:test:custom');
+    store.assert(TestTerm.namedNode('urn:s'), p, TestTerm.literal('native'));
 
-    await store.set<number>('score', 99);
+    await store.set('score', 99);
 
     // Both are present.
     assert.equal(store.count({ "predicate": p }), 1);
-    assert.equal(await store.get<number>('score'), 99);
+    assert.equal(await store.get('score'), 99);
   });
 
   void it('snapshot() captures only reified StoreInterface entries, not user-asserted quads', async () => {
     const store = new RdfStore();
     // User-asserted quad on a different predicate.
     store.assert(
-      namedNode('urn:s'),
-      namedNode('urn:test:custom-pred'),
-      literal('native-value'),
+      TestTerm.namedNode('urn:s'),
+      TestTerm.namedNode('urn:test:custom-pred'),
+      TestTerm.literal('native-value'),
     );
 
     // StoreInterface-reified entry.
-    await store.set<string>('name', 'dagonizer');
+    await store.set('name', 'dagonizer');
 
     const snap = await store.snapshot();
     assert.equal(snap.type, 'rdf-store');
@@ -249,45 +251,45 @@ void describe('RdfStore: StoreInterface entries and native quads coexist', () =>
 void describe('RdfStore: restore()', () => {
   void it('restores StoreInterface entries from a valid snapshot', async () => {
     const source = new RdfStore();
-    await source.set<number>('x', 10);
-    await source.set<string>('y', 'hello');
+    await source.set('x', 10);
+    await source.set('y', 'hello');
     const snap = await source.snapshot();
 
     const target = new RdfStore();
     await target.restore(snap);
-    assert.equal(await target.get<number>('x'), 10);
-    assert.equal(await target.get<string>('y'), 'hello');
+    assert.equal(await target.get('x'), 10);
+    assert.equal(await target.get('y'), 'hello');
   });
 
   void it('restore() replaces previous StoreInterface entries', async () => {
     const store = new RdfStore();
-    await store.set<number>('old', 1);
+    await store.set('old', 1);
 
     const snap = await (async () => {
       const src = new RdfStore();
-      await src.set<number>('new', 2);
+      await src.set('new', 2);
       return src.snapshot();
     })();
 
     await store.restore(snap);
-    assert.equal(await store.get<number>('old'), null);
-    assert.equal(await store.get<number>('new'), 2);
+    assert.equal(await store.get('old'), null);
+    assert.equal(await store.get('new'), 2);
   });
 
   void it('restore() clears user-asserted quads (documented trade-off)', async () => {
     const store = new RdfStore();
-    store.assert(namedNode('urn:s'), namedNode('urn:p'), literal('native'));
+    store.assert(TestTerm.namedNode('urn:s'), TestTerm.namedNode('urn:p'), TestTerm.literal('native'));
 
     const snap = await (async () => {
       const src = new RdfStore();
-      await src.set<string>('k', 'v');
+      await src.set('k', 'v');
       return src.snapshot();
     })();
 
     await store.restore(snap);
     // The native assert is gone; this is the documented trade-off.
-    assert.equal(store.count({ "subject": namedNode('urn:s') }), 0);
-    assert.equal(await store.get<string>('k'), 'v');
+    assert.equal(store.count({ "subject": TestTerm.namedNode('urn:s') }), 0);
+    assert.equal(await store.get('k'), 'v');
   });
 
   void it('throws StoreError INCOMPATIBLE_SNAPSHOT for wrong type', async () => {

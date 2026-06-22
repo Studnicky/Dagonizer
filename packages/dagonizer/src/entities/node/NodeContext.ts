@@ -27,33 +27,20 @@ export type NodeContextWireType = FromSchema<typeof NodeContextSchema>;
 /**
  * Execution context passed to every `NodeInterface.execute()` call.
  *
- * Extends `NodeContextWireType` entity with `signal: AbortSignal` and a typed
- * `services` slot. The entity carries the JSON-expressible fields
- * (`dagName`, `nodeName`); the type adds runtime-only fields
- * (signal, services record) that are not serializable.
- *
- * The `TServices` parameter carries the consumer-defined services record the
- * dispatcher was constructed with, typically a typed record of injected
- * dependencies (loggers, clients, registries). When a dispatcher is
- * constructed without `services`, `TServices` defaults to `undefined`
- * and `context.services` is `undefined` at runtime.
+ * Extends `NodeContextWireType` entity with `signal: AbortSignal`.
+ * The entity carries the JSON-expressible fields (`dagName`, `nodeName`);
+ * the type adds runtime-only fields (signal, validation) that are not serializable.
  *
  * Nodes should pass `context.signal` to every awaitable IO (fetch, retry,
  * subprocess) so cancellation propagates cleanly.
  */
-export type NodeContextType<TServices = undefined> = NodeContextWireType & {
+export type NodeContextType = NodeContextWireType & {
   /** AbortSignal: fires when the caller aborts or the deadline expires. */
   'signal': AbortSignal;
   /** Name of the DAG being executed. */
   'dagName': string;
   /** Name of the current node. */
   'nodeName': string;
-  /**
-   * Services record handed to the dispatcher at construction. `undefined`
-   * when the dispatcher was constructed without a services option; a node
-   * that requires services narrows this and routes to `error` when absent.
-   */
-  'services': TServices | undefined;
   /**
    * When `true`, `ScalarNode.execute` validates each item's state against
    * `this.outputSchema[port]` after `executeOne` returns. On mismatch the
@@ -76,19 +63,18 @@ export type NodeContextType<TServices = undefined> = NodeContextWireType & {
  * type occupies that identifier). The `*Builder` pattern follows the same
  * convention used elsewhere in this codebase where the type name is taken.
  *
- * Key order (signal, dagName, nodeName, services, validateOutputs) is fixed
- * for V8 shape stability: every instance has the same hidden class regardless
+ * Key order (signal, dagName, nodeName, validateOutputs, outputSchemaValidator) is
+ * fixed for V8 shape stability: every instance has the same hidden class regardless
  * of call site.
  */
 export class NodeContextBuilder {
-  static of<TServices>(
+  static of(
     dagName: string,
     nodeName: string,
     signal: AbortSignal,
-    services: TServices | undefined,
     validateOutputs: boolean = false,
     outputSchemaValidator: OutputSchemaValidatorInterface | null = null,
-  ): NodeContextType<TServices> {
-    return { signal, dagName, nodeName, services, validateOutputs, outputSchemaValidator };
+  ): NodeContextType {
+    return { signal, dagName, nodeName, validateOutputs, outputSchemaValidator };
   }
 }

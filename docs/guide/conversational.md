@@ -8,9 +8,9 @@ seeAlso:
   - text: 'Checkpoint & resume'
     link: './checkpoint'
     description: 'persist and reload state across process boundaries'
-  - text: 'Services container'
+  - text: 'Dependency injection'
     link: './services'
-    description: 'inject IO adapters via constructor or context.services'
+    description: 'inject IO adapters via node constructors'
   - text: 'Lifecycle phases'
     link: './lifecycle-phases'
     description: 'understand when a DAG completes vs. when it pauses'
@@ -22,14 +22,14 @@ Interactive DAGs — those that prompt users, wait for responses, escalate to hu
 
 ## Overview
 
-Both approaches use the same core idea: **the state metadata bus** (`state.getMetadata<T>(key)` / `state.setMetadata(key, value)`) to pass messages in and out of nodes. The differences are:
+Both approaches use the same core idea: **the state metadata bus** (`state.setMetadata(key, value)` to write; `state.getter.string/number/...(key)` for typed cast-free reads, or `state.getMetadata(key)` for the raw `unknown` you narrow yourself) to pass messages in and out of nodes. The differences are:
 
 | Aspect | Turn-termination (nocturne) | Out-of-band signaling (Foundersmax) |
 |--------|----------------------------|-----------------------------------|
 | **When to use** | Conversational slot-filling, sequential dialogs, request/response cycles | HITL escalations, approvals, notifications, async hand-offs |
 | **Pause mechanism** | Node returns a specific output → routes to a terminal → HTTP turn ends | DAG completes normally; admin action triggers SSE push to waiting client |
 | **Resume** | Next HTTP request → new DAG execution with reloaded state | Out-of-band event (admin decision, callback) → client receives push |
-| **Dependency injection** | Constructor args (recommended) or `context.services` | `context.services` per-turn (flexible for auth/session scope) |
+| **Dependency injection** | Constructor args | Constructor args or request-scoped wrapper passed at construction |
 | **Complexity** | Lower; familiar request/response model | Higher; requires event bus, queue, or webhook framework |
 
 Choose turn-termination for conversational flows (the resume-generator use case). Choose out-of-band for HITL workflows where humans think in parallel to the DAG.
@@ -96,8 +96,8 @@ export class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'succ
     // In practice, extend ScalarNode and implement executeOne instead.
     const state = batch.items[0].state;
 
-    // Read inbound message from orchestrator
-    const userMessage = state.getMetadata<string>('userMessage') ?? '';
+    // Read inbound message from orchestrator (typed, cast-free)
+    const userMessage = state.getter.string('userMessage');
 
     // Extract preferences with LLM or prompt
     const { extracted } = await this.llm.extract({
@@ -144,7 +144,7 @@ export class TripOrchestrator {
   private stateStore: StateStore;
 
   assemble() {
-    // Wire nodes with constructor injection (no services record needed)
+    // Wire nodes with constructor injection
     const intake = new IntakeNode(this.llm);
     const retrieve = new RetrievalNode(this.searchEngine);
     const propose = new ProposalNode(this.templateEngine);
@@ -158,7 +158,6 @@ export class TripOrchestrator {
       .terminal('end-success')
       .build();
 
-    // Construct dispatcher with no services (optional; could use context.services too)
     this.dispatcher = new Dagonizer<TripState>();
     this.dispatcher.registerNode(intake);
     this.dispatcher.registerNode(retrieve);
@@ -180,8 +179,9 @@ export class TripOrchestrator {
     // Execute the DAG
     await this.dispatcher.execute('trip-planner', state);
 
-    // Read response from metadata
-    const reply = state.getMetadata<AssistantMessage>('assistantMessage');
+    // Read response from metadata (raw unknown → narrow to your message shape)
+    const raw = state.getMetadata('assistantMessage');
+    const reply = (raw !== null && typeof raw === 'object' && 'content' in raw) ? raw : null;
 
     // Persist state for next turn
     await this.stateStore.save(conversationId, state);
@@ -199,7 +199,7 @@ export class TripOrchestrator {
 
 3. **State metadata is the message bus**: `userMessage` flows in, `assistantMessage` flows out. No other mechanism needed.
 
-4. **Simple dependency injection**: Constructor args or `context.services` both work. Use constructor args when the dispatcher is built once per orchestrator lifetime (as here).
+4. **Simple dependency injection**: Constructor args wire dependencies at instantiation time. The dispatcher is built once per orchestrator lifetime; nodes hold their dependencies as private fields.
 
 5. **Familiar HTTP semantics**: POST /chat → runs DAG → reads `assistantMessage` → returns HTTP 200. GET /chat?id=X → loads state → GET /chat → next turn. No long-polling, no WebSocket complexity.
 
@@ -287,16 +287,24 @@ import type { NodeContextType } from '@studnicky/dagonizer/entities';
 import { NodeOutputBuilder } from '@studnicky/dagonizer/entities';
 
 export class EscalateForDecisionNode
-  implements NodeInterface<RefundAgentState, 'queued', RefundAgentServices>
+  implements NodeInterface<RefundAgentState, 'queued'>
 {
+  private readonly escalations: EscalationQueue;
+  private readonly eventBus: EventBus;
+
+  constructor(escalations: EscalationQueue, eventBus: EventBus) {
+    this.escalations = escalations;
+    this.eventBus = eventBus;
+  }
+
   readonly name = 'escalate-for-decision';
   readonly outputs = ['queued'] as const;
 
   async execute(
     batch: Batch<RefundAgentState>,
-    context: NodeContextType<RefundAgentServices>
+    _context: NodeContextType
   ): Promise<RoutedBatchType<'queued', RefundAgentState>> {
-    const { escalations, eventBus } = context.services;
+    const { escalations, eventBus } = this;
     const state = batch.items[0].state;
 
     // Enqueue the decision for a human
@@ -335,20 +343,8 @@ export class ConversationEngine {
     customerId: string,
     userMessage: string
   ): Promise<Resolution> {
-    // Build per-turn services (auth, session state, etc. are fresh)
-    const turnServices: RefundAgentServices = {
-      llm: this.llm,
-      escalations: this.escalations,
-      eventBus: this.eventBus,
-      ledger: new RefundLedger(customerId),
-      store: this.store,
-    };
-
-    // Create dispatcher with services (nodes and DAG registered once at startup,
-    // then re-used across turns; shown inline here for clarity)
-    const dispatcher = new Dagonizer<RefundAgentState, RefundAgentServices>({
-      services: turnServices,
-    });
+    // Dispatcher is constructed once; nodes hold their deps via constructor injection.
+    const dispatcher = new Dagonizer<RefundAgentState>();
 
     // Load state
     let state = await this.stateStore.load(conversationId);
@@ -363,8 +359,9 @@ export class ConversationEngine {
     // Execute the DAG
     const result = await dispatcher.execute('refund-turn', state);
 
-    // Read output
-    const reply = state.getMetadata<AssistantMessage>('assistantMessage');
+    // Read output (raw unknown → narrow to your message shape)
+    const raw = state.getMetadata('assistantMessage');
+    const reply = (raw !== null && typeof raw === 'object' && 'content' in raw) ? raw : null;
 
     await this.stateStore.save(conversationId, state);
 
@@ -436,7 +433,7 @@ export function makeSseStream(eventBus: EventBus, customerId: string) {
 
 3. **Event-driven resolution**: Admin action publishes an event; the customer's SSE stream receives a push. No polling.
 
-4. **Per-turn service rebuild**: Each HTTP request gets fresh services (auth, session, ledger state, etc.). Useful when sessions have mutable context.
+4. **Per-turn variation via constructor args**: When a node needs per-request context (auth, session, ledger), pass it in at construction time as a constructor argument. Nodes are registered per dispatcher instance; rebuild the dispatcher or use a factory that produces nodes with the appropriate per-turn state.
 
 5. **Out-of-band state machine**: The escalation queue is separate from the DAG state. It can outlive an HTTP request.
 
@@ -454,13 +451,18 @@ export function makeSseStream(eventBus: EventBus, customerId: string) {
 
 ---
 
-## Dependency injection patterns
+## Dependency injection
 
-### Option A: Constructor injection (recommended for turn-termination)
+Constructor injection is the dependency injection model. Nodes receive dependencies through their constructors and hold them as private fields.
 
 ```typescript
 class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'success'> {
-  constructor(private readonly llm: LLMAdapter) {}
+  private readonly llm: LLMAdapter;
+
+  constructor(llm: LLMAdapter) {
+    super();
+    this.llm = llm;
+  }
   // implements execute(batch, context) — uses this.llm
 }
 
@@ -468,34 +470,9 @@ const intake = new IntakeNode(this.llm);
 dispatcher.registerNode(intake);
 ```
 
-**Pros**: Simple, testable in isolation, no framework container.  
-**Cons**: Must wire all dependencies at assembly time.
+When a dependency varies per execution (for example, a per-request ledger keyed by `customerId`), construct the node with the appropriate instance before registering it, or restructure the dependency to be execution-agnostic (read the `customerId` from state inside the node, and pass a factory or a repository rather than a pre-built per-user object).
 
-### Option B: context.services (better for per-turn variation)
-
-```typescript
-interface MyServices {
-  readonly llm: LLMAdapter;
-  readonly ledger: Ledger;
-}
-
-class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'success', MyServices> {
-  readonly name = 'intake';
-  readonly outputs = ['incomplete', 'success'] as const;
-
-  async execute(batch: Batch<TripState>, context: NodeContextType<MyServices>): Promise<RoutedBatchType<'incomplete' | 'success', TripState>> {
-    const { llm } = context.services;
-    // uses context.services.llm
-  }
-}
-
-const dispatcher = new Dagonizer<TripState, MyServices>({
-  services: { llm: this.llm, ledger: this.ledger },
-});
-```
-
-**Pros**: Services can vary per execution (rebuild dispatcher per turn with fresh auth, etc.).  
-**Cons**: Dispatcher is constructor-scoped; same services flow to all nodes. Use shared node state if you need execution-scoped variation.
+Nodes are testable in isolation: instantiate with a stub or fake, call `execute` or `executeOne` directly, and assert on the result without wiring a dispatcher.
 
 ---
 
@@ -531,7 +508,7 @@ Both nocturne and Foundersmax demonstrate these patterns. To adopt:
 
 2. **Use the `state.metadata` bus** as documented here. It is already part of `NodeStateBase` in the framework.
 
-3. **Pick constructor injection or context.services** based on your service lifetime (once per orchestrator vs. once per turn).
+3. **Use constructor injection** for all node dependencies. Pass the dependency at `new NodeClass(dep)` and hold it as a private field.
 
 4. **Test nodes in isolation** with mock state and mocked services. The patterns are testable without a framework.
 

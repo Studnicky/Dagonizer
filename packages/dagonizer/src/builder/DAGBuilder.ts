@@ -60,7 +60,7 @@ export type ScatterOptionsType<TState extends NodeStateInterface = NodeStateInte
    * keys, values are parent-state dotted paths (narrowed to `PathType<TState>` when
    * `TState` is a concrete subtype).
    */
-  inputs?: Partial<Record<string, ParentPath<TState>>>;
+  inputs?: Record<string, ParentPath<TState>>;
   /**
    * Gather config: how produced clone state merges back into the parent.
    * Required — every scatter must declare the merge strategy. Declare
@@ -112,9 +112,9 @@ export type TypedEmbeddedDAGOptionsType<
   TParentState extends NodeStateInterface = NodeStateInterface,
 > = {
   /** Input mapping: child-state key → parent-state dotted path. Copied into the child before the embedded-DAG runs. A mapping covers only the keys it seeds; omit it entirely when no seeding is needed. */
-  inputs?:  Partial<Record<keyof TChildState & string, ParentPath<TParentState>>>;
+  inputs?:  Record<string, ParentPath<TParentState>>;
   /** Output mapping: parent-state dotted path → child-state dotted path. Copied back into the parent after it completes. A mapping covers only the keys it copies back; omit it entirely when none. */
-  outputs?: Partial<Record<ParentPath<TParentState>, ParentPath<TChildState>>>;
+  outputs?: Record<string, ParentPath<TChildState>>;
   /**
    * Logical container role for this embedded DAG execution. The dispatcher
    * binds role names to `DagContainerInterface` instances at construction.
@@ -168,9 +168,9 @@ export class DAGBuilder {
    * Append a single node. The node's `TOutput` parameter
    * narrows `routes`, forcing exhaustive routing at compile time.
    */
-  node<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
+  node<TState extends NodeStateInterface, TOutput extends string>(
     name: string,
-    dagNode: NodeInterface<TState, TOutput, TServices>,
+    dagNode: NodeInterface<TState, TOutput>,
     routes: Record<TOutput, string>,
   ): this {
     this.#nodes.push({
@@ -205,10 +205,10 @@ export class DAGBuilder {
    * );
    * ```
    */
-  scatter<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
+  scatter<TState extends NodeStateInterface, TOutput extends string>(
     name: string,
     source: string,
-    body: NodeInterface<TState, TOutput, TServices> | { readonly dag: string } | { readonly dagFrom: string },
+    body: NodeInterface<TState, TOutput> | { readonly dag: string } | { readonly dagFrom: string },
     outputs: Record<string, string>,
     options: ScatterOptionsType<TState>,
   ): this {
@@ -243,8 +243,7 @@ export class DAGBuilder {
       // concurrency: left optional — default is source.length at runtime (data-dependent).
       ...(resolved.concurrency !== undefined ? { 'concurrency': resolved.concurrency } : {}),
       // stateMapping.input: left optional — absence means "no clone seeding" (semantically meaningful).
-      // ParentPath<TState> is structurally string; FromSchema index-signature requires Record<string,string>.
-      ...(resolved.inputs !== undefined ? { 'stateMapping': { 'input': resolved.inputs as Record<string, string> } } : {}),
+      ...(resolved.inputs !== undefined ? { 'stateMapping': { 'input': resolved.inputs } } : {}),
       // container: left optional — absence means "run in-process" (semantically meaningful).
       ...(resolved.container !== undefined ? { 'container': resolved.container } : {}),
       // reservoir: left optional — absence means batch-size-1 (today's behavior unchanged).
@@ -293,8 +292,8 @@ export class DAGBuilder {
     const stateMapping: NonNullable<EmbeddedDAGNodeType['stateMapping']> | undefined =
       options.inputs !== undefined || options.outputs !== undefined
         ? {
-          ...(options.inputs  !== undefined ? { 'input':  options.inputs  as Record<string, string> } : {}),
-          ...(options.outputs !== undefined ? { 'output': options.outputs as Record<string, string> } : {}),
+          ...(options.inputs  !== undefined ? { 'input':  options.inputs  } : {}),
+          ...(options.outputs !== undefined ? { 'output': options.outputs } : {}),
         }
         : undefined;
 
@@ -353,10 +352,10 @@ export class DAGBuilder {
    * Phase placements are out-of-band; they have no `outputs`, never the
    * main-loop entrypoint, and never route to other placements.
    */
-  phase<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
+  phase<TState extends NodeStateInterface, TOutput extends string>(
     name: string,
     phase: 'pre' | 'post',
-    dagNode: NodeInterface<TState, TOutput, TServices>,
+    dagNode: NodeInterface<TState, TOutput>,
   ): this {
     const placement: PhaseNodeType = {
       '@id':   DAGIdentity.placementId(this.#name, name),

@@ -26,9 +26,8 @@ export class TestNode {
    * @param outputs  - Declared output tokens; `outputs[0]` is the default route.
    * @param exec     - Optional callback receiving `(state, context)` and
    *                   returning a token string (sync or async). The context
-   *                   gives access to the abort signal and services for nodes
-   *                   that sleep, abort, or read `context.services`. Defaults to
-   *                   `() => outputs[0]`.
+   *                   gives access to the abort signal for nodes that sleep or
+   *                   abort. Defaults to `() => outputs[0]`.
    */
   static make<TState extends NodeStateInterface>(
     name: string,

@@ -6,7 +6,7 @@
  *   - `OnceTrigger`    — fire once on a single explicit call
  *   - `CliTrigger`     — fire from a parsed command line
  *   - `EventTrigger`   — fire per message off a subscription
- *   - `RequestTrigger` — fire per HTTP turn with a per-turn service scope
+ *   - `RequestTrigger` — fire per HTTP turn
  *
  * Consumers implement this interface to wire the timing signal into the
  * canonical runner loop. `trigger.attach(runner)` returns a promise that
@@ -16,7 +16,6 @@
  * TInput   — trigger-specific input type passed to `runner.run(input)`.
  * TState   — the domain state flowing through the DAG.
  * TOutput  — the projected output from `runner.run(input)`.
- * TServices — services record type (defaults to `undefined`).
  */
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -26,7 +25,6 @@ export interface TriggerInterface<
   TInput,
   TState extends NodeStateInterface,
   TOutput,
-  TServices = undefined,
 > {
   /**
    * Attach this trigger to a runner. The trigger calls `runner.run(input)`
@@ -34,7 +32,7 @@ export interface TriggerInterface<
    * Returns a promise that resolves when the trigger has completed its
    * lifecycle (all planned invocations are done, or `detach` was called).
    */
-  attach(runner: DagRunnerInterface<TInput, TState, TOutput, TServices>): Promise<void>;
+  attach(runner: DagRunnerInterface<TInput, TState, TOutput>): Promise<void>;
 
   /**
    * Detach the trigger. Any pending subscriptions are torn down; no further

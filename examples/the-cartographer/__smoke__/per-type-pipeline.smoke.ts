@@ -14,7 +14,6 @@ import { Dagonizer } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
 
 import { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { PositionPingEvent } from '../entities/events/PositionPingEvent.ts';
@@ -26,7 +25,7 @@ import type { DeliveryConfirmationEvent } from '../entities/events/DeliveryConfi
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 
 // Leaf/embedded-DAG bundles (register first — per-type bundles reference their nodes).
-import { geoResolveBundle } from '../embedded-dags/GeoResolveDAG.ts';
+import { GeoResolveDAG } from '../embedded-dags/GeoResolveDAG.ts';
 import { orderEnrichmentBundle } from '../embedded-dags/OrderEnrichmentDAG.ts';
 import { gdprComplianceBundle } from '../embedded-dags/GdprComplianceDAG.ts';
 import { geoPipelineBundle } from '../embedded-dags/GeoPipelineDAG.ts';
@@ -58,10 +57,11 @@ import {
 // Offline deterministic services — no network calls.
 const services = GeoResolvers.recorded();
 
-const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ 'services': services });
+const dispatcher = new Dagonizer<CartographerState>({});
 
 // Register leaf bundles first so the DAG validator can resolve sub-DAG references.
-dispatcher.registerBundle(geoResolveBundle);
+// geo-resolve DAG is built per-call with injected services.
+dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
 dispatcher.registerBundle(geoPipelineBundle);
 dispatcher.registerBundle(orderEnrichmentBundle);
 dispatcher.registerBundle(gdprComplianceBundle);
@@ -77,19 +77,36 @@ dispatcher.registerBundle(pipelineDeliveryConfirmationBundle);
 
 // ── Runner helper ───────────────────────────────────────────────────────────
 
-/**
- * Seed a fresh CartographerState with the variant and run the named DAG.
- * The per-type pipeline DAGs read the canonical-event from metadata
- * (parseVariant calls state.getMetadata('canonical-event')).
- */
-async function runPipeline(dagName: string, variant: CanonicalEventVariant): Promise<EnrichedShipment> {
-  const state = new CartographerState();
-  state.setMetadata('canonical-event', variant);
-  state.canonicalVariant = variant;
-  const execution = dispatcher.execute(dagName, state, {});
-  for await (const _stage of execution) { /* drain stages */ }
-  await execution;
-  return state.enriched;
+class SmokeRunner {
+  static async check(name: string, fn: () => Promise<void> | void): Promise<void> {
+    try {
+      await fn();
+      console.log(`✓ ${name}`);
+    } catch (err) {
+      failures++;
+      console.error(`✗ ${name}\n  ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Seed a fresh CartographerState with the variant and run the named DAG.
+   * The per-type pipeline DAGs read the canonical-event from metadata
+   * (parseVariant calls state.getMetadata('canonical-event')).
+   */
+  static async run(dagName: string, variant: CanonicalEventVariant): Promise<EnrichedShipment> {
+    const state = new CartographerState();
+    state.setMetadata('canonical-event', variant);
+    state.canonicalVariant = variant;
+    const execution = dispatcher.execute(dagName, state, {});
+    for await (const _stage of execution) { /* drain stages */ }
+    await execution;
+    return state.enriched;
+  }
+
+  /** Returns a Set of placement names from a DAG's nodes array. */
+  static placementNames(dag: DAGType): Set<string> {
+    return new Set(dag.nodes.map((n) => n.name));
+  }
 }
 
 // ── Seed variants ───────────────────────────────────────────────────────────
@@ -190,41 +207,20 @@ const deliveryConfirmationVariant: DeliveryConfirmationEvent = {
   },
 };
 
-// ── SmokeRunner ─────────────────────────────────────────────────────────────
+// ── Smoke checks ─────────────────────────────────────────────────────────────
 
 let failures = 0;
 
-class SmokeRunner {
-  static async check(name: string, fn: () => Promise<void> | void): Promise<void> {
-    try {
-      await fn();
-      console.log(`✓ ${name}`);
-    } catch (err) {
-      failures++;
-      console.error(`✗ ${name}\n  ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-}
-
-// ── DAG node-set helpers ─────────────────────────────────────────────────────
-
-/** Returns a Set of placement names from a DAG's nodes array. */
-function placementNames(dag: DAGType): Set<string> {
-  return new Set(dag.nodes.map((n) => n.name));
-}
-
-// ── Smoke checks ─────────────────────────────────────────────────────────────
-
 // ── (1) position-ping minimality ─────────────────────────────────────────────
 await SmokeRunner.check('(1a) position-ping DAG node-set: required placements present', () => {
-  const names = placementNames(pipelinePositionPingDAG);
+  const names = SmokeRunner.placementNames(pipelinePositionPingDAG);
   for (const required of ['parse-variant', 'geo-pipeline', 'canonicalize-core', 'enrich-leg', 'aggregate-event']) {
     assert.ok(names.has(required), `pipeline-position-ping is missing required placement '${required}'`);
   }
 });
 
 await SmokeRunner.check('(1b) position-ping DAG node-set: type-exclusive placements absent', () => {
-  const names = placementNames(pipelinePositionPingDAG);
+  const names = SmokeRunner.placementNames(pipelinePositionPingDAG);
   for (const forbidden of [
     'cold-chain-check', 'customs-dwell', 'canonicalize-facility',
     'canonicalize-recipient', 'confirm-delivery', 'order-enrichment',
@@ -236,12 +232,12 @@ await SmokeRunner.check('(1b) position-ping DAG node-set: type-exclusive placeme
 
 // ── (2) sensor-reading minimality ─────────────────────────────────────────────
 await SmokeRunner.check('(2a) sensor-reading DAG node-set: cold-chain-check present', () => {
-  const names = placementNames(pipelineSensorReadingDAG);
+  const names = SmokeRunner.placementNames(pipelineSensorReadingDAG);
   assert.ok(names.has('cold-chain-check'), `pipeline-sensor-reading must contain placement 'cold-chain-check'`);
 });
 
 await SmokeRunner.check('(2b) sensor-reading DAG node-set: non-sensor placements absent', () => {
-  const names = placementNames(pipelineSensorReadingDAG);
+  const names = SmokeRunner.placementNames(pipelineSensorReadingDAG);
   for (const forbidden of ['customs-dwell', 'canonicalize-facility', 'order-enrichment', 'confirm-delivery']) {
     assert.ok(!names.has(forbidden), `pipeline-sensor-reading must NOT contain placement '${forbidden}'`);
   }
@@ -249,12 +245,12 @@ await SmokeRunner.check('(2b) sensor-reading DAG node-set: non-sensor placements
 
 // ── (3) customs-event minimality ──────────────────────────────────────────────
 await SmokeRunner.check('(3a) customs-event DAG node-set: customs-dwell present', () => {
-  const names = placementNames(pipelineCustomsEventDAG);
+  const names = SmokeRunner.placementNames(pipelineCustomsEventDAG);
   assert.ok(names.has('customs-dwell'), `pipeline-customs-event must contain placement 'customs-dwell'`);
 });
 
 await SmokeRunner.check('(3b) customs-event DAG node-set: non-customs placements absent', () => {
-  const names = placementNames(pipelineCustomsEventDAG);
+  const names = SmokeRunner.placementNames(pipelineCustomsEventDAG);
   for (const forbidden of ['cold-chain-check', 'canonicalize-facility', 'order-enrichment', 'confirm-delivery']) {
     assert.ok(!names.has(forbidden), `pipeline-customs-event must NOT contain placement '${forbidden}'`);
   }
@@ -262,14 +258,14 @@ await SmokeRunner.check('(3b) customs-event DAG node-set: non-customs placements
 
 // ── (4) facility-scan minimality ──────────────────────────────────────────────
 await SmokeRunner.check('(4a) facility-scan DAG node-set: order-lane placements present', () => {
-  const names = placementNames(pipelineFacilityScanDAG);
+  const names = SmokeRunner.placementNames(pipelineFacilityScanDAG);
   for (const required of ['canonicalize-facility', 'canonicalize-recipient', 'order-enrichment']) {
     assert.ok(names.has(required), `pipeline-facility-scan is missing required placement '${required}'`);
   }
 });
 
 await SmokeRunner.check('(4b) facility-scan DAG node-set: delivery-exclusive placements absent', () => {
-  const names = placementNames(pipelineFacilityScanDAG);
+  const names = SmokeRunner.placementNames(pipelineFacilityScanDAG);
   for (const forbidden of ['cold-chain-check', 'customs-dwell', 'confirm-delivery']) {
     assert.ok(!names.has(forbidden), `pipeline-facility-scan must NOT contain placement '${forbidden}'`);
   }
@@ -277,14 +273,14 @@ await SmokeRunner.check('(4b) facility-scan DAG node-set: delivery-exclusive pla
 
 // ── (5) delivery-confirmation minimality ──────────────────────────────────────
 await SmokeRunner.check('(5a) delivery-confirmation DAG node-set: delivery placements present', () => {
-  const names = placementNames(pipelineDeliveryConfirmationDAG);
+  const names = SmokeRunner.placementNames(pipelineDeliveryConfirmationDAG);
   for (const required of ['canonicalize-recipient', 'confirm-delivery']) {
     assert.ok(names.has(required), `pipeline-delivery-confirmation is missing required placement '${required}'`);
   }
 });
 
 await SmokeRunner.check('(5b) delivery-confirmation DAG node-set: facility/order placements absent', () => {
-  const names = placementNames(pipelineDeliveryConfirmationDAG);
+  const names = SmokeRunner.placementNames(pipelineDeliveryConfirmationDAG);
   for (const forbidden of ['canonicalize-facility', 'order-enrichment', 'cold-chain-check', 'customs-dwell']) {
     assert.ok(!names.has(forbidden), `pipeline-delivery-confirmation must NOT contain placement '${forbidden}'`);
   }
@@ -293,39 +289,39 @@ await SmokeRunner.check('(5b) delivery-confirmation DAG node-set: facility/order
 // ── End-to-end execution checks ────────────────────────────────────────────────
 
 await SmokeRunner.check('(1c) position-ping: pipeline produces non-empty shipmentId and legKm >= 0', async () => {
-  const enriched = await runPipeline('pipeline-position-ping', positionPingVariant);
+  const enriched = await SmokeRunner.run('pipeline-position-ping', positionPingVariant);
   assert.ok(enriched.shipmentId.length > 0, `position-ping: enriched.shipmentId must be non-empty`);
   assert.ok(enriched.legKm >= 0, `position-ping: enriched.legKm must be >= 0 (got ${enriched.legKm})`);
 });
 
 await SmokeRunner.check('(1d) position-ping: no pricing (subtotalUsdMinor === 0, shippingUsdMinor === 0)', async () => {
-  const enriched = await runPipeline('pipeline-position-ping', positionPingVariant);
+  const enriched = await SmokeRunner.run('pipeline-position-ping', positionPingVariant);
   assert.strictEqual(enriched.subtotalUsdMinor, 0, `position-ping must have subtotalUsdMinor === 0 (no order lane)`);
   assert.strictEqual(enriched.shippingUsdMinor, 0, `position-ping must have shippingUsdMinor === 0 (no order lane)`);
 });
 
 await SmokeRunner.check('(2c) sensor-reading: pipeline produces enriched record (shipmentId non-empty)', async () => {
-  const enriched = await runPipeline('pipeline-sensor-reading', sensorReadingVariant);
+  const enriched = await SmokeRunner.run('pipeline-sensor-reading', sensorReadingVariant);
   assert.ok(enriched.shipmentId.length > 0, `sensor-reading: enriched.shipmentId must be non-empty`);
 });
 
 await SmokeRunner.check('(2d) sensor-reading: no pricing (subtotalUsdMinor === 0)', async () => {
-  const enriched = await runPipeline('pipeline-sensor-reading', sensorReadingVariant);
+  const enriched = await SmokeRunner.run('pipeline-sensor-reading', sensorReadingVariant);
   assert.strictEqual(enriched.subtotalUsdMinor, 0, `sensor-reading must have subtotalUsdMinor === 0 (no order lane)`);
 });
 
 await SmokeRunner.check('(3c) customs-event: pipeline produces enriched record (shipmentId non-empty)', async () => {
-  const enriched = await runPipeline('pipeline-customs-event', customsEventVariant);
+  const enriched = await SmokeRunner.run('pipeline-customs-event', customsEventVariant);
   assert.ok(enriched.shipmentId.length > 0, `customs-event: enriched.shipmentId must be non-empty`);
 });
 
 await SmokeRunner.check('(3d) customs-event: no pricing (subtotalUsdMinor === 0)', async () => {
-  const enriched = await runPipeline('pipeline-customs-event', customsEventVariant);
+  const enriched = await SmokeRunner.run('pipeline-customs-event', customsEventVariant);
   assert.strictEqual(enriched.subtotalUsdMinor, 0, `customs-event must have subtotalUsdMinor === 0 (no order lane)`);
 });
 
 await SmokeRunner.check('(4c) facility-scan: pricing ran (subtotalUsdMinor > 0)', async () => {
-  const enriched = await runPipeline('pipeline-facility-scan', facilityScanVariant);
+  const enriched = await SmokeRunner.run('pipeline-facility-scan', facilityScanVariant);
   assert.ok(
     enriched.subtotalUsdMinor > 0,
     `facility-scan: enriched.subtotalUsdMinor must be > 0 after order-enrichment (got ${enriched.subtotalUsdMinor})`,
@@ -333,13 +329,13 @@ await SmokeRunner.check('(4c) facility-scan: pricing ran (subtotalUsdMinor > 0)'
 });
 
 await SmokeRunner.check('(4d) facility-scan: shippingUsdMinor >= 0 and shipmentId non-empty', async () => {
-  const enriched = await runPipeline('pipeline-facility-scan', facilityScanVariant);
+  const enriched = await SmokeRunner.run('pipeline-facility-scan', facilityScanVariant);
   assert.ok(enriched.shipmentId.length > 0, `facility-scan: enriched.shipmentId must be non-empty`);
   assert.ok(enriched.shippingUsdMinor >= 0, `facility-scan: enriched.shippingUsdMinor must be >= 0`);
 });
 
 await SmokeRunner.check('(5c) delivery-confirmation: status === DELIVERED', async () => {
-  const enriched = await runPipeline('pipeline-delivery-confirmation', deliveryConfirmationVariant);
+  const enriched = await SmokeRunner.run('pipeline-delivery-confirmation', deliveryConfirmationVariant);
   assert.strictEqual(
     enriched.status,
     'DELIVERED',
@@ -348,12 +344,12 @@ await SmokeRunner.check('(5c) delivery-confirmation: status === DELIVERED', asyn
 });
 
 await SmokeRunner.check('(5d) delivery-confirmation: no pricing (subtotalUsdMinor === 0)', async () => {
-  const enriched = await runPipeline('pipeline-delivery-confirmation', deliveryConfirmationVariant);
+  const enriched = await SmokeRunner.run('pipeline-delivery-confirmation', deliveryConfirmationVariant);
   assert.strictEqual(enriched.subtotalUsdMinor, 0, `delivery-confirmation must have subtotalUsdMinor === 0 (no order lane)`);
 });
 
 await SmokeRunner.check('(5e) delivery-confirmation: recipient PII present (recipientName non-empty in redactedSample)', async () => {
-  const enriched = await runPipeline('pipeline-delivery-confirmation', deliveryConfirmationVariant);
+  const enriched = await SmokeRunner.run('pipeline-delivery-confirmation', deliveryConfirmationVariant);
   // After GDPR redaction the redactedSample captures the name (pre-redaction) or
   // the redacted form. Either way the enriched record carries the PII path.
   const hasPii =

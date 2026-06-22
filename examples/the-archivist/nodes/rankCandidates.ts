@@ -162,9 +162,15 @@ interface ScoredEntry {
   readonly titleEmbedding: readonly number[] | null;
 }
 
-export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'retry' | 'salvage', ArchivistServices> {
+export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'retry' | 'salvage'> {
+  private readonly services: ArchivistServices;
   readonly name = 'rank-candidates';
   readonly outputs = ['ranked', 'retry', 'salvage'] as const;
+
+  constructor(services: ArchivistServices) {
+    super();
+    this.services = services;
+  }
   override get outputSchema(): Record<'ranked' | 'retry' | 'salvage', SchemaObjectType> {
     return {
       'ranked':  { 'type': 'object' },
@@ -173,18 +179,18 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
     if (state.candidates.length === 0) {
       state.clearAttempts(context.nodeName);
       return NodeOutputBuilder.of('ranked');
     }
 
     const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? RANK_TIMEOUT_MS);
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? RANK_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
 
     try {
-      const embedder = context.services.embedder;
+      const embedder = this.services.embedder;
       const queryText = state.terms.length > 0 ? state.terms.join(' ') : state.query;
       const termTokens = TextSimilarity.tokenise(queryText);
       const currentYear = new Date().getFullYear();
@@ -214,13 +220,16 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
 
       // ── Step 3: LLM tiebreak on the top-3 when scores are within ε ──────
       const top3 = scored.slice(0, 3);
+      const top3First = top3[0];
+      const top3Third = top3[2];
       const needsTiebreak = top3.length === 3 &&
-        (top3[0]!.score - top3[2]!.score) <= TIE_WINDOW;
+        top3First !== undefined && top3Third !== undefined &&
+        (top3First.score - top3Third.score) <= TIE_WINDOW;
 
       if (needsTiebreak) {
         try {
           const tiebreakCandidates = top3.map((s) => s.candidate);
-          const llmScored = await context.services.llm.rankCandidates(state.query, tiebreakCandidates, signal);
+          const llmScored = await this.services.llm.rankCandidates(state.query, tiebreakCandidates, signal);
           // Use the LLM's ordering for the top-3 ONLY; keep the rest in
           // deterministic order. Match LLM-returned candidates back to
           // ScoredEntry by ISBN so we preserve composite scores in logs.
@@ -285,5 +294,3 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
   }
 }
 
-/** Singleton node instance referenced by the DAG wiring. */
-export const rankCandidates = new RankCandidatesNode();

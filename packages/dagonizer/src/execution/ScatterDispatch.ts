@@ -65,22 +65,22 @@ export type RunNodesBatchType = {
  * `ScatterPoolDriver`. Each member is bound at construction time so the adapter
  * has a stable hidden class (same shape every construction).
  */
-export interface ScatterDispatchAdapterInterface<TServices> {
+export interface ScatterDispatchAdapterInterface {
   readonly stateMapper: {
     cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
     spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
   };
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   withNodeTimeout<TResult>(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
-  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
+  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType;
   runNodes(
     dagName: string,
     state: NodeStateInterface,
@@ -100,22 +100,22 @@ export interface ScatterDispatchAdapterInterface<TServices> {
  * implements it so the scatter adapter is a named class with a stable shape,
  * not an object-literal of bound arrow closures rebuilt per scatter call.
  */
-export interface ScatterDispatchSourceInterface<TServices> {
+export interface ScatterDispatchSourceInterface {
   readonly stateMapper: {
     cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
     spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
   };
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   withNodeTimeout<TResult>(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
-  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices>;
+  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType;
   runScatterNodes(
     dagName: string,
     state: NodeStateInterface,
@@ -138,21 +138,21 @@ export interface ScatterDispatchSourceInterface<TServices> {
  * source. Fields are initialised in constructor-declaration order for a
  * consistent hidden class across constructions.
  */
-export class ScatterDispatchAdapter<TServices>
-  implements ScatterDispatchAdapterInterface<TServices>
+export class ScatterDispatchAdapter
+  implements ScatterDispatchAdapterInterface
 {
   readonly stateMapper: {
     cloneChild(parentState: NodeStateInterface, inputMapping: Record<string, string>): NodeStateInterface;
     spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
   };
-  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string, TServices>>;
+  readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
-  readonly #source: ScatterDispatchSourceInterface<TServices>;
+  readonly #source: ScatterDispatchSourceInterface;
 
-  constructor(source: ScatterDispatchSourceInterface<TServices>) {
+  constructor(source: ScatterDispatchSourceInterface) {
     this.stateMapper = source.stateMapper;
     this.nodes = source.nodes;
     this.dags = source.dags;
@@ -163,14 +163,14 @@ export class ScatterDispatchAdapter<TServices>
   }
 
   withNodeTimeout<TResult>(
-    node: NodeInterface<NodeStateInterface, string, TServices>,
+    node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal | null,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult> {
     return this.#source.withNodeTimeout(node, signal, fn);
   }
 
-  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType<TServices> {
+  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType {
     return this.#source.bodyContext(dagName, nodeName, signal);
   }
 
@@ -237,17 +237,17 @@ export type ScatterRunContextType = {
  * Implements `ScatterPoolDriverInterface` without accessing private
  * members on `Dagonizer` directly.
  */
-export class ScatterPoolDriver<TServices>
+export class ScatterPoolDriver
   implements ScatterPoolDriverInterface, ReservoirDriverInterface
 {
-  readonly #adapter: ScatterDispatchAdapterInterface<TServices>;
+  readonly #adapter: ScatterDispatchAdapterInterface;
   readonly #ctx: ScatterRunContextType;
-  readonly #bodyExecutor: BodyExecutor<TServices>;
+  readonly #bodyExecutor: BodyExecutor;
 
   constructor(
-    adapter: ScatterDispatchAdapterInterface<TServices>,
+    adapter: ScatterDispatchAdapterInterface,
     ctx: ScatterRunContextType,
-    bodyExecutor: BodyExecutor<TServices>,
+    bodyExecutor: BodyExecutor,
   ) {
     this.#adapter = adapter;
     this.#ctx = ctx;
@@ -262,7 +262,7 @@ export class ScatterPoolDriver<TServices>
    * to `'error'` with a collected `outputContractViolation` NodeError.
    */
   #validateOutputContract(
-    dagNode: NodeInterface<NodeStateInterface, string, TServices>,
+    dagNode: NodeInterface<NodeStateInterface, string>,
     routed: RoutedBatchType<string, NodeStateInterface>,
   ): RoutedBatchType<string, NodeStateInterface> {
     return OutputContractApplier.applyToRouted(
@@ -697,7 +697,7 @@ export class ScatterPoolDriver<TServices>
       // DagContainerBase.runDagBatch accepts DagTaskInterface<unknown>
       // and Batch<NodeStateInterface>; no cast needed.
       const repCloneForTask: NodeStateInterface = clones[0] ?? state;
-      const task = new DagTask<TServices>(
+      const task = new DagTask(
         batchBodyDagName,
         innerPath,
         correlationId,
@@ -716,7 +716,7 @@ export class ScatterPoolDriver<TServices>
         if (buffered === undefined) throw new ExecutionError(`ScatterDispatch: invariant — items[${i}] is undefined`);
         const itemCorrelationId = this.#adapter.nextCorrelationId(batchBodyDagName);
         const itemContext = this.#adapter.context(batchBodyDagName, scatter.name, signal);
-        const task = new DagTask<TServices>(
+        const task = new DagTask(
           batchBodyDagName,
           innerPath,
           itemCorrelationId,

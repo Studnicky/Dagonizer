@@ -48,7 +48,7 @@ import assert from 'node:assert/strict';
 import { after, afterEach, describe, it } from 'node:test';
 
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
-import type { DagonizerInterface, DispatcherBundleType, NodeStateInterface, ScatterProgressType } from '@studnicky/dagonizer';
+import type { DagonizerInterface, DispatcherBundleType, NodeStateInterface, StoredScatterProgressType } from '@studnicky/dagonizer';
 import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
 import {
   ConformanceRegistry,
@@ -59,6 +59,7 @@ import {
   DagConformance,
 } from '@studnicky/dagonizer/testing';
 import type { DagConformanceHarnessInterface } from '@studnicky/dagonizer/testing';
+import { Validator } from '@studnicky/dagonizer/validation';
 
 import { ClusterContainer } from '../../src/ClusterContainer.js';
 import { ForkContainer } from '../../src/ForkContainer.js';
@@ -135,16 +136,20 @@ class KillAfterOneContainer implements DagContainerInterface {
 // fixture is at dist-test/tests/unit/fixtures/registry.js.
 // ---------------------------------------------------------------------------
 
-function registryUrl(): string {
-  return new URL('./fixtures/registry.js', import.meta.url).href;
-}
+class RegistryUrls {
+  private constructor() {}
 
-/**
- * Registry whose scatter body silently kills its worker thread on item 20
- * (no result/error sent). Used by the silent-kill real-death test below.
- */
-function killRegistryUrl(): string {
-  return new URL('./fixtures/kill-registry.js', import.meta.url).href;
+  static registry(): string {
+    return new URL('./fixtures/registry.js', import.meta.url).href;
+  }
+
+  /**
+   * Registry whose scatter body silently kills its worker thread on item 20
+   * (no result/error sent). Used by the silent-kill real-death test below.
+   */
+  static killRegistry(): string {
+    return new URL('./fixtures/kill-registry.js', import.meta.url).href;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -200,9 +205,9 @@ class Harness {
 
     return {
       createDispatcher(
-        bundle: DispatcherBundleType<NodeStateInterface, undefined>,
+        bundle: DispatcherBundleType<NodeStateInterface>,
         passedContainers: Readonly<Record<string, DagContainerInterface>>,
-      ): DagonizerInterface<NodeStateInterface, undefined> {
+      ): DagonizerInterface<NodeStateInterface> {
         // Use the passed container only if it was NOT created by this harness's
         // factory (Law 8 provides KillAfterOneContainer / fresh container from
         // outside the factory). For all other laws, build a fresh factory container.
@@ -217,7 +222,7 @@ class Harness {
         }
 
         const containers: Readonly<Record<string, DagContainerInterface>> = { [CONFORMANCE_CONTAINER_ROLE]: container };
-        const dispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
+        const dispatcher: DagonizerInterface<NodeStateInterface> = new Dagonizer<NodeStateInterface>({ 'containers': containers });
         dispatcher.registerBundle(bundle);
         return dispatcher;
       },
@@ -225,9 +230,9 @@ class Harness {
       // Law 7: build a dispatcher WITHOUT the container role bound so
       // resolveContainer(CONFORMANCE_CONTAINER_ROLE) returns null → inline path.
       createInProcessDispatcher(
-        bundle: DispatcherBundleType<NodeStateInterface, undefined>,
-      ): DagonizerInterface<NodeStateInterface, undefined> {
-        const dispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>();
+        bundle: DispatcherBundleType<NodeStateInterface>,
+      ): DagonizerInterface<NodeStateInterface> {
+        const dispatcher: DagonizerInterface<NodeStateInterface> = new Dagonizer<NodeStateInterface>();
         dispatcher.registerBundle(bundle);
         return dispatcher;
       },
@@ -263,7 +268,7 @@ void describe('DAG Container Conformance — WorkerThreadContainer (Laws 1–9)'
 
   const factory: ContainerFactory = () => {
     const c = new WorkerThreadContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/workerEntry.js', import.meta.url),
@@ -280,7 +285,7 @@ void describe('DAG Container Conformance — WorkerThreadContainer (Laws 1–9)'
     freshContainer: DagContainerInterface;
   } => {
     const innerForKill = new WorkerThreadContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/workerEntry.js', import.meta.url),
@@ -291,7 +296,7 @@ void describe('DAG Container Conformance — WorkerThreadContainer (Laws 1–9)'
     allContainers.push(failingContainer);
 
     const freshContainer = new WorkerThreadContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/workerEntry.js', import.meta.url),
@@ -354,7 +359,7 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
   void it('a silently-killed worker does NOT hang the scatter; resume reprocesses the item', async () => {
     // Phase 1: scatter [10, 20, 30] through a container whose worker dies on 20.
     const killing = new WorkerThreadContainer({
-      'registryModule': killRegistryUrl(),
+      'registryModule': RegistryUrls.killRegistry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/workerEntry.js', import.meta.url),
@@ -368,7 +373,7 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     const killingContainers: Readonly<Record<string, DagContainerInterface>> = {
       [CONFORMANCE_CONTAINER_ROLE]: killing,
     };
-    const killingDispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': killingContainers });
+    const killingDispatcher: DagonizerInterface<NodeStateInterface> = new Dagonizer<NodeStateInterface>({ 'containers': killingContainers });
     killingDispatcher.registerBundle(bundle);
 
     // EMPIRICAL no-hang proof: bound the whole phase-1 run. If the pending
@@ -395,8 +400,9 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     assert.ok(elapsed < NO_HANG_BUDGET_MS, `phase 1 must finish within ${NO_HANG_BUDGET_MS}ms, took ${elapsed}ms`);
 
     // The killed item must remain un-acked; the checkpoint must survive.
-    const progress = state.getMetadata<Record<string, ScatterProgressType>>(SCATTER_PROGRESS_KEY);
-    const fan = (progress ?? {})['fan'];
+    const raw = state.getMetadata(SCATTER_PROGRESS_KEY);
+    const progress: StoredScatterProgressType = raw === undefined ? {} : Validator.storedScatterProgress.validate(raw);
+    const fan = progress['fan'];
     assert.ok(fan !== undefined, 'checkpoint must survive the worker death (not cleared)');
     // The map gather is compactable, so its checkpoint is bounded mode: the
     // acked count is watermark + ahead-acked window. Non-compactable gathers
@@ -410,7 +416,7 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
 
     // Phase 2: resume through a fresh, healthy container (normal registry → no kill).
     const fresh = new WorkerThreadContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/workerEntry.js', import.meta.url),
@@ -420,7 +426,7 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     const freshContainers: Readonly<Record<string, DagContainerInterface>> = {
       [CONFORMANCE_CONTAINER_ROLE]: fresh,
     };
-    const freshDispatcher: DagonizerInterface<NodeStateInterface, undefined> = new Dagonizer<NodeStateInterface, undefined>({ 'containers': freshContainers });
+    const freshDispatcher: DagonizerInterface<NodeStateInterface> = new Dagonizer<NodeStateInterface>({ 'containers': freshContainers });
     freshDispatcher.registerBundle(bundle);
 
     const result = await freshDispatcher.resume(CONFORMANCE_DAG.law8, state, 'fan');
@@ -447,7 +453,7 @@ void describe('DAG Container Conformance — ForkContainer (Laws 1–9 including
 
   const factory: ContainerFactory = () => {
     const c = new ForkContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
@@ -464,7 +470,7 @@ void describe('DAG Container Conformance — ForkContainer (Laws 1–9 including
     freshContainer: DagContainerInterface;
   } => {
     const failingContainer = new ForkContainer({
-      'registryModule': killRegistryUrl(),
+      'registryModule': RegistryUrls.killRegistry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
@@ -472,7 +478,7 @@ void describe('DAG Container Conformance — ForkContainer (Laws 1–9 including
     allContainers.push(failingContainer);
 
     const freshContainer = new ForkContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
@@ -520,7 +526,7 @@ void describe('DAG Container Conformance — SpawnContainer (Laws 1–9 includin
 
   const factory: ContainerFactory = () => {
     const c = new SpawnContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/spawnEntry.js', import.meta.url),
@@ -537,7 +543,7 @@ void describe('DAG Container Conformance — SpawnContainer (Laws 1–9 includin
     freshContainer: DagContainerInterface;
   } => {
     const failingContainer = new SpawnContainer({
-      'registryModule': killRegistryUrl(),
+      'registryModule': RegistryUrls.killRegistry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/spawnEntry.js', import.meta.url),
@@ -545,7 +551,7 @@ void describe('DAG Container Conformance — SpawnContainer (Laws 1–9 includin
     allContainers.push(failingContainer);
 
     const freshContainer = new SpawnContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/spawnEntry.js', import.meta.url),
@@ -605,7 +611,7 @@ void describe('DAG Container Conformance — ClusterContainer (Laws 1–9 includ
 
   const factory: ContainerFactory = () => {
     const c = new ClusterContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
@@ -623,7 +629,7 @@ void describe('DAG Container Conformance — ClusterContainer (Laws 1–9 includ
     freshContainer: DagContainerInterface;
   } => {
     const failingContainer = new ClusterContainer({
-      'registryModule': killRegistryUrl(),
+      'registryModule': RegistryUrls.killRegistry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
@@ -631,7 +637,7 @@ void describe('DAG Container Conformance — ClusterContainer (Laws 1–9 includ
     allContainers.push(failingContainer);
 
     const freshContainer = new ClusterContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
@@ -681,7 +687,7 @@ void describe('DAG Container Conformance — ClusterContainer (Laws 1–9 includ
 void describe('Destroy semantics — no leaked handles after destroy()', () => {
   void it('WorkerThreadContainer: destroy resolves without error', async () => {
     const container = new WorkerThreadContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/workerEntry.js', import.meta.url),
@@ -691,7 +697,7 @@ void describe('Destroy semantics — no leaked handles after destroy()', () => {
 
   void it('ForkContainer: destroy resolves without error', async () => {
     const container = new ForkContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
@@ -701,7 +707,7 @@ void describe('Destroy semantics — no leaked handles after destroy()', () => {
 
   void it('SpawnContainer: destroy resolves without error', async () => {
     const container = new SpawnContainer({
-      'registryModule': registryUrl(),
+      'registryModule': RegistryUrls.registry(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/spawnEntry.js', import.meta.url),

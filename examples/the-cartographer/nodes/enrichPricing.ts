@@ -17,7 +17,6 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import { PricingCatalog } from '../services.ts';
 
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -25,7 +24,7 @@ import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
 import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 
 // #region enrich-pricing-node
-export class EnrichPricingNode extends MonadicNode<CartographerState, 'priced', CartographerServices> {
+export class EnrichPricingNode extends MonadicNode<CartographerState, 'priced'> {
   readonly 'name' = 'enrich-pricing';
   readonly 'outputs' = ['priced'] as const;
 
@@ -37,7 +36,7 @@ export class EnrichPricingNode extends MonadicNode<CartographerState, 'priced', 
 
   override async execute(
     batch: Batch<CartographerState>,
-    _context: NodeContextType<CartographerServices>,
+    _context: NodeContextType,
   ): Promise<RoutedBatchType<'priced', CartographerState>> {
     for (const item of batch) {
       item.state.pricedOrder = PricingCatalog.order(item.state.normalized.lineItems);

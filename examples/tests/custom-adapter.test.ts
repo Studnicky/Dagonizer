@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 import { EchoAdapter } from '../dags/custom-adapter.ts';
 
-function textContent(msg: { variant: string; content?: string }): string {
-  if (msg.variant === 'text' || msg.variant === 'mixed') {
-    return (msg as { variant: string; content: string }).content;
+class MessageReader {
+  static textContent(msg: { variant: string; content?: string }): string {
+    if ((msg.variant === 'text' || msg.variant === 'mixed') && 'content' in msg && typeof msg.content === 'string') {
+      return msg.content;
+    }
+    return '';
   }
-  return '';
 }
 
 describe('custom-adapter: EchoAdapter echoes the last user message', () => {
@@ -18,7 +20,7 @@ describe('custom-adapter: EchoAdapter echoes the last user message', () => {
     });
     const response = await adapter.chat(request);
 
-    const content = textContent(response.message);
+    const content = MessageReader.textContent(response.message);
     assert.ok(
       content.includes('echo: hello'),
       `Expected content to include "echo: hello" but got: "${content}"`,
@@ -36,7 +38,7 @@ describe('custom-adapter: EchoAdapter echoes the last user message', () => {
     });
     const response = await adapter.chat(request);
 
-    const content = textContent(response.message);
+    const content = MessageReader.textContent(response.message);
     assert.ok(
       content.includes('echo: second message'),
       `Expected content to include "echo: second message" but got: "${content}"`,
@@ -71,7 +73,7 @@ describe('custom-adapter: EchoAdapter echoes the last user message', () => {
     });
     const response = await adapter.chat(request);
 
-    const content = textContent(response.message);
+    const content = MessageReader.textContent(response.message);
     assert.ok(
       content.includes('(no user message)'),
       `Expected "(no user message)" but got: "${content}"`,

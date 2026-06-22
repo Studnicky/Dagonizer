@@ -21,8 +21,9 @@
  * so that every converging branch strikes exactly one terminal node per run.
  *
  * Molecular import pattern:
- *   import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
- *   dispatcher.registerBundle(composeRetryLoopBundle);
+ *   import { ComposeRetryLoopBundleFactory } from './embedded-dags/ComposeRetryLoopDAG.ts';
+ *   const nodes = ArchivistNodes.build(services);
+ *   dispatcher.registerBundle(ComposeRetryLoopBundleFactory.create(nodes));
  *
  * The sub-DAG operates on the parent's state directly (no projection / gather
  * needed); it reads `state.shortlist` / `state.intent` / `state.priorContext`
@@ -32,17 +33,15 @@
  */
 
 import type { ArchivistState }    from '../ArchivistState.ts';
-import { composeResponse, validateResponse } from '../nodes/composeResponse.ts';
-import { composeResponseSalvage } from '../nodes/salvage.ts';
-import type { ArchivistServices } from '../services.ts';
+import type { ArchivistNodes }    from '../nodes/ArchivistNodes.ts';
 
-import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
+import type { DispatcherBundleType } from '@studnicky/dagonizer';
 import { DAGBuilder } from '@studnicky/dagonizer';
 
 
 /**
- * The `compose-retry-loop` DAG: one packaged compose/validate unit that every
- * intent branch references via
+ * Factory for the `compose-retry-loop` bundle: one packaged compose/validate
+ * unit that every intent branch references via
  * `.embeddedDAG('compose-loop', 'compose-retry-loop', routes)`.
  *
  * Exits with `success` when the draft is approved or attempts are exhausted.
@@ -50,46 +49,46 @@ import { DAGBuilder } from '@studnicky/dagonizer';
  * exactly ONE respond-to-visitor fires per run regardless of how many branches
  * converge into this sub-DAG.
  */
-export const ComposeRetryLoopDAG: DAGType = new DAGBuilder('compose-retry-loop', '1.1')
+export class ComposeRetryLoopBundleFactory {
+  static create(nodes: ArchivistNodes): DispatcherBundleType<ArchivistState> {
+    const dag = new DAGBuilder('compose-retry-loop', '1.1')
 
-  // ── 1. compose-response ──────────────────────────────────────────────────
-  // Writes state.draft via an intent-specific compose method. A transient LLM
-  // failure routes 'retry' (loops back, bounded by the shared 'compose' budget)
-  // or 'salvage' once spent; no in-node RetryPolicy. 'drafted' goes on to the
-  // quality gate, which adds its own retry edge for low-quality drafts.
-  .node('compose-response', composeResponse, {
-    'drafted': 'validate-response',
-    'retry':   'compose-response',
-    'salvage': 'compose-salvage',
-  })
-  .node('compose-salvage', composeResponseSalvage, {
-    'done': 'composed',
-  })
+      // ── 1. compose-response ──────────────────────────────────────────────────
+      // Writes state.draft via an intent-specific compose method. A transient LLM
+      // failure routes 'retry' (loops back, bounded by the shared 'compose' budget)
+      // or 'salvage' once spent; no in-node RetryPolicy. 'drafted' goes on to the
+      // quality gate, which adds its own retry edge for low-quality drafts.
+      .node('compose-response', nodes.composeResponse, {
+        'drafted': 'validate-response',
+        'retry':   'compose-response',
+        'salvage': 'compose-salvage',
+      })
+      .node('compose-salvage', nodes.composeResponseSalvage, {
+        'done': 'composed',
+      })
 
-  // ── 2. validate-response ─────────────────────────────────────────────────
-  // Quality gate: length, citations, tone. On 'retry', routes back to
-  // compose (bounded by MAX_COMPOSE_ATTEMPTS via state.retriesFor('compose')).
-  // 'approved' and 'exhausted' both exit via the canonical `composed`
-  // TerminalNode (completed), so the parent EmbeddedDAGNode resolves 'success'
-  // and routes to respond-to-visitor.
-  .node('validate-response', validateResponse, {
-    'approved':  'composed',
-    'retry':     'compose-response',
-    'exhausted': 'composed',
-  })
+      // ── 2. validate-response ─────────────────────────────────────────────────
+      // Quality gate: length, citations, tone. On 'retry', routes back to
+      // compose (bounded by MAX_COMPOSE_ATTEMPTS via state.retriesFor('compose')).
+      // 'approved' and 'exhausted' both exit via the canonical `composed`
+      // TerminalNode (completed), so the parent EmbeddedDAGNode resolves 'success'
+      // and routes to respond-to-visitor.
+      .node('validate-response', nodes.validateResponse, {
+        'approved':  'composed',
+        'retry':     'compose-response',
+        'exhausted': 'composed',
+      })
 
-  // ── 3. composed ──────────────────────────────────────────────────────────
-  // Canonical TerminalNode(completed): the single explicit exit of the compose
-  // loop. No bare null end-of-flow routes.
-  .terminal('composed', { outcome: 'completed' })
+      // ── 3. composed ──────────────────────────────────────────────────────────
+      // Canonical TerminalNode(completed): the single explicit exit of the compose
+      // loop. No bare null end-of-flow routes.
+      .terminal('composed', { outcome: 'completed' })
 
-  .build();
+      .build();
 
-/**
- * Bundle of every node used by `ComposeRetryLoopDAG` plus the DAG itself.
- * Register with `dispatcher.registerBundle(composeRetryLoopBundle)`.
- */
-export const composeRetryLoopBundle: DispatcherBundleType<ArchivistState, ArchivistServices> = {
-  'nodes': [composeResponse, validateResponse, composeResponseSalvage],
-  'dags': [ComposeRetryLoopDAG],
-};
+    return {
+      'nodes': [nodes.composeResponse, nodes.validateResponse, nodes.composeResponseSalvage],
+      'dags': [dag],
+    };
+  }
+}

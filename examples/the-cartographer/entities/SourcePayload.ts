@@ -44,4 +44,27 @@ export const SourcePayloadSchema = {
 } as const;
 
 export type SourcePayload = FromSchema<typeof SourcePayloadSchema>;
+
+const SOURCE_FORMATS: ReadonlySet<string> = new Set(['csv', 'json', 'ndjson', 'yaml']);
+const SOURCE_COMPRESSIONS: ReadonlySet<string> = new Set(['none', 'gzip']);
+const SOURCE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'position-ping', 'facility-scan', 'sensor-reading', 'customs-event', 'delivery-confirmation',
+]);
+
+export class SourcePayloadGuard {
+  /**
+   * Type-guard for SourcePayload. Narrows `unknown` to the schema-derived type
+   * by verifying the required fields and their value sets.
+   */
+  static is(value: unknown): value is SourcePayload {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    if (!('sourceId' in value) || typeof value.sourceId !== 'string' || value.sourceId.length === 0) return false;
+    if (!('format' in value) || typeof value.format !== 'string' || !SOURCE_FORMATS.has(value.format)) return false;
+    if (!('compression' in value) || typeof value.compression !== 'string' || !SOURCE_COMPRESSIONS.has(value.compression)) return false;
+    if (!('mappingKey' in value) || typeof value.mappingKey !== 'string' || value.mappingKey.length === 0) return false;
+    if (!('eventType' in value) || typeof value.eventType !== 'string' || !SOURCE_EVENT_TYPES.has(value.eventType)) return false;
+    if (!('payload' in value) || typeof value.payload !== 'string') return false;
+    return true;
+  }
+}
 // #endregion source-payload-entity

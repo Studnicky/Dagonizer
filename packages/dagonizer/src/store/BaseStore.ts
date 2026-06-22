@@ -52,26 +52,12 @@ export abstract class BaseStore implements StoreInterface {
 
   // ── Public StoreInterface contract (delegates to protected hooks) ─────────────
 
-  async get<T extends JsonValueType>(key: string): Promise<T | null> {
-    return this.narrowStored<T>(await this.performGet(this.qualifyKey(key)));
+  async get(key: string): Promise<JsonValueType | null> {
+    return this.performGet(this.qualifyKey(key));
   }
 
-  async set<T extends JsonValueType>(key: string, value: T): Promise<void> {
-    // `value: T` widens to `JsonValueType` for the type-erased hook — no cast.
+  async set(key: string, value: JsonValueType): Promise<void> {
     await this.performSet(this.qualifyKey(key), value);
-  }
-
-  /**
-   * The SINGLE typed-accessor boundary of the entire store layer. A store is
-   * type-erased internally — its `perform*` hooks traffic in `JsonValueType`.
-   * The generic `T` on `get`/`update` is the CALLER's contract about what they
-   * stored under a key; the store cannot re-derive it at runtime, so the one
-   * unavoidable cast lives here, in exactly one place. Concrete stores whose
-   * `update` override reads the backing store directly (atomic RMW) narrow
-   * through this same helper instead of casting in their own override.
-   */
-  protected narrowStored<T extends JsonValueType>(value: JsonValueType | null): T | null {
-    return value as T | null;
   }
 
   async has(key: string): Promise<boolean> {
@@ -92,7 +78,7 @@ export abstract class BaseStore implements StoreInterface {
    * `performUpdateRmw(key, fn)` to delegate to the sequential, non-atomic
    * helper — but they MUST document that their `update` is not concurrency-safe.
    */
-  abstract update<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T>;
+  abstract update(key: string, fn: (current: JsonValueType | undefined) => JsonValueType): Promise<JsonValueType>;
 
   /**
    * Sequential read-modify-write helper for subclasses that have no native
@@ -103,9 +89,9 @@ export abstract class BaseStore implements StoreInterface {
    * and document it on your class. Always prefer a native transaction when the
    * backing layer supports one.
    */
-  protected async performUpdateRmw<T extends JsonValueType>(key: string, fn: (current: T | undefined) => T): Promise<T> {
+  protected async performUpdateRmw(key: string, fn: (current: JsonValueType | undefined) => JsonValueType): Promise<JsonValueType> {
     const qualified = this.qualifyKey(key);
-    const raw       = this.narrowStored<T>(await this.performGet(qualified));
+    const raw       = await this.performGet(qualified);
     const current   = raw === null ? undefined : raw;
     const next      = fn(current);
     await this.performSet(qualified, next);

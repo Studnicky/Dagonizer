@@ -120,6 +120,7 @@ export class DagHost {
     // captured and sent as a channel message rather than leaking an unhandled
     // rejection. Unknown variants (host→parent messages) are unexpected here but
     // must not crash the host.
+    const messageVariant = message.variant;
     switch (message.variant) {
       case 'init': {
         const servicesConfig = JsonObject.is(message.servicesConfig) ? message.servicesConfig : {};
@@ -159,7 +160,7 @@ export class DagHost {
           'variant': 'error',
           'correlationId': null,
           'code': 'UNEXPECTED_MESSAGE',
-          'message': `DagHost received unexpected message variant: ${(message as { variant: string }).variant}`,
+          'message': `DagHost received unexpected message variant: ${messageVariant}`,
           'recoverable': true,
         });
         break;
@@ -318,11 +319,14 @@ export class DagHost {
     // correct correlationId. The request.placementPath is used as the basePath
     // so that forwarded placementPaths are the full composite path (parent path
     // + inner body path), making them non-empty on the parent side.
+    // A node's dependencies are constructed with the node inside the isolate's
+    // registry module (from the init message's `servicesConfig`); the dispatcher
+    // carries no services option, so the worker dispatcher needs no options here.
     const dagonizer = new WorkerObserver<NodeStateInterface>(
       this.#channel,
       correlationId,
       request.placementPath,
-      { 'services': bundle.services },
+      {},
     );
     dagonizer.registerBundle(bundle.bundle);
 

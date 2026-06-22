@@ -23,6 +23,7 @@ import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoffType } from '../../src/entities/handoff/DAGHandoff.js';
@@ -239,7 +240,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
     // Bind one role so the dispatcher is in container-dispatch mode; the DAG
     // below declares a DIFFERENT, unbound role, which is the misalignment.
     const fakeContainer: DagContainerInterface = {
-      async runDag(_task: DagTaskInterface<unknown>, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
+      async runDag(_task: DagTaskInterface, _options?: { readonly relay?: ObserverRelayInterface }): Promise<DagOutcomeType> {
         return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
       },
     };
@@ -466,7 +467,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
       }
       protected async executeOne(state: ScatterAbortState, context: NodeContextType): Promise<NodeOutputType<'done'>> {
         callCount++;
-        const item = state.getMetadata<number>('item') ?? 0;
+        const item = state.getter.number('item');
         state.value = item;
         if (callCount === 2) {
           resolveSecondReady();
@@ -550,11 +551,12 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
       `cursor must land on scatter node 'fan' after abort; got '${result.cursor}'`);
 
     // (b) SCATTER_PROGRESS_KEY must be preserved (not cleared by scatter clear logic).
-    const progress = result.state.getMetadata<Record<string, unknown>>(SCATTER_PROGRESS_KEY);
-    assert.ok(progress !== undefined,
+    const rawProgress = result.state.getMetadata(SCATTER_PROGRESS_KEY);
+    assert.ok(rawProgress !== undefined,
       'SCATTER_PROGRESS_KEY must be preserved after abort (checkpoint must survive)');
 
     // (c) Fewer than all items were acked.
+    const progress: StoredScatterProgressType = Validator.storedScatterProgress.validate(rawProgress);
     assert.ok(progress['fan'] !== undefined, 'progress must have an entry for placement "fan"');
     const entry = Validator.scatterProgress.validate(progress['fan']);
     const ackedCount = entry.mode === 'bounded'

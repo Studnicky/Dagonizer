@@ -18,7 +18,7 @@ export abstract class SelectNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextType<undefined>,
+    _context: NodeContextType,
   ): Promise<NodeOutputType<'success' | 'empty'>> {
     const items = this.readItems(state);
     const next = this.transform(items);

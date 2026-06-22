@@ -14,7 +14,6 @@
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
 
 import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 
@@ -24,7 +23,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region decompress-node
-export class DecompressNode extends ScalarNode<CartographerState, 'route-format' | 'invalid', CartographerServices> {
+export class DecompressNode extends ScalarNode<CartographerState, 'route-format' | 'invalid'> {
   readonly 'name' = 'decompress';
   readonly 'outputs' = ['route-format', 'invalid'] as const;
 
@@ -35,7 +34,7 @@ export class DecompressNode extends ScalarNode<CartographerState, 'route-format'
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'route-format' | 'invalid'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'route-format' | 'invalid'>> {
     try {
       const binary = atob(state.currentSource.payload);
       const bytes = new Uint8Array(binary.length);

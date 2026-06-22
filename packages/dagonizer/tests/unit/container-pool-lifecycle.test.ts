@@ -123,13 +123,13 @@ class TestLoopbackContainer extends DagContainerBase<TestWorker> {
 // Minimal DagTaskInterface implementation for direct runDag() calls
 // ---------------------------------------------------------------------------
 
-class MinimalTask implements DagTaskInterface<undefined> {
+class MinimalTask implements DagTaskInterface {
   readonly dagName: string;
   readonly placementPath: string[];
   readonly correlationId: string;
   readonly timeout: Timeout;
   readonly state: NodeStateInterface;
-  readonly context: NodeContextType<undefined>;
+  readonly context: NodeContextType;
 
   constructor(correlationId: string) {
     this.dagName = CONFORMANCE_DAG.law1;
@@ -137,7 +137,7 @@ class MinimalTask implements DagTaskInterface<undefined> {
     this.correlationId = correlationId;
     this.timeout = Timeout.none();
     this.state = new NodeStateBase();
-    this.context = NodeContextBuilder.of(CONFORMANCE_DAG.law1, '', new AbortController().signal, undefined);
+    this.context = NodeContextBuilder.of(CONFORMANCE_DAG.law1, '', new AbortController().signal);
   }
 
   toRequest() {
@@ -155,16 +155,18 @@ class MinimalTask implements DagTaskInterface<undefined> {
 // Helper: build a Dagonizer dispatcher backed by a test container
 // ---------------------------------------------------------------------------
 
-function buildDispatcher(
-  container: TestLoopbackContainer,
-): Dagonizer<NodeStateInterface, undefined> {
-  const bundle = ConformanceRegistry.bundle().bundle;
-  const containers: Readonly<Record<string, DagContainerInterface>> = {
-    [CONFORMANCE_CONTAINER_ROLE]: container,
-  };
-  const d = new Dagonizer<NodeStateInterface, undefined>({ containers });
-  d.registerBundle(bundle);
-  return d;
+class DispatcherFactory {
+  private constructor() {}
+
+  static build(container: TestLoopbackContainer): Dagonizer<NodeStateInterface> {
+    const bundle = ConformanceRegistry.bundle().bundle;
+    const containers: Readonly<Record<string, DagContainerInterface>> = {
+      [CONFORMANCE_CONTAINER_ROLE]: container,
+    };
+    const d = new Dagonizer<NodeStateInterface>({ containers });
+    d.registerBundle(bundle);
+    return d;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +228,7 @@ void describe('DagContainerBase — pool waiters park/unpark (G1)', () => {
   void it('a real runDag() parks and completes when the sole slot is freed', async () => {
     const container = new TestLoopbackContainer(1);
     try {
-      const dispatcher = buildDispatcher(container);
+      const dispatcher = DispatcherFactory.build(container);
 
       // Run first DAG (occupies the pool slot for its duration).
       const state1 = new ConformanceState();
@@ -252,7 +254,7 @@ void describe('DagContainerBase — pool waiters park/unpark (G1)', () => {
 void describe('DagContainerBase — onTransportDeath eviction + re-grow (G2)', () => {
   void it('after death eviction the next runDag() grows a new worker', async () => {
     const container = new TestLoopbackContainer(1);
-    const dispatcher = buildDispatcher(container);
+    const dispatcher = DispatcherFactory.build(container);
 
     try {
       // First execute — grows worker #1.
@@ -322,13 +324,13 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
 
       // Create a task whose signal we can fire.
       class AbortableTask extends NodeStateBase {}
-      const abortTask: DagTaskInterface<undefined> = {
+      const abortTask: DagTaskInterface = {
         'dagName': CONFORMANCE_DAG.law1,
         'placementPath': [],
         'correlationId': 'con1-abort',
         'timeout': Timeout.none(),
         'state': new AbortableTask(),
-        'context': NodeContextBuilder.of(CONFORMANCE_DAG.law1, '', controller.signal, undefined),
+        'context': NodeContextBuilder.of(CONFORMANCE_DAG.law1, '', controller.signal),
         toRequest() {
           return {
             'dagName': this.dagName,
@@ -377,7 +379,7 @@ void describe('DagContainerBase — destroy() fails in-flight dispatch promises 
     try {
       // First acquire + initialize the slot (ensures the channel handshake completes).
       const state1 = new ConformanceState();
-      const dispatcher = buildDispatcher(container);
+      const dispatcher = DispatcherFactory.build(container);
       await dispatcher.execute(CONFORMANCE_DAG.law1, state1);
 
       // Start a new runDag() — this time the slow DAG (law5 = abort-sleeper) so
@@ -434,7 +436,7 @@ void describe('DagContainerBase — double-destroy idempotency (G4)', () => {
 void describe('Cross-container abort propagation (G5)', () => {
   void it('aborting the parent signal cancels the in-flight DAG execution promptly', async () => {
     const container = new TestLoopbackContainer(1);
-    const dispatcher = buildDispatcher(container);
+    const dispatcher = DispatcherFactory.build(container);
 
     // Dispatcher-level abort controller — connects to the runDag signal via
     // Dagonizer.execute(dag, state, { signal }) overload path.
@@ -472,7 +474,7 @@ void describe('Cross-container abort propagation (G5)', () => {
 
   void it('abort before the execution starts still resolves cleanly', async () => {
     const container = new TestLoopbackContainer(1);
-    const dispatcher = buildDispatcher(container);
+    const dispatcher = DispatcherFactory.build(container);
 
     const controller = new AbortController();
     controller.abort(); // abort before execute is called

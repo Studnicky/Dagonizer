@@ -17,7 +17,7 @@ export abstract class PredicateGateNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextType<undefined>,
+    _context: NodeContextType,
   ): Promise<NodeOutputType<'pass' | 'fail'>> {
     return NodeOutputBuilder.of(this.predicate(state) ? 'pass' : 'fail');
   }

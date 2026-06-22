@@ -149,10 +149,10 @@ import type { DAGLifecycleStateDataType } from '@studnicky/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/CheckpointData`
 
-Persistable snapshot of an in-flight DAG execution. Required: `version`, `dagName`, `cursor` (string or null), `state` (object), `executedNodes`, `skippedNodes`, `stores` (named-store snapshots keyed by store name; empty object when no stores were captured).
+Persistable snapshot of an in-flight DAG execution. Required: `dagName`, `cursor` (string or null), `state` (object), `executedNodes`, `skippedNodes`, `stores` (named-store snapshots keyed by store name; empty object when no stores were captured).
 
 ```ts twoslash
-import { CheckpointDataSchema, CHECKPOINT_DATA_VERSION } from '@studnicky/dagonizer/entities';
+import { CheckpointDataSchema } from '@studnicky/dagonizer/entities';
 import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 ```
 

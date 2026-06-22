@@ -29,12 +29,11 @@ import assert from 'node:assert/strict';
 import { Dagonizer } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { CartographerWorkersDag } from '../../dag.ts';
-import { geoResolveBundle } from '../../embedded-dags/GeoResolveDAG.ts';
+import { GeoResolveDAG } from '../../embedded-dags/GeoResolveDAG.ts';
 import { orderEnrichmentBundle } from '../../embedded-dags/OrderEnrichmentDAG.ts';
 import { gdprComplianceBundle } from '../../embedded-dags/GdprComplianceDAG.ts';
 import { ingestSourceBundle } from '../../embedded-dags/IngestSourceDAG.ts';
 import { GeoResolvers } from '../../services/GeoResolvers.ts';
-import type { CartographerServices } from '../../CartographerServices.ts';
 
 // ── Harness ──────────────────────────────────────────────────────────────────
 
@@ -52,14 +51,14 @@ class WorkersHarness {
    * The container: 'cpu' directive on the workers DAG's scatter placement is
    * ignored because no DagContainerInterface is bound (hasContainers() === false).
    */
-  static dispatcher(): Dagonizer<CartographerState, CartographerServices> {
+  static dispatcher(): Dagonizer<CartographerState> {
     const services = GeoResolvers.recorded();
-    const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ services });
+    const dispatcher = new Dagonizer<CartographerState>({});
 
     // Register the same bundle order as the existing cartographer.e2e.test.ts,
     // but use CartographerWorkersDag.bundle() as the top-level bundle so that
     // the cartographer DAG carries container: 'cpu' on its process-stream scatter.
-    dispatcher.registerBundle(geoResolveBundle);
+    dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
     dispatcher.registerBundle(ingestSourceBundle);

@@ -23,7 +23,7 @@ import type { EntityValidatorInterface } from '../validation/Validator.js';
 import type { ToolInterface } from './ToolInterface.js';
 import { ToolInvocationState } from './ToolInvocationState.js';
 
-export class ToolInvokeNode<TServices = undefined> extends ScalarNode<ToolInvocationState, 'done' | 'error', TServices> {
+export class ToolInvokeNode extends ScalarNode<ToolInvocationState, 'done' | 'error'> {
   readonly name: string;
   readonly outputs = ['done', 'error'] as const;
 
@@ -62,7 +62,7 @@ export class ToolInvokeNode<TServices = undefined> extends ScalarNode<ToolInvoca
 
   protected async executeOne(
     state: ToolInvocationState,
-    context: NodeContextType<TServices>,
+    context: NodeContextType,
   ): Promise<NodeOutputType<'done' | 'error'>> {
     try {
       // Resolve tool input from `state.input` (embeddedDAG path, seeded via

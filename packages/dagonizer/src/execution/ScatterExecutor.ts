@@ -32,15 +32,15 @@ const DEFAULT_SCATTER_CONCURRENCY = 1;
  * (for `composeGatherExecution` calls in the finalize pass). Behavior is
  * byte-identical to the original inline method.
  */
-export class ScatterExecutor<TServices> {
-  readonly #scatterSource: ScatterDispatchSourceInterface<TServices>;
-  readonly #bodyExecutor: BodyExecutor<TServices>;
-  readonly #gather: Gather<TServices>;
+export class ScatterExecutor {
+  readonly #scatterSource: ScatterDispatchSourceInterface;
+  readonly #bodyExecutor: BodyExecutor;
+  readonly #gather: Gather;
 
   constructor(
-    scatterSource: ScatterDispatchSourceInterface<TServices>,
-    bodyExecutor: BodyExecutor<TServices>,
-    gather: Gather<TServices>,
+    scatterSource: ScatterDispatchSourceInterface,
+    bodyExecutor: BodyExecutor,
+    gather: Gather,
   ) {
     this.#scatterSource = scatterSource;
     this.#bodyExecutor = bodyExecutor;
@@ -161,8 +161,8 @@ export class ScatterExecutor<TServices> {
     //   - a `ScatterDispatchAdapterInterface` built here, and
     //   - a `ScatterRunContextType` holding the scatter-local mutable accumulators.
 
-    const scatterAdapter: ScatterDispatchAdapterInterface<TServices> =
-      new ScatterDispatchAdapter<TServices>(this.#scatterSource);
+    const scatterAdapter: ScatterDispatchAdapterInterface =
+      new ScatterDispatchAdapter(this.#scatterSource);
 
     const scatterCtx: ScatterRunContextType = {
       scatter,
@@ -185,7 +185,7 @@ export class ScatterExecutor<TServices> {
     };
 
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
-    const driver = new ScatterPoolDriver<TServices>(scatterAdapter, scatterCtx, this.#bodyExecutor);
+    const driver = new ScatterPoolDriver(scatterAdapter, scatterCtx, this.#bodyExecutor);
 
     if (scatter.reservoir !== undefined) {
       // Reservoir path: buffer-then-release loop keyed by item field.

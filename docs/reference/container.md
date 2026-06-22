@@ -109,7 +109,7 @@ const container = new MyContainer({
 ```ts twoslash
 import type { DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer/contracts';
 // ---cut---
-declare function runDag(task: DagTaskInterface<unknown>): Promise<DagOutcomeType>;
+declare function runDag(task: DagTaskInterface): Promise<DagOutcomeType>;
 ```
 
 Acquired a pool slot, sends the task to the isolate, and waits for the outcome. Must not throw: transport failures and host crashes return collected errors in `DagOutcomeType.errors` with `recoverable: false`.
@@ -170,7 +170,7 @@ Value class for `DagTaskInterface`. Constructed by the dispatcher for each conta
 ```ts twoslash
 import { DagTask } from '@studnicky/dagonizer/container';
 // ---cut---
-// DagTask<TServices = undefined> implements DagTaskInterface<TServices>
+// DagTask implements DagTaskInterface
 const _check: typeof DagTask = DagTask;
 ```
 
@@ -181,7 +181,7 @@ const _check: typeof DagTask = DagTask;
 | `correlationId` | `string` | Dispatcher-monotonic id (no randomness). |
 | `timeout` | `Timeout` | Execution budget (`Timeout.none()` when none applies). |
 | `state` | `NodeStateInterface` | Live seeded clone for in-process paths (typed at the base contract; the concrete class may differ from the parent dispatcher's `TState`). |
-| `context` | `NodeContextType<TServices>` | Context from the parent execution. |
+| `context` | `NodeContextType` | Context from the parent execution. |
 
 `toRequest()` snapshots the clone into a wire-safe `ExecutionRequest` for cross-boundary transports.
 

@@ -49,69 +49,79 @@ class IncNode extends ScalarNode<CounterState, string> {
     state.value += this.delta;
     return { 'errors': [], 'output': 'success' };
   }
-}
 
-const incNode = (name: string, delta: number): IncNode =>
-  new IncNode(name, ['success'], delta);
+  static of(name: string, delta: number): IncNode {
+    return new IncNode(name, ['success'], delta);
+  }
+}
 
 // Identity state mapping: seed the child's `value` from the parent and copy it
 // back out. Applied at every embed boundary so the accumulator survives the
 // full descent and ascent.
 const VALUE_MAPPING = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
-const singleNode = (dag: string, name: string, outputs: Record<string, string>): DAGType['nodes'][number] => ({
-  '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
-  '@type': 'SingleNode',
-  name,
-  'node':  name,
-  outputs,
-});
+class PlacementFixture {
+  private constructor() {}
 
-const embedNode = (dag: string, name: string, childDag: string): DAGType['nodes'][number] => ({
-  '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
-  '@type': 'EmbeddedDAGNode',
-  name,
-  'dag':   childDag,
-  'stateMapping': VALUE_MAPPING,
-  'outputs': { 'success': 'end', 'error': 'end' },
-});
+  static single(dag: string, name: string, outputs: Record<string, string>): DAGType['nodes'][number] {
+    return {
+      '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
+      '@type': 'SingleNode',
+      name,
+      'node':  name,
+      outputs,
+    };
+  }
 
+  static embed(dag: string, name: string, childDag: string): DAGType['nodes'][number] {
+    return {
+      '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
+      '@type': 'EmbeddedDAGNode',
+      name,
+      'dag':   childDag,
+      'stateMapping': VALUE_MAPPING,
+      'outputs': { 'success': 'end', 'error': 'end' },
+    };
+  }
 
-const terminalNode = (dag: string): DAGType['nodes'][number] => ({
-  '@id':     `urn:noocodex:dag:${dag}/node/end`,
-  '@type':   'TerminalNode',
-  'name':    'end',
-  'outcome': 'completed',
-});
+  static terminal(dag: string): DAGType['nodes'][number] {
+    return {
+      '@id':     `urn:noocodex:dag:${dag}/node/end`,
+      '@type':   'TerminalNode',
+      'name':    'end',
+      'outcome': 'completed',
+    };
+  }
+}
 
 // core ← inner ← mid ← outer  (three levels of embedding: nested in nested in nested)
 const coreDAG  = TestDag.of('deep-core',  'inc-core',  [
-  singleNode('deep-core', 'inc-core', { 'success': 'end' }),
-  terminalNode('deep-core'),
+  PlacementFixture.single('deep-core', 'inc-core', { 'success': 'end' }),
+  PlacementFixture.terminal('deep-core'),
 ]);
 const innerDAG = TestDag.of('deep-inner', 'inc-inner', [
-  singleNode('deep-inner', 'inc-inner', { 'success': 'embed-core' }),
-  embedNode('deep-inner', 'embed-core', 'deep-core'),
-  terminalNode('deep-inner'),
+  PlacementFixture.single('deep-inner', 'inc-inner', { 'success': 'embed-core' }),
+  PlacementFixture.embed('deep-inner', 'embed-core', 'deep-core'),
+  PlacementFixture.terminal('deep-inner'),
 ]);
 const midDAG = TestDag.of('deep-mid', 'inc-mid', [
-  singleNode('deep-mid', 'inc-mid', { 'success': 'embed-inner' }),
-  embedNode('deep-mid', 'embed-inner', 'deep-inner'),
-  terminalNode('deep-mid'),
+  PlacementFixture.single('deep-mid', 'inc-mid', { 'success': 'embed-inner' }),
+  PlacementFixture.embed('deep-mid', 'embed-inner', 'deep-inner'),
+  PlacementFixture.terminal('deep-mid'),
 ]);
 const outerDAG = TestDag.of('deep-outer', 'inc-outer', [
-  singleNode('deep-outer', 'inc-outer', { 'success': 'embed-mid' }),
-  embedNode('deep-outer', 'embed-mid', 'deep-mid'),
-  terminalNode('deep-outer'),
+  PlacementFixture.single('deep-outer', 'inc-outer', { 'success': 'embed-mid' }),
+  PlacementFixture.embed('deep-outer', 'embed-mid', 'deep-mid'),
+  PlacementFixture.terminal('deep-outer'),
 ]);
 
 void describe('EmbeddedDAGNode: deep recursive nesting', () => {
   void it('threads state down and back through three nesting levels (nested in nested in nested)', async () => {
     const dispatcher = new Dagonizer<CounterState>();
-    dispatcher.registerNode(incNode('inc-outer', 1000));
-    dispatcher.registerNode(incNode('inc-mid',    100));
-    dispatcher.registerNode(incNode('inc-inner',   10));
-    dispatcher.registerNode(incNode('inc-core',     1));
+    dispatcher.registerNode(IncNode.of('inc-outer', 1000));
+    dispatcher.registerNode(IncNode.of('inc-mid',    100));
+    dispatcher.registerNode(IncNode.of('inc-inner',   10));
+    dispatcher.registerNode(IncNode.of('inc-core',     1));
     for (const dag of [coreDAG, innerDAG, midDAG, outerDAG]) dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('deep-outer', new CounterState());
@@ -130,10 +140,10 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
       }
     }
     const dispatcher = new PathProbe();
-    dispatcher.registerNode(incNode('inc-outer', 1000));
-    dispatcher.registerNode(incNode('inc-mid',    100));
-    dispatcher.registerNode(incNode('inc-inner',   10));
-    dispatcher.registerNode(incNode('inc-core',     1));
+    dispatcher.registerNode(IncNode.of('inc-outer', 1000));
+    dispatcher.registerNode(IncNode.of('inc-mid',    100));
+    dispatcher.registerNode(IncNode.of('inc-inner',   10));
+    dispatcher.registerNode(IncNode.of('inc-core',     1));
     for (const dag of [coreDAG, innerDAG, midDAG, outerDAG]) dispatcher.registerDAG(dag);
 
     await dispatcher.execute('deep-outer', new CounterState());
@@ -147,16 +157,16 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
 
   void it('cannot construct a cross-variant cycle: the append-only registry refuses the closing re-registration', () => {
     const dispatcher = new Dagonizer<CounterState>();
-    dispatcher.registerNode(incNode('na', 1));
+    dispatcher.registerNode(IncNode.of('na', 1));
 
     // a (standalone) ← b embeds a. Acyclic.
     dispatcher.registerDAG(TestDag.of('cyc-a', 'na', [
-      singleNode('cyc-a', 'na', { 'success': 'end' }),
-      terminalNode('cyc-a'),
+      PlacementFixture.single('cyc-a', 'na', { 'success': 'end' }),
+      PlacementFixture.terminal('cyc-a'),
     ]));
     dispatcher.registerDAG(TestDag.of('cyc-b', 'embed-a', [
-      embedNode('cyc-b', 'embed-a', 'cyc-a'),
-      terminalNode('cyc-b'),
+      PlacementFixture.embed('cyc-b', 'embed-a', 'cyc-a'),
+      PlacementFixture.terminal('cyc-b'),
     ]));
 
     // The only way to close a cross-variant cycle (a SCATTERS into b → b embeds a)
@@ -175,7 +185,7 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
       'gather': { 'strategy': 'discard' },
       'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
     },
-      terminalNode('cyc-a'),
+      PlacementFixture.terminal('cyc-a'),
     ]);
 
     assert.throws(() => dispatcher.registerDAG(cyclicA), /already registered/u);
@@ -268,20 +278,24 @@ const parentDAG: DAGType = {
   ],
 };
 
-// Register the shared lifecycle node set + both DAGs on a fresh dispatcher.
-const registerLifecycleFixtures = (dispatcher: CountingDagonizer<NodeStateBase>): void => {
-  dispatcher.registerNode(TestNode.make('child-start',  ['done']));
-  dispatcher.registerNode(TestNode.make('child-finish', ['done']));
-  dispatcher.registerNode(TestNode.make('parent-entry', ['next']));
-  dispatcher.registerNode(TestNode.make('parent-end',   ['done']));
-  dispatcher.registerDAG(childDAG);
-  dispatcher.registerDAG(parentDAG);
-};
+class LifecycleFixture {
+  private constructor() {}
+
+  /** Register the shared lifecycle node set + both DAGs on a fresh dispatcher. */
+  static register(dispatcher: CountingDagonizer<NodeStateBase>): void {
+    dispatcher.registerNode(TestNode.make('child-start',  ['done']));
+    dispatcher.registerNode(TestNode.make('child-finish', ['done']));
+    dispatcher.registerNode(TestNode.make('parent-entry', ['next']));
+    dispatcher.registerNode(TestNode.make('parent-end',   ['done']));
+    dispatcher.registerDAG(childDAG);
+    dispatcher.registerDAG(parentDAG);
+  }
+}
 
 void describe('Embedded-DAG lifecycle scoping', () => {
   void it('fires flow/node observer hooks at the right scope and completes the lifecycle once', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
-    registerLifecycleFixtures(dispatcher);
+    LifecycleFixture.register(dispatcher);
 
     const state = new NodeStateBase();
     assert.equal(state.lifecycle.variant, 'pending');
@@ -318,7 +332,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
 
   void it('executedNodes reflects parent placements only (not embedded-body internals)', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
-    registerLifecycleFixtures(dispatcher);
+    LifecycleFixture.register(dispatcher);
 
     const result = await dispatcher.execute('parent', new NodeStateBase());
 

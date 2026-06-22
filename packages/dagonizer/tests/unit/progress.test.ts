@@ -53,7 +53,7 @@ describe('EventBus.publish → subscribe', () => {
     const bus = new EventBus();
     const received: unknown[] = [];
 
-    bus.subscribe<{ 'n': number }>('topic', (e) => { received.push(e.payload); });
+    bus.subscribe('topic', (e) => { received.push(e.payload); });
     bus.publish('topic', { 'n': 1 });
     bus.publish('topic', { 'n': 2 });
 

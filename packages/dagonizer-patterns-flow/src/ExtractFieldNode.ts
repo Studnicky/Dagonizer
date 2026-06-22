@@ -20,7 +20,7 @@ export abstract class ExtractFieldNode<
 
   protected override async executeOne(
     state: TState,
-    _context: NodeContextType<undefined>,
+    _context: NodeContextType,
   ): Promise<NodeOutputType<'success'>> {
     const value = this.extract(state);
     this.apply(state, value);

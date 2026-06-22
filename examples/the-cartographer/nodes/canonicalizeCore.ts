@@ -16,7 +16,6 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import type { CartographerServices } from '../CartographerServices.ts';
 import {
   CarrierRegistry,
   CountryCodes,
@@ -32,7 +31,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region canonicalize-core-node
-export class CanonicalizeCoreNode extends ScalarNode<CartographerState, 'normalized' | 'rejected', CartographerServices> {
+export class CanonicalizeCoreNode extends ScalarNode<CartographerState, 'normalized' | 'rejected'> {
   readonly 'name' = 'canonicalize-core';
   readonly 'outputs' = ['normalized', 'rejected'] as const;
 
@@ -43,7 +42,7 @@ export class CanonicalizeCoreNode extends ScalarNode<CartographerState, 'normali
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType<CartographerServices>): Promise<NodeOutputType<'normalized' | 'rejected'>> {
+  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'normalized' | 'rejected'>> {
     const raw = state.raw;
 
     const epochMs = TimeNormalizer.toEpochMs(raw.rawTimestamp);

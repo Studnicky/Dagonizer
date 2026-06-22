@@ -4,7 +4,7 @@ description: 'GrpcStore extends BaseStore and implements RemoteStoreInterface. N
 seeAlso:
   - text: 'Phase 10: Shared state'
     link: './10-shared-state'
-    description: 'Store on the services record with checkpoint round-trip'
+    description: 'Store injected via node constructors with checkpoint round-trip'
   - text: 'Shared state guide'
     link: '../guide/shared-state'
     description: 'Store, MemoryStore, TypedStore, and RemoteStoreInterface'

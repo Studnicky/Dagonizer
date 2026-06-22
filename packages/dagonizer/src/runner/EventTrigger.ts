@@ -40,8 +40,7 @@ export abstract class EventTrigger<
   TInput,
   TState extends NodeStateInterface,
   TOutput,
-  TServices = undefined,
-> implements TriggerInterface<TInput, TState, TOutput, TServices> {
+> implements TriggerInterface<TInput, TState, TOutput> {
   readonly #options: ExecuteOptionsType;
   #unsubscribe: (() => void) | null;
   #attachResolve: (() => void) | null;
@@ -54,7 +53,7 @@ export abstract class EventTrigger<
     this.#attached = false;
   }
 
-  async attach(runner: DagRunnerInterface<TInput, TState, TOutput, TServices>): Promise<void> {
+  async attach(runner: DagRunnerInterface<TInput, TState, TOutput>): Promise<void> {
     if (this.#attached) return;
     this.#attached = true;
 
