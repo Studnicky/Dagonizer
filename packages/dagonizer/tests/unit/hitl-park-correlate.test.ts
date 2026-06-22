@@ -14,7 +14,6 @@ import { describe, it } from 'node:test';
 import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGLifecycleMachine } from '../../src/lifecycle/DAGLifecycleMachine.js';
-import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestDag } from '../_support/TestDag.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -227,7 +226,7 @@ void describe('Engine — park-and-correlate integration', () => {
 
     // Human makes a decision; restore state via checkpoint + resume
     const ckpt = await Checkpoint.capture('hitl-resume', parkedResult);
-    const { state: restoredState, cursor } = ckpt.restoreState(
+    const { "state": restoredState, cursor } = ckpt.restoreState(
       CheckpointRestoreAdapter.wrap((snap) => HitlState.restore(snap)),
     );
 

@@ -386,31 +386,25 @@ logger.result(`triples=${String(services.memory.size)} written`);
 // #endregion linear-run
 
 // #region eventbus-pattern
-// ── EventBus as an observability multiplexer ─────────────────────────────
+// ── BusObserver: EventBus as an observability multiplexer ────────────────
 //
 // ObservedDag already wires every lifecycle hook to the injected logger.
-// When you need to add a SECOND consumer — say, an SSE endpoint for live
-// progress in a browser client — subclassing ObservedDag and adding more
-// `super.onX(...)` dispatches works but couples every new consumer to the
-// hook body.
-//
-// The EventBus pattern decouples hook dispatch from each consumer:
-//
-//   1. Override the relevant hooks in a thin bus-publishing subclass.
-//   2. Subscribe independent consumers to the bus topic.
-//   3. Adding a third consumer (metrics, tracing, alerting) never touches
-//      the hook implementation.
+// When you need additional consumers — an SSE endpoint, metrics counter,
+// or trace feed — pass a BusObserver in the observers option instead of
+// subclassing for each consumer. Each subscriber on the bus topic receives
+// the same DagLifecycleEventType payload independently.
 //
 // Example wiring (not executed here — requires @studnicky/dagonizer/progress):
 //
-//   import { EventBus, SseStream } from '@studnicky/dagonizer/progress';
+//   import { EventBus, BusObserver, SseStream } from '@studnicky/dagonizer/progress';
+//   import type { DagLifecycleEventType } from '@studnicky/dagonizer/progress';
 //
 //   const archivistBus = new EventBus();
 //
-//   // Consumer A: mirror every event through the existing logger (no change to UX).
+//   // Consumer A: mirror every event through the existing logger.
 //   archivistBus.subscribe('lifecycle', (envelope) => {
-//     const p = envelope.payload as { event: string; nodeName?: string };
-//     logger.info(`[bus] ${p.event}${p.nodeName !== undefined ? ` node=${p.nodeName}` : ''}`);
+//     const p = envelope.payload as DagLifecycleEventType;
+//     logger.info(`[bus] ${p.event}${'nodeName' in p ? ` node=${p.nodeName}` : ''}`);
 //   });
 //
 //   // Consumer B: SSE stream for a browser client — pipe stream.readable as a
@@ -420,32 +414,17 @@ logger.result(`triples=${String(services.memory.size)} written`);
 //   // Consumer C: in-process metrics for a Prometheus scrape endpoint.
 //   const runMetrics = { nodes: 0, errors: 0 };
 //   archivistBus.subscribe('lifecycle', (envelope) => {
-//     const p = envelope.payload as { event: string };
+//     const p = envelope.payload as DagLifecycleEventType;
 //     if (p.event === 'nodeStart') runMetrics.nodes++;
 //     if (p.event === 'nodeError') runMetrics.errors++;
 //   });
 //
-//   // BusObservedDag: thin subclass that publishes to the bus in each hook.
-//   // ObservedDag's logger hooks are preserved via super.onX(...).
-//   class BusObservedDag extends ObservedDag<ArchivistState> {
-//     readonly #bus: EventBus;
-//     constructor(log: ConsoleLogger, bus: EventBus) { super(log); this.#bus = bus; }
-//     protected override onNodeStart(n: string, s: ArchivistState, p: readonly string[]): void {
-//       super.onNodeStart(n, s, p);
-//       this.#bus.publish('lifecycle', { event: 'nodeStart', nodeName: n, path: p.join('/') });
-//     }
-//     protected override onNodeEnd(n: string, o: string | null, s: ArchivistState, p: readonly string[]): void {
-//       super.onNodeEnd(n, o, s, p);
-//       this.#bus.publish('lifecycle', { event: 'nodeEnd', nodeName: n, output: o, path: p.join('/') });
-//     }
-//     protected override onFlowEnd(dag: string, s: ArchivistState, r: ExecutionResultType<ArchivistState>): void {
-//       super.onFlowEnd(dag, s, r);
-//       const outcome = r.terminalOutcome ?? r.interruptedAt?.reason ?? 'none';
-//       this.#bus.publish('lifecycle', { event: 'flowEnd', dagName: dag, outcome });
-//     }
-//   }
-//
-//   const busDispatcher = new BusObservedDag(logger, archivistBus);
+//   // BusObserver passes alongside the ObservedDag subclass via the observers
+//   // option. The subclass hook fires first (logger), then the observer array.
+//   // No subclass changes needed to add or remove consumers.
+//   const busDispatcher = new ObservedDag<ArchivistState>(logger, {
+//     observers: [new BusObserver(archivistBus, 'lifecycle')],
+//   });
 //   // ... register bundles, execute, then:
 //   archivistBus.dispose(); // unsubscribes all consumers at once
 //

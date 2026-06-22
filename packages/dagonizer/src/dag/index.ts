@@ -9,3 +9,4 @@
  */
 
 export { DAGDocument } from './DAGDocument.js';
+export type { DAGDocumentLoadOptionsType } from './DAGDocument.js';

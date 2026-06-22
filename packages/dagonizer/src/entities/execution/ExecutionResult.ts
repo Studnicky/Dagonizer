@@ -20,6 +20,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 import type { NodeStateInterface } from '../../NodeStateBase.js';
+
 import type { ParkedType } from './Parked.js';
 
 /**

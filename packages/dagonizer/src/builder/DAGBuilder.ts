@@ -13,6 +13,7 @@
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
+import { PlaceholderNode } from '../core/PlaceholderNode.js';
 import { DAGIdentity, DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
@@ -339,6 +340,27 @@ export class DAGBuilder {
     this.#nodes.push(placement);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
+  }
+
+  /**
+   * Register and wire a PlaceholderNode in one call.
+   *
+   * The node routes every execution to the first declared output. Use during
+   * development to stub unimplemented placements; replace with a concrete node
+   * subclass when ready. The registered node can be retrieved from the dispatcher
+   * by name to swap it out later.
+   *
+   * @param name    - The node name (also the placement name).
+   * @param outputs - Ordered output names; the first is the unconditional route.
+   * @param routes  - Route map (same shape as .node() routes).
+   */
+  placeholder<TOutput extends string>(
+    name: string,
+    outputs: readonly [TOutput, ...TOutput[]],
+    routes: Record<TOutput, string>,
+  ): this {
+    const node = new PlaceholderNode<NodeStateInterface, TOutput>(name, outputs);
+    return this.node(name, node, routes);
   }
 
   /**

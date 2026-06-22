@@ -76,6 +76,7 @@ export type { EntityValidatorInterface } from './validation/index.js';
 // re-exported on the root barrel so the existing root-barrel `DAGDocument`
 // export resolves unchanged.
 export { DAGDocument } from './dag/index.js';
+export type { DAGDocumentLoadOptionsType } from './dag/index.js';
 export {
   Placement,
   NodeErrorBuilder,
@@ -227,6 +228,7 @@ export type { ItemType, ItemIdType } from './entities/batch/Item.js';
 export { RoutedBatchBuilder } from './entities/batch/RoutedBatchType.js';
 export type { RoutedBatchType } from './entities/batch/RoutedBatchType.js';
 export { MonadicNode } from './core/MonadicNode.js';
+export { PlaceholderNode } from './core/PlaceholderNode.js';
 export { ScalarNode } from './core/ScalarNode.js';
 export { NodeRunner } from './core/NodeRunner.js';
 
@@ -261,6 +263,13 @@ export type { CaptureOptionsType, RecalledCheckpointType } from './checkpoint/in
 
 export { BaseStore, MemoryStore, StoreError, TypedStore } from './store/index.js';
 export type { BaseStoreOptionsType, StoreErrorClassificationType } from './store/index.js';
+
+// =============================================================================
+// PROGRESS (EventBus bridge)
+// =============================================================================
+
+export { BusObserver } from './progress/BusObserver.js';
+export type { DagLifecycleEventType } from './progress/BusObserver.js';
 
 // =============================================================================
 // CLASS-SHAPE INTERFACES (colocated with their class)

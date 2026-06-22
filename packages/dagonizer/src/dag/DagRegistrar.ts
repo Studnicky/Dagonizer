@@ -20,7 +20,7 @@ import { ContextResolver } from './ContextResolver.js';
  * whole dispatcher.
  *
  * The registrar owns DAG/node/bundle registration and the validation passes
- * that gate it (schema, semantic, container-role binding);
+ * that gate it (semantic, container-role binding);
  * `Dagonizer` stays the composition root whose public `registerDAG` /
  * `registerNode` / `registerBundle` methods delegate here.
  */
@@ -56,7 +56,7 @@ export interface DagRegistrarSourceInterface {
  * registries are the dispatcher's own `dags` / `nodes` / `nodeIndex` maps, so
  * registration mutates the live registries the engine modules read.
  *
- * `registerDAG` runs three gates in order before mutating the registries:
+ * `registerDAG` runs four gates in order before mutating the registries:
  * 1. Duplicate-name throw (same name, different implementation).
  * 2. Schema pass: `Validator.dag.validate(dag)` checks structure.
  * 3. Semantic pass: `DAGValidator.validateDAGConfig` verifies the entrypoint

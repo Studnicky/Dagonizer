@@ -203,6 +203,69 @@ bus.dispose(); // unsubscribes all consumers
 
 See [Example 30: EventBus and SseStream](../examples/30-progress) for a complete runnable demonstration.
 
+## BusObserver
+
+`BusObserver` is a pre-built `DispatcherObserverType` implementation that publishes each lifecycle event as a typed `DagLifecycleEventType` payload to a named bus topic. Pass it in the `observers` option instead of writing the publishing subclass yourself.
+
+```ts
+import { Dagonizer } from '@studnicky/dagonizer';
+import { EventBus, BusObserver, SseStream } from '@studnicky/dagonizer/progress';
+import type { DagLifecycleEventType } from '@studnicky/dagonizer/progress';
+
+const bus = new EventBus();
+const dispatcher = new Dagonizer<MyState>({
+  observers: [new BusObserver(bus, 'pipeline-events')],
+});
+
+// Multiple independent consumers on the same topic
+bus.subscribe('pipeline-events', (e) => {
+  const p = e.payload as DagLifecycleEventType;
+  logger.info(p.event);
+});
+bus.subscribe('pipeline-events', (e) => {
+  const p = e.payload as DagLifecycleEventType;
+  metrics.record(p);
+});
+
+// SSE stream for browser clients
+const stream = SseStream.of(bus, ['pipeline-events'], { heartbeatMs: 15_000 });
+// return new Response(stream.readable, { headers: { 'Content-Type': 'text/event-stream' } });
+
+// register nodes + DAG, then run:
+await dispatcher.execute('my-dag', new MyState());
+bus.dispose();
+```
+
+### `DagLifecycleEventType`
+
+A discriminated union where the `event` field is the discriminant:
+
+| `event` | Additional fields |
+|---------|-------------------|
+| `'flowStart'` | `dagName` |
+| `'flowEnd'` | `dagName`, `outcome` |
+| `'nodeStart'` | `nodeName`, `placementPath` |
+| `'nodeEnd'` | `nodeName`, `output`, `placementPath` |
+| `'nodeError'` | `nodeName`, `error`, `placementPath` |
+| `'phaseEnter'` | `dagName`, `phase`, `placementName` |
+| `'phaseExit'` | `dagName`, `phase`, `placementName` |
+
+State is never included in the payload. State is a mutable reference; publishing it to multiple independent subscribers would allow one subscriber's read to race another subscriber's write.
+
+`outcome` on `'flowEnd'` is `result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none'`.
+
+### Combining BusObserver with subclassing
+
+`BusObserver` is composable with subclass hooks. If you also need the `ObservedDag` console logger, pass both:
+
+```ts
+const dispatcher = new ObservedDag<MyState>(logger, {
+  observers: [new BusObserver(bus, 'pipeline-events')],
+});
+```
+
+The subclass hook fires first, then the observer array fires in order. No changes to either the subclass or `BusObserver` are needed.
+
 ## Related reference
 
 - [Reference: Dagonizer](../reference/dagonizer)
