@@ -18,6 +18,7 @@ import type { ScatterItemResultType } from './ScatterPoolDriver.js';
  * Result envelope for a batch execution. One result per item in the batch.
  */
 export type ScatterItemBatchResultType = {
+  /** One result per item in the released batch, in the order the items were dispatched. */
   results: ScatterItemResultType[];
 };
 

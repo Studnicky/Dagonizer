@@ -33,7 +33,21 @@
  *             JSON-only mode (no schema).
  */
 export type AdapterCapabilitiesType = {
+  /**
+   * Tool-call support level:
+   *   `'full'`:    adapter + default model produce well-formed `tool_calls`.
+   *   `'partial'`: adapter forwards tools but the model may return malformed calls; validate aggressively.
+   *   `'none'`:    adapter cannot emit tool calls; caller must inline the data the tools would have fetched.
+   */
   toolUse: 'full' | 'partial' | 'none';
+  /**
+   * Whether `outputSchema.variant === 'schema'` is honoured via native `response_format` /
+   * `responseConstraint` / `outputSchema`. When `false`, schema is best-effort prose.
+   */
   structuredOutput: boolean;
+  /**
+   * Whether the adapter supports coarse JSON-only mode (`{ "type": "json_object" }`) without
+   * a schema constraint. Distinct from `structuredOutput`.
+   */
   jsonMode: boolean;
 }

@@ -23,8 +23,8 @@ export const ToolDefinitionSchema = {
 } as const;
 
 /**
- * ToolInterface definition the model can choose to invoke.
- * `inputSchema` resolves to `Record<string, unknown>` from `{ type: 'object' }`
- * without `additionalProperties:false` — identical to the previous hand-written field.
+ * A tool the model can choose to invoke. `inputSchema` and `outputSchema` resolve
+ * to `Record<string, unknown>` from `{ type: 'object' }` without
+ * `additionalProperties: false`.
  */
 export type ToolDefinitionType = FromSchema<typeof ToolDefinitionSchema>;

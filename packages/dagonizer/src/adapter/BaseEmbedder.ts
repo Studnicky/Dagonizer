@@ -65,7 +65,8 @@ export abstract class BaseEmbedder extends BaseAdapterCore implements EmbedderIn
    * when the constructor `model` option was provided. Concrete subclasses
    * that can enumerate provider models override this method.
    */
-  async listModels(): Promise<readonly LlmModelType[]> {
+  async listModels(options?: AbortableOptionsType): Promise<readonly LlmModelType[]> {
+    void options;
     try {
       const name = this.model;
       return [{ 'name': name, 'variant': 'embedding', 'cloud': false }];

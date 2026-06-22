@@ -13,7 +13,13 @@
 import type { ChatMessageType } from './ChatMessage.js';
 import type { ToolDefinitionType } from './ToolDefinition.js';
 
-/** How aggressively the model should pick a tool. */
+/**
+ * How aggressively the model should pick a tool.
+ *   `auto`:     model decides whether to call a tool.
+ *   `required`: model must call at least one tool.
+ *   `none`:     model must not call any tool.
+ *   `tool`:     model must call the specific named tool.
+ */
 export type ToolChoiceType =
   | { type: 'auto' }
   | { type: 'required' }
@@ -21,32 +27,50 @@ export type ToolChoiceType =
   | { type: 'tool'; name: string };
 
 /**
- * JSON-schema constraint on the model's text response. `variant: 'none'`
- * means "no constraint"; keeps the union shape monomorphic instead of
- * `LlmOutputSchemaType | undefined`.
+ * JSON-schema constraint on the model's text response.
+ *   `none`:   no constraint on the response shape.
+ *   `schema`: the model must conform to the provided JSON Schema; `id` names the schema.
+ * The union is always present (no `| undefined`) to keep `ChatRequestType` V8-monomorphic.
  */
 export type LlmOutputSchemaType =
   | { variant: 'none' }
   | { variant: 'schema'; schema: Record<string, unknown>; id: string };
 
-/** One adapter call; every field always present. */
+/** One adapter call; every field always present. Constructed via `ChatRequestBuilder.from(partial)`. */
 export type ChatRequestType = {
+  /** Ordered conversation history passed to the model. */
   messages: ChatMessageType[];
+  /** Tool definitions the model may choose to invoke. Empty array means no tools. */
   tools: ToolDefinitionType[];
+  /** How aggressively the model should pick a tool. */
   toolChoice: ToolChoiceType;
+  /** JSON Schema constraint on the model's response; `variant: 'none'` means no constraint. */
   outputSchema: LlmOutputSchemaType;
+  /** Maximum number of tokens the model may generate. */
   maxTokens: number;
+  /** Sampling temperature; higher values increase randomness. */
   temperature: number;
+  /** AbortSignal to cancel an in-flight request. */
   signal: AbortSignal;
 }
 
-/** Loose-input shape for `ChatRequestBuilder.from`. Only `messages` is required. */
+/**
+ * Loose-input shape accepted by `ChatRequestBuilder.from`. Only `messages` is required;
+ * every other field is defaulted by the builder to produce a complete `ChatRequestType`.
+ */
 export type PartialChatRequestType = {
+  /** Ordered conversation history. Required. */
   messages: ChatMessageType[];
+  /** Tool definitions. Defaults to `[]`. */
   tools?: ToolDefinitionType[];
+  /** Tool choice policy. Defaults to `{ type: 'auto' }`. */
   toolChoice?: ToolChoiceType;
+  /** Output schema constraint. Defaults to `{ variant: 'none' }`. */
   outputSchema?: LlmOutputSchemaType;
+  /** Max tokens. Defaults to the adapter's configured maximum. */
   maxTokens?: number;
+  /** Sampling temperature. Defaults to the adapter's configured value. */
   temperature?: number;
+  /** Cancellation signal. Defaults to a never-fired signal. */
   signal?: AbortSignal;
 }

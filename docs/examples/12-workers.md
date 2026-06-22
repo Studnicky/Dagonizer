@@ -30,6 +30,18 @@ DAG authoring does not change between the in-process and worker-thread paths. Th
 
 The dispatcher resolves `"cpu"` to the bound backend. If `"cpu"` is not bound, the scatter runs in-process and fires `contractWarning`. The scatter inbox / work-queue, gather strategies, and outcome reducer are identical in both cases.
 
+## Container and dispatcher setup
+
+The `WorkerThreadContainer` is constructed with the compiled registry module URL, a registry version string for handshake validation, and a pool size. The pool size can be derived from `NodeSystemInfo.recommendedWorkerCount`:
+
+<<< @/../examples/12-workers.ts#pool-sizing
+
+<<< @/../examples/12-workers.ts#container
+
+The dispatcher receives the container bound to the `"cpu"` role. The scatter placement's `container: "cpu"` tells the engine to route each clone through this backend:
+
+<<< @/../examples/12-workers.ts#dispatcher
+
 ## The registry module
 
 Worker threads load a separate Node.js module — the main process's in-memory registry is not accessible across thread boundaries. The registry module exports a `RegistryModuleInterface` default that reconstructs the bundle and services inside the worker from an opaque `servicesConfig` JSON object:

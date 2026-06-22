@@ -60,12 +60,18 @@ import {
   LlmError,
   ZERO_TOKEN_USAGE,
 } from '@studnicky/dagonizer/adapter';
+import type { LlmModelType } from '@studnicky/dagonizer/entities';
+
+import { AnthropicModelsResponseValidator } from './AnthropicModelsResponse.js';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const DEFAULT_BASE_URL = 'https://api.anthropic.com';
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01';
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+
+/** Short timeout (ms) for the `GET /v1/models` discovery call. */
+const DISCOVERY_TIMEOUT_MS = 2_000;
 
 const ADAPTER_CAPABILITIES: AdapterCapabilitiesType = {
   'toolUse':         'full',
@@ -212,6 +218,44 @@ export class AnthropicApiAdapter extends BaseAdapter {
   /** True when a non-empty API key was supplied. */
   override async probe(): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
+  }
+
+  /**
+   * Enumerate models available from Anthropic's `GET /v1/models` endpoint.
+   * Maps each entry to an `LlmModelType` with `variant: 'chat'` and
+   * `cloud: true` (all Anthropic models are cloud-routed).
+   *
+   * Returns `[]` on any transport failure, non-ok response, or schema
+   * violation — never throws (mirrors `probe` discipline). Composes
+   * `options.signal` with an internal discovery timeout.
+   */
+  override async listModels(options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
+    const signals: AbortSignal[] = [controller.signal];
+    if (options?.signal !== undefined) signals.push(options.signal);
+    const signal = AbortSignal.any(signals);
+
+    try {
+      const res = await fetch(`${this.#baseUrl}/v1/models`, {
+        'method': 'GET',
+        'headers': {
+          'x-api-key':         this.#apiKey,
+          'anthropic-version': this.#anthropicVersion,
+        },
+        signal,
+      });
+      if (!res.ok) return [];
+      const rawBody: unknown = await res.json();
+      if (!AnthropicModelsResponseValidator.is(rawBody)) return [];
+      return rawBody.data
+        .filter((entry) => entry.id.length > 0)
+        .map((entry) => ({ 'name': entry.id, 'variant': 'chat' as const, 'cloud': true }));
+    } catch {
+      return [];
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   protected override async performChat(request: ChatRequestType): Promise<ChatResponseType> {

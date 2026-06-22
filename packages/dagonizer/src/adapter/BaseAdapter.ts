@@ -19,6 +19,7 @@
  * past that cap the adapter gives up immediately rather than blocking the caller.
  */
 
+import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
 import type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
 import type { ChatMessageType } from '../entities/adapter/ChatMessage.js';
 import type { LlmModelType } from '../entities/adapter/LlmModel.js';
@@ -62,7 +63,8 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
    * the constructor `model` option was provided. Concrete subclasses that
    * can enumerate provider models override this method.
    */
-  async listModels(): Promise<readonly LlmModelType[]> {
+  async listModels(options?: AbortableOptionsType): Promise<readonly LlmModelType[]> {
+    void options;
     try {
       const name = this.model;
       return [{ 'name': name, 'variant': 'chat', 'cloud': false }];

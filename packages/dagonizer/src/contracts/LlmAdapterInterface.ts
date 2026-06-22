@@ -11,6 +11,7 @@
 import type { AdapterCapabilitiesType } from '../entities/adapter/AdapterCapabilities.js';
 import type { ChatRequestType } from '../entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../entities/adapter/ChatResponse.js';
+import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 
 import type { AbortableOptionsType } from './AbortableOptionsType.js';
 
@@ -22,6 +23,14 @@ export interface LlmAdapterInterface {
   readonly displayName: string;
   /** Declared capabilities; the dispatcher consults these to route tool-call and structured-output paths. */
   readonly capabilities: AdapterCapabilitiesType;
+  /**
+   * Discover the models available on this provider.
+   *
+   * Returns an empty array when the provider is unreachable or reports no
+   * models — never throws. `selectChatModel()` on `BaseAdapter` calls this
+   * to pick the best available chat model.
+   */
+  listModels(options?: AbortableOptionsType): Promise<readonly LlmModelType[]>;
   /** Send a chat request to the provider and resolve its response. */
   chat(request: ChatRequestType): Promise<ChatResponseType>;
   /**
