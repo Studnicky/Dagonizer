@@ -21,7 +21,6 @@ import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
-import type { PlacementRetryConfigType } from '../entities/dag/SingleNode.js';
 import type { TerminalNodeType } from '../entities/dag/TerminalNode.js';
 import { ConfigurationError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -169,25 +168,11 @@ export class DAGBuilder {
   /**
    * Append a single node. The node's `TOutput` parameter
    * narrows `routes`, forcing exhaustive routing at compile time.
-   *
-   * When `options.retry` is provided, the engine applies the declared retry
-   * policy automatically on throw, without requiring hand-rolled retry logic
-   * inside the node. The `on` field on the retry config lists output names
-   * that trigger a retry; absent means retry on any throw.
-   *
-   * @example
-   * ```ts
-   * builder.node('classify', classifyNode,
-   *   { success: 'next', error: 'fail' },
-   *   { retry: { maxAttempts: 3, strategy: 'exponential', baseDelay: 500 } },
-   * );
-   * ```
    */
   node<TState extends NodeStateInterface, TOutput extends string>(
     name: string,
     dagNode: NodeInterface<TState, TOutput>,
     routes: Record<TOutput, string>,
-    options?: { readonly retry?: PlacementRetryConfigType },
   ): this {
     this.#nodes.push({
       '@id':     DAGIdentity.placementId(this.#name, name),
@@ -195,7 +180,6 @@ export class DAGBuilder {
       name,
       'node':    dagNode.name,
       'outputs': routes,
-      ...(options?.retry !== undefined ? { 'retry': options.retry } : {}),
     });
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;

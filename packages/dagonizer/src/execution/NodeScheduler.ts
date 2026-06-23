@@ -15,7 +15,7 @@ import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
-import type { PlacementRetryConfigType, SingleNodePlacementType } from '../entities/dag/SingleNode.js';
+import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { ExecutionResultType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
 import type { ParkedType } from '../entities/execution/Parked.js';
 import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
@@ -26,7 +26,6 @@ import type { WorkSetProgressType } from '../entities/workset/WorkSetProgress.js
 import { DAGError, ExecutionError, NodeTimeoutError } from '../errors/index.js';
 import { DAGLifecycleMachine } from '../lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
-import { RetryPolicy } from '../runtime/RetryPolicy.js';
 import { SignalComposer } from '../runtime/SignalComposer.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
 
@@ -969,12 +968,6 @@ export class NodeScheduler {
    * and returns the firing node together with its raw `RoutedBatchType`. No
    * validation and no routing happen here; those are the two stages that follow.
    *
-   * When `nodeConfig.retry` is present, the engine applies the declared backoff
-   * policy automatically: on any node throw, it checks the attempt count and
-   * optional `on` output filter, waits the backoff delay, and re-fires the node
-   * on the same batch. Abort signals are honoured: if the signal fires during a
-   * backoff sleep, retrying stops immediately.
-   *
    * Throws `DAGError` when the placement names an unregistered node.
    */
   async #fireSinglePlacement(
@@ -991,133 +984,12 @@ export class NodeScheduler {
       throw new DAGError(`Unknown node: ${nodeConfig.node}`);
     }
 
-    const retryConfig = nodeConfig.retry;
-
-    if (retryConfig === undefined) {
-      // Fast path — no retry configured: fire once.
-      const routed = await this.#source.withNodeTimeout(dagNode, signal, (nodeSignal) => {
-        const context = this.#source.nodeContext(dagName, nodeConfig.name, nodeSignal);
-        return dagNode.execute(batch, context);
-      });
-      return { 'dagNode': dagNode, 'routed': routed };
-    }
-
-    // Retry path — fire with backoff.
-    const routed = await NodeScheduler.#fireWithRetry(
-      dagNode,
-      batch,
-      dagName,
-      nodeConfig,
-      retryConfig,
-      signal,
-      this.#source,
-    );
-    return { 'dagNode': dagNode, 'routed': routed };
-  }
-
-  /**
-   * Fire a node with declarative retry under `retryConfig`. Re-fires on any
-   * throw up to `maxAttempts` times, applying the declared backoff strategy.
-   * When `retryConfig.on` is present, only throws where the node's thrown
-   * context can be matched to a listed output name are retried; all other
-   * throws propagate immediately.
-   *
-   * The `on` filter operates on the Error message convention used by DAGError:
-   * an unrouted throw does not carry an output-name tag, so absent `on` retries
-   * everything, while a non-empty `on` list retries everything (the engine
-   * catches throws, not routed outputs). This matches the documented semantics:
-   * `on` names the outputs whose execution path triggered the throw, which in
-   * practice means the list is used as a signal: if ALL listed outputs are the
-   * ones you want to retry, list them; absent = retry any throw.
-   */
-  static async #fireWithRetry(
-    dagNode: NodeInterface<NodeStateInterface, string>,
-    batch: Batch<NodeStateInterface>,
-    dagName: string,
-    nodeConfig: SingleNodePlacementType,
-    retryConfig: PlacementRetryConfigType,
-    signal: AbortSignal | null,
-    source: NodeSchedulerSourceInterface,
-  ): Promise<RoutedBatchType<string, NodeStateInterface>> {
-    const policy = RetryPolicy.from(retryConfig);
-    const onFilter = retryConfig.on;
-
-    let attempt = 0;
-    let lastError: Error | null = null;
-
-    while (attempt < policy.maxAttempts) {
-      if (signal?.aborted === true) {
-        throw ExecutionError.ofSignal(signal);
-      }
-      attempt++;
-
-      try {
-        const routed = await source.withNodeTimeout(dagNode, signal, (nodeSignal) => {
-          const context = source.nodeContext(dagName, nodeConfig.name, nodeSignal);
-          return dagNode.execute(batch, context);
-        });
-        return routed;
-      } catch (caught) {
-        lastError = caught instanceof Error ? caught : new ExecutionError(String(caught));
-
-        // When `on` is specified, only retry throws whose error name or message
-        // matches a listed entry. Absent or empty `on` = retry any throw.
-        if (onFilter !== undefined && onFilter.length > 0) {
-          const matches = onFilter.some(
-            (name) => lastError !== null && (lastError.message.includes(name) || lastError.name === name),
-          );
-          if (!matches) {
-            throw lastError;
-          }
-        }
-
-        if (!policy.shouldRetry(lastError, attempt)) {
-          throw lastError;
-        }
-
-        const delay = policy.getDelay(attempt, { 'error': lastError });
-        if (delay > 0) {
-          const abortableOpts = signal !== null ? { 'signal': signal } : {};
-          // Use Scheduler.current() via a minimal inline sleep to honour the
-          // installed scheduler (VirtualScheduler in tests).
-          await NodeScheduler.#retrySlept(delay, abortableOpts);
-        }
-      }
-    }
-
-    throw lastError ?? new ExecutionError('Retry attempts exhausted');
-  }
-
-  /**
-   * Wait `ms` using the scheduler honoured by `RetryPolicy`. Uses
-   * `RetryPolicy.run` with a single no-op task just for the backoff sleep
-   * infrastructure — this ensures the installed `VirtualScheduler` is honoured
-   * in tests. When `ms` is zero or negative, resolves immediately.
-   */
-  static async #retrySlept(ms: number, opts: { readonly signal?: AbortSignal }): Promise<void> {
-    if (ms <= 0) return;
-    // Use a minimal RetryPolicy with baseDelay=ms and maxAttempts=2 so the
-    // first attempt fails (throws a sentinel), triggering exactly one sleep.
-    const sleepSentinel = new ExecutionError('retry-sleep-sentinel');
-    const sleepPolicy = RetryPolicy.from({
-      'maxAttempts':  2,
-      'baseDelay':    ms,
-      'maxDelay':     ms,
-      'strategy':     'constant',
-      'jitterFactor': 0,
+    const routed = await this.#source.withNodeTimeout(dagNode, signal, (nodeSignal) => {
+      const context = this.#source.nodeContext(dagName, nodeConfig.name, nodeSignal);
+      return dagNode.execute(batch, context);
     });
-    try {
-      await sleepPolicy.run(
-        (attempt) => {
-          if (attempt === 1) throw sleepSentinel;
-          return Promise.resolve<void>(undefined);
-        },
-        opts.signal !== undefined ? { 'signal': opts.signal } : {},
-      );
-    } catch (err) {
-      // Re-throw abort errors; swallow the sentinel (sleep completed normally).
-      if (err !== sleepSentinel) throw err;
-    }
+
+    return { 'dagNode': dagNode, 'routed': routed };
   }
 
   /**

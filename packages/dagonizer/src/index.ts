@@ -116,7 +116,6 @@ export {
 } from './entities/index.js';
 export type {
   BackoffStrategyType,
-  PlacementRetryConfigType,
   DAGNodeType,
   ScatterNodeType,
   EmbeddedDAGNodeType,
@@ -292,7 +291,6 @@ export type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js
 export type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 export type { PluginInterface, PluginReceiverType } from './contracts/PluginInterface.js';
-export { PluginLoader } from './plugin/PluginLoader.js';
 export type { DagOutcomeType } from './contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
 export type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';
