@@ -338,15 +338,17 @@ dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
 // loop. The dispatcher is the already-configured ObservedDag whose lifecycle
 // hooks log every node boundary without any manual iteration here.
 //
-// OnceTrigger fires runner.run() exactly once and exposes the result on
-// trigger.result after attach resolves. For harnesses that need the streaming
-// form (per-node yield) see the cancellation-run region below.
+// Query source: first CLI argument, or the bundled demo question when absent.
+// Override:   npx tsx examples/the-archivist/runArchivist.ts "your question"
+const DEMO_QUERY = "I'm looking for a book about a strange house and a library";
+const visitorQuery = process.argv[2] ?? DEMO_QUERY;
+
 const runnerOptions: DagRunnerOptionsType<ArchivistState> = { 'dispatcher': dispatcher };
 const archivistRunner = new ArchivistRunner(runnerOptions);
 
 const onceTrigger = new OnceTrigger<ArchivistInput, ArchivistState, ArchivistResult>(
   'the-archivist',
-  { 'query': "I'm looking for a book about a strange house and a library" },
+  { 'query': visitorQuery },
 );
 
 // #region error-taxonomy
