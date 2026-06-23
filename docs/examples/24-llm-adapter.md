@@ -54,7 +54,7 @@ Change `OLLAMA_MODEL` in the example to any model you have pulled.
 `LlmAdapterCascadeBuilder.build(catalogue)` assembles a cascade from data. Async discovery runs **before** the builder call — resolve models, filter nulls, then pass the finished catalogue. Each factory closes over the already-constructed adapter; `probe()` runs lazily inside `cascade.select()`.
 
 ```ts
-import { LlmAdapterCascadeBuilder, type CatalogueEntryType } from '@studnicky/dagonizer/adapter';
+import { LlmAdapterCascadeBuilder, OpenAiCompatibleAdapter, type CatalogueEntryType } from '@studnicky/dagonizer/adapter';
 
 // Async discovery step — happens before build()
 const catalogue: CatalogueEntryType[] = [];
@@ -69,11 +69,11 @@ if (ollamaModel !== null) {
 }
 
 if (process.env.GROQ_API_KEY) {
-  const groqAdapter = new GroqApiAdapter(process.env.GROQ_API_KEY);
+  const groqAdapter = OpenAiCompatibleAdapter.groq(process.env.GROQ_API_KEY);
   const groqModel = await groqAdapter.selectChatModel();
   if (groqModel !== null) {
     catalogue.push({
-      descriptor: { provider: 'groq', model: groqModel, capabilities: { toolUse: 'full', structuredOutput: true, jsonMode: true } },
+      descriptor: { provider: 'groq', model: groqModel, capabilities: { toolUse: 'partial', structuredOutput: true, jsonMode: true } },
       factory:    () => groqAdapter,
     });
   }
