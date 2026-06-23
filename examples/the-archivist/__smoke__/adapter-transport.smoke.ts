@@ -15,10 +15,7 @@
 
 import { strict as assert } from 'node:assert';
 
-import { CerebrasApiAdapter }  from '@studnicky/dagonizer-adapter-cerebras';
-import { GroqApiAdapter }      from '@studnicky/dagonizer-adapter-groq';
-import { MistralApiAdapter }   from '@studnicky/dagonizer-adapter-mistral';
-import { OpenRouterApiAdapter } from '@studnicky/dagonizer-adapter-openrouter';
+import { OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
 import { ChatRequestBuilder }  from '@studnicky/dagonizer/adapter';
 import type { ChatRequestType }    from '@studnicky/dagonizer/adapter';
 
@@ -117,7 +114,7 @@ const openAiSuccessResponse = {
 let failures = 0;
 
 await SmokeRunner.check('Groq: POSTs to api.groq.com with max_completion_tokens and OpenAI tools', async () => {
-  const adapter = new GroqApiAdapter('sk-test');
+  const adapter = OpenAiCompatibleAdapter.groq('sk-test');
   const captured = SmokeRunner.captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
@@ -133,7 +130,7 @@ await SmokeRunner.check('Groq: POSTs to api.groq.com with max_completion_tokens 
 });
 
 await SmokeRunner.check('Cerebras: POSTs to api.cerebras.ai with gpt-oss-120b default and max_completion_tokens', async () => {
-  const adapter = new CerebrasApiAdapter('sk-test');
+  const adapter = OpenAiCompatibleAdapter.cerebras('sk-test');
   const captured = SmokeRunner.captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
@@ -144,7 +141,7 @@ await SmokeRunner.check('Cerebras: POSTs to api.cerebras.ai with gpt-oss-120b de
 });
 
 await SmokeRunner.check('Mistral: POSTs to api.mistral.ai with max_tokens and OpenAI tools', async () => {
-  const adapter = new MistralApiAdapter('sk-test');
+  const adapter = OpenAiCompatibleAdapter.mistral('sk-test');
   const captured = SmokeRunner.captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
@@ -156,7 +153,10 @@ await SmokeRunner.check('Mistral: POSTs to api.mistral.ai with max_tokens and Op
 });
 
 await SmokeRunner.check('OpenRouter: POSTs with HTTP-Referer + X-Title headers and OpenAI tools', async () => {
-  const adapter = new OpenRouterApiAdapter('sk-test');
+  const adapter = OpenAiCompatibleAdapter.openRouter('sk-test', {
+    'referer': 'https://studnicky.github.io/Dagonizer/',
+    'title': 'Dagonizer Archivist',
+  });
   const captured = SmokeRunner.captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
@@ -167,13 +167,13 @@ await SmokeRunner.check('OpenRouter: POSTs with HTTP-Referer + X-Title headers a
 });
 
 await SmokeRunner.check('Adapters expose capabilities metadata', async () => {
-  const groq = new GroqApiAdapter('sk-test');
-  const cerebras = new CerebrasApiAdapter('sk-test');
-  const mistral = new MistralApiAdapter('sk-test');
-  const openrouter = new OpenRouterApiAdapter('sk-test');
-  assert.equal(groq.capabilities.toolUse, 'full');
+  const groq = OpenAiCompatibleAdapter.groq('sk-test');
+  const cerebras = OpenAiCompatibleAdapter.cerebras('sk-test');
+  const mistral = OpenAiCompatibleAdapter.mistral('sk-test');
+  const openrouter = OpenAiCompatibleAdapter.openRouter('sk-test');
+  assert.equal(groq.capabilities.toolUse, 'partial');
   assert.equal(cerebras.capabilities.toolUse, 'partial');
-  assert.equal(mistral.capabilities.toolUse, 'full');
+  assert.equal(mistral.capabilities.toolUse, 'partial');
   assert.equal(openrouter.capabilities.toolUse, 'partial');
   for (const a of [groq, cerebras, mistral, openrouter]) {
     assert.equal(typeof a.capabilities.structuredOutput, 'boolean');

@@ -82,11 +82,11 @@ export type OpenAiCompatibleAdapterOptionsType = {
   readonly baseDelayMs?: number;
 }
 
-export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
+export class OpenAiCompatibleAdapter extends BaseAdapter {
   readonly #apiKey: string;
   readonly #config: ResolvedOpenAiCompatibleConfig;
 
-  protected constructor(
+  constructor(
     apiKey: string,
     config: OpenAiCompatibleConfigType,
     options: OpenAiCompatibleAdapterOptionsType = {},
@@ -352,5 +352,78 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   /** A non-null, non-array object — the JSON-object ingest shape. */
   static #isJsonObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  /** Pre-configured adapter for Groq (api.groq.com). Uses max_completion_tokens. */
+  static groq(apiKey: string, options?: { readonly model?: string; readonly timeoutMs?: number }): OpenAiCompatibleAdapter {
+    return new OpenAiCompatibleAdapter(apiKey, {
+      'id': 'groq',
+      'displayName': 'Groq',
+      'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
+      'endpoint': 'https://api.groq.com/openai/v1/chat/completions',
+      'modelsEndpoint': 'https://api.groq.com/openai/v1/models',
+      'defaultModel': options?.model ?? 'llama-3.3-70b-versatile',
+      'tokenField': 'max_completion_tokens',
+      'extraHeaders': {},
+      ...(options?.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {}),
+    });
+  }
+
+  /** Pre-configured adapter for Cerebras (api.cerebras.ai). Uses max_completion_tokens. */
+  static cerebras(apiKey: string, options?: { readonly model?: string; readonly timeoutMs?: number }): OpenAiCompatibleAdapter {
+    return new OpenAiCompatibleAdapter(apiKey, {
+      'id': 'cerebras',
+      'displayName': 'Cerebras',
+      'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
+      'endpoint': 'https://api.cerebras.ai/v1/chat/completions',
+      'modelsEndpoint': 'https://api.cerebras.ai/v1/models',
+      'defaultModel': options?.model ?? 'gpt-oss-120b',
+      'tokenField': 'max_completion_tokens',
+      'extraHeaders': {},
+      ...(options?.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {}),
+    });
+  }
+
+  /** Pre-configured adapter for Mistral (api.mistral.ai). Uses max_tokens. */
+  static mistral(apiKey: string, options?: { readonly model?: string; readonly timeoutMs?: number }): OpenAiCompatibleAdapter {
+    return new OpenAiCompatibleAdapter(apiKey, {
+      'id': 'mistral',
+      'displayName': 'Mistral',
+      'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
+      'endpoint': 'https://api.mistral.ai/v1/chat/completions',
+      'modelsEndpoint': 'https://api.mistral.ai/v1/models',
+      'defaultModel': options?.model ?? 'mistral-small-latest',
+      'tokenField': 'max_tokens',
+      'extraHeaders': {},
+      ...(options?.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {}),
+    });
+  }
+
+  /**
+   * Pre-configured adapter for OpenRouter (openrouter.ai).
+   * Routes to any provider model via a single API key and endpoint.
+   * Model IDs: 'anthropic/claude-3-haiku', 'meta-llama/llama-3.3-70b-instruct:free', etc.
+   * listModels() returns the full OpenRouter catalogue (200+ models across providers).
+   */
+  static openRouter(apiKey: string, options?: {
+    readonly model?: string;
+    readonly referer?: string;
+    readonly title?: string;
+    readonly timeoutMs?: number;
+  }): OpenAiCompatibleAdapter {
+    return new OpenAiCompatibleAdapter(apiKey, {
+      'id': 'openrouter',
+      'displayName': 'OpenRouter',
+      'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
+      'endpoint': 'https://openrouter.ai/api/v1/chat/completions',
+      'modelsEndpoint': 'https://openrouter.ai/api/v1/models',
+      'defaultModel': options?.model ?? 'meta-llama/llama-3.3-70b-instruct:free',
+      'tokenField': 'max_tokens',
+      'extraHeaders': {
+        ...(options?.referer !== undefined ? { 'HTTP-Referer': options.referer } : {}),
+        ...(options?.title !== undefined ? { 'X-Title': options.title } : {}),
+      },
+      ...(options?.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {}),
+    });
   }
 }

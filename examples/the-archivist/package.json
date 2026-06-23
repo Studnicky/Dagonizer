@@ -14,13 +14,9 @@
   },
   "dependencies": {
     "@studnicky/dagonizer": "workspace:^",
-    "@studnicky/dagonizer-adapter-cerebras": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-api": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-nano": "workspace:^",
-    "@studnicky/dagonizer-adapter-groq": "workspace:^",
-    "@studnicky/dagonizer-adapter-mistral": "workspace:^",
     "@studnicky/dagonizer-adapter-ollama": "workspace:^",
-    "@studnicky/dagonizer-adapter-openrouter": "workspace:^",
     "@studnicky/dagonizer-adapter-web-llm": "workspace:^",
     "@studnicky/dagonizer-book-entities": "workspace:^",
     "@studnicky/dagonizer-embedder-gemini-api": "workspace:^",

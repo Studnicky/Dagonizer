@@ -33,13 +33,10 @@
 import type { LlmClientInterface } from '../services.ts';
 
 import {
-  CerebrasApiAdapter,
   GeminiApiAdapter,
   GeminiNanoAdapter,
-  GroqApiAdapter,
-  MistralApiAdapter,
   OllamaApiAdapter,
-  OpenRouterApiAdapter,
+  OpenAiCompatibleAdapter,
   WebLlmAdapter,
   OllamaProbe,
   type GeminiNanoAvailabilityType,
@@ -402,10 +399,10 @@ export class ProviderInstantiator {
         if (inputs.onWebLlmProgress !== undefined) options.onProgress = inputs.onWebLlmProgress;
         return new BaseLlmClient(new WebLlmAdapter(options));
       },
-      'groq':       () => new BaseLlmClient(new GroqApiAdapter(requireKey('groq', 'groq'))),
-      'cerebras':   () => new BaseLlmClient(new CerebrasApiAdapter(requireKey('cerebras', 'cerebras'))),
-      'mistral':    () => new BaseLlmClient(new MistralApiAdapter(requireKey('mistral', 'mistral'))),
-      'openrouter': () => new BaseLlmClient(new OpenRouterApiAdapter(requireKey('openrouter', 'openrouter'))),
+      'groq':       () => new BaseLlmClient(OpenAiCompatibleAdapter.groq(requireKey('groq', 'groq'))),
+      'cerebras':   () => new BaseLlmClient(OpenAiCompatibleAdapter.cerebras(requireKey('cerebras', 'cerebras'))),
+      'mistral':    () => new BaseLlmClient(OpenAiCompatibleAdapter.mistral(requireKey('mistral', 'mistral'))),
+      'openrouter': () => new BaseLlmClient(OpenAiCompatibleAdapter.openRouter(requireKey('openrouter', 'openrouter'))),
       'ollama': () => {
         // No API key required. Ollama's loopback daemon accepts a
         // placeholder Bearer header. Pass the installed model the picker
@@ -425,13 +422,10 @@ export class ProviderInstantiator {
 
 export { BaseLlmClient } from './BaseLlmClient.ts';
 export {
-  CerebrasApiAdapter,
   GeminiApiAdapter,
   GeminiNanoAdapter,
-  GroqApiAdapter,
-  MistralApiAdapter,
   OllamaApiAdapter,
-  OpenRouterApiAdapter,
+  OpenAiCompatibleAdapter,
   WebLlmAdapter,
   OllamaProbe,
 } from './adapters/index.ts';

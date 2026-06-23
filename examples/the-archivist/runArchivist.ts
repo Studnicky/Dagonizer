@@ -44,12 +44,9 @@ import { ComposeRetryLoopBundleFactory } from './embedded-dags/ComposeRetryLoopD
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedDag } from './ObservedDag.ts';
-import { CerebrasApiAdapter }   from '@studnicky/dagonizer-adapter-cerebras';
 import { GeminiApiAdapter }     from '@studnicky/dagonizer-adapter-gemini-api';
-import { GroqApiAdapter }       from '@studnicky/dagonizer-adapter-groq';
-import { MistralApiAdapter }    from '@studnicky/dagonizer-adapter-mistral';
 import { OllamaApiAdapter }     from '@studnicky/dagonizer-adapter-ollama';
-import { OpenRouterApiAdapter } from '@studnicky/dagonizer-adapter-openrouter';
+import { OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
 import { GeminiApiEmbedder }    from '@studnicky/dagonizer-embedder-gemini-api';
 import { MistralEmbedder }      from '@studnicky/dagonizer-embedder-mistral';
 import { OllamaEmbedder }       from '@studnicky/dagonizer-embedder-ollama';
@@ -135,7 +132,7 @@ if (Env.get('GEMINI_API_KEY').length > 0) {
   }
 }
 if (Env.get('CEREBRAS_API_KEY').length > 0) {
-  const cerebrasAdapter = new CerebrasApiAdapter(Env.get('CEREBRAS_API_KEY'));
+  const cerebrasAdapter = OpenAiCompatibleAdapter.cerebras(Env.get('CEREBRAS_API_KEY'));
   const cerebrasModel = await cerebrasAdapter.selectChatModel({
     ...(Env.get('CEREBRAS_MODEL').length > 0 ? { 'preferred': Env.get('CEREBRAS_MODEL') } : {}),
   });
@@ -147,7 +144,7 @@ if (Env.get('CEREBRAS_API_KEY').length > 0) {
   }
 }
 if (Env.get('GROQ_API_KEY').length > 0) {
-  const groqAdapter = new GroqApiAdapter(Env.get('GROQ_API_KEY'));
+  const groqAdapter = OpenAiCompatibleAdapter.groq(Env.get('GROQ_API_KEY'));
   const groqModel = await groqAdapter.selectChatModel({
     ...(Env.get('GROQ_MODEL').length > 0 ? { 'preferred': Env.get('GROQ_MODEL') } : {}),
   });
@@ -159,7 +156,7 @@ if (Env.get('GROQ_API_KEY').length > 0) {
   }
 }
 if (Env.get('MISTRAL_API_KEY').length > 0) {
-  const mistralAdapter = new MistralApiAdapter(Env.get('MISTRAL_API_KEY'));
+  const mistralAdapter = OpenAiCompatibleAdapter.mistral(Env.get('MISTRAL_API_KEY'));
   const mistralModel = await mistralAdapter.selectChatModel({
     ...(Env.get('MISTRAL_MODEL').length > 0 ? { 'preferred': Env.get('MISTRAL_MODEL') } : {}),
   });
@@ -171,7 +168,7 @@ if (Env.get('MISTRAL_API_KEY').length > 0) {
   }
 }
 if (Env.get('OPENROUTER_API_KEY').length > 0) {
-  const openRouterAdapter = new OpenRouterApiAdapter(Env.get('OPENROUTER_API_KEY'));
+  const openRouterAdapter = OpenAiCompatibleAdapter.openRouter(Env.get('OPENROUTER_API_KEY'));
   const openRouterModel = await openRouterAdapter.selectChatModel({
     ...(Env.get('OPENROUTER_MODEL').length > 0 ? { 'preferred': Env.get('OPENROUTER_MODEL') } : {}),
   });
