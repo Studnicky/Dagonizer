@@ -23,7 +23,7 @@
 // ---------------------------------------------------------------------------
 
 export type { DagonizerInterface } from '../Dagonizer.js';
-export type { NodeStateInterface } from '../NodeStateBase.js';
+export type { NodeStateInterface, StateFieldType, StateFieldsType } from '../NodeStateBase.js';
 export type { DAGErrorInterface } from '../errors/DAGError.js';
 
 // ---------------------------------------------------------------------------

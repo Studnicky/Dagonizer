@@ -6,6 +6,18 @@ export { NodeStateBase } from './NodeStateBase.js';
 export { MetadataGetter } from './MetadataGetter.js';
 
 // =============================================================================
+// LOGGER
+// =============================================================================
+
+
+// =============================================================================
+// OBSERVABILITY
+// =============================================================================
+
+export { ObservedDag } from './ObservedDag.js';
+export type { DagLoggerInterface } from './ObservedDag.js';
+
+// =============================================================================
 // CONSTANTS
 // =============================================================================
 
@@ -233,6 +245,12 @@ export { ScalarNode } from './core/ScalarNode.js';
 export { NodeRunner } from './core/NodeRunner.js';
 
 // =============================================================================
+// BASE LLM SERVICE
+// =============================================================================
+
+export { BaseLlmService } from './adapter/BaseLlmService.js';
+
+// =============================================================================
 // PATTERNS
 // =============================================================================
 
@@ -277,7 +295,7 @@ export type { DagLifecycleEventType } from './progress/BusObserver.js';
 
 export type { DagonizerInterface } from './Dagonizer.js';
 export type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
-export type { NodeStateInterface } from './NodeStateBase.js';
+export type { NodeStateInterface, StateFieldType, StateFieldsType } from './NodeStateBase.js';
 export type { DAGErrorInterface } from './errors/DAGError.js';
 
 // Child-state factory: class with clone-parent default.
@@ -291,6 +309,7 @@ export type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js
 export type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 export type { PluginInterface, PluginReceiverType } from './contracts/PluginInterface.js';
+export { PluginLoader } from './plugin/PluginLoader.js';
 export type { DagOutcomeType } from './contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
 export type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';

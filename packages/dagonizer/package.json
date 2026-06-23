@@ -182,6 +182,10 @@
     "./plugin": {
       "types": "./dist/plugin/index.d.ts",
       "default": "./dist/plugin/index.js"
+    },
+    "./observe": {
+      "types": "./dist/ObservedDag.d.ts",
+      "default": "./dist/ObservedDag.js"
     }
   },
   "scripts": {

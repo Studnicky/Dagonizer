@@ -11,7 +11,7 @@ import type { CandidateType } from './entities/Book.ts';
 import type { BookWorksetItemType } from './nodes/buildBookWorksets.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/types';
+import type { JsonObjectType, StateFieldsType } from '@studnicky/dagonizer/types';
 
 /**
  * A single turn in the visitor–archivist conversation.
@@ -79,6 +79,20 @@ export type ArchivistIntent =
   | 'off-topic';         // visitor wandered: not a book query and not memory-related
 
 export class ArchivistState extends NodeStateBase {
+  /**
+   * Declared scalar fields for schema-driven snapshot/restore.
+   * Complex fields (arrays with item type-guards, nested objects,
+   * discriminated-union fields) are handled manually in
+   * `snapshotData` / `restoreData`.
+   */
+  static readonly FIELDS: StateFieldsType = {
+    'query':        'string',
+    'userLanguage': 'string',
+    'draft':        'string',
+    'failureCause': 'string',
+    'runId':        'string',
+  };
+
   /** Raw question the visitor submitted. */
   query = '';
   /**
@@ -218,15 +232,12 @@ export class ArchivistState extends NodeStateBase {
   // #region snapshot-restore
   protected override snapshotData(): JsonObjectType {
     return {
-      "query":        this.query,
-      "userLanguage": this.userLanguage,
+      ...NodeStateBase.snapshotFields(this, ArchivistState.FIELDS),
       "intent":       this.intent,
       "terms":        [...this.terms],
       "candidates":   this.candidates.map(ArchivistState.candidateToJson),
       "shortlist":    this.shortlist.map(ArchivistState.candidateToJson),
-      "draft":        this.draft,
       "approvalState": this.approvalState,
-      "failureCause": this.failureCause,
       "recalledContext": {
         "priorIntents":        this.recalledContext.priorIntents.map(ArchivistState.priorIntentToJson),
         "recentCandidates":    this.recalledContext.recentCandidates.map(ArchivistState.candidateToJson),
@@ -294,16 +305,13 @@ export class ArchivistState extends NodeStateBase {
   // #endregion snapshot-helpers
 
   protected override restoreData(snap: JsonObjectType): void {
-    if (typeof snap['query']        === 'string') this.query        = snap['query'];
-    if (typeof snap['userLanguage'] === 'string') this.userLanguage = snap['userLanguage'];
+    NodeStateBase.restoreFields(this, snap, ArchivistState.FIELDS);
     const rawIntent = snap['intent'];
     if (ArchivistState.isIntent(rawIntent)) this.intent = rawIntent;
-    if (typeof snap['draft']        === 'string')  this.draft  = snap['draft'];
     const approvalSnap = snap['approvalState'];
     if (approvalSnap === 'pending' || approvalSnap === 'approved' || approvalSnap === 'rejected') {
       this.approvalState = approvalSnap;
     }
-    if (typeof snap['failureCause'] === 'string') this.failureCause = snap['failureCause'];
     const rawTerms = snap['terms'];
     if (Array.isArray(rawTerms) && rawTerms.every((x): x is string => typeof x === 'string')) {
       this.terms = rawTerms;

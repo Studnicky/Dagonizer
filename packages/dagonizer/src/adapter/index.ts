@@ -100,3 +100,5 @@ export type { EmbedderFactoryType } from './EmbedderRegistry.js';
 export { EmbedderCascade } from './EmbedderCascade.js';
 
 export { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
+
+export { BaseLlmService } from './BaseLlmService.js';

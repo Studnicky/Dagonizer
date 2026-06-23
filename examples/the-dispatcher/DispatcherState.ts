@@ -8,7 +8,7 @@
  */
 
 import { NodeStateBase } from '@studnicky/dagonizer';
-import type { JsonObjectType } from '@studnicky/dagonizer/types';
+import type { JsonObjectType, StateFieldsType } from '@studnicky/dagonizer/types';
 
 /**
  * A single turn in the customer–agent conversation.
@@ -21,6 +21,14 @@ export type ConversationTurnType = {
 };
 
 export class DispatcherState extends NodeStateBase {
+  /** Declared scalar fields for schema-driven snapshot/restore. */
+  static readonly FIELDS: StateFieldsType = {
+    'message':          'string',
+    'response':         'string',
+    'escalationReason': 'string',
+    'humanMode':        'boolean',
+  };
+
   /** Current inbound customer message. */
   message: string = '';
   /** Composed response (AI or human). */
@@ -38,19 +46,13 @@ export class DispatcherState extends NodeStateBase {
   // #region snapshot-restore
   protected override snapshotData(): JsonObjectType {
     return {
-      'message':          this.message,
-      'response':         this.response,
-      'escalationReason': this.escalationReason,
-      'humanMode':        this.humanMode,
-      'conversation':     this.conversation.map(DispatcherState.turnToJson),
+      ...NodeStateBase.snapshotFields(this, DispatcherState.FIELDS),
+      'conversation': this.conversation.map(DispatcherState.turnToJson),
     };
   }
 
   protected override restoreData(snap: JsonObjectType): void {
-    if (typeof snap['message']          === 'string')  this.message          = snap['message'];
-    if (typeof snap['response']         === 'string')  this.response         = snap['response'];
-    if (typeof snap['escalationReason'] === 'string')  this.escalationReason = snap['escalationReason'];
-    if (typeof snap['humanMode']        === 'boolean') this.humanMode        = snap['humanMode'];
+    NodeStateBase.restoreFields(this, snap, DispatcherState.FIELDS);
     const rawConversation = snap['conversation'];
     if (Array.isArray(rawConversation)) {
       this.conversation = DispatcherState.filterConversation(rawConversation);

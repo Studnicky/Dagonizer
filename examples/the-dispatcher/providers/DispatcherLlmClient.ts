@@ -1,6 +1,9 @@
 /**
  * DispatcherLlmClient: DispatcherLlmInterface backed by any LlmAdapterInterface.
  *
+ * Extends BaseLlmService for the adapter-wrapping boilerplate (text() / chat() helpers,
+ * contentOf() extractor). Domain logic — the prompts and output parsing — lives here.
+ *
  * classify() — asks the LLM to output a single word: routine, escalate, or off-topic.
  * compose()  — generates a concise support reply (≤3 sentences) using recent
  *              conversation history as context.
@@ -9,8 +12,9 @@
  * propagates to in-flight HTTP requests.
  */
 
+import { BaseLlmService } from '@studnicky/dagonizer/adapter';
+import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
 import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
-import type { LlmAdapterInterface, ChatResponseMessageType } from '@studnicky/dagonizer/adapter';
 
 import type { ConversationTurnType } from '../DispatcherState.ts';
 import type { DispatcherLlmInterface } from '../services.ts';
@@ -27,11 +31,9 @@ const SYSTEM_SUPPORT = `You are a helpful customer support agent for Noocodex, a
 Be concise, friendly, and professional. If you cannot help, say so clearly and offer to escalate.
 Keep responses under 3 sentences.`;
 
-export class DispatcherLlmClient implements DispatcherLlmInterface {
-  readonly #adapter: LlmAdapterInterface;
-
+export class DispatcherLlmClient extends BaseLlmService implements DispatcherLlmInterface {
   constructor(adapter: LlmAdapterInterface) {
-    this.#adapter = adapter;
+    super(adapter);
   }
 
   async classify(
@@ -39,27 +41,18 @@ export class DispatcherLlmClient implements DispatcherLlmInterface {
     conversation: readonly ConversationTurnType[],
     signal?: AbortSignal,
   ): Promise<'routine' | 'escalate' | 'off-topic'> {
-    const recentHistory = conversation.slice(-4);
-    const contextBlock = recentHistory.length > 0
-      ? `\n\nRecent conversation:\n${recentHistory.map((t) => `[${t.role}] ${t.text}`).join('\n')}`
+    const contextBlock = conversation.length > 0
+      ? `\n\nRecent conversation:\n${conversation.slice(-4).map((t) => `[${t.role}] ${t.text}`).join('\n')}`
       : '';
 
-    const request = ChatRequestBuilder.from({
-      'messages': [
-        {
-          'role':    'user',
-          'content': `${SYSTEM_CLASSIFY}${contextBlock}\n\nMessage to classify: ${message}`,
-        },
-      ],
-      'temperature': 0,
-      'maxTokens':   8,
-      ...(signal !== undefined ? { 'signal': signal } : {}),
-    });
+    const raw = await this.text(
+      `${SYSTEM_CLASSIFY}${contextBlock}\n\nMessage to classify: ${message}`,
+      { 'temperature': 0, 'maxTokens': 8, ...(signal !== undefined ? { signal } : {}) },
+    );
 
-    const response = await this.#adapter.chat(request);
-    const raw = DispatcherLlmClient.contentOf(response.message).toLowerCase().trim();
-    if (raw.includes('escalate')) return 'escalate';
-    if (raw.includes('off') || raw.includes('topic') || message.trim().length === 0) return 'off-topic';
+    const lower = raw.toLowerCase().trim();
+    if (lower.includes('escalate')) return 'escalate';
+    if (lower.includes('off') || lower.includes('topic') || message.trim().length === 0) return 'off-topic';
     return 'routine';
   }
 
@@ -84,11 +77,7 @@ export class DispatcherLlmClient implements DispatcherLlmInterface {
       ...(signal !== undefined ? { 'signal': signal } : {}),
     });
 
-    const response = await this.#adapter.chat(request);
-    return DispatcherLlmClient.contentOf(response.message).trim();
-  }
-
-  private static contentOf(message: ChatResponseMessageType): string {
-    return message.variant === 'tools' ? '' : message.content;
+    const msg = await this.chat(request);
+    return BaseLlmService.contentOf(msg).trim();
   }
 }
