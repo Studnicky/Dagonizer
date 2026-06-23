@@ -10,7 +10,10 @@
  * cannot be statically discovered.
  */
 
+import type { PluginInterface } from '../contracts/PluginInterface.js';
 import type { DAGType } from '../entities/dag/DAG.js';
+
+import { PluginLoader } from './PluginLoader.js';
 
 /**
  * Static DAG-walker for discovering literal sub-DAG references in a DAG
@@ -88,5 +91,38 @@ export class PluginDiscovery {
     }
 
     return result;
+  }
+
+  /**
+   * Load all plugin modules referenced in the DAG forest and register them on
+   * the dispatcher.
+   *
+   * Walks the DAG's referenced sub-DAG names via `PluginDiscovery.walk()`,
+   * maps each name to a module specifier via `resolveSpecifier`, dynamically
+   * imports each via `PluginLoader.load()`, validates the default export as a
+   * `PluginInterface`, and calls `dispatcher.registerPlugin(plugin)` for each.
+   *
+   * The entry DAG name itself is included in the walk result (at index 0). Pass
+   * a `resolveSpecifier` that returns `undefined` (or an empty string) for names
+   * that do not map to an npm package to skip them, or filter the walk result
+   * upstream before calling `loadAll`.
+   *
+   * @param dag              - Entry DAG to walk.
+   * @param registry         - Known DAG registry for the walk.
+   * @param dispatcher       - The dispatcher to register plugins on.
+   * @param resolveSpecifier - Maps a dag name to an import() specifier.
+   */
+  static async loadAll(
+    dag: DAGType,
+    registry: ReadonlyMap<string, DAGType>,
+    dispatcher: { registerPlugin(plugin: PluginInterface): void },
+    resolveSpecifier: (dagName: string) => string,
+  ): Promise<void> {
+    const names = PluginDiscovery.walk(dag, registry);
+    for (const name of names) {
+      const specifier = resolveSpecifier(name);
+      const plugin = await PluginLoader.load(specifier);
+      dispatcher.registerPlugin(plugin);
+    }
   }
 }

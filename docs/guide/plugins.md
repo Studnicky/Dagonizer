@@ -173,6 +173,48 @@ const all = PluginDiscovery.walk(myDag, registry);
 
 `dagFrom` references (runtime-resolved paths) are excluded from static discovery; only build-time `dag` literals are collected.
 
+### `PluginLoader` — type-safe dynamic import
+
+When loading a plugin from an npm package or a dynamic path, the return type of `import()` is `unknown`. `PluginLoader` from `@studnicky/dagonizer` validates the default export against the `PluginInterface` structural contract — no casts required at the call site.
+
+```ts
+import { PluginLoader } from '@studnicky/dagonizer';
+
+// Dynamic import: validates default export, throws DAGError('PLUGIN_INVALID') if invalid
+const plugin = await PluginLoader.load('my-dagonizer-plugin');
+dispatcher.registerPlugin(plugin);
+```
+
+Three entry points are available:
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `PluginLoader.load(specifier)` | `(specifier: string) => Promise<PluginInterface>` | Dynamic import + validation in one call |
+| `PluginLoader.validate(mod, specifier?)` | `(mod: unknown) => PluginInterface` | Validate an already-imported module namespace |
+| `PluginLoader.isPlugin(value)` | `(value: unknown) => value is PluginInterface` | Structural type-guard predicate |
+
+`PluginLoader.validate` accepts a module namespace object (`{ default: plugin }`) or the plugin object directly. `PluginLoader.isPlugin` is the schema-validation boundary: it checks that the value is a non-null object with a callable `register` method. JSON Schema cannot express "has a method", so the structural predicate is the correct approach.
+
+On failure, both `load` and `validate` throw a `DAGError` with `code: 'PLUGIN_INVALID'`.
+
+### `PluginDiscovery.loadAll` — batch walk + register
+
+To walk a DAG forest, load each referenced plugin module, and register the plugins on a dispatcher in a single call:
+
+```ts
+import { PluginDiscovery } from '@studnicky/dagonizer/plugin';
+
+const registry = new Map(dispatcher.listDAGs().map(d => [d.name, d]));
+await PluginDiscovery.loadAll(
+  entryDag,
+  registry,
+  dispatcher,
+  (dagName) => `@myorg/dagonizer-plugin-${dagName}`,
+);
+```
+
+`loadAll` uses `PluginLoader.load` internally; validation and `registerPlugin` are called for each name returned by `PluginDiscovery.walk`.
+
 ### Full example
 
 <<< @/../examples/33-plugin.ts#plugin-registration

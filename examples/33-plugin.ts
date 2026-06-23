@@ -19,7 +19,7 @@
  * Run: npx tsx examples/33-plugin.ts
  */
 
-import { Dagonizer } from '@studnicky/dagonizer';
+import { Dagonizer, PluginLoader } from '@studnicky/dagonizer';
 import type { DispatcherObserverType } from '@studnicky/dagonizer';
 
 import { NormalizePlugin, PipelineState, parentDag } from './dags/33-plugin.js';
@@ -63,6 +63,18 @@ const dispatcher = new Dagonizer<PipelineState>({
 dispatcher.registerPlugin(new NormalizePlugin());
 dispatcher.registerDAG(parentDag);
 // #endregion plugin-registration
+
+// ---------------------------------------------------------------------------
+// Alternative: PluginLoader.load() — dynamic import with validation, no cast.
+// For npm-published plugins, replace the direct constructor call with:
+//
+//   const plugin = await PluginLoader.load('my-dagonizer-plugin');
+//   dispatcher.registerPlugin(plugin);
+//
+// PluginLoader.validate(mod) accepts an already-imported module namespace;
+// PluginLoader.isPlugin(value) is the structural type-guard predicate.
+// ---------------------------------------------------------------------------
+void PluginLoader; // reference to suppress unused-import warnings in the static example
 
 // ---------------------------------------------------------------------------
 // Execute

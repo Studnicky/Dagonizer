@@ -28,7 +28,7 @@
 // ---------------------------------------------------------------------------
 
 export { SingleNodeSchema } from './dag/SingleNode.js';
-export type { SingleNodeType, SingleNodePlacementType } from './dag/SingleNode.js';
+export type { SingleNodeType, SingleNodePlacementType, PlacementRetryConfigType } from './dag/SingleNode.js';
 
 export { TerminalNodeSchema } from './dag/TerminalNode.js';
 export type { TerminalNodeType } from './dag/TerminalNode.js';
