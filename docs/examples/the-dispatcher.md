@@ -1,6 +1,6 @@
 ---
 title: 'The Dispatcher'
-description: 'A warm-handoff customer support demo built on Dagonizer: HITL park-and-correlate, checkpoint/resume, and a trolley switch that forces human routing. Runs entirely in your browser — no LLM required.'
+description: 'A warm-handoff customer support demo built on Dagonizer: HITL park-and-correlate, checkpoint/resume, and a trolley switch that forces human routing. Runs in your browser with Ollama or a cloud provider API key.'
 seeAlso:
   - text: 'The Archivist (in-browser demo)'
     link: './the-archivist'
@@ -23,9 +23,11 @@ seeAlso:
 
 The Dispatcher is a warm-handoff customer support pipeline: a customer sends a
 message, a classifier routes it, and either the AI composes a reply instantly or
-the flow suspends and waits for a human operator to respond. No LLM is required
-— classification is deterministic (keyword scan + trolley switch), and the
-compose step just stamps a canned reply in the demo.
+the flow suspends and waits for a human operator to respond. The browser runner
+uses the same backend picker as The Archivist — Ollama locally, or cloud providers
+(Groq, Gemini, Cerebras, Mistral, OpenRouter) with API keys. Classification and
+composition both call the LLM; the trolley switch and escalation routing are
+deterministic overrides on top of the LLM decision.
 
 It runs on the same `@studnicky/dagonizer` engine as [The Archivist](./the-archivist)
 and [The Cartographer](./the-cartographer). What changes is the domain primitive:
@@ -48,9 +50,9 @@ Three exit paths, each producing a different outcome:
 
 | Path | Trigger | Terminal branch | What happens |
 |------|---------|----------------|--------------|
-| Routine | No escalation keywords; humanMode off | `ai-compose → send-response → end` | AI stamps a canned reply; flow completes in one execution |
-| Escalated | Keyword match or humanMode on | `park-for-operator` parks | Flow suspends; operator tab activates; operator responds; resume continues to `send-response → end` |
-| Off-topic | Empty or blank message | `decline → end` | Polite refusal; flow completes immediately |
+| Routine | LLM classifies message as `routine`; humanMode off | `ai-compose → send-response → end` | LLM composes a reply; flow completes in one execution |
+| Escalated | LLM classifies as `escalate`, or humanMode on, or LLM error | `park-for-operator` parks | Flow suspends; operator tab activates; operator responds; resume continues to `send-response → end` |
+| Off-topic | LLM classifies as `off-topic`, or blank message | `decline → end` | Polite refusal; flow completes immediately |
 
 ## The trolley switch
 

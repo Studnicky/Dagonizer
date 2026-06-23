@@ -19,6 +19,11 @@
  *   Right pane auto-switches to Operator tab.
  *   Operator types response → click "Send response".
  *   Checkpoint.capture → restoreState → set response → dispatcher.resume().
+ *
+ * LLM backend: BackendPicker (same as ArchivistRunner). Detection runs at mount.
+ * When no backend is available, the no-model gate shows BackendPicker inline.
+ * classify-message and ai-compose call the LLM; trolley switch and escalation
+ * routing are deterministic overrides on top of the LLM decision.
  */
 
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
@@ -30,11 +35,16 @@ import type { DAGType } from '@studnicky/dagonizer';
 import { DispatcherState } from '../../../../examples/the-dispatcher/DispatcherState.ts';
 import type { ConversationTurnType } from '../../../../examples/the-dispatcher/DispatcherState.ts';
 import { DispatcherBundleFactory } from '../../../../examples/the-dispatcher/dag.ts';
+import type { DispatcherServices } from '../../../../examples/the-dispatcher/services.ts';
+import { DispatcherLlmClient } from '../../../../examples/the-dispatcher/providers/DispatcherLlmClient.ts';
 
+import { ApiKeyStore, BackendMatrix, BaseLlmClient, MobileDetection, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
+import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import { ObservedDag } from '../../../../examples/the-archivist/ObservedDag.ts';
 import { DomConsoleLogger } from '../../../../examples/the-archivist/logger/DomConsoleLogger.ts';
 import type { LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 
+import BackendPicker from './BackendPicker.vue';
 import DagGraph from './DagGraph.vue';
 import PanesTabs from './PanesTabs.vue';
 import TraceFeed from './TraceFeed.vue';
@@ -44,6 +54,23 @@ type TraceEvent =
   | { readonly variant: 'start'; readonly node: string; readonly ts: number }
   | { readonly variant: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
   | { readonly variant: 'error'; readonly node: string; readonly ts: number; readonly message: string };
+
+// ── Backend state ─────────────────────────────────────────────────────────────
+const backends = ref<readonly BackendAvailability[]>([]);
+const savedBackend = typeof localStorage !== 'undefined'
+  ? (localStorage.getItem('dagonizer-active-backend') as ProviderId | null)
+  : null;
+const activeBackend = ref<ProviderId | null>(savedBackend);
+const noModel  = ref(false);
+const isMobile = ref(false);
+const apiKeys  = ref<Partial<Record<ProviderId, string>>>(ApiKeyStore.load());
+const ollamaModel = ref<string>(OllamaModels.loadModel());
+
+const resolvedOllamaModel = computed<string>(() => {
+  if (ollamaModel.value.length > 0) return ollamaModel.value;
+  const entry = backends.value.find((b) => b.id === 'ollama');
+  return entry?.resolvedModel ?? '';
+});
 
 // ── State ────────────────────────────────────────────────────────────────────
 const customerQuery    = ref('');
@@ -232,17 +259,68 @@ watch(
   },
 );
 
-// ── Boot ─────────────────────────────────────────────────────────────────────
-onMounted(() => {
-  // Build the DAG once at mount so the graph renders before first run.
-  const bundle = DispatcherBundleFactory.create();
-  const dag = bundle.dags[0];
-  if (dag !== undefined) dispatcherDag.value = dag;
+// ── Backend watches ───────────────────────────────────────────────────────────
+watch(apiKeys, async () => {
+  backends.value = await BackendMatrix.detect({
+    'apiKeys': apiKeys.value,
+    ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}),
+  });
+  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+}, { 'deep': true });
+
+watch(activeBackend, (id) => {
+  if (typeof localStorage !== 'undefined' && id !== null) {
+    localStorage.setItem('dagonizer-active-backend', id);
+  }
 });
+
+watch(apiKeys, () => { ApiKeyStore.save(apiKeys.value); }, { 'deep': true });
+watch(ollamaModel, (next) => { OllamaModels.saveModel(next); });
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+onMounted(async () => {
+  isMobile.value = MobileDetection.isLikelyMobile();
+
+  backends.value = await BackendMatrix.detect({
+    'apiKeys': apiKeys.value,
+    ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}),
+  });
+
+  if (BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
+    noModel.value = true;
+    logger.warn('no LLM backend detected; select one to enable the demo');
+    return;
+  }
+  noModel.value = false;
+
+  // Auto-pick the best backend only when no saved user preference exists.
+  if (savedBackend === null) {
+    const picked = BackendMatrix.pickBest(backends.value, { 'isMobile': isMobile.value });
+    if (picked !== null) {
+      activeBackend.value = picked.id;
+      logger.info(`backend auto-selected: ${picked.displayName}`);
+    }
+  } else {
+    logger.info(`backend from saved preference: ${savedBackend}`);
+  }
+});
+
+// ── Services factory ──────────────────────────────────────────────────────────
+function buildServices(): DispatcherServices {
+  if (activeBackend.value === null) throw new Error('no backend selected');
+  const client = ProviderInstantiator.instantiate(activeBackend.value, {
+    'apiKeys':     apiKeys.value,
+    'ollamaModel': resolvedOllamaModel.value,
+  });
+  // ProviderInstantiator returns BaseLlmClient instances; access the underlying
+  // adapter so DispatcherLlmClient can drive the chat calls directly.
+  if (!(client instanceof BaseLlmClient)) throw new Error('unexpected client type');
+  return { 'llm': new DispatcherLlmClient(client.adapter) };
+}
 
 // ── Execute ───────────────────────────────────────────────────────────────────
 async function ask(): Promise<void> {
-  if (isRunning.value || customerQuery.value.trim().length === 0) return;
+  if (isRunning.value || customerQuery.value.trim().length === 0 || activeBackend.value === null) return;
 
   const queryText = customerQuery.value.trim();
   customerQuery.value = '';
@@ -256,7 +334,8 @@ async function ask(): Promise<void> {
   await dagGraph.value?.reset();
 
   // Re-build the bundle each run (fresh node instances, no cross-run state).
-  const bundle = DispatcherBundleFactory.create();
+  const services = buildServices();
+  const bundle = DispatcherBundleFactory.create(services);
   const dag = bundle.dags[0];
   if (dag !== undefined) dispatcherDag.value = dag;
 
@@ -296,7 +375,8 @@ async function sendOperatorResponse(): Promise<void> {
   logger.info(`operator response captured — resuming from cursor: ${pe.cursor}`);
 
   // Re-build the bundle for the resume run (fresh node instances).
-  const bundle = DispatcherBundleFactory.create();
+  const services = buildServices();
+  const bundle = DispatcherBundleFactory.create(services);
   const dag = bundle.dags[0];
   if (dag !== undefined) dispatcherDag.value = dag;
   await dagGraph.value?.reset();
@@ -376,6 +456,24 @@ function fillPrompt(text: string): void {
 <template>
   <div :class="['dispatcher-runner', { 'is-running': isRunning, 'is-awaiting': isAwaiting }]">
 
+    <!-- No-model gate: shown when no real backend is available on this device. -->
+    <section v-if="noModel" class="dr-no-model-gate" role="alert">
+      <h3>No LLM backend detected</h3>
+      <p>The Dispatcher demo now uses real LLM calls for classification and reply composition. Enable one of the backends below to start:</p>
+      <BackendPicker
+        :backends="backends"
+        :active-id="activeBackend ?? ''"
+        :api-keys="apiKeys"
+        :ollama-model="ollamaModel"
+        :is-mobile="isMobile"
+        :disabled="true"
+        @update:active-id="activeBackend = $event as ProviderId"
+        @update:api-keys="apiKeys = $event"
+        @update:ollama-model="ollamaModel = $event"
+      />
+    </section>
+
+    <template v-else>
     <div class="dr-grid">
 
       <!-- LEFT: Stream | Config -->
@@ -494,6 +592,21 @@ function fillPrompt(text: string): void {
                 <p class="dr-escalation-reason">{{ escalationReason }}</p>
               </section>
 
+              <!-- Backend picker -->
+              <section class="dr-config-section">
+                <h5 class="dr-config-head">Backend</h5>
+                <BackendPicker
+                  :backends="backends"
+                  :active-id="activeBackend ?? ''"
+                  :api-keys="apiKeys"
+                  :ollama-model="ollamaModel"
+                  :is-mobile="isMobile"
+                  @update:active-id="activeBackend = $event as ProviderId"
+                  @update:api-keys="apiKeys = $event"
+                  @update:ollama-model="ollamaModel = $event"
+                />
+              </section>
+
             </div>
           </template>
 
@@ -589,6 +702,7 @@ function fillPrompt(text: string): void {
       </div>
 
     </div>
+    </template>
   </div>
 </template>
 

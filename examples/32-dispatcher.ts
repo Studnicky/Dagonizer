@@ -1,5 +1,5 @@
 /**
- * 32-dispatcher: HITL park-and-correlate with a trolley switch.
+ * 32-dispatcher: HITL park-and-correlate with a trolley switch + real LLM.
  *
  * Demonstrates the Noocodex Support dispatcher — a customer support
  * warm-handoff demo that shows the HITL park-and-correlate primitive
@@ -9,6 +9,10 @@
  *   Routine queries (order status, store hours, book availability) → AI.
  *   Escalation triggers (refund, billing, etc.) → auto-escalate to operator.
  *   Trolley switch: humanMode = true → ALL messages go to operator.
+ *
+ * LLM resolved via LlmAdapterCascadeBuilder (same pattern as runArchivist.ts):
+ *   Ollama (localhost) → API key providers (GEMINI_API_KEY, GROQ_API_KEY, etc.)
+ *   Set OLLAMA_BASE_URL to override the default 127.0.0.1:11434.
  *
  * Three scenarios:
  *   1. Routine query — AI composes and sends without parking.
@@ -26,15 +30,69 @@ import {
   Dagonizer,
 } from '@studnicky/dagonizer';
 
-import { DispatcherState }       from './the-dispatcher/DispatcherState.js';
+import {
+  LlmAdapterCascadeBuilder,
+  type CatalogueEntryType,
+} from '@studnicky/dagonizer/adapter';
+
+import { OllamaApiAdapter }  from '@studnicky/dagonizer-adapter-ollama';
+
+import { DispatcherState }         from './the-dispatcher/DispatcherState.js';
 import { DispatcherBundleFactory } from './the-dispatcher/dag.js';
+import { DispatcherLlmClient }     from './the-dispatcher/providers/DispatcherLlmClient.js';
+
+// ---------------------------------------------------------------------------
+// Env helpers
+// ---------------------------------------------------------------------------
+
+class Env {
+  static get(key: string): string {
+    if (typeof process === 'undefined') return '';
+    const raw = process.env[key];
+    return typeof raw === 'string' ? raw : '';
+  }
+}
+
+const OLLAMA_BASE_URL = Env.get('OLLAMA_BASE_URL') || 'http://127.0.0.1:11434';
+
+// ---------------------------------------------------------------------------
+// Adapter cascade: local-first, falls back to keyed providers.
+// ---------------------------------------------------------------------------
+
+const catalogue: CatalogueEntryType[] = [];
+
+const ollamaAdapter = new OllamaApiAdapter({ 'baseUrl': OLLAMA_BASE_URL });
+const resolvedOllamaModel = await ollamaAdapter.selectChatModel({
+  ...(Env.get('OLLAMA_MODEL').length > 0 ? { 'preferred': Env.get('OLLAMA_MODEL') } : {}),
+});
+if (resolvedOllamaModel !== null) {
+  catalogue.push({
+    'descriptor': {
+      'provider':     'ollama',
+      'model':        resolvedOllamaModel,
+      'capabilities': { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
+    },
+    'factory': () => ollamaAdapter,
+  });
+}
+
+const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+const adapter = await cascade.select();
+
+process.stdout.write(`\nLLM backend: ${adapter.id} (${adapter.displayName})\n`);
+
+// ---------------------------------------------------------------------------
+// Services: wire the LLM adapter into the Dispatcher service bag.
+// ---------------------------------------------------------------------------
+
+const services = { 'llm': new DispatcherLlmClient(adapter) };
 
 // ---------------------------------------------------------------------------
 // Setup: one dispatcher instance, shared across all three scenarios.
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<DispatcherState>();
-dispatcher.registerBundle(DispatcherBundleFactory.create());
+dispatcher.registerBundle(DispatcherBundleFactory.create(services));
 
 // ---------------------------------------------------------------------------
 // Scenario 1: Routine query — AI handles end-to-end

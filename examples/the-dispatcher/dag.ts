@@ -30,6 +30,7 @@ import { DAGBuilder } from '@studnicky/dagonizer';
 import type { DispatcherBundleType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from './DispatcherState.ts';
+import type { DispatcherServices } from './services.ts';
 import { AiComposeNode }        from './nodes/AiComposeNode.ts';
 import { ClassifyMessageNode }  from './nodes/ClassifyMessageNode.ts';
 import { DeclineNode }          from './nodes/DeclineNode.ts';
@@ -39,10 +40,10 @@ import { SetupNode }            from './nodes/SetupNode.ts';
 
 // #region dispatcher-bundle
 export class DispatcherBundleFactory {
-  static create(): DispatcherBundleType<DispatcherState> {
+  static create(services: DispatcherServices): DispatcherBundleType<DispatcherState> {
     const setupNode          = new SetupNode();
-    const classifyMessage    = new ClassifyMessageNode();
-    const aiCompose          = new AiComposeNode();
+    const classifyMessage    = new ClassifyMessageNode(services);
+    const aiCompose          = new AiComposeNode(services);
     const parkForOperator    = new ParkForOperatorNode();
     const sendResponse       = new SendResponseNode();
     const decline            = new DeclineNode();
