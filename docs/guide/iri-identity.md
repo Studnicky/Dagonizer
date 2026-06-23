@@ -5,7 +5,7 @@ seeAlso:
   - text: 'Reference: Entities — DAGSchema'
     link: '../reference/entities'
   - text: 'Example: IRI identity'
-    link: '../examples/31-iri-identity'
+    link: '../examples/iri-identity'
   - text: 'Guide: Plugins overview'
     link: './plugins'
 ---
@@ -176,5 +176,5 @@ Nodes and DAGs registered without any `@context` continue to work. Their names e
 
 - [`ContextResolver` source](#) — `src/dag/ContextResolver.ts`
 - [Reference: Entities — `DAGSchema`](../reference/entities) — the `@context` field on `DAGType`
-- [Example 31: IRI identity](../examples/31-iri-identity)
+- [Example 31: IRI identity](../examples/iri-identity)
 - [Plugins overview](./plugins)

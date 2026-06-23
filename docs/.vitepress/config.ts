@@ -149,7 +149,7 @@ const sidebar = [
       { text: 'Example: State accessor',              link: '/examples/state-accessor' },
       { text: 'Example: Remote store',                link: '/examples/store-remote' },
       { text: 'Example: Virtual clock',               link: '/examples/virtual-clock' },
-      { text: 'Example 31: IRI identity',             link: '/examples/31-iri-identity' },
+      { text: 'IRI identity',                          link: '/examples/iri-identity' },
     ],
   },
   {

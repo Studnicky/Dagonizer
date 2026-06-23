@@ -1,5 +1,5 @@
 ---
-title: 'Example 31: IRI identity and prefix isolation'
+title: 'IRI identity and prefix isolation'
 description: 'Two plugins each ship a node named classify. IRI keying via @context prefix expansion lets both coexist in one dispatcher without collision.'
 seeAlso:
   - text: 'Guide: IRI identity'
@@ -10,7 +10,7 @@ seeAlso:
     link: '../guide/plugins'
 ---
 
-# Example 31: IRI identity and prefix isolation
+# IRI identity and prefix isolation
 
 Node and DAG registries are keyed by **expanded IRI**, not bare name. Two plugins that both ship a node named `classify` coexist by declaring distinct `@context` prefixes — each name expands to a different absolute IRI before entering the registry.
 
