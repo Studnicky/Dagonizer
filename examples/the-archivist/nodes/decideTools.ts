@@ -66,7 +66,7 @@ const ISBN_RE         = /\b(97[89]-?\d-?\d{2,5}-?\d{2,7}-?\d|\d{9}[\dXx]|97[89]\
 const AUTHOR_HINT_RE  = /\b(?:by|author|wrote|written\s+by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/iu;
 const QUOTED_TITLE_RE = /^\s*['""']([^'""']+)['""']\s*$/u;
 const PROPER_NOUN_RE  = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/u;
-const TOPIC_RE        = /^(?:books?|works|literature|stories|novels)\s+(?:about|on)\s+(.+)$/iu;
+const TOPIC_RE        = /^(?:books?|works|literature|stories|novels)\s+(?:about|on)\s+(\S.*)$/iu;
 const BROWSING_RE     = /^(?:do\s+you\s+have|what\s+(?:do\s+you\s+have|titles\s+do\s+you\s+have)|show\s+me|recommend)/iu;
 
 const FULL_SCOUT_PLAN: readonly ToolCall[] = [
