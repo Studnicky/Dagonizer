@@ -37,7 +37,9 @@ default: 6 position-pings, 5 facility-scans, 4 sensor-readings, 3 customs-events
 light cyan while executing, edges flash when traversed, and branching skips are
 visible as edges that never fire.
 
-<CartographerRunner />
+<ClientOnly>
+  <CartographerRunner />
+</ClientOnly>
 
 Watch the **Panels** tab after the run: the before/after panel shows raw GPS
 coordinates resolved to a real continent/country, and raw PII fields redacted

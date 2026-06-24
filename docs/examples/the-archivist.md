@@ -39,7 +39,9 @@ Try it live below; the demo runs in your browser. The browser runner instantiate
 
 The Archivist exercises two placement types for nested DAG execution: `EmbeddedDAGNode` for the three search branches and the compose loop (cardinality 1), and `ScatterNode` for the within-branch scouts — `build-book-worksets` converts the decided tool plan into a `bookWorksets` array where each item carries a `dagName` field, the scatter resolves the body DAG at runtime via `{ dagFrom: 'dagName' }` (tool-registry dispatch), the `tool-candidate-merge` gather folds each clone's output into the parent `candidates`, and the `any-success` reducer routes `success` when at least one tool returned results. A `PhaseNode` (`phase: 'pre'`, placement name `setup`) runs `pre-run-setup` before the entrypoint: it stamps a `runId` on state and clears any stale draft from a prior interrupted execution. Phase nodes are out-of-band; they do not participate in output routing.
 
-<ArchivistRunner />
+<ClientOnly>
+  <ArchivistRunner />
+</ClientOnly>
 
 Watch the **DAG** pane: each node lights cyan while executing, then settles to "completed" with the taken edge highlighted. The **Memory** pane mirrors `state.intent`, `state.terms`, `state.shortlist`, and the compose retry budget (`state.retriesFor('compose')`) as the dispatcher mutates them. Everything is driven by the dispatcher's `onFlowStart`, `onNodeStart`, `onNodeEnd`, `onError`, `onFlowEnd` hooks; there is no timer-based animation, the runner is a pure observer of the state machine.
 

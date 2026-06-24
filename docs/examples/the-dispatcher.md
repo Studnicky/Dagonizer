@@ -37,7 +37,9 @@ this demo exercises the **HITL park-and-correlate** lifecycle — `state.park()`
 Try it live below. Type a customer message and click **Send**. Switch to the
 **Config** tab to flip the trolley switch and see how routing changes.
 
-<DispatcherRunner />
+<ClientOnly>
+  <DispatcherRunner />
+</ClientOnly>
 
 Watch the **DAG** pane while the flow executes: nodes light cyan while running,
 edges flash on traversal, and skipped branches remain dim. When the flow parks,
