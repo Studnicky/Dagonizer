@@ -366,8 +366,13 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
     assert.equal(result.state.lifecycle.variant, 'completed', 'routes to end-ok → completed');
   });
 
-  void it('ends failed when child emits errors (routes to end-fail)', async () => {
-    // Use a fresh dispatcher to avoid shared child DAG name collision
+  void it('ends failed when child reaches a failed terminal (routes to end-fail)', async () => {
+    // A child author signals failure by routing to a `failed` terminal — that
+    // terminal outcome is authoritative and routes the parent to `error`. The
+    // node also collects a recoverable:false error, propagated to the parent
+    // state for observability; the failed terminal, not the error, drives the
+    // route. (The mirror case — a `completed` terminal that tolerated an error
+    // still routing the parent to success — is covered in embedded-dag.test.ts.)
     const dispatcher2 = new CountingDagonizer<NodeStateBase>();
     dispatcher2.registerNode(TestErrorNode.of('child-work-err'));
 
@@ -387,7 +392,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
           'outputs': { 'done': 'end' },
         },
         { '@id': 'urn:noocodex:dag:child-explicit/node/end', '@type': 'TerminalNode',
-          'name': 'end', 'outcome': 'completed' },
+          'name': 'end', 'outcome': 'failed' },
       ],
     };
     dispatcher2.registerDAG(childErr);

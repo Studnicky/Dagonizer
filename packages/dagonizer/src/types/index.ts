@@ -198,6 +198,16 @@ export type { DagHostOptionsType } from '../container/DagHost.js';
 // ---------------------------------------------------------------------------
 
 export type { InMemoryChannelOptionsType } from '../channels/InMemoryChannel.js';
+export type { StreamChannelInterface, StreamChannelOptionsType } from '../channels/StreamChannel.js';
+export type { StreamCursorOptionsType } from '../channels/StreamCursor.js';
+
+// ---------------------------------------------------------------------------
+// Streaming contracts
+// ---------------------------------------------------------------------------
+
+export type { StreamSinkInterface } from '../contracts/StreamSinkInterface.js';
+export type { StreamProducerInterface } from '../contracts/StreamProducerInterface.js';
+export type { ResumableStreamProducerInterface } from '../contracts/ResumableStreamProducerInterface.js';
 
 // ---------------------------------------------------------------------------
 // StoreInterface options + contracts

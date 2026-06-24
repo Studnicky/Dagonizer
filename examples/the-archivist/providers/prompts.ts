@@ -127,8 +127,8 @@ export const directives = {
   "candidatesHeader":              'Catalog records (cite in flowing prose; the order reflects ranking):',
   "candidatesHeaderChronological": 'Catalog records (cite in flowing prose; the order is chronological):',
   "candidatesHeaderRated":         'Catalog records (cite in flowing prose; the order reflects reader ratings):',
-  "persistentMemoryHeader":        'PERSISTENT MEMORY (background only; cite only on explicit recall request):',
-  "persistentMemoryAnchorHeader":  'PERSISTENT MEMORY (anchor; cite explicitly as the basis for similarity):',
+  "persistentMemoryHeader":        'PERSISTENT MEMORY — your own findings from earlier sessions, not the visitor\'s words (background only; cite only on explicit recall request):',
+  "persistentMemoryAnchorHeader":  'PERSISTENT MEMORY — your own findings from earlier sessions, not the visitor\'s words (anchor; cite explicitly as the basis for similarity):',
 
   // ── Validation ───────────────────────────────────────────────────────
   "validateApprovalRule":   'Approve if the draft (a) cites a title from the catalog records and (b) reads as a polite on-topic reply.',
@@ -679,8 +679,14 @@ export class PromptFormat {
   /** Format prior conversation turns as a terse "Conversation so far" block. */
   static formatConversationBlock(turns: readonly ConversationTurn[]): string {
     if (turns.length === 0) return '';
-    const lines = turns.map((t) => `  ${t.role}: ${t.text}`).join('\n');
-    return `\nConversation so far (most recent last):\n${lines}`;
+    // Attribute each line to its speaker explicitly. "Visitor" is the person
+    // the Archivist is helping; "You" is the Archivist's own earlier words. A
+    // weak model otherwise reads its own prior `archivist:` line and echoes the
+    // title back as "you mentioned <title>", misattributing the source of data.
+    const lines = turns
+      .map((t) => (t.role === 'visitor' ? `  Visitor said: ${t.text}` : `  You (the Archivist) said: ${t.text}`))
+      .join('\n');
+    return `\nConversation so far (most recent last); attribute each line to its speaker:\n${lines}`;
   }
 
   static formatCandidateRow(n: number, c: CandidateType): string {

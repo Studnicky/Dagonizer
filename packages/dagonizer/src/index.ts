@@ -201,6 +201,9 @@ export type {
 
 export { InMemoryChannel } from './channels/index.js';
 export type { InMemoryChannelOptionsType } from './channels/index.js';
+export { StreamChannel, StreamCursor } from './channels/index.js';
+export type { StreamChannelInterface, StreamChannelOptionsType, StreamCursorOptionsType } from './channels/index.js';
+export type { StreamSinkInterface, StreamProducerInterface, ResumableStreamProducerInterface } from './contracts/index.js';
 
 // =============================================================================
 // CONTAINER
@@ -260,6 +263,7 @@ export {
   BuildToolWorksetsNode,
   CallModelNode,
   CollectToolResultsNode,
+  DagStreamProducer,
   DecodeTextToolCallsNode,
   NormalizeResponseNode,
   NormalizeToolCallsNode,

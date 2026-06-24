@@ -58,6 +58,7 @@ import {
   ChatResponseMessageBuilder,
   Classifications,
   LlmError,
+  ModelCost,
   ZERO_TOKEN_USAGE,
 } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
@@ -201,11 +202,11 @@ export class AnthropicApiAdapter extends BaseAdapter {
 
   constructor(apiKey: string, options: AnthropicApiAdapterOptionsType = {}) {
     const coreOptions = options.maxAttempts !== undefined
-      ? { 'maxAttempts': options.maxAttempts, 'model': options.model ?? 'claude-3-5-haiku-20241022' }
-      : { 'model': options.model ?? 'claude-3-5-haiku-20241022' };
+      ? { 'maxAttempts': options.maxAttempts, 'model': options.model ?? 'claude-haiku-4-5' }
+      : { 'model': options.model ?? 'claude-haiku-4-5' };
     super(
       'anthropic',
-      'Anthropic (claude-3-5-haiku)',
+      'Anthropic (claude-haiku-4-5)',
       ADAPTER_CAPABILITIES,
       coreOptions,
     );
@@ -242,6 +243,7 @@ export class AnthropicApiAdapter extends BaseAdapter {
         'headers': {
           'x-api-key':         this.#apiKey,
           'anthropic-version': this.#anthropicVersion,
+          'anthropic-dangerous-direct-browser-access': 'true',
         },
         signal,
       });
@@ -250,7 +252,7 @@ export class AnthropicApiAdapter extends BaseAdapter {
       if (!AnthropicModelsResponseValidator.is(rawBody)) return [];
       return rawBody.data
         .filter((entry) => entry.id.length > 0)
-        .map((entry) => ({ 'name': entry.id, 'variant': 'chat' as const, 'cloud': true }));
+        .map((entry) => ({ 'name': entry.id, 'variant': 'chat' as const, 'cloud': true, 'costRank': ModelCost.rankFromName(entry.id) }));
     } catch {
       return [];
     } finally {
@@ -276,6 +278,7 @@ export class AnthropicApiAdapter extends BaseAdapter {
           'content-type':      'application/json',
           'x-api-key':         this.#apiKey,
           'anthropic-version': this.#anthropicVersion,
+          'anthropic-dangerous-direct-browser-access': 'true',
         },
         'body': JSON.stringify(body),
         signal,

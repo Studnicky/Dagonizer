@@ -26,6 +26,8 @@ export {
 } from '@studnicky/dagonizer/adapter';
 export type { ErrorClassificationType, OpenAiCompatibleAdapterOptionsType } from '@studnicky/dagonizer/adapter';
 
+export { AnthropicApiAdapter } from '@studnicky/dagonizer-adapter-anthropic';
+export type { AnthropicApiAdapterOptionsType } from '@studnicky/dagonizer-adapter-anthropic';
 export { GeminiApiAdapter }         from '@studnicky/dagonizer-adapter-gemini-api';
 export type { GeminiApiAdapterOptionsType } from '@studnicky/dagonizer-adapter-gemini-api';
 export { GeminiNanoAdapter } from '@studnicky/dagonizer-adapter-gemini-nano';

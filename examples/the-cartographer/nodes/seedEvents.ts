@@ -30,6 +30,7 @@ import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
   ScalarNode,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { StreamChannel, StreamCursor } from '@studnicky/dagonizer/channels';
 
 // #region seed-events-node
 export class SeedEventsNode extends ScalarNode<CartographerState, 'done'> {
@@ -43,10 +44,18 @@ export class SeedEventsNode extends ScalarNode<CartographerState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
+  protected override async executeOne(state: CartographerState, context: NodeContextType): Promise<NodeOutputType<'done'>> {
     if (state.useStreamingSource) {
       const count = state.streamCount > 0 ? state.streamCount : undefined;
-      state.sources = EventStreamSource.streamTyped(state.eventConfig, count);
+      const cursor = StreamCursor.resumeAfter(state, 'process-stream');
+      const channelOptions = state.streamChannelCapacity > 0
+        ? { 'signal': context.signal, 'capacity': state.streamChannelCapacity }
+        : { 'signal': context.signal };
+      state.sources = StreamChannel.resumable(
+        EventStreamSource.resumableProducer(state.eventConfig, count),
+        cursor,
+        channelOptions,
+      );
     } else {
       state.sources = await Sources.buildTypedFeed(state.eventConfig);
     }

@@ -60,3 +60,6 @@ export type {
 export { LlmDispatchNode } from './LlmDispatchNode.js';
 export { DecisionNode } from './DecisionNode.js';
 export { ComposeNode } from './ComposeNode.js';
+
+// Sub-DAG stream producer: bridges an inner DAG's execution stream into a scatter source
+export { DagStreamProducer } from './DagStreamProducer.js';

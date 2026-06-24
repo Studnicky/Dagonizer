@@ -1,9 +1,10 @@
 /**
  * Discovery: OllamaApiAdapter instance listModels classifies models by
- * variant and cloud flag; the inherited selectChatModel applies the
- * preferred/embed-skip/local-first picker and stores the selection.
- * OllamaTagsResponseValidator rejects malformed daemon envelopes.
- * Fetch is stubbed; no daemon required.
+ * variant and cloud flag and ranks each by on-disk size (the daemon's
+ * local-cost proxy); the inherited selectChatModel applies the
+ * preferred/embed-skip/cheapest-by-costRank picker and stores the
+ * selection. OllamaTagsResponseValidator rejects malformed daemon
+ * envelopes. Fetch is stubbed; no daemon required.
  */
 
 import { strict as assert } from 'node:assert';
@@ -121,19 +122,21 @@ void test('listModels composes caller signal with internal timeout', async () =>
 // Inherited selectChatModel — selection + model storage
 // ---------------------------------------------------------------------------
 
-void test('selectChatModel prefers local chat model over cloud and skips embedders', async () => {
+void test('selectChatModel picks the cheapest chat model by size and skips embedders', async () => {
   FetchStub.install(async () => new Response(TAGS_BODY, { 'status': 200 }));
   try {
     const adapter = new OllamaApiAdapter();
     const selected = await adapter.selectChatModel();
-    // Leading entry is :cloud; second is a local chat model — it should win.
+    // Chat candidates by costRank: qwen3-coder:480b-cloud (size 0 → name
+    // heuristic 480), qwen3-coder:30b (size 1), llama3.2:3b (size 3). The
+    // embedder is skipped; the smallest chat model wins.
     assert.equal(selected, 'qwen3-coder:30b');
   } finally {
     FetchStub.restore();
   }
 });
 
-void test('selectChatModel falls back to :cloud when no local chat model is installed', async () => {
+void test('selectChatModel picks the cheapest cloud chat model when no local chat model is installed', async () => {
   const cloudOnly = JSON.stringify({
     'models': [
       { 'name': 'nomic-embed-text:latest' },
@@ -145,7 +148,10 @@ void test('selectChatModel falls back to :cloud when no local chat model is inst
   try {
     const adapter = new OllamaApiAdapter();
     const selected = await adapter.selectChatModel();
-    assert.equal(selected, 'qwen3-coder:480b-cloud');
+    // No sizes in this envelope, so both cloud chat models rank by the name
+    // heuristic: qwen3-coder:480b-cloud → 480 (param count), glm-5.1:cloud →
+    // DEFAULT_RANK 40 (no size signal). The cheaper glm wins.
+    assert.equal(selected, 'glm-5.1:cloud');
   } finally {
     FetchStub.restore();
   }

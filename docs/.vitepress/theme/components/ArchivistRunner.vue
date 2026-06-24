@@ -16,7 +16,7 @@
  * setTimeout, no polling, no JS-driven animation loops.
  */
 
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
@@ -32,9 +32,11 @@ import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/R
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
 import { NODE_VARIANTS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
 import { ArchivistNodes } from '../../../../examples/the-archivist/nodes/ArchivistNodes.ts';
-import { ApiKeyStore, BackendMatrix, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
+import { ApiKeyStore, BackendMatrix, EmbedderProvisioner, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
+import type { IntentClassifier } from '../../../../examples/the-archivist/providers/IntentClassifier.ts';
+import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
 import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
@@ -83,7 +85,7 @@ const SLOW_BANNER_KEY = 'archivist:dismiss-slow-banner';
 const slowBannerDismissed = ref<boolean>(
   typeof localStorage !== 'undefined' && localStorage.getItem(SLOW_BANNER_KEY) === '1',
 );
-const CLOUD_KEY_IDS: readonly ProviderId[] = ['gemini-api', 'groq', 'cerebras', 'mistral', 'openrouter'];
+const CLOUD_KEY_IDS: readonly ProviderId[] = ['gemini-api', 'anthropic', 'groq', 'cerebras', 'mistral', 'openrouter'];
 const showSlowBanner = computed(() => {
   if (slowBannerDismissed.value) return false;
   if (activeBackend.value !== 'gemini-nano' && activeBackend.value !== 'web-llm') return false;
@@ -107,6 +109,12 @@ type TraceEvent =
 
 const trace = ref<TraceEvent[]>([]);
 const terminalVariant = ref<'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out'>('pending');
+
+// shallowRef holds opaque service instances by reference: deep reactivity is
+// wrong for these, and it preserves IntentClassifier's nominal (private-field)
+// type, which Vue's deep UnwrapRef would otherwise strip.
+const embedder = shallowRef<EmbedderInterface | null>(null);
+const intentClassifier = shallowRef<IntentClassifier | null>(null);
 
 const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 const memoryStore = new MemoryStore();
@@ -348,14 +356,14 @@ const toolContextMap: Record<string, string> = {
 };
 
 /**
- * The Ollama model to instantiate with: the visitor's explicit choice when
- * set, otherwise the installed chat model the detector resolved from the
- * daemon's tag list. Never the empty string, so the adapter always names a
- * model the host has actually pulled.
+ * The model to instantiate the active backend's adapter with. For ollama, the
+ * visitor's explicit choice takes priority (if set); for all other backends the
+ * detector-resolved model is used directly. An empty string means "no explicit
+ * override": the adapter falls back to its internal default.
  */
-const resolvedOllamaModel = computed<string>(() => {
-  if (ollamaModel.value.length > 0) return ollamaModel.value;
-  const entry = backends.value.find((b) => b.id === 'ollama');
+const resolvedModel = computed<string>(() => {
+  if (activeBackend.value === 'ollama' && ollamaModel.value.length > 0) return ollamaModel.value;
+  const entry = backends.value.find((b) => b.id === activeBackend.value);
   return entry?.resolvedModel ?? '';
 });
 
@@ -363,8 +371,9 @@ const resolvedOllamaModel = computed<string>(() => {
 function makeLlm() {
   if (activeBackend.value === null) return null;
   return ProviderInstantiator.instantiate(activeBackend.value, {
-    'apiKeys':     apiKeys.value,
-    'ollamaModel': resolvedOllamaModel.value,
+    'apiKeys': apiKeys.value,
+    'model':   resolvedModel.value,
+    ...(intentClassifier.value !== null ? { 'intentClassifier': intentClassifier.value } : {}),
   });
 }
 
@@ -449,9 +458,10 @@ function buildServices(): ArchivistServices {
     'wikipediaSummary':  wikipediaSummaryTool,
     'memory':            memoryStore,
     'llm':               llm,
-    // Docs runtime: no embedder wired (browser-only). Cosine recall and
-    // hybrid ranking fall back to Jaccard / heuristics when embedder is null.
-    'embedder':          null,
+    // Browser embedder provisioned when available (transformers → tensorflow →
+    // web-llm). Cosine recall and hybrid ranking fall back to Jaccard /
+    // heuristics when no embedder is reachable.
+    'embedder':          embedder.value,
     'nodeTimeouts':      {},
   };
 }
@@ -649,6 +659,14 @@ onMounted(async () => {
 
   backends.value = await BackendMatrix.detect({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
 
+  // Kick off embedder provisioning without blocking auto-seed; the classifier
+  // becomes available when the model download completes and updates refs so
+  // makeLlm() picks it up on subsequent turns.
+  void EmbedderProvisioner.provision().then((r) => {
+    embedder.value = r.embedder;
+    intentClassifier.value = r.intentClassifier;
+  });
+
   // Show the no-model gate when no real backend is available on this device.
   if (BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
     noModel.value = true;
@@ -657,15 +675,23 @@ onMounted(async () => {
   }
   noModel.value = false;
 
-  // Auto-pick the best backend only when no saved user preference exists.
-  if (savedBackend === null) {
+  // Honor a saved user preference only when that backend is runnable right now;
+  // otherwise default to the best available backend (in-browser web models first).
+  const savedEntry = savedBackend !== null
+    ? backends.value.find((b) => b.id === savedBackend) ?? null
+    : null;
+  if (savedEntry !== null && savedEntry.runnable) {
+    logger.info(`backend from saved preference: ${savedBackend}`);
+  } else {
     const picked = BackendMatrix.pickBest(backends.value, { 'isMobile': isMobile.value });
     if (picked !== null) {
       activeBackend.value = picked.id;
-      logger.info(`backend auto-selected: ${picked.displayName}`);
+      logger.info(
+        savedBackend === null
+          ? `backend auto-selected: ${picked.displayName}`
+          : `saved preference "${savedBackend}" unavailable; defaulting to ${picked.displayName}`,
+      );
     }
-  } else {
-    logger.info(`backend from saved preference: ${savedBackend}`);
   }
 
   // On a fresh session: generate the Archivist greeting, push it to the
@@ -751,7 +777,7 @@ async function ask(): Promise<void> {
     'wikipediaSummary':  wikipediaSummaryTool,
     'memory':            memoryStore,
     'llm':               resolvedLlm,
-    'embedder':          null,
+    'embedder':          embedder.value,
     'nodeTimeouts': {
       'compose-response':        composeMs,
       'compose-empty':           composeMs,
@@ -890,7 +916,7 @@ function reset(): void {
           <li>
             <strong>Groq (fastest):</strong> paste a free key from
             <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys</a>.
-            Runs llama-3.3-70b-versatile. ~30 requests/min on the free tier.
+            ~30 requests/min on the free tier.
           </li>
           <li>
             <strong>Cerebras:</strong> free key at
@@ -900,13 +926,13 @@ function reset(): void {
           <li>
             <strong>Mistral:</strong> free key at
             <a href="https://console.mistral.ai/api-keys/" target="_blank" rel="noreferrer">console.mistral.ai/api-keys/</a>.
-            mistral-small-latest.
           </li>
           <li>
             <strong>OpenRouter:</strong> free key at
             <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>.
-            Routes to llama-3.3-70b-instruct:free with no credits needed.
+            Routes to free-tier models with no credits needed.
           </li>
+          <li><strong>Anthropic:</strong> key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com</a>.</li>
         </ul>
       </template>
       <template v-else>
@@ -919,6 +945,7 @@ function reset(): void {
           <li><strong>Cerebras:</strong> free key at <a href="https://cloud.cerebras.ai/?utm=arch" target="_blank" rel="noreferrer">cloud.cerebras.ai</a>.</li>
           <li><strong>Mistral:</strong> free key at <a href="https://console.mistral.ai/api-keys/" target="_blank" rel="noreferrer">console.mistral.ai/api-keys/</a>.</li>
           <li><strong>OpenRouter:</strong> free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>.</li>
+          <li><strong>Anthropic:</strong> key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com</a>.</li>
         </ul>
       </template>
 
@@ -928,7 +955,6 @@ function reset(): void {
         :api-keys="apiKeys"
         :ollama-model="ollamaModel"
         :is-mobile="isMobile"
-        :disabled="true"
         @update:active-id="activeBackend = $event as ProviderId"
         @update:api-keys="apiKeys = $event"
         @update:ollama-model="ollamaModel = $event"

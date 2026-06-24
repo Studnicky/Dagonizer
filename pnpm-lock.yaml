@@ -24,27 +24,18 @@ importers:
       '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:packages/dagonizer
-      '@studnicky/dagonizer-adapter-cerebras':
+      '@studnicky/dagonizer-adapter-anthropic':
         specifier: workspace:^
-        version: link:packages/dagonizer-adapter-cerebras
+        version: link:packages/dagonizer-adapter-anthropic
       '@studnicky/dagonizer-adapter-gemini-api':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-gemini-api
       '@studnicky/dagonizer-adapter-gemini-nano':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-gemini-nano
-      '@studnicky/dagonizer-adapter-groq':
-        specifier: workspace:^
-        version: link:packages/dagonizer-adapter-groq
-      '@studnicky/dagonizer-adapter-mistral':
-        specifier: workspace:^
-        version: link:packages/dagonizer-adapter-mistral
       '@studnicky/dagonizer-adapter-ollama':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-ollama
-      '@studnicky/dagonizer-adapter-openrouter':
-        specifier: workspace:^
-        version: link:packages/dagonizer-adapter-openrouter
       '@studnicky/dagonizer-adapter-web-llm':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-web-llm
@@ -115,27 +106,18 @@ importers:
       '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:../../packages/dagonizer
-      '@studnicky/dagonizer-adapter-cerebras':
+      '@studnicky/dagonizer-adapter-anthropic':
         specifier: workspace:^
-        version: link:../../packages/dagonizer-adapter-cerebras
+        version: link:../../packages/dagonizer-adapter-anthropic
       '@studnicky/dagonizer-adapter-gemini-api':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-gemini-api
       '@studnicky/dagonizer-adapter-gemini-nano':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-gemini-nano
-      '@studnicky/dagonizer-adapter-groq':
-        specifier: workspace:^
-        version: link:../../packages/dagonizer-adapter-groq
-      '@studnicky/dagonizer-adapter-mistral':
-        specifier: workspace:^
-        version: link:../../packages/dagonizer-adapter-mistral
       '@studnicky/dagonizer-adapter-ollama':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-ollama
-      '@studnicky/dagonizer-adapter-openrouter':
-        specifier: workspace:^
-        version: link:../../packages/dagonizer-adapter-openrouter
       '@studnicky/dagonizer-adapter-web-llm':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-web-llm
@@ -151,6 +133,15 @@ importers:
       '@studnicky/dagonizer-embedder-ollama':
         specifier: workspace:^
         version: link:../../packages/dagonizer-embedder-ollama
+      '@studnicky/dagonizer-embedder-tensorflow':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-embedder-tensorflow
+      '@studnicky/dagonizer-embedder-transformers':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-embedder-transformers
+      '@studnicky/dagonizer-embedder-web-llm':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-embedder-web-llm
       '@studnicky/dagonizer-tool-googlebooks':
         specifier: workspace:^
         version: link:../../packages/dagonizer-tool-googlebooks
@@ -267,16 +258,6 @@ importers:
         specifier: ^25.2.0
         version: 25.9.1
 
-  packages/dagonizer-adapter-cerebras:
-    dependencies:
-      '@studnicky/dagonizer':
-        specifier: workspace:>=0.14.0 <1.0.0
-        version: link:../dagonizer
-    devDependencies:
-      '@types/node':
-        specifier: ^25.2.0
-        version: 25.9.1
-
   packages/dagonizer-adapter-gemini-api:
     dependencies:
       '@studnicky/dagonizer':
@@ -303,37 +284,7 @@ importers:
         specifier: ^3.1.1
         version: 3.1.1
 
-  packages/dagonizer-adapter-groq:
-    dependencies:
-      '@studnicky/dagonizer':
-        specifier: workspace:>=0.14.0 <1.0.0
-        version: link:../dagonizer
-    devDependencies:
-      '@types/node':
-        specifier: ^25.2.0
-        version: 25.9.1
-
-  packages/dagonizer-adapter-mistral:
-    dependencies:
-      '@studnicky/dagonizer':
-        specifier: workspace:>=0.14.0 <1.0.0
-        version: link:../dagonizer
-    devDependencies:
-      '@types/node':
-        specifier: ^25.2.0
-        version: 25.9.1
-
   packages/dagonizer-adapter-ollama:
-    dependencies:
-      '@studnicky/dagonizer':
-        specifier: workspace:>=0.14.0 <1.0.0
-        version: link:../dagonizer
-    devDependencies:
-      '@types/node':
-        specifier: ^25.2.0
-        version: 25.9.1
-
-  packages/dagonizer-adapter-openrouter:
     dependencies:
       '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
@@ -393,6 +344,45 @@ importers:
         version: 3.1.1
 
   packages/dagonizer-embedder-ollama:
+    dependencies:
+      '@studnicky/dagonizer':
+        specifier: workspace:>=0.14.0 <1.0.0
+        version: link:../dagonizer
+    devDependencies:
+      '@types/node':
+        specifier: ^25.2.0
+        version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
+
+  packages/dagonizer-embedder-tensorflow:
+    dependencies:
+      '@studnicky/dagonizer':
+        specifier: workspace:>=0.14.0 <1.0.0
+        version: link:../dagonizer
+    devDependencies:
+      '@types/node':
+        specifier: ^25.2.0
+        version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
+
+  packages/dagonizer-embedder-transformers:
+    dependencies:
+      '@studnicky/dagonizer':
+        specifier: workspace:>=0.14.0 <1.0.0
+        version: link:../dagonizer
+    devDependencies:
+      '@types/node':
+        specifier: ^25.2.0
+        version: 25.9.1
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
+
+  packages/dagonizer-embedder-web-llm:
     dependencies:
       '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0

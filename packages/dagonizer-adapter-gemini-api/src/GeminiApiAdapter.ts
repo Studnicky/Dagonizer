@@ -27,7 +27,7 @@ import type {
   ToolChoiceType,
   ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ModelCost, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import { GeminiModelsResponseValidator } from './GeminiModelsResponse.js';
@@ -114,7 +114,7 @@ export class GeminiApiAdapter extends BaseAdapter {
           : methods.includes('generateContent')
             ? 'chat'
             : 'unknown';
-        return { name, variant, 'cloud': true };
+        return { name, variant, 'cloud': true, 'costRank': ModelCost.rankFromName(name) };
       });
     } catch {
       return [];

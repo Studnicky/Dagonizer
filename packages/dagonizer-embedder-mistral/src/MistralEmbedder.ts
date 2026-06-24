@@ -24,7 +24,7 @@
  * shape `OpenAiCompatibleAdapter.mistral()` ships.
  */
 
-import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
@@ -156,6 +156,7 @@ export class MistralEmbedder extends BaseEmbedder {
           'name': entry.id,
           'variant': isEmbedding ? 'embedding' : 'chat',
           'cloud': true,
+          'costRank': ModelCost.rankFromName(entry.id),
         };
       });
     } catch {

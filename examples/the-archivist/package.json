@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@studnicky/dagonizer": "workspace:^",
+    "@studnicky/dagonizer-adapter-anthropic": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-api": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-nano": "workspace:^",
     "@studnicky/dagonizer-adapter-ollama": "workspace:^",
@@ -22,6 +23,9 @@
     "@studnicky/dagonizer-embedder-gemini-api": "workspace:^",
     "@studnicky/dagonizer-embedder-mistral": "workspace:^",
     "@studnicky/dagonizer-embedder-ollama": "workspace:^",
+    "@studnicky/dagonizer-embedder-tensorflow": "workspace:^",
+    "@studnicky/dagonizer-embedder-transformers": "workspace:^",
+    "@studnicky/dagonizer-embedder-web-llm": "workspace:^",
     "@studnicky/dagonizer-tool-googlebooks": "workspace:^",
     "@studnicky/dagonizer-tool-openlibrary": "workspace:^",
     "@studnicky/dagonizer-tool-wikipedia": "workspace:^"
