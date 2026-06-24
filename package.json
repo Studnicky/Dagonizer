@@ -71,7 +71,7 @@
     "@studnicky/dagonizer-tool-wikipedia": "workspace:^",
     "tsx": "^4.22.4",
     "vitepress": "^1.6.4",
-    "vue-tsc": "^2.2.12"
+    "vue-tsc": "^3.3.5"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
