@@ -28,7 +28,8 @@ Dagonizer ships as a workspace of independently versioned plugins:
 
 | Tier | Packages |
 |---|---|
-| **Adapters** (concrete) | `@studnicky/dagonizer-adapter-{gemini-api,gemini-nano,web-llm,groq,cerebras,mistral,openrouter,stub}` |
+| **Adapters** (LLM backends) | `@studnicky/dagonizer-adapter-{anthropic,gemini-api,gemini-nano,ollama,web-llm}` |
+| **Embedders** (vector backends) | `@studnicky/dagonizer-embedder-{gemini-api,mistral,ollama,tensorflow,transformers,web-llm}` |
 | **Tools** (concrete) | `@studnicky/dagonizer-tool-{openlibrary,googlebooks,wikipedia}` |
 | **Patterns** (abstract bases consumers extend) | `@studnicky/dagonizer-patterns-{rag,graph,flow}` |
 
@@ -39,7 +40,7 @@ Install only what you use. The main `@studnicky/dagonizer` package exposes three
 ```bash
 npm install @studnicky/dagonizer
 # plus any plugins you want, for example:
-npm install @studnicky/dagonizer-adapter-groq @studnicky/dagonizer-patterns-rag
+npm install @studnicky/dagonizer-adapter-anthropic @studnicky/dagonizer-patterns-rag
 ```
 
 The package is also mirrored to GitHub Packages as `@studnicky/dagonizer`:
@@ -56,3 +57,22 @@ MIT. See [LICENSE](./LICENSE).
 ## Changelog
 
 See [CHANGELOG.md](./CHANGELOG.md) and the [GitHub releases](https://github.com/Studnicky/Dagonizer/releases).
+
+---
+
+## Why "Dagonizer"
+
+The name compresses the three ideas the project is built on.
+
+**The structure — a DAG.** The engine executes a [**D**irected **A**cyclic **G**raph][dag]: steps joined by forward-only edges, with no cycles, so the steps always admit a well-defined execution order. Engineers compose DAGs constantly — build graphs, task schedulers, spreadsheet recalculation, linker symbol resolution, and now agent tool-call chains — often without naming the structure as such. Dagonizer makes the DAG the explicit, type-safe unit of composition.
+
+**The role — an orchestrator.** In H. P. Lovecraft's fiction, [Dagon][dagon] is the primordial deity that presides over the submerged multitudes of the Deep Ones — first evoked in the 1919 short story of the same name. The image fits an engine whose job is to marshal many small autonomous workers — LLM agents, ETL stages — through one coordinated flow. The workers are the multitude; Dagonizer is what directs them.
+
+**The shape — ports and adapters.** Backends plug into Dagonizer through adapter contracts — `LlmAdapterInterface`, `StoreInterface`, `ClockProviderInterface`, and the rest — never through callbacks or function-passing. That is the [hexagonal "ports and adapters" architecture][hex] described by Alistair Cockburn: capabilities snap together at the boundary like interchangeable parts, and the core stays closed to modification.
+
+Read together, **Dagonizer is "the orchestrator of the DAGs."** Spoken aloud it also resolves to *dag-on-eyes-er* — a deliberate nod to the [Eye of Dagon][eye], and to a logo that is meant to be just slightly unsettling.
+
+[dag]: https://en.wikipedia.org/wiki/Directed_acyclic_graph
+[dagon]: https://en.wikipedia.org/wiki/Dagon_%28short_story%29
+[hex]: https://alistair.cockburn.us/hexagonal-architecture
+[eye]: https://runescape.wiki/w/Eye_of_Dagon
