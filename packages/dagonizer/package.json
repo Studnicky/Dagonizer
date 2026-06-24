@@ -227,14 +227,14 @@
     }
   },
   "devDependencies": {
-    "@cosmos.gl/graph": "^2.6.4",
+    "@cosmos.gl/graph": "^3.0.0",
     "@dagrejs/dagre": "^3.0.0",
     "@eslint/js": "^10.0.1",
     "@types/cytoscape-dagre": "^2.3.4",
     "@types/n3": "^1.26.1",
     "@types/node": "^26.0.0",
     "cytoscape": "^3.34.0",
-    "cytoscape-dagre": "^3.0.0",
+    "cytoscape-dagre": "^4.0.0",
     "cytoscape-elk": "^2.3.0",
     "cytoscape-fcose": "^2.2.0",
     "eslint": "^10.5.0",
