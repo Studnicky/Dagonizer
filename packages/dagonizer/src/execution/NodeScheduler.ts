@@ -17,6 +17,7 @@ import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { ExecutionResultType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
+import type { ParkedType } from '../entities/execution/Parked.js';
 import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
 import { JsonObject } from '../entities/json.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
@@ -29,6 +30,7 @@ import { SignalComposer } from '../runtime/SignalComposer.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
 
 import { OutputContractApplier } from './OutputContractApplier.js';
+import { PlacementRouter } from './PlacementRouter.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './ScatterDispatch.js';
 
 /**
@@ -161,7 +163,7 @@ export class NodeScheduler {
       }
       const result: ExecutionResultType<TReturn> = {
         'cursor': null, 'executedNodes': [], 'skippedNodes': [], state, 'terminalOutcome': null,
-        'interruptedAt': null,
+        'interruptedAt': null, 'parked': null,
       };
       if (!runOptions.embedded) {
         this.#source.relayFlowEnd(dagName, state, result);
@@ -176,11 +178,12 @@ export class NodeScheduler {
 
     if (!runOptions.embedded) {
       // When resuming after a crash (fromStage !== null), the prior run may
-      // have left the lifecycle in a terminal state (failed/cancelled/timed_out).
-      // Reset to `pending` so `markRunning()` can re-enter the running state.
+      // have left the lifecycle in a terminal state (failed/cancelled/timed_out)
+      // or in the awaiting-input (parked) state for HITL flows. Reset to `pending`
+      // so `markRunning()` can re-enter the running state.
       // Lifecycle is not captured in snapshots; this reset is safe — the
       // checkpoint data (SCATTER_PROGRESS_KEY, etc.) is in metadata and survives.
-      if (fromStage !== null && DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+      if (fromStage !== null && (DAGLifecycleMachine.isTerminal(state.lifecycle) || DAGLifecycleMachine.isParked(state.lifecycle))) {
         state.resetLifecycle();
       }
       state.markRunning();
@@ -424,10 +427,40 @@ export class NodeScheduler {
         // output-schema contract) → route (push each port's sub-batch into
         // pending). Validation is a dedicated stage between fire and route, never
         // folded into execute; it is a no-op when the toggle is off.
+        //
+        // Special case: when the node routes to the reserved `'parked'` output,
+        // execution suspends for HITL (human-in-the-loop). The engine reads the
+        // correlationKey from state metadata, transitions the lifecycle to
+        // `awaiting-input`, sets cursor to the parked placement, and returns
+        // early with a populated `parked` entity on the result.
         if (Placement.isSingle(node)) {
           let nodeResult: NodeResultType<NodeStateInterface>;
           try {
             const fired = await this.#fireSinglePlacement(node, batch, dagName, signal, dagContext);
+
+            // Park detection: if any item in the routed map is on the 'parked'
+            // output, treat the entire firing as a park. For size-1 batches
+            // (the canonical case) this is a single item on a single port.
+            if (fired.routed.has('parked')) {
+              executedNodes.push(currentPlacementName);
+              // Read the correlationKey the node placed in state metadata.
+              const rawKey = repState.getMetadata('correlationKey');
+              const correlationKey = typeof rawKey === 'string' ? rawKey : currentPlacementName;
+              // Transition the top-level state lifecycle to awaiting-input.
+              if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle) && !DAGLifecycleMachine.isParked(state.lifecycle)) {
+                try { state.park(correlationKey); } catch { /* lifecycle guard */ }
+              }
+              const parkedEntity: ParkedType = {
+                'correlationKey': correlationKey,
+                'cursor': currentPlacementName,
+                'dagName': dagName,
+              };
+              this.#source.relayNodeEnd(node.name, 'parked', repState, placementPath);
+              const parkResult = this.#composeResult(currentPlacementName, executedNodes, skippedNodes, null, null, state, parkedEntity);
+              await this.#runPostPhasesAndFinalize(dag, dagName, state, parkResult, runOptions, terminalNodeName, placementPath);
+              return parkResult;
+            }
+
             const validated = this.#validateOutputContract(fired.dagNode, fired.routed);
             nodeResult = this.#routeToPending(node, fired.dagNode, validated, batch, pending);
           } catch (caughtError) {
@@ -561,12 +594,16 @@ export class NodeScheduler {
             // Apply output state mapping: child → parent.
             this.#source.stateMapper.mapOutput(childClone, parentItem.state, outputMapping);
 
-            // Determine route from per-item terminal outcome + unrecoverable errors.
-            // childTerminalByItemId is populated by run when each item hits a
-            // TerminalNode, giving accurate per-item failed/completed status.
+            // Determine route from per-item terminal outcome + unrecoverable errors,
+            // through the single shared route policy: an explicit `completed`
+            // terminal is authoritative and is never flipped to `error` by an
+            // error the inner flow already tolerated (a scatter clone absorbed by
+            // an `any-success` reducer). childTerminalByItemId is populated by run
+            // when each item hits a TerminalNode, giving accurate per-item
+            // failed/completed status.
             const childTerminalOutcome = childTerminalByItemId.get(parentItem.id) ?? 'completed';
             const hasUnrecoverable = childClone.errors.some((e) => e.recoverable === false);
-            const routeOutput = (childTerminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+            const routeOutput = PlacementRouter.route(childTerminalOutcome, hasUnrecoverable);
             routeOutputByItemId.set(parentItem.id, routeOutput);
             const nextPlacement = node.outputs[routeOutput] ?? null;
 
@@ -765,6 +802,7 @@ export class NodeScheduler {
     terminalOutcome: 'completed' | 'failed' | null,
     interruptedAt: InterruptionInfoType | null,
     state: TReturn,
+    parked: ParkedType | null = null,
   ): ExecutionResultType<TReturn> {
     return {
       cursor,
@@ -773,6 +811,7 @@ export class NodeScheduler {
       state,
       terminalOutcome,
       interruptedAt,
+      parked,
     };
   }
 

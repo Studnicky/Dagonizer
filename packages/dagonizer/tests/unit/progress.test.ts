@@ -6,12 +6,16 @@
  *   - SseStream: SSE frame format, connected frame, bus→stream delivery,
  *                unsubscribe-on-cancel, heartbeat interval (disabled in tests),
  *                frame/comment static helpers
+ *   - BusObserver: lifecycle hook → bus topic bridge
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { BusEventEnvelopeBuilder } from '../../src/progress/BusEventEnvelope.js';
+import { BusObserver } from '../../src/progress/BusObserver.js';
+import type { DagLifecycleEventType } from '../../src/progress/BusObserver.js';
 import { EventBus } from '../../src/progress/EventBus.js';
 import { SseStream } from '../../src/progress/SseStream.js';
 
@@ -364,6 +368,213 @@ describe('SseStream.of — heartbeat (interval=0 disables)', () => {
 
     reader.cancel();
     reader.releaseLock();
+    bus.dispose();
+  });
+});
+
+// ── BusObserver ──────────────────────────────────────────────────────────────
+
+/** Minimal concrete state for BusObserver tests. */
+class BusObserverTestState extends NodeStateBase {}
+
+/**
+ * Pull the first payload off the bus after invoking `fn`. Returns the
+ * `DagLifecycleEventType` payload (unboxed from the envelope).
+ */
+class BusCapture {
+  private constructor() { /* static class */ }
+
+  static first(bus: EventBus, topic: string, fn: () => void): DagLifecycleEventType {
+    let captured: DagLifecycleEventType | undefined;
+    const unsub = bus.subscribe(topic, (e) => {
+      if (captured === undefined) captured = e.payload as DagLifecycleEventType;
+    });
+    fn();
+    unsub();
+    assert.ok(captured !== undefined, 'expected at least one event');
+    return captured;
+  }
+}
+
+describe('BusObserver.onFlowStart', () => {
+  it('publishes a flowStart event with dagName', () => {
+    const bus = new EventBus();
+    const observer = new BusObserver(bus, 'dag-events');
+    const state = new BusObserverTestState();
+
+    const payload = BusCapture.first(bus, 'dag-events', () => {
+      observer.onFlowStart?.('my-dag', state);
+    });
+
+    assert.equal(payload.event, 'flowStart');
+    assert.equal((payload as Extract<DagLifecycleEventType, { event: 'flowStart' }>).dagName, 'my-dag');
+    bus.dispose();
+  });
+});
+
+describe('BusObserver.onNodeStart', () => {
+  it('publishes a nodeStart event with nodeName and placementPath', () => {
+    const bus = new EventBus();
+    const observer = new BusObserver(bus, 'events');
+    const state = new BusObserverTestState();
+    const path = ['parent', 'child'] as const;
+
+    const payload = BusCapture.first(bus, 'events', () => {
+      observer.onNodeStart?.('search-node', state, path);
+    });
+
+    assert.equal(payload.event, 'nodeStart');
+    const ev = payload as Extract<DagLifecycleEventType, { event: 'nodeStart' }>;
+    assert.equal(ev.nodeName, 'search-node');
+    assert.deepEqual(ev.placementPath, ['parent', 'child']);
+    bus.dispose();
+  });
+});
+
+describe('BusObserver.onNodeEnd', () => {
+  it('publishes a nodeEnd event with output field', () => {
+    const bus = new EventBus();
+    const observer = new BusObserver(bus, 'events');
+    const state = new BusObserverTestState();
+
+    const payload = BusCapture.first(bus, 'events', () => {
+      observer.onNodeEnd?.('rank-node', 'success', state, []);
+    });
+
+    assert.equal(payload.event, 'nodeEnd');
+    const ev = payload as Extract<DagLifecycleEventType, { event: 'nodeEnd' }>;
+    assert.equal(ev.nodeName, 'rank-node');
+    assert.equal(ev.output, 'success');
+    assert.deepEqual(ev.placementPath, []);
+    bus.dispose();
+  });
+
+  it('publishes nodeEnd with null output for terminal nodes', () => {
+    const bus = new EventBus();
+    const observer = new BusObserver(bus, 'events');
+    const state = new BusObserverTestState();
+
+    const payload = BusCapture.first(bus, 'events', () => {
+      observer.onNodeEnd?.('terminal-node', null, state, []);
+    });
+
+    const ev = payload as Extract<DagLifecycleEventType, { event: 'nodeEnd' }>;
+    assert.equal(ev.output, null);
+    bus.dispose();
+  });
+});
+
+describe('BusObserver.onFlowEnd', () => {
+  it('publishes a flowEnd event with terminalOutcome as outcome', () => {
+    const bus = new EventBus();
+    const observer = new BusObserver(bus, 'events');
+    const state = new BusObserverTestState();
+    const result = {
+      'cursor': null,
+      'executedNodes': [],
+      'skippedNodes': [],
+      'state': state,
+      'interruptedAt': null,
+      'parked': null,
+      'terminalOutcome': 'completed' as const,
+    };
+
+    const payload = BusCapture.first(bus, 'events', () => {
+      observer.onFlowEnd?.('my-dag', state, result);
+    });
+
+    assert.equal(payload.event, 'flowEnd');
+    const ev = payload as Extract<DagLifecycleEventType, { event: 'flowEnd' }>;
+    assert.equal(ev.dagName, 'my-dag');
+    assert.equal(ev.outcome, 'completed');
+    bus.dispose();
+  });
+
+  it('falls back to interruptedAt.reason when terminalOutcome is null', () => {
+    const bus = new EventBus();
+    const observer = new BusObserver(bus, 'events');
+    const state = new BusObserverTestState();
+    const result = {
+      'cursor': 'next-node',
+      'executedNodes': [],
+      'skippedNodes': [],
+      'state': state,
+      'interruptedAt': { 'nodeName': 'pause-node', 'reason': 'abort' as const },
+      'parked': null,
+      'terminalOutcome': null,
+    };
+
+    const payload = BusCapture.first(bus, 'events', () => {
+      observer.onFlowEnd?.('my-dag', state, result);
+    });
+
+    const ev = payload as Extract<DagLifecycleEventType, { event: 'flowEnd' }>;
+    assert.equal(ev.outcome, 'abort');
+    bus.dispose();
+  });
+});
+
+describe('BusObserver.onError', () => {
+  it('publishes a nodeError event with error message', () => {
+    const bus = new EventBus();
+    const observer = new BusObserver(bus, 'events');
+    const state = new BusObserverTestState();
+    const error = new Error('fetch failed');
+
+    const payload = BusCapture.first(bus, 'events', () => {
+      observer.onError?.('fetch-node', error, state, ['outer']);
+    });
+
+    assert.equal(payload.event, 'nodeError');
+    const ev = payload as Extract<DagLifecycleEventType, { event: 'nodeError' }>;
+    assert.equal(ev.nodeName, 'fetch-node');
+    assert.equal(ev.error, 'fetch failed');
+    assert.deepEqual(ev.placementPath, ['outer']);
+    bus.dispose();
+  });
+});
+
+describe('BusObserver — multiple subscribers receive the same event', () => {
+  it('two bus subscribers both receive the nodeStart event', () => {
+    const bus = new EventBus();
+    const observer = new BusObserver(bus, 'shared');
+    const state = new BusObserverTestState();
+
+    const payloadsA: DagLifecycleEventType[] = [];
+    const payloadsB: DagLifecycleEventType[] = [];
+
+    bus.subscribe('shared', (e) => { payloadsA.push(e.payload as DagLifecycleEventType); });
+    bus.subscribe('shared', (e) => { payloadsB.push(e.payload as DagLifecycleEventType); });
+
+    observer.onNodeStart?.('classify', state, []);
+
+    assert.equal(payloadsA.length, 1);
+    assert.equal(payloadsB.length, 1);
+    assert.equal(payloadsA[0]?.event, 'nodeStart');
+    assert.equal(payloadsB[0]?.event, 'nodeStart');
+    bus.dispose();
+  });
+});
+
+describe('BusObserver.onPhaseEnter / onPhaseExit', () => {
+  it('publishes phaseEnter and phaseExit events', () => {
+    const bus = new EventBus();
+    const observer = new BusObserver(bus, 'events');
+    const state = new BusObserverTestState();
+    const captured: DagLifecycleEventType[] = [];
+
+    bus.subscribe('events', (e) => { captured.push(e.payload as DagLifecycleEventType); });
+
+    observer.onPhaseEnter?.('my-dag', 'pre', 'pre-phase', state, []);
+    observer.onPhaseExit?.('my-dag', 'pre', 'pre-phase', state, []);
+
+    assert.equal(captured.length, 2);
+    assert.equal(captured[0]?.event, 'phaseEnter');
+    assert.equal(captured[1]?.event, 'phaseExit');
+    const enter = captured[0] as Extract<DagLifecycleEventType, { event: 'phaseEnter' }>;
+    assert.equal(enter.dagName, 'my-dag');
+    assert.equal(enter.phase, 'pre');
+    assert.equal(enter.placementName, 'pre-phase');
     bus.dispose();
   });
 });

@@ -4,6 +4,12 @@ A visitor asks the archivist about books. The DAG decides intent, runs
 scouts (OpenLibrary, Google Books, Subject search, Wikipedia), ranks
 candidates, composes a response, and records findings as RDF triples.
 
+## Cross-agent memory + model swapping
+
+Both entry points share one `MemoryStore` across every turn of a session. `record-findings` writes each shortlisted book into the persistent `urn:dagonizer:memory` graph as RDF triples, and `recall-context` runs first on every turn — SPARQL-querying the accumulated memory for prior intents and shortlisted books and feeding that recalled context into each turn's prompts. Memory therefore carries forward regardless of which model produced it.
+
+The browser entry below (`main.ts`) selects one backend per session via the adapter cascade. The hosted [GitHub Pages demo](https://studnicky.github.io/dagonizer/examples/the-archivist#cross-agent-memory-and-live-model-swapping) extends this with a backend picker and per-run provenance: each run stamps `dispatcherAgentId: dispatcher:<providerId>` via `RdfProvObserver`, so a visitor can switch models between turns and watch the next model recall — over the same shared memory — what the previous model found, with each finding attributed to the agent that produced it.
+
 ## Browser mode
 
 ```

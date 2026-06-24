@@ -19,6 +19,7 @@
  * past that cap the adapter gives up immediately rather than blocking the caller.
  */
 
+import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
 import type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
 import type { ChatMessageType } from '../entities/adapter/ChatMessage.js';
 import type { LlmModelType } from '../entities/adapter/LlmModel.js';
@@ -26,6 +27,7 @@ import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 import { BaseAdapterCore, type BaseAdapterCoreOptionsType, type SelectModelOptionsType } from './BaseAdapterCore.js';
 import type { AdapterCapabilitiesType, ChatRequestType, ChatResponseType } from './LlmAdapter.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
+import { ModelCost } from './ModelCost.js';
 
 export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterInterface {
   readonly capabilities: AdapterCapabilitiesType;
@@ -62,36 +64,59 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
    * the constructor `model` option was provided. Concrete subclasses that
    * can enumerate provider models override this method.
    */
-  async listModels(): Promise<readonly LlmModelType[]> {
+  async listModels(options?: AbortableOptionsType): Promise<readonly LlmModelType[]> {
+    void options;
     try {
       const name = this.model;
-      return [{ 'name': name, 'variant': 'chat', 'cloud': false }];
+      return [{ 'name': name, 'variant': 'chat', 'cloud': false, 'costRank': ModelCost.rankFromName(name) }];
     } catch {
       return [];
     }
   }
 
   /**
-   * Select the best chat model from `listModels()` and set it as the active
-   * model. Returns the selected model name, or `null` when no chat model
-   * is available. Selection rules:
-   *   1. If `options.preferred` is in the chat catalogue, pick it.
-   *   2. Else pick the first local (`cloud === false`) chat model.
-   *   3. Else pick the first chat model regardless of cloud.
-   *   4. Return `null` when the catalogue contains no chat models.
+   * Discover the live model catalogue via `listModels()`, pick the best chat
+   * model, set it as the active model, and return its name (or `null` when no
+   * model can be resolved). The adapter's configured model acts as the implicit
+   * discovery *preference*: the selection is always gated on the provider's
+   * dynamic response, but a curated default is honored when the provider still
+   * serves it. Selection rules:
+   *   1. Compute the preference: explicit `options.preferred`, else the
+   *      configured model (`modelOrEmpty`).
+   *   2. If discovery returns no chat models (endpoint unreachable, CORS-blocked,
+   *      or empty), trust the configured default when present — but never
+   *      substitute an unconfirmed explicit `options.preferred`; return `null`
+   *      so the caller can route around an unusable backend.
+   *   3. If the preference is in the live catalogue, pick it.
+   *   4. Else pick the cheapest available chat model — the one with the
+   *      lowest `costRank` (ties resolve to the earliest in the catalogue).
+   *   5. Return `null` when the catalogue contains no chat models.
    */
   async selectChatModel(options: SelectModelOptionsType = {}): Promise<string | null> {
     const models = await this.listModels();
     // A chat-capable model is anything that is not an embedder: 'chat' or the
     // provider-unclassified 'unknown' variant both route to chat.
     const chatModels = models.filter((m) => m.variant !== 'embedding');
-    if (chatModels.length === 0) return null;
+    const configuredDefault = this.modelOrEmpty;
+    const preferred = options.preferred ?? configuredDefault;
+    if (chatModels.length === 0) {
+      // Discovery yielded nothing — the provider's models endpoint is
+      // unreachable, CORS-blocked, or empty. Fall back to the adapter's own
+      // configured default so a working chat key is not stranded; an explicit
+      // caller preference is not a substitute for catalogue confirmation.
+      return options.preferred === undefined && configuredDefault.length > 0
+        ? configuredDefault
+        : null;
+    }
     let selected: LlmModelType | undefined;
-    if (options.preferred !== undefined) {
-      selected = chatModels.find((m) => m.name === options.preferred);
+    if (preferred.length > 0) {
+      selected = chatModels.find((m) => m.name === preferred);
     }
     if (selected === undefined) {
-      selected = chatModels.find((m) => !m.cloud) ?? chatModels[0];
+      // Configured default absent from the live catalogue: fall back to the
+      // cheapest available chat model by `costRank` (each adapter populates
+      // it from its best cost signal). `chatModels` is non-empty here.
+      selected = chatModels.reduce((cheapest, m) => (m.costRank < cheapest.costRank ? m : cheapest));
     }
     if (selected === undefined) return null;
     this.setModel(selected.name);

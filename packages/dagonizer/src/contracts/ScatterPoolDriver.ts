@@ -25,10 +25,21 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * across all item executions.
  */
 export type ScatterItemResultType = {
+  /** 0-based position of this item in the scatter source array. */
   index: number;
+  /** The source item that was scattered over. */
   item: unknown;
+  /** Routing output the scatter body emitted for this item. */
   output: string;
+  /**
+   * Terminal outcome of the DAG body for this item (`'completed'` or `'failed'`),
+   * or `null` when the body was a node body (not a DAG).
+   */
   terminalOutcome: 'completed' | 'failed' | null;
+  /**
+   * Live clone state after the scatter body ran. Typed as `NodeStateInterface` because
+   * isolation factories may produce child states whose class differs from the parent.
+   */
   cloneState: NodeStateInterface;
 };
 

@@ -21,10 +21,10 @@
  * `GET /v1/models`.
  *
  * Probe: returns true iff a non-empty API key was supplied. Same
- * shape `MistralApiAdapter` ships.
+ * shape `OpenAiCompatibleAdapter.mistral()` ships.
  */
 
-import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
@@ -105,7 +105,7 @@ export class MistralEmbedder extends BaseEmbedder {
 
   /**
    * Probe true when a non-empty API key was supplied. Never throws.
-   * Symmetric with `MistralApiAdapter.probe`.
+   * Symmetric with `OpenAiCompatibleAdapter.mistral().probe`.
    */
   override async probe(): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
@@ -156,6 +156,7 @@ export class MistralEmbedder extends BaseEmbedder {
           'name': entry.id,
           'variant': isEmbedding ? 'embedding' : 'chat',
           'cloud': true,
+          'costRank': ModelCost.rankFromName(entry.id),
         };
       });
     } catch {

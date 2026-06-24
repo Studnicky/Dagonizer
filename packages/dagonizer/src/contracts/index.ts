@@ -88,3 +88,11 @@ export type { ChildStateFactoryType } from './ChildStateFactoryType.js';
 
 // Trigger: drives a `DagRunner` (once / cli / event / request).
 export type { TriggerInterface } from './TriggerInterface.js';
+
+// Plugin: one-method contract for packages that register bundles on the dispatcher.
+export type { PluginInterface, PluginReceiverType } from './PluginInterface.js';
+
+// Streaming: push-side sink and producer contracts for `StreamChannel`.
+export type { StreamSinkInterface } from './StreamSinkInterface.js';
+export type { StreamProducerInterface } from './StreamProducerInterface.js';
+export type { ResumableStreamProducerInterface } from './ResumableStreamProducerInterface.js';

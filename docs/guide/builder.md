@@ -209,6 +209,23 @@ The dispatcher invokes `onPhaseEnter(dagName, 'pre' | 'post', placementName, sta
 
 <<< @/../examples/dags/19-phase-nodes.ts#phase-dag
 
+## `.placeholder(name, outputs, routes)`
+
+Register a `PlaceholderNode` stub in one call. The node routes every execution to the first declared output unconditionally. Use during development to stub an unimplemented placement; replace with a concrete `ScalarNode` subclass when ready.
+
+```ts twoslash
+import { DAGBuilder } from '@studnicky/dagonizer';
+
+const dag = new DAGBuilder('my-dag', '1')
+  .placeholder('process', ['success', 'error'], { success: 'end', error: 'end' })
+  .terminal('end', { outcome: 'completed' })
+  .build();
+```
+
+Import: `PlaceholderNode` is available from `@studnicky/dagonizer` if you need to construct one directly.
+
+---
+
 ## `.entrypoint()`
 
 By default the first added node is the entrypoint. Override explicitly:

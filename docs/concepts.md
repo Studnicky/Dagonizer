@@ -47,7 +47,7 @@ Nodes are registered with the dispatcher under a string name; the same registere
 
 A **DAG** is a JSON-LD document that declares an entrypoint and a list of node placements with their routing. It is plain data: store it in a file, a database row, or a configuration service. Parse a JSON string via `DAGDocument.load(json)` or validate an already-decoded value via `DAGDocument.ofValue(value)` — both validate against `DAGSchema` at the ingest boundary. Register the result with `dispatcher.registerDAG(dag)`; everything downstream is typed.
 
-The Archivist DAG has roughly ten placements covering classify, scout scatter, compose retry loop, and persist. Its `@context` and `@type` discriminator make it both a runtime artifact and a Linked Data document.
+The Archivist DAG spans dozens of placements covering intent classification, tool-registry scatter, embedded search sub-DAGs, compose retry loops, and persist. Its `@context` and `@type` discriminator make it both a runtime artifact and a Linked Data document.
 
 ## Placement
 

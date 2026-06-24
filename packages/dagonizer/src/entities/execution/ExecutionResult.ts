@@ -21,6 +21,8 @@ import type { FromSchema } from 'json-schema-to-ts';
 
 import type { NodeStateInterface } from '../../NodeStateBase.js';
 
+import type { ParkedType } from './Parked.js';
+
 /**
  * JSON Schema 2020-12 definition for `InterruptionInfo`.
  * Structured cancellation telemetry: the node active when the flow was
@@ -65,6 +67,21 @@ export const ExecutionResultSchema = {
         InterruptionInfoSchema,
       ],
     },
+    'parked': {
+      'oneOf': [
+        { 'type': 'null' },
+        {
+          'type': 'object',
+          'required': ['correlationKey', 'cursor', 'dagName'],
+          'properties': {
+            'correlationKey': { 'type': 'string' },
+            'cursor':         { 'type': 'string', 'minLength': 1 },
+            'dagName':        { 'type': 'string', 'minLength': 1 },
+          },
+          'additionalProperties': false,
+        },
+      ],
+    },
   },
   'additionalProperties': false,
 } as const;
@@ -88,8 +105,10 @@ export type ExecutionResultWireType = FromSchema<typeof ExecutionResultSchema>;
  * the flow exited through, or `null` when no terminal was hit (null route,
  * error, or abort path).
  */
-export type ExecutionResultType<TState extends NodeStateInterface> = Omit<ExecutionResultWireType, 'state' | 'terminalOutcome' | 'interruptedAt'> & {
+export type ExecutionResultType<TState extends NodeStateInterface> = Omit<ExecutionResultWireType, 'state' | 'terminalOutcome' | 'interruptedAt' | 'parked'> & {
   'state': TState;
   'terminalOutcome': 'completed' | 'failed' | null;
   'interruptedAt':   InterruptionInfoType | null;
+  /** Populated when a node routed to the reserved `'parked'` output. Null otherwise. */
+  'parked':          ParkedType | null;
 };

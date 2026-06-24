@@ -44,9 +44,47 @@ Change `OLLAMA_MODEL` in the example to any model you have pulled.
 
 - **`OllamaApiAdapter`.** Wraps Ollama's OpenAI-compatible endpoint (`/v1/chat/completions`). Constructed with `{ model, baseUrl? }`: `model` is required (Ollama models are pulled per-host); `baseUrl` defaults to `http://127.0.0.1:11434`. No API key required for local usage.
 - **`probe()`.** Each adapter implementation overrides `probe()` to report availability. `OllamaApiAdapter.probe()` issues a `GET /api/tags` with a short timeout (500 ms); returns `true` when the daemon answers `2xx`, `false` on timeout or connection error. Never throws.
-- **`LlmAdapterRegistry`.** Stores adapters keyed by `(provider, model)` pairs. `registry.list()` returns all registered entries.
+- **`LlmAdapterCascadeBuilder`.** Static factory that assembles an `LlmAdapterCascade` from a preference-ordered catalogue. Each `CatalogueEntryType` pairs an `AdapterDescriptorShapeType` (provider + model + capabilities) with a zero-arg factory. The builder creates a fresh `LlmAdapterRegistry`, registers every entry in catalogue order, and returns the configured cascade. Import both from `@studnicky/dagonizer/adapter`.
+- **`LlmAdapterRegistry`.** Stores adapters keyed by `(provider, model)` pairs. Created internally by the builder; access it directly only when you need dynamic runtime registration.
 - **`LlmAdapterCascade`.** Accepts a preference list and a registry. `cascade.select()` walks the list in order, calls `adapter.probe()` on each, and returns the first available adapter. Throws when no adapter is available.
 - **Response routing.** `response.message.variant` is `'text'` for a plain completion or `'tools'` when the model makes tool calls. The DAG node routes on `variant` to separate the two paths.
+
+## Builder
+
+`LlmAdapterCascadeBuilder.build(catalogue)` assembles a cascade from data. Async discovery runs **before** the builder call — resolve models, filter nulls, then pass the finished catalogue. Each factory closes over the already-constructed adapter; `probe()` runs lazily inside `cascade.select()`.
+
+```ts
+import { LlmAdapterCascadeBuilder, OpenAiCompatibleAdapter, type CatalogueEntryType } from '@studnicky/dagonizer/adapter';
+
+// Async discovery step — happens before build()
+const catalogue: CatalogueEntryType[] = [];
+
+const ollamaAdapter = new OllamaApiAdapter();
+const ollamaModel = await ollamaAdapter.selectChatModel();
+if (ollamaModel !== null) {
+  catalogue.push({
+    descriptor: { provider: 'ollama', model: ollamaModel, capabilities: { toolUse: 'partial', structuredOutput: true, jsonMode: true } },
+    factory:    () => ollamaAdapter,   // synchronous; closes over already-constructed adapter
+  });
+}
+
+if (process.env.GROQ_API_KEY) {
+  const groqAdapter = OpenAiCompatibleAdapter.groq(process.env.GROQ_API_KEY);
+  const groqModel = await groqAdapter.selectChatModel();
+  if (groqModel !== null) {
+    catalogue.push({
+      descriptor: { provider: 'groq', model: groqModel, capabilities: { toolUse: 'partial', structuredOutput: true, jsonMode: true } },
+      factory:    () => groqAdapter,
+    });
+  }
+}
+
+// build() is synchronous — catalogue is already resolved
+const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+const adapter  = await cascade.select(); // probes in catalogue order
+```
+
+The Archivist CLI (`examples/the-archivist/runArchivist.ts`) uses this exact pattern across six providers.
 
 ## Run
 

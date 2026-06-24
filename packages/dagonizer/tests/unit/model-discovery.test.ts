@@ -28,10 +28,10 @@ import { Validator } from '../../src/validation/Validator.js';
 // ---------------------------------------------------------------------------
 
 const FIXED_CATALOGUE: readonly LlmModelType[] = [
-  { 'name': 'local-chat',      'variant': 'chat',      'cloud': false },
-  { 'name': 'cloud-chat',      'variant': 'chat',      'cloud': true  },
-  { 'name': 'local-embed',     'variant': 'embedding', 'cloud': false },
-  { 'name': 'unknown-model',   'variant': 'unknown',   'cloud': false },
+  { 'name': 'local-chat',      'variant': 'chat',      'cloud': false, 'costRank': 5  },
+  { 'name': 'cloud-chat',      'variant': 'chat',      'cloud': true,  'costRank': 50 },
+  { 'name': 'local-embed',     'variant': 'embedding', 'cloud': false, 'costRank': 3  },
+  { 'name': 'unknown-model',   'variant': 'unknown',   'cloud': false, 'costRank': 80 },
 ];
 
 class TestAdapter extends BaseAdapter {
@@ -53,8 +53,8 @@ class TestAdapter extends BaseAdapter {
 // ---------------------------------------------------------------------------
 
 const EMBEDDING_CATALOGUE: readonly LlmModelType[] = [
-  { 'name': 'nomic-embed',  'variant': 'embedding', 'cloud': false },
-  { 'name': 'cloud-embed',  'variant': 'embedding', 'cloud': true  },
+  { 'name': 'nomic-embed',  'variant': 'embedding', 'cloud': false, 'costRank': 2 },
+  { 'name': 'cloud-embed',  'variant': 'embedding', 'cloud': true,  'costRank': 9 },
 ];
 
 class TestEmbedder extends BaseEmbedder {
@@ -98,19 +98,25 @@ class ExposedEmbedder extends TestEmbedder {
 
 void describe('LlmModel entity + Validator.llmModel', () => {
   void it('Validator.llmModel validates a well-formed chat descriptor', () => {
-    const value: unknown = { 'name': 'llama3', 'variant': 'chat', 'cloud': false };
+    const value: unknown = { 'name': 'llama3', 'variant': 'chat', 'cloud': false, 'costRank': 8 };
     assert.ok(Validator.llmModel.is(value), 'should pass is()');
     const typed = Validator.llmModel.validate(value);
     assert.equal(typed.name, 'llama3');
     assert.equal(typed.variant, 'chat');
     assert.equal(typed.cloud, false);
+    assert.equal(typed.costRank, 8);
   });
 
   void it('Validator.llmModel validates an embedding descriptor', () => {
-    const value: unknown = { 'name': 'nomic-embed-text', 'variant': 'embedding', 'cloud': true };
+    const value: unknown = { 'name': 'nomic-embed-text', 'variant': 'embedding', 'cloud': true, 'costRank': 0 };
     assert.ok(Validator.llmModel.is(value));
     const typed = Validator.llmModel.validate(value);
     assert.equal(typed.variant, 'embedding');
+  });
+
+  void it('Validator.llmModel rejects missing costRank', () => {
+    const value: unknown = { 'name': 'model', 'variant': 'chat', 'cloud': false };
+    assert.equal(Validator.llmModel.is(value), false);
   });
 
   void it('Validator.llmModel rejects missing name', () => {
@@ -176,7 +182,7 @@ void describe('BaseAdapter default listModels', () => {
 // ---------------------------------------------------------------------------
 
 void describe('selectChatModel', () => {
-  void it('prefers a local chat model over cloud when no preferred specified', async () => {
+  void it('selects the cheapest chat model when no preferred specified', async () => {
     const adapter = new TestAdapter();
     const selected = await adapter.selectChatModel();
     assert.equal(selected, 'local-chat');
@@ -188,10 +194,33 @@ void describe('selectChatModel', () => {
     assert.equal(selected, 'cloud-chat');
   });
 
-  void it('falls back to local-first when preferred is not found in catalogue', async () => {
+  void it('falls back to the cheapest chat model when preferred is not found in catalogue', async () => {
     const adapter = new TestAdapter();
     const selected = await adapter.selectChatModel({ 'preferred': 'nonexistent-model' });
     assert.equal(selected, 'local-chat');
+  });
+
+  void it('selects the cheapest chat model, not the first, when the default is absent', async () => {
+    // The catalogue lists an expensive model first and a cheaper one second.
+    // The cheapest-by-costRank fallback must pick the cheaper second entry,
+    // proving selection is cost-driven rather than position-driven.
+    class CostAdapter extends BaseAdapter {
+      constructor() {
+        super('cost', 'CostAdapter', { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false }, { 'model': 'absent-default' });
+      }
+      override async listModels(): Promise<readonly LlmModelType[]> {
+        return [
+          { 'name': 'expensive-first', 'variant': 'chat', 'cloud': true, 'costRank': 90 },
+          { 'name': 'cheap-second',    'variant': 'chat', 'cloud': true, 'costRank': 3  },
+        ];
+      }
+      protected override async performChat(): Promise<never> {
+        throw new LlmError('not implemented', { 'reason': 'UNKNOWN', 'retryable': false });
+      }
+    }
+    const adapter = new CostAdapter();
+    const selected = await adapter.selectChatModel();
+    assert.equal(selected, 'cheap-second');
   });
 
   void it('skips embedding-variant models entirely', async () => {
@@ -201,7 +230,7 @@ void describe('selectChatModel', () => {
         super('embed-only', 'EmbedOnly', { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false });
       }
       override async listModels(): Promise<readonly LlmModelType[]> {
-        return [{ 'name': 'embed-model', 'variant': 'embedding', 'cloud': false }];
+        return [{ 'name': 'embed-model', 'variant': 'embedding', 'cloud': false, 'costRank': 1 }];
       }
       protected override async performChat(): Promise<never> {
         throw new LlmError('not implemented', { 'reason': 'UNKNOWN', 'retryable': false });
@@ -247,6 +276,61 @@ void describe('selectChatModel', () => {
     const selected = await adapter.selectChatModel();
     assert.ok(selected !== null);
     assert.equal(adapter.readModel(), selected);
+  });
+
+  void it('uses the configured default as the implicit preference when in the catalogue', async () => {
+    // Configured 'cloud-chat' is in FIXED_CATALOGUE; discovery confirms it and
+    // picks it over the local-first fallback.
+    const adapter = new TestAdapter('cloud-chat');
+    const selected = await adapter.selectChatModel();
+    assert.equal(selected, 'cloud-chat');
+  });
+
+  void it('replaces a configured default absent from the live catalogue with the cheapest available model', async () => {
+    // The original 404 bug: the configured model is no longer served. Discovery
+    // confirms it is missing and falls back to the cheapest available chat
+    // model — 'local-chat' (costRank 5) over 'cloud-chat' (costRank 50).
+    const adapter = new TestAdapter('retired-model-not-in-catalogue');
+    const selected = await adapter.selectChatModel();
+    assert.equal(selected, 'local-chat');
+  });
+
+  void it('trusts the configured default when discovery returns an empty catalogue', async () => {
+    // Models endpoint unreachable/CORS-blocked but the chat key works: a cloud
+    // backend must not be stranded — return its configured default.
+    class ConfiguredEmptyAdapter extends BaseAdapter {
+      constructor() {
+        super('cfg-empty', 'CfgEmpty', { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false }, { 'model': 'curated-default' });
+      }
+      override async listModels(): Promise<readonly LlmModelType[]> {
+        return [];
+      }
+      protected override async performChat(): Promise<never> {
+        throw new LlmError('not implemented', { 'reason': 'UNKNOWN', 'retryable': false });
+      }
+    }
+    const adapter = new ConfiguredEmptyAdapter();
+    const selected = await adapter.selectChatModel();
+    assert.equal(selected, 'curated-default');
+  });
+
+  void it('does not substitute an unconfirmed explicit preference on an empty catalogue', async () => {
+    // No configured default + empty catalogue + explicit preference → null. An
+    // explicit caller preference is never trusted without catalogue confirmation.
+    class EmptyAdapter extends BaseAdapter {
+      constructor() {
+        super('empty2', 'Empty2', { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false });
+      }
+      override async listModels(): Promise<readonly LlmModelType[]> {
+        return [];
+      }
+      protected override async performChat(): Promise<never> {
+        throw new LlmError('not implemented', { 'reason': 'UNKNOWN', 'retryable': false });
+      }
+    }
+    const adapter = new EmptyAdapter();
+    const selected = await adapter.selectChatModel({ 'preferred': 'wished-for-model' });
+    assert.equal(selected, null);
   });
 });
 
@@ -334,7 +418,7 @@ void describe('selectEmbeddingModel', () => {
         super('chat-only', 'ChatOnly', 256);
       }
       override async listModels(): Promise<readonly LlmModelType[]> {
-        return [{ 'name': 'gpt-4o', 'variant': 'chat', 'cloud': true }];
+        return [{ 'name': 'gpt-4o', 'variant': 'chat', 'cloud': true, 'costRank': 40 }];
       }
       protected override async performEmbed(_text: string, _signal: AbortSignal): Promise<readonly number[]> {
         return [];

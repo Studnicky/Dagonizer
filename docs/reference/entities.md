@@ -29,6 +29,24 @@ Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@
 import type { DAGType } from '@studnicky/dagonizer/entities';
 ```
 
+### `@context` — prefix map for IRI expansion
+
+The `@context` field is an optional `Record<string, string>` prefix map consumed by `ContextResolver` at registration time. Each key is a short prefix identifier; each value is the namespace IRI to prepend when expanding a `prefix:local` name.
+
+```json
+{
+  "@context": {
+    "myPlugin": "https://myplugin.dev/dag#"
+  }
+}
+```
+
+Every `name`, `node`, `dag`, and output route value in the document is expanded through this map before the DAG enters the registry. Bare names (no colon) expand to `ContextResolver.DEFAULT_NS + name` (`https://noocodex.dev/dag/default#`). Absolute IRIs (containing `://`) pass through unexpanded.
+
+`ContextResolver.validate` is called automatically by `registerDAG`; it throws `DAGError` if two prefix keys map to the same namespace IRI (a collision that would make inverse lookups ambiguous).
+
+For the full expansion rules and multi-plugin isolation examples, see [Guide: IRI identity](../guide/iri-identity).
+
 ---
 
 ## `SingleNodeSchema`

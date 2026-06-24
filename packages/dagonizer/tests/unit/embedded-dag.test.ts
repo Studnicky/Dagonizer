@@ -9,6 +9,7 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import { NodeErrorBuilder } from '../../src/entities/node/NodeError.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -372,6 +373,29 @@ class PassNode extends ScalarNode<NodeStateBase, 'ok'> {
 
 const passNode = new PassNode();
 
+// Collects an unrecoverable error yet still routes its normal output. Models a
+// node (or scatter clone) whose sub-failure the inner flow deliberately
+// tolerates — e.g. one scout absorbed by an `any-success` reducer — while the
+// run continues to a `completed` terminal. The error must surface on the parent
+// state for observability without flipping the placement's terminal decision.
+class TolerantNode extends ScalarNode<NodeStateBase, 'ok'> {
+  readonly name = 'tolerant';
+  readonly outputs = ['ok'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'ok': { 'type': 'object' } }; }
+  protected async executeOne(): Promise<NodeOutputType<'ok'>> {
+    const err = NodeErrorBuilder.from(
+      'TOOL_HTTP_429',
+      'tolerated upstream rate limit',
+      'executeOne',
+      false,
+      '2020-01-01T00:00:00Z',
+    );
+    return { 'errors': [err], 'output': 'ok' as const };
+  }
+}
+
+const tolerantNode = new TolerantNode();
+
 void describe('embedded-DAG terminal-outcome propagation', () => {
   void it('inner TerminalNode(failed) routes parent to error without collectError', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
@@ -450,6 +474,43 @@ void describe('embedded-DAG terminal-outcome propagation', () => {
     // Inner TerminalNode(completed) + no errors → parent routes via success.
     assert.equal(result.state.lifecycle.variant, 'completed');
     assert.ok(result.executedNodes.includes('end-ok'));
+  });
+
+  void it('inner TerminalNode(completed) with a tolerated unrecoverable error routes parent to success', async () => {
+    // The inner flow collects an unrecoverable error (a tolerated sub-failure)
+    // but still reaches its `completed` terminal — the shape an `any-success`
+    // scatter produces when one clone fails and the survivors carry the run
+    // through. The explicit `completed` terminal is authoritative: the parent
+    // must route `success`, and the tolerated error must still be propagated to
+    // the parent state so it stays observable.
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    dispatcher.registerNode(tolerantNode);
+
+    const innerDag = new DAGBuilder('inner-tolerant', '1')
+      .node('tolerant', tolerantNode, { 'ok': 'found' })
+      .terminal('found', { 'outcome': 'completed' })
+      .build();
+    dispatcher.registerDAG(innerDag);
+
+    const parentDag = new DAGBuilder('parent-tolerant', '1')
+      .embeddedDAG('run-inner', 'inner-tolerant', { 'success': 'end-ok', 'error': 'end-bad' })
+      .terminal('end-ok', { 'outcome': 'completed' })
+      .terminal('end-bad', { 'outcome': 'failed' })
+      .build();
+    dispatcher.registerDAG(parentDag);
+
+    const state = new NodeStateBase();
+    const result = await dispatcher.execute('parent-tolerant', state);
+
+    assert.equal(result.terminalOutcome, 'completed', 'completed terminal wins over a tolerated error');
+    assert.equal(result.state.lifecycle.variant, 'completed');
+    assert.ok(result.executedNodes.includes('end-ok'), 'parent routed through the success terminal');
+    assert.ok(!result.executedNodes.includes('end-bad'), 'parent did not route through the error terminal');
+    assert.equal(
+      result.state.errors.filter((e) => e.code === 'TOOL_HTTP_429').length,
+      1,
+      'the tolerated error is still propagated to the parent state for observability',
+    );
   });
 
   void it('top-level execute() surfaces terminalOutcome matching the TerminalNode outcome field', async () => {

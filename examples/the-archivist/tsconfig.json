@@ -18,7 +18,6 @@
     "dag-roundtrip.ts",
     "dag-validate.ts",
     "services.ts",
-    "ObservedArchivist.ts",
     "embedded-dags/**/*.ts",
     "entities/**/*.ts",
     "logger/**/*.ts",

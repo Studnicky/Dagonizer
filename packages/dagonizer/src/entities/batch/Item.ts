@@ -8,9 +8,12 @@
  * through all batch operations.
  */
 
+/** Opaque string that uniquely identifies a single item within a `Batch`. Survives all batch transformations. */
 export type ItemIdType = string;
 
 export type ItemType<TState> = {
+  /** Stable item identifier; used to trace routing decisions back to the original item. */
   readonly id: ItemIdType;
+  /** Domain state the node reads from and writes to; the same reference flows through all batch operations. */
   readonly state: TState;
 }

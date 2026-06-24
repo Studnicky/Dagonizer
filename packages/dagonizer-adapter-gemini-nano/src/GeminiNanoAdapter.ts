@@ -24,7 +24,7 @@ import type {
   ErrorClassificationType,
   ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import type {
@@ -99,7 +99,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
    * returned Promise always resolves immediately.
    */
   override listModels(): Promise<readonly LlmModelType[]> {
-    return Promise.resolve([{ 'name': GEMINI_NANO_MODEL_ID, 'variant': 'chat', 'cloud': false }]);
+    return Promise.resolve([{ 'name': GEMINI_NANO_MODEL_ID, 'variant': 'chat', 'cloud': false, 'costRank': ModelCost.rankFromName(GEMINI_NANO_MODEL_ID) }]);
   }
 
   protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {

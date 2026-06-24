@@ -51,12 +51,6 @@ export class DottedPathAccessor implements StateAccessorInterface {
     if (parts.length === 0) {
       return;
     }
-    // Refuse paths that would mutate the prototype chain (prototype pollution).
-    for (const part of parts) {
-      if (part === '' || FORBIDDEN_KEYS.has(part)) {
-        return;
-      }
-    }
     if (!DottedPathAccessor.isRecord(state)) {
       return;
     }
@@ -65,15 +59,14 @@ export class DottedPathAccessor implements StateAccessorInterface {
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
 
-      if (part === undefined) {
-        continue;
+      // Guard inline: refuse empty segments and keys that walk the prototype chain.
+      if (part === undefined || part === '' || FORBIDDEN_KEYS.has(part)) {
+        return;
       }
       if (!(part in current)) {
         current[part] = {};
       }
-      // Advance the cursor through the FORBIDDEN_KEYS-guarded segment. The
-      // segment was created here as `{}` or supplied by the caller; the
-      // record guard refuses to write through a non-object intermediate.
+      // Advance the cursor; the record guard refuses to write through a non-object intermediate.
       const next = current[part];
       if (!DottedPathAccessor.isRecord(next)) {
         return;
@@ -82,7 +75,8 @@ export class DottedPathAccessor implements StateAccessorInterface {
     }
     const lastPart = parts[parts.length - 1];
 
-    if (lastPart !== undefined) {
+    // Guard inline: refuse empty or forbidden final segment before assigning.
+    if (lastPart !== undefined && lastPart !== '' && !FORBIDDEN_KEYS.has(lastPart)) {
       current[lastPart] = value;
     }
   }

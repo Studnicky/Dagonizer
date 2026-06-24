@@ -53,14 +53,12 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
+    "@shikijs/vitepress-twoslash": "^2.5.0",
     "@studnicky/dagonizer": "workspace:^",
-    "@studnicky/dagonizer-adapter-cerebras": "workspace:^",
+    "@studnicky/dagonizer-adapter-anthropic": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-api": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-nano": "workspace:^",
-    "@studnicky/dagonizer-adapter-groq": "workspace:^",
-    "@studnicky/dagonizer-adapter-mistral": "workspace:^",
     "@studnicky/dagonizer-adapter-ollama": "workspace:^",
-    "@studnicky/dagonizer-adapter-openrouter": "workspace:^",
     "@studnicky/dagonizer-adapter-web-llm": "workspace:^",
     "@studnicky/dagonizer-book-entities": "workspace:^",
     "@studnicky/dagonizer-executor-node": "workspace:^",
@@ -71,10 +69,9 @@
     "@studnicky/dagonizer-tool-googlebooks": "workspace:^",
     "@studnicky/dagonizer-tool-openlibrary": "workspace:^",
     "@studnicky/dagonizer-tool-wikipedia": "workspace:^",
-    "@shikijs/vitepress-twoslash": "^2.5.0",
-    "tsx": "^4.20.0",
+    "tsx": "^4.22.4",
     "vitepress": "^1.6.4",
-    "vue-tsc": "^2.2.12"
+    "vue-tsc": "^3.3.5"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

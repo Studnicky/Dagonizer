@@ -13,6 +13,20 @@ import { ValidationError } from '../errors/index.js';
 import { Validator } from '../validation/Validator.js';
 
 /**
+ * Options for `DAGDocument.load` and `DAGDocument.ofValue`.
+ */
+export type DAGDocumentLoadOptionsType = {
+  /**
+   * Field overrides applied to the decoded DAG before schema validation.
+   * Use to inject runtime values (e.g. concurrency from config) without
+   * mutating the source document.
+   *
+   * Example: { nodes: [ ...dag.nodes.map(n => n.name === 'scatter' ? { ...n, concurrency: 16 } : n) ] }
+   */
+  readonly overrides?: Partial<DAGType>;
+};
+
+/**
  * DAG document (de)serialization domain.
  *
  * Three operations, no instances:
@@ -31,8 +45,12 @@ export class DAGDocument {
    * boundary where `unknown` enters the package.
    *
    * Throws `ValidationError` for malformed JSON or schema-noncompliant input.
+   *
+   * @param options.overrides — field overrides merged into the decoded DAG
+   * before schema validation. Use to inject runtime values (e.g. concurrency)
+   * without mutating the source document.
    */
-  static load(json: string): DAGType {
+  static load(json: string, options: DAGDocumentLoadOptionsType = {}): DAGType {
     let parsed: unknown;
     try {
       parsed = JSON.parse(json);
@@ -40,15 +58,25 @@ export class DAGDocument {
       const message = error instanceof Error ? error.message : String(error);
       throw new ValidationError(`Invalid JSON: ${message}`);
     }
-    return Validator.dag.validate(parsed);
+    const merged = options.overrides !== undefined
+      ? { ...(parsed as Record<string, unknown>), ...options.overrides }
+      : parsed;
+    return Validator.dag.validate(merged);
   }
 
   /**
    * Parse an already-decoded value and validate. Same boundary semantics as
    * `load` but skips JSON.parse for callers that have already decoded.
+   *
+   * @param options.overrides — field overrides merged into the decoded value
+   * before schema validation. Use to inject runtime values (e.g. concurrency)
+   * without mutating the source document.
    */
-  static ofValue(value: unknown): DAGType {
-    return Validator.dag.validate(value);
+  static ofValue(value: unknown, options: DAGDocumentLoadOptionsType = {}): DAGType {
+    const merged = options.overrides !== undefined
+      ? { ...(value as Record<string, unknown>), ...options.overrides }
+      : value;
+    return Validator.dag.validate(merged);
   }
 
   /** Serialize a DAG to pretty JSON (2-space indent). */

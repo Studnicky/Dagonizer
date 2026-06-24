@@ -14,24 +14,24 @@
   },
   "dependencies": {
     "@studnicky/dagonizer": "workspace:^",
-    "@studnicky/dagonizer-adapter-cerebras": "workspace:^",
+    "@studnicky/dagonizer-adapter-anthropic": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-api": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-nano": "workspace:^",
-    "@studnicky/dagonizer-adapter-groq": "workspace:^",
-    "@studnicky/dagonizer-adapter-mistral": "workspace:^",
     "@studnicky/dagonizer-adapter-ollama": "workspace:^",
-    "@studnicky/dagonizer-adapter-openrouter": "workspace:^",
     "@studnicky/dagonizer-adapter-web-llm": "workspace:^",
     "@studnicky/dagonizer-book-entities": "workspace:^",
     "@studnicky/dagonizer-embedder-gemini-api": "workspace:^",
     "@studnicky/dagonizer-embedder-mistral": "workspace:^",
     "@studnicky/dagonizer-embedder-ollama": "workspace:^",
+    "@studnicky/dagonizer-embedder-tensorflow": "workspace:^",
+    "@studnicky/dagonizer-embedder-transformers": "workspace:^",
+    "@studnicky/dagonizer-embedder-web-llm": "workspace:^",
     "@studnicky/dagonizer-tool-googlebooks": "workspace:^",
     "@studnicky/dagonizer-tool-openlibrary": "workspace:^",
     "@studnicky/dagonizer-tool-wikipedia": "workspace:^"
   },
   "devDependencies": {
-    "n3": "^2.0.3",
-    "vite": "6.4.3"
+    "n3": "^2.1.0",
+    "vite": "^8.1.0"
   }
 }

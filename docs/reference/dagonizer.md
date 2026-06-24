@@ -142,12 +142,13 @@ d.registerDAG(dag);
 d.registerDAG(dag, stateFactory);
 ```
 
-Registers a DAG after two validation passes, followed by an optional contract check. The optional `stateFactory` argument overrides the default child-state constructor thunk for embedded-DAG and scatter executions within this DAG; when omitted, `ChildStateFactory.cloneParent` is stored.
+Registers a DAG after a semantic validation pass, followed by an optional contract check. The optional `stateFactory` argument overrides the default child-state constructor thunk for embedded-DAG and scatter executions within this DAG; when omitted, `ChildStateFactory.cloneParent` is stored.
 
-1. **Schema pass.** `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
-2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular embedded-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
+1. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular embedded-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
 
-After both passes, a data-flow check runs for each placement whose backing node declares required and produced state paths. Dangling reads (a non-entrypoint node requires a path no upstream node produces) and dead writes (a node produces a path no downstream node requires) both throw `DAGError`. This check is skipped for placements without a contract.
+After the semantic pass, a data-flow check runs for each placement whose backing node declares required and produced state paths. Dangling reads (a non-entrypoint node requires a path no upstream node produces) and dead writes (a node produces a path no downstream node requires) both throw `DAGError`. This check is skipped for placements without a contract.
+
+Schema validation is handled at the ingest boundary (`DAGDocument.load` / `DAGDocument.ofValue`); `registerDAG` does not repeat the structural pass because `DAGType` already guarantees schema conformance.
 
 Throws `DAGError` with a multi-line message listing all failures.
 
@@ -175,12 +176,12 @@ All four read accessors in context:
 
 ---
 
-### `DAGDocument.load(json)` {#static-load}
+### `DAGDocument.load(json, options?)` {#static-load}
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
 // ---cut---
-// static load(json: string): DAG
+// static load(json: string, options?: DAGDocumentLoadOptionsType): DAGType
 declare const rawJsonString: string;
 const dag = DAGDocument.load(rawJsonString);
 ```
@@ -197,19 +198,35 @@ const dispatcher = new Dagonizer<MyState>();
 dispatcher.registerDAG(dag);
 ```
 
----
-
-### `DAGDocument.ofValue(value)` {#static-ofvalue}
+**`options.overrides`** — a `Partial<DAGType>` merged into the decoded document before schema validation. Use this to inject runtime configuration (e.g. concurrency limits from an environment config) without mutating the source JSON.
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
 // ---cut---
-// static ofValue(value: unknown): DAG
+declare const rawJsonString: string;
+declare const concurrency: number;
+const dag = DAGDocument.load(rawJsonString, {
+  overrides: {
+    nodes: JSON.parse(rawJsonString).nodes.map((n: { name: string }) =>
+      n.name === 'scatter' ? { ...n, concurrency } : n
+    ),
+  },
+});
+```
+
+---
+
+### `DAGDocument.ofValue(value, options?)` {#static-ofvalue}
+
+```ts twoslash
+import { DAGDocument } from '@studnicky/dagonizer';
+// ---cut---
+// static ofValue(value: unknown, options?: DAGDocumentLoadOptionsType): DAGType
 declare const value: unknown;
 const dag = DAGDocument.ofValue(value);
 ```
 
-Validate an already-parsed value. Same boundary semantics as `load` but skips `JSON.parse`.
+Validate an already-parsed value. Same boundary semantics as `load` but skips `JSON.parse`. Accepts the same `options.overrides` field.
 
 ---
 

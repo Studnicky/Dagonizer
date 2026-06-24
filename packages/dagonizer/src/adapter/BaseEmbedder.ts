@@ -26,6 +26,7 @@ import { SignalComposer } from '../runtime/SignalComposer.js';
 
 import { BaseAdapterCore, type BaseAdapterCoreOptionsType, type SelectModelOptionsType } from './BaseAdapterCore.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
+import { ModelCost } from './ModelCost.js';
 
 /**
  * Caller-facing options shared by every concrete embedder.
@@ -65,10 +66,11 @@ export abstract class BaseEmbedder extends BaseAdapterCore implements EmbedderIn
    * when the constructor `model` option was provided. Concrete subclasses
    * that can enumerate provider models override this method.
    */
-  async listModels(): Promise<readonly LlmModelType[]> {
+  async listModels(options?: AbortableOptionsType): Promise<readonly LlmModelType[]> {
+    void options;
     try {
       const name = this.model;
-      return [{ 'name': name, 'variant': 'embedding', 'cloud': false }];
+      return [{ 'name': name, 'variant': 'embedding', 'cloud': false, 'costRank': ModelCost.rankFromName(name) }];
     } catch {
       return [];
     }

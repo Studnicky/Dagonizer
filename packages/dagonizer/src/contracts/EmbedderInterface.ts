@@ -18,6 +18,8 @@
  * but distinct; share the retry plumbing and the error taxonomy.
  */
 
+import type { LlmModelType } from '../entities/adapter/LlmModel.js';
+
 import type { AbortableOptionsType } from './AbortableOptionsType.js';
 
 /** Implemented by every embedding provider. */
@@ -33,6 +35,13 @@ export interface EmbedderInterface {
    * fallback case.
    */
   readonly dimensions: number;
+
+  /**
+   * Discover the embedding models available on this provider.
+   * Returns an empty array when the provider is unreachable or reports no
+   * models — never throws.
+   */
+  listModels(options?: AbortableOptionsType): Promise<readonly LlmModelType[]>;
 
   /**
    * Embed a single text. Returns a `number[]` of length `dimensions`.

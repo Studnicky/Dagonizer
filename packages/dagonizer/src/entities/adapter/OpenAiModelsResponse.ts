@@ -7,6 +7,10 @@
  * The only invariant is that `data` is an array of objects each carrying
  * an `id` string.
  *
+ * `pricing` is declared (optional) so the OpenRouter catalogue's per-token
+ * cost survives typed into `listModels`; providers that omit it (Groq,
+ * Cerebras, Mistral) fall back to the `ModelCost` name heuristic.
+ *
  * Compiled once via `Validator.openAiModelsResponse` at module load.
  */
 
@@ -25,6 +29,14 @@ export const OpenAiModelsResponseSchema = {
         'required': ['id'],
         'properties': {
           'id': { 'type': 'string' },
+          'pricing': {
+            'type': 'object',
+            'properties': {
+              'prompt':     { 'type': 'string' },
+              'completion': { 'type': 'string' },
+            },
+            'additionalProperties': true,
+          },
         },
         'additionalProperties': true,
       },

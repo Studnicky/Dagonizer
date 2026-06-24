@@ -44,12 +44,9 @@ import { ComposeRetryLoopBundleFactory } from './embedded-dags/ComposeRetryLoopD
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedDag } from './ObservedDag.ts';
-import { CerebrasApiAdapter }   from '@studnicky/dagonizer-adapter-cerebras';
 import { GeminiApiAdapter }     from '@studnicky/dagonizer-adapter-gemini-api';
-import { GroqApiAdapter }       from '@studnicky/dagonizer-adapter-groq';
-import { MistralApiAdapter }    from '@studnicky/dagonizer-adapter-mistral';
 import { OllamaApiAdapter }     from '@studnicky/dagonizer-adapter-ollama';
-import { OpenRouterApiAdapter } from '@studnicky/dagonizer-adapter-openrouter';
+import { OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
 import { GeminiApiEmbedder }    from '@studnicky/dagonizer-embedder-gemini-api';
 import { MistralEmbedder }      from '@studnicky/dagonizer-embedder-mistral';
 import { OllamaEmbedder }       from '@studnicky/dagonizer-embedder-ollama';
@@ -65,14 +62,17 @@ import { ToolRegistry } from '@studnicky/dagonizer/tool';
 import {
   EmbedderCascade,
   EmbedderRegistry,
-  LlmAdapterCascade,
-  LlmAdapterRegistry,
+  LlmAdapterCascadeBuilder,
   LlmError,
+  type CatalogueEntryType,
 } from '@studnicky/dagonizer/adapter';
 import { ExecutionError, NodeTimeoutError } from '@studnicky/dagonizer/errors';
 import type { AdapterCapabilitiesType } from '@studnicky/dagonizer/adapter';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 import { Checkpoint, CheckpointRestoreAdapter, MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
+import { DagRunner, OnceTrigger } from '@studnicky/dagonizer/runner';
+import type { DagRunnerOptionsType } from '@studnicky/dagonizer/runner';
+import type { ExecutionResultType } from '@studnicky/dagonizer';
 
 const logger = new ConsoleLogger();
 
@@ -97,101 +97,90 @@ const CAPS_FULL_TOOLS:    AdapterCapabilitiesType = { 'toolUse': 'full',    'str
 const CAPS_PARTIAL_TOOLS: AdapterCapabilitiesType = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
 
 // #region adapter-cascade
-// Local-first: construct the Ollama adapter, then discover and set the best
-// available chat model via `selectChatModel`. The env override (`OLLAMA_MODEL`)
-// is honored when present and the daemon has it pulled; otherwise the first
-// installed non-embedding model is selected. Returns null when the daemon is
-// down or has no chat model, causing the registry entry to be skipped.
+// Build a preference-ordered catalogue: probe each provider, discover the best
+// available chat model, and add a catalogue entry only when a model resolves.
+// The async discovery runs BEFORE LlmAdapterCascadeBuilder.build() — the builder
+// call itself is synchronous. Each factory closes over the already-constructed
+// adapter instance; probe() runs lazily when cascade.select() is called.
+const catalogue: CatalogueEntryType[] = [];
+
+// Local-first: Ollama — no key required. Skip when daemon is unreachable or
+// no chat model is installed.
 const ollamaAdapter = new OllamaApiAdapter({ 'baseUrl': OLLAMA_BASE_URL });
 const resolvedOllamaModel = await ollamaAdapter.selectChatModel({
   ...(Env.get('OLLAMA_MODEL').length > 0 ? { 'preferred': Env.get('OLLAMA_MODEL') } : {}),
 });
-
-const registry = new LlmAdapterRegistry();
-
-// Register Ollama only when a usable chat model was discovered.
 if (resolvedOllamaModel !== null) {
-  registry.register(
-    { 'provider': 'ollama', 'model': resolvedOllamaModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-    () => ollamaAdapter,
-  );
+  catalogue.push({
+    'descriptor': { 'provider': 'ollama', 'model': resolvedOllamaModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+    'factory': () => ollamaAdapter,
+  });
 }
 
-// Keyed providers: skip registration when the key is missing so the
-// `NO_ADAPTER_AVAILABLE` message lists only the providers the user
-// actually configured. Each adapter discovers and sets its model via
-// `selectChatModel` before the cascade probe; the env var override
-// is honored when the provider lists it, otherwise the adapter's own
-// default is used.
+// Keyed providers: skip when the key is missing so `NO_ADAPTER_AVAILABLE`
+// lists only the providers the user actually configured.
 if (Env.get('GEMINI_API_KEY').length > 0) {
   const geminiAdapter = new GeminiApiAdapter(Env.get('GEMINI_API_KEY'));
   const geminiModel = await geminiAdapter.selectChatModel({
     ...(Env.get('GEMINI_MODEL').length > 0 ? { 'preferred': Env.get('GEMINI_MODEL') } : {}),
   });
   if (geminiModel !== null) {
-    registry.register(
-      { 'provider': 'gemini-api', 'model': geminiModel, 'capabilities': CAPS_FULL_TOOLS },
-      () => geminiAdapter,
-    );
+    catalogue.push({
+      'descriptor': { 'provider': 'gemini-api', 'model': geminiModel, 'capabilities': CAPS_FULL_TOOLS },
+      'factory': () => geminiAdapter,
+    });
   }
 }
 if (Env.get('CEREBRAS_API_KEY').length > 0) {
-  const cerebrasAdapter = new CerebrasApiAdapter(Env.get('CEREBRAS_API_KEY'));
+  const cerebrasAdapter = OpenAiCompatibleAdapter.cerebras(Env.get('CEREBRAS_API_KEY'));
   const cerebrasModel = await cerebrasAdapter.selectChatModel({
     ...(Env.get('CEREBRAS_MODEL').length > 0 ? { 'preferred': Env.get('CEREBRAS_MODEL') } : {}),
   });
   if (cerebrasModel !== null) {
-    registry.register(
-      { 'provider': 'cerebras', 'model': cerebrasModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-      () => cerebrasAdapter,
-    );
+    catalogue.push({
+      'descriptor': { 'provider': 'cerebras', 'model': cerebrasModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+      'factory': () => cerebrasAdapter,
+    });
   }
 }
 if (Env.get('GROQ_API_KEY').length > 0) {
-  const groqAdapter = new GroqApiAdapter(Env.get('GROQ_API_KEY'));
+  const groqAdapter = OpenAiCompatibleAdapter.groq(Env.get('GROQ_API_KEY'));
   const groqModel = await groqAdapter.selectChatModel({
     ...(Env.get('GROQ_MODEL').length > 0 ? { 'preferred': Env.get('GROQ_MODEL') } : {}),
   });
   if (groqModel !== null) {
-    registry.register(
-      { 'provider': 'groq', 'model': groqModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-      () => groqAdapter,
-    );
+    catalogue.push({
+      'descriptor': { 'provider': 'groq', 'model': groqModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+      'factory': () => groqAdapter,
+    });
   }
 }
 if (Env.get('MISTRAL_API_KEY').length > 0) {
-  const mistralAdapter = new MistralApiAdapter(Env.get('MISTRAL_API_KEY'));
+  const mistralAdapter = OpenAiCompatibleAdapter.mistral(Env.get('MISTRAL_API_KEY'));
   const mistralModel = await mistralAdapter.selectChatModel({
     ...(Env.get('MISTRAL_MODEL').length > 0 ? { 'preferred': Env.get('MISTRAL_MODEL') } : {}),
   });
   if (mistralModel !== null) {
-    registry.register(
-      { 'provider': 'mistral', 'model': mistralModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-      () => mistralAdapter,
-    );
+    catalogue.push({
+      'descriptor': { 'provider': 'mistral', 'model': mistralModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+      'factory': () => mistralAdapter,
+    });
   }
 }
 if (Env.get('OPENROUTER_API_KEY').length > 0) {
-  const openRouterAdapter = new OpenRouterApiAdapter(Env.get('OPENROUTER_API_KEY'));
+  const openRouterAdapter = OpenAiCompatibleAdapter.openRouter(Env.get('OPENROUTER_API_KEY'));
   const openRouterModel = await openRouterAdapter.selectChatModel({
     ...(Env.get('OPENROUTER_MODEL').length > 0 ? { 'preferred': Env.get('OPENROUTER_MODEL') } : {}),
   });
   if (openRouterModel !== null) {
-    registry.register(
-      { 'provider': 'openrouter', 'model': openRouterModel, 'capabilities': CAPS_PARTIAL_TOOLS },
-      () => openRouterAdapter,
-    );
+    catalogue.push({
+      'descriptor': { 'provider': 'openrouter', 'model': openRouterModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+      'factory': () => openRouterAdapter,
+    });
   }
 }
 
-// Cascade preference order matches the registration order above.
-// `registry.list()` returns only the registered (available) providers,
-// so the cascade probe always has a valid model name on each entry.
-const cascade = new LlmAdapterCascade(registry, registry.list().map((entry) => ({
-  'provider': entry.provider,
-  'model': entry.model,
-})));
-
+const cascade = LlmAdapterCascadeBuilder.build(catalogue);
 const adapter = await cascade.select();
 logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 // #endregion adapter-cascade
@@ -277,6 +266,38 @@ const services: ArchivistServices = {
   "nodeTimeouts":      {},
 };
 
+// ── ArchivistRunner ───────────────────────────────────────────────────────
+// Canonical DagRunner subclass for the Archivist harness.
+//
+// The runner owns the seedState → execute → projectResult loop.
+// Observability comes from the injected ObservedDag dispatcher whose
+// onNodeStart/onNodeEnd hooks log every node boundary to the console.
+//
+// TInput  = { query: string } — the trigger passes the visitor's question.
+// TState  = ArchivistState   — the domain state the nodes mutate.
+// TOutput = ArchivistResult  — the projected outcome returned to the caller.
+
+type ArchivistInput  = { readonly query: string };
+type ArchivistResult = {
+  readonly state:  ArchivistState;
+  readonly cursor: string | null;
+};
+
+class ArchivistRunner extends DagRunner<ArchivistInput, ArchivistState, ArchivistResult> {
+  protected override seedState(input: ArchivistInput): ArchivistState {
+    const state = new ArchivistState();
+    state.query = input.query;
+    return state;
+  }
+
+  protected override projectResult(result: ExecutionResultType<ArchivistState>): ArchivistResult {
+    return {
+      'state':  result.state,
+      'cursor': result.cursor,
+    };
+  }
+}
+
 // #region linear-run
 // ── Dispatcher ───────────────────────────────────────────────────────────
 // ObservedDag: generic Dagonizer subclass wiring every lifecycle hook to an
@@ -309,22 +330,31 @@ dispatcher.registerBundle(BookSearchScatterBundleFactory.create(nodes));
 dispatcher.registerBundle(ComposeRetryLoopBundleFactory.create(nodes));
 dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
 
-// ── Demo run ─────────────────────────────────────────────────────────────
-const visitor = new ArchivistState();
-visitor.query = "I'm looking for a book about a strange house and a library";
+// ── Demo run via ArchivistRunner + OnceTrigger ────────────────────────────
+// ArchivistRunner encapsulates the canonical register→seed→execute→project
+// loop. The dispatcher is the already-configured ObservedDag whose lifecycle
+// hooks log every node boundary without any manual iteration here.
+//
+// Query source: first CLI argument, or the bundled demo question when absent.
+// Override:   npx tsx examples/the-archivist/runArchivist.ts "your question"
+const DEMO_QUERY = "I'm looking for a book about a strange house and a library";
+const visitorQuery = process.argv[2] ?? DEMO_QUERY;
+
+const runnerOptions: DagRunnerOptionsType<ArchivistState> = { 'dispatcher': dispatcher };
+const archivistRunner = new ArchivistRunner(runnerOptions);
+
+const onceTrigger = new OnceTrigger<ArchivistInput, ArchivistState, ArchivistResult>(
+  'the-archivist',
+  { 'query': visitorQuery },
+);
 
 // #region error-taxonomy
 // ExecutionError wraps a node throw that was not a timeout.
 // NodeTimeoutError fires when the dispatcher's per-node deadline elapses.
 // LlmError wraps adapter-level failures (rate limit, bad credentials, etc.).
 // Distinguish by class so callers can log or retry at the right granularity.
-let result;
 try {
-  const execution = dispatcher.execute('the-archivist', visitor);
-  for await (const stage of execution) {
-    logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '(none)'}`}`);
-  }
-  result = await execution;
+  await onceTrigger.attach(archivistRunner);
 } catch (err) {
   if (err instanceof NodeTimeoutError) {
     logger.warn(`node timed out: ${err.message}`);
@@ -344,12 +374,61 @@ try {
 }
 // #endregion error-taxonomy
 
+const result = onceTrigger.result;
+if (result === null) throw new Error('OnceTrigger resolved with null result');
+
 logger.result(`intent=${result.state.intent}`);
 logger.result(`shortlist=${String(result.state.shortlist.length)}`);
 logger.result(`draft=${result.state.draft}`);
 logger.result(`lifecycle=${result.state.lifecycle.variant}`);
 logger.result(`triples=${String(services.memory.size)} written`);
 // #endregion linear-run
+
+// #region eventbus-pattern
+// ── BusObserver: EventBus as an observability multiplexer ────────────────
+//
+// ObservedDag already wires every lifecycle hook to the injected logger.
+// When you need additional consumers — an SSE endpoint, metrics counter,
+// or trace feed — pass a BusObserver in the observers option instead of
+// subclassing for each consumer. Each subscriber on the bus topic receives
+// the same DagLifecycleEventType payload independently.
+//
+// Example wiring (not executed here — requires @studnicky/dagonizer/progress):
+//
+//   import { EventBus, BusObserver, SseStream } from '@studnicky/dagonizer/progress';
+//   import type { DagLifecycleEventType } from '@studnicky/dagonizer/progress';
+//
+//   const archivistBus = new EventBus();
+//
+//   // Consumer A: mirror every event through the existing logger.
+//   archivistBus.subscribe('lifecycle', (envelope) => {
+//     const p = envelope.payload as DagLifecycleEventType;
+//     logger.info(`[bus] ${p.event}${'nodeName' in p ? ` node=${p.nodeName}` : ''}`);
+//   });
+//
+//   // Consumer B: SSE stream for a browser client — pipe stream.readable as a
+//   //             Response body in an HTTP handler.
+//   const sseStream = SseStream.of(archivistBus, ['lifecycle'], { heartbeatMs: 15_000 });
+//
+//   // Consumer C: in-process metrics for a Prometheus scrape endpoint.
+//   const runMetrics = { nodes: 0, errors: 0 };
+//   archivistBus.subscribe('lifecycle', (envelope) => {
+//     const p = envelope.payload as DagLifecycleEventType;
+//     if (p.event === 'nodeStart') runMetrics.nodes++;
+//     if (p.event === 'nodeError') runMetrics.errors++;
+//   });
+//
+//   // BusObserver passes alongside the ObservedDag subclass via the observers
+//   // option. The subclass hook fires first (logger), then the observer array.
+//   // No subclass changes needed to add or remove consumers.
+//   const busDispatcher = new ObservedDag<ArchivistState>(logger, {
+//     observers: [new BusObserver(archivistBus, 'lifecycle')],
+//   });
+//   // ... register bundles, execute, then:
+//   archivistBus.dispose(); // unsubscribes all consumers at once
+//
+// See docs/guide/observability.md and examples/30-progress.ts for full runnable demos.
+// #endregion eventbus-pattern
 
 // #region cancellation-run
 // Caller-driven cancellation: the visitor closes the page.
@@ -367,20 +446,21 @@ const cancelResult = await dispatcher.execute('the-archivist', cancelVisitor, {
 
 // #region lifecycle-state-switch
 // lifecycle.variant is a discriminated union:
-//   'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out'.
+//   'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'timed_out' | 'awaiting-input'.
 // Each arm carries only the fields relevant to that outcome (e.g. reason, finishedAt).
 const lc = cancelResult.state.lifecycle;
 type LifecycleVariant = typeof lc.variant;
 const lifecycleLog: Record<LifecycleVariant, () => void> = {
-  'completed': () => { logger.result(`responded: ${cancelResult.state.draft}`); },
-  'cancelled': () => {
+  'completed':      () => { logger.result(`responded: ${cancelResult.state.draft}`); },
+  'cancelled':      () => {
     const cancelled = lc as Extract<typeof lc, { variant: 'cancelled' }>;
     logger.result(`visitor abandoned at: ${cancelled.reason}`);
   },
-  'timed_out': () => { logger.result(`hit deadline at: ${lc.finishedAt}`); },
-  'failed':    () => { logger.result(`execution failed at: ${lc.finishedAt}`); },
-  'pending':   () => { logger.result('lifecycle: pending'); },
-  'running':   () => { logger.result('lifecycle: running'); },
+  'timed_out':      () => { logger.result(`hit deadline at: ${lc.finishedAt}`); },
+  'failed':         () => { logger.result(`execution failed at: ${lc.finishedAt}`); },
+  'pending':        () => { logger.result('lifecycle: pending'); },
+  'running':        () => { logger.result('lifecycle: running'); },
+  'awaiting-input': () => { logger.result(`parked — awaiting human input (key: ${lc.correlationKey})`); },
 };
 lifecycleLog[lc.variant]();
 // #endregion lifecycle-state-switch

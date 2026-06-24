@@ -2,10 +2,10 @@
  * 24-llm-adapter: LLM adapter surface — registry, cascade, and chat in a DAG node.
  *
  * Shows how to:
- *   1. Register two OllamaApiAdapter instances in an LlmAdapterRegistry under
- *      different (provider, model) keys.
- *   2. Wire an LlmAdapterCascade that walks the preference list in order,
- *      probing each adapter and selecting the first available one.
+ *   1. Declare a preference-ordered catalogue of CatalogueEntryType entries and
+ *      pass it to LlmAdapterCascadeBuilder.build() to get a configured cascade.
+ *   2. Walk the cascade with cascade.select(), which probes each adapter in
+ *      order and returns the first available one.
  *   3. Inject the selected LlmAdapterInterface into state and call .chat() inside
  *      a DAG node that routes on the response variant (text vs tool_call).
  *
@@ -26,8 +26,8 @@
 
 import { Dagonizer } from '@studnicky/dagonizer';
 import {
-  LlmAdapterRegistry,
-  LlmAdapterCascade,
+  LlmAdapterCascadeBuilder,
+  type CatalogueEntryType,
 } from '@studnicky/dagonizer/adapter';
 import { OllamaApiAdapter } from '@studnicky/dagonizer-adapter-ollama';
 
@@ -58,41 +58,41 @@ if (OLLAMA_MODEL === null) {
 process.stdout.write(`Discovered Ollama chat model: "${OLLAMA_MODEL}"\n`);
 
 // ---------------------------------------------------------------------------
-// 1. Registry: register two adapters under (provider, model) keys.
+// 1. Catalogue: declare provider entries in preference order.
 //
-//    Primary: points at port 1 (unreachable). probe() contacts /api/tags at
-//    that port, gets ECONNREFUSED, and returns false — cascade skips it.
-//    This is the real-world shape: a cloud or remote Ollama instance that is
-//    down or unreachable at runtime.
+//    LlmAdapterCascadeBuilder.build() creates a fresh registry, registers
+//    every entry, and returns a cascade whose preference list mirrors the
+//    catalogue order. No manual registry or cascade construction needed.
 //
-//    Fallback: points at the default loopback (127.0.0.1:11434). probe()
-//    returns true when Ollama is running — cascade selects it.
+//    Primary (ollama-remote): points at port 1 (unreachable). probe()
+//    contacts /api/tags at that port, gets ECONNREFUSED, and returns false —
+//    cascade skips it. This models the real-world shape: a cloud or remote
+//    endpoint that is down or unreachable at runtime.
+//
+//    Fallback (ollama-local): points at the default loopback (127.0.0.1:11434).
+//    probe() returns true when Ollama is running — cascade selects it.
 // ---------------------------------------------------------------------------
 
-const registry = new LlmAdapterRegistry();
-
-registry.register(
-  { 'provider': 'ollama-remote', 'model': OLLAMA_MODEL, 'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true } },
-  () => new OllamaApiAdapter({ 'model': OLLAMA_MODEL, 'baseUrl': 'http://127.0.0.1:1' }),  // unreachable → probe false
-);
-
-registry.register(
-  { 'provider': 'ollama-local', 'model': OLLAMA_MODEL, 'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true } },
-  () => new OllamaApiAdapter({ 'model': OLLAMA_MODEL }),  // default loopback → probe true when Ollama is running
-);
+const catalogue: CatalogueEntryType[] = [
+  {
+    'descriptor': { 'provider': 'ollama-remote', 'model': OLLAMA_MODEL, 'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true } },
+    'factory':    () => new OllamaApiAdapter({ 'model': OLLAMA_MODEL, 'baseUrl': 'http://127.0.0.1:1' }),  // unreachable → probe false
+  },
+  {
+    'descriptor': { 'provider': 'ollama-local', 'model': OLLAMA_MODEL, 'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true } },
+    'factory':    () => new OllamaApiAdapter({ 'model': OLLAMA_MODEL }),  // default loopback → probe true when Ollama is running
+  },
+];
 
 // ---------------------------------------------------------------------------
-// 2. Cascade: walk the preference list; pick the first adapter that probes true.
+// 2. Builder: assembles the registry and cascade in one call.
 // ---------------------------------------------------------------------------
 
-const cascade = new LlmAdapterCascade(registry, [
-  { 'provider': 'ollama-remote', 'model': OLLAMA_MODEL },   // probes false (port 1) → skipped
-  { 'provider': 'ollama-local',  'model': OLLAMA_MODEL },   // probes true (default loopback) → selected
-]);
+const cascade = LlmAdapterCascadeBuilder.build(catalogue);
 
 const adapter = await cascade.select();
 process.stdout.write(`\nLLM Adapter cascade selected: "${adapter.displayName}" (${adapter.id})\n`);
-process.stdout.write(`  Registered adapters: [${registry.list().map((d) => `${d.provider}:${d.model}`).join(', ')}]\n`);
+process.stdout.write(`  Registered adapters: [${catalogue.map((e) => `${e.descriptor.provider}:${e.descriptor.model}`).join(', ')}]\n`);
 process.stdout.write(`  Cascade preferences: ollama-remote (skipped, probe=false) → ollama-local (selected)\n\n`);
 
 // ---------------------------------------------------------------------------

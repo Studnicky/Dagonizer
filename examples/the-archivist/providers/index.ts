@@ -8,22 +8,29 @@
  *   cerebras     →  Cerebras REST (free tier)
  *   mistral      →  Mistral AI REST (free tier)
  *   openrouter   →  OpenRouter REST (free-tier models)
+ *   anthropic    →  Anthropic Messages API
  *
  * Every backend is one `LlmAdapterInterface` (transport + native tool format)
  * wrapped by `BaseLlmClient` (prompt choreography). The choice between
  * backends is just a choice of adapter; the high-level `LlmClientInterface`
  * surface is identical.
  *
- * `BackendMatrix.detect(inputs)` probes each one and returns rows for all.
- * Cloud adapters (groq/cerebras/mistral/openrouter/gemini-api) are runnable
- * when their key is present in `apiKeys`. Ollama model discovery uses the
- * adapter instance contract: `adapter.selectChatModel()` queries `GET /api/tags`
- * and selects the best available chat model automatically.
+ * `BackendMatrix.detect(inputs)` probes each backend and returns rows for all.
+ * For every runnable backend the detector calls `adapter.selectChatModel()` to
+ * resolve the live model name. The adapter's configured default acts as an
+ * implicit preference confirmed against the provider's catalogue; when absent
+ * the first available chat model is used. The resolved name is stored in
+ * `BackendAvailability.resolvedModel` and reflected in `displayName`.
+ *
+ * Cloud adapters (groq/cerebras/mistral/openrouter/gemini-api/anthropic) are
+ * runnable when their key is present in `apiKeys`. On-device backends
+ * (gemini-nano, web-llm, ollama) are runnable when the runtime detects them.
+ * Ollama requires both the daemon running and at least one chat model installed.
  *
  * `BackendMatrix.pickBest(backends, { isMobile })` excludes on-device backends
  * when `isMobile` is true, then ranks remaining runnable entries by
- * priority: groq → cerebras → gemini-api → mistral → openrouter →
- * gemini-nano (browser built-in) → web-llm.
+ * priority: gemini-nano (browser built-in) → web-llm → groq → cerebras →
+ * gemini-api → anthropic → mistral → openrouter → ollama.
  *
  * API keys are stored as a JSON blob in `dagonizer-api-keys` in
  * localStorage, keyed by `ProviderId`. Use `ApiKeyStore.load()` /
@@ -33,20 +40,19 @@
 import type { LlmClientInterface } from '../services.ts';
 
 import {
-  CerebrasApiAdapter,
+  AnthropicApiAdapter,
   GeminiApiAdapter,
   GeminiNanoAdapter,
-  GroqApiAdapter,
-  MistralApiAdapter,
   OllamaApiAdapter,
-  OpenRouterApiAdapter,
+  OpenAiCompatibleAdapter,
   WebLlmAdapter,
   OllamaProbe,
   type GeminiNanoAvailabilityType,
   type WebLlmInitReportType,
 } from './adapters/index.ts';
 import { LlmError } from '@studnicky/dagonizer/adapter';
-import { BaseLlmClient } from './BaseLlmClient.ts';
+import { BaseLlmClient, type BaseLlmClientOptions } from './BaseLlmClient.ts';
+import type { IntentClassifier } from './IntentClassifier.ts';
 
 export type ProviderId =
   | 'gemini-nano'
@@ -56,34 +62,39 @@ export type ProviderId =
   | 'cerebras'
   | 'mistral'
   | 'openrouter'
+  | 'anthropic'
   | 'ollama';
 
-/** Backends visible in the browser picker. */
+/**
+ * Backends visible in the browser picker. On-device web models first, then
+ * every other backend alphabetical by displayName — mirrors the dropdown order.
+ */
 const BROWSER_VISIBLE: readonly ProviderId[] = [
   'gemini-nano',
-  'gemini-api',
   'web-llm',
-  'groq',
+  'anthropic',
   'cerebras',
+  'gemini-api',
+  'groq',
   'mistral',
-  'openrouter',
   'ollama',
+  'openrouter',
 ];
 
 /**
- * Priority order for `BackendMatrix.pickBest`. Cloud APIs first (no download,
- * works everywhere with a free key), then local daemon, then on-device
- * inference.
+ * Priority order for `BackendMatrix.pickBest`. On-device web models first
+ * (no key, fully in-browser), then cloud APIs, then the local daemon.
  */
 const PRIORITY_ORDER: readonly ProviderId[] = [
+  'gemini-nano',   // browser built-in LanguageModel
+  'web-llm',       // browser WASM
   'groq',          // cloud, fast, reliable structured output
   'cerebras',      // cloud, very fast
   'gemini-api',    // cloud, strong tool-use
+  'anthropic',     // cloud, strong tool-use
   'mistral',       // cloud
   'openrouter',    // cloud, broad model access
   'ollama',        // local daemon (needs model pulled)
-  'gemini-nano',   // browser built-in LanguageModel
-  'web-llm',       // browser WASM
 ];
 
 /** Backends that need a local/desktop runtime, excluded on mobile. */
@@ -101,10 +112,10 @@ export interface BackendAvailability {
   /** Free-text hint for the UI (download size, error reason, etc.). */
   readonly hint?: string;
   /**
-   * For the `ollama` backend: the installed chat model the picker resolved
-   * (e.g. `'llama3.2:3b'`), or `undefined` when the daemon is down or no chat
-   * model is installed. The runner instantiates the adapter with this model so
-   * it always names a model the host has actually pulled.
+   * The chat model the adapter resolved via live model-list discovery, or
+   * `undefined` when the backend is not runnable (no key, daemon down, etc.).
+   * The runner instantiates the adapter with this value so the adapter always
+   * targets a model confirmed against the provider's live catalogue.
    */
   readonly resolvedModel?: string;
 }
@@ -127,21 +138,22 @@ export interface PickBestOptions {
 
 export interface InstantiateInputs {
   readonly apiKeys?: Partial<Record<ProviderId, string>>;
-  readonly webLlmModel?: string;
-  readonly onWebLlmProgress?: (report: WebLlmInitReportType) => void;
   /**
-   * Ollama chat model to use. Defaults to the installed model the detector
-   * resolved from the daemon's tag list (e.g. 'llama3.2:3b'); pass a value to
-   * override with a specific model the host has pulled.
+   * The chat model to instantiate the adapter with. Set by the runner from the
+   * active backend's `BackendAvailability.resolvedModel` (populated by
+   * `BackendMatrix.detect` via live model-list discovery). An empty string means
+   * "no explicit model": the adapter falls back to its internal default.
    */
-  readonly ollamaModel?: string;
+  readonly model?: string;
+  readonly onWebLlmProgress?: (report: WebLlmInitReportType) => void;
+  readonly intentClassifier?: IntentClassifier;
 }
 
 /**
  * ApiKeyStore: per-provider API key persistence in localStorage.
  */
 export class ApiKeyStore {
-  static readonly #VALID_ID_SET: ReadonlySet<string> = new Set<string>(['gemini-nano', 'gemini-api', 'web-llm', 'groq', 'cerebras', 'mistral', 'openrouter', 'ollama']);
+  static readonly #VALID_ID_SET: ReadonlySet<string> = new Set<string>(['gemini-nano', 'gemini-api', 'web-llm', 'groq', 'cerebras', 'mistral', 'openrouter', 'anthropic', 'ollama']);
 
   /** Returns true when `value` is a valid ProviderId string. */
   static isProviderId(value: string): value is ProviderId {
@@ -186,11 +198,12 @@ export class ApiKeyStore {
 /**
  * OllamaModels: Ollama model persistence utilities.
  *
- * Model selection is delegated to the adapter instance contract:
- * `OllamaApiAdapter.selectChatModel({ preferred })` discovers models from
- * `GET /api/tags` and selects the best available chat model, honoring the
- * visitor's `preferred` choice when installed. `loadModel` / `saveModel`
- * persist the visitor's explicit model preference across sessions.
+ * The visitor's explicit model preference is persisted across sessions via
+ * `loadModel` / `saveModel`. During detection, the preference is passed as
+ * `preferredOllamaModel` to `BackendMatrix.detect`, which forwards it to
+ * `OllamaApiAdapter.selectChatModel({ preferred })`. The adapter resolves the
+ * installed chat model from the daemon's tag list, honoring the preference when
+ * installed, and stores the result in `BackendAvailability.resolvedModel`.
  */
 export class OllamaModels {
   /**
@@ -222,12 +235,22 @@ export class BackendMatrix {
     const keys = inputs.apiKeys ?? {};
     const out: BackendAvailability[] = [];
 
+    // gemini-nano: browser built-in LanguageModel. selectChatModel returns the
+    // single on-device nano model id; discovery is pure/static (no network call).
     const nanoStatus: GeminiNanoAvailabilityType = await GeminiNanoAdapter.detect();
+    const nanoRunnable = nanoStatus === 'available';
+    let nanoModel: string | null = null;
+    if (nanoRunnable) {
+      nanoModel = await new GeminiNanoAdapter().selectChatModel();
+    }
     out.push({
       'id': 'gemini-nano',
-      'displayName': 'Browser built-in LanguageModel (on-device)',
-      'runnable': nanoStatus === 'available',
+      'displayName': nanoModel !== null
+        ? `Browser built-in LanguageModel (${nanoModel})`
+        : 'Browser built-in LanguageModel (on-device)',
+      'runnable': nanoRunnable,
       'needsAction': nanoStatus === 'downloadable' || nanoStatus === 'downloading' ? 'download' : null,
+      ...(nanoModel !== null ? { 'resolvedModel': nanoModel } : {}),
       'hint': nanoStatus === 'unavailable'
         ? 'Requires Chrome 138+ or Edge with the Prompt API enabled.'
         : nanoStatus === 'downloadable'
@@ -237,73 +260,143 @@ export class BackendMatrix {
             : 'Ready.',
     });
 
-    const hasGeminiKey = typeof keys['gemini-api'] === 'string' && keys['gemini-api'].length > 0;
+    // gemini-api: cloud REST with user-supplied AI Studio key.
+    const geminiKey = keys['gemini-api'];
+    const hasGeminiKey = typeof geminiKey === 'string' && geminiKey.length > 0;
+    let geminiModel: string | null = null;
+    if (hasGeminiKey && typeof geminiKey === 'string') {
+      geminiModel = await new GeminiApiAdapter(geminiKey).selectChatModel();
+    }
     out.push({
       'id': 'gemini-api',
-      'displayName': 'Gemini API (your AI Studio key)',
+      'displayName': geminiModel !== null
+        ? `Gemini API (${geminiModel})`
+        : 'Gemini API (your AI Studio key)',
       'runnable': hasGeminiKey,
       'needsAction': hasGeminiKey ? null : 'api-key',
+      ...(geminiModel !== null ? { 'resolvedModel': geminiModel } : {}),
       'hint': 'Paste a free Google AI Studio key. Nothing leaves your browser except the request itself.',
     });
 
+    // web-llm: in-browser inference via WebGPU. selectChatModel returns the
+    // default prebuilt model from a static catalogue (no network call).
     const webGpu = await new WebLlmAdapter().probe();
+    let webLlmModel: string | null = null;
+    if (webGpu) {
+      webLlmModel = await new WebLlmAdapter().selectChatModel();
+    }
     out.push({
       'id': 'web-llm',
-      'displayName': 'WebLLM (Phi-3.5 in-browser)',
+      'displayName': webLlmModel !== null
+        ? `WebLLM (${webLlmModel})`
+        : 'WebLLM (in-browser)',
       'runnable': webGpu,
       'needsAction': null,
+      ...(webLlmModel !== null ? { 'resolvedModel': webLlmModel } : {}),
       'hint': webGpu
-        ? 'Phi-3.5 mini lazy-loads (~780 MB) on first use. Cached afterwards.'
+        ? 'Model lazy-loads (~700-800 MB) on first use. Cached afterwards.'
         : 'This browser does not support WebGPU.',
     });
 
-    const hasGroqKey = typeof keys['groq'] === 'string' && keys['groq'].length > 0;
+    // groq: cloud REST, free tier.
+    const groqKey = keys['groq'];
+    const hasGroqKey = typeof groqKey === 'string' && groqKey.length > 0;
+    let groqModel: string | null = null;
+    if (hasGroqKey && typeof groqKey === 'string') {
+      groqModel = await OpenAiCompatibleAdapter.groq(groqKey).selectChatModel();
+    }
     out.push({
       'id': 'groq',
-      'displayName': 'Groq (llama-3.3-70b, free tier)',
+      'displayName': groqModel !== null
+        ? `Groq (${groqModel})`
+        : 'Groq',
       'runnable': hasGroqKey,
       'needsAction': hasGroqKey ? null : 'api-key',
-      'hint': 'Free key at console.groq.com/keys. ~30 RPM on llama-3.3-70b-versatile.',
+      ...(groqModel !== null ? { 'resolvedModel': groqModel } : {}),
+      'hint': 'Free key at console.groq.com/keys. ~30 RPM on the free tier.',
     });
 
-    const hasCerebrasKey = typeof keys['cerebras'] === 'string' && keys['cerebras'].length > 0;
+    // cerebras: cloud REST, free tier.
+    const cerebrasKey = keys['cerebras'];
+    const hasCerebrasKey = typeof cerebrasKey === 'string' && cerebrasKey.length > 0;
+    let cerebrasModel: string | null = null;
+    if (hasCerebrasKey && typeof cerebrasKey === 'string') {
+      cerebrasModel = await OpenAiCompatibleAdapter.cerebras(cerebrasKey).selectChatModel();
+    }
     out.push({
       'id': 'cerebras',
-      'displayName': 'Cerebras (llama-3.3-70b, free tier)',
+      'displayName': cerebrasModel !== null
+        ? `Cerebras (${cerebrasModel})`
+        : 'Cerebras',
       'runnable': hasCerebrasKey,
       'needsAction': hasCerebrasKey ? null : 'api-key',
+      ...(cerebrasModel !== null ? { 'resolvedModel': cerebrasModel } : {}),
       'hint': 'Free key at cloud.cerebras.ai. Ultra-fast inference on Wafer-Scale Engine.',
     });
 
-    const hasMistralKey = typeof keys['mistral'] === 'string' && keys['mistral'].length > 0;
+    // mistral: cloud REST, free tier.
+    const mistralKey = keys['mistral'];
+    const hasMistralKey = typeof mistralKey === 'string' && mistralKey.length > 0;
+    let mistralModel: string | null = null;
+    if (hasMistralKey && typeof mistralKey === 'string') {
+      mistralModel = await OpenAiCompatibleAdapter.mistral(mistralKey).selectChatModel();
+    }
     out.push({
       'id': 'mistral',
-      'displayName': 'Mistral (mistral-small, free tier)',
+      'displayName': mistralModel !== null
+        ? `Mistral (${mistralModel})`
+        : 'Mistral',
       'runnable': hasMistralKey,
       'needsAction': hasMistralKey ? null : 'api-key',
-      'hint': 'Free key at console.mistral.ai/api-keys/. mistral-small-latest.',
+      ...(mistralModel !== null ? { 'resolvedModel': mistralModel } : {}),
+      'hint': 'Free key at console.mistral.ai/api-keys/.',
     });
 
-    const hasOpenRouterKey = typeof keys['openrouter'] === 'string' && keys['openrouter'].length > 0;
+    // openrouter: cloud REST, free-tier models.
+    const openRouterKey = keys['openrouter'];
+    const hasOpenRouterKey = typeof openRouterKey === 'string' && openRouterKey.length > 0;
+    let openRouterModel: string | null = null;
+    if (hasOpenRouterKey && typeof openRouterKey === 'string') {
+      openRouterModel = await OpenAiCompatibleAdapter.openRouter(openRouterKey).selectChatModel();
+    }
     out.push({
       'id': 'openrouter',
-      'displayName': 'OpenRouter (llama-3.3-70b, free tier)',
+      'displayName': openRouterModel !== null
+        ? `OpenRouter (${openRouterModel})`
+        : 'OpenRouter',
       'runnable': hasOpenRouterKey,
       'needsAction': hasOpenRouterKey ? null : 'api-key',
-      'hint': 'Free key at openrouter.ai/keys. Routes to llama-3.3-70b-instruct:free.',
+      ...(openRouterModel !== null ? { 'resolvedModel': openRouterModel } : {}),
+      'hint': 'Free key at openrouter.ai/keys. Routes to free-tier models.',
     });
 
-    // Ollama: local daemon detection. Browser hits 127.0.0.1:11434; if the
-    // daemon is up and CORS-permissive, the version endpoint replies in <50 ms.
-    // No API key required. Model discovery uses the adapter instance contract:
-    // `selectChatModel` calls `GET /api/tags`, filters embedding models, and
-    // selects the best available chat model (honors `preferred` when installed,
-    // then prefers local-only models, then first chat model overall).
+    // anthropic: cloud REST, requires paid/free key.
+    const anthropicKey = keys['anthropic'];
+    const hasAnthropicKey = typeof anthropicKey === 'string' && anthropicKey.length > 0;
+    let anthropicModel: string | null = null;
+    if (hasAnthropicKey && typeof anthropicKey === 'string') {
+      anthropicModel = await new AnthropicApiAdapter(anthropicKey).selectChatModel();
+    }
+    out.push({
+      'id': 'anthropic',
+      'displayName': anthropicModel !== null
+        ? `Anthropic (${anthropicModel})`
+        : 'Anthropic',
+      'runnable': hasAnthropicKey,
+      'needsAction': hasAnthropicKey ? null : 'api-key',
+      ...(anthropicModel !== null ? { 'resolvedModel': anthropicModel } : {}),
+      'hint': 'Key at console.anthropic.com/settings/keys.',
+    });
+
+    // ollama: local daemon. Browser hits 127.0.0.1:11434; if the daemon is up
+    // and CORS-permissive the version endpoint replies in <50 ms. No API key
+    // required. selectChatModel queries GET /api/tags, filters embedding models,
+    // and selects the best available chat model (honors `preferred` when
+    // installed, then prefers local-only models, then first chat model overall).
     const ollamaUp = await OllamaProbe.detect();
     let ollamaModel: string | null = null;
     if (ollamaUp) {
-      const ollamaAdapter = new OllamaApiAdapter();
-      ollamaModel = await ollamaAdapter.selectChatModel({
+      ollamaModel = await new OllamaApiAdapter().selectChatModel({
         ...(inputs.preferredOllamaModel !== undefined && inputs.preferredOllamaModel.length > 0
           ? { 'preferred': inputs.preferredOllamaModel }
           : {}),
@@ -373,10 +466,15 @@ export class BackendMatrix {
 
 /**
  * ProviderInstantiator: factory for LlmClientInterface instances given a ProviderId.
+ *
+ * `inputs.model` is the discovered model from `BackendAvailability.resolvedModel`
+ * (populated by `BackendMatrix.detect` via live model-list discovery). An empty or
+ * absent model means "no explicit override": the adapter uses its internal default.
  */
 export class ProviderInstantiator {
   static instantiate(id: ProviderId, inputs: InstantiateInputs = {}): LlmClientInterface {
     const keys = inputs.apiKeys ?? {};
+    const model = typeof inputs.model === 'string' && inputs.model.length > 0 ? inputs.model : '';
 
     /** Require a non-empty API key for cloud-backend providers. */
     const requireKey = (providerId: ProviderId, label: string): string => {
@@ -387,34 +485,39 @@ export class ProviderInstantiator {
       return key;
     };
 
+    const modelOpt = model.length > 0 ? { 'model': model } : {};
+
+    // Thread the vector intent classifier into every client when one is supplied.
+    const clientOptions: BaseLlmClientOptions = inputs.intentClassifier !== undefined
+      ? { 'intentClassifier': inputs.intentClassifier }
+      : {};
+
     const providerDispatch: Record<ProviderId, () => LlmClientInterface> = {
-      'gemini-nano': () => new BaseLlmClient(new GeminiNanoAdapter()),
+      // gemini-nano has a single on-device model; no model option accepted.
+      'gemini-nano': () => new BaseLlmClient(new GeminiNanoAdapter(), clientOptions),
       'gemini-api':  () => {
         const key = keys['gemini-api'];
         if (typeof key !== 'string' || key.length === 0) {
           throw new LlmError('gemini-api requires an AI Studio API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
         }
-        return new BaseLlmClient(new GeminiApiAdapter(key));
+        return new BaseLlmClient(new GeminiApiAdapter(key, modelOpt), clientOptions);
       },
       'web-llm': () => {
-        const options: { model?: string; onProgress?: (report: WebLlmInitReportType) => void } = {};
-        if (inputs.webLlmModel !== undefined) options.model = inputs.webLlmModel;
-        if (inputs.onWebLlmProgress !== undefined) options.onProgress = inputs.onWebLlmProgress;
-        return new BaseLlmClient(new WebLlmAdapter(options));
+        const webLlmOpts: { model?: string; onProgress?: (report: WebLlmInitReportType) => void } = { ...modelOpt };
+        if (inputs.onWebLlmProgress !== undefined) webLlmOpts.onProgress = inputs.onWebLlmProgress;
+        return new BaseLlmClient(new WebLlmAdapter(webLlmOpts), clientOptions);
       },
-      'groq':       () => new BaseLlmClient(new GroqApiAdapter(requireKey('groq', 'groq'))),
-      'cerebras':   () => new BaseLlmClient(new CerebrasApiAdapter(requireKey('cerebras', 'cerebras'))),
-      'mistral':    () => new BaseLlmClient(new MistralApiAdapter(requireKey('mistral', 'mistral'))),
-      'openrouter': () => new BaseLlmClient(new OpenRouterApiAdapter(requireKey('openrouter', 'openrouter'))),
+      'groq':       () => new BaseLlmClient(OpenAiCompatibleAdapter.groq(requireKey('groq', 'groq'), modelOpt), clientOptions),
+      'cerebras':   () => new BaseLlmClient(OpenAiCompatibleAdapter.cerebras(requireKey('cerebras', 'cerebras'), modelOpt), clientOptions),
+      'mistral':    () => new BaseLlmClient(OpenAiCompatibleAdapter.mistral(requireKey('mistral', 'mistral'), modelOpt), clientOptions),
+      'openrouter': () => new BaseLlmClient(OpenAiCompatibleAdapter.openRouter(requireKey('openrouter', 'openrouter'), modelOpt), clientOptions),
+      'anthropic':  () => new BaseLlmClient(new AnthropicApiAdapter(requireKey('anthropic', 'anthropic'), modelOpt), clientOptions),
       'ollama': () => {
-        // No API key required. Ollama's loopback daemon accepts a
-        // placeholder Bearer header. Pass the installed model the picker
-        // resolved; an empty string means "no explicit model" and is treated
-        // as absent so the adapter never sends a blank model name.
-        const model = inputs.ollamaModel;
-        return new BaseLlmClient(new OllamaApiAdapter(
-          typeof model === 'string' && model.length > 0 ? { 'model': model } : {},
-        ));
+        // No API key required. Ollama's loopback daemon accepts a placeholder
+        // Bearer header. Pass the installed model the detector resolved; an
+        // empty string means "no explicit model" so the adapter never sends a
+        // blank model name.
+        return new BaseLlmClient(new OllamaApiAdapter(modelOpt), clientOptions);
       },
     };
 
@@ -424,14 +527,14 @@ export class ProviderInstantiator {
 }
 
 export { BaseLlmClient } from './BaseLlmClient.ts';
+export { EmbedderProvisioner } from './EmbedderProvisioner.ts';
+export type { EmbedderProvisionResultType } from './EmbedderProvisioner.ts';
 export {
-  CerebrasApiAdapter,
+  AnthropicApiAdapter,
   GeminiApiAdapter,
   GeminiNanoAdapter,
-  GroqApiAdapter,
-  MistralApiAdapter,
   OllamaApiAdapter,
-  OpenRouterApiAdapter,
+  OpenAiCompatibleAdapter,
   WebLlmAdapter,
   OllamaProbe,
 } from './adapters/index.ts';

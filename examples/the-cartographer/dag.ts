@@ -131,6 +131,53 @@ export const cartographerDAG: DAGType = new DAGBuilder('cartographer', '1.0')
   .build();
 // #endregion cartographer-dag
 
+// ── DAG 1a: cartographer-resume (streaming resume variant, no reservoir) ─────
+
+// #region cartographer-resume-dag
+/**
+ * cartographerResumeDAG: streaming-resume variant of cartographerDAG.
+ *
+ * Identical topology but WITHOUT reservoir on process-stream.
+ * Per-item dispatch (ScatterWorkerPool path) allows the run-level abort signal
+ * to fire between item pulls, giving a non-zero StreamCursor.resumeAfter(state,
+ * 'process-stream') value on abort. Used by CartographerResumableScenario only.
+ *
+ * Topology (same as cartographerDAG):
+ *   seed (pre)
+ *     → scatter('process-stream', 'sources', { dag: 'stream-event' },
+ *               gather: { strategy: 'insights-fold' }, concurrency: 16)
+ *     → summarize → done
+ */
+export const cartographerResumeDAG: DAGType = new DAGBuilder('cartographer-resume', '1.0')
+
+  .phase('seed', 'pre', seedEvents)
+
+  .scatter(
+    'process-stream',
+    'sources',
+    { 'dag': 'stream-event' },
+    {
+      'all-success': 'summarize',
+      'partial':     'summarize',
+      'all-error':   'summarize',
+      'empty':       'summarize',
+    },
+    {
+      'itemKey':     'source-payload',
+      'concurrency': 16,
+      'gather': { 'strategy': 'insights-fold' },
+    },
+  )
+
+  .node('summarize', summarizeInsights, {
+    'success': 'done',
+  })
+
+  .terminal('done', { outcome: 'completed' })
+
+  .build();
+// #endregion cartographer-resume-dag
+
 // ── DAG 2: event-pipeline-typed (the LIVE scatter body, typed per-event-type paths) ──
 
 // #region event-pipeline-typed-dag
@@ -471,4 +518,19 @@ export const cartographerBundle: DispatcherBundleType<CartographerState> = {
  * scatter. Used by runCartographer.ts when --workers is active.
  */
 export const cartographerWorkersBundle: DispatcherBundleType<CartographerState> = CartographerWorkersDag.bundle();
+
+/**
+ * cartographerResumeBundle: streaming-resume scenario bundle.
+ *
+ * Uses cartographerResumeDAG (no reservoir on process-stream) so the pull loop
+ * interleaves with item execution, giving a non-zero abort cursor.
+ * Used exclusively by CartographerResumableScenario in runCartographer.ts.
+ */
+export const cartographerResumeBundle: DispatcherBundleType<CartographerState> = {
+  'nodes': [...cartographerBundle.nodes],
+  'dags': [
+    ...eventPipelineBundle.dags,
+    cartographerResumeDAG,
+  ],
+};
 // #endregion dispatcher-bundle

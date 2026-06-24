@@ -30,6 +30,7 @@ export type { ItemType, ItemIdType } from '../entities/batch/Item.js';
 export { RoutedBatchBuilder } from '../entities/batch/RoutedBatchType.js';
 export type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 export { MonadicNode } from './MonadicNode.js';
+export { PlaceholderNode } from './PlaceholderNode.js';
 export { ScalarNode } from './ScalarNode.js';
 export { LoggedScalarNode } from './LoggedScalarNode.js';
 export type { LoggedScalarNodeOptionsType } from './LoggedScalarNode.js';

@@ -1,4 +1,4 @@
-import type { JsonObjectType } from './entities/json.js';
+import type { JsonObjectType, JsonValueType } from './entities/json.js';
 import { JsonValue } from './entities/JsonValue.js';
 import type { NodeErrorType } from './entities/node/NodeError.js';
 import type { NodeWarningType } from './entities/node/NodeWarning.js';
@@ -8,6 +8,27 @@ import type { DAGLifecycleStateType } from './lifecycle/DAGLifecycleState.js';
 import { MetadataGetter } from './MetadataGetter.js';
 import { Clock } from './runtime/Clock.js';
 import { Validator } from './validation/Validator.js';
+
+/**
+ * The expected runtime type of a state field used in `snapshotFields` /
+ * `restoreFields` declarations.
+ */
+export type StateFieldType = 'string' | 'number' | 'boolean' | 'array' | 'object' | 'unknown';
+
+/**
+ * A map of field name → expected runtime type for schema-driven
+ * snapshot/restore helpers on `NodeStateBase`.
+ *
+ * @example
+ * ```ts
+ * static readonly FIELDS: StateFieldsType = {
+ *   message: 'string',
+ *   count:   'number',
+ *   active:  'boolean',
+ * };
+ * ```
+ */
+export type StateFieldsType = Readonly<Record<string, StateFieldType>>;
 
 /**
  * Shared state flowing through all nodes in a flow.
@@ -93,6 +114,22 @@ export interface NodeStateInterface {
    * at the dispatcher tier.
    */
   markTimedOut(): void;
+
+  /**
+   * Transition lifecycle to `awaiting-input` (HITL park). The node calls
+   * this before routing to the reserved `'parked'` output. The engine reads
+   * the correlationKey from state metadata and surfaces it in
+   * `ExecutionResultType.parked`. Stores `correlationKey` in state metadata
+   * under the `'correlationKey'` key as a side-effect.
+   */
+  park(correlationKey: string): void;
+
+  /**
+   * True iff the lifecycle is in the `awaiting-input` (parked) state.
+   * Use this in post-execution checks to determine whether the flow is
+   * waiting for human input.
+   */
+  readonly 'parked': boolean;
 
   /**
    * Reset the lifecycle to `pending`. Called by the dispatcher before
@@ -288,6 +325,15 @@ export class NodeStateBase implements NodeStateInterface {
     this.#dispatch({ "type": 'timeout', "at": Clock.monotonicMs() }, 'timed_out');
   }
 
+  park(correlationKey: string): void {
+    this.#dispatch({ "type": 'park', correlationKey, "at": Clock.monotonicMs() }, 'awaiting-input');
+    this.setMetadata('correlationKey', correlationKey);
+  }
+
+  get parked(): boolean {
+    return DAGLifecycleMachine.isParked(this.#lifecycle);
+  }
+
   resetLifecycle(): void {
     this.#lifecycle = DAGLifecycleMachine.initial();
   }
@@ -390,6 +436,63 @@ export class NodeStateBase implements NodeStateInterface {
     const instance = new this();
     instance.applySnapshot(snapshot);
     return instance;
+  }
+
+  /**
+   * Serialize declared fields from a state instance into a `JsonObjectType`.
+   * Reads each key declared in `fields` from `state` and copies it into the
+   * result. Fields absent on `state` are silently skipped.
+   *
+   * @example
+   * ```ts
+   * static readonly FIELDS: StateFieldsType = { message: 'string', count: 'number' };
+   *
+   * protected override snapshotData(): JsonObjectType {
+   *   return NodeStateBase.snapshotFields(this, MyState.FIELDS);
+   * }
+   * ```
+   */
+  static snapshotFields(state: object, fields: StateFieldsType): JsonObjectType {
+    const result: Record<string, JsonValueType> = {};
+    const s = state as Record<string, unknown>;
+    for (const key of Object.keys(fields)) {
+      if (key in s) {
+        result[key] = s[key] as JsonValueType;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Restore declared fields from a `JsonObjectType` snapshot into a state
+   * instance. Performs typed narrowing for each field — no unsafe casts.
+   * Fields missing or null in the snapshot are silently skipped.
+   *
+   * @example
+   * ```ts
+   * protected override restoreData(snap: JsonObjectType): void {
+   *   NodeStateBase.restoreFields(this, snap, MyState.FIELDS);
+   * }
+   * ```
+   */
+  static restoreFields(state: object, snap: JsonObjectType, fields: StateFieldsType): void {
+    const s = state as Record<string, unknown>;
+    // Dispatch map: maps field type → a function that assigns `value` into `s[key]`
+    // when it passes the narrowing check. Both parameters are passed explicitly;
+    // no shared mutable outer state.
+    const restorers: Record<StateFieldType, (key: string, value: JsonValueType) => void> = {
+      'string':  (k, v) => { if (typeof v === 'string')                      s[k] = v; },
+      'number':  (k, v) => { if (typeof v === 'number')                      s[k] = v; },
+      'boolean': (k, v) => { if (typeof v === 'boolean')                     s[k] = v; },
+      'array':   (k, v) => { if (Array.isArray(v))                           s[k] = v; },
+      'object':  (k, v) => { if (typeof v === 'object' && !Array.isArray(v)) s[k] = v; },
+      'unknown': (k, v) => {                                                  s[k] = v; },
+    };
+    for (const [key, fieldType] of Object.entries(fields)) {
+      const value = snap[key];
+      if (value === undefined || value === null) continue;
+      restorers[fieldType](key, value);
+    }
   }
 
   /**

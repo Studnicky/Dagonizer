@@ -6,6 +6,18 @@ export { NodeStateBase } from './NodeStateBase.js';
 export { MetadataGetter } from './MetadataGetter.js';
 
 // =============================================================================
+// LOGGER
+// =============================================================================
+
+
+// =============================================================================
+// OBSERVABILITY
+// =============================================================================
+
+export { ObservedDag } from './ObservedDag.js';
+export type { DagLoggerInterface } from './ObservedDag.js';
+
+// =============================================================================
 // CONSTANTS
 // =============================================================================
 
@@ -76,6 +88,7 @@ export type { EntityValidatorInterface } from './validation/index.js';
 // re-exported on the root barrel so the existing root-barrel `DAGDocument`
 // export resolves unchanged.
 export { DAGDocument } from './dag/index.js';
+export type { DAGDocumentLoadOptionsType } from './dag/index.js';
 export {
   Placement,
   NodeErrorBuilder,
@@ -96,6 +109,7 @@ export {
   NodeResultSchema,
   NodeStateDataSchema,
   ExecutionResultSchema,
+  ParkedSchema,
   ValidationResultSchema,
   DAGErrorJSONSchema,
   GatherStrategySchema,
@@ -137,6 +151,7 @@ export type {
   ExecutionResultWireType,
   ExecutionResultType,
   InterruptionInfoType,
+  ParkedType,
   ValidationResultType,
   DAGErrorJSONType,
   JsonSchemaType,
@@ -186,6 +201,9 @@ export type {
 
 export { InMemoryChannel } from './channels/index.js';
 export type { InMemoryChannelOptionsType } from './channels/index.js';
+export { StreamChannel, StreamCursor } from './channels/index.js';
+export type { StreamChannelInterface, StreamChannelOptionsType, StreamCursorOptionsType } from './channels/index.js';
+export type { StreamSinkInterface, StreamProducerInterface, ResumableStreamProducerInterface } from './contracts/index.js';
 
 // =============================================================================
 // CONTAINER
@@ -203,7 +221,7 @@ export type { DagContainerOptionsType } from './container/DagContainerBase.js';
 
 export { Dagonizer } from './Dagonizer.js';
 export { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './entities/constants/ProgressKey.js';
-export type { DagonizerOptionsType, ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './Dagonizer.js';
+export type { DagonizerOptionsType, DispatcherObserverType, ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType, StoredScatterProgressType } from './Dagonizer.js';
 export { Execution } from './Execution.js';
 
 // =============================================================================
@@ -225,8 +243,15 @@ export type { ItemType, ItemIdType } from './entities/batch/Item.js';
 export { RoutedBatchBuilder } from './entities/batch/RoutedBatchType.js';
 export type { RoutedBatchType } from './entities/batch/RoutedBatchType.js';
 export { MonadicNode } from './core/MonadicNode.js';
+export { PlaceholderNode } from './core/PlaceholderNode.js';
 export { ScalarNode } from './core/ScalarNode.js';
 export { NodeRunner } from './core/NodeRunner.js';
+
+// =============================================================================
+// BASE LLM SERVICE
+// =============================================================================
+
+export { BaseLlmService } from './adapter/BaseLlmService.js';
 
 // =============================================================================
 // PATTERNS
@@ -238,6 +263,7 @@ export {
   BuildToolWorksetsNode,
   CallModelNode,
   CollectToolResultsNode,
+  DagStreamProducer,
   DecodeTextToolCallsNode,
   NormalizeResponseNode,
   NormalizeToolCallsNode,
@@ -261,12 +287,19 @@ export { BaseStore, MemoryStore, StoreError, TypedStore } from './store/index.js
 export type { BaseStoreOptionsType, StoreErrorClassificationType } from './store/index.js';
 
 // =============================================================================
+// PROGRESS (EventBus bridge)
+// =============================================================================
+
+export { BusObserver } from './progress/BusObserver.js';
+export type { DagLifecycleEventType } from './progress/BusObserver.js';
+
+// =============================================================================
 // CLASS-SHAPE INTERFACES (colocated with their class)
 // =============================================================================
 
 export type { DagonizerInterface } from './Dagonizer.js';
 export type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
-export type { NodeStateInterface } from './NodeStateBase.js';
+export type { NodeStateInterface, StateFieldType, StateFieldsType } from './NodeStateBase.js';
 export type { DAGErrorInterface } from './errors/DAGError.js';
 
 // Child-state factory: class with clone-parent default.
@@ -279,6 +312,8 @@ export type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js
 
 export type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
+export type { PluginInterface, PluginReceiverType } from './contracts/PluginInterface.js';
+export { PluginLoader } from './plugin/PluginLoader.js';
 export type { DagOutcomeType } from './contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
 export type { ExecuteOptionsType } from './contracts/ExecuteOptionsType.js';

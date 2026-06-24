@@ -24,6 +24,12 @@ const CartographerRunner = defineAsyncComponent(() =>
   import('./components/CartographerRunner.vue'),
 )
 
+// DispatcherRunner: HITL park-and-correlate demo (no LLM, deterministic).
+// Lazy-loaded for the same reason as ArchivistRunner.
+const DispatcherRunner = defineAsyncComponent(() =>
+  import('./components/DispatcherRunner.vue'),
+)
+
 // DagGraph renders any Dagonizer DAG via cytoscape. Lazy-load: only doc
 // pages with a <DagGraph :elements="..." /> block pull the bundle.
 const DagGraph = defineAsyncComponent(() =>
@@ -35,6 +41,7 @@ export default {
   enhanceApp({ app }) {
     app.component('ArchivistRunner', ArchivistRunner)
     app.component('CartographerRunner', CartographerRunner)
+    app.component('DispatcherRunner', DispatcherRunner)
     app.component('DagGraph', DagGraph)
     app.use(TwoslashFloatingVue)
     // Mermaid diagrams get the same D-pad + fullscreen explorer as the graph

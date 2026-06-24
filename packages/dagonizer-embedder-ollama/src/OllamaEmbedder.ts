@@ -34,7 +34,7 @@
  * unauthenticated in the same way as the local daemon.
  */
 
-import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
@@ -259,6 +259,7 @@ export class OllamaEmbedder extends BaseEmbedder {
           'name': entry.name,
           'variant': isEmbedding ? 'embedding' : 'chat',
           'cloud': isCloud,
+          'costRank': ModelCost.rankFromSize(entry.name, entry.size),
         };
       });
     } catch {

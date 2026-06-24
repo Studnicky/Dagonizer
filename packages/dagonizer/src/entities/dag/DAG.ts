@@ -99,6 +99,21 @@ const DAGNodeEntrySchema = {
           'type': 'object',
           'additionalProperties': { 'type': 'string' },
         },
+        'retry': {
+          'type': 'object',
+          'properties': {
+            'maxAttempts':  { 'type': 'integer', 'minimum': 1 },
+            'strategy':     { 'type': 'string', 'enum': ['constant', 'linear', 'exponential', 'decorrelated-jitter'] },
+            'baseDelay':    { 'type': 'integer', 'minimum': 0 },
+            'maxDelay':     { 'type': 'integer', 'minimum': 0 },
+            'multiplier':   { 'type': 'number' },
+            'jitterFactor': { 'type': 'number' },
+            'on': {
+              'type': 'array',
+              'items': { 'type': 'string' },
+            },
+          },
+        },
       },
       'additionalProperties': false,
     },

@@ -49,3 +49,17 @@ export type {
   TermType,
   TripleStoreInterface,
 } from '../contracts/TripleStoreInterface.js';
+
+// NOTE: DecisionNode, LlmDispatchNode, ComposeNode live in
+// @studnicky/dagonizer-patterns-rag which is a peerDependency consumer
+// of dagonizer. A re-export here would create a circular dependency
+// (dagonizer → dagonizer-patterns-rag → dagonizer). Consumers import
+// those nodes directly from @studnicky/dagonizer-patterns-rag.
+
+// LLM-backed pattern node bases — generic across any domain
+export { LlmDispatchNode } from './LlmDispatchNode.js';
+export { DecisionNode } from './DecisionNode.js';
+export { ComposeNode } from './ComposeNode.js';
+
+// Sub-DAG stream producer: bridges an inner DAG's execution stream into a scatter source
+export { DagStreamProducer } from './DagStreamProducer.js';

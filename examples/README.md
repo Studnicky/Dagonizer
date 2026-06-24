@@ -65,6 +65,7 @@ These examples run against a real local model. Install [Ollama](https://ollama.c
 | `24-llm-adapter.ts` | `BaseAdapter`, `LlmAdapterRegistry`, `LlmAdapterCascade`, `.chat()` in a DAG node | `npx tsx examples/24-llm-adapter.ts` |
 | `25-embedder.ts` | `BaseEmbedder`, `EmbedderRegistry`, `EmbedderCascade`, cosine similarity | `npx tsx examples/25-embedder.ts` |
 | `26-tool-use.ts` | `Tool`, `ToolDefinition`, `ToolCallCodec` text-fallback, adapter dispatch | `npx tsx examples/26-tool-use.ts` |
+| `29-agent-builder.ts` | `AgentBuilder.loop` — assemble the canonical 8-node agent loop; stub LLM | `npx tsx examples/29-agent-builder.ts` |
 
 ---
 

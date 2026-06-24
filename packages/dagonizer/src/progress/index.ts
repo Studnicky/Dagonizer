@@ -5,6 +5,7 @@
  * - `BusEventEnvelopeSchema` / `BusEventEnvelopeWireType` / `BusEventEnvelopeType<T>` / `BusEventEnvelopeBuilder`
  * - `EventBus` / `EventBusInterface` / `BusListenerType` / `BusUnsubscribeType`
  * - `SseStream` / `SseStreamOptionsType`
+ * - `BusObserver` / `DagLifecycleEventType`
  */
 
 export {
@@ -31,3 +32,10 @@ export {
 export type {
   SseStreamOptionsType,
 } from './SseStream.js';
+
+export {
+  BusObserver,
+} from './BusObserver.js';
+export type {
+  DagLifecycleEventType,
+} from './BusObserver.js';

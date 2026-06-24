@@ -59,6 +59,9 @@ export type {
   OpenAiCompatibleConfigType,
 } from './OpenAiCompatibleAdapter.js';
 
+export { ModelCost } from './ModelCost.js';
+export type { OpenAiCostEntryType } from './ModelCost.js';
+
 // `OpenAiResponseBody` is a schema entity (canonical home `entities/adapter/`).
 // Re-exported here so the OpenAI-compatible wire shape stays reachable through
 // the `./adapter` public subpath alongside the adapter that parses it.
@@ -100,3 +103,5 @@ export type { EmbedderFactoryType } from './EmbedderRegistry.js';
 export { EmbedderCascade } from './EmbedderCascade.js';
 
 export { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
+
+export { BaseLlmService } from './BaseLlmService.js';

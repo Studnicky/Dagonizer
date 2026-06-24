@@ -102,6 +102,9 @@ export type { NodeStateDataType } from './node/NodeStateData.js';
 export { ExecutionResultSchema, InterruptionInfoSchema } from './execution/ExecutionResult.js';
 export type { ExecutionResultWireType, ExecutionResultType, InterruptionInfoType } from './execution/ExecutionResult.js';
 
+export { ParkedSchema } from './execution/Parked.js';
+export type { ParkedType } from './execution/Parked.js';
+
 // ---------------------------------------------------------------------------
 // validation
 // ---------------------------------------------------------------------------

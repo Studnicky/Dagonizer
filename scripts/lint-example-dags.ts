@@ -117,6 +117,10 @@ import {
   childDAG as terminalsChildDAG,
 } from '../examples/dags/09-terminals.js';
 import { childDag as sharedChildDAG, parentDag as sharedParentDAG } from '../examples/dags/10-shared-state.js';
+import { dag as streamChannelDag } from '../examples/dags/34-stream-channel.js';
+import { fanInDag, resumeDag }     from '../examples/dags/35-stream-fanin-resume.js';
+import { innerDag, outerDag }      from '../examples/dags/36-dag-stream-producer.js';
+import { fanInCandidatesDag, streamProducerCandidatesDag } from '../examples/the-archivist/streaming/ArchivistStreamingDAGs.js';
 
 import { cartographerDAG, eventPipelineTypedDAG }  from '../examples/the-cartographer/dag.js';
 import { streamEventDAG }                          from '../examples/the-cartographer/embedded-dags/StreamEventDAG.js';
@@ -151,6 +155,13 @@ const dags: ReadonlyArray<readonly [string, DAGType]> = [
   ['the-cartographer / orderEnrichmentDAG',    orderEnrichmentDAG],
   ['the-cartographer / eventPipelineTypedDAG', eventPipelineTypedDAG],
   ['the-cartographer / gdprComplianceDAG',     gdprComplianceDAG],
+  ['dags / 34-stream-channel',               streamChannelDag],
+  ['dags / 35-stream-fanin-resume (fanIn)',   fanInDag],
+  ['dags / 35-stream-fanin-resume (resume)',  resumeDag],
+  ['dags / 36-dag-stream-producer (inner)',                    innerDag],
+  ['dags / 36-dag-stream-producer (outer)',                    outerDag],
+  ['the-archivist / fanInCandidatesDag',                       fanInCandidatesDag],
+  ['the-archivist / streamProducerCandidatesDag',              streamProducerCandidatesDag],
 ];
 
 let totalViolations = 0;

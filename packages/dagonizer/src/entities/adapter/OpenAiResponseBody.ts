@@ -15,6 +15,7 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+/** JSON Schema for the `function` object nested inside an OpenAI tool-call choice. */
 export const OpenAiToolCallFunctionSchema = {
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
@@ -26,6 +27,7 @@ export const OpenAiToolCallFunctionSchema = {
   'additionalProperties': true,
 } as const;
 
+/** JSON Schema for a single OpenAI-style tool call (`{ id, type: 'function', function: … }`). */
 export const OpenAiToolCallSchema = {
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
@@ -38,6 +40,7 @@ export const OpenAiToolCallSchema = {
   'additionalProperties': true,
 } as const;
 
+/** JSON Schema for the `message` object inside a chat completion choice. */
 export const OpenAiChoiceMessageSchema = {
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
@@ -51,6 +54,7 @@ export const OpenAiChoiceMessageSchema = {
   'additionalProperties': true,
 } as const;
 
+/** JSON Schema for a single chat completion choice (`{ message, finish_reason }`). */
 export const OpenAiChoiceSchema = {
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
@@ -61,6 +65,7 @@ export const OpenAiChoiceSchema = {
   'additionalProperties': true,
 } as const;
 
+/** JSON Schema for the `usage` block (`{ prompt_tokens, completion_tokens }`). */
 export const OpenAiUsageSchema = {
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
