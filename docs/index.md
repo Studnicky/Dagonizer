@@ -58,7 +58,7 @@ A **DAG** is therefore a graph of steps where each step's output drives the rout
 
 ## ⦿ One engine, two applications
 
-`@studnicky/dagonizer` is a single type-safe, resumable, abortable DAG/workflow engine. Agentic LLM orchestration and data-orchestration / ETL run on the identical core — only the node domain differs. Two runnable in-browser demos prove it: The Archivist (LLM agents, bibliographic assistant) and The Cartographer (streaming multi-format satellite tracking feeds, geo-resolution, GDPR redaction, continent-level insights — no LLM).
+`@studnicky/dagonizer` is a single type-safe, resumable, abortable DAG/workflow engine. Agentic LLM orchestration and data-orchestration / ETL run on the identical core — only the node domain differs. Three runnable in-browser demos prove it: **The Archivist** (LLM agents — a bibliographic assistant), **The Dispatcher** (LLM agents with a human in the loop — warm-handoff support), and **The Cartographer** (streaming multi-format satellite tracking feeds, geo-resolution, GDPR redaction, continent-level insights — no LLM).
 
 ## ⦿ What it is
 
@@ -90,8 +90,27 @@ Dagonizer runs in-process. No worker pool, no external state store, no IPC. DAG 
 
 ## ⦿ See it in action
 
-Both demos run live in the browser with no server required. Start with either depending on your domain.
+Three demos, one engine — each a different role the dispatcher can run, all live in the browser with no server. Two exercise the agentic surface; the third is pure deterministic ETL. Same core, same DAG topology — only the node domain differs.
 
-**[The Archivist](/examples/the-archivist)** — LLM agents. A bibliographic-assistant pipeline: classify intent, scatter scout nodes over source arrays, embedded search and compose sub-DAGs, retry with decorrelated-jitter backoff, checkpoint, provenance. Exercises the full agentic composition surface.
+**[The Archivist](/examples/the-archivist)** — *the cataloguer.* LLM agents. A bibliographic-assistant pipeline: classify intent, scatter scout nodes over source arrays, embedded search and compose sub-DAGs, retry with decorrelated-jitter backoff, checkpoint, provenance. Exercises the full agentic composition surface.
 
-**[The Cartographer](/examples/the-cartographer)** — data orchestration / ETL / streaming. Fans multi-format satellite tracking feeds (CSV, JSON, gzip-NDJSON) through per-format ingest sub-DAGs into one canonical model. Demonstrates branching conditional routing (skip geo when the source pre-resolved location, skip GDPR redaction when no PII is present), offline geo-resolution via `@rapideditor/country-coder`, live IP geo via `freeipapi`, GDPR PII redaction, and continent-level routing-savings insights. No LLM. Runs entirely in the browser.
+**[The Dispatcher](/examples/the-dispatcher)** — *the router.* LLM agents with a human in the loop. A warm-handoff support pipeline: a classifier routes each message, the AI either composes a reply instantly or the flow parks and waits for a human operator, then resumes from checkpoint on their response. A deterministic "trolley switch" can force human routing on top of the LLM decision. Demonstrates HITL park-and-correlate and checkpoint/resume.
+
+**[The Cartographer](/examples/the-cartographer)** — *the mapmaker.* Data orchestration / ETL / streaming. Fans multi-format satellite tracking feeds (CSV, JSON, gzip-NDJSON) through per-format ingest sub-DAGs into one canonical model. Demonstrates branching conditional routing (skip geo when the source pre-resolved location, skip GDPR redaction when no PII is present), offline geo-resolution via `@rapideditor/country-coder`, live IP geo via `freeipapi`, GDPR PII redaction, and continent-level routing-savings insights. No LLM. Runs entirely in the browser.
+
+## ⦿ Why "Dagonizer"
+
+The name compresses the three ideas the project is built on.
+
+**The structure — a DAG.** The engine executes a [**D**irected **A**cyclic **G**raph][dag]: steps joined by forward-only edges, with no cycles, so the steps always admit a well-defined execution order. Engineers compose DAGs constantly — build graphs, task schedulers, spreadsheet recalculation, linker symbol resolution, and now agent tool-call chains — often without naming the structure as such. Dagonizer makes the DAG the explicit, type-safe unit of composition.
+
+**The role — an orchestrator.** In H. P. Lovecraft's fiction, [Dagon][dagon] is the primordial deity that presides over the submerged multitudes of the Deep Ones — first evoked in the 1919 short story of the same name. The image fits an engine whose job is to marshal many small autonomous workers — LLM agents, ETL stages — through one coordinated flow. The workers are the multitude; Dagonizer is what directs them.
+
+**The shape — ports and adapters.** Backends plug into Dagonizer through adapter contracts — `LlmAdapterInterface`, `StoreInterface`, `ClockProviderInterface`, and the rest — never through callbacks or function-passing. That is the [hexagonal "ports and adapters" architecture][hex] described by Alistair Cockburn: capabilities snap together at the boundary like interchangeable parts, and the core stays closed to modification.
+
+Read together, **Dagonizer is "the orchestrator of the DAGs."** Spoken aloud it also resolves to *dag-on-eyes-er* — a deliberate nod to the [Eye of Dagon][eye], and to a logo that is meant to be just slightly unsettling.
+
+[dag]: https://en.wikipedia.org/wiki/Directed_acyclic_graph
+[dagon]: https://en.wikipedia.org/wiki/Dagon_%28short_story%29
+[hex]: https://alistair.cockburn.us/hexagonal-architecture
+[eye]: https://runescape.wiki/w/Eye_of_Dagon
