@@ -1,5 +1,153 @@
 # @studnicky/dagonizer
 
+## 0.27.0
+
+### Minor Changes
+
+- 54252c9: BusObserver: bridges Dagonizer lifecycle hooks (via the observers option) to an
+  EventBus topic. Construct with (bus, topic); pass in DagonizerOptionsType.observers[].
+  Every lifecycle event is published as a DagLifecycleEventType payload. Pairs with
+  SseStream to stream pipeline progress to HTTP clients.
+- 9902b59: OpenAiCompatibleAdapter gains four static factory methods: .groq(apiKey, options?),
+  .cerebras(apiKey, options?), .mistral(apiKey, options?), .openRouter(apiKey, options?).
+  These replace the separate dagonizer-adapter-groq, dagonizer-adapter-cerebras,
+  dagonizer-adapter-mistral, and dagonizer-adapter-openrouter packages which are removed.
+
+  Migration: replace `new GroqApiAdapter(key)` with `OpenAiCompatibleAdapter.groq(key)`;
+  similarly for Cerebras, Mistral, and OpenRouter. All options that the removed adapters
+  accepted (model, referer, title, timeoutMs) are available on the factory options object.
+
+- 54252c9: DAGBuilder.placeholder(name, outputs, routes) adds a PlaceholderNode stub in one call.
+  PlaceholderNode routes unconditionally to its first output; replace with a concrete
+  ScalarNode subclass when ready.
+- 54252c9: DAGDocument.load() and DAGDocument.ofValue() accept an optional overrides object merged
+  before validation — enables config-driven topology parameterization without mutating the
+  source document. registerDAG no longer runs a redundant schema validation pass; the
+  semantic validation (entrypoint, node references, routing completeness) is unchanged.
+- d7eb8bc: First-class HITL park-and-correlate primitive. A node that routes to the
+  reserved `'parked'` output causes the engine to transition the run lifecycle to
+  `awaiting-input`, set `result.cursor` to the parked placement, and populate
+  `result.parked` with a `ParkedType` carrying `correlationKey`, `cursor`, and
+  `dagName`. The caller captures a checkpoint and calls `dispatcher.resume()` when
+  the human decision arrives. The `DAGLifecycleMachine` gains the `awaiting-input`
+  variant and `park` event; `NodeStateBase` gains `park()` and a `parked` getter;
+  `ExecutionResultType` gains `parked: ParkedType | null`; `Validator.parked` is
+  added; the `DAGValidator` skips the reserved `'parked'` output in the routing
+  completeness check.
+- 0307e00: Promotes listModels() to LlmAdapterInterface and EmbedderInterface. OpenAiCompatibleAdapter implements /v1/models discovery covering Groq, Mistral, Cerebras, and OpenRouter. AnthropicApiAdapter implements /v1/models. All embedder packages implement listModels(). BaseEmbedder gains selectEmbeddingModel(). Adapters that already had listModels() (Ollama, Gemini, Nano, WebLLM) are unchanged. Hardcoded model strings removed from examples.
+- 4675839: PluginLoader: type-safe dynamic plugin import binding. PluginLoader.load(specifier)
+  dynamically imports a module and validates its default export as a PluginInterface via
+  a structural type-guard predicate — no casts at the call site. PluginLoader.validate(mod)
+  and PluginLoader.isPlugin(value) are also exported for use with already-imported modules.
+  PluginDiscovery.loadAll(dag, registry, dispatcher, resolveSpecifier) composes the walker
+  with the loader to register all transitively-referenced plugins in one call.
+- d7eb8bc: Plugin loader: PluginInterface (register(dispatcher)) + Dagonizer.registerPlugin(plugin) +
+  PluginDiscovery.referencedDagNames(dag) / walk(dag, registry) via new ./plugin subpath.
+
+  Multi-observer mux: DagonizerOptionsType gains optional observers array of DispatcherObserverType
+  callbacks muxed into all lifecycle hooks. Provides an alternative to subclassing for
+  per-turn-rebuilt dispatchers.
+
+- 088fe8b: Streaming producers feed a ScatterNode through one unified engine path — no
+  separate stream node, executor, or scheduler. A `StreamChannel<T>` is a bounded
+  push→pull async queue that is itself an `AsyncIterable<T>`, duck-typed as a
+  scatter source. Statics: `StreamChannel.driven(producer)`,
+  `StreamChannel.fanIn(producers)` (merge concurrent producers), and
+  `StreamChannel.resumable(producer, resumeAfter)` (supply only the remainder after
+  an interrupt). Producers are objects implementing `StreamProducerInterface`
+  (`produce(sink)`) or `ResumableStreamProducerInterface` (`produce(sink, resumeAfter)`)
+  pushing into a `StreamSinkInterface`; `DagStreamProducer<T>` (`./patterns`)
+  bridges an inner DAG's node-result stream into a back-pressured sink.
+
+  New public surface: `./channels` adds `StreamChannel`, `StreamCursor`,
+  `StreamChannelInterface`, and the option types; `./contracts` adds
+  `StreamProducerInterface`, `ResumableStreamProducerInterface`, and
+  `StreamSinkInterface`; `./patterns` adds `DagStreamProducer`.
+
+  Deterministic streamed resume: async/streaming sources are not engine
+  index-skipped (only array sources get the seen-indices pre-scan). The caller
+  reads the durable pull count with `StreamCursor.resumeAfter(state, scatterName)`
+  and supplies the remainder via `StreamChannel.resumable(producer, cursor)`. On
+  resume the engine replays in-flight inbox items from the checkpoint and the
+  channel supplies fresh items at or after the cursor; the union is exactly-once.
+  Acked items below the watermark are not re-folded — their gather contributions
+  must already live in the resumed state snapshot.
+
+  `GatherStrategy.initial(config, state, accessor)` is now invoked by the engine
+  once on fresh scatter entry (no stored checkpoint), before the first reduce, and
+  never on resume (where the accumulator is restored from the checkpoint). Built-in
+  gathers inherit the no-op default; state-sourced custom gathers seed their
+  accumulators here, which is what makes their durable cross-process resume
+  correct.
+
+- 8defaae: Bumps two visualization dev dependencies to their new major versions:
+  `@cosmos.gl/graph` from ^2.6.4 to ^3.0.0 and `cytoscape-dagre` from ^3.0.0
+  to ^4.0.0.
+
+  `@cosmos.gl/graph` v3 introduces a luma.gl (WebGL 2) rendering engine and a
+  config API change where `setConfig()` now resets all values to defaults — use
+  the new `setConfigPartial()` to update individual properties without a full
+  reset. In this workspace cosmos is consumed only by the docs memory-graph
+  component (`docs/.vitepress/theme/components/MemoryGraph.vue`); every config
+  key, callback, and `Graph` method that component uses (`simulationDecay`,
+  `onSimulationTick`, `onZoom`, `onClick`, `setPointPositions`, `getZoomLevel`,
+  `render`, `spaceToScreenPosition`, …) is present and signature-compatible in
+  v3, and the component never calls `setConfig`, so the reset-behavior change
+  does not apply.
+
+  `cytoscape-dagre` v4 ships its own bundled TypeScript declarations. It has no
+  importer in this workspace — the dagonizer viz layer drives layout via
+  `@dagrejs/dagre` directly rather than the cytoscape-dagre plugin — so the bump
+  is config-only. Consumers using the cytoscape-dagre layout should note the new
+  `useDagreEdgeControlPoints`, `automaticDagreEdgeStyle`, and `dagreEdgeStyle`
+  options available in v4.
+
+### Patch Changes
+
+- 55366b5: Harden `DottedPathAccessor.set` against prototype pollution by guarding each
+  property write inline. The `__proto__`/`prototype`/`constructor` segment check
+  now sits directly on the path to every assignment, so a config-supplied dotted
+  path can never walk or mutate the prototype chain. Behaviour is unchanged for
+  all legitimate paths; forbidden or empty segments make the write a no-op.
+- ddf151f: Docs: wrap the interactive browser runners (`ArchivistRunner`, `DispatcherRunner`,
+  `CartographerRunner`) in `<ClientOnly>`.
+
+  These widgets seed initial reactive state from client-only sources at `setup()` —
+  `Date.now()` (greeting selection), `localStorage` (saved backend, slow-banner,
+  checkpoint), and `navigator.hardwareConcurrency` (worker pool size). VitePress's
+  production build statically pre-renders each page, so those build-time values were
+  baked into the HTML and could never match the values the browser computes on
+  hydration, producing `Hydration completed but contains mismatches` console errors.
+  Rendering the runners client-only eliminates the baked markup and the mismatch.
+  The `DagGraph` embeds are unaffected (deterministic, SSR-safe) and remain SSR'd.
+
+- 62dc1c7: Docs toolchain devDependency bumps:
+
+  - `vue-tsc` bumped from `^2.2.12` to `^3.3.5`. vue-tsc 3 introduces the Volar 2
+    rewrite; its TypeScript peer requirement (`>=5.0.0`) is satisfied by the
+    workspace's pinned TS 6.0.3. `typecheck:docs` and `docs:build` pass clean.
+
+  - `vite` bumped from `6.4.3` to `^8.1.0` in `examples/the-archivist/package.json`.
+    The-archivist is a standalone browser demo; its `vite build` passes clean under
+    vite 8 with no source changes. Version spec updated from exact pin to caret
+    convention matching the rest of the workspace.
+
+- b6d059e: Bump @types/node devDependency to ^26.0.0 across the workspace.
+- 4d55c20: TypeScript devDependency bumped from ^5.6.0 to ^6.0.3 across all packages
+  (dagonizer, dagonizer-executor-node, dagonizer-store-sqlite,
+  dagonizer-executor-web, examples).
+
+  Source fixes driven by TS 6.0 breaking changes:
+
+  - `docs/tsconfig.json`: removed `baseUrl: "."` (deprecated in TS 6, reported as
+    TS5101; unused under `moduleResolution: Bundler` with no path aliases).
+  - `docs/.vitepress/shims/css.d.ts` (new): ambient module declarations for CSS
+    side-effect imports. TS 6.0 enables `noUncheckedSideEffectImports` by default
+    (TS2882), flagging bare `import './foo.css'` where no module type exists.
+    Declarations cover local theme CSS and package CSS exports
+    (`@shikijs/vitepress-twoslash/style.css`,
+    `@studnicky/dagonizer/viz/explorer.css`).
+
 ## 0.26.0
 
 ### Minor Changes

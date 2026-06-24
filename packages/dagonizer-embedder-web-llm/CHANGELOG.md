@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-embedder-web-llm
 
+## 0.27.0
+
 ## [Unreleased]
 
 ### Changed

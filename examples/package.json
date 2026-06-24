@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-examples",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "private": true,
   "description": "Runnable examples for @studnicky/dagonizer.",
   "license": "MIT",
