@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-embedder-transformers
 
+## 0.27.0
+
 ## [unreleased]
 
 ### Changed
