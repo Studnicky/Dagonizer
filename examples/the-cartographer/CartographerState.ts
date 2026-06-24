@@ -21,7 +21,8 @@
  *
  * Checkpoint/resume: snapshotData/restoreData round-trip durable state only.
  * Durable: eventCount, eventConfig, useStreamingSource, streamCount, sources,
- * ingestBuckets, canonicalEvents, records, sampleRecords, enriched.
+ * ingestBuckets, canonicalEvents, records, sampleRecords, enriched, insights,
+ * journeyAccumulators, errorRollup.
  * Per-event scratch (currentSource, decodedText, parsedRecords, mappedRecords,
  * ingestedEvents, canonical, canonicalVariant, raw, normalized, currentEvent,
  * geoContext, pricedOrder, shippingQuote, deliveryEstimate, legKm,
@@ -55,7 +56,8 @@ import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
 import type { EventTypeConfig } from './services.ts';
 import type { GeoErrorRecordType } from './errors/GeoErrorRecord.ts';
-import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
+import { ErrorRollup, type ErrorGroupType, type ErrorRollupType } from './errors/ErrorRollup.ts';
+import type { JourneyAccumulator } from './core/InsightsFoldGather.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/types';
@@ -159,6 +161,14 @@ export class CartographerState extends NodeStateBase {
   streamCount: number = 0;
 
   /**
+   * StreamChannel buffer capacity for the streaming source channel.
+   * When 0 (default), the channel uses its built-in default capacity (256).
+   * Set to 1 to enable genuine per-item backpressure (useful for abort-and-resume
+   * scenarios where the producer must not pre-fill the buffer).
+   */
+  streamChannelCapacity: number = 0;
+
+  /**
    * The multi-format source feeds, seeded by the seed phase node. Each is a
    * `{ sourceId, format, mappingKey, eventType, payload }` — a different on-the-wire
    * encoding (JSON / CSV / gzip NDJSON) of a typed scan from the event feed.
@@ -232,6 +242,12 @@ export class CartographerState extends NodeStateBase {
 
   /** Per-journey aggregate (grouped by shipmentId) produced by summarizeInsights. */
   journeys: Map<string, JourneyInsights> = new Map();
+
+  /**
+   * In-progress per-journey accumulator map, maintained by the insights-fold gather strategy.
+   * Part of durable checkpoint state so accumulations survive process restart on resume.
+   */
+  journeyAccumulators: Map<string, JourneyAccumulator> = new Map();
 
   /**
    * Parent-side bounded rollup of captured exceptions, folded by the
@@ -492,6 +508,7 @@ export class CartographerState extends NodeStateBase {
     }
     copy.useStreamingSource = this.useStreamingSource;
     copy.streamCount = this.streamCount;
+    copy.streamChannelCapacity = this.streamChannelCapacity;
     // Parent-level accumulators: reset to defaults in child clones.
     //
     // ingestBuckets, canonicalEvents, records, sampleRecords, insights, and
@@ -505,13 +522,14 @@ export class CartographerState extends NodeStateBase {
     // heap spike. Resetting to defaults eliminates that overhead with no loss
     // of correctness: the child never reads them, and the parent retains its
     // own live copies.
-    copy.ingestBuckets   = [];
-    copy.canonicalEvents = [];
-    copy.records         = [];
-    copy.sampleRecords   = [];
-    copy.insights        = new Map();
-    copy.journeys        = new Map();
-    copy.errorRollup     = ErrorRollup.empty();
+    copy.ingestBuckets          = [];
+    copy.canonicalEvents        = [];
+    copy.records                = [];
+    copy.sampleRecords          = [];
+    copy.insights               = new Map();
+    copy.journeys               = new Map();
+    copy.journeyAccumulators    = new Map();
+    copy.errorRollup            = ErrorRollup.empty();
 
     copy.currentSource  = { ...this.currentSource };
     copy.decodedText    = this.decodedText;
@@ -591,11 +609,49 @@ export class CartographerState extends NodeStateBase {
         : [],
       'useStreamingSource': this.useStreamingSource,
       'streamCount': this.streamCount,
+      'streamChannelCapacity': this.streamChannelCapacity,
       'ingestBuckets': this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.variantToJson(e))),
       'canonicalEvents': this.canonicalEvents.map((e) => CartographerState.variantToJson(e)),
       'records':      this.records.map((r) => CartographerState.enrichedToJson(r)),
       'sampleRecords': this.sampleRecords.map((r) => CartographerState.enrichedToJson(r)),
       'enriched': CartographerState.enrichedToJson(this.enriched),
+      'insights': [...this.insights.entries()].map(([key, r]) => ({
+        'key': key,
+        'region': r.region, 'country': r.country, 'hub': r.hub,
+        'deliveries': r.deliveries, 'exceptions': r.exceptions,
+        'onTimeCount': r.onTimeCount, 'lateCount': r.lateCount,
+        'totalSubtotalUsdMinor': r.totalSubtotalUsdMinor,
+        'totalShippingUsdMinor': r.totalShippingUsdMinor,
+        'totalDistanceKm': r.totalDistanceKm,
+        'totalDelayHours': r.totalDelayHours,
+        'consentValid': r.consentValid, 'consentMissing': r.consentMissing, 'consentExpired': r.consentExpired,
+        'sizeTierEnvelope': r.sizeTierEnvelope, 'sizeTierSmall': r.sizeTierSmall,
+        'sizeTierMedium': r.sizeTierMedium, 'sizeTierLarge': r.sizeTierLarge, 'sizeTierFreight': r.sizeTierFreight,
+        'shipmentCount': r.shipmentCount,
+      })),
+      'journeyAccumulators': [...this.journeyAccumulators.entries()].map(([id, acc]) => ({
+        'id': id,
+        'scans': acc.scans.map((s) => ({
+          'scanSeq': s.scanSeq, 'epochMs': s.epochMs, 'localIso': s.localIso,
+          'utcOffset': s.utcOffset, 'timezone': s.timezone, 'jurisdiction': s.jurisdiction,
+          'status': s.status, 'hub': s.hub, 'region': s.region, 'country': s.country,
+          'lat': s.lat, 'lng': s.lng, 'legKm': s.legKm, 'disruptionReason': s.disruptionReason,
+        })),
+        'scanCount': acc.scanCount, 'pathKm': acc.pathKm,
+        'minEpoch': acc.minEpoch, 'maxEpoch': acc.maxEpoch,
+        'offsets': [...acc.offsets], 'timezones': [...acc.timezones], 'jurisdictions': [...acc.jurisdictions],
+        'statusProgression': [...acc.statusProgression],
+        'delivered': acc.delivered, 'etaCaptured': acc.etaCaptured, 'onTime': acc.onTime,
+        'delayHours': acc.delayHours, 'subtotalUsdMinor': acc.subtotalUsdMinor, 'shippingUsdMinor': acc.shippingUsdMinor,
+      })),
+      'errorRollup': {
+        'total': this.errorRollup.total,
+        'groups': [...this.errorRollup.groups.entries()].map(([key, g]) => ({
+          'key': key,
+          'source': g.source, 'variant': g.variant, 'count': g.count,
+          'samples': [...g.samples], 'sampleInput': g.sampleInput,
+        })),
+      },
     };
   }
 
@@ -603,6 +659,7 @@ export class CartographerState extends NodeStateBase {
     if (typeof snap['eventCount'] === 'number') this.eventCount = snap['eventCount'];
     if (typeof snap['useStreamingSource'] === 'boolean') this.useStreamingSource = snap['useStreamingSource'];
     if (typeof snap['streamCount'] === 'number') this.streamCount = snap['streamCount'];
+    if (typeof snap['streamChannelCapacity'] === 'number') this.streamChannelCapacity = snap['streamChannelCapacity'];
     if (Array.isArray(snap['sources'])) {
       this.sources = snap['sources'].map((s) => CartographerState.sourceFromJson(CartographerState.asObject(s) ?? {}));
     }
@@ -646,6 +703,105 @@ export class CartographerState extends NodeStateBase {
     }
     const enObj = CartographerState.asObject(snap['enriched']);
     if (enObj !== null) this.enriched = CartographerState.enrichedFromJson(enObj);
+    if (Array.isArray(snap['insights'])) {
+      this.insights = new Map(
+        snap['insights']
+          .map((e) => CartographerState.asObject(e))
+          .filter((e): e is JsonObjectType => e !== null)
+          .map((e): [string, RegionInsights] => [
+            CartographerState.str(e['key']),
+            {
+              'region': CartographerState.str(e['region']),
+              'country': CartographerState.str(e['country']),
+              'hub': CartographerState.str(e['hub']),
+              'deliveries': CartographerState.num(e['deliveries']),
+              'exceptions': CartographerState.num(e['exceptions']),
+              'onTimeCount': CartographerState.num(e['onTimeCount']),
+              'lateCount': CartographerState.num(e['lateCount']),
+              'totalSubtotalUsdMinor': CartographerState.num(e['totalSubtotalUsdMinor']),
+              'totalShippingUsdMinor': CartographerState.num(e['totalShippingUsdMinor']),
+              'totalDistanceKm': CartographerState.num(e['totalDistanceKm']),
+              'totalDelayHours': CartographerState.num(e['totalDelayHours']),
+              'consentValid': CartographerState.num(e['consentValid']),
+              'consentMissing': CartographerState.num(e['consentMissing']),
+              'consentExpired': CartographerState.num(e['consentExpired']),
+              'sizeTierEnvelope': CartographerState.num(e['sizeTierEnvelope']),
+              'sizeTierSmall': CartographerState.num(e['sizeTierSmall']),
+              'sizeTierMedium': CartographerState.num(e['sizeTierMedium']),
+              'sizeTierLarge': CartographerState.num(e['sizeTierLarge']),
+              'sizeTierFreight': CartographerState.num(e['sizeTierFreight']),
+              'shipmentCount': CartographerState.num(e['shipmentCount']),
+            },
+          ])
+      );
+    }
+    if (Array.isArray(snap['journeyAccumulators'])) {
+      this.journeyAccumulators = new Map(
+        snap['journeyAccumulators']
+          .map((e) => CartographerState.asObject(e))
+          .filter((e): e is JsonObjectType => e !== null)
+          .map((e): [string, JourneyAccumulator] => [
+            CartographerState.str(e['id']),
+            {
+              'scans': Array.isArray(e['scans'])
+                ? e['scans']
+                    .map((s) => CartographerState.asObject(s))
+                    .filter((s): s is JsonObjectType => s !== null)
+                    .map((s): JourneyScan => ({
+                      'scanSeq': CartographerState.num(s['scanSeq']),
+                      'epochMs': CartographerState.num(s['epochMs']),
+                      'localIso': CartographerState.str(s['localIso']),
+                      'utcOffset': CartographerState.str(s['utcOffset']),
+                      'timezone': CartographerState.str(s['timezone']),
+                      'jurisdiction': CartographerState.str(s['jurisdiction']),
+                      'status': CartographerState.str(s['status']),
+                      'hub': CartographerState.str(s['hub']),
+                      'region': CartographerState.str(s['region']),
+                      'country': CartographerState.str(s['country']),
+                      'lat': CartographerState.num(s['lat']),
+                      'lng': CartographerState.num(s['lng']),
+                      'legKm': CartographerState.num(s['legKm']),
+                      'disruptionReason': CartographerState.str(s['disruptionReason']),
+                    }))
+                : [],
+              'scanCount': CartographerState.num(e['scanCount']),
+              'pathKm': CartographerState.num(e['pathKm']),
+              'minEpoch': CartographerState.num(e['minEpoch']),
+              'maxEpoch': CartographerState.num(e['maxEpoch']),
+              'offsets': CartographerState.strArr(e['offsets']),
+              'timezones': CartographerState.strArr(e['timezones']),
+              'jurisdictions': CartographerState.strArr(e['jurisdictions']),
+              'statusProgression': CartographerState.strArr(e['statusProgression']),
+              'delivered': CartographerState.bool(e['delivered']),
+              'etaCaptured': CartographerState.bool(e['etaCaptured']),
+              'onTime': CartographerState.bool(e['onTime']),
+              'delayHours': CartographerState.num(e['delayHours']),
+              'subtotalUsdMinor': CartographerState.num(e['subtotalUsdMinor']),
+              'shippingUsdMinor': CartographerState.num(e['shippingUsdMinor']),
+            },
+          ])
+      );
+    }
+    const rollupRaw = CartographerState.asObject(snap['errorRollup']);
+    if (rollupRaw !== null) {
+      const groupsRaw = Array.isArray(rollupRaw['groups']) ? rollupRaw['groups'] : [];
+      const groups = new Map<string, ErrorGroupType>(
+        groupsRaw
+          .map((g) => CartographerState.asObject(g))
+          .filter((g): g is JsonObjectType => g !== null)
+          .map((g): [string, ErrorGroupType] => [
+            CartographerState.str(g['key']),
+            {
+              'source': CartographerState.str(g['source']),
+              'variant': CartographerState.str(g['variant']),
+              'count': CartographerState.num(g['count']),
+              'samples': CartographerState.strArr(g['samples']),
+              'sampleInput': CartographerState.str(g['sampleInput']),
+            },
+          ])
+      );
+      this.errorRollup = { 'total': CartographerState.num(rollupRaw['total']), 'groups': groups };
+    }
   }
   // #endregion snapshot-restore
 

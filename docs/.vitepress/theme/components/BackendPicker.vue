@@ -2,7 +2,9 @@
 /**
  * BackendPicker: backend selector + per-provider API-key form.
  *
- * Backend dropdown is sorted (runnable first, then by displayName).
+ * Backend dropdown lists on-device web models first, then every other
+ * backend alphabetically by displayName (fixed order, independent of which
+ * keys are set).
  * Cloud backends that require a key each get a collapsible <details>
  * section with a password-style input + reveal toggle. The key map
  * is emitted back to the parent via `update:apiKeys`.
@@ -24,10 +26,13 @@ interface BackendOption {
 }
 
 /** Backends that use a paste-in API key (need key input UI). */
-const KEY_BACKENDS = new Set(['gemini-api', 'groq', 'cerebras', 'mistral', 'openrouter']);
+const KEY_BACKENDS = new Set(['gemini-api', 'anthropic', 'groq', 'cerebras', 'mistral', 'openrouter']);
 
 /** Backends only available on desktop (not mobile). */
 const DESKTOP_ONLY = new Set(['gemini-nano', 'web-llm']);
+
+/** On-device web models, pinned to the top of the dropdown. */
+const WEB_MODELS = new Set(['gemini-nano', 'web-llm']);
 
 /** Human-friendly labels and link text per backend. */
 const KEY_META: Record<string, { label: string; placeholder: string; helpText: string; helpUrl: string }> = {
@@ -37,10 +42,16 @@ const KEY_META: Record<string, { label: string; placeholder: string; helpText: s
     'helpText': 'Free key from aistudio.google.com/apikey. Requests go straight from your browser to Google.',
     'helpUrl': 'https://aistudio.google.com/apikey',
   },
+  'anthropic': {
+    'label': 'Anthropic API key',
+    'placeholder': 'sk-ant-…',
+    'helpText': 'Key at console.anthropic.com/settings/keys. The model is discovered from your key. Requests go directly from your browser to Anthropic.',
+    'helpUrl': 'https://console.anthropic.com/settings/keys',
+  },
   'groq': {
     'label': 'Groq API key',
     'placeholder': 'gsk_…',
-    'helpText': 'Free key at console.groq.com/keys. ~30 RPM on llama-3.3-70b-versatile.',
+    'helpText': 'Free key at console.groq.com/keys. ~30 RPM on the free tier. The model is discovered from your key.',
     'helpUrl': 'https://console.groq.com/keys',
   },
   'cerebras': {
@@ -52,13 +63,13 @@ const KEY_META: Record<string, { label: string; placeholder: string; helpText: s
   'mistral': {
     'label': 'Mistral API key',
     'placeholder': '…',
-    'helpText': 'Free key at console.mistral.ai/api-keys/. mistral-small-latest.',
+    'helpText': 'Free key at console.mistral.ai/api-keys/. The model is discovered from your key.',
     'helpUrl': 'https://console.mistral.ai/api-keys/',
   },
   'openrouter': {
     'label': 'OpenRouter API key',
     'placeholder': 'sk-or-…',
-    'helpText': 'Free key at openrouter.ai/keys. Routes to llama-3.3-70b-instruct:free.',
+    'helpText': 'Free key at openrouter.ai/keys. Routes to a free-tier model discovered from your key.',
     'helpUrl': 'https://openrouter.ai/keys',
   },
 };
@@ -84,11 +95,13 @@ const revealMap = ref<Record<string, boolean>>({});
 /** Visible backend IDs for the current device context. */
 const visibleIds = computed(() => new Set<string>(BackendMatrix.browserVisible(props.isMobile ?? false)));
 
-/** Backends sorted runnable-first, then alphabetical by displayName. */
+/** On-device web models first, then every other backend alphabetical by displayName. */
 const sortedBackends = computed<readonly BackendOption[]>(() => {
   const list = props.backends.filter((b) => visibleIds.value.has(b.id));
   list.sort((a, b) => {
-    if (a.runnable !== b.runnable) return a.runnable ? -1 : 1;
+    const aWeb = WEB_MODELS.has(a.id);
+    const bWeb = WEB_MODELS.has(b.id);
+    if (aWeb !== bWeb) return aWeb ? -1 : 1;
     return a.displayName.localeCompare(b.displayName);
   });
   return list;

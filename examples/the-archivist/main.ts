@@ -29,6 +29,7 @@ import { DomConsoleLogger } from './logger/DomConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedDag } from './ObservedDag.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
+import { EmbedderProvisioner } from './providers/EmbedderProvisioner.ts';
 import type { ArchivistServices, LlmClientInterface } from './services.ts';
 
 import { GeminiApiAdapter }   from '@studnicky/dagonizer-adapter-gemini-api';
@@ -188,12 +189,16 @@ const cascade = new LlmAdapterCascade(registry, registry.list().map((entry) => (
 let llm: LlmClientInterface;
 try {
   const adapter = await cascade.select();
-  // Browser: no native embedder is wired today (the browser built-in
-  // LanguageModel doesn't expose embeddings, WebLLM embedding models would balloon the
-  // download budget). LLM-only intent classification is the path here;
-  // log once so the omission is visible in the demo log panel.
-  logger.info('embedder: unavailable in browser; intent classification via LLM only');
-  llm = new BaseLlmClient(adapter, { 'language': userLanguage });
+  const { embedder, intentClassifier } = await EmbedderProvisioner.provision();
+  if (embedder !== null) {
+    logger.info(`embedder: ${embedder.id} (${embedder.displayName})`);
+  } else {
+    logger.info('embedder: none available; intent classification via LLM only');
+  }
+  llm = new BaseLlmClient(adapter, {
+    'language': userLanguage,
+    ...(intentClassifier !== null ? { 'intentClassifier': intentClassifier } : {}),
+  });
   logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 } catch (err) {
   const message = err instanceof Error ? err.message : String(err);
@@ -205,6 +210,7 @@ try {
 
 // #region wire-services
 // ── Dispatcher + DAG registration (mirrors runArchivist.ts). ─────────────
+const { embedder } = await EmbedderProvisioner.provision();
 const services: ArchivistServices = {
   'webSearch':        new OpenLibrarySearchTool(),
   'googleBooks':      new GoogleBooksTool(),
@@ -212,11 +218,10 @@ const services: ArchivistServices = {
   'wikipediaSummary': new WikipediaSummaryTool(),
   'memory':           new MemoryStore(),
   'llm':              llm,
-  // Browser entry has no native embedder wired today. Browser built-in LanguageModel does
-  // not expose embeddings and WebLLM embedding models would balloon the
-  // download budget. Cosine recall and hybrid ranking fall back to
-  // Jaccard / heuristics when embedder is null.
-  'embedder':         null,
+  // Browser embedder provisioned when available (transformers → tensorflow →
+  // web-llm). Cosine recall and hybrid ranking fall back to Jaccard /
+  // heuristics when no embedder is reachable.
+  'embedder':         embedder,
   'nodeTimeouts':     {},
 };
 

@@ -46,17 +46,29 @@ export type PlacementOutputsType = Readonly<Record<string, string | undefined>>;
  */
 export class PlacementRouter {
   /**
-   * Decide the route token for a completed child body. Routes `'error'` when the
-   * child run failed terminally OR any unrecoverable error was collected;
-   * `'success'` otherwise. This is the single definition of the route policy the
-   * embedded-DAG envelope, the single-node envelope, and the scatter per-item
-   * acknowledgment all share.
+   * Decide the route token for a completed child body. The child's explicit
+   * terminal outcome is authoritative: a `'completed'` terminal means the inner
+   * flow reached its success exit deliberately — even when it tolerated a
+   * sub-failure on the way (a scatter clone absorbed by an `any-success`
+   * reducer, a body that routed its own error to a non-fatal output). Those
+   * tolerated errors are still propagated to the parent state for observability
+   * (see {@link assemble}); they must NOT override the terminal the author
+   * chose, so a `'completed'` terminal always routes `'success'` and a
+   * `'failed'` terminal always routes `'error'`.
+   *
+   * Only when the body reached NO terminal (`null` — an unresolved/unregistered
+   * sub-DAG, or an infrastructure abort before any terminal fired) does a
+   * collected unrecoverable error decide the route. This is the single
+   * definition of the route policy the embedded-DAG envelope, the single-node
+   * envelope, and the scatter per-item acknowledgment all share.
    */
   static route(
     terminalOutcome: 'completed' | 'failed' | null,
     hasUnrecoverable: boolean,
   ): 'success' | 'error' {
-    return (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+    if (terminalOutcome === 'completed') return 'success';
+    if (terminalOutcome === 'failed') return 'error';
+    return hasUnrecoverable ? 'error' : 'success';
   }
 
   /**

@@ -34,6 +34,7 @@ export const OllamaTagsResponseSchema = {
         'required': ['name'],
         'properties': {
           'name': { 'type': 'string' },
+          'size': { 'type': 'number' },
         },
         'additionalProperties': true,
       },

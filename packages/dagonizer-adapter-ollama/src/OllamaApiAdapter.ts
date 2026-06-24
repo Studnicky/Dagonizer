@@ -21,7 +21,7 @@
  * adapter plugins (`'mistral'`, `'groq'`, `'cerebras'`).
  */
 
-import { Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
+import { Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ModelCost, OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
 import type { ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
@@ -107,7 +107,10 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
    * model name is classified as `'embedding'` when it contains any
    * `EMBED_MARKERS` substring (e.g. `nomic-embed-text`, `bge-*`), and
    * as `'chat'` otherwise. The `cloud` flag is `true` when the tag ends
-   * with any `CLOUD_SUFFIXES` value (`:cloud`, `-cloud`).
+   * with any `CLOUD_SUFFIXES` value (`:cloud`, `-cloud`). `costRank` is the
+   * pulled model's on-disk `size` in bytes — a local-cost proxy where a
+   * smaller model is cheaper to run — falling back to the name heuristic
+   * when the daemon omits a size.
    *
    * Never throws — returns `[]` on any failure (daemon down, non-2xx,
    * malformed body, timeout). Composes `options.signal` with an internal
@@ -133,7 +136,7 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
           ? 'embedding'
           : 'chat';
         const cloud = CLOUD_SUFFIXES.some((suffix) => lower.endsWith(suffix));
-        return { 'name': entry.name, variant, cloud };
+        return { 'name': entry.name, variant, cloud, 'costRank': ModelCost.rankFromSize(entry.name, entry.size) };
       });
     } catch {
       return [];

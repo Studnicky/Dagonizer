@@ -102,6 +102,15 @@ export class ScatterExecutor {
     const { inbox, ackedResults, ackedByIndex, itemOutputs, watermarkRef, aheadAcked, outcomeTally, seenIndices } = runState;
     let nextIndex = runState.nextIndex;
 
+    // ── 3a. Gather strategy: initialise accumulator on fresh entry only ──────
+    // On resume, the accumulator is already in state from the prior run (folded
+    // via per-clone reduce calls). Calling initial() on resume would wipe it.
+    // storedProgress === undefined is the exact signal for fresh entry (no prior
+    // checkpoint exists for this placement).
+    if (storedProgress === undefined && gatherStrategy !== null && scatter.gather !== undefined) {
+      gatherStrategy.initial(scatter.gather, state, this.#scatterSource.accessor);
+    }
+
     // ── 3. Gather strategy: prepare accumulators ────────────────────────────
     // Accumulate fresh records for the finalize pass and outcome-reducer.
     const allFreshRecords: GatherRecordType<NodeStateInterface>[] = [];

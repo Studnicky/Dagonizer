@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-adapter-anthropic
 
+## [Unreleased]
+
+### Added
+
+- Send `anthropic-dangerous-direct-browser-access: true` on model-list and message requests so the adapter works from a browser (direct-to-Anthropic CORS).
+
 ## 0.26.0
 
 ## 0.25.0

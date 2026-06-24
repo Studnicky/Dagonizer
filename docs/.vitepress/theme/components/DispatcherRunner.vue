@@ -66,9 +66,9 @@ const isMobile = ref(false);
 const apiKeys  = ref<Partial<Record<ProviderId, string>>>(ApiKeyStore.load());
 const ollamaModel = ref<string>(OllamaModels.loadModel());
 
-const resolvedOllamaModel = computed<string>(() => {
-  if (ollamaModel.value.length > 0) return ollamaModel.value;
-  const entry = backends.value.find((b) => b.id === 'ollama');
+const resolvedModel = computed<string>(() => {
+  if (activeBackend.value === 'ollama' && ollamaModel.value.length > 0) return ollamaModel.value;
+  const entry = backends.value.find((b) => b.id === activeBackend.value);
   return entry?.resolvedModel ?? '';
 });
 
@@ -81,7 +81,7 @@ const conversation     = ref<ConversationTurnType[]>([]);
 const trace            = ref<TraceEvent[]>([]);
 const logEvents        = ref<LogEvent[]>([]);
 const logger           = new DomConsoleLogger({ 'events': logEvents.value });
-const dispatcherDag    = ref<DAGType | null>(null);
+const dispatcherDag    = ref<DAGType>(DispatcherBundleFactory.structure());
 const dagGraph         = ref<InstanceType<typeof DagGraph> | null>(null);
 const streamRef        = ref<HTMLOListElement | null>(null);
 const rightActiveKey   = ref<'operator' | 'dag' | 'trace'>('dag');
@@ -293,15 +293,23 @@ onMounted(async () => {
   }
   noModel.value = false;
 
-  // Auto-pick the best backend only when no saved user preference exists.
-  if (savedBackend === null) {
+  // Honor a saved user preference only when that backend is runnable right now;
+  // otherwise default to the best available backend (in-browser web models first).
+  const savedEntry = savedBackend !== null
+    ? backends.value.find((b) => b.id === savedBackend) ?? null
+    : null;
+  if (savedEntry !== null && savedEntry.runnable) {
+    logger.info(`backend from saved preference: ${savedBackend}`);
+  } else {
     const picked = BackendMatrix.pickBest(backends.value, { 'isMobile': isMobile.value });
     if (picked !== null) {
       activeBackend.value = picked.id;
-      logger.info(`backend auto-selected: ${picked.displayName}`);
+      logger.info(
+        savedBackend === null
+          ? `backend auto-selected: ${picked.displayName}`
+          : `saved preference "${savedBackend}" unavailable; defaulting to ${picked.displayName}`,
+      );
     }
-  } else {
-    logger.info(`backend from saved preference: ${savedBackend}`);
   }
 });
 
@@ -309,8 +317,8 @@ onMounted(async () => {
 function buildServices(): DispatcherServices {
   if (activeBackend.value === null) throw new Error('no backend selected');
   const client = ProviderInstantiator.instantiate(activeBackend.value, {
-    'apiKeys':     apiKeys.value,
-    'ollamaModel': resolvedOllamaModel.value,
+    'apiKeys': apiKeys.value,
+    'model':   resolvedModel.value,
   });
   // ProviderInstantiator returns BaseLlmClient instances; access the underlying
   // adapter so DispatcherLlmClient can drive the chat calls directly.
@@ -336,8 +344,6 @@ async function ask(): Promise<void> {
   // Re-build the bundle each run (fresh node instances, no cross-run state).
   const services = buildServices();
   const bundle = DispatcherBundleFactory.create(services);
-  const dag = bundle.dags[0];
-  if (dag !== undefined) dispatcherDag.value = dag;
 
   const state = new DispatcherState();
   state.message   = queryText;
@@ -377,8 +383,6 @@ async function sendOperatorResponse(): Promise<void> {
   // Re-build the bundle for the resume run (fresh node instances).
   const services = buildServices();
   const bundle = DispatcherBundleFactory.create(services);
-  const dag = bundle.dags[0];
-  if (dag !== undefined) dispatcherDag.value = dag;
   await dagGraph.value?.reset();
 
   let restored: { state: DispatcherState; dagName: string; cursor: string } | null = null;
@@ -466,7 +470,6 @@ function fillPrompt(text: string): void {
         :api-keys="apiKeys"
         :ollama-model="ollamaModel"
         :is-mobile="isMobile"
-        :disabled="true"
         @update:active-id="activeBackend = $event as ProviderId"
         @update:api-keys="apiKeys = $event"
         @update:ollama-model="ollamaModel = $event"
@@ -679,14 +682,12 @@ function fillPrompt(text: string): void {
           <template #dag>
             <div class="dr-graph-pane">
               <DagGraph
-                v-if="dispatcherDag !== null"
                 ref="dagGraph"
                 :dag="dispatcherDag"
                 :node-variants="DISPATCHER_NODE_VARIANTS"
                 :expand-all="false"
                 aria-label="Dispatcher DAG live execution"
               />
-              <p v-else class="dr-graph-placeholder">DAG initializing…</p>
             </div>
           </template>
 
@@ -1226,16 +1227,6 @@ function fillPrompt(text: string): void {
   position: relative;
   width: 100%;
   height: 560px;
-}
-
-.dr-graph-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--vp-c-text-3);
-  font-style: italic;
-  margin: 0;
 }
 
 /* ── Running animation: glow the DAG pane ──────────────────────────────── */

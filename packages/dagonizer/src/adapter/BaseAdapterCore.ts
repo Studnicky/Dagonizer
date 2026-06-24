@@ -22,7 +22,7 @@ import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
 
 /** Options for model selection in `selectChatModel` and `selectEmbeddingModel`. */
 export type SelectModelOptionsType = {
-  /** Prefer this model name from the catalogue; falls back to local-first if absent. */
+  /** Prefer this model name from the catalogue; falls back to the cheapest available if absent. */
   readonly preferred?: string;
 }
 

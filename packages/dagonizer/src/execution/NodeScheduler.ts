@@ -30,6 +30,7 @@ import { SignalComposer } from '../runtime/SignalComposer.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
 
 import { OutputContractApplier } from './OutputContractApplier.js';
+import { PlacementRouter } from './PlacementRouter.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './ScatterDispatch.js';
 
 /**
@@ -593,12 +594,16 @@ export class NodeScheduler {
             // Apply output state mapping: child → parent.
             this.#source.stateMapper.mapOutput(childClone, parentItem.state, outputMapping);
 
-            // Determine route from per-item terminal outcome + unrecoverable errors.
-            // childTerminalByItemId is populated by run when each item hits a
-            // TerminalNode, giving accurate per-item failed/completed status.
+            // Determine route from per-item terminal outcome + unrecoverable errors,
+            // through the single shared route policy: an explicit `completed`
+            // terminal is authoritative and is never flipped to `error` by an
+            // error the inner flow already tolerated (a scatter clone absorbed by
+            // an `any-success` reducer). childTerminalByItemId is populated by run
+            // when each item hits a TerminalNode, giving accurate per-item
+            // failed/completed status.
             const childTerminalOutcome = childTerminalByItemId.get(parentItem.id) ?? 'completed';
             const hasUnrecoverable = childClone.errors.some((e) => e.recoverable === false);
-            const routeOutput = (childTerminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+            const routeOutput = PlacementRouter.route(childTerminalOutcome, hasUnrecoverable);
             routeOutputByItemId.set(parentItem.id, routeOutput);
             const nextPlacement = node.outputs[routeOutput] ?? null;
 

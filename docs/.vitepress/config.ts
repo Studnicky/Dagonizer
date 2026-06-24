@@ -79,7 +79,6 @@ const sidebar = [
     items: [
       { text: 'The Archivist (in-browser demo)',    link: '/examples/the-archivist' },
       { text: 'The Cartographer (in-browser demo)', link: '/examples/the-cartographer' },
-      { text: 'The Dispatcher (in-browser demo)',   link: '/examples/the-dispatcher' },
     ],
   },
   {
@@ -101,10 +100,6 @@ const sidebar = [
       { text: 'Example 19: Phase nodes',               link: '/examples/19-phase-nodes' },
       { text: 'Example 20: Streaming execution',       link: '/examples/20-streaming' },
       { text: 'Example 21: Per-node timeout',          link: '/examples/21-per-node-timeout' },
-      { text: 'Example 28: DagRunner',                link: '/examples/28-runner' },
-      { text: 'Example 30: EventBus and SseStream',    link: '/examples/30-progress' },
-      { text: 'Example 31: HITL park-and-correlate',   link: '/examples/31-hitl' },
-      { text: 'Example 33: Plugin loader + multi-observer mux', link: '/examples/33-plugin' },
     ],
   },
   {
@@ -118,6 +113,9 @@ const sidebar = [
       { text: 'Example 15: Incremental gather',        link: '/examples/15-incremental-gather' },
       { text: 'Example 16: Scatter resume',            link: '/examples/16-scatter-resume' },
       { text: 'Example 17: Async source',              link: '/examples/17-scatter-async-source' },
+      { text: 'Example 34: StreamChannel driven producer',          link: '/examples/34-stream-channel' },
+      { text: 'Example 35: StreamChannel fanIn and resume',          link: '/examples/35-stream-fanin-resume' },
+      { text: 'Example 36: DagStreamProducer',                       link: '/examples/36-dag-stream-producer' },
       { text: 'Example: Scatter extensions',           link: '/examples/scatter-extensions' },
     ],
   },
@@ -133,10 +131,9 @@ const sidebar = [
     text: 'Examples — LLM / Agent',
     collapsed: false,
     items: [
-      { text: 'Example 24: LLM adapter',  link: '/examples/24-llm-adapter' },
-      { text: 'Example 25: Embedder',     link: '/examples/25-embedder' },
-      { text: 'Example 26: Tool use',     link: '/examples/26-tool-use' },
-      { text: 'Example 29: AgentBuilder', link: '/examples/29-agent-builder' },
+      { text: 'Example 24: LLM adapter', link: '/examples/24-llm-adapter' },
+      { text: 'Example 25: Embedder',    link: '/examples/25-embedder' },
+      { text: 'Example 26: Tool use',    link: '/examples/26-tool-use' },
     ],
   },
   {
@@ -150,7 +147,6 @@ const sidebar = [
       { text: 'Example: State accessor',              link: '/examples/state-accessor' },
       { text: 'Example: Remote store',                link: '/examples/store-remote' },
       { text: 'Example: Virtual clock',               link: '/examples/virtual-clock' },
-      { text: 'IRI identity',                          link: '/examples/iri-identity' },
     ],
   },
   {
@@ -166,6 +162,7 @@ const sidebar = [
       { text: 'Cancellation',              link: '/guide/cancellation' },
       { text: 'Retry',                     link: '/guide/retry' },
       { text: 'Reservoir',                 link: '/guide/reservoir' },
+      { text: 'Streaming producers',       link: '/guide/streaming-producers' },
       { text: 'Migrating to batch',        link: '/guide/migrating-to-batch' },
       { text: 'Services container',        link: '/guide/services' },
       { text: 'Observability',             link: '/guide/observability' },
@@ -173,11 +170,9 @@ const sidebar = [
       { text: 'State accessors',           link: '/guide/state-accessor' },
       { text: 'Shared state',              link: '/guide/shared-state' },
       { text: 'Checkpoint and resume',     link: '/guide/checkpoint' },
-      { text: 'HITL park-and-correlate',  link: '/guide/hitl' },
       { text: 'Checkpoint persistence',    link: '/guide/persistence' },
       { text: 'Visualization',             link: '/guide/visualization' },
       { text: 'Distribution and cloud',    link: '/guide/distribution' },
-      { text: 'IRI identity',              link: '/guide/iri-identity' },
     ],
   },
   {
@@ -186,7 +181,6 @@ const sidebar = [
     collapsed: false,
     items: [
       { text: 'Plugins overview', link: '/guide/plugins' },
-      { text: 'Plugin loader',    link: '/guide/plugins#plugin-loader' },
     ],
   },
   {
@@ -206,7 +200,6 @@ const sidebar = [
       { text: 'Store',      link: '/reference/store' },
       { text: 'Entities',   link: '/reference/entities' },
       { text: 'Testing',    link: '/reference/testing' },
-      { text: 'Runner',    link: '/reference/runner' },
       { text: 'Container', link: '/reference/container' },
       { text: 'Channels',  link: '/reference/channels' },
       { text: 'Errors',    link: '/reference/errors' },

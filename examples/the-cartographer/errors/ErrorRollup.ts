@@ -71,5 +71,11 @@ export class ErrorRollup {
   static ranked(rollup: ErrorRollupType): ErrorGroupType[] {
     return [...rollup.groups.values()].sort((a, b) => b.count - a.count);
   }
+
+  /** Type predicate: narrows `unknown` to `ErrorRollupType` via structural runtime checks. */
+  static is(v: unknown): v is ErrorRollupType {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+    return 'total' in v && 'groups' in v;
+  }
 }
 // #endregion error-rollup

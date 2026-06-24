@@ -33,9 +33,9 @@
 
 // #region run-cartographer
 import { CartographerState } from './CartographerState.ts';
-import type { JourneyInsights } from './CartographerState.ts';
+import type { JourneyInsights, RegionInsights } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
-import { cartographerBundle, cartographerWorkersBundle } from './dag.ts';
+import { cartographerBundle, cartographerResumeBundle, cartographerWorkersBundle } from './dag.ts';
 import { gdprComplianceBundle } from './embedded-dags/GdprComplianceDAG.ts';
 import { GeoResolveDAG } from './embedded-dags/GeoResolveDAG.ts';
 import { ingestSourceBundle } from './embedded-dags/IngestSourceDAG.ts';
@@ -43,10 +43,13 @@ import { orderEnrichmentBundle } from './embedded-dags/OrderEnrichmentDAG.ts';
 import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
 import type { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { ObservedCartographer } from './ObservedCartographer.ts';
+import type { DagonizerOptionsType } from '@studnicky/dagonizer';
 import { GeoResolvers } from './services/GeoResolvers.ts';
 import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
 
 import { ExecutionError } from '@studnicky/dagonizer/errors';
+import { StreamChannel, StreamCursor } from '@studnicky/dagonizer/channels';
+import { EventStreamSource } from './services/EventStreamSource.ts';
 
 // ── Parse CLI args ────────────────────────────────────────────────────────────
 let eventCount = 200;
@@ -76,6 +79,264 @@ for (let i = 0; i < args.length; i++) {
 }
 
 // ── CLI utilities ─────────────────────────────────────────────────────────────
+
+// #region aborting-cartographer
+/**
+ * AbortingCartographer: ObservedCartographer subclass for the resume scenario.
+ *
+ * Fires an AbortController after N scatter item completions (detected by
+ * watching for `aggregate-event` nodes inside the `process-stream` scatter body).
+ * Injection via constructor keeps the abort logic out of the main dispatcher.
+ */
+class AbortingCartographer extends ObservedCartographer {
+  readonly #controller: AbortController;
+  readonly #threshold: number;
+  #count: number;
+
+  constructor(options: DagonizerOptionsType, controller: AbortController, threshold: number) {
+    super(options);
+    this.#controller = controller;
+    this.#threshold = threshold;
+    this.#count = 0;
+  }
+
+  protected override onNodeEnd(
+    nodeName: string,
+    output: string | null,
+    state: CartographerState,
+    placementPath: readonly string[],
+  ): void {
+    super.onNodeEnd(nodeName, output, state, placementPath);
+    // Count completions of aggregate-event inside the process-stream scatter.
+    // aggregate-event is the last enrichment node before the scatter body terminal.
+    if (nodeName === 'aggregate-event' && placementPath.includes('process-stream')) {
+      if (++this.#count >= this.#threshold) {
+        this.#controller.abort();
+      }
+    }
+  }
+
+  get signal(): AbortSignal {
+    return this.#controller.signal;
+  }
+}
+// #endregion aborting-cartographer
+
+// #region cartographer-resumable-scenario
+/** Fixed event count for the interrupted+resume run pair. */
+const RESUME_EVENT_COUNT = 40;
+/**
+ * Number of scatter item completions (aggregate-event inside process-stream)
+ * after which the interrupted run aborts. cartographerResumeDAG has no reservoir,
+ * so items are dispatched one-at-a-time (ScatterWorkerPool path) and the abort
+ * signal fires between pulls — giving a non-zero StreamCursor value.
+ */
+const ABORT_AFTER_ITEMS = 8;
+
+/**
+ * InsightsFingerprint: deterministic canonical digest of a regional insights Map.
+ *
+ * Sorts entries by region → country → hub and emits all numeric fields of each
+ * RegionInsights plus the string keys. JSON.stringify over the sorted plain array
+ * gives a stable string suitable for equality comparison.
+ */
+class InsightsFingerprint {
+  private constructor() { /* static-only */ }
+
+  static of(insights: Map<string, RegionInsights>): string {
+    const rows = [...insights.values()].sort((a, b) => {
+      const byRegion = a.region.localeCompare(b.region);
+      if (byRegion !== 0) return byRegion;
+      const byCountry = a.country.localeCompare(b.country);
+      if (byCountry !== 0) return byCountry;
+      return a.hub.localeCompare(b.hub);
+    });
+    const normalized = rows.map((r) => ({
+      'region':                 r.region,
+      'country':                r.country,
+      'hub':                    r.hub,
+      'deliveries':             r.deliveries,
+      'exceptions':             r.exceptions,
+      'onTimeCount':            r.onTimeCount,
+      'lateCount':              r.lateCount,
+      'totalSubtotalUsdMinor':  r.totalSubtotalUsdMinor,
+      'totalShippingUsdMinor':  r.totalShippingUsdMinor,
+      'totalDistanceKm':        r.totalDistanceKm,
+      'totalDelayHours':        r.totalDelayHours,
+      'consentValid':           r.consentValid,
+      'consentMissing':         r.consentMissing,
+      'consentExpired':         r.consentExpired,
+      'sizeTierEnvelope':       r.sizeTierEnvelope,
+      'sizeTierSmall':          r.sizeTierSmall,
+      'sizeTierMedium':         r.sizeTierMedium,
+      'sizeTierLarge':          r.sizeTierLarge,
+      'sizeTierFreight':        r.sizeTierFreight,
+      'shipmentCount':          r.shipmentCount,
+    }));
+    return JSON.stringify(normalized);
+  }
+}
+
+/**
+ * CartographerResumableScenario: self-contained abort→cursor→resume verification.
+ *
+ * Uses `cartographerResumeDAG` (no reservoir) so abort fires mid-scatter, leaving
+ * acked items in the checkpoint and un-pulled items un-acked.
+ *
+ *   Baseline — Full streaming pass over all RESUME_EVENT_COUNT items (no abort).
+ *              Produces the reference InsightsFingerprint.
+ *   Step A   — Interrupted run: abort after ABORT_AFTER_ITEMS aggregate-event
+ *              completions; read durable cursor from checkpoint.
+ *   Step B   — Resume: restore from firstState.snapshot() (carries accumulator +
+ *              checkpoint) and supply the remainder via StreamChannel.resumable.
+ *              Assert cursor > 0 and resumeResult.cursor === null (completed).
+ *   Proof    — Compare InsightsFingerprint of resumed state to baseline fingerprint.
+ *              Equal → exactly-once; unequal → throw with full diff.
+ */
+class CartographerResumableScenario {
+  private constructor() { /* static-only */ }
+
+  /** Register cartographerResumeBundle bundles onto a fresh ObservedCartographer. */
+  static #buildResumeDispatcher(services: CartographerServices): ObservedCartographer {
+    const d = new ObservedCartographer({});
+    d.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+    d.registerBundle(orderEnrichmentBundle);
+    d.registerBundle(gdprComplianceBundle);
+    d.registerBundle(ingestSourceBundle);
+    d.registerBundle(cartographerResumeBundle);
+    return d;
+  }
+
+  static async run(
+    _dispatcher: ObservedCartographer,
+    services: CartographerServices,
+    logger: ConsoleLogger,
+    _eventCount: number,
+  ): Promise<void> {
+    logger.info('CartographerResumableScenario', 'run', `Starting streamed-resume verification (${RESUME_EVENT_COUNT} events, abort after ${ABORT_AFTER_ITEMS})`);
+
+    // ── Baseline: full streaming pass (no abort) ─────────────────────────────
+    // Runs the same producer + same event count through the same DAG without
+    // interruption. Produces the reference accumulator for the exactly-once proof.
+    const baselineDispatcher = CartographerResumableScenario.#buildResumeDispatcher(services);
+    const baselineState = new CartographerState();
+    baselineState.useStreamingSource = true;
+    baselineState.eventCount = RESUME_EVENT_COUNT;
+    baselineState.streamCount = RESUME_EVENT_COUNT;
+    baselineState.sources = StreamChannel.resumable(
+      EventStreamSource.resumableProducer(baselineState.eventConfig, RESUME_EVENT_COUNT),
+      0,
+    );
+    await baselineDispatcher.execute('cartographer-resume', baselineState);
+    const baselineFingerprint = InsightsFingerprint.of(baselineState.insights);
+    logger.info('CartographerResumableScenario', 'baseline', `Baseline streamed run folded ${baselineState.insights.size} region(s).`);
+
+    // ── Step A: Interrupted run ──────────────────────────────────────────────
+    // AbortingCartographer fires abort after ABORT_AFTER_ITEMS aggregate-event
+    // completions inside process-stream. cartographerResumeDAG has no reservoir,
+    // so the ScatterWorkerPool checks abort between item pulls — giving cursor > 0.
+    const interruptAc = new AbortController();
+    const abortingDispatcher = new AbortingCartographer({}, interruptAc, ABORT_AFTER_ITEMS);
+    abortingDispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+    abortingDispatcher.registerBundle(orderEnrichmentBundle);
+    abortingDispatcher.registerBundle(gdprComplianceBundle);
+    abortingDispatcher.registerBundle(ingestSourceBundle);
+    abortingDispatcher.registerBundle(cartographerResumeBundle);
+
+    const firstState = new CartographerState();
+    firstState.useStreamingSource = true;
+    firstState.eventCount = RESUME_EVENT_COUNT;
+    firstState.streamCount = RESUME_EVENT_COUNT;
+
+    let interruptedCursor: string | null = null;
+    try {
+      const interruptedResult = await abortingDispatcher.execute(
+        'cartographer-resume', firstState, { 'signal': interruptAc.signal },
+      );
+      interruptedCursor = interruptedResult.cursor;
+    } catch (err) {
+      if (!(err instanceof ExecutionError)) throw err;
+    }
+
+    // Read the durable stream cursor from the interrupted checkpoint.
+    const cursor = StreamCursor.resumeAfter(firstState, 'process-stream');
+    logger.info(
+      'CartographerResumableScenario', 'interrupted',
+      `Interrupted after ${ABORT_AFTER_ITEMS} items. execution cursor='${String(interruptedCursor)}' stream cursor=${cursor}`,
+    );
+
+    process.stdout.write(`ASSERT cursor > 0: ${cursor > 0 ? 'PASS' : 'FAIL'} (cursor=${cursor})\n`);
+    if (cursor === 0) {
+      throw new Error('CartographerResumableScenario: cursor is 0 — checkpoint not preserved after abort');
+    }
+
+    // ── Step B: Resume ───────────────────────────────────────────────────────
+    // Restore from the interrupted snapshot — this is the faithful cross-process
+    // restart path: the partial insights accumulator AND the SCATTER_PROGRESS_KEY
+    // checkpoint are both carried by CartographerState.restore(firstState.snapshot()).
+    // Acked items (below the watermark) already contributed to state.insights and
+    // are NOT replayed by the engine; the accumulator carry ensures their folds
+    // survive. Un-acked items in the durable inbox are replayed by the engine.
+    const resumeDispatcher = CartographerResumableScenario.#buildResumeDispatcher(services);
+
+    const resumeState = CartographerState.restore(firstState.snapshot());
+    resumeState.useStreamingSource = true;
+    resumeState.eventCount = RESUME_EVENT_COUNT;
+    resumeState.streamCount = RESUME_EVENT_COUNT;
+    // Supply the remainder: producer skips [0, cursor) items already consumed.
+    // On resume the engine skips the pre-phase and enters process-stream directly;
+    // sources must be wired here rather than relying on the seed node.
+    resumeState.sources = StreamChannel.resumable(
+      EventStreamSource.resumableProducer(resumeState.eventConfig, RESUME_EVENT_COUNT),
+      cursor,
+    );
+
+    const resumeResult = await resumeDispatcher.resume('cartographer-resume', resumeState, 'process-stream');
+
+    logger.info(
+      'CartographerResumableScenario', 'resume',
+      `Resume complete. cursor=${String(resumeResult.cursor)} (expected null)`,
+    );
+
+    process.stdout.write(`ASSERT resume completed: ${resumeResult.cursor === null ? 'PASS' : 'FAIL'} (cursor=${String(resumeResult.cursor)})\n`);
+    if (resumeResult.cursor !== null) {
+      throw new Error(`CartographerResumableScenario: resume did not complete (cursor='${String(resumeResult.cursor)}')`);
+    }
+
+    // ── Exactly-once proof: compare resumed fingerprint to baseline ───────────
+    // The fingerprint encodes ALL numeric fields for every region, sorted
+    // deterministically. Equal → every acked fold was carried (not lost, not
+    // double-counted); unequal → the accumulator carry is broken.
+    const resumeFingerprint = InsightsFingerprint.of(resumeState.insights);
+    const exactlyOnce = resumeFingerprint === baselineFingerprint;
+    process.stdout.write(`ASSERT exactly-once (resume insights == baseline insights): ${exactlyOnce ? 'PASS' : 'FAIL'}\n`);
+    if (!exactlyOnce) {
+      throw new Error(
+        `CartographerResumableScenario: exactly-once violated — resumed insights differ from baseline.\n` +
+        `  baseline: ${baselineFingerprint}\n` +
+        `  resumed:  ${resumeFingerprint}`,
+      );
+    }
+
+    // ── Shipment-count cross-check ────────────────────────────────────────────
+    // Grand total of shipmentCount across all regions must be identical between
+    // the resumed run and the baseline (gross undercount / double-count guard).
+    let baselineTotal = 0;
+    for (const r of baselineState.insights.values()) baselineTotal += r.shipmentCount;
+    let resumeTotal = 0;
+    for (const r of resumeState.insights.values()) resumeTotal += r.shipmentCount;
+    const countMatch = resumeTotal === baselineTotal;
+    process.stdout.write(`ASSERT shipment-count (resume=${resumeTotal} == baseline=${baselineTotal}): ${countMatch ? 'PASS' : 'FAIL'}\n`);
+    if (!countMatch) {
+      throw new Error(
+        `CartographerResumableScenario: shipment-count mismatch — resumed total (${resumeTotal}) != baseline (${baselineTotal})`,
+      );
+    }
+
+    process.stdout.write('Streamed resume: COMPLETE. Exactly-once verified.\n');
+  }
+}
+// #endregion cartographer-resumable-scenario
 
 class CartographerCli {
   static async networkReachable(): Promise<boolean> {
@@ -528,6 +789,14 @@ if (baselineRecord !== undefined) {
 logger.result(`\nDone. ${state.insights.size} continent(s), ${state.journeys.size} journey(s). No Date.now. No Math.random.`);
 logger.result(`Peak heap: ${Math.round(peakHeap / 1048576)} MB · scans folded: ${totalScans.toLocaleString()} · journeys sampled: ${state.journeys.size} · sampleRecords: ${state.sampleRecords.length}`);
 logger.result(`Execution mode: ${executionMode}\n`);
+
+// ── Streamed resume verification (--stream only) ──────────────────────────────
+// Runs the three-phase abort→cursor→resume scenario to verify exactly-once
+// delivery across a genuine interrupt. Only runs when --stream is passed so it
+// does not add latency to the default in-process array path.
+if (useStreaming) {
+  await CartographerResumableScenario.run(dispatcher, services, logger, eventCount);
+}
 
 // Release the worker pool so the process exits cleanly.
 if (workerContainer !== null) {

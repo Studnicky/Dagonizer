@@ -16,7 +16,7 @@ import type {
   ChatResponseType,
   ErrorClassificationType,
 } from '@studnicky/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, Classifications, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, Classifications, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import type {
@@ -73,7 +73,7 @@ const PREBUILT_MODEL_IDS: readonly string[] = [
 ];
 
 const PREBUILT_MODELS: readonly LlmModelType[] = PREBUILT_MODEL_IDS.map(
-  (id): LlmModelType => ({ 'name': id, 'variant': 'chat', 'cloud': false }),
+  (id): LlmModelType => ({ 'name': id, 'variant': 'chat', 'cloud': false, 'costRank': ModelCost.rankFromName(id) }),
 );
 
 /**

@@ -40,6 +40,7 @@ import type {
   ToolDefinitionType,
 } from './LlmAdapter.js';
 import { Classifications, LlmError } from './LlmError.js';
+import { ModelCost } from './ModelCost.js';
 
 /** Provider-specific configuration the subclass passes in. */
 export type OpenAiCompatibleConfigType = {
@@ -109,7 +110,9 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
   /**
    * Enumerate models from the provider's configured `modelsEndpoint`. Maps each
    * entry to an `LlmModelType` with `variant: 'chat'` and `cloud: true` (these
-   * are all cloud-routed). Entries with an empty id are skipped.
+   * are all cloud-routed). Entries with an empty id are skipped. `costRank`
+   * comes from `ModelCost.fromOpenAiEntry`: OpenRouter's per-token pricing when
+   * present, the name heuristic otherwise (Groq, Cerebras, Mistral).
    *
    * Returns `[]` on any transport failure, non-ok response, or schema
    * violation — never throws (mirrors `probe` discipline).
@@ -135,7 +138,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
       if (!Validator.openAiModelsResponse.is(rawBody)) return [];
       return rawBody.data
         .filter((entry) => entry.id.length > 0)
-        .map((entry) => ({ 'name': entry.id, 'variant': 'chat' as const, 'cloud': true }));
+        .map((entry) => ({ 'name': entry.id, 'variant': 'chat' as const, 'cloud': true, 'costRank': ModelCost.rankFromOpenAiEntry(entry) }));
     } catch {
       return [];
     } finally {

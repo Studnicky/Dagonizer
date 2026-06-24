@@ -22,7 +22,7 @@
  * `LlmModelType` variant (`embedding` / `chat` / `unknown`). Never throws.
  */
 
-import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
@@ -141,7 +141,7 @@ export class GeminiApiEmbedder extends BaseEmbedder {
           variant = 'unknown';
         }
 
-        return { name, variant, 'cloud': true };
+        return { name, variant, 'cloud': true, 'costRank': ModelCost.rankFromName(name) };
       });
     } finally {
       clearTimeout(timer);

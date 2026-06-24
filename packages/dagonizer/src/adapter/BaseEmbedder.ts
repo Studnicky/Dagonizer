@@ -26,6 +26,7 @@ import { SignalComposer } from '../runtime/SignalComposer.js';
 
 import { BaseAdapterCore, type BaseAdapterCoreOptionsType, type SelectModelOptionsType } from './BaseAdapterCore.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
+import { ModelCost } from './ModelCost.js';
 
 /**
  * Caller-facing options shared by every concrete embedder.
@@ -69,7 +70,7 @@ export abstract class BaseEmbedder extends BaseAdapterCore implements EmbedderIn
     void options;
     try {
       const name = this.model;
-      return [{ 'name': name, 'variant': 'embedding', 'cloud': false }];
+      return [{ 'name': name, 'variant': 'embedding', 'cloud': false, 'costRank': ModelCost.rankFromName(name) }];
     } catch {
       return [];
     }

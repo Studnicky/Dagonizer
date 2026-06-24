@@ -35,7 +35,7 @@ seeAlso:
 
 The Archivist is the running demo every Dagonizer example refers to. It is a bookstore help-bot: a visitor describes a book or asks for a recommendation, and the Archivist composes a response by classifying the question, scattering four parallel scouts across the shop's local catalog and external sources, merging the candidates, and composing plus validating a draft response in a bounded retry loop.
 
-Try it live below; the demo runs in your browser. The browser runner instantiates a single selected backend via `ProviderInstantiator.instantiate()` — the picker surfaces which provider is active. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device fallbacks (Gemini Nano, WebLLM). The demo only runs against a real model: when none is reachable it shows a setup gate with links to free backends rather than fabricating a response. No embedder is wired in the browser demo (`embedder: null`); cosine recall and hybrid ranking fall back to Jaccard / heuristics. The CLI path (`runArchivist.ts`) uses an `LlmAdapterCascade` and, when an embedder is reachable, a separate embedder for vector-similarity intent classification.
+Try it live below; the demo runs in your browser. The browser runner instantiates a single selected backend via `ProviderInstantiator.instantiate()` — the picker surfaces which provider is active. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device fallbacks (Gemini Nano, WebLLM). The demo only runs against a real model: when none is reachable it shows a setup gate with links to free backends rather than fabricating a response. The browser demo provisions an on-device embedder (`EmbedderProvisioner` — transformers.js MiniLM, with TensorFlow.js USE and WebLLM behind it); cosine recall, hybrid ranking, and vector-similarity intent classification run client-side, falling back to Jaccard / heuristics only when no embedder probes available. The CLI path (`runArchivist.ts`) uses an `LlmAdapterCascade` and a separate `EmbedderCascade` for the same vector-similarity intent classification.
 
 The Archivist exercises two placement types for nested DAG execution: `EmbeddedDAGNode` for the three search branches and the compose loop (cardinality 1), and `ScatterNode` for the within-branch scouts — `build-book-worksets` converts the decided tool plan into a `bookWorksets` array where each item carries a `dagName` field, the scatter resolves the body DAG at runtime via `{ dagFrom: 'dagName' }` (tool-registry dispatch), the `tool-candidate-merge` gather folds each clone's output into the parent `candidates`, and the `any-success` reducer routes `success` when at least one tool returned results. A `PhaseNode` (`phase: 'pre'`, placement name `setup`) runs `pre-run-setup` before the entrypoint: it stamps a `runId` on state and clears any stale draft from a prior interrupted execution. Phase nodes are out-of-band; they do not participate in output routing.
 
@@ -71,6 +71,39 @@ The Archivist runs against a real model in any of these environments. `detectBac
 
 When none of these is reachable, the runner renders a no-model gate (with links to the free cloud keys above) instead of running. There is no canned-response fallback.
 
+## Cross-agent memory and live model swapping
+
+The Archivist demonstrates two capabilities that extend beyond single-turn, single-model interaction: persistent cross-agent memory and live model swapping mid-conversation.
+
+### Persistent cross-agent memory
+
+A single `MemoryStore` instance is created when the runner component initializes and lives for the entire browser session. It is not scoped to a run or a backend — it accumulates across every turn, regardless of which model composed the response. Three named graphs partition the data:
+
+- `urn:dagonizer:memory` — the durable cross-run graph. `record-findings` writes every shortlisted book here as RDF triples: `<book> dag:title / dag:source / dag:score / dag:inShortlist`, and `<run> dag:shortlisted <book>` linking the run to each book it shortlisted.
+- `urn:dagonizer:state:<runId>` — a per-run mirror of `ArchivistState`, written by `StateProjection.project()` after every node end. `recall-context` queries these graphs to surface prior intents, recently-seen candidates, and Jaccard-similar prior queries.
+- `urn:dagonizer:prov:<runId>` — the per-run PROV-O activity graph written by `RdfProvObserver` (covered below).
+
+`recall-context` executes first in the DAG, before `classify-intent`. It SPARQL-queries the accumulated state graphs for prior visitor queries, intents, and shortlisted books, and injects a plain-text summary into `state.recalledContext`. Every downstream LLM node — classification, tool selection, composition — receives the recalled context in its prompt. This means the second turn knows what the first turn found, and the third turn knows what the first two found, without the visitor having to restate prior topics.
+
+### Provenance: which agent wrote what
+
+Each run stamps a `dispatcherAgentId` of the form `dispatcher:<providerId>` on the `RdfProvObserver`. The observer writes one `prov:Activity` per node execution into `urn:dagonizer:prov:<runId>` and types `dispatcher:<providerId>` as a `prov:SoftwareAgent`. Each activity is `prov:wasAssociatedWith` that agent (`dispatcher:groq`, `dispatcher:anthropic`, `dispatcher:gemini-api`, etc.), and activities chain via `prov:wasInformedBy`. When a visitor changes backends between turns, the accumulated provenance graphs record findings from multiple agents, each distinguishable by its IRI. The Memory tab's graph view makes this visible: provenance edges connect each run's activities to the agent that performed them.
+
+### Live model swapping
+
+The `BackendPicker` component emits `update:active-id` events; the runner wires `@update:active-id="activeBackend = $event"` so the `activeBackend` ref updates immediately. The `makeLlm()` call inside `ask()` reads `activeBackend.value` at run time, so the very next run after a picker change uses the newly selected backend.
+
+A backend swap only updates the `activeBackend` ref (and persists it to `localStorage`). It does not clear conversation, memory, or trace state — those are component-level and outlive any single run. The picker is disabled while a run is in flight (`:disabled="isRunning"`), so a swap always takes effect on the next turn, never mid-run.
+
+| What a backend swap changes | What it leaves intact |
+|---|---|
+| The active LLM client (`currentLlm` re-derives via `makeLlm()`) | `conversation` (full turn history) |
+| The persisted `dagonizer-active-backend` preference | `memoryStore` (all RDF triples, all named graphs) |
+| | `trace` and `logEvents` |
+| | Checkpoint state (`lastResult`, `checkpointNode`) |
+
+This is the core point of the demo, not an incidental feature: a visitor can start a session on Gemini Nano, switch to a cloud Groq key when they want faster responses, and continue on Anthropic — every backend reads and writes the same shared `MemoryStore`, each run's provenance is recorded under its own `dispatcher:<providerId>` agent, and `recall-context` feeds each backend the findings from all prior backends.
+
 ## Seed library
 
 On mount, 18 sci-fi and philosophy titles are pre-loaded into `urn:dagonizer:memory` so the Memory tab has content from first paint. The seed covers:
@@ -84,7 +117,7 @@ Every backend receives the pre-seeded triples through the `recall-memories` node
 
 ### Intent classification (vector-similarity)
 
-The CLI runner builds an `EmbedderCascade` alongside the LLM cascade: `Ollama` (loopback) → `Gemini API` → `Mistral`. When one probes available, `IntentClassifier.create(embedder)` precomputes label embeddings; `classifyIntent` then routes by cosine similarity against the visitor's query in O(labels). The browser demo does not wire an embedder (`embedder: null`); when no embedder is present the node delegates to the LLM classifier directly (same routing, slower path).
+The CLI runner builds an `EmbedderCascade` alongside the LLM cascade: `Ollama` (loopback) → `Gemini API` → `Mistral`. The browser runner provisions one through `EmbedderProvisioner.provision()`, a memoized cascade over on-device browser embedders: `transformers.js` MiniLM (WASM, always available) → TensorFlow.js Universal Sentence Encoder → WebLLM (WebGPU). Whichever path supplies the embedder, `IntentClassifier.create(embedder)` precomputes label embeddings once; `classifyIntent` then routes by cosine similarity against the visitor's query in O(labels). Should provisioning fail (no candidate probes available, CDN import error), the provisioner returns `embedder: null` and the node delegates to the LLM classifier directly (same routing, slower path).
 
 ### Visitor language
 
