@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-workspace",
-  "version": "0.11.0",
+  "version": "0.0.0",
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "description": "Workspace root for the @studnicky/dagonizer monorepo — one DAG engine for LLM-agent orchestration and data-pipeline / ETL workflows.",
