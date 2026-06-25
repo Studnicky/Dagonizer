@@ -218,8 +218,14 @@ export class RetryPolicy {
         const result = await task(attempt);
         // Detect abort that raced with task completion: if the signal fired
         // while `task` was executing but before `await` returned control here,
-        // treat it as an abort rather than a successful result.
-        if (signal?.aborted === true) {
+        // treat it as an abort rather than a successful result. This is a
+        // retry-loop concern only — a single-attempt policy (`maxAttempts === 1`,
+        // the NO_RETRY default) has no retry decision to gate, so it honors a
+        // completed result even under a raced abort. Callers that route on
+        // completion (the node-dispatch FIRE seam) depend on that: a node that
+        // finishes and routes its output is a success, and cancellation is a
+        // loop-boundary decision made by the caller, not a discarded result.
+        if (signal?.aborted === true && this.maxAttempts > 1) {
           throw ExecutionError.ofSignal(signal);
         }
         return result;

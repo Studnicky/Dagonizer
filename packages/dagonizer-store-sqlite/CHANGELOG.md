@@ -1,5 +1,15 @@
 # @studnicky/dagonizer-store-sqlite
 
+## [unreleased]
+
+### Added
+
+- Adds `"node"` export condition to the `.` entry for bundler target selection.
+
+### Minor Changes
+
+- `SqliteStore` migrates to the streaming seam (`performEntriesStream` / `performRestoreEntry` / `performClear`) introduced in `@studnicky/dagonizer` S-P1. The array-form `snapshot()` and `restore()` behavior is unchanged.
+
 ## 0.27.0
 
 ### Patch Changes

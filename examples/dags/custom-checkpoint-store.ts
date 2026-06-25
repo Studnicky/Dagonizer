@@ -17,6 +17,7 @@
 import type {
   CheckpointStoreInterface,
   SnapshottableInterface,
+  StoreSnapshotEntryType,
   StoreSnapshotType,
 } from '@studnicky/dagonizer/contracts';
 
@@ -77,6 +78,20 @@ export class FactLog implements SnapshottableInterface {
     }
     this.#facts.length = 0;
     for (const entry of snapshot.entries) {
+      this.#facts.push(String(entry.value));
+    }
+  }
+
+  async *snapshotStream(): AsyncIterable<StoreSnapshotEntryType> {
+    for (let i = 0; i < this.#facts.length; i++) {
+      const fact = this.#facts[i];
+      if (fact !== undefined) yield { key: String(i), value: fact };
+    }
+  }
+
+  async restoreStream(entries: AsyncIterable<StoreSnapshotEntryType>): Promise<void> {
+    this.#facts.length = 0;
+    for await (const entry of entries) {
       this.#facts.push(String(entry.value));
     }
   }

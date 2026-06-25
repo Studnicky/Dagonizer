@@ -13,6 +13,7 @@
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
 import { PlaceholderNode } from '../core/PlaceholderNode.js';
 import { DAGIdentity, DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
@@ -168,19 +169,28 @@ export class DAGBuilder {
   /**
    * Append a single node. The node's `TOutput` parameter
    * narrows `routes`, forcing exhaustive routing at compile time.
+   *
+   * @param options.retry - Optional retry policy. When set, each `node.execute()`
+   *   call is wrapped in `RetryPolicy.from(retry).run(...)` with the node abort
+   *   signal threaded through. When absent, defaults to `NO_RETRY` (one attempt).
    */
   node<TState extends NodeStateInterface, TOutput extends string>(
     name: string,
     dagNode: NodeInterface<TState, TOutput>,
     routes: Record<TOutput, string>,
+    options: { readonly retry?: RetryPolicyOptionsType } = {},
   ): this {
-    this.#nodes.push({
+    const base = {
       '@id':     DAGIdentity.placementId(this.#name, name),
-      '@type':   'SingleNode',
+      '@type':   'SingleNode' as const,
       name,
       'node':    dagNode.name,
-      'outputs': routes,
-    });
+      'outputs': routes as Record<string, string>,
+    };
+    const placement = options.retry !== undefined
+      ? { ...base, 'retry': options.retry }
+      : base;
+    this.#nodes.push(placement);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
   }

@@ -12,3 +12,4 @@
 
 export { PluginDiscovery } from './PluginDiscovery.js';
 export { PluginLoader } from './PluginLoader.js';
+export { PluginSpecifier } from './PluginSpecifier.js';

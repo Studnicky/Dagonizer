@@ -113,6 +113,36 @@ export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafte
   }
 }
 
+/**
+ * HITL gate node: parks the flow when the visitor's query is empty, waiting
+ * for human input to continue. On resume, `state.query` is set by the caller
+ * before `dispatcher.resume()` so this node routes `'resumed'` and proceeds
+ * to `recall-context`.
+ *
+ * Routes:
+ *   'parked'  — engine parks here (cursor = 'park-for-input'); caller supplies
+ *               the human answer then resumes via `dispatcher.resume()`.
+ *   'resumed' — query is non-empty; continues to `recall-context`.
+ */
+export class ParkForInputNode extends ScalarNode<ArchivistState, 'parked' | 'resumed'> {
+  readonly name = 'park-for-input';
+  readonly outputs = ['parked', 'resumed'] as const;
+  override get outputSchema(): Record<'parked' | 'resumed', SchemaObjectType> {
+    return {
+      'parked':  { 'type': 'object' },
+      'resumed': { 'type': 'object' },
+    };
+  }
+
+  protected override async executeOne(state: ArchivistState) {
+    if (state.query.length === 0) {
+      state.park('archivist-hitl');
+      return NodeOutputBuilder.of('parked');
+    }
+    return NodeOutputBuilder.of('resumed');
+  }
+}
+
 /** Singleton node instances referenced by the DAG wiring. */
 export const respondToVisitor = new RespondToVisitorNode();
 export const declineOffTopic = new DeclineOffTopicNode();

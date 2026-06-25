@@ -130,31 +130,27 @@ export class SqliteStore extends BaseStore {
     return result.changes > 0;
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
+  protected async *performEntriesStream(): AsyncIterable<StoreSnapshotEntryType> {
     const rows = this.#db
       .prepare(`SELECT key, value FROM ${this.#tableName} ORDER BY key`)
       .all();
-    return rows.flatMap((raw) => {
-      if (!KvRow.isFull(raw)) return [];
-      return [{ 'key': raw.key, 'value': JsonValue.from(JSON.parse(raw.value)) }];
-    });
+    for (const raw of rows) {
+      if (!KvRow.isFull(raw)) continue;
+      yield { 'key': raw.key, 'value': JsonValue.from(JSON.parse(raw.value)) };
+    }
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
-    this.#db.exec('BEGIN IMMEDIATE');
-    try {
-      this.#db.exec(`DELETE FROM ${this.#tableName}`);
-      const stmt = this.#db.prepare(
-        `INSERT INTO ${this.#tableName} (key, value) VALUES (?, ?)`,
-      );
-      for (const { key, value } of entries) {
-        stmt.run(key, JSON.stringify(value));
-      }
-      this.#db.exec('COMMIT');
-    } catch (err) {
-      this.#db.exec('ROLLBACK');
-      throw err;
-    }
+  protected async performRestoreEntry(entry: StoreSnapshotEntryType): Promise<void> {
+    this.#db
+      .prepare(
+        `INSERT INTO ${this.#tableName} (key, value) VALUES (?, ?)` +
+        ` ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run(entry.key, JSON.stringify(entry.value));
+  }
+
+  protected async performClear(): Promise<void> {
+    this.#db.exec(`DELETE FROM ${this.#tableName}`);
   }
 
   /** Close the underlying SQLite connection. */

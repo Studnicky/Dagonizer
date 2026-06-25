@@ -25,6 +25,7 @@
 ### Added
 
 - Public schema surface: `LanguageModelStaticSchema`, `LanguageModelSessionSchema`, the `LanguageModelStaticInterface` / `LanguageModelSessionInterface` / `PromptOptionsInterface` types, the `*BaseType` derivations, and the `languageModelStaticValidator` / `languageModelSessionValidator`.
+- Adds `"browser"` export condition to the `.` entry for bundler target selection.
 
 ## 0.21.0
 

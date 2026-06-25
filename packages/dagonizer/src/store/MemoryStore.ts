@@ -54,17 +54,17 @@ export class MemoryStore extends BaseStore {
     return this.#data.delete(key);
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
-    return [...this.#data.entries()].map(([key, value]) => ({
-      'key':   key,
-      'value': value,
-    }));
+  protected async *performEntriesStream(): AsyncIterable<StoreSnapshotEntryType> {
+    for (const [key, value] of this.#data) {
+      yield { 'key': key, 'value': value };
+    }
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
+  protected async performRestoreEntry(entry: StoreSnapshotEntryType): Promise<void> {
+    this.#data.set(entry.key, entry.value);
+  }
+
+  protected async performClear(): Promise<void> {
     this.#data.clear();
-    for (const { key, value } of entries) {
-      this.#data.set(key, value);
-    }
   }
 }
