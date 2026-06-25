@@ -33,8 +33,8 @@ import type {
   PromptOptionsType,
 } from './LanguageModelHost.js';
 import {
+  LanguageModelHost,
   languageModelSessionValidator,
-  languageModelStaticValidator,
 } from './LanguageModelHost.js';
 
 /** Stable model identifier for the browser's built-in on-device model. */
@@ -46,17 +46,19 @@ export type GeminiNanoAdapterOptionsType = {
 
 export class GeminiNanoAdapter extends BaseAdapter {
   /**
-   * Read `globalThis.LanguageModel` as `unknown` and validate it against
-   * `LanguageModelStaticSchema` at the host boundary. Returns the narrowed
-   * host object, or `undefined` when the global is absent or fails the
-   * structural check. This is the single foreign-boundary narrowing for
-   * the Nano host object — every other method receives the already-narrowed
+   * Read `globalThis.LanguageModel` as `unknown` and narrow it through the
+   * structural `LanguageModelHost.is` guard at the host boundary. Returns the
+   * narrowed host object, or `undefined` when the global is absent or fails
+   * the structural check. The host is a callable object (`typeof === 'function'`),
+   * so a JSON-Schema `type: 'object'` validator can't narrow it — see
+   * `LanguageModelHost`. This is the single foreign-boundary narrowing for the
+   * Nano host object — every other method receives the already-narrowed
    * `LanguageModelStaticInterface`.
    */
   private static languageModel(): LanguageModelStaticInterface | undefined {
     if (typeof globalThis === 'undefined') return undefined;
     const candidate: unknown = Reflect.get(globalThis, 'LanguageModel');
-    if (!languageModelStaticValidator.is(candidate)) return undefined;
+    if (!LanguageModelHost.is(candidate)) return undefined;
     return candidate;
   }
 

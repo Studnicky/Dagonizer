@@ -25,14 +25,22 @@ import {
 // ---------------------------------------------------------------------------
 
 export type IndexedDbCheckpointStoreOptionsType = {
-  /** IndexedDB database name. Default: 'dagonizer'. */
+  /** IndexedDB database name. Default: 'dagonizer-checkpoints'. */
   readonly databaseName?: string;
   /** Object store name for checkpoint strings. Default: 'checkpoints'. */
   readonly storeName?: string;
 };
 
+// Each store class manages exactly one object store and creates it in its own
+// `onupgradeneeded`. A second store class opening the SAME database at the same
+// version never sees `onupgradeneeded` fire, so its object store is missing and
+// every transaction throws "object store not found". The checkpoint store
+// therefore defaults to its own database, distinct from `IndexedDbStore`'s
+// 'dagonizer', so `IndexedDbStore.open()` + `IndexedDbCheckpointStore.open()`
+// compose with defaults. Callers that want both in one database must give that
+// database a version that creates both stores.
 const CHECKPOINT_STORE_DEFAULTS = {
-  'databaseName': 'dagonizer',
+  'databaseName': 'dagonizer-checkpoints',
   'storeName':    'checkpoints',
 } as const;
 

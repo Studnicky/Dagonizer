@@ -326,3 +326,32 @@ void describe('IndexedDbCheckpointStore: save/load/delete', () => {
     await reader.disconnect();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Default-database isolation: kv + checkpoint stores compose with defaults
+// ---------------------------------------------------------------------------
+
+void describe('IndexedDbStore + IndexedDbCheckpointStore: default databases compose', () => {
+  void it('both stores open and round-trip on one factory with default options', async () => {
+    const factory = new IDBFactory();
+
+    // Open the KV store first (creates its database + 'kv' object store), then
+    // the checkpoint store on the SAME factory with default options. If both
+    // defaulted to the same database name, the checkpoint object store would
+    // be absent at that version and save() would throw "object store not
+    // found" — the exact collision the live archivist demo hit.
+    const kv = new IndexedDbStore(factory);
+    await kv.connect();
+    const ckpt = new IndexedDbCheckpointStore(factory);
+    await ckpt.connect();
+
+    await kv.set('memory:nquads', '<s> <p> <o> .');
+    await ckpt.save('archivist-hitl', '{"step":1}');
+
+    assert.equal(await kv.get('memory:nquads'), '<s> <p> <o> .');
+    assert.equal(await ckpt.load('archivist-hitl'), '{"step":1}');
+
+    await kv.disconnect();
+    await ckpt.disconnect();
+  });
+});

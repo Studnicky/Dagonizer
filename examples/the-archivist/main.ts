@@ -249,19 +249,20 @@ if (webLlmModel !== null) {
   );
 }
 
-// REST fallback: key from URL param, otherwise prompt the visitor.
-// Model is discovered via `selectChatModel` so the adapter always uses a
-// model the provider actually serves; no hardcoded model literal at the
-// registration site.
-const geminiApiAdapter = new GeminiApiAdapter(
-  urlApiKey.length > 0 ? urlApiKey : (window.prompt('Gemini API key (AI Studio):') ?? ''),
-);
-const geminiApiModel = await geminiApiAdapter.selectChatModel();
-if (geminiApiModel !== null) {
-  registry.register(
-    { 'provider': 'gemini-api', 'model': geminiApiModel, 'capabilities': CAPS_FULL_TOOLS },
-    () => geminiApiAdapter,
-  );
+// REST fallback: registered only when a key is supplied via the `?apiKey=`
+// URL param. A blocking `window.prompt()` is never issued — a modal dialog
+// stalls the renderer (and any driving automation) before an available
+// on-device adapter is even tried. Model is discovered via `selectChatModel`
+// so the adapter always uses a model the provider actually serves.
+if (urlApiKey.length > 0) {
+  const geminiApiAdapter = new GeminiApiAdapter(urlApiKey);
+  const geminiApiModel = await geminiApiAdapter.selectChatModel();
+  if (geminiApiModel !== null) {
+    registry.register(
+      { 'provider': 'gemini-api', 'model': geminiApiModel, 'capabilities': CAPS_FULL_TOOLS },
+      () => geminiApiAdapter,
+    );
+  }
 }
 
 // Ollama: only useful when the daemon is running locally with CORS
@@ -363,8 +364,9 @@ dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
 
 // ── Restore pending HITL state (survives page reload). ───────────────────
 const pendingKey = await kvStore.get('hitl:pendingKey');
-if (typeof pendingKey === 'string' && pendingKey.length > 0) {
-  logger.info(`hitl: pending resume for correlation key '${pendingKey}'`);
+const hasPendingHitl = typeof pendingKey === 'string' && pendingKey.length > 0;
+if (hasPendingHitl) {
+  logger.info(`hitl: pending resume for correlation key '${String(pendingKey)}'`);
   hitlBanner.style.display = 'flex';
 }
 
@@ -384,8 +386,19 @@ hitlResumeButton.addEventListener('click', () => {
   void ArchivistCli.resume(humanText);
 });
 
-// Default page = "open it and it just runs" with the seed question.
+// First-load behavior:
+//   • A pending HITL resume always wins — never start a fresh run on top of a
+//     parked flow; the visitor's reply is owed to the parked DAG.
+//   • `?park` starts a parked session that waits for the visitor's first
+//     question (showcases HITL park / reload / resume durability).
+//   • Otherwise the demo auto-runs the seed question so the page "just works".
 const SEED_QUERY = "I'm looking for a book about a strange house and a library";
-input.value = SEED_QUERY;
-void ArchivistCli.ask(SEED_QUERY);
+if (!hasPendingHitl) {
+  if (params.has('park')) {
+    void ArchivistCli.ask('');
+  } else {
+    input.value = SEED_QUERY;
+    void ArchivistCli.ask(SEED_QUERY);
+  }
+}
 // #endregion run-loop
