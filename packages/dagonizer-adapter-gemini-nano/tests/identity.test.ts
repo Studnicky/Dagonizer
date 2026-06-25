@@ -45,6 +45,28 @@ void test('GeminiNanoAdapter.probe returns true when availability() reports "ava
   }
 });
 
+void test('GeminiNanoAdapter.probe returns true when the host is a callable function (real Chrome shape)', async () => {
+  // Chrome exposes `globalThis.LanguageModel` as a CONSTRUCTOR FUNCTION that
+  // carries static `availability`/`create` — not a plain object. A JSON-Schema
+  // `type: 'object'` validator rejects a function, so the structural host guard
+  // must accept the callable shape. Without this, the on-device adapter is
+  // skipped in every real browser and the cascade falls through to web-llm.
+  const callableHost = Object.assign(
+    function LanguageModelCtor(): void { /* host constructor */ },
+    {
+      'availability': async () => Promise.resolve('available'),
+      'create':       async () => Promise.resolve({ 'prompt': async () => Promise.resolve(''), 'destroy': () => {} }),
+    },
+  );
+  LanguageModelStub.install(callableHost);
+  const a = new GeminiNanoAdapter();
+  try {
+    assert.equal(await a.probe(), true);
+  } finally {
+    LanguageModelStub.remove();
+  }
+});
+
 void test('GeminiNanoAdapter.probe returns false when availability() reports "downloadable"', async () => {
   LanguageModelStub.install({
     "availability": async () => Promise.resolve('downloadable'),

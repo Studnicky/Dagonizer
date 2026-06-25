@@ -29,11 +29,9 @@
 import { DataFactory, Parser, Store, Writer } from 'n3';
 import type { Literal, NamedNode, Quad, Quad_Graph, Quad_Object, Quad_Predicate, Quad_Subject, Term } from 'n3';
 
-import type { SnapshottableInterface, StoreSnapshotType } from '@studnicky/dagonizer/contracts';
+import type { SnapshottableInterface, StoreSnapshotEntryType, StoreSnapshotType } from '@studnicky/dagonizer/contracts';
 
 const { namedNode, literal, quad, defaultGraph } = DataFactory;
-
-const LOCALSTORAGE_KEY = 'dagonizer-archivist-memory';
 
 /** Stable identifier + version for `MemoryStore` snapshots; resume refuses anything else. */
 const MEMORY_SNAPSHOT_TYPE = 'archivist-memory-v1';
@@ -66,41 +64,6 @@ interface SlotPattern {
 
 export class MemoryStore implements SnapshottableInterface {
   readonly #store = new Store();
-  /** Auto-persist writes to localStorage when true (browser only). */
-  #persist = false;
-
-  /**
-   * Hydrate from localStorage and enable auto-persistence. Safe to call
-   * in Node (no-ops) since we check for `localStorage`.
-   */
-  enablePersistence(): void {
-    if (typeof localStorage === 'undefined') return;
-    this.#persist = true;
-    const dump = localStorage.getItem(LOCALSTORAGE_KEY);
-    if (dump === null || dump.length === 0) return;
-    try {
-      const parser = new Parser({ 'format': 'N-Quads' });
-      const quads = parser.parse(dump);
-      for (const q of quads) this.#store.addQuad(q);
-    } catch {
-      localStorage.removeItem(LOCALSTORAGE_KEY);
-    }
-  }
-
-  /**
-   * Disable auto-persistence and remove the stored dump from localStorage.
-   * Subsequent writes are held only in memory until `enablePersistence()` is
-   * called again. Safe to call in Node (no-ops).
-   */
-  disablePersistence(): void {
-    this.#persist = false;
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(LOCALSTORAGE_KEY);
-    }
-  }
-
-  /** True when writes are being auto-persisted to localStorage. */
-  get isPersisted(): boolean { return this.#persist; }
 
   /** Total quad count; useful for the live UI counter. */
   get size(): number { return this.#store.size; }
@@ -144,19 +107,16 @@ export class MemoryStore implements SnapshottableInterface {
         quad(q.subject, q.predicate, q.object, GRAPH_ONTOLOGY),
       );
     }
-    this.#flush();
   }
 
   /** Write one quad. `graph` defaults to the default graph. */
   assert(s: Quad_Subject, p: Quad_Predicate, o: Quad_Object, graph?: Quad_Graph): void {
     this.#store.addQuad(quad(s, p, o, graph ?? defaultGraph()));
-    this.#flush();
   }
 
   /** Write many quads. Each quad carries its own graph. */
   assertAll(quads: readonly Quad[]): void {
     for (const q of quads) this.#store.addQuad(q);
-    this.#flush();
   }
 
   /** ASK: true when at least one quad matches the pattern. */
@@ -199,18 +159,14 @@ export class MemoryStore implements SnapshottableInterface {
     ).length;
   }
 
-  /** Empty the entire store and the persisted dump. */
+  /** Empty the entire store. */
   clear(): void {
     this.#store.removeQuads(this.#store.getQuads(null, null, null, null));
-    if (this.#persist && typeof localStorage !== 'undefined') {
-      localStorage.removeItem(LOCALSTORAGE_KEY);
-    }
   }
 
   /** Drop every quad in one named graph (useful when a run resets). */
   clearGraph(graph: Term): void {
     this.#store.removeQuads(this.#store.getQuads(null, null, null, graph));
-    this.#flush();
   }
 
   /**
@@ -230,19 +186,6 @@ export class MemoryStore implements SnapshottableInterface {
       const subject = namedNode(subjectValue);
       this.#store.removeQuads(this.#store.getQuads(subject, null, null, GRAPH_MEMORY));
     }
-    this.#flush();
-  }
-
-  /** Write the current store to localStorage as N-Quads. */
-  #flush(): void {
-    if (!this.#persist || typeof localStorage === 'undefined') return;
-    const writer = new Writer({ 'format': 'N-Quads' });
-    writer.addQuads(this.#store.getQuads(null, null, null, null));
-    writer.end((err, result) => {
-      if (err === null || err === undefined) {
-        localStorage.setItem(LOCALSTORAGE_KEY, result);
-      }
-    });
   }
 
   /**
@@ -283,7 +226,28 @@ export class MemoryStore implements SnapshottableInterface {
       const parser = new Parser({ 'format': 'N-Quads' });
       for (const q of parser.parse(nquads)) this.#store.addQuad(q);
     }
-    this.#flush();
+  }
+  /**
+   * Stream the entire quad store as a sequence of `StoreSnapshotEntryType` values.
+   * Emits exactly one entry containing the full N-Quads serialization.
+   */
+  async *snapshotStream(): AsyncIterable<StoreSnapshotEntryType> {
+    const nquads = await this.#serializeNquads();
+    yield { 'key': MEMORY_SNAPSHOT_KEY, 'value': nquads };
+  }
+
+  /**
+   * Restore state from a stream of `StoreSnapshotEntryType` values.
+   * Clears the current store and repopulates from the N-Quads entry.
+   */
+  async restoreStream(entries: AsyncIterable<StoreSnapshotEntryType>): Promise<void> {
+    this.#store.removeQuads(this.#store.getQuads(null, null, null, null));
+    for await (const entry of entries) {
+      if (entry.key === MEMORY_SNAPSHOT_KEY && typeof entry.value === 'string' && entry.value.length > 0) {
+        const parser = new Parser({ 'format': 'N-Quads' });
+        for (const q of parser.parse(entry.value)) this.#store.addQuad(q);
+      }
+    }
   }
   // #endregion snapshottable-impl
 

@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-executor-node
 
+## [Unreleased]
+
+### Added
+
+- Adds `"node"` export condition to the `.` entry for bundler target selection.
+
 ## 0.27.0
 
 ### Patch Changes

@@ -47,19 +47,19 @@ class PassThroughStore extends BaseStore {
     return true;
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
-    return Object.entries(this.#backing).map(([key, value]) => ({
-      'key':   key,
-      'value': value,
-    }));
+  protected async *performEntriesStream(): AsyncIterable<StoreSnapshotEntryType> {
+    for (const [key, value] of Object.entries(this.#backing)) {
+      yield { 'key': key, 'value': value };
+    }
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
+  protected async performRestoreEntry(entry: StoreSnapshotEntryType): Promise<void> {
+    this.#backing[entry.key] = entry.value;
+  }
+
+  protected async performClear(): Promise<void> {
     for (const key of Object.keys(this.#backing)) {
       Reflect.deleteProperty(this.#backing, key);
-    }
-    for (const { key, value } of entries) {
-      this.#backing[key] = value;
     }
   }
 
@@ -111,15 +111,18 @@ class MockRemoteStore extends BaseStore implements RemoteStoreInterface {
     return this.#backing.delete(key);
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
-    return [...this.#backing.entries()].map(([key, value]) => ({ key, value }));
+  protected async *performEntriesStream(): AsyncIterable<StoreSnapshotEntryType> {
+    for (const [key, value] of this.#backing) {
+      yield { key, value };
+    }
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
+  protected async performRestoreEntry(entry: StoreSnapshotEntryType): Promise<void> {
+    this.#backing.set(entry.key, entry.value);
+  }
+
+  protected async performClear(): Promise<void> {
     this.#backing.clear();
-    for (const { key, value } of entries) {
-      this.#backing.set(key, value);
-    }
   }
 
   // Atomic override: Map access is synchronous, no interleaving possible.
@@ -298,6 +301,76 @@ void describe('MemoryStore', () => {
 
     assert.equal(await storeA.get('counter'), 10);
     assert.equal(await storeB.get('counter'), 20);
+  });
+
+  void it('snapshotStream() yields every written entry', async () => {
+    const store = new MemoryStore();
+    await store.set('alpha', 1);
+    await store.set('beta', 'two');
+    await store.set('gamma', [3]);
+
+    const yielded: StoreSnapshotEntryType[] = [];
+    for await (const entry of store.snapshotStream()) {
+      yielded.push(entry);
+    }
+
+    const sorted = [...yielded].sort((a, b) => a.key.localeCompare(b.key));
+    assert.deepEqual(sorted, [
+      { 'key': 'alpha', 'value': 1 },
+      { 'key': 'beta',  'value': 'two' },
+      { 'key': 'gamma', 'value': [3] },
+    ]);
+  });
+
+  void it('restoreStream() from an async-iterable repopulates the store (upsert semantics)', async () => {
+    const store = new MemoryStore();
+    await store.set('existing', 'keep-me');
+
+    async function* source(): AsyncIterable<StoreSnapshotEntryType> {
+      yield { 'key': 'x', 'value': 10 };
+      yield { 'key': 'y', 'value': 'hello' };
+    }
+
+    await store.restoreStream(source());
+
+    assert.equal(await store.get('x'), 10);
+    assert.equal(await store.get('y'), 'hello');
+    // 'existing' was not in the stream — upsert leaves it untouched
+    assert.equal(await store.get('existing'), 'keep-me');
+  });
+
+  void it('array snapshot()/restore() round-trip preserves replacement semantics (key absent from snapshot is gone after restore)', async () => {
+    const source = new MemoryStore();
+    await source.set('keep', 42);
+    await source.set('also-keep', 'yes');
+    const snap = await source.snapshot();
+
+    const target = new MemoryStore();
+    await target.set('orphan', 'should-vanish');
+    await target.restore(snap);
+
+    assert.equal(await target.get('keep'), 42);
+    assert.equal(await target.get('also-keep'), 'yes');
+    // 'orphan' was not in the snapshot — array restore replaces the keyspace
+    assert.equal(await target.get('orphan'), null);
+  });
+
+  void it('snapshotStream() respects AbortSignal when set before iteration', async () => {
+    const store = new MemoryStore();
+    await store.set('a', 1);
+    await store.set('b', 2);
+    await store.set('c', 3);
+
+    const controller = new AbortController();
+    controller.abort(new Error('cancelled'));
+
+    await assert.rejects(
+      async () => {
+        for await (const _entry of store.snapshotStream({ 'signal': controller.signal })) {
+          // Should throw before or on first yield
+        }
+      },
+    );
   });
 });
 

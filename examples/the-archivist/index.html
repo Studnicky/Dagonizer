@@ -79,6 +79,13 @@
       <input id="ask-input" type="text" placeholder="I'm looking for a book about a strange house and a library" autocomplete="off" />
       <button id="ask-button" type="submit">Ask</button>
     </form>
+    <div id="hitl-banner" style="display:none; padding:12px; background:#161b22; border:1px solid #30363d; border-radius:6px; flex-direction:column; gap:8px;">
+      <span style="color:#f0883e; font-size:13px;">The Archivist is waiting for your input to continue.</span>
+      <div style="display:flex; gap:8px;">
+        <input id="hitl-input" type="text" placeholder="Your answer..." style="flex:1; padding:8px 12px; background:#0e1116; color:#e6edf3; border:1px solid #30363d; border-radius:6px; font-size:14px;" />
+        <button id="hitl-resume" type="button" style="padding:8px 16px; background:#238636; color:#fff; border:0; border-radius:6px; font-weight:600; cursor:pointer;">Resume</button>
+      </div>
+    </div>
     <pre id="archivist-log" aria-live="polite"></pre>
     <script type="module" src="./main.ts"></script>
   </body>

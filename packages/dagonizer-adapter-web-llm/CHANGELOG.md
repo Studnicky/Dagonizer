@@ -26,6 +26,7 @@
 ### Added
 
 - Public schema surface: `WebLlmModuleSchema`, `WebLlmEngineSchema`, the `WebLlmModuleInterface` / `WebLlmEngineInterface` / `WebLlmCompletionParamsInterface` / `WebLlmCompletionResultInterface` / `WebLlmInitReportInterface` types, the `*BaseType` derivations, and the `webLlmModuleValidator` / `webLlmEngineValidator`.
+- Adds `"browser"` export condition to the `.` entry for bundler target selection.
 
 ## 0.21.0
 

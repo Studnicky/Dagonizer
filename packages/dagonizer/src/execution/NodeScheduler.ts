@@ -15,6 +15,7 @@ import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
+import { NO_RETRY } from '../entities/dag/SingleNode.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { ExecutionResultType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
 import type { ParkedType } from '../entities/execution/Parked.js';
@@ -26,6 +27,7 @@ import type { WorkSetProgressType } from '../entities/workset/WorkSetProgress.js
 import { DAGError, ExecutionError, NodeTimeoutError } from '../errors/index.js';
 import { DAGLifecycleMachine } from '../lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import { RetryPolicy } from '../runtime/RetryPolicy.js';
 import { SignalComposer } from '../runtime/SignalComposer.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
 
@@ -991,7 +993,10 @@ export class NodeScheduler {
 
     const routed = await this.#source.withNodeTimeout(dagNode, signal, (nodeSignal) => {
       const context = this.#source.nodeContext(dagName, nodeConfig.name, nodeSignal);
-      return dagNode.execute(batch, context);
+      return RetryPolicy.from(nodeConfig.retry ?? NO_RETRY).run(
+        () => dagNode.execute(batch, context),
+        { 'signal': nodeSignal },
+      );
     });
 
     return { 'dagNode': dagNode, 'routed': routed };

@@ -14,9 +14,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- Adds `"node"` export condition to the `.` entry for bundler target selection.
+
 ### Changed
 
 - `EventLogStore.#latest` returns the honest stored type `JsonValueType | undefined` instead of an unchecked `as T` per call site. A single documented caller-expectation boundary cast lives in `#latestAs`, through which both `performGet` and the atomic `update` override read; it is the store's only unchecked cast.
+- `EventLogStore` migrates to the streaming seam (`performEntriesStream` / `performRestoreEntry` / `performClear`) introduced in `@studnicky/dagonizer` S-P1. `performEntriesStream` compacts the append-log to a last-write-wins map then yields entries. `performClear` truncates the in-memory log. The array-form `snapshot()` and `restore()` behavior is unchanged.
+- Isomorphic split: the in-memory append-log core is extracted into `AppendLogStore`, a new browser-safe class that imports zero `node:*` modules. `EventLogStore` extends `AppendLogStore` and adds file persistence via a dynamic `await import('node:fs/promises')` inside `connect()` — never a top-level import — keeping the static module graph of the in-memory path free of Node-only modules. Existing Node consumers keep `EventLogStore` as their entry point unchanged. `AppendLogStore` is exported from the package root for browser and isomorphic consumers.
+- `AppendLogStore.events()` streaming accessor yields every entry in the append log (including tombstones) as an `AsyncIterable<EventLogEntryType>`, enabling streaming-first auditing without materializing the full array.
 
 ## 0.21.0
 

@@ -8,7 +8,7 @@
  *   StoreInterface contract → BaseStore ┐
  *                              ├─ get/set/has/delete → performGet/performSet/performHas/performDelete
  *                              ├─ update(key, fn)    → atomic read-modify-write
- *                              └─ snapshot/restore   → performSnapshotEntries/performRestoreEntries
+ *                              └─ snapshot/restore   → performEntriesStream/performRestoreEntry/performClear
  *
  * Concurrency contract:
  *   • `update(key, fn)` is atomic within a single store instance. Implementations

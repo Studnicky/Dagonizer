@@ -10,15 +10,14 @@
  * provenance, etc.) subclass and override the `keyToSubject` helper.
  *
  * Snapshot contract:
- *   `snapshot()` captures only the StoreInterface-reified quads (subject under the
- *   configured prefix, predicate matching valuePredicate). User-asserted
- *   quads on other predicates are NOT included in the snapshot; they are
- *   considered ephemeral graph data, not durable StoreInterface state. After
- *   `restore()`, user-asserted quads that were present before the restore
- *   are cleared alongside the reified ones; the backing array is fully
- *   replaced by the snapshot entries. This is the simplest safe default;
+ *   `snapshot()` / `snapshotStream()` capture only the StoreInterface-reified
+ *   quads (subject under the configured prefix, predicate matching
+ *   valuePredicate). User-asserted quads on other predicates are NOT included;
+ *   they are considered ephemeral graph data, not durable StoreInterface state.
+ *   `restore()` clears ALL quads (reified and user-asserted) via `performClear()`
+ *   then reseeds from the snapshot entries. This is the simplest safe default;
  *   plugin authors that need to preserve non-reified quads across restore
- *   should subclass and override `performRestoreEntries`.
+ *   should subclass and override `performClear()`.
  */
 
 import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
@@ -110,27 +109,26 @@ export class RdfStore extends BaseStore implements TripleStoreInterface {
     return this.#quads.length < before;
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
-    const entries: StoreSnapshotEntryType[] = [];
+  protected async *performEntriesStream(): AsyncIterable<StoreSnapshotEntryType> {
     for (const quad of this.#quads) {
-      if (quad.predicate.value !== this.#valuePredicate)      continue;
+      if (quad.predicate.value !== this.#valuePredicate)       continue;
       if (!quad.subject.value.startsWith(this.#subjectPrefix)) continue;
       const rawKey = quad.subject.value.slice(this.#subjectPrefix.length);
-      entries.push({
+      yield {
         "key":   rawKey,
         "value": JsonValue.from(JSON.parse(quad.object.value)),
-      });
+      };
     }
-    return entries;
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
+  protected async performRestoreEntry(entry: StoreSnapshotEntryType): Promise<void> {
+    this.#writeValue(this.#keyToSubject(entry.key), entry.value);
+  }
+
+  protected async performClear(): Promise<void> {
     // Clear ALL quads (reified and user-asserted) then reseed from snapshot.
     // See module-level JSDoc for the trade-off rationale.
     this.#quads.length = 0;
-    for (const { key, value } of entries) {
-      this.#writeValue(this.#keyToSubject(key), value);
-    }
   }
 
   // ── TripleStoreInterface contract (native quad operations) ────────────────────────────

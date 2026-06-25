@@ -1,5 +1,13 @@
 # @studnicky/dagonizer
 
+## [unreleased]
+
+### Minor Changes
+
+- **Streaming snapshot/restore seam on the store port (S-P1).** `SnapshottableInterface` gains two new methods: `snapshotStream(options?)` yields the full keyspace as an `AsyncIterable<StoreSnapshotEntryType>` and `restoreStream(entries, options?)` applies entries as an upsert without clearing first. `BaseStore` provides concrete implementations of both built on new abstract hooks `performEntriesStream()`, `performRestoreEntry(entry)`, and `performClear()`. The existing array-form `snapshot()` drains the stream; `restore()` calls `performClear()` then per-entry `performRestoreEntry()` — replacement semantics are preserved. Both new streaming methods honor `options.signal?.throwIfAborted()` between entries. Subclasses migrated: `MemoryStore`, `SqliteStore` (`dagonizer-store-sqlite`), `RdfStore` (`dagonizer-patterns-graph`), `EventLogStore` (`dagonizer-store-eventlog`).
+- **Per-placement retry wiring (S-P2).** `SingleNodePlacementType` carries a `retry` field (`RetryPolicyOptionsType`). When set, the dispatcher wraps each `node.execute()` call in `RetryPolicy.from(placement.retry).run(...)` with the node abort signal threaded through — aborted runs do not continue retrying. A node that routes to `'error'` is not retried (routing is not a throw). `DAGBuilder.node()` accepts a trailing options object with `retry` to author retry policies via the typed builder. `NO_RETRY` (`maxAttempts: 1`) is the default when `retry` is absent.
+- **`PluginSpecifier` default resolvers (S-K2).** `PluginSpecifier.bareName` is the Node.js default resolver — it returns the bare npm package name unchanged and can be passed directly as the `resolveSpecifier` argument to `PluginDiscovery.loadAll`. `PluginSpecifier.rootedAt(baseUrl)` is the browser resolver factory — it returns a `(name) => string` resolver that maps bare names to absolute ESM URLs under `baseUrl` and passes through names that are already absolute URLs. Exported from `./plugin` subpath and root barrel.
+
 ## 0.27.0
 
 ### Minor Changes

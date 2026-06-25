@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@studnicky/dagonizer": "workspace:^",
+    "@studnicky/dagonizer-store-indexeddb": "workspace:^",
     "@studnicky/dagonizer-adapter-anthropic": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-api": "workspace:^",
     "@studnicky/dagonizer-adapter-gemini-nano": "workspace:^",
@@ -31,6 +32,7 @@
     "@studnicky/dagonizer-tool-wikipedia": "workspace:^"
   },
   "devDependencies": {
+    "fake-indexeddb": "^6.0.0",
     "n3": "^2.1.0",
     "vite": "^8.1.0"
   }

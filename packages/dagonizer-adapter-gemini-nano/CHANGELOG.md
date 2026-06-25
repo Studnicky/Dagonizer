@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-adapter-gemini-nano
 
+## [unreleased]
+
+### Patch Changes
+
+- Narrow `globalThis.LanguageModel` with the structural `LanguageModelHost.is` type-predicate instead of an Ajv `type: 'object'` validator. The browser exposes the host as a callable object (`typeof globalThis.LanguageModel === 'function'`), which a JSON-Schema `object` validator rejects — so the on-device adapter's `probe()` returned `false` in every real browser and the cascade fell through to a heavier backend. `LanguageModelHost` is exported in place of the removed `languageModelStaticValidator`; the session host (a plain object) keeps its `languageModelSessionValidator`.
+
 ## 0.27.0
 
 ## 0.26.0
@@ -25,6 +31,7 @@
 ### Added
 
 - Public schema surface: `LanguageModelStaticSchema`, `LanguageModelSessionSchema`, the `LanguageModelStaticInterface` / `LanguageModelSessionInterface` / `PromptOptionsInterface` types, the `*BaseType` derivations, and the `languageModelStaticValidator` / `languageModelSessionValidator`.
+- Adds `"browser"` export condition to the `.` entry for bundler target selection.
 
 ## 0.21.0
 

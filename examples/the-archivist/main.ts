@@ -17,6 +17,18 @@
  *
  * If no adapter is reachable, `cascade.select()` throws and the
  * verbatim error message renders in the log panel.
+ *
+ * IndexedDB durability:
+ *   After each completed run the RDF memory graph is persisted to
+ *   `IndexedDbStore` under `'memory:nquads'`. On page load the graph is
+ *   restored before the first run, giving the Archivist continuity across
+ *   reloads.
+ *
+ * HITL (human-in-the-loop) park/reload/resume:
+ *   When `ParkForInputNode` parks the flow (empty query), the checkpoint is
+ *   persisted via `IndexedDbCheckpointStore` and the correlationKey is written
+ *   to `'hitl:pendingKey'`. A HITL banner appears so the visitor can type a
+ *   reply and resume the parked flow via `dispatcher.resume()`.
  */
 
 import { ArchivistState } from './ArchivistState.ts';
@@ -46,6 +58,9 @@ import { OpenLibrarySearchTool, SubjectSearchTool } from '@studnicky/dagonizer-t
 import { WikipediaSummaryTool }  from '@studnicky/dagonizer-tool-wikipedia';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
 
+import { IndexedDbStore, IndexedDbCheckpointStore } from '@studnicky/dagonizer-store-indexeddb';
+import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
+
 // ── DOM ──────────────────────────────────────────────────────────────────
 const formEl = document.getElementById('ask-form');
 if (!(formEl instanceof HTMLFormElement))    throw new Error('missing #ask-form');
@@ -63,7 +78,22 @@ const logRaw = document.getElementById('archivist-log');
 if (!(logRaw instanceof HTMLPreElement))     throw new Error('missing #archivist-log');
 const logEl = logRaw;
 
-/** Static CLI helpers for the browser demo: log wiring and query submission. */
+const hitlBannerEl = document.getElementById('hitl-banner');
+if (!(hitlBannerEl instanceof HTMLDivElement)) throw new Error('missing #hitl-banner');
+const hitlBanner = hitlBannerEl;
+
+const hitlInputEl = document.getElementById('hitl-input');
+if (!(hitlInputEl instanceof HTMLInputElement)) throw new Error('missing #hitl-input');
+const hitlInput = hitlInputEl;
+
+const hitlResumeEl = document.getElementById('hitl-resume');
+if (!(hitlResumeEl instanceof HTMLButtonElement)) throw new Error('missing #hitl-resume');
+const hitlResumeButton = hitlResumeEl;
+
+// Hide banner initially.
+hitlBanner.style.display = 'none';
+
+/** Static CLI helpers for the browser demo: log wiring, query submission, and HITL resume. */
 class ArchivistCli {
   static appendErrorLine(message: string): void {
     const line = document.createElement('span');
@@ -87,10 +117,72 @@ class ArchivistCli {
       logger.result(`shortlist=${String(result.state.shortlist.length)}`);
       logger.result(`draft=${result.state.draft}`);
       logger.result(`lifecycle=${result.state.lifecycle.variant}`);
+
+      if (result.parked !== null) {
+        // Flow parked — persist checkpoint and show the HITL banner.
+        const ckpt = await Checkpoint.capture('the-archivist', result, { 'stores': { 'memory': memory } });
+        await ckpt.persist(ckptStore, result.parked.correlationKey);
+        await kvStore.set('hitl:pendingKey', result.parked.correlationKey);
+        hitlBanner.style.display = 'flex';
+      } else {
+        // Completed run — persist memory graph; clear any pending HITL key.
+        const snap = await memory.snapshot();
+        const nquadsEntry = snap.entries.find((e) => e.key === 'nquads');
+        if (typeof nquadsEntry?.value === 'string') {
+          await kvStore.set('memory:nquads', nquadsEntry.value);
+        }
+        await kvStore.delete('hitl:pendingKey');
+        hitlBanner.style.display = 'none';
+      }
     } catch (err) {
       ArchivistCli.appendErrorLine(err instanceof Error ? err.message : String(err));
     } finally {
       button.disabled = false;
+    }
+  }
+
+  static async resume(humanText: string): Promise<void> {
+    hitlResumeButton.disabled = true;
+    try {
+      const pendingKey = await kvStore.get('hitl:pendingKey');
+      if (typeof pendingKey !== 'string' || pendingKey.length === 0) {
+        ArchivistCli.appendErrorLine('No pending HITL checkpoint found.');
+        return;
+      }
+      const recalled = await Checkpoint.recall(ckptStore, pendingKey);
+      if (recalled === null) {
+        ArchivistCli.appendErrorLine(`Checkpoint '${pendingKey}' not found in store.`);
+        return;
+      }
+      await recalled.restoreStores({ 'memory': memory });
+      const { dagName, state, cursor } = recalled.restoreState(
+        CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
+      );
+      state.query = humanText;
+
+      const execution = dispatcher.resume(dagName, state, cursor);
+      for await (const stage of execution) {
+        logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '(none)'}`}`);
+      }
+      const result = await execution;
+      logger.result(`intent=${result.state.intent}`);
+      logger.result(`shortlist=${String(result.state.shortlist.length)}`);
+      logger.result(`draft=${result.state.draft}`);
+      logger.result(`lifecycle=${result.state.lifecycle.variant}`);
+
+      // Persist memory graph after successful resume; clear pending key.
+      const snap = await memory.snapshot();
+      const nquadsEntry = snap.entries.find((e) => e.key === 'nquads');
+      if (typeof nquadsEntry?.value === 'string') {
+        await kvStore.set('memory:nquads', nquadsEntry.value);
+      }
+      await kvStore.delete('hitl:pendingKey');
+      hitlBanner.style.display = 'none';
+      hitlInput.value = '';
+    } catch (err) {
+      ArchivistCli.appendErrorLine(err instanceof Error ? err.message : String(err));
+    } finally {
+      hitlResumeButton.disabled = false;
     }
   }
 }
@@ -98,6 +190,12 @@ class ArchivistCli {
 // ── Logger wiring: DomConsoleLogger streams every event to the <pre> via
 //    its onEmit override (no subscribe callback). ──────────────────────────
 const logger = new DomConsoleLogger({ 'panel': logEl });
+
+// ── IndexedDB stores ──────────────────────────────────────────────────────
+const kvStore   = IndexedDbStore.open();
+const ckptStore = IndexedDbCheckpointStore.open();
+await kvStore.connect();
+await ckptStore.connect();
 
 // ── Cascade: browser-runnable adapters in preference order. ──────────────
 const CAPS_FULL_TOOLS:    AdapterCapabilitiesType = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
@@ -151,19 +249,20 @@ if (webLlmModel !== null) {
   );
 }
 
-// REST fallback: key from URL param, otherwise prompt the visitor.
-// Model is discovered via `selectChatModel` so the adapter always uses a
-// model the provider actually serves; no hardcoded model literal at the
-// registration site.
-const geminiApiAdapter = new GeminiApiAdapter(
-  urlApiKey.length > 0 ? urlApiKey : (window.prompt('Gemini API key (AI Studio):') ?? ''),
-);
-const geminiApiModel = await geminiApiAdapter.selectChatModel();
-if (geminiApiModel !== null) {
-  registry.register(
-    { 'provider': 'gemini-api', 'model': geminiApiModel, 'capabilities': CAPS_FULL_TOOLS },
-    () => geminiApiAdapter,
-  );
+// REST fallback: registered only when a key is supplied via the `?apiKey=`
+// URL param. A blocking `window.prompt()` is never issued — a modal dialog
+// stalls the renderer (and any driving automation) before an available
+// on-device adapter is even tried. Model is discovered via `selectChatModel`
+// so the adapter always uses a model the provider actually serves.
+if (urlApiKey.length > 0) {
+  const geminiApiAdapter = new GeminiApiAdapter(urlApiKey);
+  const geminiApiModel = await geminiApiAdapter.selectChatModel();
+  if (geminiApiModel !== null) {
+    registry.register(
+      { 'provider': 'gemini-api', 'model': geminiApiModel, 'capabilities': CAPS_FULL_TOOLS },
+      () => geminiApiAdapter,
+    );
+  }
 }
 
 // Ollama: only useful when the daemon is running locally with CORS
@@ -211,12 +310,13 @@ try {
 // #region wire-services
 // ── Dispatcher + DAG registration (mirrors runArchivist.ts). ─────────────
 const { embedder } = await EmbedderProvisioner.provision();
+const memory = new MemoryStore();
 const services: ArchivistServices = {
   'webSearch':        new OpenLibrarySearchTool(),
   'googleBooks':      new GoogleBooksTool(),
   'subjectSearch':    new SubjectSearchTool(),
   'wikipediaSummary': new WikipediaSummaryTool(),
-  'memory':           new MemoryStore(),
+  'memory':           memory,
   'llm':              llm,
   // Browser embedder provisioned when available (transformers → tensorflow →
   // web-llm). Cosine recall and hybrid ranking fall back to Jaccard /
@@ -224,6 +324,17 @@ const services: ArchivistServices = {
   'embedder':         embedder,
   'nodeTimeouts':     {},
 };
+
+// Restore persisted memory graph from IndexedDB if present.
+const storedNquads = await kvStore.get('memory:nquads');
+if (typeof storedNquads === 'string' && storedNquads.length > 0) {
+  await memory.restore({
+    'version': 1,
+    'type':    'archivist-memory-v1',
+    'entries': [{ 'key': 'nquads', 'value': storedNquads }],
+  });
+  logger.info(`memory: restored ${String(memory.size)} quads from IndexedDB`);
+}
 
 // ObservedDag: generic Dagonizer subclass wiring every lifecycle hook to an
 // injected logger. The DOM driver's `DomConsoleLogger` is passed in so the
@@ -251,6 +362,14 @@ dispatcher.registerBundle(ComposeRetryLoopBundleFactory.create(nodes));
 dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
 // #endregion register-bundle
 
+// ── Restore pending HITL state (survives page reload). ───────────────────
+const pendingKey = await kvStore.get('hitl:pendingKey');
+const hasPendingHitl = typeof pendingKey === 'string' && pendingKey.length > 0;
+if (hasPendingHitl) {
+  logger.info(`hitl: pending resume for correlation key '${String(pendingKey)}'`);
+  hitlBanner.style.display = 'flex';
+}
+
 // #region run-loop
 // ── Submit handler: fresh state per ask. ──────────────────────────────────
 form.addEventListener('submit', (event) => {
@@ -260,8 +379,26 @@ form.addEventListener('submit', (event) => {
   void ArchivistCli.ask(query);
 });
 
-// Default page = "open it and it just runs" with the seed question.
+// ── HITL resume handler. ───────────────────────────────────────────────────
+hitlResumeButton.addEventListener('click', () => {
+  const humanText = hitlInput.value.trim();
+  if (humanText.length === 0) return;
+  void ArchivistCli.resume(humanText);
+});
+
+// First-load behavior:
+//   • A pending HITL resume always wins — never start a fresh run on top of a
+//     parked flow; the visitor's reply is owed to the parked DAG.
+//   • `?park` starts a parked session that waits for the visitor's first
+//     question (showcases HITL park / reload / resume durability).
+//   • Otherwise the demo auto-runs the seed question so the page "just works".
 const SEED_QUERY = "I'm looking for a book about a strange house and a library";
-input.value = SEED_QUERY;
-void ArchivistCli.ask(SEED_QUERY);
+if (!hasPendingHitl) {
+  if (params.has('park')) {
+    void ArchivistCli.ask('');
+  } else {
+    input.value = SEED_QUERY;
+    void ArchivistCli.ask(SEED_QUERY);
+  }
+}
 // #endregion run-loop
