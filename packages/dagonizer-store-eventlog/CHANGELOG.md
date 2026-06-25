@@ -12,8 +12,6 @@
 
 ## 0.22.0
 
-## [Unreleased]
-
 ### Added
 
 - Adds `"node"` export condition to the `.` entry for bundler target selection.

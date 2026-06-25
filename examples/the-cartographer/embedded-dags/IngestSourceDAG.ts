@@ -29,7 +29,7 @@ import { normalizeCsv }   from '../nodes/ingest/normalizeCsv.ts';
 import { normalizeJson }  from '../nodes/ingest/normalizeJson.ts';
 import { normalizeNdjson } from '../nodes/ingest/normalizeNdjson.ts';
 import { normalizeYaml }  from '../nodes/ingest/normalizeYaml.ts';
-import { coerceTypes }    from '../nodes/ingest/coerceTypes.ts';
+import { coerceTypes }    from '../nodes/ingest/coercion.ts';
 import { validateEvent }  from '../nodes/ingest/validateEvent.ts';
 
 import { normalizeCsvDAG }   from './NormalizeCsvDAG.ts';

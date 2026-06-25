@@ -37,6 +37,26 @@ interface FsPromisesContractInterface {
   open(path: string, flags: string): Promise<FileHandleContractInterface>;
 }
 
+/**
+ * Structural guard for the dynamically-imported `node:fs/promises` module.
+ * Narrows `unknown → FsPromisesContractInterface` by checking the `open`
+ * member is a callable. Zero `as` casts: `isObject` narrows to
+ * `Record<string, unknown>` first; the function-type check uses that narrowed
+ * type directly.
+ */
+class FsPromises {
+  private constructor() { /* static class */ }
+
+  private static isObject(x: unknown): x is Record<string, unknown> {
+    return typeof x === 'object' && x !== null;
+  }
+
+  static is(x: unknown): x is FsPromisesContractInterface {
+    if (!FsPromises.isObject(x)) return false;
+    return typeof x['open'] === 'function';
+  }
+}
+
 // ── Options ───────────────────────────────────────────────────────────────────
 
 export type EventLogStoreOptionsType = AppendLogStoreOptionsType & {
@@ -80,8 +100,12 @@ export class EventLogStore extends AppendLogStore {
     if (this.#handle !== null) return;
 
     // Dynamic import keeps node:fs/promises out of the static module graph.
-    const fs = await import('node:fs/promises') as FsPromisesContractInterface;
-    this.#handle = await fs.open(this.#filePath, 'a+');
+    // Narrow via structural guard — no `as` cast needed.
+    const imported: unknown = await import('node:fs/promises');
+    if (!FsPromises.is(imported)) {
+      throw new Error('node:fs/promises did not expose an `open` function — unexpected environment');
+    }
+    this.#handle = await imported.open(this.#filePath, 'a+');
 
     const contents = await this.#handle.readFile({ 'encoding': 'utf8' });
     for (const line of contents.split('\n')) {

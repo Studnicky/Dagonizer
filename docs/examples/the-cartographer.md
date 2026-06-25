@@ -81,7 +81,7 @@ cartographer (top-level)
          └─ delivery-confirmation ► pipeline-delivery-confirmation (parse → geo-pipeline → canonicalize-recipient
                                                                     → confirm-delivery → gdpr-compliance → aggregate)
          Each per-type pipeline embeds:
-           geo-pipeline  ←  route-geo → geo-resolve (reverse-geocode ∥ ip-geolocate → fuse-geo) | apply-geo
+           geo-pipeline  ←  route-geo → validate-coords → geo-source-resolve (score-signals → scatter[resolve-one-signal: route-signal → resolve-coords/-address/-ip/-code/-phone/-locale] → geo-weighted-fusion gather) | apply-geo
            gdpr-compliance  ←  consent-gate → classify-pii → redact-pii
   summarize → done
 ```
@@ -105,8 +105,8 @@ skip conditions are the headline:
 
 - **`route-geo`**: a position-ping that already carries resolved geo (country,
   continent, region from the JSON source) routes to `apply-geo` and never enters
-  the `geo-resolve` sub-DAG. Both real API calls (reverse-geocode + IP geolocation)
-  are avoided.
+  the `geo-source-resolve` sub-DAG. The entire source-model geo lookup — offline
+  coords/locale/code resolution and the IP geolocation network call — is skipped.
 - **`route-redaction`**: an event with no PII fields, or one whose consent/jurisdiction
   does not require processing, routes to `skip-redaction` and never enters the
   `gdpr-compliance` sub-DAG.
@@ -136,9 +136,33 @@ skipped by the `select-source` routing node.
 
 <<< ../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts
 
-### Geo-resolution sub-DAG: `geo-resolve`
+### Source-model geo-resolution sub-DAG: `geo-source-resolve`
 
-<<< ../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts
+`score-signals` inspects the canonical event body and emits one
+`GeoSignalDescriptor` per present, valid signal modality (coords, address, ip,
+code, phone, locale). Each descriptor carries the modality kind and its base
+weight from `SignalWeight`. The scatter fans out one clone per descriptor and
+runs the `resolve-one-signal` sub-DAG in each: `route-signal` reads the
+descriptor kind and routes it to the dedicated per-concept resolver node —
+`resolve-coords`, `resolve-address`, `resolve-ip`, `resolve-code`,
+`resolve-phone`, or `resolve-locale` (with `resolve-none` for an unrecognised
+signal). Each resolver writes a weighted candidate, and the
+`geo-weighted-fusion` gather folds all resolved candidates by weight into
+`state.resolvedGeo`, `state.geoContext`, and
+`state.routing.{geoConfidence,geoModalities}`. When no signals score, the
+engine short-circuits the scatter and routes to `geo-baseline`, which writes
+the same baseline values directly.
+
+Coords resolution uses `GeohashTzMap` (a base64-embedded binary
+geohash→timezone table) as the fast offline path, with `CoordTimezone`
+(tz-lookup + `@rapideditor/country-coder`) as the browser-safe border/gap
+fallback. Address resolution calls the injected `AddressGeocoder` transport
+(Nominatim live; deterministic no-answer in the smoke). Both IP and address
+transports are injected per-call so worker threads own independent instances.
+
+<<< ../../examples/the-cartographer/embedded-dags/GeoSourceResolveDAG.ts
+
+<<< ../../examples/the-cartographer/nodes/geo/scoreSignals.ts#score-signals-node
 
 ### GDPR compliance sub-DAG: `gdpr-compliance`
 
@@ -156,10 +180,12 @@ fields hold the per-event enrichment pipeline's intermediate values.
 
 ### `CartographerServices`
 
-The dependency record passed into node constructors. Geo resolution uses
-swappable transport adapters: the GPS modality is always the offline
-`@rapideditor/country-coder` (deterministic, no HTTP); the IP modality uses the live
-`freeipapi.com` API online or recorded fixture replay for the smoke tests.
+The dependency record passed into node constructors. Services carry two
+transport adapters: `ipGeolocator` (live `freeipapi.com` or committed fixture
+replay) and `addressGeocoder` (live OpenStreetMap Nominatim or deterministic
+no-answer in the smoke). Coords, locale, code, and phone resolution are fully
+offline — `GeohashTzMap`, `CoordTimezone`, and `CallingCode` need no injected
+transport.
 
 <<< ../../examples/the-cartographer/CartographerServices.ts#cartographer-services
 
@@ -243,12 +269,25 @@ facility-scans come as CSV. The same event type can appear in multiple formats i
 
 ## Offline geo resolution
 
-GPS reverse-geocode uses the offline `@rapideditor/country-coder` boundary dataset —
-no HTTP, no key, deterministic, runs identically in Node 18+ and the browser. IP
-geolocation uses the live `freeipapi.com` API (CORS-enabled, no key), or a committed
-fixture replay in the smoke tests.
+Coords resolution uses two offline primitives — no HTTP, no key, deterministic,
+identical in Node 18+ and the browser:
 
-<<< ../../examples/the-cartographer/services/OfflineReverseGeocoder.ts#offline-reverse-geocoder
+- **`GeohashTzMap`** — a base64-embedded binary geohash→timezone lookup table.
+  The primary fast path: a single table scan resolves lat/lng to an IANA timezone
+  with no network call.
+- **`CoordTimezone`** — `tz-lookup` + `@rapideditor/country-coder`. The browser-safe
+  fallback for border regions and gaps where the geohash table is ambiguous.
+  `CoordTimezone` guards the `RangeError` that out-of-range coords would otherwise
+  raise: when a coord pair falls outside all known boundaries, resolution degrades
+  to an empty timezone/country rather than throwing, and the event continues through
+  the pipeline at baseline.
+
+Locale and code resolution are also fully offline (BCP-47 → IANA via `LocaleTimezone`;
+ISO-2 → timezone via `CountryLocale`). The only live network call in the geo path is
+IP geolocation (`freeipapi.com`, CORS-enabled, no key), or committed fixture replay
+in the smoke tests.
+
+<<< ../../examples/the-cartographer/geo/CoordTimezone.ts
 
 ## CLI
 

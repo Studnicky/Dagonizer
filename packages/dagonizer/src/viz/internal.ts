@@ -21,6 +21,19 @@ export type PlacementEntryType =
   | PhaseNodeType;
 
 /**
+ * Dispatch map type for placement entry handling.
+ *
+ * Each key maps to a handler typed to accept only the specific union member
+ * whose `'@type'` discriminant matches that key. TypeScript resolves
+ * `Extract<PlacementEntryType, { '@type': K }>` to the single concrete
+ * member, eliminating the need for `as` casts inside each handler.
+ */
+export type PlacementDispatchType<R> = {
+  [K in PlacementEntryType['@type']]: (p: Extract<PlacementEntryType, { '@type': K }>) => R;
+};
+
+
+/**
  * The three color tokens a contained placement carries.
  *
  * `fill`   — background fill color (CSS hex).
@@ -192,6 +205,24 @@ export class PlacementUtils {
    */
   static narrowNodes(dag: DAGType): PlacementEntryType[] {
     return dag.nodes.filter((node) => PlacementUtils.isPlacementEntry(node));
+  }
+
+  /**
+   * Invoke the handler for `placement` in a `PlacementDispatchType` map.
+   *
+   * TypeScript cannot track the correlation between `dispatch[K]` and
+   * `placement` when `K` is inferred as a union. The switch exhaustively
+   * narrows `placement` to the exact discriminated-union member before each
+   * call, so no `as` cast is needed in the dispatch map or at any call site.
+   */
+  static invoke<R>(dispatch: PlacementDispatchType<R>, placement: PlacementEntryType): R {
+    switch (placement['@type']) {
+      case 'SingleNode':      return dispatch['SingleNode'](placement);
+      case 'ScatterNode':     return dispatch['ScatterNode'](placement);
+      case 'EmbeddedDAGNode': return dispatch['EmbeddedDAGNode'](placement);
+      case 'TerminalNode':    return dispatch['TerminalNode'](placement);
+      case 'PhaseNode':       return dispatch['PhaseNode'](placement);
+    }
   }
 
   /** Build a placement-name id, optionally prefixed by an enclosing scope. */

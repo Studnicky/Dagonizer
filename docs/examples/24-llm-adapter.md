@@ -49,6 +49,22 @@ Change `OLLAMA_MODEL` in the example to any model you have pulled.
 - **`LlmAdapterCascade`.** Accepts a preference list and a registry. `cascade.select()` walks the list in order, calls `adapter.probe()` on each, and returns the first available adapter. Throws when no adapter is available.
 - **Response routing.** `response.message.variant` is `'text'` for a plain completion or `'tools'` when the model makes tool calls. The DAG node routes on `variant` to separate the two paths.
 
+## Adapter options
+
+Every adapter extends `BaseAdapter`, so two options are uniform across the whole surface — the cloud HTTP adapters (`OpenAiCompatibleAdapter` and its `groq` / `cerebras` / `mistral` / `openRouter` presets, `anthropic`, `gemini-api`, `ollama`) and the on-device adapters (`gemini-nano`, `web-llm`) alike:
+
+- **`systemPrompt`.** A default persona the base injects as the leading system message of any request that carries no system message. Leading position is load-bearing for on-device backends (the Chrome Prompt API rejects a system turn at any index but 0). A caller-supplied system turn is never overridden; an empty string is a no-op.
+- **`timeoutMs`** (default `60_000`). A per-request deadline. The HTTP adapters enforce it around the network call; `gemini-nano` composes it into the `LanguageModel.create()` / `session.prompt()` abort signal, and `web-llm` races the non-cancellable MLC generation against it. On expiry the adapter rejects with a `TIMEOUT`-classified `LlmError`, so a cascade falls through to the next adapter instead of hanging.
+
+```ts
+import { OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
+
+const adapter = OpenAiCompatibleAdapter.groq(process.env.GROQ_API_KEY ?? '', {
+  systemPrompt: 'You are the Archivist. Answer concisely.',
+  timeoutMs:    30_000,
+});
+```
+
 ## Builder
 
 `LlmAdapterCascadeBuilder.build(catalogue)` assembles a cascade from data. Async discovery runs **before** the builder call — resolve models, filter nulls, then pass the finished catalogue. Each factory closes over the already-constructed adapter; `probe()` runs lazily inside `cascade.select()`.

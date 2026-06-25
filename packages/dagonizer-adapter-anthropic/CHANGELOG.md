@@ -1,8 +1,12 @@
 # @studnicky/dagonizer-adapter-anthropic
 
-## 0.27.0
+## [unreleased]
 
-## [Unreleased]
+### Patch Changes
+
+- Add a consumer-configurable `systemPrompt` option, forwarded to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one, no-op when empty). Lets a consumer frame persona/format once at construction instead of hand-prepending a system message to every call.
+
+## 0.27.0
 
 ### Added
 

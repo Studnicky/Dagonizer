@@ -47,7 +47,7 @@
 import type { DAGType } from '../entities/dag/DAG.js';
 
 import { PlacementUtils, RoleColorUtils } from './internal.js';
-import type { PlacementEntryType } from './internal.js';
+import type { PlacementDispatchType, PlacementEntryType } from './internal.js';
 
 /**
  * Rendering options for `MermaidRenderer.render`.
@@ -345,10 +345,9 @@ export class MermaidRenderer {
   /** Render a placement's Mermaid shape syntax (rectangle / trapezoid / double-circle / flag). */
   private static renderShape(placement: PlacementEntryType): string {
     const label = MermaidRenderer.escapeLabel(placement.name);
-    const shapeDispatch: Record<PlacementEntryType['@type'], (p: PlacementEntryType) => string> = {
+    const shapeDispatch: PlacementDispatchType<string> = {
       'SingleNode': () => `${placement.name}[${label}]`,
-      'ScatterNode': (p) => {
-        const sp = p as PlacementEntryType & { '@type': 'ScatterNode' };
+      'ScatterNode': (sp) => {
         if (sp.reservoir !== undefined) {
           // Reservoir-configured scatter: augment label with key/capacity marker.
           // Per-key fill and per-firing batch size are runtime values — the
@@ -362,8 +361,7 @@ export class MermaidRenderer {
         return `${placement.name}[/${label}/]`;
       },
       'EmbeddedDAGNode': () => `${placement.name}[[${label}]]`,
-      'TerminalNode': (p) => {
-        const tp = p as PlacementEntryType & { '@type': 'TerminalNode' };
+      'TerminalNode': (tp) => {
         const outcomeLabel = MermaidRenderer.escapeLabel(`${placement.name}\\n(${tp.outcome})`);
         if (tp.outcome === 'completed') {
           // double-circle: connotes "final state" in Mermaid
@@ -372,13 +370,12 @@ export class MermaidRenderer {
         // asymmetric / flag shape for failed terminals
         return `${placement.name}>${outcomeLabel}]`;
       },
-      'PhaseNode': (p) => {
-        const pp = p as PlacementEntryType & { '@type': 'PhaseNode' };
+      'PhaseNode': (pp) => {
         // stadium shape: connotes a lifecycle hook (pre/post) wrapping a node
         return `${placement.name}([${MermaidRenderer.escapeLabel(placement.name)} (${pp.phase})])`;
       },
     };
-    return shapeDispatch[placement['@type']](placement);
+    return PlacementUtils.invoke(shapeDispatch, placement);
   }
 
   /** Render a placement's outbound edges as `from -->|label| to` lines. */

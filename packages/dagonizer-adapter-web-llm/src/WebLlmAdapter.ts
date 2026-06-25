@@ -23,6 +23,7 @@ import type {
   WebLlmCompletionResultType,
   WebLlmEngineType,
   WebLlmInitReportType,
+  WebLlmModuleInterface,
 } from './WebLlmHost.js';
 import {
   webLlmEngineValidator,
@@ -33,6 +34,7 @@ const DEFAULT_MODEL = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 const WEBLLM_ESM = 'https://esm.run/@mlc-ai/web-llm';
 const WEBLLM_MAX_ATTEMPTS = 2;
 const GPU_PROBE_TIMEOUT_MS = 1_500;
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 /**
  * Snapshot of the `@mlc-ai/web-llm` prebuilt model catalog
@@ -89,9 +91,24 @@ const enginePromises = new WeakMap<WebLlmAdapter, Promise<WebLlmEngineType>>();
 export type WebLlmAdapterOptionsType = {
   readonly model?: string;
   readonly maxAttempts?: number;
+  /**
+   * Default system prompt the base injects as the leading turn of any request
+   * that carries no system message of its own. Consumer-supplied persona/format
+   * framing; empty (the default) means no injection.
+   */
+  readonly systemPrompt?: string;
+  /**
+   * Per-request timeout in milliseconds enforced around the in-browser
+   * generation. Defaults to `DEFAULT_REQUEST_TIMEOUT_MS` (60s) when omitted.
+   * Raise it for slow first-token latency on large in-browser models so the
+   * timeout does not pre-empt a longer generation.
+   */
+  readonly timeoutMs?: number;
 };
 
 export class WebLlmAdapter extends BaseAdapter {
+  readonly #timeoutMs: number;
+
   /**
    * Resolve `navigator.gpu` from the global scope as `unknown`. The
    * standard lib `Navigator` typings predate WebGPU, so the WebGPU object
@@ -119,9 +136,11 @@ export class WebLlmAdapter extends BaseAdapter {
       { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
       {
         'maxAttempts': options.maxAttempts ?? WEBLLM_MAX_ATTEMPTS,
+        'systemPrompt': options.systemPrompt ?? '',
         ...(options.model !== undefined ? { 'model': options.model } : {}),
       },
     );
+    this.#timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   /**
@@ -170,23 +189,60 @@ export class WebLlmAdapter extends BaseAdapter {
     }
   }
 
+  /**
+   * Race `work` against a deadline timer and an external abort signal.
+   *
+   * NOTE: a lost race does NOT cancel the underlying WebGPU generation —
+   * MLC's `create()` has no cancellation API. The deadline frees the caller
+   * and lets a cascade fall through to another adapter; the GPU workload
+   * continues until the model finishes or the page is torn down.
+   */
+  async #withDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
+
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(new LlmError('web-llm request timeout', Classifications['TIMEOUT']));
+      }, this.#timeoutMs);
+    });
+
+    const aborted = new Promise<never>((_resolve, reject) => {
+      onAbort = () => {
+        const reason: unknown = signal.reason;
+        reject(reason instanceof LlmError ? reason : new LlmError('web-llm request aborted', Classifications['TIMEOUT']));
+      };
+      signal.addEventListener('abort', onAbort);
+    });
+
+    try {
+      return await Promise.race([work, deadline, aborted]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      if (onAbort !== undefined) signal.removeEventListener('abort', onAbort);
+    }
+  }
+
   protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     const engine = await this.#engine();
 
     // ToolInterface-calling via JSON-coerce: inject a system message with the
     // tool-plan schema then ask for json_object.
-    const messages = this.#composeMessages(request);
+    const messages = WebLlmAdapter.composeMessages(request);
     const wantsJson = (request.tools.length > 0)
       || request.outputSchema.variant === 'schema';
 
     const responseFormat: { type: 'json_object' | 'text' } = { 'type': wantsJson ? 'json_object' : 'text' };
     let result: WebLlmCompletionResultType;
     try {
-      result = await engine.chat.completions.create({
-        'messages':        messages,
-        'temperature':     request.temperature,
-        'response_format': responseFormat,
-      });
+      result = await this.#withDeadline(
+        engine.chat.completions.create({
+          'messages':        messages,
+          'temperature':     request.temperature,
+          'response_format': responseFormat,
+        }),
+        request.signal,
+      );
     } catch (err) {
       throw this.#classifyWebLlmError(err);
     }
@@ -207,31 +263,47 @@ export class WebLlmAdapter extends BaseAdapter {
     return super.classify(error);
   }
 
-  #composeMessages(request: ChatRequestType): ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }> {
-    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+  /**
+   * Flatten a chat request into the message array MLC's engine accepts.
+   *
+   * The MLC engine — like Chrome's Prompt API — rejects a `{ role: 'system' }`
+   * entry at any index but 0. So every system turn the caller supplied AND the
+   * tool/schema coercion instruction are folded into a SINGLE leading system
+   * message; the user/assistant/tool conversation follows in order. Appending
+   * the coercion as a trailing system message (the previous shape) put a system
+   * role at a non-zero index, which the engine rejects — the exact failure that
+   * surfaced on every structured-output edge. Pure: a function of `request`
+   * alone, exposed as a static so the index-0 invariant is directly testable.
+   */
+  static composeMessages(request: ChatRequestType): ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }> {
+    const systemParts: string[] = [];
+    const conversation: { role: 'user' | 'assistant'; content: string }[] = [];
     for (const m of request.messages) {
-      if (m.role === 'tool') {
-        // ToolInterface result rolled into the user channel as scaffolding.
-        messages.push({ 'role': 'user', 'content': BaseAdapter.formatToolResult(m) });
+      if (m.role === 'system') {
+        systemParts.push(m.content);
         continue;
       }
-      if (m.role === 'system' || m.role === 'user' || m.role === 'assistant') {
-        messages.push({ 'role': m.role, 'content': m.content });
+      if (m.role === 'tool') {
+        // ToolInterface result rolled into the user channel as scaffolding.
+        conversation.push({ 'role': 'user', 'content': BaseAdapter.formatToolResult(m) });
+        continue;
+      }
+      if (m.role === 'user' || m.role === 'assistant') {
+        conversation.push({ 'role': m.role, 'content': m.content });
       }
     }
 
     if (request.tools.length > 0) {
-      messages.push({
-        'role': 'system',
-        'content': `You must respond with a JSON object of the form { "tool_calls": [{ "name": "...", "arguments": { ... } }] } using only these tool names: ${request.tools.map((t) => `"${t.name}"`).join(', ')}. Emit an empty array when no tool helps.`,
-      });
+      systemParts.push(`You must respond with a JSON object of the form { "tool_calls": [{ "name": "...", "arguments": { ... } }] } using only these tool names: ${request.tools.map((t) => `"${t.name}"`).join(', ')}. Emit an empty array when no tool helps.`);
     } else if (request.outputSchema.variant === 'schema') {
-      messages.push({
-        'role': 'system',
-        'content': `You must respond with a JSON object that satisfies this JSON Schema: ${JSON.stringify(request.outputSchema.schema)}`,
-      });
+      systemParts.push(`You must respond with a JSON object that satisfies this JSON Schema: ${JSON.stringify(request.outputSchema.schema)}`);
     }
 
+    const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+    if (systemParts.length > 0) {
+      messages.push({ 'role': 'system', 'content': systemParts.join('\n\n') });
+    }
+    messages.push(...conversation);
     return messages;
   }
 
@@ -248,17 +320,47 @@ export class WebLlmAdapter extends BaseAdapter {
       throw new LlmError('navigator.gpu unavailable', Classifications['MODEL_NOT_FOUND']);
     }
     const selectedModel = this.modelOrEmpty !== '' ? this.modelOrEmpty : DEFAULT_MODEL;
-    const rawModule: unknown = await import(/* @vite-ignore */ WEBLLM_ESM);
-    const mod = webLlmModuleValidator.validate(rawModule);
-    const rawEngine: unknown = await mod.CreateMLCEngine(selectedModel, {
-      'initProgressCallback': (report) => { this.onInitProgress(report); },
-    });
+    let mod: WebLlmModuleInterface;
+    try {
+      const rawModule: unknown = await import(/* @vite-ignore */ WEBLLM_ESM);
+      mod = webLlmModuleValidator.validate(rawModule);
+    } catch (err) {
+      // The WebLLM runtime is fetched from a CDN at first use, and the model
+      // weights stream from a CDN after that — an in-browser model runtime
+      // cannot run offline. A failed import is the runtime being unreachable,
+      // not a transient fault, so classify it MODEL_NOT_FOUND: a cascade then
+      // falls through to another backend instead of retrying a CDN that will
+      // never resolve, and the message names the cause instead of leaking a
+      // raw `Failed to fetch dynamically imported module`.
+      throw new LlmError(
+        `WebLLM runtime unavailable: failed to load ${WEBLLM_ESM} (the in-browser runtime requires network access to the CDN) — ${err instanceof Error ? err.message : String(err)}`,
+        Classifications['MODEL_NOT_FOUND'],
+        { 'cause': err },
+      );
+    }
+    let rawEngine: unknown;
+    try {
+      rawEngine = await mod.CreateMLCEngine(selectedModel, {
+        'initProgressCallback': (report) => { this.onInitProgress(report); },
+      });
+    } catch (err) {
+      throw this.#classifyWebLlmError(err);
+    }
     return webLlmEngineValidator.validate(rawEngine);
   }
 
   #classifyWebLlmError(err: unknown): LlmError {
+    // LlmErrors (e.g. TIMEOUT from #withDeadline) pass through unchanged so
+    // the caller's classification is never clobbered by a re-wrap.
+    if (err instanceof LlmError) return err;
     const message = err instanceof Error ? err.message : String(err);
     if (/aborted|timeout/iu.test(message)) return new LlmError(message, Classifications['TIMEOUT'], { 'cause': err });
+    // A fetch/network failure while streaming model weights from the CDN is the
+    // runtime being unreachable, not a transient fault — route it like a missing
+    // model so a cascade falls through cleanly rather than retrying.
+    if (/failed to fetch|network ?error/iu.test(message)) {
+      return new LlmError(message, Classifications['MODEL_NOT_FOUND'], { 'cause': err });
+    }
     return new LlmError(message, Classifications['UNKNOWN'], { 'cause': err });
   }
 }

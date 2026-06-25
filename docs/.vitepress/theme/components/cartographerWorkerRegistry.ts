@@ -5,8 +5,8 @@
  * registers the stream-event body (decode → route → per-type pipelines) and a
  * deterministic offline geo services record.
  *
- * geo-resolve nodes and DAG are built per-call via GeoResolveDAG.build() so
- * each worker thread owns its own geo service instances with independent
+ * geo-source-resolve nodes and DAG are built per-call via GeoSourceResolveDAG.build()
+ * so each worker thread owns its own geo service instances with independent
  * transports (no cross-thread resource sharing). Mirrors the pattern in
  * examples/the-cartographer/workers/eventPipelineRegistry.ts.
  */
@@ -16,14 +16,14 @@ import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
 import { eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
-import { GeoResolveDAG } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
+import { GeoSourceResolveDAG } from '../../../../examples/the-cartographer/embedded-dags/GeoSourceResolveDAG.ts';
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
 
 const registry: RegistryModuleInterface = {
   async instantiate(servicesConfig: JsonObjectType): Promise<RegistryBundleInterface> {
     const useRecorded = servicesConfig['useRecordedIp'] !== false;
     const services = useRecorded ? GeoResolvers.recorded() : GeoResolvers.live();
-    const geoBundle = GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator);
+    const geoBundle = GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder);
     return {
       'bundle': {
         'nodes': [...geoBundle.nodes, ...eventPipelineBundle.nodes],

@@ -81,6 +81,12 @@ export type OpenAiCompatibleAdapterOptionsType = {
   readonly maxAttempts?: number;
   /** First retry delay in ms forwarded to the base retry policy. */
   readonly baseDelayMs?: number;
+  /**
+   * Default system prompt the base injects as the leading turn of any request
+   * that carries no system message of its own. Consumer-supplied persona/format
+   * framing; empty (the default) means no injection.
+   */
+  readonly systemPrompt?: string;
 }
 
 export class OpenAiCompatibleAdapter extends BaseAdapter {
@@ -101,6 +107,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
         'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
         'baseDelayMs': options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
         ...(resolvedModel !== undefined ? { 'model': resolvedModel } : {}),
+        ...(options.systemPrompt !== undefined && options.systemPrompt.length > 0 ? { 'systemPrompt': options.systemPrompt } : {}),
       },
     );
     this.#apiKey = apiKey;
@@ -358,7 +365,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   /** Pre-configured adapter for Groq (api.groq.com). Uses max_completion_tokens. */
-  static groq(apiKey: string, options?: { readonly model?: string; readonly timeoutMs?: number }): OpenAiCompatibleAdapter {
+  static groq(apiKey: string, options?: { readonly model?: string; readonly timeoutMs?: number; readonly systemPrompt?: string }): OpenAiCompatibleAdapter {
     return new OpenAiCompatibleAdapter(apiKey, {
       'id': 'groq',
       'displayName': 'Groq',
@@ -369,11 +376,13 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
       'tokenField': 'max_completion_tokens',
       'extraHeaders': {},
       ...(options?.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {}),
+    }, {
+      ...(options?.systemPrompt !== undefined && options.systemPrompt.length > 0 ? { 'systemPrompt': options.systemPrompt } : {}),
     });
   }
 
   /** Pre-configured adapter for Cerebras (api.cerebras.ai). Uses max_completion_tokens. */
-  static cerebras(apiKey: string, options?: { readonly model?: string; readonly timeoutMs?: number }): OpenAiCompatibleAdapter {
+  static cerebras(apiKey: string, options?: { readonly model?: string; readonly timeoutMs?: number; readonly systemPrompt?: string }): OpenAiCompatibleAdapter {
     return new OpenAiCompatibleAdapter(apiKey, {
       'id': 'cerebras',
       'displayName': 'Cerebras',
@@ -384,11 +393,13 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
       'tokenField': 'max_completion_tokens',
       'extraHeaders': {},
       ...(options?.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {}),
+    }, {
+      ...(options?.systemPrompt !== undefined && options.systemPrompt.length > 0 ? { 'systemPrompt': options.systemPrompt } : {}),
     });
   }
 
   /** Pre-configured adapter for Mistral (api.mistral.ai). Uses max_tokens. */
-  static mistral(apiKey: string, options?: { readonly model?: string; readonly timeoutMs?: number }): OpenAiCompatibleAdapter {
+  static mistral(apiKey: string, options?: { readonly model?: string; readonly timeoutMs?: number; readonly systemPrompt?: string }): OpenAiCompatibleAdapter {
     return new OpenAiCompatibleAdapter(apiKey, {
       'id': 'mistral',
       'displayName': 'Mistral',
@@ -399,6 +410,8 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
       'tokenField': 'max_tokens',
       'extraHeaders': {},
       ...(options?.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {}),
+    }, {
+      ...(options?.systemPrompt !== undefined && options.systemPrompt.length > 0 ? { 'systemPrompt': options.systemPrompt } : {}),
     });
   }
 
@@ -413,6 +426,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
     readonly referer?: string;
     readonly title?: string;
     readonly timeoutMs?: number;
+    readonly systemPrompt?: string;
   }): OpenAiCompatibleAdapter {
     return new OpenAiCompatibleAdapter(apiKey, {
       'id': 'openrouter',
@@ -427,6 +441,8 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
         ...(options?.title !== undefined ? { 'X-Title': options.title } : {}),
       },
       ...(options?.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {}),
+    }, {
+      ...(options?.systemPrompt !== undefined && options.systemPrompt.length > 0 ? { 'systemPrompt': options.systemPrompt } : {}),
     });
   }
 }

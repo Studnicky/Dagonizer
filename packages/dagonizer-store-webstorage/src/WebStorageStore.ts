@@ -87,25 +87,32 @@ const WEB_STORAGE_STORE_DEFAULTS: Required<WebStorageStoreOptionsType> = {
  * Globals are accessed via `Reflect.get(globalThis, name)` (returns `unknown`,
  * no DOM-lib dependency, no `as` cast). The structural type guard checks that
  * the required methods are present and `length` is a number before trusting
- * the value.
+ * the value. `isObject` narrows `unknown` to `Record<string, unknown>` first;
+ * all subsequent property-type checks use that narrowed type directly — zero
+ * `as` casts.
  */
 export class WebStorage {
   private constructor() { /* static class */ }
 
+  /** Non-null object guard: narrows unknown → Record<string, unknown>. */
+  private static isObject(x: unknown): x is Record<string, unknown> {
+    return typeof x === 'object' && x !== null;
+  }
+
   /**
    * Structural type guard. Returns true when `x` has the minimal shape of
    * the Web Storage API. A real `localStorage` / `sessionStorage` satisfies
-   * this without any cast at the consumer's call site.
+   * this without any cast at the consumer's call site. `isObject` narrows
+   * first; no intermediate variable or `as` cast is needed.
    */
   static is(x: unknown): x is StorageLikeInterface {
-    if (x === null || x === undefined || typeof x !== 'object') return false;
-    const obj = x as Record<string, unknown>;
+    if (!WebStorage.isObject(x)) return false;
     return (
-      typeof obj['getItem']    === 'function' &&
-      typeof obj['setItem']    === 'function' &&
-      typeof obj['removeItem'] === 'function' &&
-      typeof obj['key']        === 'function' &&
-      typeof obj['length']     === 'number'
+      typeof x['getItem']    === 'function' &&
+      typeof x['setItem']    === 'function' &&
+      typeof x['removeItem'] === 'function' &&
+      typeof x['key']        === 'function' &&
+      typeof x['length']     === 'number'
     );
   }
 

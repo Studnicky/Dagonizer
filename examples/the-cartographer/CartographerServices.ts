@@ -1,21 +1,21 @@
 /**
  * CartographerServices: the dispatcher's services record (DI).
  *
- * Geo resolution is performed by real geo APIs reached through swappable
- * TRANSPORT adapters injected here. The geo
- * resolution DAG nodes (`reverse-geocode`, `ip-geolocate`) call these transports;
- * the `fuse-geo` node combines their candidates. Swap the implementations
- * (Live ↔ Recorded) without touching any node — the engine's adapter-DI pattern.
+ * Geo resolution runs through two swappable TRANSPORT adapters injected here:
+ * `ipGeolocator` resolves a gateway IP address to a location, and
+ * `addressGeocoder` forward-geocodes a postal address string to a location.
+ * Swap the implementations (Live ↔ Recorded) without touching any node —
+ * the engine's adapter-DI pattern.
  */
 
 import type { IpGeolocator } from './contracts/IpGeolocator.ts';
-import type { ReverseGeocoder } from './contracts/ReverseGeocoder.ts';
+import type { AddressGeocoder } from './contracts/AddressGeocoder.ts';
 
 // #region cartographer-services
 export interface CartographerServices {
-  /** GPS-modality transport (reverse-geocode coords → place). */
-  readonly reverseGeocoder: ReverseGeocoder;
   /** IP-modality transport (geolocate gateway IP → place). */
   readonly ipGeolocator: IpGeolocator;
+  /** Address-modality transport (forward-geocode postal address → place). */
+  readonly addressGeocoder: AddressGeocoder;
 }
 // #endregion cartographer-services

@@ -73,6 +73,7 @@ export type LanguageModelSessionBaseType = FromSchema<typeof LanguageModelSessio
  */
 export type PromptOptionsType = {
   responseConstraint?: Record<string, unknown>;
+  signal?: AbortSignal;
 };
 
 /**
@@ -92,6 +93,7 @@ export interface LanguageModelStaticInterface extends LanguageModelStaticBaseTyp
   availability(): Promise<GeminiNanoAvailabilityType>;
   create(options?: {
     initialPrompts?: ReadonlyArray<{ role: 'system' | 'user'; content: string }>;
+    signal?: AbortSignal;
   }): Promise<LanguageModelSessionInterface>;
 }
 

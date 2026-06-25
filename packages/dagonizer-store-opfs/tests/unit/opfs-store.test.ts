@@ -12,13 +12,13 @@ import { describe, it } from 'node:test';
 import { StoreError } from '@studnicky/dagonizer/store';
 
 import { OpfsCheckpointStore } from '../../src/OpfsCheckpointStore.js';
-import { OpfsStore } from '../../src/OpfsStore.js';
 import type {
   DirectoryHandleLikeInterface,
   FileHandleLikeInterface,
   FileLikeInterface,
   WritableLikeInterface,
-} from '../../src/OpfsTypes.js';
+} from '../../src/OpfsHandle.js';
+import { OpfsStore } from '../../src/OpfsStore.js';
 
 // ── In-memory double ──────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 /**
- * coerce-types: shared ingest transform — string cells → number / bool / epoch.
+ * coercion: shared ingest transform — string cells → number / bool / epoch.
  *
  * CSV and NDJSON sources carry every value as a string; JSON sources carry
  * native types. This node coerces each canonical field to the type the

@@ -67,8 +67,6 @@
 - Updated dependencies [59a763d]
   - @studnicky/dagonizer@0.22.0
 
-## [Unreleased]
-
 ### Changed
 
 - `PostMessageChannel` extends the shared `BaseMessageChannel` from
@@ -99,8 +97,6 @@
 
 - Updated dependencies [d5a95ea]
   - @studnicky/dagonizer@0.19.0
-
-## [Unreleased]
 
 ### Added
 

@@ -454,10 +454,13 @@ export class NodeStateBase implements NodeStateInterface {
    */
   static snapshotFields(state: object, fields: StateFieldsType): JsonObjectType {
     const result: Record<string, JsonValueType> = {};
-    const s = state as Record<string, unknown>;
     for (const key of Object.keys(fields)) {
-      if (key in s) {
-        result[key] = s[key] as JsonValueType;
+      if (key in state) {
+        // `Reflect.get` reads the field off a state instance without requiring
+        // an index signature on the caller's class — the param stays `object`
+        // so consumer subclasses pass `this` directly. `JsonValue.from` then
+        // narrows the value to a JSON-safe shape.
+        result[key] = JsonValue.from(Reflect.get(state, key));
       }
     }
     return result;
@@ -476,17 +479,18 @@ export class NodeStateBase implements NodeStateInterface {
    * ```
    */
   static restoreFields(state: object, snap: JsonObjectType, fields: StateFieldsType): void {
-    const s = state as Record<string, unknown>;
-    // Dispatch map: maps field type → a function that assigns `value` into `s[key]`
-    // when it passes the narrowing check. Both parameters are passed explicitly;
-    // no shared mutable outer state.
+    // Dispatch map: maps field type → a function that assigns `value` into the
+    // state instance via `Reflect.set` when it passes the narrowing check. The
+    // param stays `object` so consumer subclasses pass `this` directly without
+    // declaring an index signature. Both parameters are passed explicitly; no
+    // shared mutable outer state.
     const restorers: Record<StateFieldType, (key: string, value: JsonValueType) => void> = {
-      'string':  (k, v) => { if (typeof v === 'string')                      s[k] = v; },
-      'number':  (k, v) => { if (typeof v === 'number')                      s[k] = v; },
-      'boolean': (k, v) => { if (typeof v === 'boolean')                     s[k] = v; },
-      'array':   (k, v) => { if (Array.isArray(v))                           s[k] = v; },
-      'object':  (k, v) => { if (typeof v === 'object' && !Array.isArray(v)) s[k] = v; },
-      'unknown': (k, v) => {                                                  s[k] = v; },
+      'string':  (k, v) => { if (typeof v === 'string')                      Reflect.set(state, k, v); },
+      'number':  (k, v) => { if (typeof v === 'number')                      Reflect.set(state, k, v); },
+      'boolean': (k, v) => { if (typeof v === 'boolean')                     Reflect.set(state, k, v); },
+      'array':   (k, v) => { if (Array.isArray(v))                           Reflect.set(state, k, v); },
+      'object':  (k, v) => { if (typeof v === 'object' && !Array.isArray(v)) Reflect.set(state, k, v); },
+      'unknown': (k, v) => {                                                  Reflect.set(state, k, v); },
     };
     for (const [key, fieldType] of Object.entries(fields)) {
       const value = snap[key];

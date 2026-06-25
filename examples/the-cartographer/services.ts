@@ -39,6 +39,8 @@ import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
 import type { CanonicalEventVariant } from './entities/index.ts';
 import { OfflineGeo } from './services/OfflineGeo.ts';
+import { CoordTimezone } from './geo/CoordTimezone.ts';
+import { CountryLocale } from './geo/CountryLocale.ts';
 import { stringify as yamlStringify, parse as yamlParse } from 'yaml';
 
 export type FormatMix = ReadonlyArray<{
@@ -206,6 +208,48 @@ export class Jurisdictions {
   }
 }
 // #endregion jurisdictions-service
+
+// #region continents-service
+/**
+ * Continents: ISO-2 country code → continent name.
+ *
+ * A compact lookup for the insights rollup. Unknown codes return 'Unmapped'.
+ * Accepts ISO-2 (the geo API format).
+ */
+const ISO2_TO_CONTINENT: Record<string, string> = {
+  'US': 'North America', 'CA': 'North America', 'MX': 'North America',
+  'GB': 'Europe', 'DE': 'Europe', 'FR': 'Europe', 'NL': 'Europe',
+  'IT': 'Europe', 'ES': 'Europe', 'PL': 'Europe', 'SE': 'Europe',
+  'NO': 'Europe', 'DK': 'Europe', 'FI': 'Europe', 'BE': 'Europe',
+  'AT': 'Europe', 'CZ': 'Europe', 'HU': 'Europe', 'PT': 'Europe',
+  'RO': 'Europe', 'BG': 'Europe', 'GR': 'Europe', 'CH': 'Europe',
+  'IE': 'Europe', 'HR': 'Europe', 'SK': 'Europe', 'SI': 'Europe',
+  'LT': 'Europe', 'LV': 'Europe', 'EE': 'Europe', 'LU': 'Europe',
+  'CY': 'Europe', 'MT': 'Europe', 'IS': 'Europe', 'LI': 'Europe',
+  'RU': 'Europe', 'UA': 'Europe', 'TR': 'Europe',
+  'CN': 'Asia', 'JP': 'Asia', 'KR': 'Asia', 'IN': 'Asia',
+  'SG': 'Asia', 'TH': 'Asia', 'VN': 'Asia', 'MY': 'Asia',
+  'ID': 'Asia', 'PH': 'Asia', 'BD': 'Asia', 'PK': 'Asia',
+  'LK': 'Asia', 'KZ': 'Asia', 'UZ': 'Asia', 'IR': 'Asia',
+  'IQ': 'Asia', 'IL': 'Asia', 'JO': 'Asia',
+  'AU': 'Oceania', 'NZ': 'Oceania',
+  'BR': 'South America', 'AR': 'South America', 'CO': 'South America',
+  'CL': 'South America', 'PE': 'South America', 'VE': 'South America',
+  'EC': 'South America', 'BO': 'South America', 'PY': 'South America',
+  'UY': 'South America', 'GY': 'South America', 'SR': 'South America',
+  'ZA': 'Africa', 'NG': 'Africa', 'EG': 'Africa', 'KE': 'Africa',
+  'MA': 'Africa', 'DZ': 'Africa', 'TN': 'Africa', 'ET': 'Africa',
+  'GH': 'Africa', 'TZ': 'Africa',
+  'SA': 'Asia', 'AE': 'Asia',
+};
+
+export class Continents {
+  /** Resolve a continent name from an ISO-2 country code. Unknown codes → 'Unmapped'. */
+  static forIso2(countryIso2: string): string {
+    return ISO2_TO_CONTINENT[countryIso2.toUpperCase()] ?? 'Unmapped';
+  }
+}
+// #endregion continents-service
 
 // #region geo-coarsener-service
 /**
@@ -1221,6 +1265,8 @@ export class ShipmentEvents {
         'rawStatus':             rawStatus,
         'carrier':               carrier,
         'ipAddress':             gatewayIp,
+        'localeTag':             '',
+        'countryCode':           '',
         'latitude':              finalLat,
         'longitude':             finalLng,
         'legFromLat':            prevLat,
@@ -1404,7 +1450,21 @@ export class ShipmentEvents {
       const handler = ShipmentEvents.typedScanDispatch[slot.eventType] ?? (({ scan: s }) => ({ ...s, 'eventType': 'position-ping' as const }));
       const typed: TypedScan = handler({ scan, pickCustoms });
 
-      yield typed;
+      // Apply geo signal overrides per event type (spread to preserve immutability).
+      let geoTyped: TypedScan = typed;
+      if (slot.eventType === 'position-ping') {
+        geoTyped = { ...typed, 'ipAddress': '' };
+      } else if (slot.eventType === 'customs-event') {
+        const { country } = CoordTimezone.resolve(typed.latitude, typed.longitude);
+        geoTyped = { ...typed, 'countryCode': country, 'latitude': 0, 'longitude': 0, 'ipAddress': '' };
+      } else if (slot.eventType === 'delivery-confirmation') {
+        const { country } = CoordTimezone.resolve(typed.latitude, typed.longitude);
+        const locale = CountryLocale.forIso2(country);
+        geoTyped = { ...typed, 'localeTag': locale, 'latitude': 0, 'longitude': 0, 'ipAddress': '' };
+      }
+      // facility-scan and sensor-reading keep both coords and ipAddress unchanged.
+
+      yield geoTyped;
       slot.remaining--;
 
       if (slot.remaining <= 0) {
@@ -1492,6 +1552,8 @@ const FIELD_MAPPINGS: Readonly<Record<string, FieldMap>> = {
     'marketingConsent': 'consent',
     'lawfulBasis':      'lawful_basis',
     'specialCategory':  'special_category',
+    'localeTag':        'locale_tag',
+    'countryCode':      'country_code',
     'disruptionReason': 'disruption',
     'geoCountry':       'geo_country',
     'geoContinent':     'geo_continent',
@@ -1528,6 +1590,8 @@ const FIELD_MAPPINGS: Readonly<Record<string, FieldMap>> = {
     'marketingConsent': 'CONSENT',
     'lawfulBasis':      'LAWFUL_BASIS',
     'specialCategory':  'SPECIAL_CATEGORY',
+    'localeTag':        'LOCALE_TAG',
+    'countryCode':      'COUNTRY_CODE',
     'disruptionReason': 'DISRUPTION',
   },
   // Gzipped NDJSON (sensor-readings). Cold-chain telemetry + position.
@@ -1561,6 +1625,8 @@ const FIELD_MAPPINGS: Readonly<Record<string, FieldMap>> = {
     'marketingConsent': 'cns',
     'lawfulBasis':      'lb',
     'specialCategory':  'sc',
+    'localeTag':        'lt',
+    'countryCode':      'cc',
     'disruptionReason': 'dis',
     'tempC':            'temp_c',
     'humidityPct':      'humidity',
@@ -1597,6 +1663,8 @@ const FIELD_MAPPINGS: Readonly<Record<string, FieldMap>> = {
     'marketingConsent': 'consent',
     'lawfulBasis':      'lawful_basis',
     'specialCategory':  'special_category',
+    'localeTag':        'locale_tag',
+    'countryCode':      'country_code',
     'disruptionReason': 'disruption',
     'geoCountry':       'geo_country',
     'geoContinent':     'geo_continent',
@@ -1651,6 +1719,8 @@ export class Sources {
       'promisedRaw':      scan.rawPromisedDeliveryAt,
       'status':           scan.rawStatus,
       'ipAddress':        scan.ipAddress,
+      'localeTag':        scan.localeTag,
+      'countryCode':      scan.countryCode,
       'latitude':         scan.latitude,
       'longitude':        scan.longitude,
       'legFromLat':       scan.legFromLat,

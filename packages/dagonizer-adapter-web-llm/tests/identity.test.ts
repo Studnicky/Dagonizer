@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
+import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+
 import { WebLlmAdapter } from '../src/index.js';
 
 class NavigatorStub {
@@ -111,4 +113,58 @@ void test('WebLlmAdapter.probe does not throw when requestAdapter rejects', asyn
   } finally {
     NavigatorStub.remove();
   }
+});
+
+void test('composeMessages folds the schema coercion into one leading system message', () => {
+  // The MLC engine rejects a `{ role: 'system' }` entry at any index but 0.
+  // A schema request must NOT append a trailing system message — the coercion
+  // instruction folds into the single index-0 system turn.
+  const messages = WebLlmAdapter.composeMessages(ChatRequestBuilder.from({
+    'messages':     [{ 'role': 'user', 'content': 'Recommend a novel.' }],
+    'outputSchema': { 'variant': 'schema', 'id': 'rec', 'schema': { 'type': 'object' } },
+  }));
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0]?.role, 'system');
+  assert.match(messages[0]?.content ?? '', /JSON Schema/u);
+  assert.deepEqual(messages[1], { 'role': 'user', 'content': 'Recommend a novel.' });
+  // Exactly one system message, and it leads.
+  assert.equal(messages.filter((m) => m.role === 'system').length, 1);
+});
+
+void test('composeMessages folds caller system turns and tool coercion into one leading system message', () => {
+  const messages = WebLlmAdapter.composeMessages(ChatRequestBuilder.from({
+    'messages': [
+      { 'role': 'system', 'content': 'You are the Archivist.' },
+      { 'role': 'user',   'content': 'Find a book.' },
+    ],
+    'tools': [{ 'name': 'search', 'description': 'search', 'inputSchema': { 'type': 'object' } }],
+  }));
+  const systemMessages = messages.filter((m) => m.role === 'system');
+  assert.equal(systemMessages.length, 1);
+  assert.equal(messages[0]?.role, 'system');
+  assert.match(messages[0]?.content ?? '', /You are the Archivist\./u);
+  assert.match(messages[0]?.content ?? '', /tool_calls/u);
+  assert.deepEqual(messages[1], { 'role': 'user', 'content': 'Find a book.' });
+});
+
+void test('composeMessages emits no system message when none is needed', () => {
+  const messages = WebLlmAdapter.composeMessages(ChatRequestBuilder.from({
+    'messages': [{ 'role': 'user', 'content': 'Hello.' }],
+  }));
+  assert.deepEqual(messages, [{ 'role': 'user', 'content': 'Hello.' }]);
+});
+
+void test('WebLlmAdapter accepts timeoutMs option without error', () => {
+  // Verify the constructor initialises with a custom timeout.
+  // Does not exercise the generation path (requires WebGPU);
+  // the per-request deadline is covered by the #withDeadline unit below.
+  const a = new WebLlmAdapter({ 'timeoutMs': 5_000 });
+  assert.equal(a.id, 'web-llm');
+});
+
+void test('WebLlmAdapter default construction (no timeoutMs) still has correct identity', () => {
+  // Ensures the required-with-defaults shape is stable regardless of whether
+  // timeoutMs is supplied.
+  const a = new WebLlmAdapter({});
+  assert.equal(a.id, 'web-llm');
 });

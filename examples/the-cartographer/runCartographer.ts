@@ -37,7 +37,7 @@ import type { JourneyInsights, RegionInsights } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
 import { cartographerBundle, cartographerResumeBundle, cartographerWorkersBundle } from './dag.ts';
 import { gdprComplianceBundle } from './embedded-dags/GdprComplianceDAG.ts';
-import { GeoResolveDAG } from './embedded-dags/GeoResolveDAG.ts';
+import { GeoSourceResolveDAG } from './embedded-dags/GeoSourceResolveDAG.ts';
 import { ingestSourceBundle } from './embedded-dags/IngestSourceDAG.ts';
 import { orderEnrichmentBundle } from './embedded-dags/OrderEnrichmentDAG.ts';
 import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
@@ -199,7 +199,7 @@ class CartographerResumableScenario {
   /** Register cartographerResumeBundle bundles onto a fresh ObservedCartographer. */
   static #buildResumeDispatcher(services: CartographerServices): ObservedCartographer {
     const d = new ObservedCartographer({});
-    d.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+    d.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     d.registerBundle(orderEnrichmentBundle);
     d.registerBundle(gdprComplianceBundle);
     d.registerBundle(ingestSourceBundle);
@@ -237,7 +237,7 @@ class CartographerResumableScenario {
     // so the ScatterWorkerPool checks abort between item pulls — giving cursor > 0.
     const interruptAc = new AbortController();
     const abortingDispatcher = new AbortingCartographer({}, interruptAc, ABORT_AFTER_ITEMS);
-    abortingDispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+    abortingDispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     abortingDispatcher.registerBundle(orderEnrichmentBundle);
     abortingDispatcher.registerBundle(gdprComplianceBundle);
     abortingDispatcher.registerBundle(ingestSourceBundle);
@@ -476,7 +476,7 @@ if (useWorkers) {
     'containers': { 'cpu': container },
   });
   // Sub-DAG bundles (needed for DAG validator; execution stays in the workers).
-  dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+  dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
   // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
@@ -485,7 +485,7 @@ if (useWorkers) {
   dispatcher.registerBundle(cartographerWorkersBundle);
 } else {
   dispatcher = new ObservedCartographer({});
-  dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+  dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
   // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
@@ -664,7 +664,7 @@ for (const r of sortedRegions) {
 }
 logger.result(`\nTotal scans folded: ${totalScans.toLocaleString()} · Journeys sampled: ${state.journeys.size}`);
 
-// ── (b2) ROUTING SAVINGS VIEW (the thesis made tangible — §B0.7c) ─────────────
+// ── (b2) SOURCE-MODEL ROUTING VIEW (the thesis made tangible — §B0.7c) ──────────
 // Each clone records its own RAN/SKIPPED decisions on the enriched record; the
 // gather appends each to sampleRecords (bounded FIFO, cap 200). The totals here
 // are computed over that representative sample — honest because the sample is a
@@ -684,31 +684,35 @@ const REDACTION_SKIP_ADAPTER = 0; // no intermediate node on skip path
 
 let geoRun = 0, geoSkip = 0, redRun = 0, redSkip = 0, priceSkip = 0, etaSkip = 0;
 let coldRun = 0, customsRun = 0;
-// Geo modality accounting: reverse-geocode is offline (free); the avoidable REAL
-// calls are IP geolocations (freeipapi.com).
-let revgeoRun = 0, ipgeoRun = 0, ipgeoSkip = 0, fusedGpsIp = 0;
+// Source-model tally
+let modelCoords = 0, modelLocale = 0, modelCode = 0, modelIp = 0, modelNone = 0;
+let coordsPlusIp = 0, fallbackFired = 0;
+let ipgeoRun = 0, ipgeoSkip = 0;
 let actualNodes = 0, naiveNodes = 0;
 const pathCounts = new Map<string, number>();
-// Iterate the bounded sample (cap 200) — O(1) in terms of total event count.
 for (const r of sampleProcessed) {
   const rt = r.routing;
   if (rt.geoLookupRun) geoRun++;
   if (rt.geoLookupSkipped) geoSkip++;
-  if (rt.reverseGeocodeRun) revgeoRun++;
   if (rt.ipGeolocateRun) ipgeoRun++;
   if (rt.ipGeolocateSkipped) ipgeoSkip++;
-  if (rt.geoModalities.includes('gps') && rt.geoModalities.includes('ip')) fusedGpsIp++;
   if (rt.redactionRun) redRun++;
   if (rt.redactionSkipped) redSkip++;
   if (rt.pricingSkipped) priceSkip++;
   if (rt.etaSkipped) etaSkip++;
   if (rt.coldChainRun) coldRun++;
   if (rt.customsDwellRun) customsRun++;
+  // Source-model tally
+  if (rt.geoSourceModel === 'coords') modelCoords++;
+  else if (rt.geoSourceModel === 'locale') modelLocale++;
+  else if (rt.geoSourceModel === 'code') modelCode++;
+  else if (rt.geoSourceModel === 'ip') modelIp++;
+  else modelNone++;
+  if (rt.geoModalities.includes('ip') && (rt.geoModalities.includes('coords') || rt.geoModalities.includes('geohash'))) coordsPlusIp++;
+  if (rt.geoFallbackUsed) fallbackFired++;
   pathCounts.set(rt.path, (pathCounts.get(rt.path) ?? 0) + 1);
 
-  // Naive maximum: every event runs every branch's nodes.
   naiveNodes += GEO_CHAIN_NODES + ORDER_ENRICH_NODES + REDACTION_NODES;
-  // Actual: only what this event's routing ran.
   actualNodes += rt.geoLookupRun ? GEO_CHAIN_NODES : GEO_SKIP_ADAPTER;
   if (rt.pricingRun) actualNodes += ORDER_ENRICH_NODES;
   actualNodes += rt.redactionRun ? REDACTION_NODES : REDACTION_SKIP_ADAPTER;
@@ -722,29 +726,28 @@ const skippedNodes = naiveNodes - actualNodes;
 const redactionPassesAvoided = redSkip;
 const pricingEtaAvoided = priceSkip * ORDER_ENRICH_NODES;
 
-// REAL API calls avoided: reverse-geocode is now OFFLINE/FREE (no call to avoid);
-// the avoidable real calls are IP geolocations (freeipapi.com). ip-geolocate runs
-// only when a gateway IP is present and the geo sub-DAG isn't skipped. Caching
-// collapses repeated IPs, so unique calls are far fewer than the per-event count.
-const ipGeolocateAvoided = geoSkip + ipgeoSkip;          // skipped sub-DAG + GPS-only signals
-
-logger.result('\n=== (b2) Routing Savings — from a bounded sample of recent scans ===\n');
-logger.result(`  Sample size: ${sampleTotal} scans (representative bounded FIFO, cap 200 — routing distribution is consistent across the full run)\n`);
+logger.result('\n=== (b2) Source-Model Routing — from a bounded sample of recent scans ===\n');
+logger.result(`  Sample size: ${sampleTotal} scans (representative bounded FIFO, cap 200)\n`);
 logger.result(`  HEADLINE: deterministic routing skipped ${skippedNodes.toLocaleString('en-US')} node-executions in sample ` +
   `(~${Percent.of(skippedNodes, naiveNodes)} of the ${naiveNodes.toLocaleString('en-US')} always-run maximum).\n`);
-logger.result('  Geo resolution (the real-world win — don\'t hammer the API):');
-logger.result(`    • reverse-geocode (offline country-coder, no network): RESOLVED ${revgeoRun} events · 0 API calls (deterministic, free, no key)`);
-logger.result(`    • ip-geolocate (freeipapi.com, REAL API):              RAN for ${ipgeoRun} events · AVOIDED ${ipGeolocateAvoided} (pre-resolved or no gateway IP)`);
-logger.result(`    • caching collapses repeated IPs → the actual UNIQUE upstream IP calls are far fewer (per-IP cache).`);
-logger.result(`    • multi-modal fusion: ${fusedGpsIp} events fused GPS+IP (agreement → high confidence); the rest are GPS-only.`);
+logger.result('  Geo source-model distribution (from classify-geo-source):');
+logger.result(`    • coords (lat/lng present):       ${String(modelCoords).padStart(5)}`);
+logger.result(`    • code  (ISO-2 country code):     ${String(modelCode).padStart(5)}`);
+logger.result(`    • locale (BCP-47 tag):            ${String(modelLocale).padStart(5)}`);
+logger.result(`    • ip   (gateway IP only):         ${String(modelIp).padStart(5)}`);
+logger.result(`    • none (no signal):               ${String(modelNone).padStart(5)}`);
 logger.result('');
-logger.result(`  geo-resolve: RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${Percent.of(geoSkip, sampleTotal)} — source already resolved → geo sub-DAG + IP call avoided)`);
+logger.result(`  coords+IP enriched (dual modality): ${coordsPlusIp}`);
+logger.result(`  CoordTimezone fallback fired:        ${fallbackFired}`);
+logger.result('');
+logger.result(`  geo-lookup:  RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${Percent.of(geoSkip, sampleTotal)} — source already resolved → geo sub-DAG avoided)`);
+logger.result(`  ip-geolocate (freeipapi.com): RAN ${ipgeoRun}  ·  SKIPPED ${ipgeoSkip}`);
 logger.result(`  redaction:   RAN ${redRun}  ·  SKIPPED ${redSkip} (${Percent.of(redSkip, sampleTotal)} — no PII / not required → redaction sub-DAG bypassed)`);
 logger.result(`  pricing+eta: RAN ${sampleTotal - priceSkip}  ·  SKIPPED ${priceSkip} (${Percent.of(priceSkip, sampleTotal)} — non-order event types carry no basket/delivery)`);
 logger.result(`  per-event-type lanes: ${[...pathCounts.entries()].sort().map(([p, n]) => `${p}=${n}`).join('  ')}`);
 logger.result(`  cold-chain-check RAN ${coldRun} (sensor lane only) · customs-dwell RAN ${customsRun} (customs lane only)`);
-logger.result('\n  Compute avoided in sample (extrapolates across full run):');
-logger.result(`    • ${redactionPassesAvoided.toLocaleString('en-US')} redaction passes avoided — skip hashing/coarsening when there is no PII to protect.`);
+logger.result('\n  Compute avoided in sample:');
+logger.result(`    • ${redactionPassesAvoided.toLocaleString('en-US')} redaction passes avoided`);
 logger.result(`    • ${pricingEtaAvoided.toLocaleString('en-US')} pricing/shipping/ETA node-executions avoided — don't price a position ping.`);
 
 // ── (c) Per-journey summaries (a few) ─────────────────────────────────────────

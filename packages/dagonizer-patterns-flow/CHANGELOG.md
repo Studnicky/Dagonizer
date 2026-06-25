@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-patterns-flow
 
+## [unreleased]
+
+### Minor Changes
+
+- `FlowNode` is parameterized by `<TState, TOutput>` with no `TServices` third parameter. `executeOne` overrides in all built-in subclasses (`ExtractFieldNode`, `PredicateGateNode`, `ReduceNode`, `RespondNode`, `SelectNode`) take `(state, output)` — services are injected via the node constructor and held as instance fields, consistent with the engine-wide constructor-DI pattern.
+
 ## 0.27.0
 
 ## 0.26.0

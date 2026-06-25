@@ -11,7 +11,7 @@ import type { CheckpointStoreInterface, AbortableOptionsType } from '@studnicky/
 import { StoreError } from '@studnicky/dagonizer/store';
 
 import { OpfsEnv } from './OpfsEnv.js';
-import type { DirectoryHandleLikeInterface } from './OpfsTypes.js';
+import type { DirectoryHandleLikeInterface } from './OpfsHandle.js';
 
 export class OpfsCheckpointStore implements CheckpointStoreInterface {
   readonly #checkpointDir: DirectoryHandleLikeInterface;

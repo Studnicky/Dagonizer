@@ -40,11 +40,29 @@ import {
 /** Stable model identifier for the browser's built-in on-device model. */
 const GEMINI_NANO_MODEL_ID = 'gemini-nano';
 
+/** Milliseconds before an in-flight on-device generation is aborted. */
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+
 export type GeminiNanoAdapterOptionsType = {
   readonly maxAttempts?: number;
+  /**
+   * Default system prompt the base injects as the leading turn of any request
+   * that carries no system message of its own. Consumer-supplied persona/format
+   * framing; empty (the default) means no injection.
+   */
+  readonly systemPrompt?: string;
+  /**
+   * Per-request timeout in milliseconds enforced around the on-device
+   * generation call. Defaults to `DEFAULT_REQUEST_TIMEOUT_MS` (60s) when
+   * omitted. Raise it for slow on-device models so the timeout does not
+   * pre-empt a longer generation.
+   */
+  readonly timeoutMs?: number;
 };
 
 export class GeminiNanoAdapter extends BaseAdapter {
+  readonly #timeoutMs: number;
+
   /**
    * Read `globalThis.LanguageModel` as `unknown` and narrow it through the
    * structural `LanguageModelHost.is` guard at the host boundary. Returns the
@@ -80,8 +98,9 @@ export class GeminiNanoAdapter extends BaseAdapter {
       // ToolInterface calls are emitted via JSON coercion (responseConstraint +
       // ToolCallCodec.decode) rather than a native function-calling channel.
       { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': false },
-      { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS },
+      { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS, 'systemPrompt': options.systemPrompt ?? '' },
     );
+    this.#timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   /**
@@ -110,17 +129,35 @@ export class GeminiNanoAdapter extends BaseAdapter {
       throw new LlmError('window.LanguageModel is not present', Classifications['MODEL_NOT_FOUND']);
     }
 
-    const systemMessages = request.messages.filter((m) => m.role === 'system');
+    const systemPrompt = this.#collapseSystemMessages(request);
     const userPrompt = this.#collapseUserMessages(request);
 
-    const initialPrompts = systemMessages.length > 0
-      ? systemMessages.map((m) => ({ 'role': 'system' as const, 'content': m.content }))
-      : undefined;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort(new LlmError('gemini-nano request timeout', Classifications['TIMEOUT']));
+    }, this.#timeoutMs);
+    const signal = AbortSignal.any([request.signal, controller.signal]);
 
-    const rawSession: unknown = await lm.create(initialPrompts === undefined ? undefined : { initialPrompts });
+    // The Prompt API rejects a `{ role: 'system' }` entry placed anywhere but
+    // index 0 of `initialPrompts` — and a second system entry necessarily lands
+    // at a non-zero index — with a `TypeError`. Collapse every system turn into
+    // one leading system prompt so the constraint holds for any consumer message
+    // shape; user turns go to `prompt()` below. No system turn → no
+    // `initialPrompts` (a user-only session is valid).
+    const createOptions = systemPrompt === ''
+      ? { signal }
+      : { 'initialPrompts': [{ 'role': 'system' as const, 'content': systemPrompt }], signal };
+
+    let rawSession: unknown;
+    try {
+      rawSession = await lm.create(createOptions);
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw this.#classifyNanoError(err);
+    }
     const session = languageModelSessionValidator.validate(rawSession);
     try {
-      const options: PromptOptionsType = {};
+      const options: PromptOptionsType = { signal };
       if (request.tools.length > 0) {
         options.responseConstraint = this.#toolPlanSchema(request.tools);
       } else if (request.outputSchema.variant === 'schema') {
@@ -142,6 +179,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
         'usage': ZERO_TOKEN_USAGE,
       };
     } finally {
+      clearTimeout(timeoutId);
       session.destroy();
     }
   }
@@ -150,6 +188,17 @@ export class GeminiNanoAdapter extends BaseAdapter {
     const msg = error instanceof Error ? error.message : String(error);
     if (/availability|not present/iu.test(msg)) return Classifications['MODEL_NOT_FOUND'];
     return super.classify(error);
+  }
+
+  #collapseSystemMessages(request: ChatRequestType): string {
+    // Nano permits exactly one system prompt, and only at index 0 of
+    // `initialPrompts`. Join every system turn into one block so multiple or
+    // out-of-order system messages can never form a sequence the Prompt API
+    // rejects with a `TypeError`.
+    return request.messages
+      .filter((m) => m.role === 'system')
+      .map((m) => m.content)
+      .join('\n\n');
   }
 
   #collapseUserMessages(request: ChatRequestType): string {
@@ -193,6 +242,9 @@ export class GeminiNanoAdapter extends BaseAdapter {
   }
 
   #classifyNanoError(err: unknown): LlmError {
+    // Preserve an already-classified LlmError (e.g. the TIMEOUT thrown by the
+    // AbortController callback) so its classification survives unwrapped.
+    if (err instanceof LlmError) return err;
     const message = err instanceof Error ? err.message : String(err);
     if (/schema|constraint/iu.test(message)) {
       return new LlmError(message, Classifications['SCHEMA_VIOLATION'], { 'cause': err });

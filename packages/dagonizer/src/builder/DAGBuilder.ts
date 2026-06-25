@@ -185,7 +185,7 @@ export class DAGBuilder {
       '@type':   'SingleNode' as const,
       name,
       'node':    dagNode.name,
-      'outputs': routes as Record<string, string>,
+      'outputs': routes,
     };
     const placement = options.retry !== undefined
       ? { ...base, 'retry': options.retry }

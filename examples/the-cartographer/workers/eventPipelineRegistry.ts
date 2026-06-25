@@ -20,7 +20,7 @@
  * parent was started with live=true. Workers never share the parent's live
  * HTTP transport; each thread owns its own service instances.
  *
- * geo-resolve nodes and DAG are built per-call via GeoResolveDAG.build(services)
+ * geo-source-resolve nodes and DAG are built per-call via GeoSourceResolveDAG.build(services)
  * so each worker thread owns its own geo service instances with independent
  * transports (no cross-thread resource sharing).
  *
@@ -37,7 +37,7 @@ import type {
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
 import { eventPipelineBundle } from '../dag.js';
-import { GeoResolveDAG }       from '../embedded-dags/GeoResolveDAG.js';
+import { GeoSourceResolveDAG } from '../embedded-dags/GeoSourceResolveDAG.js';
 
 // State + services
 import { CartographerState } from '../CartographerState.js';
@@ -51,8 +51,8 @@ const registry: RegistryModuleInterface = {
     const useRecorded = servicesConfig['useRecordedIp'] !== false;
     const services = useRecorded ? GeoResolvers.recorded() : GeoResolvers.live();
 
-    // Build per-thread geo-resolve bundle (nodes need DI services injected).
-    const geoBundle = GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator);
+    // Build per-thread geo-source-resolve bundle (nodes need DI services injected).
+    const geoBundle = GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder);
 
     return {
       'bundle': {

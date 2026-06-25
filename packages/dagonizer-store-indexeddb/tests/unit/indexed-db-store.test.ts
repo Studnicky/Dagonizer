@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { StoreError } from '@studnicky/dagonizer/store';
 import { IDBFactory } from 'fake-indexeddb';
 
-import type { IdbFactoryLikeInterface } from '../../src/IdbTypes.js';
+import type { IdbFactoryLikeInterface } from '../../src/IdbFactory.js';
 import { IndexedDbCheckpointStore } from '../../src/IndexedDbCheckpointStore.js';
 import { IndexedDbStore } from '../../src/IndexedDbStore.js';
 

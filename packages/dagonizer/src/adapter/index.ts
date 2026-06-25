@@ -52,6 +52,7 @@ export type {
 } from './BaseAdapterCore.js';
 
 export { BaseAdapter } from './BaseAdapter.js';
+export type { BaseAdapterOptionsType } from './BaseAdapter.js';
 
 export { OpenAiCompatibleAdapter } from './OpenAiCompatibleAdapter.js';
 export type {

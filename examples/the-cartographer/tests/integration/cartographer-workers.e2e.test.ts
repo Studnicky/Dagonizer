@@ -29,7 +29,7 @@ import assert from 'node:assert/strict';
 import { Dagonizer } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { CartographerWorkersDag } from '../../dag.ts';
-import { GeoResolveDAG } from '../../embedded-dags/GeoResolveDAG.ts';
+import { GeoSourceResolveDAG } from '../../embedded-dags/GeoSourceResolveDAG.ts';
 import { orderEnrichmentBundle } from '../../embedded-dags/OrderEnrichmentDAG.ts';
 import { gdprComplianceBundle } from '../../embedded-dags/GdprComplianceDAG.ts';
 import { ingestSourceBundle } from '../../embedded-dags/IngestSourceDAG.ts';
@@ -58,7 +58,7 @@ class WorkersHarness {
     // Register the same bundle order as the existing cartographer.e2e.test.ts,
     // but use CartographerWorkersDag.bundle() as the top-level bundle so that
     // the cartographer DAG carries container: 'cpu' on its process-stream scatter.
-    dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+    dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
     dispatcher.registerBundle(ingestSourceBundle);
@@ -112,7 +112,6 @@ describe('Cartographer workers-bundle registration', () => {
 
   it('workers dispatcher uses recorded geo services', () => {
     const services = GeoResolvers.recorded();
-    assert.ok(services.reverseGeocoder !== undefined);
     assert.ok(services.ipGeolocator !== undefined);
   });
 });
@@ -147,7 +146,6 @@ describe('Cartographer worker entry registry — dependency smoke', () => {
   it('GeoResolvers.recorded() is importable (registry services factory)', async () => {
     const { GeoResolvers } = await import('../../services/GeoResolvers.ts');
     const services = GeoResolvers.recorded();
-    assert.ok(services.reverseGeocoder !== undefined);
     assert.ok(services.ipGeolocator !== undefined);
   });
 

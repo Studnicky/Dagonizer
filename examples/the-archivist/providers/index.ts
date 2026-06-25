@@ -39,6 +39,7 @@
 
 import type { LlmClientInterface } from '../services.ts';
 
+import { prompts } from './prompts.ts';
 import {
   AnthropicApiAdapter,
   GeminiApiAdapter,
@@ -494,30 +495,31 @@ export class ProviderInstantiator {
 
     const providerDispatch: Record<ProviderId, () => LlmClientInterface> = {
       // gemini-nano has a single on-device model; no model option accepted.
-      'gemini-nano': () => new BaseLlmClient(new GeminiNanoAdapter(), clientOptions),
+      'gemini-nano': () => new BaseLlmClient(new GeminiNanoAdapter({ 'systemPrompt': prompts.systemPrompt() }), clientOptions),
       'gemini-api':  () => {
         const key = keys['gemini-api'];
         if (typeof key !== 'string' || key.length === 0) {
           throw new LlmError('gemini-api requires an AI Studio API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
         }
-        return new BaseLlmClient(new GeminiApiAdapter(key, modelOpt), clientOptions);
+        return new BaseLlmClient(new GeminiApiAdapter(key, { ...modelOpt, 'systemPrompt': prompts.systemPrompt() }), clientOptions);
       },
       'web-llm': () => {
-        const webLlmOpts: { model?: string; onProgress?: (report: WebLlmInitReportType) => void } = { ...modelOpt };
+        const webLlmOpts: { model?: string; onProgress?: (report: WebLlmInitReportType) => void; systemPrompt?: string } = { ...modelOpt };
         if (inputs.onWebLlmProgress !== undefined) webLlmOpts.onProgress = inputs.onWebLlmProgress;
+        webLlmOpts.systemPrompt = prompts.systemPrompt();
         return new BaseLlmClient(new WebLlmAdapter(webLlmOpts), clientOptions);
       },
-      'groq':       () => new BaseLlmClient(OpenAiCompatibleAdapter.groq(requireKey('groq', 'groq'), modelOpt), clientOptions),
-      'cerebras':   () => new BaseLlmClient(OpenAiCompatibleAdapter.cerebras(requireKey('cerebras', 'cerebras'), modelOpt), clientOptions),
-      'mistral':    () => new BaseLlmClient(OpenAiCompatibleAdapter.mistral(requireKey('mistral', 'mistral'), modelOpt), clientOptions),
-      'openrouter': () => new BaseLlmClient(OpenAiCompatibleAdapter.openRouter(requireKey('openrouter', 'openrouter'), modelOpt), clientOptions),
-      'anthropic':  () => new BaseLlmClient(new AnthropicApiAdapter(requireKey('anthropic', 'anthropic'), modelOpt), clientOptions),
+      'groq':       () => new BaseLlmClient(OpenAiCompatibleAdapter.groq(requireKey('groq', 'groq'), { ...modelOpt, 'systemPrompt': prompts.systemPrompt() }), clientOptions),
+      'cerebras':   () => new BaseLlmClient(OpenAiCompatibleAdapter.cerebras(requireKey('cerebras', 'cerebras'), { ...modelOpt, 'systemPrompt': prompts.systemPrompt() }), clientOptions),
+      'mistral':    () => new BaseLlmClient(OpenAiCompatibleAdapter.mistral(requireKey('mistral', 'mistral'), { ...modelOpt, 'systemPrompt': prompts.systemPrompt() }), clientOptions),
+      'openrouter': () => new BaseLlmClient(OpenAiCompatibleAdapter.openRouter(requireKey('openrouter', 'openrouter'), { ...modelOpt, 'systemPrompt': prompts.systemPrompt() }), clientOptions),
+      'anthropic':  () => new BaseLlmClient(new AnthropicApiAdapter(requireKey('anthropic', 'anthropic'), { ...modelOpt, 'systemPrompt': prompts.systemPrompt() }), clientOptions),
       'ollama': () => {
         // No API key required. Ollama's loopback daemon accepts a placeholder
         // Bearer header. Pass the installed model the detector resolved; an
         // empty string means "no explicit model" so the adapter never sends a
         // blank model name.
-        return new BaseLlmClient(new OllamaApiAdapter(modelOpt), clientOptions);
+        return new BaseLlmClient(new OllamaApiAdapter({ ...modelOpt, 'systemPrompt': prompts.systemPrompt() }), clientOptions);
       },
     };
 

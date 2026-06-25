@@ -18,7 +18,7 @@ import {
   IdbRequest,
   type IdbDatabaseLikeInterface,
   type IdbFactoryLikeInterface,
-} from './IdbTypes.js';
+} from './IdbFactory.js';
 
 // ---------------------------------------------------------------------------
 // IndexedDbCheckpointStoreOptionsType

@@ -10,4 +10,4 @@ export type {
   WritableLikeInterface,
   FileHandleLikeInterface,
   DirectoryHandleLikeInterface,
-} from './OpfsTypes.js';
+} from './OpfsHandle.js';

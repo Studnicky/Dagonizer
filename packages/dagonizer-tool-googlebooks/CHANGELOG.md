@@ -48,8 +48,6 @@
 
 - @studnicky/dagonizer-book-entities@0.20.0
 
-## [unreleased]
-
 ### Changed
 
 - **Adapter-contract interfaces carry the `Interface` suffix (semver-major).** The framework contracts this package's public surface names are imported under their suffixed names: `ToolInterface` (the exported `GoogleBooksTool` implements it) and `EntityValidatorInterface` (the compiled response validator). The renames are type-only and propagate from `@studnicky/dagonizer`; runtime behavior is unchanged. Consumers typing against the old bare names (`Tool`, `EntityValidator`) update to the suffixed names.

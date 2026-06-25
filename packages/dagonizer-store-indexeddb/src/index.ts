@@ -13,5 +13,5 @@ export type {
   IdbOpenRequestLikeType,
   IdbRequestLikeType,
   IdbTransactionLikeInterface,
-} from './IdbTypes.js';
-export { IdbFactory, IdbRequest } from './IdbTypes.js';
+} from './IdbFactory.js';
+export { IdbFactory, IdbRequest } from './IdbFactory.js';
