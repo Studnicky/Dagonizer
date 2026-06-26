@@ -10,7 +10,7 @@ import { WellFormedValidator } from '@studnicky/dagonizer/validation';
 
 import { cartographerDAG, eventPipelineTypedDAG } from './dag.ts';
 import { gdprComplianceDAG } from './embedded-dags/GdprComplianceDAG.ts';
-import { GeoResolveDAG } from './embedded-dags/GeoResolveDAG.ts';
+import { GeoSourceResolveDAG } from './embedded-dags/GeoSourceResolveDAG.ts';
 import { ingestSourceDAG } from './embedded-dags/IngestSourceDAG.ts';
 import { orderEnrichmentDAG } from './embedded-dags/OrderEnrichmentDAG.ts';
 import { geoPipelineDAG } from './embedded-dags/GeoPipelineDAG.ts';
@@ -21,15 +21,15 @@ import { pipelineFacilityScanDAG } from './embedded-dags/PipelineFacilityScanDAG
 import { pipelineDeliveryConfirmationDAG } from './embedded-dags/PipelineDeliveryConfirmationDAG.ts';
 import { GeoResolvers } from './services/GeoResolvers.ts';
 
-// Build the geo-resolve DAG with recorded (offline) resolvers for validation.
+// Build the geo-source-resolve DAG with recorded (offline) resolvers for validation.
 const geoServices = GeoResolvers.recorded();
-const geoResolveBundle = GeoResolveDAG.build(geoServices.reverseGeocoder, geoServices.ipGeolocator);
-const geoResolveDAG = geoResolveBundle.dags[0];
+const geoSourceResolveBundle = GeoSourceResolveDAG.build(geoServices.ipGeolocator, geoServices.addressGeocoder);
+const geoSourceResolveDAG = geoSourceResolveBundle.dags[0];
 
 const dags = [
   { 'label': 'cartographer',      'dag': cartographerDAG },
   { 'label': 'ingest-source',     'dag': ingestSourceDAG },
-  { 'label': 'geo-resolve',       'dag': geoResolveDAG },
+  { 'label': 'geo-source-resolve', 'dag': geoSourceResolveDAG },
   { 'label': 'order-enrichment',  'dag': orderEnrichmentDAG },
   { 'label': 'gdpr-compliance',   'dag': gdprComplianceDAG },
   // Wave 4-5: per-type processing layer.

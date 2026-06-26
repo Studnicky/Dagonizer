@@ -453,8 +453,9 @@ type LifecycleVariant = typeof lc.variant;
 const lifecycleLog: Record<LifecycleVariant, () => void> = {
   'completed':      () => { logger.result(`responded: ${cancelResult.state.draft}`); },
   'cancelled':      () => {
-    const cancelled = lc as Extract<typeof lc, { variant: 'cancelled' }>;
-    logger.result(`visitor abandoned at: ${cancelled.reason}`);
+    if (lc.variant === 'cancelled') {
+      logger.result(`visitor abandoned at: ${lc.reason}`);
+    }
   },
   'timed_out':      () => { logger.result(`hit deadline at: ${lc.finishedAt}`); },
   'failed':         () => { logger.result(`execution failed at: ${lc.finishedAt}`); },

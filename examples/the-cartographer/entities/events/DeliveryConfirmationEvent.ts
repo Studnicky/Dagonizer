@@ -33,12 +33,12 @@ export const DeliveryConfirmationEventSchema = {
     'body': {
       'type': 'object',
       'required': [
-        'scanSeq', 'latitude', 'longitude', 'ipAddress',
+        'scanSeq', 'latitude', 'longitude', 'ipAddress', 'localeTag', 'countryCode',
         'legFromLat', 'legFromLng', 'originLat', 'originLng', 'destLat', 'destLng',
         'carrier', 'status', 'rawTimestamp',
         'delivered', 'rawPromisedDeliveryAt', 'disruptionReason',
         'recipientName', 'recipientEmail', 'recipientPhone', 'recipientAddress', 'recipientCountry',
-        'marketingConsent', 'lawfulBasis', 'specialCategory',
+        'marketingConsent', 'lawfulBasis', 'specialCategory', 'address', 'phone',
       ],
       'properties': {
         'scanSeq':          { 'type': 'number' },
@@ -46,6 +46,9 @@ export const DeliveryConfirmationEventSchema = {
         'longitude':        { 'type': 'number' },
         // The asset's per-region public gateway IP (the IP modality's signal).
         'ipAddress':        { 'type': 'string' },
+        // Source-supplied locale tag (BCP-47) and ISO-2 country code (when available).
+        'localeTag':        { 'type': 'string' },
+        'countryCode':      { 'type': 'string' },
         // journey geometry (previous-scan + shipment-level origin/destination)
         'legFromLat':       { 'type': 'number' },
         'legFromLng':       { 'type': 'number' },
@@ -70,6 +73,8 @@ export const DeliveryConfirmationEventSchema = {
         'marketingConsent': { 'type': 'boolean' },
         'lawfulBasis':      { 'type': 'string', 'enum': ['contract', 'consent', 'legitimate-interest', 'none'] },
         'specialCategory':  { 'type': 'string', 'enum': ['none', 'health'] },
+        'address':          { 'type': 'string' },
+        'phone':            { 'type': 'string' },
       },
       'additionalProperties': false,
     },

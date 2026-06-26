@@ -11,8 +11,7 @@
  * fixture-miss outcomes resolve with `error: null`.
  *
  * The `reverse-geocode` / `ip-geolocate` nodes read `error` and append it to
- * `state.errors`; the candidate is stored on `state.gpsCandidate` /
- * `state.ipCandidate` exactly as before.
+ * `state.errors`; the candidate is stored on `state.ipCandidate`.
  */
 
 // #region geo-lookup-outcome

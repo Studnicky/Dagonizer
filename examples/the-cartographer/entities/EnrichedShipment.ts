@@ -90,8 +90,9 @@ export const EnrichedShipmentSchema = {
       'required': [
         'path',
         'geoLookupRun', 'geoLookupSkipped',
-        'reverseGeocodeRun', 'ipGeolocateRun', 'ipGeolocateSkipped',
+        'ipGeolocateRun', 'ipGeolocateSkipped',
         'geoConfidence', 'geoModalities',
+        'geoSourceModel', 'geoFallbackUsed',
         'redactionRun', 'redactionSkipped',
         'pricingRun', 'pricingSkipped',
         'etaRun', 'etaSkipped',
@@ -104,12 +105,15 @@ export const EnrichedShipmentSchema = {
         'geoLookupRun':      { 'type': 'boolean' },
         'geoLookupSkipped':  { 'type': 'boolean' },
         // Real API-call accounting inside geo-resolve.
-        'reverseGeocodeRun': { 'type': 'boolean' },
         'ipGeolocateRun':    { 'type': 'boolean' },
         'ipGeolocateSkipped': { 'type': 'boolean' },
         // Multi-modal fusion outcome carried for the report.
         'geoConfidence':     { 'type': 'number', 'minimum': 0, 'maximum': 1 },
         'geoModalities':     { 'type': 'array', 'items': { 'type': 'string' } },
+        // Source-model classification: which geo signal classify-geo-source selected.
+        'geoSourceModel':    { 'type': 'string' },
+        // Whether resolve-coords-fallback fired (CoordTimezone secondary lookup).
+        'geoFallbackUsed':   { 'type': 'boolean' },
         'redactionRun':      { 'type': 'boolean' },
         'redactionSkipped':  { 'type': 'boolean' },
         'pricingRun':        { 'type': 'boolean' },

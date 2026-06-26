@@ -119,26 +119,24 @@ export class DagHost {
     // unexpected on this side but must not crash the host — the fallback
     // sends an UNEXPECTED_MESSAGE error for any unknown variant.
     type HostMsg = typeof message;
-    const variantDispatch: Partial<Record<HostMsg['variant'], (m: HostMsg) => Promise<void> | void>> = {
+    const variantDispatch: Partial<{ [K in HostMsg['variant']]: (m: Extract<HostMsg, { variant: K }>) => Promise<void> | void }> = {
       'init': async (m) => {
-        const im = m as HostMsg & { variant: 'init' };
-        const servicesConfig = JsonObject.is(im.servicesConfig) ? im.servicesConfig : {};
+        const servicesConfig = JsonObject.is(m.servicesConfig) ? m.servicesConfig : {};
         await this.#handleInit(
-          im.registryModule,
-          im.registryVersion,
+          m.registryModule,
+          m.registryVersion,
           servicesConfig,
-          im.keyingScheme ?? 'name',
+          m.keyingScheme ?? 'name',
         );
       },
       'execute': (m) => {
-        const em = m as HostMsg & { variant: 'execute' };
         // R3: fire-and-forget with error capture so failures reach the caller.
-        this.#handleExecute(em.request.correlationId, em.request).catch((err: unknown) => {
+        this.#handleExecute(m.request.correlationId, m.request).catch((err: unknown) => {
           const errMsg = err instanceof Error ? err.message : String(err);
           try {
             this.#channel.send({
               'variant': 'error',
-              'correlationId': em.request.correlationId,
+              'correlationId': m.request.correlationId,
               'code': 'INTERNAL_ERROR',
               'message': `DagHost execute error: ${errMsg}`,
               'recoverable': false,
@@ -147,26 +145,30 @@ export class DagHost {
         });
       },
       'abort': (m) => {
-        const am = m as HostMsg & { variant: 'abort' };
-        this.#handleAbort(am.correlationId, am.reason);
+        this.#handleAbort(m.correlationId, m.reason);
       },
       'shutdown': async () => {
         await this.#handleShutdown();
       },
     };
 
-    const handler = variantDispatch[message.variant];
-    if (handler !== undefined) {
-      await handler(message);
-    } else {
-      // Unknown variant: host→parent messages arriving on this side are unexpected.
-      this.#channel.send({
-        'variant': 'error',
-        'correlationId': null,
-        'code': 'UNEXPECTED_MESSAGE',
-        'message': `DagHost received unexpected message variant: ${String(message.variant)}`,
-        'recoverable': true,
-      });
+    // Exhaustive switch over the discriminant narrows `message` per case, so each
+    // handler call typechecks cast-free. Variants DagHost does not handle
+    // (host→parent messages arriving on this side) fall to `default`, which sends
+    // the UNEXPECTED_MESSAGE error — the prior fallback semantics, preserved exactly.
+    switch (message.variant) {
+      case 'init':     await variantDispatch.init?.(message);     break;
+      case 'execute':  await variantDispatch.execute?.(message);  break;
+      case 'abort':    await variantDispatch.abort?.(message);    break;
+      case 'shutdown': await variantDispatch.shutdown?.(message); break;
+      default:
+        this.#channel.send({
+          'variant': 'error',
+          'correlationId': null,
+          'code': 'UNEXPECTED_MESSAGE',
+          'message': `DagHost received unexpected message variant: ${String(message.variant)}`,
+          'recoverable': true,
+        });
     }
   }
 

@@ -181,14 +181,14 @@ export class CanonicalId {
         firstPublishYear = a.firstPublishYear ?? b.firstPublishYear;
       },
       'unique-union': (e) => {
-        const ue = e as UniqueUnionEntryType;
+        if (e.variant !== 'unique-union') return;
         // Dispatch map over key: each handler unions the specific array field.
         const keyDispatch: Record<UniqueUnionEntryType['key'], () => void> = {
           'languages':  () => { languages  = CanonicalId.unique([...a.languages,  ...b.languages]);  },
           'publishers': () => { publishers = CanonicalId.unique([...a.publishers, ...b.publishers]); },
           'subjects':   () => { subjects   = CanonicalId.unique([...a.subjects,   ...b.subjects]);   },
         };
-        keyDispatch[ue.key]();
+        keyDispatch[e.key]();
       },
     };
 

@@ -22,7 +22,6 @@ describe('CartographerState.defaultRouting', () => {
     const r = CartographerState.defaultRouting();
     assert.equal(r.geoLookupRun,      false);
     assert.equal(r.geoLookupSkipped,  false);
-    assert.equal(r.reverseGeocodeRun, false);
     assert.equal(r.ipGeolocateRun,    false);
     assert.equal(r.ipGeolocateSkipped, false);
     assert.equal(r.redactionRun,      false);

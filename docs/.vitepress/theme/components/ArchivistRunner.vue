@@ -38,7 +38,7 @@ import type { BackendAvailability, ProviderId } from '../../../../examples/the-a
 import type { IntentClassifier } from '../../../../examples/the-archivist/providers/IntentClassifier.ts';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
-import { ToolRegistry } from '@studnicky/dagonizer/tool';
+import { ToolRegistry, ToolInvocationState } from '@studnicky/dagonizer/tool';
 import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
@@ -105,7 +105,8 @@ const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts
 type TraceEvent =
   | { readonly variant: 'start'; readonly node: string; readonly ts: number }
   | { readonly variant: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
-  | { readonly variant: 'error'; readonly node: string; readonly ts: number; readonly message: string };
+  | { readonly variant: 'error'; readonly node: string; readonly ts: number; readonly message: string }
+  | { readonly variant: 'note';  readonly node: string; readonly ts: number; readonly message: string };
 
 const trace = ref<TraceEvent[]>([]);
 const terminalVariant = ref<'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out'>('pending');
@@ -118,9 +119,7 @@ const intentClassifier = shallowRef<IntentClassifier | null>(null);
 
 const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 const memoryStore = new MemoryStore();
-memoryStore.enablePersistence();
 const memoryTick = ref(0); // bumped after each write so MemoryGraph re-renders
-const isPersisted = ref(memoryStore.isPersisted);
 // Reactive event sink owned by Vue: DomConsoleLogger.onEmit appends here, so
 // TraceFeed re-renders from `logEvents` without any subscribe callback.
 const logEvents = ref<LogEvent[]>([]);
@@ -295,20 +294,6 @@ async function resumeFromCheckpoint(): Promise<void> {
     activeAbortController = null;
     isRunning.value = false;
   }
-}
-
-// ── Persistence toggle ───────────────────────────────────────────────────
-function togglePersistence(): void {
-  if (memoryStore.isPersisted) {
-    memoryStore.disablePersistence();
-    isPersisted.value = false;
-    logger.info('memory store: switched to in-memory mode (localStorage dump removed)');
-  } else {
-    memoryStore.enablePersistence();
-    isPersisted.value = true;
-    logger.info('memory store: switched to persisted mode');
-  }
-  memoryTick.value++;
 }
 
 // UI state machine: runner subscribes; views derive UI from the
@@ -493,9 +478,17 @@ const ARCHIVIST_NODE_TRACE: Readonly<Record<string, (state: ArchivistState, log:
 };
 
 /**
- * Browser-specific Archivist observer. Extends ObservedDag so every lifecycle
- * hook emits a leveled log line through the injected DomConsoleLogger AND drives
- * the Vue reactive state (trace feed, DAG graph, prov recording, etc.).
+ * Browser-specific Archivist observer. Extends ObservedDag and drives the Vue
+ * reactive state directly: structured trace entries, DAG graph animation,
+ * provenance recording, and runner machine pulses.
+ *
+ * Structured trace rows are emitted only for top-level pipeline nodes
+ * (placementPath.length === 0). Inner scatter/tool-clone nodes update
+ * the cytoscape graph and prov store without adding trace rows, keeping
+ * the feed readable as a clean lifecycle timeline.
+ *
+ * Tolerated inner tool-clone failures (output === 'error' on a ToolInvocationState)
+ * produce a muted 'note' trace entry rather than a red 'error' row.
  *
  * Constructed once per run inside `ask()` / `resumeFromCheckpoint()`.
  */
@@ -516,7 +509,6 @@ class ArchivistBrowserObserver extends ObservedDag<ArchivistState> {
   }
 
   protected override onFlowStart(dagName: string): void {
-    super.onFlowStart(dagName);
     if (this.#fromCursor !== null) dagGraph.value?.setActive(this.#fromCursor);
     this.#prov.recordFlowStart(dagName);
   }
@@ -526,12 +518,15 @@ class ArchivistBrowserObserver extends ObservedDag<ArchivistState> {
     state: ArchivistState,
     placementPath: readonly string[],
   ): void {
-    super.onNodeStart(nodeName, state, placementPath);
     // `placementPath` is the ordered list of parent embedded-DAG placement names.
     // Join with the node name to form the cytoscape id used by `DagGraph`; this
     // disambiguates same-named inner placements so only the executing one lights up.
     const fullId = [...placementPath, nodeName].join('/');
-    trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'start' }];
+    // Trace rows are emitted only for top-level nodes; inner nodes update the
+    // graph and prov store without contributing feed rows.
+    if (placementPath.length === 0) {
+      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'start' }];
+    }
     dagGraph.value?.setActive(fullId);
     this.#prov.recordNodeStart(nodeName);
     runnerMachine.pulse({ 'type': 'nodeStart', 'node': nodeName });
@@ -543,13 +538,42 @@ class ArchivistBrowserObserver extends ObservedDag<ArchivistState> {
     state: ArchivistState,
     placementPath: readonly string[],
   ): void {
-    super.onNodeEnd(nodeName, output, state, placementPath);
     const fullId = [...placementPath, nodeName].join('/');
-    trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'variant': 'end' }];
+    const isInner = placementPath.length > 0;
+
+    if (isInner) {
+      // Inner tool-clone nodes: update graph + prov without adding start/end
+      // trace rows. A failed clone (output === 'error' on a ToolInvocationState)
+      // emits a single muted 'note' row classifying the tolerated failure.
+      if (output === 'error' && state instanceof ToolInvocationState) {
+        const lastErr = state.errors[state.errors.length - 1];
+        const rawName = lastErr !== undefined
+          ? (lastErr.context['toolName'])
+          : undefined;
+        const toolName = typeof rawName === 'string' && rawName.length > 0
+          ? rawName
+          : (placementPath[placementPath.length - 1] ?? nodeName);
+        const errMsg = lastErr !== undefined ? lastErr.message : '';
+        const isRateLimit = /429|too many requests/i.test(errMsg);
+        const noteMsg = isRateLimit
+          ? `${toolName} · rate-limited · skipped`
+          : `${toolName} · unavailable · skipped`;
+        trace.value = [...trace.value, {
+          'node': toolName,
+          'ts': Date.now(),
+          'variant': 'note',
+          'message': noteMsg,
+        }];
+      }
+    } else {
+      // Top-level nodes emit structured start/end trace rows.
+      trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'variant': 'end' }];
+    }
+
     dagGraph.value?.setCompleted(fullId);
     if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
-    // The parent observer also fires for nodes inside isolated child states
-    // (e.g. the tool:<name> scatter bodies), whose state is NOT an
+    // The parent observer fires for nodes inside isolated child states
+    // (e.g. the tool:<name> scatter bodies) whose state is NOT an
     // ArchivistState — only project the parent's ArchivistState into memory.
     if (state instanceof ArchivistState) {
       StateProjection.project(state, memoryStore);
@@ -558,6 +582,12 @@ class ArchivistBrowserObserver extends ObservedDag<ArchivistState> {
       for (let i = this.#shownErrorCount; i < state.errors.length; i++) {
         const err = state.errors[i];
         if (err === undefined) continue;
+        // Tolerated tool-clone failures (rate limits, unreachable APIs) are
+        // already surfaced as muted 'note' rows from the inner-node path, and
+        // the any-success scatter absorbs them — they are not pipeline errors.
+        // Skip them here so the same failure does not also render as an
+        // alarming 'error' row.
+        if (err.code === 'toolExecutionFailed') continue;
         trace.value = [...trace.value, {
           'node': err.operation !== '' ? err.operation : fullId,
           'ts': Date.now(),
@@ -581,12 +611,26 @@ class ArchivistBrowserObserver extends ObservedDag<ArchivistState> {
     state: ArchivistState,
     placementPath: readonly string[],
   ): void {
-    super.onError(nodeName, error, state, placementPath);
     const fullId = [...placementPath, nodeName].join('/');
-    trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'error', 'message': error.message !== '' ? error.message : String(error) }];
+    // Only top-level (placementPath empty) errors become red 'error' trace rows.
+    // Inner tool-clone failures are already handled as muted 'note' rows in onNodeEnd.
+    if (placementPath.length === 0) {
+      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'error', 'message': error.message !== '' ? error.message : String(error) }];
+    }
     dagGraph.value?.setErrored(fullId);
     this.#prov.recordError(nodeName, error);
     runnerMachine.pulse({ 'type': 'nodeError', 'node': nodeName, 'error': error });
+  }
+
+  // Phase enter/exit are internal scheduling markers. The base ObservedDag
+  // logs them as `[dag:phase] …` trace lines; suppress that raw framework
+  // noise so the feed reads as a clean node lifecycle (no super call).
+  protected override onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string): void {
+    void dagName; void phase; void placementName;
+  }
+
+  protected override onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string): void {
+    void dagName; void phase; void placementName;
   }
 
   protected override onFlowEnd(
@@ -594,7 +638,6 @@ class ArchivistBrowserObserver extends ObservedDag<ArchivistState> {
     state: ArchivistState,
     result: ExecutionResultType<ArchivistState>,
   ): void {
-    super.onFlowEnd(dagName, state, result);
     const lifecycleVariant = state.lifecycle.variant;
     if (lifecycleVariant === 'completed' || lifecycleVariant === 'failed' || lifecycleVariant === 'cancelled' || lifecycleVariant === 'timed_out') {
       terminalVariant.value = lifecycleVariant;
@@ -1051,13 +1094,6 @@ function reset(): void {
             <span class="ar-hint">{{ tripleCount }} triples</span>
           </div>
           <PanesTabs :tabs="rightTabs" default-key="dag" class="ar-tabs ar-tabs--right">
-            <template #tab-suffix>
-              <button
-                :class="['persist-toggle', isPersisted ? 'persist-toggle--on' : 'persist-toggle--off']"
-                :title="isPersisted ? 'Persisted to localStorage. Click to switch to in-memory.' : 'In-memory only. Click to enable localStorage persistence.'"
-                @click="togglePersistence"
-              >{{ isPersisted ? '⎓ persisted' : '○ in-memory' }}</button>
-            </template>
 
             <!-- DAG tab: live execution graph -->
             <template #dag>

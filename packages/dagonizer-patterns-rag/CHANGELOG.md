@@ -12,15 +12,13 @@
 
 ## 0.22.0
 
-## [Unreleased]
-
 ### Changed
 
 - **Adapter-contract interfaces carry the `Interface` suffix (semver-major).** The framework contracts this package's public surface names are imported under their suffixed names: `ToolInterface` and `LlmClientInterface` (the service contracts the RAG pattern nodes call). The renames are type-only and propagate from `@studnicky/dagonizer`; runtime behavior is unchanged. Consumers typing against the old bare names (`Tool`, `LlmClient`) update to the suffixed names.
 - `LlmDispatchNode` owns `extractContent(response)`, which extracts prose
   from the chat-response discriminated union once. `DecisionNode` and
   `ComposeNode` call it instead of repeating the tool-vs-text guard.
-- **Naming: domain-class verbs (semver-major).** The pattern override seams rename: `ScoutNode.buildInput` → `composeInput`, `LlmDispatchNode.buildPrompt` → `composePrompt`, `LlmDispatchNode.buildRequest` → `composeRequest`, `DecisionNode.parseChoice` → `decodeChoice`. Subclasses override the new names; behavior is unchanged.
+- **Naming: domain-class verbs (semver-major).** The pattern override seams are `ScoutNode.composeInput`, `LlmDispatchNode.composePrompt`, `LlmDispatchNode.composeRequest`, and `DecisionNode.decodeChoice`. Subclasses override these names; behavior is unchanged.
 
 ## 0.21.0
 

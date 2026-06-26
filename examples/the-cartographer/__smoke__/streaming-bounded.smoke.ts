@@ -40,7 +40,7 @@ import { Dagonizer } from '@studnicky/dagonizer';
 
 import { CartographerState } from '../CartographerState.ts';
 import { cartographerBundle, eventPipelineBundle } from '../dag.ts';
-import { GeoResolveDAG } from '../embedded-dags/GeoResolveDAG.ts';
+import { GeoSourceResolveDAG } from '../embedded-dags/GeoSourceResolveDAG.ts';
 import { ingestSourceBundle } from '../embedded-dags/IngestSourceDAG.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 
@@ -89,7 +89,7 @@ class Harness {
   static dispatcher(): Dagonizer<CartographerState> {
     const services = GeoResolvers.recorded();
     const dispatcher = new Dagonizer<CartographerState>({});
-    dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+    dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     dispatcher.registerBundle(eventPipelineBundle);
     dispatcher.registerBundle(ingestSourceBundle);
     dispatcher.registerBundle(cartographerBundle);

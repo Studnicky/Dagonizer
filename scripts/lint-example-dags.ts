@@ -84,19 +84,16 @@ if (archivistDAG === undefined || bookSearchScatterDAG === undefined || composeR
   process.exit(1);
 }
 
-// ── The Cartographer: build geo-resolve DAG via GeoResolveDAG.build() ─────────
-import { GeoResolveDAG }      from '../examples/the-cartographer/embedded-dags/GeoResolveDAG.js';
-import { GeoResolvers }       from '../examples/the-cartographer/services/GeoResolvers.js';
+// ── The Cartographer: build geo-source-resolve DAG via GeoSourceResolveDAG.build() ──
+import { GeoSourceResolveDAG } from '../examples/the-cartographer/embedded-dags/GeoSourceResolveDAG.js';
+import { GeoResolvers }        from '../examples/the-cartographer/services/GeoResolvers.js';
 
 const cartographerServices = GeoResolvers.recorded();
-const geoBundle = GeoResolveDAG.build(
-  cartographerServices.reverseGeocoder,
-  cartographerServices.ipGeolocator,
-);
-const geoResolveDAG = geoBundle.dags[0];
+const geoBundle = GeoSourceResolveDAG.build(cartographerServices.ipGeolocator);
+const geoSourceResolveDAG = geoBundle.dags[0];
 
-if (geoResolveDAG === undefined) {
-  process.stdout.write('lint-example-dags: GeoResolveDAG.build() returned no DAGs.\n');
+if (geoSourceResolveDAG === undefined) {
+  process.stdout.write('lint-example-dags: GeoSourceResolveDAG.build() returned no DAGs.\n');
   process.exit(1);
 }
 
@@ -150,7 +147,7 @@ const dags: ReadonlyArray<readonly [string, DAGType]> = [
   ['dags / 10-shared-state (main-flow)',     sharedParentDAG],
   ['the-cartographer / cartographerDAG',       cartographerDAG],
   ['the-cartographer / ingestSourceDAG',       ingestSourceDAG],
-  ['the-cartographer / geoResolveDAG',         geoResolveDAG],
+  ['the-cartographer / geoSourceResolveDAG',    geoSourceResolveDAG],
   ['the-cartographer / streamEventDAG',        streamEventDAG],
   ['the-cartographer / orderEnrichmentDAG',    orderEnrichmentDAG],
   ['the-cartographer / eventPipelineTypedDAG', eventPipelineTypedDAG],

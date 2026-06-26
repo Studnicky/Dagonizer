@@ -25,7 +25,7 @@ import { Dagonizer } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { cartographerBundle } from '../../dag.ts';
 import { ingestSourceBundle } from '../../embedded-dags/IngestSourceDAG.ts';
-import { GeoResolveDAG } from '../../embedded-dags/GeoResolveDAG.ts';
+import { GeoSourceResolveDAG } from '../../embedded-dags/GeoSourceResolveDAG.ts';
 import { orderEnrichmentBundle } from '../../embedded-dags/OrderEnrichmentDAG.ts';
 import { gdprComplianceBundle } from '../../embedded-dags/GdprComplianceDAG.ts';
 import { GeoResolvers } from '../../services/GeoResolvers.ts';
@@ -40,7 +40,7 @@ class Harness {
   static dispatcher(): Dagonizer<CartographerState> {
     const services = GeoResolvers.recorded();
     const dispatcher = new Dagonizer<CartographerState>({});
-    dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+    dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
     dispatcher.registerBundle(ingestSourceBundle);
@@ -323,7 +323,6 @@ describe('Cartographer DAG bundle registration', () => {
 
   it('the dispatcher can be constructed with recorded services', () => {
     const services = GeoResolvers.recorded();
-    assert.ok(services.reverseGeocoder !== undefined);
     assert.ok(services.ipGeolocator !== undefined);
   });
 });

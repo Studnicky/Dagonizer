@@ -305,15 +305,14 @@ export class ChannelDispatch {
     // Unknown variants (e.g. 'intermediate') are observability-only and
     // require no correlation action — the fallback is a no-op.
     type RouteMsg = BridgeMessageType;
-    const variantDispatch: Partial<Record<RouteMsg['variant'], (m: RouteMsg) => void>> = {
+    const variantDispatch: Partial<{ [K in RouteMsg['variant']]: (m: Extract<RouteMsg, { variant: K }>) => void }> = {
       'ready': (m) => {
-        const rm = m as RouteMsg & { variant: 'ready' };
         const waiter = this.#initWaiter;
         if (waiter === null) return;
         this.#initWaiter = null;
-        if (rm.registryVersion !== waiter.expectedVersion) {
+        if (m.registryVersion !== waiter.expectedVersion) {
           waiter.reject(new Error(
-            `Channel registry version mismatch: expected '${waiter.expectedVersion}', got '${rm.registryVersion}'`,
+            `Channel registry version mismatch: expected '${waiter.expectedVersion}', got '${m.registryVersion}'`,
           ));
         } else {
           waiter.resolve();
@@ -321,50 +320,50 @@ export class ChannelDispatch {
       },
 
       'result': (m) => {
-        const rm = m as RouteMsg & { variant: 'result' };
-        const correlationId = rm.response.correlationId;
+        const correlationId = m.response.correlationId;
         const entry = this.#pending.get(correlationId);
         if (entry === undefined) return;
         // Protocol-boundary narrowing: the BridgeMessage 'result' branch carries
         // an inline error shape structurally identical to the canonical
         // `NodeErrorWireType`. `item.snapshot` (schema `{ type: ['object','null'] }`)
         // is narrowed to `JsonObjectType | null` via `JsonObject.is`.
-        const errors: readonly NodeErrorWireType[] = rm.response.errors;
+        const errors: readonly NodeErrorWireType[] = m.response.errors;
 
         if (entry.variant === 'single') {
           // Single-item (N=1): unpack items[0] into a flat DagOutcomeType.
-          const firstItem = rm.response.items[0];
+          const firstItem = m.response.items[0];
           const firstSnapshot = firstItem?.snapshot;
           entry.settle({
             'terminalOutput': firstItem?.terminalOutcome ?? 'failed',
             'errors': errors,
             'stateSnapshot': JsonObject.is(firstSnapshot) ? firstSnapshot : null,
-            'intermediates': rm.response.intermediates,
+            'intermediates': m.response.intermediates,
           });
         } else {
           // Batch (N>1): produce one BatchRunResultType per item.
-          const results: BatchRunResultType[] = rm.response.items.map((item: { id: string; terminalOutcome: string; snapshot?: Record<string, unknown> | null }) => ({
+          const results: BatchRunResultType[] = m.response.items.map((item: { id: string; terminalOutcome: string; snapshot?: Record<string, unknown> | null }) => ({
             'id': item.id,
             'terminalOutput': item.terminalOutcome,
             'errors': errors,
             'stateSnapshot': JsonObject.is(item.snapshot) ? item.snapshot : null,
-            'intermediates': rm.response.intermediates,
+            'intermediates': m.response.intermediates,
           }));
           entry.settle(results);
         }
       },
 
       'instrumentation': (m) => {
-        const im = m as RouteMsg & { variant: 'instrumentation' };
-        const entry = this.#pending.get(im.correlationId);
+        const entry = this.#pending.get(m.correlationId);
         if (entry === undefined || entry.relay === null) return;
         const { relay } = entry;
         // Ajv-validated boundary: placementPath is an array of strings by the
         // BridgeMessage schema; a `string[]` widens to the `readonly string[]`
         // the ObserverRelayInterface expects with no cast.
-        const path: readonly string[] = im.placementPath;
+        const path: readonly string[] = m.placementPath;
         // Dispatch map over hook type: each hook handler forwards the event to the relay.
-        type InstrMsg = typeof im & { variant: 'instrumentation' };
+        // InstrMsg is a single flat shape (not a union on hook), so the map is
+        // Record<hook, (hm: InstrMsg) => void>. The call site passes m directly.
+        type InstrMsg = typeof m;
         const hookDispatch: Partial<Record<InstrMsg['hook'], (hm: InstrMsg) => void>> = {
           'nodeStart': (hm) => {
             relay.onNodeStart(hm.nodeName, path);
@@ -386,22 +385,21 @@ export class ChannelDispatch {
             }
           },
         };
-        hookDispatch[im.hook]?.(im);
+        hookDispatch[m.hook]?.(m);
       },
 
       'error': (m) => {
-        const em = m as RouteMsg & { variant: 'error' };
-        const correlationId = em.correlationId;
+        const correlationId = m.correlationId;
         if (correlationId !== null) {
           // Request-scoped error: settle that specific pending entry.
           const entry = this.#pending.get(correlationId);
           if (entry !== undefined) {
             if (entry.variant === 'single') {
-              entry.settle(DagOutcome.transportError(correlationId, { 'code': em.code, 'message': em.message }));
+              entry.settle(DagOutcome.transportError(correlationId, { 'code': m.code, 'message': m.message }));
             } else {
               entry.settle(
                 entry.itemIds.map((id) =>
-                  DagOutcome.batchItemTransportError(id, correlationId, { 'code': em.code, 'message': em.message }),
+                  DagOutcome.batchItemTransportError(id, correlationId, { 'code': m.code, 'message': m.message }),
                 ),
               );
             }
@@ -410,12 +408,26 @@ export class ChannelDispatch {
           // Channel-scoped error (null correlationId): the host is in a bad state.
           // Single code path — failAll rejects an in-flight init and settles
           // every pending request as a transport error.
-          this.failAll(em.code, em.message);
+          this.failAll(m.code, m.message);
         }
       },
     };
 
-    variantDispatch[msg.variant]?.(msg);
+    // Exhaustive switch over the discriminant narrows `msg` per case, so each
+    // handler call typechecks cast-free. Unhandled variants (init/execute/abort/
+    // shutdown/intermediate) are observability-only on this side and fall through
+    // as no-ops, preserving the prior optional-chaining absence semantics.
+    switch (msg.variant) {
+      case 'ready':           variantDispatch.ready?.(msg);           break;
+      case 'result':          variantDispatch.result?.(msg);          break;
+      case 'instrumentation': variantDispatch.instrumentation?.(msg); break;
+      case 'error':           variantDispatch.error?.(msg);           break;
+      case 'init':
+      case 'execute':
+      case 'abort':
+      case 'shutdown':
+      case 'intermediate':    break;
+    }
   }
 }
 

@@ -120,7 +120,7 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
       if (record.consentStatus === 'missing') entry.consentMissing++;
       if (record.consentStatus === 'expired') entry.consentExpired++;
 
-      SummarizeInsightsNode.sizeTierDispatch[record.sizeTier as SizeTierKey]?.(entry);
+      SummarizeInsightsNode.sizeTierDispatch[record.sizeTier]?.(entry);
 
       // ── (b) collect the scan for this journey ───────────────────────────────
       let scans = scansByShipment.get(record.shipmentId);

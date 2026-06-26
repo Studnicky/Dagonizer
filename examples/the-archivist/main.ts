@@ -42,6 +42,7 @@ import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedDag } from './ObservedDag.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import { EmbedderProvisioner } from './providers/EmbedderProvisioner.ts';
+import { prompts } from './providers/prompts.ts';
 import type { ArchivistServices, LlmClientInterface } from './services.ts';
 
 import { GeminiApiAdapter }   from '@studnicky/dagonizer-adapter-gemini-api';
@@ -217,7 +218,7 @@ const registry = new LlmAdapterRegistry();
 // On-device first. The model name is discovered via the adapter instance
 // contract: `selectChatModel()` resolves the single on-device descriptor
 // ('gemini-nano'); no cosmetic placeholder literal at the registration site.
-const geminiNanoAdapter = new GeminiNanoAdapter();
+const geminiNanoAdapter = new GeminiNanoAdapter({ 'systemPrompt': prompts.systemPrompt() });
 const geminiNanoModel = await geminiNanoAdapter.selectChatModel();
 if (geminiNanoModel !== null) {
   registry.register(
@@ -238,7 +239,7 @@ class LoggingWebLlmAdapter extends WebLlmAdapter {
 // reads web-llm's static prebuilt catalog. The visitor's `WEB_LLM_MODEL`
 // URL param picks a specific prebuilt model when supplied; otherwise the
 // demo prefers the Phi-3.5 mini build the adapter is documented around.
-const loggingWebLlmAdapter = new LoggingWebLlmAdapter();
+const loggingWebLlmAdapter = new LoggingWebLlmAdapter({ 'systemPrompt': prompts.systemPrompt() });
 const webLlmModel = await loggingWebLlmAdapter.selectChatModel({
   'preferred': params.get('webLlmModel') ?? 'Phi-3.5-mini-instruct-q4f16_1-MLC',
 });
@@ -255,7 +256,7 @@ if (webLlmModel !== null) {
 // on-device adapter is even tried. Model is discovered via `selectChatModel`
 // so the adapter always uses a model the provider actually serves.
 if (urlApiKey.length > 0) {
-  const geminiApiAdapter = new GeminiApiAdapter(urlApiKey);
+  const geminiApiAdapter = new GeminiApiAdapter(urlApiKey, { 'systemPrompt': prompts.systemPrompt() });
   const geminiApiModel = await geminiApiAdapter.selectChatModel();
   if (geminiApiModel !== null) {
     registry.register(
@@ -271,7 +272,7 @@ if (urlApiKey.length > 0) {
 // picks the best available chat model. Ollama is skipped entirely when no
 // chat model is installed, so the cascade never falls into a "model not
 // found" loop.
-const ollamaAdapter = new OllamaApiAdapter({ 'baseUrl': 'http://127.0.0.1:11434' });
+const ollamaAdapter = new OllamaApiAdapter({ 'baseUrl': 'http://127.0.0.1:11434', 'systemPrompt': prompts.systemPrompt() });
 const ollamaModel = await ollamaAdapter.selectChatModel();
 if (ollamaModel !== null) {
   registry.register(

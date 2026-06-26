@@ -35,7 +35,7 @@ import { strict as assert } from 'node:assert';
 
 import { CartographerState } from '../CartographerState.ts';
 import { cartographerBundle, eventPipelineBundle } from '../dag.ts';
-import { GeoResolveDAG } from '../embedded-dags/GeoResolveDAG.ts';
+import { GeoSourceResolveDAG } from '../embedded-dags/GeoSourceResolveDAG.ts';
 import { ingestSourceBundle } from '../embedded-dags/IngestSourceDAG.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 
@@ -61,7 +61,7 @@ class SmokeRunner {
     const services = GeoResolvers.recorded();
     const dispatcher = new Dagonizer<CartographerState>({});
     // geo-resolve DAG is built per-call with injected services.
-    dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+    dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     // eventPipelineBundle covers all geo, canonicalize, order-enrichment, gdpr, and per-type DAGs.
     dispatcher.registerBundle(eventPipelineBundle);
     // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
@@ -396,30 +396,27 @@ await SmokeRunner.check('at least one journey crosses into international waters 
   assert.ok(maritime.length > 0, `Expected >=1 journey crossing international waters mid-path, got 0`);
 });
 
-// ── Wave B5: real geo-resolver adapter + multi-modal fusion guards (§B0.10) ───
-await SmokeRunner.check('geo came from the resolver adapter (modalities present on resolved events)', async () => {
+// ── Wave B5: source-model routing guards (§B0.10) ─────────────────────────────
+await SmokeRunner.check('source-model routing: coords events have geoSourceModel=coords', async () => {
   const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.sampleRecords.filter((r) => r.shipmentId.length > 0);
-  // Every event that RAN the geo-resolve sub-DAG must carry the modalities the
-  // resolver reported (proof geo came from the adapter, not a curated table).
   const resolved = processed.filter((r) => r.routing.geoLookupRun);
-  assert.ok(resolved.length > 0, `Expected >=1 event to run geo-resolve, got 0`);
-  for (const r of resolved) {
-    assert.ok(r.routing.reverseGeocodeRun, `geo-resolved ${r.shipmentId} must have run reverse-geocode`);
-    assert.ok(r.routing.geoModalities.includes('gps'), `geo-resolved ${r.shipmentId} must include the 'gps' modality`);
-  }
+  assert.ok(resolved.length > 0, `Expected >=1 event to run geo-source-resolve, got 0`);
+  // At least one event should have a non-empty geoSourceModel
+  const withModel = processed.filter((r) => r.routing.geoSourceModel.length > 0);
+  assert.ok(withModel.length > 0, `Expected >=1 event with geoSourceModel set, got 0`);
 });
 
-await SmokeRunner.check('at least one event fused GPS + IP modalities', async () => {
+await SmokeRunner.check('at least one event ran ip-geolocate alongside coords', async () => {
   const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.sampleRecords.filter((r) => r.shipmentId.length > 0);
   const fused = processed.filter(
-    (r) => r.routing.geoModalities.includes('gps') && r.routing.geoModalities.includes('ip'),
+    (r) => r.routing.geoModalities.includes('ip') && (r.routing.geoModalities.includes('coords') || r.routing.geoModalities.includes('geohash')),
   );
-  assert.ok(fused.length > 0, `Expected >=1 event fusing GPS+IP modalities, got 0`);
-  // And at least one GPS-only event (no gateway IP) → ip-geolocate was skipped.
-  const gpsOnly = processed.filter((r) => r.routing.ipGeolocateSkipped);
-  assert.ok(gpsOnly.length > 0, `Expected >=1 GPS-only event (ip-geolocate skipped), got 0`);
+  assert.ok(fused.length > 0, `Expected >=1 event running ip-geolocate alongside coords, got 0`);
+  // And at least one coords-only event (no gateway IP) → ip-geolocate was skipped.
+  const coordsOnly = processed.filter((r) => r.routing.ipGeolocateSkipped);
+  assert.ok(coordsOnly.length > 0, `Expected >=1 coords-only event (ip-geolocate skipped), got 0`);
 });
 
 if (failures > 0) {

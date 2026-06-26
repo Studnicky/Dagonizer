@@ -1,19 +1,19 @@
 /**
  * OpfsEnv: accesses navigator.storage.getDirectory() via Reflect.get
- * without DOM lib or `as unknown as` casts.
+ * without DOM lib or `as` casts.
  *
- * Narrowing is done with type-predicate guards (`noun.is(...)`), mirroring
- * `PluginLoader.isPlugin` in the core package. Each guard checks structure at
- * runtime and returns a type predicate, so the use site narrows cast-free.
- * The only `as` permitted is the `(value as Record<string, unknown>)` index
- * access INSIDE a guard body — the sanctioned idiom from PluginLoader.
+ * Narrowing is done with type-predicate guards (`noun.is(...)`). Each guard
+ * checks structure at runtime and returns a type predicate, so the use site
+ * narrows cast-free. The `isObject` guard narrows `unknown` to
+ * `Record<string, unknown>` first; subsequent property-type checks use that
+ * already-narrowed type directly — zero `as` casts anywhere.
  *
  * Static class — noun.verb(). No freestanding helpers.
  */
 
 import { StoreError } from '@studnicky/dagonizer/store';
 
-import type { DirectoryHandleLikeInterface } from './OpfsTypes.js';
+import type { DirectoryHandleLikeInterface } from './OpfsHandle.js';
 
 /**
  * Structural shape of a storage manager that exposes `getDirectory()`.
@@ -33,28 +33,27 @@ export class OpfsEnv {
 
   /**
    * Type-guard: narrows unknown → GetDirectoryLikeInterface via structural check.
-   * Mirrors `PluginLoader.isPlugin` — `(value as Record<string, unknown>)['name']`
-   * indexing inside the guard body is the sanctioned narrowing idiom.
+   * `isObject` narrows `value` to `Record<string, unknown>` first; the
+   * `typeof value['getDirectory']` check then operates on the narrowed type,
+   * no `as` cast required.
    */
   static hasGetDirectory(value: unknown): value is GetDirectoryLikeInterface {
-    return (
-      OpfsEnv.isObject(value) &&
-      'getDirectory' in value &&
-      typeof (value as Record<string, unknown>)['getDirectory'] === 'function'
-    );
+    if (!OpfsEnv.isObject(value)) return false;
+    return typeof value['getDirectory'] === 'function';
   }
 
   /**
    * Type-guard: narrows unknown → DirectoryHandleLikeInterface via structural
-   * check of all four required callable methods. Mirrors `PluginLoader.isPlugin`.
+   * check of all four required callable methods. `isObject` narrows first;
+   * all subsequent checks operate on the `Record<string, unknown>` type.
    */
   static isDirectoryHandle(value: unknown): value is DirectoryHandleLikeInterface {
     if (!OpfsEnv.isObject(value)) return false;
     return (
-      typeof (value as Record<string, unknown>)['getFileHandle'] === 'function' &&
-      typeof (value as Record<string, unknown>)['removeEntry'] === 'function' &&
-      typeof (value as Record<string, unknown>)['getDirectoryHandle'] === 'function' &&
-      typeof (value as Record<string, unknown>)['entries'] === 'function'
+      typeof value['getFileHandle'] === 'function' &&
+      typeof value['removeEntry'] === 'function' &&
+      typeof value['getDirectoryHandle'] === 'function' &&
+      typeof value['entries'] === 'function'
     );
   }
 

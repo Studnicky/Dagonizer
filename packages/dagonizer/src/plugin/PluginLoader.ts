@@ -69,7 +69,7 @@ export class PluginLoader {
       typeof value === 'object' &&
       value !== null &&
       'register' in value &&
-      typeof (value as Record<string, unknown>)['register'] === 'function'
+      typeof value['register'] === 'function'
     );
   }
 
@@ -87,7 +87,7 @@ export class PluginLoader {
 
   static #extractDefault(mod: unknown): unknown {
     if (typeof mod === 'object' && mod !== null && 'default' in mod) {
-      return (mod as Record<string, unknown>)['default'];
+      return mod['default'];
     }
     return mod;
   }

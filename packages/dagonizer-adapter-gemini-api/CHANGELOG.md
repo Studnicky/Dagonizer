@@ -1,5 +1,13 @@
 # @studnicky/dagonizer-adapter-gemini-api
 
+## [unreleased]
+
+### Patch Changes
+
+- Add a consumer-configurable `systemPrompt` option, forwarded to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one, no-op when empty). Lets a consumer frame persona/format once at construction instead of hand-prepending a system message to every call.
+- Forward `request.maxTokens` to Gemini's native `generationConfig.maxOutputTokens` field.
+- Enforce the `timeoutMs` deadline (default 60s) around the REST POST via an internal `AbortController`. An expired deadline surfaces as a `TIMEOUT` classification — the timeout abort reason is a `TIMEOUT`-classified `LlmError` that the network catch now re-throws unchanged, so it is no longer downgraded to `NETWORK`. A cascade falls through to the next adapter instead of hanging.
+
 ## 0.27.0
 
 ## 0.26.0
@@ -12,12 +20,10 @@
 
 ## 0.22.0
 
-## [Unreleased]
-
 ### Changed
 
 - **Adapter-contract interfaces carry the `Interface` suffix (semver-major).** The framework contracts this package's public surface names are imported under their suffixed names: `EntityValidatorInterface` (the compiled host/response validator). The rename is type-only and propagates from `@studnicky/dagonizer`; runtime behavior is unchanged. Consumers typing against the old bare name (`EntityValidator`) update to the suffixed name.
-- The Gemini `generateContent` response body is now schema-backed. `GeminiResponseBodySchema` (JSON Schema 2020-12) is the source of truth and `GeminiResponseBodyType` derives from it via `FromSchema`. The `geminiResponseBodyValidator`, compiled once at module load through the engine's shared `Validator.compile` (`@studnicky/dagonizer/validation`), narrows the `unknown` HTTP body at the network boundary. The hand-written `GeminiResponseBody`/`GeminiPart` interfaces and the `isGeminiResponseBody` predicate are removed.
+- The Gemini `generateContent` response body is schema-backed. `GeminiResponseBodySchema` (JSON Schema 2020-12) is the source of truth and `GeminiResponseBodyType` derives from it via `FromSchema`. The `geminiResponseBodyValidator`, compiled once at module load through the engine's shared `Validator.compile` (`@studnicky/dagonizer/validation`), narrows the `unknown` HTTP body at the network boundary. The hand-written `GeminiResponseBody`/`GeminiPart` interfaces and the `isGeminiResponseBody` predicate are removed.
 - The `classify` override is removed. The `LlmError` passthrough and the `aborted|timeout` → `TIMEOUT` mapping live in `BaseAdapterCore.classify`; gemini-api carries no provider-specific branch, so it inherits the base classifier directly.
 
 ### Added

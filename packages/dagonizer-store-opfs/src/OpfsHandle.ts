@@ -1,5 +1,5 @@
 /**
- * OpfsTypes: minimal structural interfaces for the File System Access API.
+ * OpfsHandle: minimal structural interfaces for the File System Access API.
  *
  * No DOM lib. These structural shapes are a subset of the real
  * FileSystemFileHandle / FileSystemDirectoryHandle APIs. A real browser

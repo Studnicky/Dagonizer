@@ -6,7 +6,7 @@
  * parsers used to discard caught exceptions in bare `catch {}` blocks — the
  * failure became invisible. Each swallow site now CAPTURES the error into a
  * `GeoErrorRecordType` instead. The record rides on `state.errors` (an
- * ephemeral, non-serialized accumulator like `gpsCandidate`); the gather folds
+ * ephemeral, non-serialized accumulator like `ipCandidate`); the gather folds
  * every clone's records into a bounded parent-side rollup so the run can PRINT
  * the error distribution for analysis.
  *

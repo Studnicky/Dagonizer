@@ -25,7 +25,7 @@ import type { DeliveryConfirmationEvent } from '../entities/events/DeliveryConfi
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 
 // Leaf/embedded-DAG bundles (register first — per-type bundles reference their nodes).
-import { GeoResolveDAG } from '../embedded-dags/GeoResolveDAG.ts';
+import { GeoSourceResolveDAG } from '../embedded-dags/GeoSourceResolveDAG.ts';
 import { orderEnrichmentBundle } from '../embedded-dags/OrderEnrichmentDAG.ts';
 import { gdprComplianceBundle } from '../embedded-dags/GdprComplianceDAG.ts';
 import { geoPipelineBundle } from '../embedded-dags/GeoPipelineDAG.ts';
@@ -61,7 +61,7 @@ const dispatcher = new Dagonizer<CartographerState>({});
 
 // Register leaf bundles first so the DAG validator can resolve sub-DAG references.
 // geo-resolve DAG is built per-call with injected services.
-dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
 dispatcher.registerBundle(geoPipelineBundle);
 dispatcher.registerBundle(orderEnrichmentBundle);
 dispatcher.registerBundle(gdprComplianceBundle);
@@ -127,6 +127,8 @@ const SHARED_BODY_GEO = {
   'latitude':   51.5,
   'longitude':  -0.12,
   'ipAddress':  '',
+  'localeTag':  '',
+  'countryCode': '',
   'legFromLat': 51.4,
   'legFromLng': -0.11,
   'originLat':  51.3,
@@ -136,6 +138,8 @@ const SHARED_BODY_GEO = {
   'carrier':    'DHL',
   'status':     'in transit',
   'rawTimestamp': '2024-03-15T10:10:00Z',
+  'address':    '',
+  'phone':      '',
 } as const;
 
 const positionPingVariant: PositionPingEvent = {
@@ -358,6 +362,97 @@ await SmokeRunner.check('(5e) delivery-confirmation: recipient PII present (reci
   assert.ok(
     hasPii,
     `delivery-confirmation: expected recipient PII in redactedSample.recipientName or redactionApplied===true`,
+  );
+});
+
+// ── Source-model routing assertions ─────────────────────────────────────────
+
+// customs-event with zero coords + countryCode should route 'code'
+const customsWithCode: CustomsEvent = {
+  ...SHARED_ENVELOPE,
+  'eventType': 'customs-event',
+  'body': {
+    ...SHARED_BODY_GEO,
+    'latitude':    0,
+    'longitude':   0,
+    'ipAddress':   '',
+    'countryCode': 'GB',
+    'customsStatus': 'cleared',
+  },
+};
+
+await SmokeRunner.check('(3e) customs-event with countryCode routes geoSourceModel=code', async () => {
+  const enriched = await SmokeRunner.run('pipeline-customs-event', customsWithCode);
+  assert.strictEqual(
+    enriched.routing.geoSourceModel,
+    'code',
+    `customs-event with countryCode must route geoSourceModel='code' (got '${enriched.routing.geoSourceModel}')`,
+  );
+});
+
+// delivery-confirmation with zero coords + localeTag should route 'locale'
+const deliveryWithLocale: DeliveryConfirmationEvent = {
+  ...SHARED_ENVELOPE,
+  'eventType': 'delivery-confirmation',
+  'body': {
+    ...SHARED_BODY_GEO,
+    'latitude':    0,
+    'longitude':   0,
+    'ipAddress':   '',
+    'localeTag':   'en-GB',
+    'delivered':              true,
+    'rawPromisedDeliveryAt':  '2024-03-18T18:00:00Z',
+    'disruptionReason':       '',
+    'recipientName':          'John Roe',
+    'recipientEmail':         'john@example.com',
+    'recipientPhone':         '',
+    'recipientAddress':       '',
+    'recipientCountry':       'GB',
+    'marketingConsent':       true,
+    'lawfulBasis':            'contract',
+    'specialCategory':        'none',
+  },
+};
+
+await SmokeRunner.check('(5f) delivery-confirmation with localeTag routes geoSourceModel=locale', async () => {
+  const enriched = await SmokeRunner.run('pipeline-delivery-confirmation', deliveryWithLocale);
+  assert.strictEqual(
+    enriched.routing.geoSourceModel,
+    'locale',
+    `delivery-confirmation with localeTag must route geoSourceModel='locale' (got '${enriched.routing.geoSourceModel}')`,
+  );
+});
+
+// facility-scan with coords+IP routes 'coords' and has ip-geolocate run
+await SmokeRunner.check('(4e) facility-scan with coords+IP has geoSourceModel=coords and ipGeolocateRun', async () => {
+  const facilityScanWithIp: FacilityScanEvent = {
+    ...SHARED_ENVELOPE,
+    'eventType': 'facility-scan',
+    'body': {
+      ...SHARED_BODY_GEO,
+      'ipAddress':              '8.8.8.8',
+      'facilityId':             'FAC-1',
+      'weight':                 2.5,
+      'weightUnit':             'kg',
+      'lineItems':              [{ 'productId': 'PROD-001', 'quantity': 2 }],
+      'rawDispatchAt':          '2024-03-14T08:00:00Z',
+      'rawPromisedDeliveryAt':  '2024-03-18T18:00:00Z',
+      'disruptionReason':       '',
+      'recipientName':          'Jane Doe',
+      'recipientEmail':         'jane@example.com',
+      'recipientPhone':         '',
+      'recipientAddress':       '',
+      'recipientCountry':       'GB',
+      'marketingConsent':       true,
+      'lawfulBasis':            'contract',
+      'specialCategory':        'none',
+    },
+  };
+  const enriched = await SmokeRunner.run('pipeline-facility-scan', facilityScanWithIp);
+  assert.strictEqual(
+    enriched.routing.geoSourceModel,
+    'coords',
+    `facility-scan with coords+IP must route geoSourceModel='coords' (got '${enriched.routing.geoSourceModel}')`,
   );
 });
 

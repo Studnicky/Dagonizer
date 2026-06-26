@@ -25,7 +25,7 @@ import { BASE_STORE_DEFAULTS, BaseStore, StoreError } from '@studnicky/dagonizer
 import type { BaseStoreOptionsType } from '@studnicky/dagonizer/store';
 
 import { OpfsEnv } from './OpfsEnv.js';
-import type { DirectoryHandleLikeInterface, FileHandleLikeInterface } from './OpfsTypes.js';
+import type { DirectoryHandleLikeInterface, FileHandleLikeInterface } from './OpfsHandle.js';
 
 export type OpfsStoreOptionsType = BaseStoreOptionsType & {
   /** File suffix appended to the URI-encoded key filename. Default: '.json'. */

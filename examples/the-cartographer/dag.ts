@@ -43,8 +43,6 @@ import { canonicalizeRecipient } from './nodes/canonicalizeRecipient.ts';
 import { confirmDelivery }   from './nodes/confirmDelivery.ts';
 import { decodePayload }     from './nodes/decodePayload.ts';
 
-import { routeModalities } from './nodes/geo/routeModalities.ts';
-import { fuseGeo }         from './nodes/geo/fuseGeo.ts';
 import { enrichPricing }   from './nodes/enrichPricing.ts';
 import { enrichShipping }  from './nodes/enrichShipping.ts';
 import { enrichEta }       from './nodes/enrichEta.ts';
@@ -434,7 +432,7 @@ export const cartographerWorkersDAG: DAGType = CartographerWorkersDag.build();
  * stream-event sub-tree (decode → route → 5 per-type pipelines).
  *
  * Registration order: leaf DAGs before DAGs that embed them.
- *   geo-resolve → geo-pipeline → order-enrichment → gdpr-compliance
+ *   geo-source-resolve → geo-pipeline → order-enrichment → gdpr-compliance
  *   → 5 pipeline-* DAGs → event-pipeline-typed → stream-event
  *
  * registerBundle is idempotent for same-instance nodes and DAGs (throws only
@@ -445,8 +443,7 @@ export const cartographerWorkersDAG: DAGType = CartographerWorkersDag.build();
  */
 export const eventPipelineBundle: DispatcherBundleType<CartographerState> = {
   'nodes': [
-    // geo-resolve routing + fuse (per-call nodes are in GeoResolveDAG.build())
-    routeModalities, fuseGeo,
+    // geo-source-resolve nodes are registered per-call via GeoSourceResolveDAG.build()
     // geo-pipeline nodes
     routeGeo, applyGeo, validateCoords,
     // order-enrichment nodes
@@ -466,7 +463,7 @@ export const eventPipelineBundle: DispatcherBundleType<CartographerState> = {
   ],
   'dags': [
     // Leaf embedded DAG first, then DAGs that embed it.
-    // geo-resolve DAG is built per-call via GeoResolveDAG.build() — registered at call site.
+    // geo-source-resolve DAG is built per-call via GeoSourceResolveDAG.build() — registered at call site.
     geoPipelineDAG,
     orderEnrichmentDAG,
     gdprComplianceDAG,

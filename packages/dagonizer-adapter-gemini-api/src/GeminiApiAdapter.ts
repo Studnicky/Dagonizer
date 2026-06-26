@@ -45,6 +45,12 @@ export type GeminiApiAdapterOptionsType = {
   readonly maxAttempts?: number;
   /** Per-request timeout in ms. Defaults to 60 000 ms. */
   readonly timeoutMs?: number;
+  /**
+   * Default system prompt the base injects as the leading turn of any request
+   * that carries no system message of its own. Consumer-supplied persona/format
+   * framing; empty (the default) means no injection.
+   */
+  readonly systemPrompt?: string;
 };
 
 export class GeminiApiAdapter extends BaseAdapter {
@@ -52,11 +58,14 @@ export class GeminiApiAdapter extends BaseAdapter {
   readonly #timeoutMs: number;
 
   constructor(apiKey: string, options: GeminiApiAdapterOptionsType = {}) {
-    const coreOptions: { maxAttempts: number; model?: string } = {
+    const coreOptions: { maxAttempts: number; model?: string; systemPrompt?: string } = {
       'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
     };
     if (options.model !== undefined) {
       coreOptions.model = options.model;
+    }
+    if (options.systemPrompt !== undefined && options.systemPrompt.length > 0) {
+      coreOptions.systemPrompt = options.systemPrompt;
     }
     super(
       'gemini-api',
@@ -145,6 +154,9 @@ export class GeminiApiAdapter extends BaseAdapter {
         signal,
       });
     } catch (err) {
+      // Our own timeout/abort reason is already a classified LlmError
+      // (TIMEOUT). Preserve it; only a genuine transport failure is NETWORK.
+      if (err instanceof LlmError) throw err;
       throw LlmError.ofNetworkError(err);
     } finally {
       clearTimeout(timeoutId);
@@ -257,7 +269,10 @@ export class GeminiApiAdapter extends BaseAdapter {
       'auto':     () => ({ 'mode': 'AUTO' }),
       'required': () => ({ 'mode': 'ANY' }),
       'none':     () => ({ 'mode': 'NONE' }),
-      'tool':     (c) => ({ 'mode': 'ANY', 'allowedFunctionNames': [(c as ToolChoiceType & { type: 'tool' }).name] }),
+      'tool':     (c) => {
+        if (c.type !== 'tool') return { 'mode': 'ANY' };
+        return { 'mode': 'ANY', 'allowedFunctionNames': [c.name] };
+      },
     };
     return choiceDispatch[choice.type](choice);
   }

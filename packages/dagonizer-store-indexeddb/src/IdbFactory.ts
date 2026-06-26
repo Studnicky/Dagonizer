@@ -1,16 +1,15 @@
 /**
- * IdbTypes: minimal structural interfaces for the IndexedDB API surface.
+ * IdbFactory: structural interfaces and boundary utilities for the IndexedDB API.
  *
  * No DOM lib. All shapes are defined structurally to match only the subset
  * of IndexedDB this package actually calls. Real browser `indexedDB` (and
  * `fake-indexeddb`'s `IDBFactory`) are structurally assignable to these
  * interfaces. Consumers never import DOM types — this file is the boundary.
  *
- * The guard `IdbFactory.is(x)` narrows `unknown → IdbFactoryLikeInterface`
- * without any `as` cast, following the PluginLoader precedent:
- * `(x as Record<string, unknown>)['prop']` is the sole permitted index-access
- * inside a guard body; after `if (IdbFactory.is(x))` the value narrows
- * cast-free.
+ * `IdbFactory.is(x)` narrows `unknown → IdbFactoryLikeInterface` via a
+ * structural type-guard predicate. `isObject` narrows `x` to
+ * `Record<string, unknown>` first; all subsequent checks use the narrowed
+ * type — zero `as` casts anywhere.
  */
 
 // ---------------------------------------------------------------------------
@@ -125,28 +124,28 @@ export interface IdbFactoryLikeInterface {
  * Static utilities for the IDB factory boundary.
  *
  * `IdbFactory.is(x)` narrows `unknown → IdbFactoryLikeInterface` via a
- * structural type-guard predicate. The only `as` cast inside is the
- * `(x as Record<string, unknown>)['open']` index-access inside the guard
- * body — the PluginLoader precedent. After `if (IdbFactory.is(x))` the
- * value is cast-free.
+ * structural type-guard predicate. `isObject` narrows `x` to
+ * `Record<string, unknown>` first; the `typeof x['open']` check then
+ * operates on the narrowed type — zero `as` casts.
  */
 export class IdbFactory {
   private constructor() { /* static class */ }
+
+  /** Non-null object guard: narrows unknown → Record<string, unknown>. */
+  private static isObject(x: unknown): x is Record<string, unknown> {
+    return typeof x === 'object' && x !== null;
+  }
 
   /**
    * Structural type-guard: narrows `unknown → IdbFactoryLikeInterface`.
    *
    * Checks that `x` is a non-null object with a callable `open` method —
    * the only member of `IdbFactoryLikeInterface` that distinguishes it
-   * from an arbitrary object.
+   * from an arbitrary object. `isObject` narrows first; no `as` cast needed.
    */
   static is(x: unknown): x is IdbFactoryLikeInterface {
-    return (
-      typeof x === 'object' &&
-      x !== null &&
-      'open' in x &&
-      typeof (x as Record<string, unknown>)['open'] === 'function'
-    );
+    if (!IdbFactory.isObject(x)) return false;
+    return typeof x['open'] === 'function';
   }
 }
 

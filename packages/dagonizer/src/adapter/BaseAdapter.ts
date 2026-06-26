@@ -29,8 +29,22 @@ import type { AdapterCapabilitiesType, ChatRequestType, ChatResponseType } from 
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 import { ModelCost } from './ModelCost.js';
 
+/**
+ * Caller-facing options for every chat adapter. Extends the shared core options
+ * with `systemPrompt`: a default system message the base injects as the leading
+ * turn of any chat request that carries no system message of its own. The text
+ * is consumer-supplied (the engine owns no persona), so adapters stay backend
+ * plumbing while a consumer configures role/format/language framing once at
+ * construction. Empty string (the default) means no injection.
+ */
+export type BaseAdapterOptionsType = BaseAdapterCoreOptionsType & {
+  readonly systemPrompt?: string;
+};
+
 export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterInterface {
   readonly capabilities: AdapterCapabilitiesType;
+  /** Consumer-configured default system prompt; `''` when none was set. */
+  readonly #systemPrompt: string;
 
   /**
    * Format a `tool`-role message as the conversational line every text-only
@@ -50,10 +64,11 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     id: string,
     displayName: string,
     capabilities: AdapterCapabilitiesType,
-    options: BaseAdapterCoreOptionsType = {},
+    options: BaseAdapterOptionsType = {},
   ) {
     super(id, displayName, options);
     this.capabilities = capabilities;
+    this.#systemPrompt = options.systemPrompt ?? '';
   }
 
   /**
@@ -124,9 +139,10 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
   }
 
   async chat(request: ChatRequestType): Promise<ChatResponseType> {
+    const prepared = this.#withDefaultSystemPrompt(request);
     return this.retryPolicy.run(async () => {
       try {
-        return await this.performChat(request);
+        return await this.performChat(prepared);
       } catch (rawError) {
         const classification = this.classify(rawError);
         // QUOTA_EXHAUSTED: honor retry-after hint only when short; cap prevents
@@ -147,7 +163,23 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
         // classification is retryable.
         throw new LlmError(LlmError.messageFrom(rawError), classification, { 'cause': rawError });
       }
-    }, { 'signal': request.signal });
+    }, { 'signal': prepared.signal });
+  }
+
+  /**
+   * Prepend the configured default system prompt as the leading message when
+   * the request carries no system message of its own. Returns the request
+   * unchanged when no default is configured (`''`) or the consumer already
+   * supplied a system turn — never overrides an explicit system message, and
+   * never produces a second system turn. The leading position matters: the
+   * on-device backends (Chrome Prompt API, MLC WebLLM) reject a system message
+   * at any non-zero index. Pure: builds a new request, mutates nothing.
+   */
+  #withDefaultSystemPrompt(request: ChatRequestType): ChatRequestType {
+    if (this.#systemPrompt === '') return request;
+    if (request.messages.some((m) => m.role === 'system')) return request;
+    const system: ChatMessageType = { 'role': 'system', 'content': this.#systemPrompt };
+    return { ...request, 'messages': [system, ...request.messages] };
   }
 
   /** Concrete adapter: perform the actual API call. */

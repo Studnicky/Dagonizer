@@ -321,6 +321,8 @@ describe('ColdChainCheckNode', () => {
         'latitude':     0,
         'longitude':    0,
         'ipAddress':    '',
+        'localeTag':    '',
+        'countryCode':  '',
         'legFromLat':   0,
         'legFromLng':   0,
         'originLat':    0,
@@ -333,6 +335,8 @@ describe('ColdChainCheckNode', () => {
         'tempC':        1.5, // below 2°C minimum → breach
         'humidityPct':  50,
         'shockG':       0,
+        'address':      '',
+        'phone':        '',
       },
     };
     const node = new PublicColdChainCheckNode();
@@ -355,6 +359,8 @@ describe('ColdChainCheckNode', () => {
         'latitude':     0,
         'longitude':    0,
         'ipAddress':    '',
+        'localeTag':    '',
+        'countryCode':  '',
         'legFromLat':   0,
         'legFromLng':   0,
         'originLat':    0,
@@ -367,6 +373,8 @@ describe('ColdChainCheckNode', () => {
         'tempC':        5.0, // in range
         'humidityPct':  50,
         'shockG':       1.0, // under 2.5g
+        'address':      '',
+        'phone':        '',
       },
     };
     const node = new PublicColdChainCheckNode();
@@ -409,6 +417,8 @@ describe('CustomsDwellNode', () => {
         'latitude':     0,
         'longitude':    0,
         'ipAddress':    '',
+        'localeTag':    '',
+        'countryCode':  '',
         'legFromLat':   0,
         'legFromLng':   0,
         'originLat':    0,
@@ -419,6 +429,8 @@ describe('CustomsDwellNode', () => {
         'status':       '',
         'rawTimestamp': '',
         'customsStatus': 'held',
+        'address':      '',
+        'phone':        '',
       },
     };
     const node = new PublicCustomsDwellNode();
@@ -441,6 +453,8 @@ describe('CustomsDwellNode', () => {
         'latitude':     0,
         'longitude':    0,
         'ipAddress':    '',
+        'localeTag':    '',
+        'countryCode':  '',
         'legFromLat':   0,
         'legFromLng':   0,
         'originLat':    0,
@@ -451,6 +465,8 @@ describe('CustomsDwellNode', () => {
         'status':       '',
         'rawTimestamp': '',
         'customsStatus': 'cleared',
+        'address':      '',
+        'phone':        '',
       },
     };
     const node = new PublicCustomsDwellNode();

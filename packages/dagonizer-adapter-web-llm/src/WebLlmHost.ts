@@ -54,14 +54,25 @@ export type WebLlmEngineBaseType = FromSchema<typeof WebLlmEngineSchema>;
 /** Base object type derived from the module schema (member presence only). */
 export type WebLlmModuleBaseType = FromSchema<typeof WebLlmModuleSchema>;
 
-/** Chat-completion request the adapter sends to the WebLLM engine. */
+/** Chat-completion request the adapter sends to the WebLLM engine (non-streaming). */
 export type WebLlmCompletionParamsType = {
   readonly messages: ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   readonly temperature?: number;
+  readonly max_tokens?: number;
   readonly response_format?: { type: 'json_object' | 'text' };
 };
 
-/** Chat-completion result returned by the WebLLM engine. */
+/** Streaming variant of the chat-completion request. */
+export type WebLlmStreamingParamsType = WebLlmCompletionParamsType & {
+  readonly stream: true;
+};
+
+/** One chunk emitted by the streaming completion. */
+export type WebLlmStreamChunkType = {
+  readonly choices: ReadonlyArray<{ delta: { content?: string } }>;
+};
+
+/** Chat-completion result returned by the WebLLM engine (non-streaming). */
 export type WebLlmCompletionResultType = {
   readonly choices: ReadonlyArray<{ message: { content: string } }>;
 };
@@ -69,11 +80,18 @@ export type WebLlmCompletionResultType = {
 /**
  * Entity-narrowing type for the live WebLLM engine. Adds the callable
  * signatures the schema validates only structurally.
+ *
+ * `create` accepts `WebLlmStreamingParamsType` (stream: true) and returns
+ * a `Promise` that resolves to an `AsyncIterable` of chunk objects.
+ * The adapter uses the streaming path exclusively; `interruptGenerate()`
+ * halts in-flight generation and is called from the deadline timer and the
+ * external abort-signal handler.
  */
 export type WebLlmEngineType = WebLlmEngineBaseType & {
+  readonly interruptGenerate: () => void;
   chat: {
     completions: {
-      create(params: WebLlmCompletionParamsType): Promise<WebLlmCompletionResultType>;
+      create(params: WebLlmStreamingParamsType): Promise<AsyncIterable<WebLlmStreamChunkType>>;
     };
   };
 };

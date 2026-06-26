@@ -35,10 +35,10 @@ export class PlaceholderNode<
     this.outputs = outputs;
   }
 
-  override get outputSchema(): Record<TOutput, SchemaObjectType> {
+  override get outputSchema(): Record<string, SchemaObjectType> {
     const schema: Record<string, SchemaObjectType> = {};
     for (const port of this.outputs) schema[port] = { 'type': 'object' };
-    return schema as Record<TOutput, SchemaObjectType>;
+    return schema;
   }
 
   protected override async executeOne(

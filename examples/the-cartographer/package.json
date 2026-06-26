@@ -12,6 +12,7 @@
   "dependencies": {
     "@studnicky/dagonizer": "workspace:^",
     "@rapideditor/country-coder": "^5.6.1",
+    "countries-and-timezones": "^3.9.0",
     "tz-lookup": "^6.1.25",
     "yaml": "^2.7.1"
   },
