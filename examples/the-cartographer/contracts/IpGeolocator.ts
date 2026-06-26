@@ -2,11 +2,12 @@
  * IpGeolocator: the IP-modality TRANSPORT adapter contract.
  *
  * A thin transport: given a public IP address, return ONE modality's location
- * candidate. The `ip-geolocate` DAG node calls this; fusion happens in `fuse-geo`.
+ * candidate. `resolve-ip` calls this for ip-kind descriptors; the
+ * `geo-weighted-fusion` gather folds the result by weight into `ResolvedGeo`.
  * Swappable: `LiveIpGeolocator` (real freeipapi.com HTTPS) online,
  * `RecordedIpGeolocator` (committed fixture replay) for the deterministic smoke.
  *
- * Injected via constructor DI into `IpGeolocateNode`.
+ * Injected via constructor DI into `ResolveIpNode`.
  */
 
 // #region ip-geolocator-contract

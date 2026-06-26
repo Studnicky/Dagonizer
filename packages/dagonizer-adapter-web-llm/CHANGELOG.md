@@ -1,5 +1,16 @@
 # @studnicky/dagonizer-adapter-web-llm
 
+## [unreleased]
+
+### Patch Changes
+
+- `performChat` runs the MLC engine through its streaming path (`create({ stream: true, … })`), accumulating delta chunks. A per-request `timeoutMs` deadline (default 60s) and the request abort signal each call `engine.interruptGenerate()`, which truly halts in-flight WebGPU generation — unlike the previous non-cancellable `create()` race, which freed the caller but left compute running. An expired deadline surfaces as a `TIMEOUT` classification and an external abort preserves a caller-supplied `LlmError` reason (falling back to `TIMEOUT`), so a cascade falls through rather than hanging. An interrupt that surfaces as a thrown iterator error rather than an early return is still classified from the deadline/abort state, never downgraded.
+- Forward `request.maxTokens` to the engine as the native `max_tokens` generation cap (previously unset, so generation was uncapped).
+- Add a `protected loadEngine()` seam: the default boots the real MLC engine from the CDN; a subclass overrides it to inject a stub engine in tests without intercepting the dynamic import.
+- `composeMessages` folds all system turns and the structured-output coercion into one leading system message at index 0, followed by the user/assistant/tool conversation. `composeMessages` is exposed as a static so the index-0 invariant is directly testable.
+- Add a consumer-configurable `systemPrompt` option, forwarded to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one). Lets a consumer frame persona/format once at construction without hand-prepending a system message to every call.
+- Classify a failed CDN import or weight fetch as `MODEL_NOT_FOUND` instead of leaking a raw `Failed to fetch dynamically imported module`. The in-browser runtime and model weights stream from a CDN at first use, so an unreachable CDN is a missing backend, not a transient fault — a cascade now falls through to another adapter rather than retrying a fetch that will never resolve.
+
 ## 0.27.0
 
 ## 0.26.0
@@ -12,20 +23,19 @@
 
 ## 0.22.0
 
-## [Unreleased]
-
 ### Changed
 
 - **Adapter-contract interfaces carry the `Interface` suffix (semver-major).** The framework contracts this package's public surface names are imported under their suffixed names: `EntityValidatorInterface` (the compiled host/response validator) and `ToolInterface` (the tool contract the adapter's tool-call dispatch operates against). The renames are type-only and propagate from `@studnicky/dagonizer`; runtime behavior is unchanged. Consumers typing against the old bare names (`EntityValidator`, `Tool`) update to the suffixed names.
-- The dynamically-imported `@mlc-ai/web-llm` module and its engine are now schema-backed. `WebLlmModuleSchema` and `WebLlmEngineSchema` (JSON Schema 2020-12) describe the host members; the base types derive via `FromSchema` and the tier-3 narrowing interfaces `WebLlmModuleInterface` / `WebLlmEngineInterface` add the call signatures the schema cannot express. `#boot` validates the imported module and the created engine through `webLlmModuleValidator` / `webLlmEngineValidator` at the import boundary. Both validators are compiled once at module load through the engine's shared `Validator.compile` (`@studnicky/dagonizer/validation`). The `navigator.gpu` probe narrows the WebGPU global structurally via `Reflect` instead of a fabricated cast. The hand-written `WebLlmEngine`/`WebLlmModule` interfaces are removed.
-- The lazy engine promise moves from a `Promise | null` instance field to a module-level `WeakMap` keyed on the adapter instance, fixing the V8 hidden-class transition: every `WebLlmAdapter` instance shape is now fixed at construction.
+- The dynamically-imported `@mlc-ai/web-llm` module and its engine are schema-backed. `WebLlmModuleSchema` and `WebLlmEngineSchema` (JSON Schema 2020-12) describe the host members; the base types derive via `FromSchema` and the tier-3 narrowing interfaces `WebLlmModuleInterface` / `WebLlmEngineInterface` add the call signatures the schema cannot express. `#boot` validates the imported module and the created engine through `webLlmModuleValidator` / `webLlmEngineValidator` at the import boundary. Both validators are compiled once at module load through the engine's shared `Validator.compile` (`@studnicky/dagonizer/validation`). The `navigator.gpu` probe narrows the WebGPU global structurally via `Reflect` instead of a fabricated cast. The hand-written `WebLlmEngine`/`WebLlmModule` interfaces are removed.
+- The lazy engine promise lives in a module-level `WeakMap` keyed on the adapter instance; every `WebLlmAdapter` instance shape is fixed at construction.
 - `WebLlmInitReport` is renamed to `WebLlmInitReportInterface`. This is a breaking rename of the exported type.
-- The `classify` override keeps only the provider-specific `MODEL_NOT_FOUND` (`webgpu`) branch and delegates everything else to `super.classify`. The shared `LlmError` passthrough and `aborted|timeout` → `TIMEOUT` mapping now live in `BaseAdapterCore.classify`.
+- The `classify` override keeps only the provider-specific `MODEL_NOT_FOUND` (`webgpu`) branch and delegates everything else to `super.classify`. The shared `LlmError` passthrough and `aborted|timeout` → `TIMEOUT` mapping live in `BaseAdapterCore.classify`.
 - Tool-result messages flatten through the shared `BaseAdapter.formatToolResult(message)` static rather than an inline `[tool <name> result] <content>` string, so the format is single-sourced across the text-only adapters.
 
 ### Added
 
 - Public schema surface: `WebLlmModuleSchema`, `WebLlmEngineSchema`, the `WebLlmModuleInterface` / `WebLlmEngineInterface` / `WebLlmCompletionParamsInterface` / `WebLlmCompletionResultInterface` / `WebLlmInitReportInterface` types, the `*BaseType` derivations, and the `webLlmModuleValidator` / `webLlmEngineValidator`.
+- Adds `"browser"` export condition to the `.` entry for bundler target selection.
 
 ## 0.21.0
 

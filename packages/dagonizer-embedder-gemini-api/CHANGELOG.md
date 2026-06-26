@@ -12,11 +12,9 @@
 
 ## 0.22.0
 
-## [Unreleased]
-
 ### Changed
 
-- **Mandatory `Type` suffix on the embed-response entity type (semver-major rename).** The `FromSchema`-derived response type is `GeminiApiEmbedResponseType` (was `GeminiApiEmbedResponse`); the `GeminiApiEmbedResponseSchema` const and `GeminiApiEmbedResponseValidator` keep their names. The renamed type ships from the package root. Type-only; behavior is unchanged.
+- **Mandatory `Type` suffix on the embed-response entity type (semver-major rename).** The `FromSchema`-derived response type is `GeminiApiEmbedResponseType`; the `GeminiApiEmbedResponseSchema` const and `GeminiApiEmbedResponseValidator` keep their names. The renamed type ships from the package root. Type-only; behavior is unchanged.
 - The embed response wire shape is schema-backed. `GeminiApiEmbedResponseSchema` (JSON Schema 2020-12) and its `FromSchema`-derived `GeminiApiEmbedResponseType` type live in `GeminiApiEmbedResponse.ts`, with a `GeminiApiEmbedResponseValidator` compiled once at module load through the framework's shared Ajv via `Validator.compile`. The schema, type, and validator are exported from the package root.
 - `performEmbed` routes its HTTP call through the inherited `BaseEmbedder.fetchJson`, narrows the returned body via `GeminiApiEmbedResponseValidator.is`, and throws an `LlmError` on a missing or empty `embedding.values`. The hand-written `GeminiEmbedResponse` interface, the `isGeminiEmbedResponse` predicate, and the local `fetch`/network-catch/`!res.ok` scaffold are removed.
 - Model and dimension defaults resolve through a module-level `GEMINI_API_EMBEDDER_DEFAULTS` const spread over the options object.

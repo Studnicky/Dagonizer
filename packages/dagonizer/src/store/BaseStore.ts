@@ -98,8 +98,16 @@ export abstract class BaseStore implements StoreInterface {
     return next;
   }
 
-  async snapshot(_options?: AbortableOptionsType): Promise<StoreSnapshotType> {
-    const entries = [...await this.performSnapshotEntries()];
+  /**
+   * Drain `snapshotStream()` into an array and wrap with the version/type
+   * envelope. This is the array-form convenience; the underlying data comes
+   * from `performEntriesStream()`.
+   */
+  async snapshot(options?: AbortableOptionsType): Promise<StoreSnapshotType> {
+    const entries: StoreSnapshotEntryType[] = [];
+    for await (const entry of this.snapshotStream(options)) {
+      entries.push(entry);
+    }
     return {
       'version': this.snapshotVersion,
       'type':    this.snapshotType,
@@ -107,6 +115,13 @@ export abstract class BaseStore implements StoreInterface {
     };
   }
 
+  /**
+   * Replacement restore: validates the envelope type/version, clears the
+   * existing keyspace via `performClear()`, then feeds every entry through
+   * `performRestoreEntry()`. Semantics: after this call the store contains
+   * exactly the entries from `incoming` — keys present before the restore
+   * but absent from the snapshot are gone.
+   */
   async restore(incoming: StoreSnapshotType, _options?: AbortableOptionsType): Promise<void> {
     if (incoming.type !== this.snapshotType || incoming.version !== this.snapshotVersion) {
       throw new StoreError(
@@ -121,7 +136,38 @@ export abstract class BaseStore implements StoreInterface {
         },
       );
     }
-    await this.performRestoreEntries(incoming.entries);
+    await this.performClear();
+    for (const entry of incoming.entries) {
+      await this.performRestoreEntry(entry);
+    }
+  }
+
+  /**
+   * Stream the entire keyspace lazily via `performEntriesStream()`. Checks
+   * `options.signal?.throwIfAborted()` between entries so cancellation is
+   * honored for streaming-first callers.
+   *
+   * This is an additive stream — it does NOT clear state before yielding.
+   * Use the array-form `restore()` for replacement semantics.
+   */
+  async *snapshotStream(options?: AbortableOptionsType): AsyncIterable<StoreSnapshotEntryType> {
+    for await (const entry of this.performEntriesStream()) {
+      options?.signal?.throwIfAborted();
+      yield entry;
+    }
+  }
+
+  /**
+   * Upsert-restore from a stream of entries. Each entry is applied via
+   * `performRestoreEntry()`; keys absent from the stream are left untouched.
+   * For full replacement semantics call `restore()` (which clears first) or
+   * call `performClear()` explicitly before streaming.
+   */
+  async restoreStream(entries: AsyncIterable<StoreSnapshotEntryType>, options?: AbortableOptionsType): Promise<void> {
+    for await (const entry of entries) {
+      options?.signal?.throwIfAborted();
+      await this.performRestoreEntry(entry);
+    }
   }
 
   /** No-op default. Subclasses with a connection lifecycle override. */
@@ -140,8 +186,27 @@ export abstract class BaseStore implements StoreInterface {
   protected abstract performSet(qualifiedKey: string, value: JsonValueType): Promise<void>;
   protected abstract performHas(qualifiedKey: string): Promise<boolean>;
   protected abstract performDelete(qualifiedKey: string): Promise<boolean>;
-  protected abstract performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]>;
-  protected abstract performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void>;
+
+  /**
+   * Yield every entry in the backing store as an async stream. Called by
+   * `snapshotStream()` and (via drain) by `snapshot()`. Do NOT clear state
+   * before or after; this is a read-only operation.
+   */
+  protected abstract performEntriesStream(): AsyncIterable<StoreSnapshotEntryType>;
+
+  /**
+   * Upsert a single entry into the backing store. Called per-entry by
+   * `restore()` and `restoreStream()`. Implementations should write or
+   * overwrite the entry's key with the entry's value.
+   */
+  protected abstract performRestoreEntry(entry: StoreSnapshotEntryType): Promise<void>;
+
+  /**
+   * Clear all entries from the backing store. Called by `restore()` before
+   * writing snapshot entries, so that the array-form restore achieves
+   * replacement semantics (keys absent from the snapshot are removed).
+   */
+  protected abstract performClear(): Promise<void>;
 
   // ── Internal ────────────────────────────────────────────────────────
 

@@ -175,6 +175,12 @@ export type AnthropicApiAdapterOptionsType = {
   readonly anthropicVersion?: string;
   /** Per-request timeout in ms. Defaults to 60 000. */
   readonly timeoutMs?: number;
+  /**
+   * Default system prompt the base injects as the leading turn of any request
+   * that carries no system message of its own. Consumer-supplied persona/format
+   * framing; empty (the default) means no injection.
+   */
+  readonly systemPrompt?: string;
 };
 
 // ── Adapter ────────────────────────────────────────────────────────────────
@@ -201,9 +207,15 @@ export class AnthropicApiAdapter extends BaseAdapter {
   readonly #timeoutMs: number;
 
   constructor(apiKey: string, options: AnthropicApiAdapterOptionsType = {}) {
-    const coreOptions = options.maxAttempts !== undefined
-      ? { 'maxAttempts': options.maxAttempts, 'model': options.model ?? 'claude-haiku-4-5' }
-      : { 'model': options.model ?? 'claude-haiku-4-5' };
+    const coreOptions: { model: string; maxAttempts?: number; systemPrompt?: string } = {
+      'model': options.model ?? 'claude-haiku-4-5',
+    };
+    if (options.maxAttempts !== undefined) {
+      coreOptions.maxAttempts = options.maxAttempts;
+    }
+    if (options.systemPrompt !== undefined && options.systemPrompt.length > 0) {
+      coreOptions.systemPrompt = options.systemPrompt;
+    }
     super(
       'anthropic',
       'Anthropic (claude-haiku-4-5)',
@@ -284,6 +296,9 @@ export class AnthropicApiAdapter extends BaseAdapter {
         signal,
       });
     } catch (err) {
+      // Our own timeout/abort reason is already a classified LlmError
+      // (TIMEOUT). Preserve it; only a genuine transport failure is NETWORK.
+      if (err instanceof LlmError) throw err;
       throw LlmError.ofNetworkError(err);
     } finally {
       clearTimeout(timeoutId);

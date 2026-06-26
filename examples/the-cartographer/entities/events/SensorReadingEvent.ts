@@ -31,10 +31,10 @@ export const SensorReadingEventSchema = {
     'body': {
       'type': 'object',
       'required': [
-        'scanSeq', 'latitude', 'longitude', 'ipAddress',
+        'scanSeq', 'latitude', 'longitude', 'ipAddress', 'localeTag', 'countryCode',
         'legFromLat', 'legFromLng', 'originLat', 'originLng', 'destLat', 'destLng',
         'carrier', 'status', 'rawTimestamp',
-        'tempC', 'humidityPct', 'shockG',
+        'tempC', 'humidityPct', 'shockG', 'address', 'phone',
       ],
       'properties': {
         'scanSeq':          { 'type': 'number' },
@@ -42,6 +42,9 @@ export const SensorReadingEventSchema = {
         'longitude':        { 'type': 'number' },
         // The asset's per-region public gateway IP (the IP modality's signal).
         'ipAddress':        { 'type': 'string' },
+        // Source-supplied locale tag (BCP-47) and ISO-2 country code (when available).
+        'localeTag':        { 'type': 'string' },
+        'countryCode':      { 'type': 'string' },
         // journey geometry (previous-scan + shipment-level origin/destination)
         'legFromLat':       { 'type': 'number' },
         'legFromLng':       { 'type': 'number' },
@@ -56,6 +59,8 @@ export const SensorReadingEventSchema = {
         'tempC':            { 'type': 'number' },
         'humidityPct':      { 'type': 'number' },
         'shockG':           { 'type': 'number' },
+        'address':          { 'type': 'string' },
+        'phone':            { 'type': 'string' },
       },
       'additionalProperties': false,
     },

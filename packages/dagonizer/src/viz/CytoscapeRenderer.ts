@@ -38,7 +38,7 @@ import type { DAGType } from '../entities/dag/DAG.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 
 import { PlacementUtils, RoleColorUtils } from './internal.js';
-import type { PlacementEntryType } from './internal.js';
+import type { PlacementDispatchType, PlacementEntryType } from './internal.js';
 
 /**
  * Data record carried by every Cytoscape node element.
@@ -300,13 +300,11 @@ export class CytoscapeRenderer {
       "classes": classes,
     };
 
-    const nodeDispatch: Record<PlacementEntryType['@type'], (p: PlacementEntryType) => CytoscapeNodeElementType> = {
-      'SingleNode': (p) => {
-        const sp = p as PlacementEntryType & { '@type': 'SingleNode' };
+    const nodeDispatch: PlacementDispatchType<CytoscapeNodeElementType> = {
+      'SingleNode': (sp) => {
         return { ...base, "data": { ...base.data, "node": sp.node } };
       },
-      'ScatterNode': (p) => {
-        const sp = p as PlacementEntryType & { '@type': 'ScatterNode' };
+      'ScatterNode': (sp) => {
         const bodyRef = 'node' in sp.body ? sp.body.node : ('dag' in sp.body ? sp.body.dag : `dagFrom:${sp.body.dagFrom}`);
         // Add dag-reservoir class when reservoir config is present, so a
         // stylesheet or animation layer can target it for the glyph and
@@ -339,12 +337,10 @@ export class CytoscapeRenderer {
           },
         };
       },
-      'EmbeddedDAGNode': (p) => {
-        const ep = p as PlacementEntryType & { '@type': 'EmbeddedDAGNode' };
+      'EmbeddedDAGNode': (ep) => {
         return { ...base, "data": { ...base.data, ...(ep.dag !== undefined && { "dag": ep.dag }), ...(ep.dagFrom !== undefined && { "dagFrom": ep.dagFrom }) } };
       },
-      'TerminalNode': (p) => {
-        const tp = p as PlacementEntryType & { '@type': 'TerminalNode' };
+      'TerminalNode': (tp) => {
         return {
           ...base,
           "data": {
@@ -353,8 +349,7 @@ export class CytoscapeRenderer {
           },
         };
       },
-      'PhaseNode': (p) => {
-        const pp = p as PlacementEntryType & { '@type': 'PhaseNode' };
+      'PhaseNode': (pp) => {
         return {
           ...base,
           "data": {
@@ -365,7 +360,7 @@ export class CytoscapeRenderer {
         };
       },
     };
-    return nodeDispatch[placement['@type']](placement);
+    return PlacementUtils.invoke(nodeDispatch, placement);
   }
 
   /**

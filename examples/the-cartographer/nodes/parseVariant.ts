@@ -47,7 +47,7 @@ export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | '
     const variant = raw;
     state.canonicalVariant = variant;
     // Mirror onto state.canonical so routeGeo can branch on 'has-geo' / 'needs-geo'
-    // and routeModalities can read ipAddress from state.canonical.body.ipAddress.
+    // and score-signals can read all geo signal fields from state.canonical.body.
     state.canonical = variant;
 
     const b = variant.body;
@@ -110,6 +110,8 @@ export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | '
       'rawStatus':             ParseVariantNode.statusFor(variant),
       'carrier':               b.carrier,
       'ipAddress':             b.ipAddress,
+      'localeTag':             b.localeTag,
+      'countryCode':           b.countryCode,
       'latitude':              b.latitude,
       'longitude':             b.longitude,
       'legFromLat':            b.legFromLat,

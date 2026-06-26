@@ -238,6 +238,17 @@ export const schemas = {
 // ── Prompt builders ────────────────────────────────────────────────────
 /** Helpers expose only the builders; nodes never assemble prose themselves. */
 export const prompts = {
+  /**
+   * The language-independent shared system prompt: persona, scope, catalog
+   * authority, librarian voice, specialty, response style, shortlist grounding,
+   * and memory-as-context rules — the whole standing frame, not just a persona
+   * line. The adapter injects it as a leading system message via the
+   * `BaseAdapter.systemPrompt` seam, so pipeline bodies no longer prepend it
+   * inline; pass this value to the adapter constructor once and it arrives as a
+   * real leading system turn on every backend.
+   */
+  systemPrompt(): string { return SYSTEM; },
+
   classifyIntent(language: string, query: string, recalledSummary?: string, conversation: readonly ConversationTurn[] = []): string {
     const contextBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
@@ -247,8 +258,6 @@ export const prompts = {
         ].join('\n');
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const body = [
-      SYSTEM,
-      '',
       directives.intentEnumerationHeader,
       directives.intentEnumeration,
       '',
@@ -267,8 +276,6 @@ export const prompts = {
 
   extractTerms(language: string, query: string): string {
     const body = [
-      SYSTEM,
-      '',
       directives.extractTermsTask,
       directives.jsonArrayOnly,
       '',
@@ -292,7 +299,6 @@ export const prompts = {
       .map((t, i) => `  ${String(i + 1)}. ${t.name}: ${t.description}`)
       .join('\n');
     const body = [
-      SYSTEM,
       directives.emitJsonOnly,
       '',
       'Available tools:',
@@ -308,7 +314,6 @@ export const prompts = {
   rankCandidates(language: string, query: string, candidates: readonly CandidateType[]): string {
     const rows = candidates.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const body = [
-      SYSTEM,
       directives.emitJsonOnly,
       '',
       `${directives.visitorQuestionLabel} ${query}`,
@@ -343,7 +348,6 @@ export const prompts = {
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const memoryHint = PromptFormat.priorMemoryHintLine(shortlist);
     const body = [
-      SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
       ...(memoryHint.length > 0 ? [memoryHint] : []),
@@ -381,7 +385,6 @@ export const prompts = {
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const memoryHintAuthor = PromptFormat.priorMemoryHintLine(shortlist);
     const body = [
-      SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
       directives.chronological,
@@ -421,7 +424,6 @@ export const prompts = {
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const memoryHintReviews = PromptFormat.priorMemoryHintLine(shortlist);
     const body = [
-      SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
       directives.weightRatings,
@@ -461,7 +463,6 @@ export const prompts = {
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const memoryHintDescribe = PromptFormat.priorMemoryHintLine(shortlist);
     const body = [
-      SYSTEM,
       directives.describeOnly,
       directives.citeShortlist,
       directives.groundInShortlist,
@@ -500,7 +501,6 @@ export const prompts = {
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const memoryHintSimilar = PromptFormat.priorMemoryHintLine(shortlist);
     const body = [
-      SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
       directives.similarToPrior,
@@ -523,7 +523,6 @@ export const prompts = {
       : '';
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const body = [
-      SYSTEM,
       directives.ownTheGap,
       directives.beTerse,
       '',
@@ -537,7 +536,6 @@ export const prompts = {
   validate(language: string, draft: string, shortlist: readonly CandidateType[]): string {
     const titles = shortlist.map((c) => c.book.identity.title).join(' | ');
     const body = [
-      SYSTEM,
       directives.validateApprovalRule,
       directives.validateResponseFormat,
       '',
@@ -625,7 +623,6 @@ export const prompts = {
         ].filter(Boolean).join(' ');
 
     const body = [
-      SYSTEM,
       directives.recallMemories,
       directives.beTerse,
       '',

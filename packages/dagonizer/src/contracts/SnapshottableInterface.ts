@@ -53,4 +53,30 @@ export interface SnapshottableInterface {
    * implementations may ignore it.
    */
   restore(snapshot: StoreSnapshotType, options?: AbortableOptionsType): Promise<void>;
+
+  /**
+   * Stream the entire state as a sequence of `StoreSnapshotEntryType` values.
+   * This is the streaming counterpart to `snapshot()`: entries are yielded
+   * lazily without loading the full keyspace into memory first.
+   *
+   * Implementations that support cancellation should check
+   * `options.signal?.throwIfAborted()` between entries. In-process
+   * implementations may ignore `options`.
+   *
+   * The stream is additive/upsert — it does NOT clear the target before
+   * writing. To achieve replacement semantics, use the array-form `restore()`
+   * which clears first, or pair this with an explicit clear.
+   */
+  snapshotStream(options?: AbortableOptionsType): AsyncIterable<StoreSnapshotEntryType>;
+
+  /**
+   * Restore state from a stream of `StoreSnapshotEntryType` values. Each
+   * entry is applied as an upsert; keys absent from the stream are left
+   * untouched. To achieve full replacement semantics use the array-form
+   * `restore()`, which clears the keyspace before applying entries.
+   *
+   * `options.signal` is available for cancellation-aware implementations;
+   * in-process implementations may ignore it.
+   */
+  restoreStream(entries: AsyncIterable<StoreSnapshotEntryType>, options?: AbortableOptionsType): Promise<void>;
 }

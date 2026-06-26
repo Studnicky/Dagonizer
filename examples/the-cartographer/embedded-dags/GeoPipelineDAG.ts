@@ -7,18 +7,18 @@
  *   route-geo
  *     ├─has-geo──► apply-geo ──(normalize)──► resolved
  *     └─needs-geo─► validate-coords
- *                     ├─valid────► geo-resolve (embedded)
+ *                     ├─valid────► geo-source-resolve (embedded)
  *                     │             ├─success──► resolved
  *                     │             └─error────► resolved
- *                     └─rejected─► geo-resolve (embedded)
+ *                     └─rejected─► geo-source-resolve (embedded)
  *
  * route-geo routes 'has-geo' when the source pre-resolved geo (apply-geo
  * materialises GeoContext from carried geo, skipping the live lookup).
  * validate-coords classifies WGS-84 bounds. Out-of-range coords are NOT silently
- * dropped at a failed terminal — they flow into geo-resolve too, where the GPS
- * transport (OfflineGeo) captures the RangeError as a GeoErrorRecord on
- * state.errors and degrades gracefully. The fault rides as DATA through the
- * gather rather than vanishing. geo-resolve's nodes ship in geoResolveBundle.
+ * dropped at a failed terminal — they flow into geo-source-resolve too, where the
+ * offline resolver (CoordTimezone) guards the out-of-range RangeError and returns
+ * an empty timezone/country, so the resolution degrades to baseline rather than
+ * the event vanishing.
  */
 
 // #region geo-pipeline-dag
@@ -44,16 +44,16 @@ export const geoPipelineDAG: DAGType = new DAGBuilder('geo-pipeline', '1.0')
   })
 
   // 3. validate-coords (lookup path): WGS-84 bounds classification. Both valid
-  //    and rejected coords flow into geo-resolve — rejected ones are NOT dropped;
-  //    the GPS transport captures their RangeError as data and degrades.
+  //    and rejected coords flow into geo-source-resolve — rejected ones are NOT dropped;
+  //    CoordTimezone guards their out-of-range RangeError and degrades to baseline.
   .node('validate-coords', validateCoords, {
-    'valid':    'geo-resolve',
-    'rejected': 'geo-resolve',
+    'valid':    'geo-source-resolve',
+    'rejected': 'geo-source-resolve',
   })
 
-  // 4. geo-resolve: embedded multi-modal geo-resolution sub-DAG.
+  // 4. geo-source-resolve: embedded source-model geo-resolution sub-DAG.
   //    Writes state.geoContext + state.resolvedGeo + routing record.
-  .embeddedDAG<CartographerState, CartographerState>('geo-resolve', 'geo-resolve', {
+  .embeddedDAG<CartographerState, CartographerState>('geo-source-resolve', 'geo-source-resolve', {
     'success': 'resolved',
     'error':   'resolved',
   }, {

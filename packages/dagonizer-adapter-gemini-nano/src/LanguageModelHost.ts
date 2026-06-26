@@ -5,17 +5,25 @@
  * signatures the schema cannot express.
  *
  * Host objects are a foreign boundary exactly like a JSON wire body: the
- * raw `globalThis.LanguageModel` is `unknown` until validated. JSON Schema
- * cannot type a method (there is no `function` type keyword), so each
- * schema asserts only the *structural presence* of the host's members —
+ * raw `globalThis.LanguageModel` is `unknown` until narrowed. The schemas
+ * below assert only the *structural presence* of each host's members —
  * `LanguageModelStaticSchema` requires the `availability` and `create`
- * keys; `LanguageModelSessionSchema` requires `prompt` and `destroy`.
- * The `FromSchema`-derived base types are then narrowed by the tier-3
- * entity interfaces below, which add the precise call signatures used at
- * runtime. The validator on `languageModelStaticValidator` runs once when
- * the adapter first acquires the host object.
+ * keys; `LanguageModelSessionSchema` requires `prompt` and `destroy`. The
+ * `FromSchema`-derived base types are then refined by the tier-3 entity
+ * interfaces below, which add the precise call signatures used at runtime.
  *
- * Both validators are compiled once at module load via the engine's
+ * Two different runtime narrowings, because the two hosts have different
+ * runtime shapes:
+ *   • The static host (`globalThis.LanguageModel`) is a CALLABLE object —
+ *     a constructor-like function carrying static `availability`/`create`
+ *     methods (`typeof globalThis.LanguageModel === 'function'`). An Ajv
+ *     `type: 'object'` validator REJECTS a function, so the static host is
+ *     narrowed by the structural `LanguageModelHost.is` type-predicate
+ *     (function-or-object carrying callable `availability`/`create`).
+ *   • The session host (returned by `create()`) is a plain object, so the
+ *     `languageModelSessionValidator` Ajv validator narrows it correctly.
+ *
+ * The session validator is compiled once at module load via the engine's
  * shared `Validator.compile` (`@studnicky/dagonizer/validation`); the
  * package never instantiates its own Ajv.
  */
@@ -65,6 +73,7 @@ export type LanguageModelSessionBaseType = FromSchema<typeof LanguageModelSessio
  */
 export type PromptOptionsType = {
   responseConstraint?: Record<string, unknown>;
+  signal?: AbortSignal;
 };
 
 /**
@@ -84,17 +93,33 @@ export interface LanguageModelStaticInterface extends LanguageModelStaticBaseTyp
   availability(): Promise<GeminiNanoAvailabilityType>;
   create(options?: {
     initialPrompts?: ReadonlyArray<{ role: 'system' | 'user'; content: string }>;
+    signal?: AbortSignal;
   }): Promise<LanguageModelSessionInterface>;
 }
 
 /**
- * Validator for the static `window.LanguageModel` host, compiled once at
- * module load through the engine's shared Ajv (`Validator.compile`). The
- * adapter narrows `globalThis.LanguageModel` through `.is(value)` at the
- * host boundary.
+ * Structural type-guard for the static `window.LanguageModel` host.
+ *
+ * `LanguageModelHost.is(x)` narrows `unknown → LanguageModelStaticInterface`.
+ * The browser exposes the host as a CALLABLE object — a constructor-like
+ * function carrying static `availability`/`create` methods — so an Ajv
+ * `type: 'object'` validator would reject it (`object` excludes functions).
+ * The guard therefore accepts a function OR a non-null object that carries
+ * callable `availability` and `create` members. The body is cast-free: it
+ * narrows with `typeof` and the `in` operator at each step (the same pattern
+ * as the engine's `BroadcastChannelGlobal.is`).
  */
-export const languageModelStaticValidator: EntityValidatorInterface<LanguageModelStaticInterface> =
-  Validator.compile<LanguageModelStaticInterface>(LanguageModelStaticSchema);
+export class LanguageModelHost {
+  private constructor() { /* static class */ }
+
+  /** Narrows `unknown → LanguageModelStaticInterface`. Never throws. */
+  static is(x: unknown): x is LanguageModelStaticInterface {
+    if (typeof x !== 'function' && typeof x !== 'object') return false;
+    if (x === null) return false;
+    if (!('availability' in x) || !('create' in x)) return false;
+    return typeof x.availability === 'function' && typeof x.create === 'function';
+  }
+}
 
 /**
  * Validator for a live `LanguageModel` session, compiled once at module

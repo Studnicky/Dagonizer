@@ -7,7 +7,7 @@ import {
   MemoryCheckpointStore,
 } from '../../src/checkpoint/index.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import type { SnapshottableInterface, StoreSnapshotType } from '../../src/contracts/SnapshottableInterface.js';
+import type { SnapshottableInterface, StoreSnapshotEntryType, StoreSnapshotType } from '../../src/contracts/SnapshottableInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -141,6 +141,20 @@ class FactLog implements SnapshottableInterface {
       throw new Error(`FactLog.restore: incompatible snapshot type '${snapshot.type}'`);
     }
     this.#facts = snapshot.entries.map((entry) => String(entry.value));
+  }
+
+  async *snapshotStream(): AsyncIterable<StoreSnapshotEntryType> {
+    for (let i = 0; i < this.#facts.length; i += 1) {
+      yield { 'key': String(i), 'value': this.#facts[i] ?? '' };
+    }
+  }
+
+  async restoreStream(entries: AsyncIterable<StoreSnapshotEntryType>): Promise<void> {
+    const facts: string[] = [];
+    for await (const entry of entries) {
+      facts.push(String(entry.value));
+    }
+    this.#facts = facts;
   }
 }
 

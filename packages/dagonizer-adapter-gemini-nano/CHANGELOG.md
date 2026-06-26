@@ -1,5 +1,13 @@
 # @studnicky/dagonizer-adapter-gemini-nano
 
+## [unreleased]
+
+### Patch Changes
+
+- Add a per-request `timeoutMs` option (default 60s) enforced around `LanguageModel.create()` and `session.prompt()`; an expired deadline aborts the on-device call and surfaces as a `TIMEOUT` classification so a cascade falls through rather than hanging.
+- All system turns are collapsed into a single index-0 system prompt passed to `LanguageModel.create()`; user turns go to `prompt()`. A user-only request passes no `initialPrompts` (a valid session). `create()` failures route through `LlmError` classification.
+- `globalThis.LanguageModel` is narrowed via the structural `LanguageModelHost.is` type-predicate (checks `typeof === 'function'` on the global), so `probe()` succeeds on-device in Chrome. `LanguageModelHost` is exported in place of the removed `languageModelStaticValidator`; the session host keeps its `languageModelSessionValidator`.
+
 ## 0.27.0
 
 ## 0.26.0
@@ -12,12 +20,10 @@
 
 ## 0.22.0
 
-## [Unreleased]
-
 ### Changed
 
 - **Adapter-contract interfaces carry the `Interface` suffix (semver-major).** The framework contracts this package's public surface names are imported under their suffixed names: `EntityValidatorInterface` (the compiled host/response validator). The rename is type-only and propagates from `@studnicky/dagonizer`; runtime behavior is unchanged. Consumers typing against the old bare name (`EntityValidator`) update to the suffixed name.
-- The browser `window.LanguageModel` host object is now schema-backed. `LanguageModelStaticSchema` and `LanguageModelSessionSchema` (JSON Schema 2020-12) describe the host members; the base types derive via `FromSchema` and the tier-3 narrowing interfaces `LanguageModelStaticInterface` / `LanguageModelSessionInterface` add the call signatures the schema cannot express. The adapter reads `globalThis.LanguageModel` as `unknown` and narrows it through `languageModelStaticValidator` (and the live session through `languageModelSessionValidator`) before use. Both validators are compiled once at module load through the engine's shared `Validator.compile` (`@studnicky/dagonizer/validation`). The hand-written `LanguageModelStatic`/`LanguageModelSession`/`PromptOptions` interfaces and the cast-based `getLanguageModel` accessor are removed.
+- The browser `window.LanguageModel` host object is schema-backed. `LanguageModelStaticSchema` and `LanguageModelSessionSchema` (JSON Schema 2020-12) describe the host members; the base types derive via `FromSchema` and the tier-3 narrowing interfaces `LanguageModelStaticInterface` / `LanguageModelSessionInterface` add the call signatures the schema cannot express. The adapter reads `globalThis.LanguageModel` as `unknown` and narrows it through `languageModelStaticValidator` (and the live session through `languageModelSessionValidator`) before use. Both validators are compiled once at module load through the engine's shared `Validator.compile` (`@studnicky/dagonizer/validation`). The hand-written `LanguageModelStatic`/`LanguageModelSession`/`PromptOptions` interfaces and the cast-based `getLanguageModel` accessor are removed.
 - `GeminiNanoAvailability` is renamed to `GeminiNanoAvailabilityType`. This is a breaking rename of the exported type.
 - The `classify` override keeps only the provider-specific `MODEL_NOT_FOUND` (`availability|not present`) branch and delegates everything else to `super.classify`. The shared `LlmError` passthrough and `aborted|timeout` → `TIMEOUT` mapping now live in `BaseAdapterCore.classify`.
 - Tool-result messages flatten through the shared `BaseAdapter.formatToolResult(message)` static rather than an inline `[tool <name> result] <content>` string, so the format is single-sourced across the text-only adapters.
@@ -25,6 +31,7 @@
 ### Added
 
 - Public schema surface: `LanguageModelStaticSchema`, `LanguageModelSessionSchema`, the `LanguageModelStaticInterface` / `LanguageModelSessionInterface` / `PromptOptionsInterface` types, the `*BaseType` derivations, and the `languageModelStaticValidator` / `languageModelSessionValidator`.
+- Adds `"browser"` export condition to the `.` entry for bundler target selection.
 
 ## 0.21.0
 

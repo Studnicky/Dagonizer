@@ -58,10 +58,13 @@ export class DAGDocument {
       const message = error instanceof Error ? error.message : String(error);
       throw new ValidationError(`Invalid JSON: ${message}`);
     }
-    const merged = options.overrides !== undefined
-      ? { ...(parsed as Record<string, unknown>), ...options.overrides }
-      : parsed;
-    return Validator.dag.validate(merged);
+    if (options.overrides !== undefined) {
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new ValidationError('Cannot apply overrides: parsed JSON must be an object');
+      }
+      return Validator.dag.validate({ ...parsed, ...options.overrides });
+    }
+    return Validator.dag.validate(parsed);
   }
 
   /**
@@ -73,10 +76,13 @@ export class DAGDocument {
    * without mutating the source document.
    */
   static ofValue(value: unknown, options: DAGDocumentLoadOptionsType = {}): DAGType {
-    const merged = options.overrides !== undefined
-      ? { ...(value as Record<string, unknown>), ...options.overrides }
-      : value;
-    return Validator.dag.validate(merged);
+    if (options.overrides !== undefined) {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        throw new ValidationError('Cannot apply overrides: value must be an object');
+      }
+      return Validator.dag.validate({ ...value, ...options.overrides });
+    }
+    return Validator.dag.validate(value);
   }
 
   /** Serialize a DAG to pretty JSON (2-space indent). */

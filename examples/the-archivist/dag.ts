@@ -128,9 +128,20 @@ export class ArchivistBundleFactory {
       // No routing: phase placements are out-of-band and never set the entrypoint.
       .phase('setup', 'pre', nodes.preRunSetup)
 
-      // ── 0. recall-context ────────────────────────────────────────────────────
-      // First added → auto-entrypoint. Runs before classifyIntent so the
-      // classifier can benefit from prior-session continuity hints.
+      // ── 0. park-for-input (HITL gate) ────────────────────────────────────────
+      // First added → auto-entrypoint. Parks the flow when state.query is empty,
+      // waiting for the human to supply input via the browser HITL banner. On
+      // resume, `state.query` is set by the caller before `dispatcher.resume()`;
+      // the node then routes `'resumed'` and proceeds to `recall-context`.
+      // The `'parked'` output routes to the engine park machinery (null wiring).
+      .node('park-for-input', nodes.parkForInput, {
+        'parked':  'park-for-input',
+        'resumed': 'recall-context',
+      })
+
+      // ── 1. recall-context ────────────────────────────────────────────────────
+      // Runs before classifyIntent so the classifier can benefit from
+      // prior-session continuity hints.
       .node('recall-context', nodes.recallContext, {
         'recalled': 'classify-intent',
       })
@@ -362,6 +373,7 @@ export class ArchivistBundleFactory {
     return {
       'nodes': [
         nodes.preRunSetup,
+        nodes.parkForInput,
         nodes.recallContext, nodes.classifyIntent, nodes.extractQuery, nodes.decideTools,
         nodes.buildBookWorksets,
         nodes.rankByRating, nodes.pickBestMatch, nodes.mergeCandidates, nodes.recordFindings,

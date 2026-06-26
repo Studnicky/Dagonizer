@@ -31,8 +31,8 @@ import type { ToolInterface } from '@studnicky/dagonizer/tool';
 import type { CandidateType } from '@studnicky/dagonizer-book-entities';
 
 
+import { OPENLIBRARY_ENDPOINT, OpenLibraryDocs } from './OpenLibraryDocs.js';
 import { OpenLibraryResponseValidator } from './OpenLibraryResponse.js';
-import { OPENLIBRARY_ENDPOINT, OpenLibraryDocs } from './openLibraryTypes.js';
 
 type OpenLibrarySearchInputType = Record<string, unknown> & {
   readonly query?: string;

@@ -16,6 +16,8 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import type { RetryPolicyOptionsType } from '../../contracts/RetryPolicyOptionsType.js';
+
 export const SingleNodeSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/SingleNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
@@ -30,6 +32,21 @@ export const SingleNodeSchema = {
       'type': 'object',
       'additionalProperties': { 'type': 'string' },
     },
+    'retry': {
+      'type': 'object',
+      'properties': {
+        'maxAttempts':  { 'type': 'integer', 'minimum': 1 },
+        'strategy':     { 'type': 'string', 'enum': ['constant', 'linear', 'exponential', 'decorrelated-jitter'] },
+        'baseDelay':    { 'type': 'integer', 'minimum': 0 },
+        'maxDelay':     { 'type': 'integer', 'minimum': 0 },
+        'multiplier':   { 'type': 'number' },
+        'jitterFactor': { 'type': 'number' },
+        'on': {
+          'type': 'array',
+          'items': { 'type': 'string' },
+        },
+      },
+    },
   },
   'additionalProperties': false,
 } as const;
@@ -38,15 +55,23 @@ export const SingleNodeSchema = {
 export type SingleNodeType = FromSchema<typeof SingleNodeSchema>;
 
 /**
+ * The no-retry sentinel: exactly one attempt, no backoff.
+ * Used as the default when a `SingleNodePlacementType` carries no `retry` field.
+ */
+export const NO_RETRY: RetryPolicyOptionsType = { 'maxAttempts': 1 };
+
+/**
  * Single node placement.
  * Routes to next node(s) based on the node's output.
  *
- * Extends `SingleNodeType` entity via `Omit<SingleNodeType, 'outputs'>`:
+ * Extends `SingleNodeType` entity via `Omit<SingleNodeType, 'outputs' | 'retry'>`:
  *   - `outputs` is narrowed from `Record<string, string | null>` to
  *     `Record<TOutput, null | string>` for exhaustiveness-checking at
  *     compile time when `TOutput` is a narrow union.
+ *   - `retry` carries the runtime `RetryPolicyOptionsType` (which includes
+ *     `ErrorConstructorType[]` for `retryOn`/`abortOn`).
  */
-export type SingleNodePlacementType<TOutput extends string = string> = Omit<SingleNodeType, 'outputs'> & {
+export type SingleNodePlacementType<TOutput extends string = string> = Omit<SingleNodeType, 'outputs' | 'retry'> & {
   /**
    * Output routing - maps node outputs to next placement names.
    * Key: output name from node (e.g., 'success', 'error', 'retry')
@@ -58,4 +83,10 @@ export type SingleNodePlacementType<TOutput extends string = string> = Omit<Sing
    * routes.
    */
   'outputs': Record<TOutput, string>;
+  /**
+   * Retry policy for this placement. When absent, the dispatcher defaults to
+   * `NO_RETRY` (exactly one attempt). When set, `RetryPolicy.from(retry).run(...)`
+   * wraps each `node.execute()` call with the configured backoff and filtering.
+   */
+  'retry'?: RetryPolicyOptionsType;
 };

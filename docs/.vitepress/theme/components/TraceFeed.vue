@@ -21,7 +21,8 @@ import type { LogEvent } from '../../../../examples/the-archivist/logger/Console
 type TraceEntry =
   | { readonly variant: 'start'; readonly node: string; readonly ts: number }
   | { readonly variant: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
-  | { readonly variant: 'error'; readonly node: string; readonly ts: number; readonly message: string };
+  | { readonly variant: 'error'; readonly node: string; readonly ts: number; readonly message: string }
+  | { readonly variant: 'note';  readonly node: string; readonly ts: number; readonly message: string };
 
 /** Discriminated union for the merged feed. */
 type FeedItem =
@@ -75,10 +76,16 @@ function timeFor(ts: number): string {
         <!-- Node lifecycle event -->
         <template v-if="item.feedKind === 'trace'">
           <span :class="['tf-variant', `tf-variant-${item.entry.variant}`]">{{ item.entry.variant }}</span>
-          <code class="tf-node tf-node-clickable" role="button" tabindex="0" @click="emit('node-click', item.entry.node)" @keydown.enter="emit('node-click', item.entry.node)">{{ item.entry.node }}</code>
-          <span v-if="item.entry.variant === 'end' && item.entry.output !== null" class="tf-output">→ {{ item.entry.output }}</span>
-          <span v-else-if="item.entry.variant === 'error'" class="tf-error-message">{{ item.entry.message }}</span>
-          <span v-else class="tf-output"></span>
+          <template v-if="item.entry.variant === 'note'">
+            <span class="tf-node tf-note-node">{{ item.entry.node }}</span>
+            <span class="tf-note-message">{{ item.entry.message }}</span>
+          </template>
+          <template v-else>
+            <code class="tf-node tf-node-clickable" role="button" tabindex="0" @click="emit('node-click', item.entry.node)" @keydown.enter="emit('node-click', item.entry.node)">{{ item.entry.node }}</code>
+            <span v-if="item.entry.variant === 'end' && item.entry.output !== null" class="tf-output">→ {{ item.entry.output }}</span>
+            <span v-else-if="item.entry.variant === 'error'" class="tf-error-message">{{ item.entry.message }}</span>
+            <span v-else class="tf-output"></span>
+          </template>
         </template>
 
         <!-- Logger line -->
@@ -187,8 +194,16 @@ function timeFor(ts: number): string {
 .tf-variant-start { background: rgba(34, 232, 255, 0.14); color: var(--dagonizer-brand); }
 .tf-variant-end   { background: rgba(155, 81, 224, 0.14); color: var(--dagonizer-brand2); }
 .tf-variant-error { background: rgba(212, 166, 73, 0.18); color: var(--dagonizer-brand3); }
+.tf-variant-note  { background: transparent; color: var(--vp-c-text-3); border: 1px solid var(--vp-c-divider); }
 
 .tf-node    { color: var(--vp-c-text-1); }
+.tf-note-node { color: var(--vp-c-text-3); }
+.tf-note-message {
+  color: var(--vp-c-text-3);
+  font-style: italic;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 .tf-error-message {
   color: var(--vp-c-text-3);
   overflow-wrap: anywhere;
@@ -216,6 +231,9 @@ function timeFor(ts: number): string {
 .tf-level-info   { background: rgba(34, 232, 255, 0.12); color: var(--dagonizer-brand); }
 .tf-level-warn   { background: rgba(212, 166, 73, 0.18); color: var(--dagonizer-brand3); }
 .tf-level-result { background: rgba(155, 81, 224, 0.16); color: var(--dagonizer-brand2); }
+/* Muted fallback for debug/trace levels — rendered without alarm color. */
+.tf-level-debug  { background: transparent; color: var(--vp-c-text-3); }
+.tf-level-trace  { background: transparent; color: var(--vp-c-text-3); }
 
 .tf-message {
   color: var(--vp-c-text-1);

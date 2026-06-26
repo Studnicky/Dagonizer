@@ -26,7 +26,7 @@
  * Per-event scratch (currentSource, decodedText, parsedRecords, mappedRecords,
  * ingestedEvents, canonical, canonicalVariant, raw, normalized, currentEvent,
  * geoContext, pricedOrder, shippingQuote, deliveryEstimate, legKm,
- * coldChainBreach, customsDwellHours, gpsCandidate,
+ * coldChainBreach, customsDwellHours,
  * ipCandidate, routing, gdprResult, resolvedGeo) is never serialized; workers
  * recompute it from the source-payload metadata on each dispatch.
  * The `sources` AsyncIterable is not checkpointable (snapshots as empty array;
@@ -44,6 +44,9 @@ import type { CustomsEvent } from './entities/events/CustomsEvent.ts';
 import type { DeliveryConfirmationEvent } from './entities/events/DeliveryConfirmationEvent.ts';
 import type { GeoCandidate } from './entities/GeoCandidate.ts';
 import type { ResolvedGeo } from './entities/ResolvedGeo.ts';
+import { type GeoSignal, DEFAULT_GEO_SIGNAL } from './entities/GeoSignal.ts';
+import { type GeoResolution, DEFAULT_GEO_RESOLUTION } from './entities/GeoResolution.ts';
+import type { GeoSignalDescriptor } from './entities/GeoSignalDescriptor.ts';
 import type { DeliveryEstimate } from './entities/DeliveryEstimate.ts';
 import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
 import type { GdprResult } from './entities/GdprResult.ts';
@@ -266,6 +269,8 @@ export class CartographerState extends NodeStateBase {
     'rawStatus':           '',
     'carrier':             '',
     'ipAddress':           '',
+    'localeTag':           '',
+    'countryCode':         '',
     'latitude':            0,
     'longitude':           0,
     'legFromLat':          0,
@@ -411,7 +416,7 @@ export class CartographerState extends NodeStateBase {
   routing: EnrichedShipment['routing'] = CartographerState.defaultRouting();
 
   /**
-   * Ephemeral per-clone accumulator of captured exceptions (like gpsCandidate:
+   * Ephemeral per-clone accumulator of captured exceptions (like ipCandidate:
    * non-serialized, recomputed each dispatch). The geo / ingest nodes append a
    * `GeoErrorRecordType` here whenever their transport reports a captured error;
    * the gather folds these into the parent's `errorRollup`. The node still
@@ -423,26 +428,40 @@ export class CartographerState extends NodeStateBase {
    */
   capturedErrors: readonly GeoErrorRecordType[] = [];
 
-  /** GPS-modality candidate from reverse-geocode (set by the geo-resolve sub-DAG). */
-  gpsCandidate: GeoCandidate = CartographerState.unresolvedCandidate('gps');
-
   /** IP-modality candidate from ip-geolocate (unresolved when that node skipped). */
   ipCandidate: GeoCandidate = CartographerState.unresolvedCandidate('ip');
 
-  /** The fused multi-modal location (set by fuse-geo). */
+  /** The fused multi-modal location (set by fuse-source-geo). */
   resolvedGeo: ResolvedGeo = {
     'country':      '',
     'countryName':  '',
     'continent':    'Unmapped',
     'region':       '',
     'locality':     '',
+    'locale':       '',
     'lat':          0,
     'lng':          0,
     'status':       'land',
     'jurisdiction': 'baseline',
     'confidence':   0,
     'modalities':   [],
+    'provenance':   [],
   };
+
+  /** Source-model routing signal built by classify-geo-source (which path to take). */
+  geoSignal: GeoSignal = { ...DEFAULT_GEO_SIGNAL };
+
+  /** Resolved geo from the selected source-model path (set by the source-resolve nodes). */
+  geoResolution: GeoResolution = { ...DEFAULT_GEO_RESOLUTION };
+
+  /** Scored geo signals for the scatter-gather resolution path (Wave 1+). */
+  geoSignals: GeoSignalDescriptor[] = [];
+
+  /** Current best candidate resolution (Wave 1+). */
+  candidate: GeoResolution = { ...DEFAULT_GEO_RESOLUTION };
+
+  /** All scored resolution candidates (Wave 1+). */
+  geoCandidates: GeoResolution[] = [];
 
   /** GDPR processing result for the current scan (location + consent driven). */
   gdprResult: GdprResult = {
@@ -574,9 +593,13 @@ export class CartographerState extends NodeStateBase {
     copy.customsDwellHours = this.customsDwellHours;
 
     copy.capturedErrors = this.capturedErrors.map((e) => ({ ...e }));
-    copy.gpsCandidate = { ...this.gpsCandidate };
     copy.ipCandidate  = { ...this.ipCandidate };
-    copy.resolvedGeo  = { ...this.resolvedGeo, 'modalities': [...this.resolvedGeo.modalities] };
+    copy.resolvedGeo  = { ...this.resolvedGeo, 'modalities': [...this.resolvedGeo.modalities], 'provenance': [...this.resolvedGeo.provenance] };
+    copy.geoSignal    = { ...this.geoSignal };
+    copy.geoResolution = { ...this.geoResolution };
+    copy.geoSignals    = this.geoSignals.map((s) => ({ ...s }));
+    copy.candidate     = { ...this.candidate };
+    copy.geoCandidates = this.geoCandidates.map((c) => ({ ...c }));
 
     copy.routing = { ...this.routing, 'geoModalities': [...this.routing.geoModalities] };
 
@@ -857,114 +880,124 @@ export class CartographerState extends NodeStateBase {
 
   private static readonly cloneVariantDispatch: Readonly<Record<string, (v: CanonicalEventVariant) => CanonicalEventVariant>> = {
     'position-ping': (v) => {
-      const ev = v as PositionPingEvent;
-      const copy: PositionPingEvent = { ...CartographerState.variantEnvelope(ev), 'eventType': 'position-ping', 'body': { ...ev.body } };
-      if (ev.geo !== undefined) copy.geo = { ...ev.geo };
-      if (ev.consentHandled !== undefined) copy.consentHandled = ev.consentHandled;
-      if (ev.pii !== undefined) copy.pii = ev.pii;
+      if (v.eventType !== 'position-ping') return v;
+      const copy: PositionPingEvent = { ...CartographerState.variantEnvelope(v), 'eventType': 'position-ping', 'body': { ...v.body } };
+      if (v.geo !== undefined) copy.geo = { ...v.geo };
+      if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
+      if (v.pii !== undefined) copy.pii = v.pii;
       return copy;
     },
     'facility-scan': (v) => {
-      const ev = v as FacilityScanEvent;
-      const copy: FacilityScanEvent = { ...CartographerState.variantEnvelope(ev), 'eventType': 'facility-scan', 'body': { ...ev.body, 'lineItems': ev.body.lineItems.map((li) => ({ ...li })) } };
-      if (ev.geo !== undefined) copy.geo = { ...ev.geo };
-      if (ev.consentHandled !== undefined) copy.consentHandled = ev.consentHandled;
-      if (ev.pii !== undefined) copy.pii = ev.pii;
+      if (v.eventType !== 'facility-scan') return v;
+      const copy: FacilityScanEvent = { ...CartographerState.variantEnvelope(v), 'eventType': 'facility-scan', 'body': { ...v.body, 'lineItems': v.body.lineItems.map((li) => ({ ...li })) } };
+      if (v.geo !== undefined) copy.geo = { ...v.geo };
+      if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
+      if (v.pii !== undefined) copy.pii = v.pii;
       return copy;
     },
     'sensor-reading': (v) => {
-      const ev = v as SensorReadingEvent;
-      const copy: SensorReadingEvent = { ...CartographerState.variantEnvelope(ev), 'eventType': 'sensor-reading', 'body': { ...ev.body } };
-      if (ev.geo !== undefined) copy.geo = { ...ev.geo };
-      if (ev.consentHandled !== undefined) copy.consentHandled = ev.consentHandled;
-      if (ev.pii !== undefined) copy.pii = ev.pii;
+      if (v.eventType !== 'sensor-reading') return v;
+      const copy: SensorReadingEvent = { ...CartographerState.variantEnvelope(v), 'eventType': 'sensor-reading', 'body': { ...v.body } };
+      if (v.geo !== undefined) copy.geo = { ...v.geo };
+      if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
+      if (v.pii !== undefined) copy.pii = v.pii;
       return copy;
     },
     'customs-event': (v) => {
-      const ev = v as CustomsEvent;
-      const copy: CustomsEvent = { ...CartographerState.variantEnvelope(ev), 'eventType': 'customs-event', 'body': { ...ev.body } };
-      if (ev.geo !== undefined) copy.geo = { ...ev.geo };
-      if (ev.consentHandled !== undefined) copy.consentHandled = ev.consentHandled;
-      if (ev.pii !== undefined) copy.pii = ev.pii;
+      if (v.eventType !== 'customs-event') return v;
+      const copy: CustomsEvent = { ...CartographerState.variantEnvelope(v), 'eventType': 'customs-event', 'body': { ...v.body } };
+      if (v.geo !== undefined) copy.geo = { ...v.geo };
+      if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
+      if (v.pii !== undefined) copy.pii = v.pii;
       return copy;
     },
     'delivery-confirmation': (v) => {
-      const ev = v as DeliveryConfirmationEvent;
-      const copy: DeliveryConfirmationEvent = { ...CartographerState.variantEnvelope(ev), 'eventType': 'delivery-confirmation', 'body': { ...ev.body } };
-      if (ev.geo !== undefined) copy.geo = { ...ev.geo };
-      if (ev.consentHandled !== undefined) copy.consentHandled = ev.consentHandled;
-      if (ev.pii !== undefined) copy.pii = ev.pii;
+      if (v.eventType !== 'delivery-confirmation') return v;
+      const copy: DeliveryConfirmationEvent = { ...CartographerState.variantEnvelope(v), 'eventType': 'delivery-confirmation', 'body': { ...v.body } };
+      if (v.geo !== undefined) copy.geo = { ...v.geo };
+      if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
+      if (v.pii !== undefined) copy.pii = v.pii;
       return copy;
     },
   };
 
   private static readonly variantToJsonBodyDispatch: Readonly<Record<string, (v: CanonicalEventVariant) => JsonObjectType>> = {
     'position-ping': (v) => {
-      const ev = v as PositionPingEvent;
+      if (v.eventType !== 'position-ping') return {};
       return {
-        'scanSeq':      ev.body.scanSeq,   'latitude':   ev.body.latitude,  'longitude':    ev.body.longitude,
-        'ipAddress':    ev.body.ipAddress,  'legFromLat': ev.body.legFromLat, 'legFromLng':  ev.body.legFromLng,
-        'originLat':    ev.body.originLat,  'originLng':  ev.body.originLng,  'destLat':     ev.body.destLat,  'destLng': ev.body.destLng,
-        'carrier':      ev.body.carrier,    'status':     ev.body.status,      'rawTimestamp': ev.body.rawTimestamp,
+        'scanSeq':      v.body.scanSeq,   'latitude':   v.body.latitude,  'longitude':    v.body.longitude,
+        'ipAddress':    v.body.ipAddress,  'localeTag':  v.body.localeTag,  'countryCode':  v.body.countryCode,
+        'legFromLat': v.body.legFromLat, 'legFromLng':  v.body.legFromLng,
+        'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':     v.body.destLat,  'destLng': v.body.destLng,
+        'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
+        'address': v.body.address, 'phone': v.body.phone,
       };
     },
     'facility-scan': (v) => {
-      const ev = v as FacilityScanEvent;
+      if (v.eventType !== 'facility-scan') return {};
       return {
-        'scanSeq':      ev.body.scanSeq,   'latitude':   ev.body.latitude,  'longitude':    ev.body.longitude,
-        'ipAddress':    ev.body.ipAddress,  'legFromLat': ev.body.legFromLat, 'legFromLng':  ev.body.legFromLng,
-        'originLat':    ev.body.originLat,  'originLng':  ev.body.originLng,  'destLat':     ev.body.destLat,  'destLng': ev.body.destLng,
-        'carrier':      ev.body.carrier,    'status':     ev.body.status,      'rawTimestamp': ev.body.rawTimestamp,
-        'facilityId':   ev.body.facilityId, 'weight': ev.body.weight, 'weightUnit': ev.body.weightUnit,
-        'lineItems':    ev.body.lineItems.map((li) => ({ 'productId': li.productId, 'quantity': li.quantity })),
-        'rawDispatchAt': ev.body.rawDispatchAt, 'rawPromisedDeliveryAt': ev.body.rawPromisedDeliveryAt,
-        'disruptionReason': ev.body.disruptionReason,
-        'recipientName': ev.body.recipientName, 'recipientEmail': ev.body.recipientEmail,
-        'recipientPhone': ev.body.recipientPhone, 'recipientAddress': ev.body.recipientAddress,
-        'recipientCountry': ev.body.recipientCountry, 'marketingConsent': ev.body.marketingConsent,
-        'lawfulBasis':  ev.body.lawfulBasis, 'specialCategory': ev.body.specialCategory,
+        'scanSeq':      v.body.scanSeq,   'latitude':   v.body.latitude,  'longitude':    v.body.longitude,
+        'ipAddress':    v.body.ipAddress,  'localeTag':  v.body.localeTag,  'countryCode':  v.body.countryCode,
+        'legFromLat': v.body.legFromLat, 'legFromLng':  v.body.legFromLng,
+        'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':     v.body.destLat,  'destLng': v.body.destLng,
+        'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
+        'facilityId':   v.body.facilityId, 'weight': v.body.weight, 'weightUnit': v.body.weightUnit,
+        'lineItems':    v.body.lineItems.map((li) => ({ 'productId': li.productId, 'quantity': li.quantity })),
+        'rawDispatchAt': v.body.rawDispatchAt, 'rawPromisedDeliveryAt': v.body.rawPromisedDeliveryAt,
+        'disruptionReason': v.body.disruptionReason,
+        'recipientName': v.body.recipientName, 'recipientEmail': v.body.recipientEmail,
+        'recipientPhone': v.body.recipientPhone, 'recipientAddress': v.body.recipientAddress,
+        'recipientCountry': v.body.recipientCountry, 'marketingConsent': v.body.marketingConsent,
+        'lawfulBasis':  v.body.lawfulBasis, 'specialCategory': v.body.specialCategory,
+        'address': v.body.address, 'phone': v.body.phone,
       };
     },
     'sensor-reading': (v) => {
-      const ev = v as SensorReadingEvent;
+      if (v.eventType !== 'sensor-reading') return {};
       return {
-        'scanSeq':      ev.body.scanSeq,   'latitude':   ev.body.latitude,  'longitude':    ev.body.longitude,
-        'ipAddress':    ev.body.ipAddress,  'legFromLat': ev.body.legFromLat, 'legFromLng':  ev.body.legFromLng,
-        'originLat':    ev.body.originLat,  'originLng':  ev.body.originLng,  'destLat':     ev.body.destLat,  'destLng': ev.body.destLng,
-        'carrier':      ev.body.carrier,    'status':     ev.body.status,      'rawTimestamp': ev.body.rawTimestamp,
-        'tempC':        ev.body.tempC,      'humidityPct': ev.body.humidityPct, 'shockG': ev.body.shockG,
+        'scanSeq':      v.body.scanSeq,   'latitude':   v.body.latitude,  'longitude':    v.body.longitude,
+        'ipAddress':    v.body.ipAddress,  'localeTag':  v.body.localeTag,  'countryCode':  v.body.countryCode,
+        'legFromLat': v.body.legFromLat, 'legFromLng':  v.body.legFromLng,
+        'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':     v.body.destLat,  'destLng': v.body.destLng,
+        'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
+        'tempC':        v.body.tempC,      'humidityPct': v.body.humidityPct, 'shockG': v.body.shockG,
+        'address': v.body.address, 'phone': v.body.phone,
       };
     },
     'customs-event': (v) => {
-      const ev = v as CustomsEvent;
+      if (v.eventType !== 'customs-event') return {};
       return {
-        'scanSeq':      ev.body.scanSeq,   'latitude':   ev.body.latitude,  'longitude':    ev.body.longitude,
-        'ipAddress':    ev.body.ipAddress,  'legFromLat': ev.body.legFromLat, 'legFromLng':  ev.body.legFromLng,
-        'originLat':    ev.body.originLat,  'originLng':  ev.body.originLng,  'destLat':     ev.body.destLat,  'destLng': ev.body.destLng,
-        'carrier':      ev.body.carrier,    'status':     ev.body.status,      'rawTimestamp': ev.body.rawTimestamp,
-        'customsStatus': ev.body.customsStatus,
+        'scanSeq':      v.body.scanSeq,   'latitude':   v.body.latitude,  'longitude':    v.body.longitude,
+        'ipAddress':    v.body.ipAddress,  'localeTag':  v.body.localeTag,  'countryCode':  v.body.countryCode,
+        'legFromLat': v.body.legFromLat, 'legFromLng':  v.body.legFromLng,
+        'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':     v.body.destLat,  'destLng': v.body.destLng,
+        'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
+        'customsStatus': v.body.customsStatus,
+        'address': v.body.address, 'phone': v.body.phone,
       };
     },
     'delivery-confirmation': (v) => {
-      const ev = v as DeliveryConfirmationEvent;
+      if (v.eventType !== 'delivery-confirmation') return {};
       return {
-        'scanSeq':      ev.body.scanSeq,   'latitude':   ev.body.latitude,  'longitude':    ev.body.longitude,
-        'ipAddress':    ev.body.ipAddress,  'legFromLat': ev.body.legFromLat, 'legFromLng':  ev.body.legFromLng,
-        'originLat':    ev.body.originLat,  'originLng':  ev.body.originLng,  'destLat':     ev.body.destLat,  'destLng': ev.body.destLng,
-        'carrier':      ev.body.carrier,    'status':     ev.body.status,      'rawTimestamp': ev.body.rawTimestamp,
-        'delivered':    ev.body.delivered,  'rawPromisedDeliveryAt': ev.body.rawPromisedDeliveryAt,
-        'disruptionReason': ev.body.disruptionReason,
-        'recipientName': ev.body.recipientName, 'recipientEmail': ev.body.recipientEmail,
-        'recipientPhone': ev.body.recipientPhone, 'recipientAddress': ev.body.recipientAddress,
-        'recipientCountry': ev.body.recipientCountry, 'marketingConsent': ev.body.marketingConsent,
-        'lawfulBasis':  ev.body.lawfulBasis, 'specialCategory': ev.body.specialCategory,
+        'scanSeq':      v.body.scanSeq,   'latitude':   v.body.latitude,  'longitude':    v.body.longitude,
+        'ipAddress':    v.body.ipAddress,  'localeTag':  v.body.localeTag,  'countryCode':  v.body.countryCode,
+        'legFromLat': v.body.legFromLat, 'legFromLng':  v.body.legFromLng,
+        'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':     v.body.destLat,  'destLng': v.body.destLng,
+        'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
+        'delivered':    v.body.delivered,  'rawPromisedDeliveryAt': v.body.rawPromisedDeliveryAt,
+        'disruptionReason': v.body.disruptionReason,
+        'recipientName': v.body.recipientName, 'recipientEmail': v.body.recipientEmail,
+        'recipientPhone': v.body.recipientPhone, 'recipientAddress': v.body.recipientAddress,
+        'recipientCountry': v.body.recipientCountry, 'marketingConsent': v.body.marketingConsent,
+        'lawfulBasis':  v.body.lawfulBasis, 'specialCategory': v.body.specialCategory,
+        'address': v.body.address, 'phone': v.body.phone,
       };
     },
   };
 
   private static readonly variantFromJsonDispatch: Readonly<Record<string, (
     envelope: { shipmentId: string; eventId: string; epochMs: number; sourceId: string; sourceFormat: CanonicalEventVariant['sourceFormat']; sourceCompression: CanonicalEventVariant['sourceCompression'] },
-    sharedBody: { scanSeq: number; latitude: number; longitude: number; ipAddress: string; legFromLat: number; legFromLng: number; originLat: number; originLng: number; destLat: number; destLng: number; carrier: string; status: string; rawTimestamp: string },
+    sharedBody: { scanSeq: number; latitude: number; longitude: number; ipAddress: string; localeTag: string; countryCode: string; legFromLat: number; legFromLng: number; originLat: number; originLng: number; destLat: number; destLng: number; carrier: string; status: string; rawTimestamp: string; address: string; phone: string },
     b: Record<string, unknown>,
     o: Record<string, unknown>,
   ) => CanonicalEventVariant>> = {
@@ -1109,13 +1142,13 @@ export class CartographerState extends NodeStateBase {
 
   private static resolveFromJsonHandler(eventType: string): (
     envelope: { shipmentId: string; eventId: string; epochMs: number; sourceId: string; sourceFormat: CanonicalEventVariant['sourceFormat']; sourceCompression: CanonicalEventVariant['sourceCompression'] },
-    sharedBody: { scanSeq: number; latitude: number; longitude: number; ipAddress: string; legFromLat: number; legFromLng: number; originLat: number; originLng: number; destLat: number; destLng: number; carrier: string; status: string; rawTimestamp: string },
+    sharedBody: { scanSeq: number; latitude: number; longitude: number; ipAddress: string; localeTag: string; countryCode: string; legFromLat: number; legFromLng: number; originLat: number; originLng: number; destLat: number; destLng: number; carrier: string; status: string; rawTimestamp: string; address: string; phone: string },
     b: Record<string, unknown>,
     o: Record<string, unknown>,
   ) => CanonicalEventVariant {
     const pp = (
       envelope: { shipmentId: string; eventId: string; epochMs: number; sourceId: string; sourceFormat: CanonicalEventVariant['sourceFormat']; sourceCompression: CanonicalEventVariant['sourceCompression'] },
-      sharedBody: { scanSeq: number; latitude: number; longitude: number; ipAddress: string; legFromLat: number; legFromLng: number; originLat: number; originLng: number; destLat: number; destLng: number; carrier: string; status: string; rawTimestamp: string },
+      sharedBody: { scanSeq: number; latitude: number; longitude: number; ipAddress: string; localeTag: string; countryCode: string; legFromLat: number; legFromLng: number; originLat: number; originLng: number; destLat: number; destLng: number; carrier: string; status: string; rawTimestamp: string; address: string; phone: string },
       _b: Record<string, unknown>,
       o: Record<string, unknown>,
     ): CanonicalEventVariant => {
@@ -1146,6 +1179,8 @@ export class CartographerState extends NodeStateBase {
       'latitude':     CartographerState.num(b['latitude']),
       'longitude':    CartographerState.num(b['longitude']),
       'ipAddress':    CartographerState.str(b['ipAddress']),
+      'localeTag':    CartographerState.str(b['localeTag']),
+      'countryCode':  CartographerState.str(b['countryCode']),
       'legFromLat':   CartographerState.num(b['legFromLat']),
       'legFromLng':   CartographerState.num(b['legFromLng']),
       'originLat':    CartographerState.num(b['originLat']),
@@ -1155,6 +1190,8 @@ export class CartographerState extends NodeStateBase {
       'carrier':      CartographerState.str(b['carrier']),
       'status':       CartographerState.str(b['status']),
       'rawTimestamp': CartographerState.str(b['rawTimestamp']),
+      'address':      CartographerState.str(b['address']),
+      'phone':        CartographerState.str(b['phone']),
     };
     return CartographerState.resolveFromJsonHandler(eventType)(envelope, sharedBody, b, o);
   }
@@ -1272,11 +1309,12 @@ export class CartographerState extends NodeStateBase {
       'path':              'order',
       'geoLookupRun':      false,
       'geoLookupSkipped':  false,
-      'reverseGeocodeRun': false,
       'ipGeolocateRun':    false,
       'ipGeolocateSkipped': false,
       'geoConfidence':     0,
       'geoModalities':     [],
+      'geoSourceModel':    '',
+      'geoFallbackUsed':   false,
       'redactionRun':      false,
       'redactionSkipped':  false,
       'pricingRun':        false,
@@ -1301,11 +1339,12 @@ export class CartographerState extends NodeStateBase {
       'path':              r.path,
       'geoLookupRun':      r.geoLookupRun,
       'geoLookupSkipped':  r.geoLookupSkipped,
-      'reverseGeocodeRun': r.reverseGeocodeRun,
       'ipGeolocateRun':    r.ipGeolocateRun,
       'ipGeolocateSkipped': r.ipGeolocateSkipped,
       'geoConfidence':     r.geoConfidence,
       'geoModalities':     [...r.geoModalities],
+      'geoSourceModel':    r.geoSourceModel,
+      'geoFallbackUsed':   r.geoFallbackUsed,
       'redactionRun':      r.redactionRun,
       'redactionSkipped':  r.redactionSkipped,
       'pricingRun':        r.pricingRun,
@@ -1329,11 +1368,12 @@ export class CartographerState extends NodeStateBase {
       'path':              CartographerState.routingPath(o['path']),
       'geoLookupRun':      CartographerState.bool(o['geoLookupRun']),
       'geoLookupSkipped':  CartographerState.bool(o['geoLookupSkipped']),
-      'reverseGeocodeRun': CartographerState.bool(o['reverseGeocodeRun']),
       'ipGeolocateRun':    CartographerState.bool(o['ipGeolocateRun']),
       'ipGeolocateSkipped': CartographerState.bool(o['ipGeolocateSkipped']),
       'geoConfidence':     CartographerState.num(o['geoConfidence']),
       'geoModalities':     CartographerState.strArr(o['geoModalities']),
+      'geoSourceModel':    CartographerState.str(o['geoSourceModel']),
+      'geoFallbackUsed':   CartographerState.bool(o['geoFallbackUsed']),
       'redactionRun':      CartographerState.bool(o['redactionRun']),
       'redactionSkipped':  CartographerState.bool(o['redactionSkipped']),
       'pricingRun':        CartographerState.bool(o['pricingRun']),

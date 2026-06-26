@@ -40,7 +40,7 @@ export const RawShipmentEventSchema = {
   'type': 'object',
   'required': [
     'shipmentId', 'scanSeq', 'rawTimestamp', 'rawDispatchAt', 'rawStatus', 'carrier',
-    'ipAddress',
+    'ipAddress', 'localeTag', 'countryCode',
     'latitude', 'longitude', 'legFromLat', 'legFromLng',
     'originLat', 'originLng', 'destLat', 'destLng',
     'weight', 'weightUnit',
@@ -59,6 +59,9 @@ export const RawShipmentEventSchema = {
     'carrier':             { 'type': 'string', 'minLength': 1 },
     // The asset's per-region public gateway IP (the IP modality's signal).
     'ipAddress':           { 'type': 'string' },
+    // Source-supplied locale tag (BCP-47) and ISO-2 country code (when available).
+    'localeTag':           { 'type': 'string' },
+    'countryCode':         { 'type': 'string' },
     'latitude':            { 'type': 'number' },
     'longitude':           { 'type': 'number' },
     'legFromLat':          { 'type': 'number' },

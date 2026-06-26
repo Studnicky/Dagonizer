@@ -1,40 +1,40 @@
 /**
  * GeoResolvers: assembles the CartographerServices record with the chosen geo
- * transport backend.
+ * transport backends.
  *
- * GPS reverse-geocode is always the offline `OfflineReverseGeocoder` (backed
- * by `@rapideditor/country-coder`) — deterministic, no HTTP, no key, runs
- * identically in Node 18+ and the browser.
+ * Two transports are injected:
+ *   - `ipGeolocator`: resolves a gateway IP address to a location.
+ *     Live: freeipapi.com (real HTTPS API). Recorded: committed fixture replay.
+ *   - `addressGeocoder`: forward-geocodes a postal address string.
+ *     Live: OpenStreetMap Nominatim (real HTTPS API). Recorded: deterministic
+ *     unresolved (no committed address fixtures yet).
  *
- * IP geolocation uses `LiveIpGeolocator` (freeipapi.com, real HTTPS API) for
- * the online demo, or `RecordedIpGeolocator` (committed fixture replay) for
- * the deterministic offline smoke and `--recorded` CLI flag.
- *
- * The same node DAG runs against either backend; only the injected IP transport
- * differs (the engine's adapter-DI swap).
+ * The same node DAG runs against either backend; only the injected transports
+ * differ (the engine's adapter-DI swap).
  */
 
 import type { CartographerServices } from '../CartographerServices.ts';
-import { OfflineReverseGeocoder } from './OfflineReverseGeocoder.ts';
 import { LiveIpGeolocator } from './LiveIpGeolocator.ts';
 import { RecordedIpGeolocator } from './RecordedIpGeolocator.ts';
+import { LiveAddressGeocoder } from './LiveAddressGeocoder.ts';
+import { RecordedAddressGeocoder } from './RecordedAddressGeocoder.ts';
 
 // #region geo-resolvers
 export class GeoResolvers {
-  /** Live-IP services: offline country-coder reverse-geocode + live freeipapi IP geolocation. */
+  /** Live services: live freeipapi IP geolocation and Nominatim address geocoding. */
   static live(): CartographerServices {
     return {
-      'reverseGeocoder': new OfflineReverseGeocoder(),
       'ipGeolocator':    new LiveIpGeolocator(),
+      'addressGeocoder': new LiveAddressGeocoder(),
     };
   }
 
-  /** Recorded-IP services: offline country-coder reverse-geocode + fixture-replay IP geolocation.
+  /** Recorded services: fixture-replay IP geolocation and deterministic address geocoding.
    *  Deterministic and offline — used by the smoke and `--recorded` CLI flag. */
   static recorded(): CartographerServices {
     return {
-      'reverseGeocoder': new OfflineReverseGeocoder(),
       'ipGeolocator':    new RecordedIpGeolocator(),
+      'addressGeocoder': new RecordedAddressGeocoder(),
     };
   }
 }

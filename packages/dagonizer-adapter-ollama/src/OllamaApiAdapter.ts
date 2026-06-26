@@ -69,6 +69,19 @@ export type OllamaApiAdapterOptionsType = {
   readonly baseUrl?: string;
   readonly apiKey?: string;
   readonly maxAttempts?: number;
+  /**
+   * Per-request HTTP timeout in milliseconds. Defaults to the base
+   * `DEFAULT_REQUEST_TIMEOUT_MS` (60s) when omitted. Raise it for slow local
+   * models (a large reasoning model can take minutes per call) so the network
+   * timeout does not pre-empt a longer caller-supplied per-request deadline.
+   */
+  readonly timeoutMs?: number;
+  /**
+   * Default system prompt the base injects as the leading turn of any request
+   * that carries no system message of its own. Consumer-supplied persona/format
+   * framing; empty (the default) means no injection.
+   */
+  readonly systemPrompt?: string;
 };
 
 export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
@@ -89,10 +102,12 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
         'endpoint':       `${baseUrl}/v1/chat/completions`,
         'modelsEndpoint': `${baseUrl}/v1/models`,
         'tokenField': 'max_tokens',
-        'extraHeaders': {}
+        'extraHeaders': {},
+        ...(options.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {})
       },
       {
         ...(options.model !== undefined ? { 'model': options.model } : {}),
+        ...(options.systemPrompt !== undefined && options.systemPrompt.length > 0 ? { 'systemPrompt': options.systemPrompt } : {}),
         'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
       }
     );

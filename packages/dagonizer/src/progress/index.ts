@@ -34,6 +34,17 @@ export type {
 } from './SseStream.js';
 
 export {
+  BroadcastChannelGlobal,
+  BroadcastChannelRelay,
+} from './BroadcastChannelRelay.js';
+export type {
+  BroadcastChannelConstructorLikeInterface,
+  BroadcastChannelLikeInterface,
+  BroadcastChannelRelayInterface,
+  BroadcastChannelRelayOptionsType,
+} from './BroadcastChannelRelay.js';
+
+export {
   BusObserver,
 } from './BusObserver.js';
 export type {

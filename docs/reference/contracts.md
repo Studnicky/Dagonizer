@@ -381,7 +381,7 @@ interface LlmClientInterface {
 }
 ```
 
-`LlmAdapterInterface` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `LlmClientInterface` is the minimal chat surface pattern bases accept — any `LlmAdapterInterface` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapterInterface` directly.
+`LlmAdapterInterface` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `BaseAdapterOptionsType` also carries two cross-cutting options every adapter accepts: `systemPrompt`, a default persona the base injects as the leading system message of any request that carries none (never overriding an explicit system turn), and `timeoutMs` (default `60_000`), a per-request deadline. An expired deadline surfaces as a `TIMEOUT` classification so a cascade falls through instead of hanging. `LlmClientInterface` is the minimal chat surface pattern bases accept — any `LlmAdapterInterface` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapterInterface` directly.
 
 ## NodeInvokerInterface
 

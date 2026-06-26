@@ -55,3 +55,12 @@ export type { ShipmentEvent } from './ShipmentEvent.ts';
 
 export { ShippingQuoteSchema } from './ShippingQuote.ts';
 export type { ShippingQuote } from './ShippingQuote.ts';
+
+export { GeoSignalSchema, DEFAULT_GEO_SIGNAL, GeoSignalBuilder } from './GeoSignal.ts';
+export type { GeoSignal } from './GeoSignal.ts';
+
+export { GeoResolutionSchema, DEFAULT_GEO_RESOLUTION, GeoResolutionBuilder } from './GeoResolution.ts';
+export type { GeoResolution } from './GeoResolution.ts';
+
+export { GeoSignalDescriptorSchema, DEFAULT_GEO_SIGNAL_DESCRIPTOR, GeoSignalDescriptorBuilder, GeoSignalDescriptorGuard } from './GeoSignalDescriptor.ts';
+export type { GeoSignalDescriptor } from './GeoSignalDescriptor.ts';

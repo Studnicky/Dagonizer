@@ -1,0 +1,54 @@
+{
+  "name": "@studnicky/dagonizer-store-webstorage",
+  "version": "0.27.0",
+  "description": "Web Storage (localStorage / sessionStorage) backed Store for @studnicky/dagonizer.",
+  "private": false,
+  "license": "MIT",
+  "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist dist-test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "rm -rf dist-test && tsc -p tsconfig.test.json",
+    "test": "node --test 'dist-test/tests/**/*.test.js'",
+    "lint": "eslint . --max-warnings 0",
+    "prepack": "npm run clean && npm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@studnicky/dagonizer": "workspace:>=0.27.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.0.0",
+    "eslint": "^10.5.0",
+    "eslint-plugin-import-x": "^4.17.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Studnicky/Dagonizer.git",
+    "directory": "packages/dagonizer-store-webstorage"
+  }
+}

@@ -36,6 +36,7 @@ import { RecordFindingsNode }        from './recordFindings.ts';
 import {
   ComposeEmptyResponseNode,
   DeclineOffTopicNode,
+  ParkForInputNode,
   RespondToVisitorNode,
 } from './respondToVisitor.ts';
 
@@ -82,6 +83,7 @@ export class ArchivistNodes {
   readonly mergeCandidates:   MergeCandidatesNode;
   readonly buildBookWorksets: BuildBookWorksetsNode;
   readonly preRunSetup:       PreRunSetupNode;
+  readonly parkForInput:      ParkForInputNode;
   readonly respondToVisitor:  RespondToVisitorNode;
   readonly declineOffTopic:   DeclineOffTopicNode;
 
@@ -116,6 +118,7 @@ export class ArchivistNodes {
     this.mergeCandidates   = new MergeCandidatesNode();
     this.buildBookWorksets = new BuildBookWorksetsNode();
     this.preRunSetup       = new PreRunSetupNode();
+    this.parkForInput      = new ParkForInputNode();
     this.respondToVisitor  = new RespondToVisitorNode();
     this.declineOffTopic   = new DeclineOffTopicNode();
 

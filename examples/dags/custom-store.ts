@@ -2,7 +2,7 @@
  * custom-store/dags: demonstrates extending BaseStore for a custom in-process backend.
  *
  * MapStore is a real, runnable implementation backed by a plain JavaScript
- * Map<string, JsonValueType>. It implements all six protected abstract hooks and
+ * Map<string, JsonValueType>. It implements all abstract hooks and
  * overrides `update` with a lock-free atomic read-modify-write that is safe
  * because the Map access between read and write contains no `await` — no
  * concurrent microtask can interleave.
@@ -10,8 +10,8 @@
  * Swap the Map for Redis, Postgres, or any other backing in production by
  * replacing the Map operations with calls to your storage client. The hook
  * surface (performGet/performSet/performHas/performDelete/
- * performSnapshotEntries/performRestoreEntries) stays identical regardless of
- * the backing.
+ * performEntriesStream/performRestoreEntry/performClear) stays identical
+ * regardless of the backing.
  *
  * Pure module: no side effects, no dispatcher, no execute.
  * Imported by examples/custom-store.ts (the executable entry point).
@@ -79,15 +79,18 @@ export class MapStore extends BaseStore {
     return this.#data.delete(key);
   }
 
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntryType[]> {
-    return [...this.#data.entries()].map(([key, value]) => ({ key, value }));
+  protected async *performEntriesStream(): AsyncIterable<StoreSnapshotEntryType> {
+    for (const [key, value] of this.#data.entries()) {
+      yield { key, value };
+    }
   }
 
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntryType[]): Promise<void> {
+  protected async performRestoreEntry(entry: StoreSnapshotEntryType): Promise<void> {
+    this.#data.set(entry.key, entry.value);
+  }
+
+  protected async performClear(): Promise<void> {
     this.#data.clear();
-    for (const { key, value } of entries) {
-      this.#data.set(key, value);
-    }
   }
 }
 // #endregion custom-store

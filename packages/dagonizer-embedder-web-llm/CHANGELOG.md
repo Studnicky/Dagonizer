@@ -2,7 +2,9 @@
 
 ## 0.27.0
 
-## [Unreleased]
+### Added
+
+- Adds `"browser"` export condition to the `.` entry for bundler target selection.
 
 ### Changed
 

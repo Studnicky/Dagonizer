@@ -25,6 +25,7 @@
     "services/**/*.ts",
     "data/**/*.ts",
     "__smoke__/**/*.ts",
+    "geo/**/*.ts",
     "tests/**/*.ts"
   ]
 }

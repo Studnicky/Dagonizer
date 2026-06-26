@@ -25,7 +25,7 @@ import type { JourneyInsights, RegionInsights } from '../../../../examples/the-c
 import type { CartographerServices } from '../../../../examples/the-cartographer/CartographerServices.ts';
 import { cartographerWorkersDAG, CartographerWorkersDag, eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
 import { ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
-import { GeoResolveDAG } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
+import { GeoSourceResolveDAG } from '../../../../examples/the-cartographer/embedded-dags/GeoSourceResolveDAG.ts';
 import { gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
 import { orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
@@ -103,8 +103,20 @@ const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 // scatter-body bundle so it never drifts. Lets the graph expand the full
 // topology (process-stream → stream-event → 5 per-type pipelines → geo-pipeline
 // → leaves) and animate inner nodes as the worker relay reports them.
+//
+// geo-source-resolve and its inner resolve-one-signal scatter body are built
+// per-call by GeoSourceResolveDAG.build (they carry injected transports), so
+// they are NOT in eventPipelineBundle.dags. Build them once here with the
+// recorded transports purely to register their topology, so the graph expands
+// the full per-concept geo resolution (route-signal → resolve-coords / -address
+// / -ip / -code / -phone / -locale / -none) instead of one collapsed node.
+const geoDocServices = GeoResolvers.recorded();
+const geoDocBundle = GeoSourceResolveDAG.build(
+  geoDocServices.ipGeolocator,
+  geoDocServices.addressGeocoder,
+);
 const embeddedDagRegistry = new Map(
-  eventPipelineBundle.dags.map((d) => [d.name, d] as const),
+  [...eventPipelineBundle.dags, ...geoDocBundle.dags].map((d) => [d.name, d] as const),
 );
 
 // ── Feed configuration ───────────────────────────────────────────────────────
@@ -550,7 +562,7 @@ async function run(): Promise<void> {
     dispatcher = new CartographerBrowserObserver(_cartographerLogger, { 'containers': { 'cpu': container } });
 
     // Bundle registration order: sub-DAGs first so their names resolve.
-    dispatcher.registerBundle(GeoResolveDAG.build(services.reverseGeocoder, services.ipGeolocator));
+    dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
     dispatcher.registerBundle(ingestSourceBundle);

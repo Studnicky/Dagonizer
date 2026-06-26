@@ -1,22 +1,25 @@
 /**
- * GeoCandidate: one MODALITY's view of a location — the output of a single
- * transport lookup (`reverse-geocode` from GPS coords, or `ip-geolocate` from a
- * gateway IP). The `fuse-geo` node fans two candidates into one ResolvedGeo.
+ * GeoCandidate: the transport-layer location view for the IP and address
+ * modalities. Produced by `IpGeolocator.lookup` (ip modality) and
+ * `AddressGeocoder.geocode` (address modality); carried as the outcome
+ * candidate through `GeoLookupOutcomeType`.
  *
- * A candidate is deliberately NOT a final ResolvedGeo: it carries only what one
- * signal observed, so the fusion node can compare modalities (agreement →
- * confidence) before committing to a jurisdiction/status.
+ * `resolve-ip` and `resolve-address` convert a resolved candidate into a
+ * `GeoResolution` (the scatter-gather wire shape). The `geo-weighted-fusion` gather folds all
+ * clones' `GeoResolution` values by weight into the final `ResolvedGeo`.
+ *
+ * A candidate carries only what the transport observed. Jurisdiction,
+ * confidence, and back-fill from other modalities are computed in the gather.
  *
  * Fields:
- *   - modality      : which signal produced this ('gps' | 'ip').
- *   - resolved      : whether the lookup returned a usable location.
+ *   - modality      : which signal produced this ('gps' | 'ip' | 'address').
+ *   - resolved      : whether the transport returned a usable location.
  *   - country       : ISO-2 code (empty over open water / on failure).
  *   - countryName   : human country name (empty over open water).
- *   - region        : subdivision / state (empty from the offline GPS modality;
- *                     populated by the IP modality).
- *   - locality      : place name ('International Waters' over open water from GPS;
- *                     the gateway city from the IP modality).
- *   - lat / lng      : the position this modality reports.
+ *   - region        : subdivision / state (from transport; empty when absent).
+ *   - locality      : place name (gateway city from IP; forward-geocoded
+ *                     city from address).
+ *   - lat / lng     : the position this modality reports.
  *   - water         : whether this modality classifies the point as open water.
  */
 
@@ -29,7 +32,7 @@ export const GeoCandidateSchema = {
   'type': 'object',
   'required': ['modality', 'resolved', 'country', 'countryName', 'continent', 'region', 'locality', 'lat', 'lng', 'water'],
   'properties': {
-    'modality':    { 'type': 'string', 'enum': ['gps', 'ip'] },
+    'modality':    { 'type': 'string', 'enum': ['gps', 'ip', 'address'] },
     'resolved':    { 'type': 'boolean' },
     'country':     { 'type': 'string' },
     'countryName': { 'type': 'string' },

@@ -126,6 +126,23 @@ type LifecyclePayloadType =
   | NodeEndPayloadType
   | NodeErrorPayloadType;
 
+class LifecyclePayload {
+  static is(value: unknown): value is LifecyclePayloadType {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      'event' in value &&
+      (
+        (value as { 'event': unknown })['event'] === 'flowStart' ||
+        (value as { 'event': unknown })['event'] === 'flowEnd' ||
+        (value as { 'event': unknown })['event'] === 'nodeStart' ||
+        (value as { 'event': unknown })['event'] === 'nodeEnd' ||
+        (value as { 'event': unknown })['event'] === 'nodeError'
+      )
+    );
+  }
+}
+
 // ObservingDispatcher: publishes every lifecycle event to an injected bus.
 // Consumers subscribe to the bus topic independently — no multiplexing
 // in the hook implementation itself.
@@ -206,14 +223,16 @@ const lifecycleBus = new EventBus();
 // Consumer A: console log.
 const logLines: string[] = [];
 lifecycleBus.subscribe('lifecycle', (envelope: BusEventEnvelopeType) => {
-  const p = envelope.payload as LifecyclePayloadType;
+  if (!LifecyclePayload.is(envelope.payload)) return;
+  const p = envelope.payload;
   logLines.push(`[log] ${p.event}${'nodeName' in p ? ` node=${p.nodeName}` : ''}${'dagName' in p ? ` dag=${p.dagName}` : ''}`);
 });
 
 // Consumer B: metrics counter.
 const metrics = { nodeStart: 0, nodeEnd: 0, flowStart: 0, flowEnd: 0, nodeError: 0 };
 lifecycleBus.subscribe('lifecycle', (envelope: BusEventEnvelopeType) => {
-  const p = envelope.payload as LifecyclePayloadType;
+  if (!LifecyclePayload.is(envelope.payload)) return;
+  const p = envelope.payload;
   if (p.event === 'nodeStart') metrics.nodeStart++;
   else if (p.event === 'nodeEnd') metrics.nodeEnd++;
   else if (p.event === 'flowStart') metrics.flowStart++;

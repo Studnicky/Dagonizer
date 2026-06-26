@@ -41,14 +41,24 @@ import type { EdgeVizAdapter } from './EdgeVizMachine.ts';
 import type { NodeVizAdapter } from './NodeVizMachine.ts';
 
 /**
- * Maximum absolute camera-follow zoom. Fitting a single running node would
- * otherwise zoom in extremely far and lose all surrounding context; the follow
- * clamps to this (bounded below by the whole-graph overview zoom and above by
- * the cy max-zoom) so the active node stays readable WITH its neighbourhood
- * visible. Absolute rather than overview-relative so it behaves consistently
- * whether the graph is small or fully expanded to every embedded sub-DAG.
+ * Fraction of the viewport's central band within which the active-node centroid
+ * is considered "comfortably framed". While the centroid stays inside this band
+ * the camera does not move at all; it only re-centres once activity drifts into
+ * the outer margin. The band gives the follow hysteresis so a fully-expanded
+ * graph whose nodes light up across many concurrent workers does not provoke a
+ * pan on every node event.
  */
-const FOLLOW_MAX_ZOOM = 0.7;
+const FOLLOW_CENTRE_BAND = 0.25;
+
+/**
+ * Readable idle zoom floor. A fully-expanded graph fits whole at a tiny zoom
+ * (e.g. 0.04×) where node labels are illegible — the "broken speck" view. The
+ * whole-graph fit is kept as the minZoom floor (zoom out to regain the
+ * overview), but the camera *starts* no further out than this so nodes are
+ * legible on load, anchored on the graph's entry (top). Camera-follow then pans
+ * — never zooms — to keep activity framed.
+ */
+const READABLE_IDLE_ZOOM = 0.2;
 
 /**
  * Absolute ceiling for manual zoom-in. A fully-expanded graph fits at a very
@@ -367,18 +377,24 @@ export class AnimatedDagGraph extends CytoscapeGraph {
         if (found !== null && found.length > 0) nodes = nodes.union(found);
       }
       if (nodes.length === 0) return;
-      cy.fit(nodes, 80);
-      // Clamp how far the fit zooms in. Fitting one small node zooms in hard
-      // and hides the surrounding flow; cap at FOLLOW_MAX_ZOOM (bounded by the
-      // overview and max zoom) and re-centre on the active set so it stays
-      // framed WITH its neighbourhood.
-      const cap = Math.max(cy.minZoom(), Math.min(FOLLOW_MAX_ZOOM, cy.maxZoom()));
-      if (cy.zoom() > cap) {
-        cy.zoom(cap);
-        cy.center(nodes);
-      }
+      // Calm follow: never change zoom. The visitor's (or idle-fit) zoom level
+      // is preserved so the camera does not thrash as execution lights up nodes
+      // across a fully-expanded graph — every per-concept embedded-DAG node that
+      // starts would otherwise trigger a fit-and-zoom. Only re-centre, and only
+      // when the active centroid has drifted out of the viewport's central band
+      // (hysteresis), so localized activity is brought into frame while
+      // graph-spanning concurrent activity leaves the camera still.
+      const bb = nodes.renderedBoundingBox();
+      const w = cy.width();
+      const h = cy.height();
+      const centroidX = (bb.x1 + bb.x2) / 2;
+      const centroidY = (bb.y1 + bb.y2) / 2;
+      const insideX = centroidX > w * FOLLOW_CENTRE_BAND && centroidX < w * (1 - FOLLOW_CENTRE_BAND);
+      const insideY = centroidY > h * FOLLOW_CENTRE_BAND && centroidY < h * (1 - FOLLOW_CENTRE_BAND);
+      if (insideX && insideY) return;
+      cy.animate({ 'center': { 'eles': nodes } }, { 'duration': 240, 'easing': 'ease' });
       this.#pollZoom(cy);
-    }, 120);
+    }, 200);
   }
 
   // ── Public: dispatch surface ─────────────────────────────────────────────
@@ -462,6 +478,18 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     const fitZoom = cy.zoom();
     cy.minZoom(fitZoom);
     cy.maxZoom(Math.max(fitZoom * 8, MAX_ABSOLUTE_ZOOM));
+    // Land at a readable zoom anchored on the graph's entry (top-centre) rather
+    // than the whole-graph speck. minZoom still equals the whole-graph fit, so
+    // zooming out to the overview remains available.
+    const readable = Math.min(READABLE_IDLE_ZOOM, cy.maxZoom());
+    if (fitZoom < readable) {
+      cy.zoom(readable);
+      const bb = cy.elements().boundingBox();
+      cy.pan({
+        'x': cy.width() / 2 - ((bb.x1 + bb.x2) / 2) * readable,
+        'y': 40 - bb.y1 * readable,
+      });
+    }
     this.#pollZoom(cy);
   }
 

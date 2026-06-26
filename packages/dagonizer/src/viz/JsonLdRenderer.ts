@@ -30,7 +30,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 import type { DAGType } from '../entities/dag/DAG.js';
 
 import { PlacementUtils } from './internal.js';
-import type { PlacementEntryType } from './internal.js';
+import type { PlacementDispatchType, PlacementEntryType } from './internal.js';
 
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
 export const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
@@ -162,17 +162,15 @@ export class JsonLdRenderer {
       'dag:name': placement.name,
     } as const;
 
-    const placementDispatch: Record<PlacementEntryType['@type'], (p: PlacementEntryType) => JsonLdGraphEntryType> = {
-      'SingleNode': (p) => {
-        const sp = p as PlacementEntryType & { '@type': 'SingleNode' };
+    const placementDispatch: PlacementDispatchType<JsonLdGraphEntryType> = {
+      'SingleNode': (sp) => {
         return {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, sp.outputs),
           'dag:node':   sp.node,
         };
       },
-      'ScatterNode': (p) => {
-        const sp = p as PlacementEntryType & { '@type': 'ScatterNode' };
+      'ScatterNode': (sp) => {
         // ScatterNode carries several optional fields (source, itemKey, concurrency,
         // stateMapping, gather, reducer, container). Build a mutable accumulator
         // then freeze on return. The open index is required because JSON-LD
@@ -196,8 +194,7 @@ export class JsonLdRenderer {
         if (sp.container !== undefined)    out['dag:container']    = sp.container;
         return out;
       },
-      'EmbeddedDAGNode': (p) => {
-        const ep = p as PlacementEntryType & { '@type': 'EmbeddedDAGNode' };
+      'EmbeddedDAGNode': (ep) => {
         // EmbeddedDAGNode may carry optional stateMapping and container fields.
         // Either `dag` (build-time literal) or `dagFrom` (runtime path) is present.
         const out: JsonLdGraphEntryType & Record<string, unknown> = {
@@ -211,16 +208,14 @@ export class JsonLdRenderer {
         if (ep.container !== undefined)    out['dag:container']    = ep.container;
         return out;
       },
-      'TerminalNode': (p) => {
-        const tp = p as PlacementEntryType & { '@type': 'TerminalNode' };
+      'TerminalNode': (tp) => {
         // TerminalNode placements end the flow; no routing, no dag:routes field.
         return {
           ...base,
           'dag:outcome': tp.outcome,
         };
       },
-      'PhaseNode': (p) => {
-        const pp = p as PlacementEntryType & { '@type': 'PhaseNode' };
+      'PhaseNode': (pp) => {
         // PhaseNode placements are out-of-band; they have no outputs/routes.
         return {
           ...base,
@@ -230,7 +225,7 @@ export class JsonLdRenderer {
       },
     };
 
-    return placementDispatch[placement['@type']](placement);
+    return PlacementUtils.invoke(placementDispatch, placement);
   }
 
   /** Render the DAG-level root entry that points at every placement. */

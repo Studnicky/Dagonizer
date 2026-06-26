@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-embedder-tensorflow
 
+## [Unreleased]
+
+### Added
+
+- Adds `"browser"` export condition to the `.` entry for bundler target selection.
+
 ## 0.27.0
 
 ## [0.26.0]
