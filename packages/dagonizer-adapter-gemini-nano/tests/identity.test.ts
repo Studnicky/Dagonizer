@@ -291,3 +291,45 @@ void test('performChat surfaces a TIMEOUT classification when timeoutMs elapses'
     LanguageModelStub.remove();
   }
 });
+
+void test('performChat does not forward maxTokens to the Prompt API', async () => {
+  // The Chrome Prompt API exposes no output-token cap: neither lm.create() nor
+  // session.prompt() accepts maxTokens / maxOutputTokens / max_tokens. The
+  // adapter deliberately ignores the request's maxTokens budget so it never
+  // passes an unrecognised field that would cause the browser to reject the
+  // call. This test documents that deliberate absence and confirms the call
+  // still succeeds when the caller supplies a token budget.
+  let capturedCreateOptions: Record<string, unknown> | undefined;
+  let capturedPromptOptions: Record<string, unknown> | undefined;
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async (options: Record<string, unknown>) => {
+      capturedCreateOptions = options;
+      return Promise.resolve({
+        'prompt':  async (_input: unknown, opts: Record<string, unknown> = {}) => {
+          capturedPromptOptions = opts;
+          return Promise.resolve('ok');
+        },
+        'destroy': () => {},
+      });
+    },
+  });
+  const a = new GeminiNanoAdapter();
+  try {
+    await a.chat(ChatRequestBuilder.from({
+      'messages':  [{ 'role': 'user', 'content': 'Hi.' }],
+      'maxTokens': 256,
+    }));
+  } finally {
+    LanguageModelStub.remove();
+  }
+  assert.ok(capturedCreateOptions !== undefined);
+  assert.ok(capturedPromptOptions !== undefined);
+  // No token-cap field must appear on either the create() or the prompt() options.
+  assert.equal(capturedCreateOptions['maxTokens'],       undefined);
+  assert.equal(capturedCreateOptions['maxOutputTokens'], undefined);
+  assert.equal(capturedCreateOptions['max_tokens'],      undefined);
+  assert.equal(capturedPromptOptions['maxTokens'],       undefined);
+  assert.equal(capturedPromptOptions['maxOutputTokens'], undefined);
+  assert.equal(capturedPromptOptions['max_tokens'],      undefined);
+});

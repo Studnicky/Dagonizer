@@ -1,9 +1,10 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 
 import { WebLlmAdapter } from '../src/index.js';
+import type { WebLlmEngineType, WebLlmStreamingParamsType } from '../src/index.js';
 
 class NavigatorStub {
   private constructor() {}
@@ -16,6 +17,101 @@ class NavigatorStub {
     Reflect.deleteProperty(globalThis, 'navigator');
   }
 }
+
+/**
+ * Recorded parameters from a single `chat.completions.create` call.
+ * Mirrors `WebLlmStreamingParamsType` so the test can assert exact
+ * forwarding without any `as` casts.
+ */
+type CreateCallRecord = {
+  readonly 'stream': boolean;
+  readonly 'messages': WebLlmStreamingParamsType['messages'];
+  readonly 'temperature': number | undefined;
+  readonly 'max_tokens': number | undefined;
+  readonly 'response_format': WebLlmStreamingParamsType['response_format'];
+};
+
+/**
+ * Minimal structural stub that satisfies `WebLlmEngineType`.
+ *
+ * The streaming `create` returns an async generator that either:
+ *  - yields chunks from `chunks` then returns, or
+ *  - hangs until `interruptGenerate()` is called (when `chunks` is empty).
+ *
+ * This is the engine-stub pattern for testing `performChat` without WebGPU.
+ * No `as` cast anywhere — the type is structurally verified at the
+ * `TestAdapter.loadEngine()` return site.
+ */
+class EngineStub {
+  readonly 'interruptGenerate': () => void;
+  readonly 'chat': WebLlmEngineType['chat'];
+
+  #interruptCalled = 0;
+  #interruptResolve: (() => void) | undefined;
+  readonly 'createCalls': CreateCallRecord[] = [];
+
+  constructor(chunks: ReadonlyArray<string>) {
+    const stub = this;
+
+    async function* streamGen(): AsyncGenerator<{ 'choices': Array<{ 'delta': { 'content': string } }> }> {
+      if (chunks.length === 0) {
+        await new Promise<void>((resolve) => { stub.#interruptResolve = resolve; });
+        return;
+      }
+      for (const chunk of chunks) {
+        yield { 'choices': [{ 'delta': { 'content': chunk } }] };
+      }
+    }
+
+    this['interruptGenerate'] = (): void => {
+      stub.#interruptCalled++;
+      if (stub.#interruptResolve !== undefined) {
+        stub.#interruptResolve();
+      }
+    };
+
+    this['chat'] = {
+      'completions': {
+        'create': (params: WebLlmStreamingParamsType): Promise<AsyncIterable<{ 'choices': ReadonlyArray<{ 'delta': { 'content'?: string } }> }>> => {
+          stub.createCalls.push({
+            'stream':          params['stream'],
+            'messages':        params['messages'],
+            'temperature':     params['temperature'],
+            'max_tokens':      params['max_tokens'],
+            'response_format': params['response_format'],
+          });
+          return Promise.resolve(streamGen());
+        },
+      },
+    };
+  }
+
+  get interruptCallCount(): number {
+    return this.#interruptCalled;
+  }
+}
+
+/**
+ * A `WebLlmAdapter` subclass that bypasses the real CDN boot and supplies
+ * a stub engine. This is the "class extension is the only extension
+ * mechanism" pattern mandated by the project standards.
+ */
+class TestAdapter extends WebLlmAdapter {
+  readonly #stub: EngineStub;
+
+  constructor(stub: EngineStub, options: ConstructorParameters<typeof WebLlmAdapter>[0] = {}) {
+    super(options);
+    this.#stub = stub;
+  }
+
+  protected override loadEngine(): Promise<WebLlmEngineType> {
+    return Promise.resolve(this.#stub);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Existing identity / catalog / probe tests (unchanged)
+// ---------------------------------------------------------------------------
 
 void test('WebLlmAdapter identity', () => {
   const a = new WebLlmAdapter();
@@ -155,16 +251,94 @@ void test('composeMessages emits no system message when none is needed', () => {
 });
 
 void test('WebLlmAdapter accepts timeoutMs option without error', () => {
-  // Verify the constructor initialises with a custom timeout.
-  // Does not exercise the generation path (requires WebGPU);
-  // the per-request deadline is covered by the #withDeadline unit below.
   const a = new WebLlmAdapter({ 'timeoutMs': 5_000 });
   assert.equal(a.id, 'web-llm');
 });
 
 void test('WebLlmAdapter default construction (no timeoutMs) still has correct identity', () => {
-  // Ensures the required-with-defaults shape is stable regardless of whether
-  // timeoutMs is supplied.
   const a = new WebLlmAdapter({});
   assert.equal(a.id, 'web-llm');
+});
+
+// ---------------------------------------------------------------------------
+// New streaming / cancellation / max_tokens tests
+// ---------------------------------------------------------------------------
+
+void test('max_tokens forwarding: create is called with max_tokens from the request', async () => {
+  const stub = new EngineStub(['Hello']);
+  const adapter = new TestAdapter(stub);
+  const request = ChatRequestBuilder.from({
+    'messages':  [{ 'role': 'user', 'content': 'Hi' }],
+    'maxTokens': 256,
+  });
+
+  await adapter.chat(request);
+
+  assert.equal(stub.createCalls.length, 1, 'create must be called exactly once');
+  assert.equal(stub.createCalls[0]?.['max_tokens'], 256, 'max_tokens must equal request.maxTokens');
+});
+
+void test('streaming accumulation: chunks are concatenated into the text response', async () => {
+  const stub = new EngineStub(['Hel', 'lo']);
+  const adapter = new TestAdapter(stub);
+  const request = ChatRequestBuilder.from({
+    'messages': [{ 'role': 'user', 'content': 'Say hello.' }],
+  });
+
+  const response = await adapter.chat(request);
+
+  assert.equal(response.message.variant, 'text', 'response variant must be text');
+  assert.equal(response.message.content, 'Hello', 'accumulated chunks must equal Hello');
+});
+
+void test('interrupt on timeout: rejects with TIMEOUT LlmError and calls interruptGenerate', async () => {
+  // Stub with no chunks — the stream hangs until interruptGenerate() is called.
+  const stub = new EngineStub([]);
+  const adapter = new TestAdapter(stub, { 'timeoutMs': 1 });
+  const request = ChatRequestBuilder.from({
+    'messages': [{ 'role': 'user', 'content': 'Slow response.' }],
+  });
+
+  await assert.rejects(
+    async () => adapter.chat(request),
+    (err: unknown) => {
+      assert.ok(err instanceof LlmError, 'must reject with LlmError');
+      assert.equal(err.classification, Classifications['TIMEOUT'], 'classification must be TIMEOUT');
+      return true;
+    },
+  );
+
+  assert.ok(stub.interruptCallCount > 0, 'interruptGenerate must have been called on timeout');
+});
+
+void test('interrupt on external abort: interruptGenerate is called and call rejects', async () => {
+  // Stub with no chunks — hangs until interrupted.
+  const stub = new EngineStub([]);
+  const adapter = new TestAdapter(stub, { 'timeoutMs': 60_000 });
+  const controller = new AbortController();
+  const request = ChatRequestBuilder.from({
+    'messages': [{ 'role': 'user', 'content': 'Abort this.' }],
+    'signal':   controller.signal,
+  });
+
+  // Abort after a small delay so the `for await` loop has time to enter the
+  // generator and register the abort listener before the signal fires.
+  const abortTimer = setTimeout(() => {
+    controller.abort(new LlmError('caller cancelled', Classifications['TIMEOUT']));
+  }, 10);
+
+  try {
+    await assert.rejects(
+      async () => adapter.chat(request),
+      (err: unknown) => {
+        assert.ok(err instanceof LlmError, 'must reject with LlmError');
+        assert.equal(err.classification, Classifications['TIMEOUT'], 'classification must be TIMEOUT');
+        return true;
+      },
+    );
+  } finally {
+    clearTimeout(abortTimer);
+  }
+
+  assert.ok(stub.interruptCallCount > 0, 'interruptGenerate must have been called on external abort');
 });

@@ -217,6 +217,9 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
         signal,
       });
     } catch (err) {
+      // Our own timeout/abort reason is already a classified LlmError
+      // (TIMEOUT). Preserve it; only a genuine transport failure is NETWORK.
+      if (err instanceof LlmError) throw err;
       throw LlmError.ofNetworkError(err);
     } finally {
       clearTimeout(timeoutId);

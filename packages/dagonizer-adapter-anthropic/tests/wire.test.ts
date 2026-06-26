@@ -10,12 +10,15 @@
  *   4. Text response parsing → `{ variant: 'text', content }` message
  *   5. tool_use response parsing → `{ variant: 'tools', toolCalls }` message
  *   6. Mixed response parsing → `{ variant: 'mixed', content, toolCalls }` message
+ *   7. maxTokens → native max_tokens field (not max_completion_tokens / maxOutputTokens)
+ *   8. systemPrompt seam — configured default vs caller-supplied system message
+ *   9. timeoutMs → LlmError on hang (abort reason passes through ofNetworkError)
  */
 
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, test } from 'node:test';
 
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 
 import { AnthropicApiAdapter } from '../src/index.js';
 
@@ -405,4 +408,90 @@ void test('usage is zero when provider omits usage field', async () => {
 
   assert.equal(response.usage.promptTokens, 0);
   assert.equal(response.usage.completionTokens, 0);
+});
+
+// ── Cross-cutting guarantee tests ─────────────────────────────────────────
+
+void test('maxTokens maps to top-level max_tokens (not max_completion_tokens or maxOutputTokens)', async () => {
+  const capture = new FetchCapture();
+  globalThis.fetch = capture.stub(TEXT_RESPONSE);
+
+  const adapter = new AnthropicApiAdapter('sk-ant-test');
+  await adapter.chat(ChatRequestBuilder.from({
+    'messages':  [{ 'role': 'user', 'content': 'Hello' }],
+    'maxTokens': 256,
+  }));
+
+  assert.equal(capture.body['max_tokens'], 256);
+  assert.equal(Object.prototype.hasOwnProperty.call(capture.body, 'max_completion_tokens'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(capture.body, 'maxOutputTokens'), false);
+});
+
+void test('configured systemPrompt is injected when request has no system message', async () => {
+  const capture = new FetchCapture();
+  globalThis.fetch = capture.stub(TEXT_RESPONSE);
+
+  const adapter = new AnthropicApiAdapter('sk-ant-test', { 'systemPrompt': 'You are X.' });
+  await adapter.chat(ChatRequestBuilder.from({
+    'messages': [{ 'role': 'user', 'content': 'Hello' }],
+  }));
+
+  assert.equal(capture.body['system'], 'You are X.');
+});
+
+void test('caller system message is not overridden by configured systemPrompt', async () => {
+  const capture = new FetchCapture();
+  globalThis.fetch = capture.stub(TEXT_RESPONSE);
+
+  const adapter = new AnthropicApiAdapter('sk-ant-test', { 'systemPrompt': 'You are X.' });
+  await adapter.chat(ChatRequestBuilder.from({
+    'messages': [
+      { 'role': 'system', 'content': 'You are Y.' },
+      { 'role': 'user',   'content': 'Hello' },
+    ],
+  }));
+
+  // Caller's system message wins; the configured systemPrompt must not override it.
+  assert.equal(capture.body['system'], 'You are Y.');
+});
+
+void test('timeoutMs fires and rejects with LlmError from the timeout path', async () => {
+  // A fetch stub that never resolves but rejects with signal.reason when the
+  // passed signal fires. The abort reason from the adapter's internal controller
+  // is LlmError('anthropic request timeout', TIMEOUT); the catch block re-throws
+  // the already-classified LlmError unchanged, so the final thrown LlmError has
+  // TIMEOUT classification and a message that includes "timeout".
+  globalThis.fetch = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const signal = init?.signal;
+    return new Promise<Response>((_resolve, reject) => {
+      if (signal !== undefined) {
+        if (signal.aborted) {
+          reject(signal.reason instanceof Error ? signal.reason : new Error(String(signal.reason)));
+          return;
+        }
+        signal.addEventListener('abort', () => {
+          reject(signal.reason instanceof Error ? signal.reason : new Error(String(signal.reason)));
+        }, { 'once': true });
+      }
+    });
+  };
+
+  const adapter = new AnthropicApiAdapter('sk-ant-test', { 'maxAttempts': 1, 'timeoutMs': 1 });
+  let thrown: unknown;
+  try {
+    await adapter.chat(ChatRequestBuilder.from({
+      'messages': [{ 'role': 'user', 'content': 'Hello' }],
+    }));
+  } catch (err) {
+    thrown = err;
+  }
+
+  assert.ok(thrown instanceof LlmError, 'expected LlmError to be thrown');
+  // The abort reason (TIMEOUT LlmError) is re-thrown unchanged by the catch
+  // block, so the final classification is TIMEOUT with its original "timeout" message.
+  assert.equal(thrown.classification, Classifications['TIMEOUT']);
+  assert.ok(
+    thrown.message.includes('timeout'),
+    `expected message to include "timeout", got: ${thrown.message}`,
+  );
 });

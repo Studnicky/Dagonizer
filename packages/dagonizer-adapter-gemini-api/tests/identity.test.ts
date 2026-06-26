@@ -1,7 +1,23 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
+import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+
 import { GeminiApiAdapter, GeminiModelsResponseSchema, GeminiModelsResponseValidator } from '../src/index.js';
+
+// ---------------------------------------------------------------------------
+// Helpers shared by the performChat wire-shape tests
+// ---------------------------------------------------------------------------
+
+/** Minimal valid Gemini generateContent response body. */
+const CANNED_GENERATE_RESPONSE = {
+  'candidates': [
+    {
+      'content': { 'parts': [{ 'text': 'ok' }] },
+      'finishReason': 'STOP',
+    },
+  ],
+} as const;
 
 // ---------------------------------------------------------------------------
 // Identity + capabilities
@@ -218,6 +234,130 @@ void test('listModels returns [] when response body fails schema validation', as
     const adapter = new GeminiApiAdapter('key');
     const models = await adapter.listModels();
     assert.deepEqual(models, []);
+  } finally {
+    restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// performChat wire-shape: maxTokens, systemPrompt, timeout
+// ---------------------------------------------------------------------------
+
+void test('performChat posts maxTokens as generationConfig.maxOutputTokens (not top-level max_tokens)', async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  const restore = FetchStub.install((_input, init) => {
+    capturedBody = JSON.parse(init?.body as string) as Record<string, unknown>;
+    return Promise.resolve(new Response(JSON.stringify(CANNED_GENERATE_RESPONSE), { 'status': 200 }));
+  });
+  try {
+    const adapter = new GeminiApiAdapter('key', { 'model': 'gemini-2.0-flash', 'maxAttempts': 1 });
+    const request = ChatRequestBuilder.from({
+      'messages': [{ 'role': 'user', 'content': 'hi' }],
+      'maxTokens': 256,
+    });
+    await adapter.chat(request);
+    assert.ok(capturedBody !== undefined, 'fetch was called');
+    const generationConfig = capturedBody['generationConfig'] as Record<string, unknown>;
+    assert.equal(generationConfig['maxOutputTokens'], 256, 'maxTokens maps to generationConfig.maxOutputTokens');
+    assert.ok(!('max_tokens' in capturedBody), 'no top-level max_tokens field');
+  } finally {
+    restore();
+  }
+});
+
+void test('performChat injects configured systemPrompt as leading system content when request has no system message', async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  const restore = FetchStub.install((_input, init) => {
+    capturedBody = JSON.parse(init?.body as string) as Record<string, unknown>;
+    return Promise.resolve(new Response(JSON.stringify(CANNED_GENERATE_RESPONSE), { 'status': 200 }));
+  });
+  try {
+    const adapter = new GeminiApiAdapter('key', {
+      'model': 'gemini-2.0-flash',
+      'maxAttempts': 1,
+      'systemPrompt': 'You are X.',
+    });
+    const request = ChatRequestBuilder.from({
+      'messages': [{ 'role': 'user', 'content': 'hello' }],
+    });
+    await adapter.chat(request);
+    assert.ok(capturedBody !== undefined, 'fetch was called');
+    const contents = capturedBody['contents'] as Array<Record<string, unknown>>;
+    const first = contents[0];
+    assert.ok(first !== undefined, 'contents is non-empty');
+    assert.equal(first['role'], 'system', 'leading content has role system');
+    const parts = first['parts'] as Array<Record<string, unknown>>;
+    assert.ok(parts !== undefined && parts.length > 0, 'system content has parts');
+    assert.equal(parts[0]?.['text'], 'You are X.', 'system part text matches configured systemPrompt');
+  } finally {
+    restore();
+  }
+});
+
+void test('performChat does not inject default systemPrompt when request already carries a system message', async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  const restore = FetchStub.install((_input, init) => {
+    capturedBody = JSON.parse(init?.body as string) as Record<string, unknown>;
+    return Promise.resolve(new Response(JSON.stringify(CANNED_GENERATE_RESPONSE), { 'status': 200 }));
+  });
+  try {
+    const adapter = new GeminiApiAdapter('key', {
+      'model': 'gemini-2.0-flash',
+      'maxAttempts': 1,
+      'systemPrompt': 'You are X.',
+    });
+    const request = ChatRequestBuilder.from({
+      'messages': [
+        { 'role': 'system', 'content': 'You are Y.' },
+        { 'role': 'user', 'content': 'hello' },
+      ],
+    });
+    await adapter.chat(request);
+    assert.ok(capturedBody !== undefined, 'fetch was called');
+    const contents = capturedBody['contents'] as Array<Record<string, unknown>>;
+    const systemContents = contents.filter((c) => c['role'] === 'system');
+    assert.equal(systemContents.length, 1, 'exactly one system content — no double-injection');
+    const parts = systemContents[0]?.['parts'] as Array<Record<string, unknown>>;
+    assert.equal(parts?.[0]?.['text'], 'You are Y.', 'consumer system message is preserved unchanged');
+  } finally {
+    restore();
+  }
+});
+
+void test('performChat rejects with LlmError on timeout (hanging fetch that honors abort signal)', async () => {
+  // The abort reason is LlmError(TIMEOUT); the catch block preserves an
+  // already-classified LlmError, so the surfaced classification is TIMEOUT.
+  const restore = FetchStub.install((_input, init) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason as Error);
+      });
+    }),
+  );
+  try {
+    const adapter = new GeminiApiAdapter('key', {
+      'model': 'gemini-2.0-flash',
+      'maxAttempts': 1,
+      'timeoutMs': 1,
+    });
+    const request = ChatRequestBuilder.from({
+      'messages': [{ 'role': 'user', 'content': 'hi' }],
+    });
+    await assert.rejects(
+      () => adapter.chat(request),
+      (err: unknown) => {
+        assert.ok(err instanceof LlmError, `expected LlmError, got ${String(err)}`);
+        // The adapter aborts with Classifications['TIMEOUT']; the catch block
+        // re-throws the already-classified LlmError unchanged, so the surfaced
+        // classification is TIMEOUT (a cascade falls through instead of hanging).
+        assert.equal(
+          err.classification.reason,
+          Classifications['TIMEOUT'].reason,
+          'timed-out request surfaces as TIMEOUT (classified abort reason preserved)',
+        );
+        return true;
+      },
+    );
   } finally {
     restore();
   }
