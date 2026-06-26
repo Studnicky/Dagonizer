@@ -1,5 +1,12 @@
 # @studnicky/dagonizer-executor-web
 
+## 0.28.0
+
+### Patch Changes
+
+- Updated dependencies [6ed7c12]
+  - @studnicky/dagonizer@0.28.0
+
 ## [Unreleased]
 
 ### Added

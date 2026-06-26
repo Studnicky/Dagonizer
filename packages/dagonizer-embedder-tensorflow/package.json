@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-embedder-tensorflow",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "Embedder plugin for @studnicky/dagonizer: UniversalSentenceEncoderEmbedder (in-browser embeddings via TensorFlow.js Universal Sentence Encoder, WASM + WebGL).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

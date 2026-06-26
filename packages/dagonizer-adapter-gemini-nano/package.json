@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-adapter-gemini-nano",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "LLM adapter plugin for @studnicky/dagonizer: Browser built-in LanguageModel (GeminiNanoAdapter).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
