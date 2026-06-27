@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-embedder-tensorflow
 
+## 0.28.1
+
 ## 0.28.0
 
 ## [Unreleased]

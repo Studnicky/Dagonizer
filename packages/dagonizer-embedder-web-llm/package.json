@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-embedder-web-llm",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "Embedder plugin for @studnicky/dagonizer: WebLlmEmbedder (in-browser embeddings via @mlc-ai/web-llm, WebGPU).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
