@@ -574,14 +574,31 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
         'text-border-color':  '#22e8ff',
       } },
 
-      // ── Retry routes: bezier self-loop ────────────────────────────────────
-      // Self-loop edges require bezier (not round-taxi) to produce a visible arc.
-      // loop-direction / loop-sweep give the arc a definite direction and sweep.
+      // ── Self-loop catch-all ───────────────────────────────────────────────
+      // round-taxi cannot draw self-loop edges (source === target); bezier
+      // renders the arc correctly. Owns the loop GEOMETRY (curve-style +
+      // loop-direction / loop-sweep / control-point-step-size) for any route
+      // tagged `self-loop` by CytoscapeRenderer.placementEdges (retry, parked,
+      // and any future self-loops). A wide control-point-step-size with a
+      // narrow sweep keeps the arc clear of the node body and of overlapping
+      // neighbours; outside-to-node endpoints anchor both ends on the node
+      // perimeter (a label-relative or off-node endpoint collapses the loop to
+      // a degenerate stub). Route-specific rules below set color/dash only and
+      // MUST NOT re-specify loop geometry, or they override this and the loop
+      // collapses.
+      { "selector": 'edge.self-loop', "style": {
+        'curve-style':             'bezier',
+        'loop-direction':          '-90deg',
+        'loop-sweep':              '-25deg',
+        'control-point-step-size': 110,
+        'source-endpoint':         'outside-to-node',
+        'target-endpoint':         'outside-to-node',
+      } },
+
+      // ── Retry routes: color/dash only ─────────────────────────────────────
+      // Loop geometry is owned by `edge.self-loop` above; this rule adds only
+      // the retry color and dashed line so it never overrides the loop shape.
       { "selector": 'edge.route-retry', "style": {
-        'curve-style':              'bezier',
-        'loop-direction':           '-45deg',
-        'loop-sweep':               '-90deg',
-        'control-point-step-size':  56,
         'line-style':               'dashed',
         'line-color':               '#f5a623',
         'target-arrow-color':       '#f5a623',

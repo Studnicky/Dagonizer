@@ -9,10 +9,10 @@
  * The new pipeline:
  *
  *   1. Deterministic composite score per candidate
- *        cosineSim(title, query)  × 0.50  (when embedder reachable)
- *        jaccard(title, terms)    × 0.25
- *        sourcePriority           × 0.15
- *        recencyBonus             × 0.10
+ *        cosineSim(semanticText, query) × 0.50  (when embedder reachable)
+ *        jaccard(title, terms)          × 0.25
+ *        sourcePriority                 × 0.15
+ *        recencyBonus                   × 0.10
  *        +0.05 for fromPriorMemory candidates
  *   2. Sort descending by composite.
  *   3. LLM tiebreak: when the top-3 are within 0.10 of each other,
@@ -20,10 +20,12 @@
  *      them. Keep the rest in deterministic order. Soft timeout on the
  *      tiebreak: any failure / abort falls through to deterministic order.
  *
- * Embeddings: each candidate's title embedding is computed once and
- * cached on `candidate.notes.titleEmbedding` so rank → recall → validate
- * can reuse the vector across nodes. The query embedding is computed
- * once at the top of the node.
+ * Embeddings: each candidate is embedded as a rich semantic text string
+ * (title + authors + subjects + summary, bounded to 600 chars) and cached
+ * on `candidate.notes.semanticEmbedding` so rank → recall → validate can
+ * reuse the vector across nodes. Short titles carry too little thematic
+ * signal alone; the enriched text improves cosine alignment with thematic
+ * queries. The query embedding is computed once at the top of the node.
  *
  * Output route is always 'ranked'. mergeCandidates then takes the top-K.
  */
@@ -91,26 +93,46 @@ export class CandidateScorer {
   }
 
   /**
-   * Embed every candidate title via the embedder, returning a parallel
-   * array of vectors. Reuses `candidate.notes.titleEmbedding` when present
-   * so re-ranks across nodes don't re-embed.
+   * Build a rich semantic text string for a candidate: title + authors +
+   * up to 10 subjects + up to 300 chars of summary, joined as a single
+   * space-delimited string and bounded to 600 characters total.
+   *
+   * Short titles (e.g. "Piranesi") carry little thematic signal in isolation.
+   * Embedding the enriched text gives the cosine term a far stronger
+   * representation for thematic queries like "a strange house and a library".
+   */
+  static semanticText(candidate: CandidateType): string {
+    const parts: string[] = [candidate.book.identity.title];
+    const { authors } = candidate.book.identity;
+    if (authors.length > 0) parts.push(authors.join(', '));
+    const { subjects, summary } = candidate.book.publication;
+    if (subjects.length > 0) parts.push(subjects.slice(0, 10).join(', '));
+    if (summary !== null && summary.length > 0) parts.push(summary.slice(0, 300));
+    return parts.join(' ').slice(0, 600);
+  }
+
+  /**
+   * Embed every candidate via a rich semantic text (title + authors +
+   * subjects + summary) using the embedder, returning a parallel array of
+   * vectors. Reuses `candidate.notes.semanticEmbedding` when present so
+   * re-ranks across nodes don't re-embed.
    *
    * Any throw bubbles up and is caught by the caller; the deterministic
-   * ranker continues with `titleEmbeddings = null` (Jaccard takes the
+   * ranker continues with semantic embeddings as null (Jaccard takes the
    * whole weight via the redistribution branch above).
    */
-  static async embedTitles(
+  static async embedSemantic(
     embedder: EmbedderInterface,
     candidates: readonly CandidateType[],
   ): Promise<readonly (readonly number[] | null)[]> {
     const out: (readonly number[] | null)[] = [];
     for (const c of candidates) {
-      const cached = c.notes?.['titleEmbedding'];
+      const cached = c.notes?.['semanticEmbedding'];
       if (CandidateScorer.isFiniteNumberArray(cached)) {
         out.push(cached);
         continue;
       }
-      out.push(await embedder.embed(c.book.identity.title));
+      out.push(await embedder.embed(CandidateScorer.semanticText(c)));
     }
     return out;
   }
@@ -159,7 +181,7 @@ export class CandidateScorer {
 interface ScoredEntry {
   readonly candidate: CandidateType;
   readonly score: number;
-  readonly titleEmbedding: readonly number[] | null;
+  readonly semanticEmbedding: readonly number[] | null;
 }
 
 export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'retry' | 'salvage'> {
@@ -195,26 +217,26 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
       const termTokens = TextSimilarity.tokenise(queryText);
       const currentYear = new Date().getFullYear();
 
-      // ── Step 1: Embed query + candidate titles (best-effort) ────────────
+      // ── Step 1: Embed query + candidate semantic texts (best-effort) ────
       let queryVec: readonly number[] | null = null;
-      let titleVecs: readonly (readonly number[] | null)[] = state.candidates.map(() => null);
+      let semanticVecs: readonly (readonly number[] | null)[] = state.candidates.map(() => null);
       if (embedder !== null) {
         try {
-          queryVec  = await embedder.embed(queryText);
-          titleVecs = await CandidateScorer.embedTitles(embedder, state.candidates);
+          queryVec     = await embedder.embed(queryText);
+          semanticVecs = await CandidateScorer.embedSemantic(embedder, state.candidates);
         } catch {
           // Embedder threw: drop the cosine term and fall back to the
           // deterministic composite score for every candidate.
-          queryVec  = null;
-          titleVecs = state.candidates.map(() => null);
+          queryVec     = null;
+          semanticVecs = state.candidates.map(() => null);
         }
       }
 
       // ── Step 2: Deterministic composite scoring ─────────────────────────
       const scored: ScoredEntry[] = state.candidates.map((candidate, i) => ({
         candidate,
-        'score':          CandidateScorer.compositeScore(candidate, queryVec, titleVecs[i] ?? null, termTokens, currentYear),
-        'titleEmbedding': titleVecs[i] ?? null,
+        'score':             CandidateScorer.compositeScore(candidate, queryVec, semanticVecs[i] ?? null, termTokens, currentYear),
+        'semanticEmbedding': semanticVecs[i] ?? null,
       }));
       scored.sort((a, b) => b.score - a.score);
 
@@ -255,8 +277,8 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
         const baseNotes: Record<string, unknown> = entry.candidate.notes !== undefined
           ? { ...entry.candidate.notes }
           : {};
-        if (entry.titleEmbedding !== null) {
-          baseNotes['titleEmbedding'] = entry.titleEmbedding;
+        if (entry.semanticEmbedding !== null) {
+          baseNotes['semanticEmbedding'] = entry.semanticEmbedding;
         }
         baseNotes['compositeScore'] = entry.score;
         return {

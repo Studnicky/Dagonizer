@@ -119,6 +119,7 @@ export interface LlmClientInterface {
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,
+    repairHint?: string,
   ): Promise<string>;
   /** Author-survey compose: chronological body-of-work prose. */
   composeAuthor(
@@ -128,6 +129,7 @@ export interface LlmClientInterface {
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,
+    repairHint?: string,
   ): Promise<string>;
   /** Reviews compose: weight ratings (notes.rating / notes.ratingsCount). */
   composeReviews(
@@ -137,6 +139,7 @@ export interface LlmClientInterface {
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,
+    repairHint?: string,
   ): Promise<string>;
   /** Describe a single title; no recommendations. */
   describeBook(
@@ -146,6 +149,7 @@ export interface LlmClientInterface {
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,
+    repairHint?: string,
   ): Promise<string>;
   /** Recommend similar: anchored on persistent memory. */
   composeSimilar(
@@ -155,6 +159,7 @@ export interface LlmClientInterface {
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
     signal?: AbortSignal,
+    repairHint?: string,
   ): Promise<string>;
   /** Validate a draft against quality rules (length, citations, tone). */
   validate(draft: string, shortlist: readonly CandidateType[]): Promise<boolean>;

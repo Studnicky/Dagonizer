@@ -185,8 +185,9 @@ export class BaseLlmClient implements LlmClientInterface {
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
     signal?: AbortSignal,
+    repairHint: string = '',
   ): Promise<string> {
-    return (await this.#text(prompts.compose(this.language, query, shortlist, priorContext, recalledSummary, conversation), signal)).trim();
+    return (await this.#text(prompts.compose(this.language, query, shortlist, priorContext, recalledSummary, conversation, repairHint), signal)).trim();
   }
 
   async composeAuthor(
@@ -196,8 +197,9 @@ export class BaseLlmClient implements LlmClientInterface {
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
     signal?: AbortSignal,
+    repairHint: string = '',
   ): Promise<string> {
-    return (await this.#text(prompts.composeAuthor(this.language, query, shortlist, priorContext, recalledSummary, conversation), signal)).trim();
+    return (await this.#text(prompts.composeAuthor(this.language, query, shortlist, priorContext, recalledSummary, conversation, repairHint), signal)).trim();
   }
 
   async composeReviews(
@@ -207,8 +209,9 @@ export class BaseLlmClient implements LlmClientInterface {
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
     signal?: AbortSignal,
+    repairHint: string = '',
   ): Promise<string> {
-    return (await this.#text(prompts.composeReviews(this.language, query, shortlist, priorContext, recalledSummary, conversation), signal)).trim();
+    return (await this.#text(prompts.composeReviews(this.language, query, shortlist, priorContext, recalledSummary, conversation, repairHint), signal)).trim();
   }
 
   async describeBook(
@@ -218,8 +221,9 @@ export class BaseLlmClient implements LlmClientInterface {
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
     signal?: AbortSignal,
+    repairHint: string = '',
   ): Promise<string> {
-    return (await this.#text(prompts.describeBook(this.language, query, shortlist, priorContext, recalledSummary, conversation), signal)).trim();
+    return (await this.#text(prompts.describeBook(this.language, query, shortlist, priorContext, recalledSummary, conversation, repairHint), signal)).trim();
   }
 
   async composeSimilar(
@@ -229,8 +233,9 @@ export class BaseLlmClient implements LlmClientInterface {
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
     signal?: AbortSignal,
+    repairHint: string = '',
   ): Promise<string> {
-    return (await this.#text(prompts.composeSimilar(this.language, query, shortlist, priorContext, recalledSummary, conversation), signal)).trim();
+    return (await this.#text(prompts.composeSimilar(this.language, query, shortlist, priorContext, recalledSummary, conversation, repairHint), signal)).trim();
   }
 
   async validate(draft: string, shortlist: readonly CandidateType[]): Promise<boolean> {

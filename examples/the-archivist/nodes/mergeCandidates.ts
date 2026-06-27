@@ -31,7 +31,7 @@ import type { ArchivistState } from '../ArchivistState.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import { CanonicalId } from '@studnicky/dagonizer-book-entities';
 
-const SHORTLIST_LIMIT = 5;
+const SHORTLIST_LIMIT = 8;
 
 export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'empty'> {
   readonly name = 'merge-candidates';

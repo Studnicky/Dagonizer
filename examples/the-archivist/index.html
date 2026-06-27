@@ -17,19 +17,83 @@
         --result:  #56d364;
       }
       * { box-sizing: border-box; }
-      body {
+      html, body {
         margin: 0;
-        padding: 24px;
+        padding: 0;
+        height: 100%;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         background: var(--bg);
         color: var(--fg);
+      }
+      #layout {
         display: flex;
         flex-direction: column;
-        gap: 16px;
-        min-height: 100vh;
+        height: 100%;
       }
-      header h1 { margin: 0 0 4px 0; font-size: 20px; }
+      /* ── Header ──────────────────────────────────────────────────── */
+      header {
+        flex-shrink: 0;
+        padding: 10px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+      }
+      header h1 { margin: 0; font-size: 17px; }
       header p  { margin: 0; color: var(--muted); font-size: 13px; }
+      /* ── Main two-pane area ──────────────────────────────────────── */
+      #main {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+      }
+      /* ── Left pane: conversation ─────────────────────────────────── */
+      #left-pane {
+        display: flex;
+        flex-direction: column;
+        width: 400px;
+        min-width: 260px;
+        border-right: 1px solid var(--border);
+        overflow: hidden;
+      }
+      #conversation {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .bubble {
+        max-width: 86%;
+        padding: 10px 14px;
+        border-radius: 12px;
+        font-size: 14px;
+        line-height: 1.55;
+        word-break: break-word;
+        white-space: pre-wrap;
+      }
+      .bubble-visitor {
+        align-self: flex-end;
+        background: var(--accent);
+        color: #0d1117;
+        border-bottom-right-radius: 3px;
+      }
+      .bubble-archivist {
+        align-self: flex-start;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        color: var(--fg);
+        border-bottom-left-radius: 3px;
+      }
+      #ask-area {
+        flex-shrink: 0;
+        padding: 12px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
       form { display: flex; gap: 8px; }
       input[type="text"] {
         flex: 1;
@@ -50,43 +114,112 @@
         cursor: pointer;
       }
       button:disabled { opacity: 0.5; cursor: not-allowed; }
-      #archivist-log {
-        flex: 1;
-        margin: 0;
-        padding: 12px;
+      #hitl-banner {
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px 12px;
         background: var(--panel);
-        border: 1px solid var(--border);
-        border-radius: 6px;
+        border-top: 1px solid var(--border);
+        border-radius: 0 0 6px 6px;
+      }
+      #hitl-banner .hitl-row { display: flex; gap: 8px; }
+      /* ── Right pane: DAG + debug log ─────────────────────────────── */
+      #right-pane {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      #dag-label {
+        flex-shrink: 0;
+        padding: 6px 12px;
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        border-bottom: 1px solid var(--border);
+      }
+      #dag-container {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+      }
+      /* ── Collapsible debug log ───────────────────────────────────── */
+      #log-section {
+        flex-shrink: 0;
+        border-top: 1px solid var(--border);
+      }
+      #log-section details summary {
+        padding: 5px 12px;
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        cursor: pointer;
+        user-select: none;
+        list-style: none;
+      }
+      #log-section details summary::-webkit-details-marker { display: none; }
+      #log-section details summary::before { content: '▶  '; font-size: 9px; }
+      #log-section details[open] summary::before { content: '▼  '; font-size: 9px; }
+      #archivist-log {
+        margin: 0;
+        padding: 8px 12px;
+        background: var(--panel);
         font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
-        font-size: 12px;
+        font-size: 11px;
         line-height: 1.5;
         white-space: pre-wrap;
         overflow-y: auto;
-        max-height: 70vh;
+        max-height: 160px;
       }
-      #archivist-log .info   { color: var(--fg); }
+      #archivist-log .info   { color: var(--muted); }
       #archivist-log .warn   { color: var(--warn); }
       #archivist-log .result { color: var(--result); font-weight: 600; }
       #archivist-log .error  { color: #f85149; }
     </style>
   </head>
   <body>
-    <header>
-      <h1>The Archivist</h1>
-      <p>Ask the archivist about a book. The DAG decides intent, runs scouts, ranks, and composes a response.</p>
-    </header>
-    <form id="ask-form">
-      <input id="ask-input" type="text" placeholder="I'm looking for a book about a strange house and a library" autocomplete="off" />
-      <button id="ask-button" type="submit">Ask</button>
-    </form>
-    <div id="hitl-banner" style="display:none; padding:12px; background:#161b22; border:1px solid #30363d; border-radius:6px; flex-direction:column; gap:8px;">
-      <span style="color:#f0883e; font-size:13px;">The Archivist is waiting for your input to continue.</span>
-      <div style="display:flex; gap:8px;">
-        <input id="hitl-input" type="text" placeholder="Your answer..." style="flex:1; padding:8px 12px; background:#0e1116; color:#e6edf3; border:1px solid #30363d; border-radius:6px; font-size:14px;" />
-        <button id="hitl-resume" type="button" style="padding:8px 16px; background:#238636; color:#fff; border:0; border-radius:6px; font-weight:600; cursor:pointer;">Resume</button>
+    <div id="layout">
+      <header>
+        <h1>The Archivist</h1>
+        <p>DAG-dispatched book intelligence — ask for a recommendation, review, author survey, or recall.</p>
+      </header>
+
+      <div id="main">
+        <!-- Left pane: conversation -->
+        <div id="left-pane">
+          <div id="conversation" aria-live="polite" aria-label="Conversation"></div>
+          <div id="ask-area">
+            <form id="ask-form">
+              <input id="ask-input" type="text" placeholder="I'm looking for a book about a strange house and a library" autocomplete="off" />
+              <button id="ask-button" type="submit">Ask</button>
+            </form>
+            <div id="hitl-banner">
+              <span style="color:var(--warn); font-size:13px;">The Archivist is waiting for your input to continue.</span>
+              <div class="hitl-row">
+                <input id="hitl-input" type="text" placeholder="Your answer..." />
+                <button id="hitl-resume" type="button" style="background:#238636; color:#fff;">Resume</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right pane: DAG topology + debug log -->
+        <div id="right-pane">
+          <div id="dag-label">DAG Topology — The Archivist v6.0</div>
+          <div id="dag-container"></div>
+          <div id="log-section">
+            <details>
+              <summary>Debug log</summary>
+              <pre id="archivist-log" aria-live="polite"></pre>
+            </details>
+          </div>
+        </div>
       </div>
     </div>
-    <pre id="archivist-log" aria-live="polite"></pre>
+
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

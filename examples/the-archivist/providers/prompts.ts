@@ -171,6 +171,14 @@ export const directives = {
    * recalls as "I recall from earlier" rather than "I just searched".
    */
   "priorMemoryHint": 'Some of these books come from prior sessions where you discussed similar queries; phrase them as "I recall" or "from earlier we found" rather than "I just searched".',
+
+  // ── Compose repair ───────────────────────────────────────────────────
+  /**
+   * Injected when a previous compose attempt returned raw JSON instead
+   * of prose (a failure mode of weak on-device models like Gemini Nano).
+   * Instructs the model to write only flowing natural language.
+   */
+  "repairJson": 'Write only flowing prose. Do not output JSON, code blocks, or any structured data format.',
 } as const;
 
 // ── Shared system message, composed from persona directives ────────────
@@ -333,6 +341,7 @@ export const prompts = {
     priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
+    repairHint = '',
   ): string {
     const rows = shortlist.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -347,6 +356,13 @@ export const prompts = {
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const memoryHint = PromptFormat.priorMemoryHintLine(shortlist);
+    const repairLines: string[] = repairHint.length > 0
+      ? [
+          '',
+          directives.repairJson,
+          `A previous attempt returned raw JSON instead of prose. Do NOT output JSON or code blocks. Write flowing prose only. Data in plain text: ${repairHint}`,
+        ]
+      : [];
     const body = [
       directives.beTerse,
       directives.citeShortlist,
@@ -356,6 +372,7 @@ export const prompts = {
       continuityBlock,
       conversationBlock,
       contextBlock,
+      ...repairLines,
       '',
       directives.candidatesHeader,
       rows,
@@ -370,6 +387,7 @@ export const prompts = {
     priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
+    repairHint = '',
   ): string {
     const rows = shortlist.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -384,6 +402,13 @@ export const prompts = {
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const memoryHintAuthor = PromptFormat.priorMemoryHintLine(shortlist);
+    const repairLines: string[] = repairHint.length > 0
+      ? [
+          '',
+          directives.repairJson,
+          `A previous attempt returned raw JSON instead of prose. Do NOT output JSON or code blocks. Write flowing prose only. Data in plain text: ${repairHint}`,
+        ]
+      : [];
     const body = [
       directives.beTerse,
       directives.citeShortlist,
@@ -395,6 +420,7 @@ export const prompts = {
       continuityBlock,
       conversationBlock,
       contextBlock,
+      ...repairLines,
       '',
       directives.candidatesHeaderChronological,
       rows,
@@ -409,6 +435,7 @@ export const prompts = {
     priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
+    repairHint = '',
   ): string {
     const rows = shortlist.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -423,6 +450,13 @@ export const prompts = {
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const memoryHintReviews = PromptFormat.priorMemoryHintLine(shortlist);
+    const repairLines: string[] = repairHint.length > 0
+      ? [
+          '',
+          directives.repairJson,
+          `A previous attempt returned raw JSON instead of prose. Do NOT output JSON or code blocks. Write flowing prose only. Data in plain text: ${repairHint}`,
+        ]
+      : [];
     const body = [
       directives.beTerse,
       directives.citeShortlist,
@@ -434,6 +468,7 @@ export const prompts = {
       continuityBlock,
       conversationBlock,
       contextBlock,
+      ...repairLines,
       '',
       directives.candidatesHeaderRated,
       rows,
@@ -448,6 +483,7 @@ export const prompts = {
     priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
+    repairHint = '',
   ): string {
     const rows = shortlist.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -462,6 +498,13 @@ export const prompts = {
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const memoryHintDescribe = PromptFormat.priorMemoryHintLine(shortlist);
+    const repairLines: string[] = repairHint.length > 0
+      ? [
+          '',
+          directives.repairJson,
+          `A previous attempt returned raw JSON instead of prose. Do NOT output JSON or code blocks. Write flowing prose only. Data in plain text: ${repairHint}`,
+        ]
+      : [];
     const body = [
       directives.describeOnly,
       directives.citeShortlist,
@@ -472,6 +515,7 @@ export const prompts = {
       continuityBlock,
       conversationBlock,
       contextBlock,
+      ...repairLines,
       '',
       directives.matchedBooksHeader,
       rows,
@@ -486,6 +530,7 @@ export const prompts = {
     priorContext?: readonly { variant: string; text: string }[],
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
+    repairHint = '',
   ): string {
     const rows = shortlist.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -500,6 +545,13 @@ export const prompts = {
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
     const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const memoryHintSimilar = PromptFormat.priorMemoryHintLine(shortlist);
+    const repairLines: string[] = repairHint.length > 0
+      ? [
+          '',
+          directives.repairJson,
+          `A previous attempt returned raw JSON instead of prose. Do NOT output JSON or code blocks. Write flowing prose only. Data in plain text: ${repairHint}`,
+        ]
+      : [];
     const body = [
       directives.beTerse,
       directives.citeShortlist,
@@ -510,6 +562,7 @@ export const prompts = {
       continuityBlock,
       conversationBlock,
       contextBlock,
+      ...repairLines,
       '',
       directives.candidatesHeader,
       rows,

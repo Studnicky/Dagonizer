@@ -16,7 +16,7 @@
  * setTimeout, no polling, no JS-driven animation loops.
  */
 
-import { computed, onMounted, ref, shallowRef, watch } from 'vue';
+import { type Ref, computed, onMounted, ref, shallowRef, watch } from 'vue';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
@@ -252,20 +252,7 @@ async function resumeFromCheckpoint(): Promise<void> {
   try {
     const services = buildServices();
     const nodes = ArchivistNodes.build(services);
-    const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
-    const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
-    const parentBundle     = ArchivistBundleFactory.create(nodes);
-
-    const parentDag = parentBundle.dags[0];
-    if (parentDag !== undefined) archivistDag.value = parentDag;
-    const bookSearchDag = bookSearchBundle.dags[0];
-    const composeRetryDag = composeBundle.dags[0];
-    if (bookSearchDag !== undefined && composeRetryDag !== undefined) {
-      embeddedDagRegistry.value = new Map([
-        ['book-search-scatter', bookSearchDag],
-        ['compose-retry-loop', composeRetryDag],
-      ]);
-    }
+    const { bookSearchBundle, composeBundle, parentBundle } = ArchivistDagAssembly.populate(nodes, archivistDag, embeddedDagRegistry);
 
     dispatcher = new ArchivistBrowserObserver(logger, { 'fromCursor': restored.cursor, 'prov': prov });
 
@@ -405,13 +392,12 @@ const rightTabs = computed(() => {
   ];
 });
 
-// Lazily-populated top-level archivist DAG reference for DagGraph display.
-// Set on the first call to buildRunBundles() (ask() or resumeFromCheckpoint()),
-// so the graph renders the DAG structure once a real LLM/services set exists.
+// Top-level archivist DAG reference for DagGraph display.
+// Populated at mount (stub topology) and refreshed on each real run.
 const archivistDag = ref<DAGType | null>(null);
 
-// Lazily-populated embedded-DAG registry. Keys match the embeddedDAG placement
-// names in the parent DAG. Built alongside archivistDag from the same factory call.
+// Embedded-DAG registry. Keys match the embeddedDAG placement names in the
+// parent DAG. Populated at mount (stub topology) and refreshed on each real run.
 const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map());
 
 // Stable tool instances. The scout nodes call `tool.execute(...)`, which is an
@@ -692,8 +678,94 @@ function onTreatAsDesktop(): void {
   window.location.reload();
 }
 
+// ── DAG topology ──────────────────────────────────────────────────────────
+// Stub implementations used for topology-only DAG construction at mount time.
+// No real LLM or HTTP calls are made on these instances; they exist solely so
+// ArchivistNodes.build can derive the node/edge graph before a backend is chosen.
+const STUB_TOOL_DEFINITION = {
+  'name': 'stub', 'description': '',
+  'inputSchema':  { 'type': 'object' as const },
+  'outputSchema': { 'type': 'object' as const },
+  'strict': false,
+} satisfies ArchivistServices['webSearch']['definition'];
+
+class StubTool {
+  readonly definition = STUB_TOOL_DEFINITION;
+  async execute(): Promise<never> { return Promise.reject(new Error('stub')); }
+}
+
+class StubLlm {
+  async classifyIntent(): Promise<never>        { return Promise.reject(new Error('stub')); }
+  async extractTerms(): Promise<never>          { return Promise.reject(new Error('stub')); }
+  async decideTools(): Promise<never>           { return Promise.reject(new Error('stub')); }
+  async rankCandidates(): Promise<never>        { return Promise.reject(new Error('stub')); }
+  async compose(): Promise<never>               { return Promise.reject(new Error('stub')); }
+  async composeAuthor(): Promise<never>         { return Promise.reject(new Error('stub')); }
+  async composeReviews(): Promise<never>        { return Promise.reject(new Error('stub')); }
+  async describeBook(): Promise<never>          { return Promise.reject(new Error('stub')); }
+  async composeSimilar(): Promise<never>        { return Promise.reject(new Error('stub')); }
+  async validate(): Promise<never>              { return Promise.reject(new Error('stub')); }
+  async composeMemoryRecall(): Promise<never>   { return Promise.reject(new Error('stub')); }
+  async composeEmptyResponse(): Promise<never>  { return Promise.reject(new Error('stub')); }
+  async suggestStarterQuery(): Promise<never>   { return Promise.reject(new Error('stub')); }
+  async suggestGreeting(): Promise<never>       { return Promise.reject(new Error('stub')); }
+  async suggestVisitorReplyTo(): Promise<never> { return Promise.reject(new Error('stub')); }
+  async explainTool(): Promise<never>           { return Promise.reject(new Error('stub')); }
+}
+
+/**
+ * ArchivistDagAssembly: single source of truth for bundle construction and
+ * ref assignment.
+ *
+ * `populate` builds the three bundles from a node set, assigns the dag refs,
+ * and returns the bundles so the caller can register them on a dispatcher.
+ * `stubNodes` builds an ArchivistNodes instance from stub services, giving
+ * the caller a node set whose topology mirrors production without any LLM
+ * or HTTP dependencies.
+ */
+class ArchivistDagAssembly {
+  static stubNodes(): ArchivistNodes {
+    const services: ArchivistServices = {
+      'webSearch':        new StubTool(),
+      'googleBooks':      new StubTool(),
+      'subjectSearch':    new StubTool(),
+      'wikipediaSummary': new StubTool(),
+      'llm':              new StubLlm(),
+      'memory':           memoryStore,
+      'embedder':         null,
+      'nodeTimeouts':     {},
+    };
+    return ArchivistNodes.build(services);
+  }
+
+  static populate(
+    nodes: ArchivistNodes,
+    dagRef: Ref<DAGType | null>,
+    registryRef: Ref<Map<string, DAGType>>,
+  ) {
+    const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
+    const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
+    const parentBundle     = ArchivistBundleFactory.create(nodes);
+
+    const parentDag = parentBundle.dags[0];
+    if (parentDag !== undefined) dagRef.value = parentDag;
+    const bookSearchDag   = bookSearchBundle.dags[0];
+    const composeRetryDag = composeBundle.dags[0];
+    if (bookSearchDag !== undefined && composeRetryDag !== undefined) {
+      registryRef.value = new Map([
+        ['book-search-scatter', bookSearchDag],
+        ['compose-retry-loop',  composeRetryDag],
+      ]);
+    }
+
+    return { bookSearchBundle, composeBundle, parentBundle };
+  }
+}
+
 // ── Boot ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
+  ArchivistDagAssembly.populate(ArchivistDagAssembly.stubNodes(), archivistDag, embeddedDagRegistry);
+
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
   SeedLibrary.loadInto(memoryStore);
   memoryTick.value++;
@@ -836,20 +908,7 @@ async function ask(): Promise<void> {
 
   try {
     const nodes = ArchivistNodes.build(services);
-    const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
-    const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
-    const parentBundle     = ArchivistBundleFactory.create(nodes);
-
-    const parentDag = parentBundle.dags[0];
-    if (parentDag !== undefined) archivistDag.value = parentDag;
-    const bookSearchDag = bookSearchBundle.dags[0];
-    const composeRetryDag = composeBundle.dags[0];
-    if (bookSearchDag !== undefined && composeRetryDag !== undefined) {
-      embeddedDagRegistry.value = new Map([
-        ['book-search-scatter', bookSearchDag],
-        ['compose-retry-loop', composeRetryDag],
-      ]);
-    }
+    const { bookSearchBundle, composeBundle, parentBundle } = ArchivistDagAssembly.populate(nodes, archivistDag, embeddedDagRegistry);
 
     dispatcher = new ArchivistBrowserObserver(logger, { 'fromCursor': null, 'prov': prov });
 

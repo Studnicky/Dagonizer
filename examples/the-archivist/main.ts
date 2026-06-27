@@ -44,6 +44,7 @@ import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import { EmbedderProvisioner } from './providers/EmbedderProvisioner.ts';
 import { prompts } from './providers/prompts.ts';
 import type { ArchivistServices, LlmClientInterface } from './services.ts';
+import { ArchivistGraph } from './viz/ArchivistGraph.ts';
 
 import { GeminiApiAdapter }   from '@studnicky/dagonizer-adapter-gemini-api';
 import { GeminiNanoAdapter }  from '@studnicky/dagonizer-adapter-gemini-nano';
@@ -58,6 +59,8 @@ import { GoogleBooksTool }       from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool, SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool }  from '@studnicky/dagonizer-tool-wikipedia';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
+
+import type { DAGType } from '@studnicky/dagonizer';
 
 import { IndexedDbStore, IndexedDbCheckpointStore } from '@studnicky/dagonizer-store-indexeddb';
 import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
@@ -91,8 +94,62 @@ const hitlResumeEl = document.getElementById('hitl-resume');
 if (!(hitlResumeEl instanceof HTMLButtonElement)) throw new Error('missing #hitl-resume');
 const hitlResumeButton = hitlResumeEl;
 
+const conversationRaw = document.getElementById('conversation');
+if (!(conversationRaw instanceof HTMLDivElement)) throw new Error('missing #conversation');
+const conversationEl = conversationRaw;
+
+const dagContainerRaw = document.getElementById('dag-container');
+if (!(dagContainerRaw instanceof HTMLDivElement)) throw new Error('missing #dag-container');
+const dagContainerEl = dagContainerRaw;
+
 // Hide banner initially.
 hitlBanner.style.display = 'none';
+
+/** Static factory for conversation chat bubble DOM elements. */
+class ChatBubble {
+  static visitor(text: string): HTMLDivElement {
+    const el = document.createElement('div');
+    el.className = 'bubble bubble-visitor';
+    el.textContent = text;
+    return el;
+  }
+
+  static archivist(text: string): HTMLDivElement {
+    const el = document.createElement('div');
+    el.className = 'bubble bubble-archivist';
+    el.textContent = text;
+    return el;
+  }
+}
+
+/** Static helpers for the conversation panel: push bubbles and scroll. */
+class ConversationView {
+  static pushVisitor(container: HTMLDivElement, text: string): void {
+    container.appendChild(ChatBubble.visitor(text));
+    container.scrollTop = container.scrollHeight;
+  }
+
+  static pushArchivist(container: HTMLDivElement, text: string): void {
+    container.appendChild(ChatBubble.archivist(text));
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+/** Static helpers for the DAG visualization pane: mount an ArchivistGraph. */
+class DagPane {
+  static mount(
+    container: HTMLDivElement,
+    archivistDAG: DAGType,
+    bookSearchDAG: DAGType,
+    composeDAG: DAGType,
+  ): void {
+    const embeddedDAGs = new Map<string, DAGType>([
+      ['book-search-scatter', bookSearchDAG],
+      ['compose-retry-loop',  composeDAG],
+    ]);
+    void new ArchivistGraph(container, archivistDAG, { embeddedDAGs }).mount();
+  }
+}
 
 /** Static CLI helpers for the browser demo: log wiring, query submission, and HITL resume. */
 class ArchivistCli {
@@ -105,6 +162,9 @@ class ArchivistCli {
   }
 
   static async ask(query: string): Promise<void> {
+    if (query.length > 0) {
+      ConversationView.pushVisitor(conversationEl, query);
+    }
     const visitor = new ArchivistState();
     visitor.query = query;
     button.disabled = true;
@@ -126,7 +186,10 @@ class ArchivistCli {
         await kvStore.set('hitl:pendingKey', result.parked.correlationKey);
         hitlBanner.style.display = 'flex';
       } else {
-        // Completed run — persist memory graph; clear any pending HITL key.
+        // Completed run — push the archivist bubble, persist memory graph.
+        if (result.state.draft.length > 0) {
+          ConversationView.pushArchivist(conversationEl, result.state.draft);
+        }
         const snap = await memory.snapshot();
         const nquadsEntry = snap.entries.find((e) => e.key === 'nquads');
         if (typeof nquadsEntry?.value === 'string') {
@@ -143,6 +206,7 @@ class ArchivistCli {
   }
 
   static async resume(humanText: string): Promise<void> {
+    ConversationView.pushVisitor(conversationEl, humanText);
     hitlResumeButton.disabled = true;
     try {
       const pendingKey = await kvStore.get('hitl:pendingKey');
@@ -170,6 +234,11 @@ class ArchivistCli {
       logger.result(`shortlist=${String(result.state.shortlist.length)}`);
       logger.result(`draft=${result.state.draft}`);
       logger.result(`lifecycle=${result.state.lifecycle.variant}`);
+
+      // Push archivist bubble after successful resume.
+      if (result.state.draft.length > 0) {
+        ConversationView.pushArchivist(conversationEl, result.state.draft);
+      }
 
       // Persist memory graph after successful resume; clear pending key.
       const snap = await memory.snapshot();
@@ -358,10 +427,22 @@ dispatcher.registerBundle(toolRegistry.bundle());
 // passed to all three factories so duplicate registrations refer to identical
 // instances and the registrar accepts them.
 const nodes = ArchivistNodes.build(services);
-dispatcher.registerBundle(BookSearchScatterBundleFactory.create(nodes));
-dispatcher.registerBundle(ComposeRetryLoopBundleFactory.create(nodes));
-dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
+const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
+const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
+const parentBundle     = ArchivistBundleFactory.create(nodes);
+
+dispatcher.registerBundle(bookSearchBundle);
+dispatcher.registerBundle(composeBundle);
+dispatcher.registerBundle(parentBundle);
 // #endregion register-bundle
+
+// ── DAG visualization: mount ArchivistGraph into the right pane. ─────────
+const archivistDAG  = parentBundle.dags[0];
+const bookSearchDAG = bookSearchBundle.dags[0];
+const composeDAG    = composeBundle.dags[0];
+if (archivistDAG !== undefined && bookSearchDAG !== undefined && composeDAG !== undefined) {
+  DagPane.mount(dagContainerEl, archivistDAG, bookSearchDAG, composeDAG);
+}
 
 // ── Restore pending HITL state (survives page reload). ───────────────────
 const pendingKey = await kvStore.get('hitl:pendingKey');
