@@ -80,6 +80,21 @@ export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded'> {
       memory.assert(book, dagInShortlist, MemoryStore.lit.bool(shortlistIsbns.has(candidate.book.identity.isbn)), GRAPH_MEMORY);
     }
 
+    // Per-run state-graph mirror: the persistent GRAPH_MEMORY writes above
+    // accumulate across runs, so the deterministic has-citations-gate reads
+    // from the isolated per-run state graph instead. Mirror each shortlisted
+    // book's inShortlist/source/title into urn:dagonizer:state:<runId> so the
+    // gate sees this run's shortlist as ground truth (without it the gate finds
+    // nothing and the flow falls through to the empty-results branch even when
+    // the shortlist is non-empty).
+    const stateGraph = MemoryStore.stateGraphIri(state.runId);
+    for (const candidate of state.shortlist) {
+      const book = MemoryStore.bookIri(candidate.book.identity.isbn);
+      memory.assert(book, dagInShortlist, MemoryStore.lit.bool(true),                              stateGraph);
+      memory.assert(book, dagSource,      MemoryStore.lit.str(candidate.source),                   stateGraph);
+      memory.assert(book, dagTitle,       MemoryStore.lit.str(candidate.book.identity.title),      stateGraph);
+    }
+
     // Per-run facts so future runs can recall this visitor's session.
     if (state.runId !== '') {
       const run = MemoryStore.runIri(state.runId);

@@ -16,6 +16,15 @@
  * Demonstrates: the parameterised `services` context, state-mutation gating
  * (`state.approved`), and retry/salvage as a flow shape over a state-held
  * budget.
+ *
+ * `DraftShape` detects JSON-shaped drafts (a failure mode of weak on-device
+ * models like Gemini Nano) and strips them to plain text so a repair hint
+ * can be threaded into the next compose attempt via the dedicated repairHint
+ * compose argument.
+ *
+ * `ShortlistDigest` produces a deterministic prose summary from the shortlist
+ * when the validate loop is exhausted with non-empty results; ensures the
+ * visitor always sees real book titles rather than a silent bad draft.
  */
 
 
@@ -30,6 +39,129 @@ const MAX_COMPOSE_ATTEMPTS = 3;
 
 /** Default wall-clock budget for the compose phase (ms). Overridden at runtime by the runner. */
 export const COMPOSE_TIMEOUT_MS = 60_000;
+
+/**
+ * Static helpers for detecting and stripping JSON-shaped compose drafts.
+ *
+ * Weak on-device models (Gemini Nano) sometimes return their response as
+ * a raw JSON object or inside a code fence instead of flowing prose.
+ * `isJson` catches that pattern; `strip` converts the JSON structure to
+ * readable plain text so a repair directive can be threaded into the next
+ * compose attempt via `state.failureCause`.
+ */
+export class DraftShape {
+  /** Matches a draft whose entire body is a single code fence (``` or ```json). */
+  private static readonly FENCE_RE = /^```(?:json)?\s*([\s\S]*?)\s*```$/u;
+  /** Fraction of inner fenced content above which the draft is considered JSON-shaped. */
+  private static readonly FENCE_THRESHOLD = 0.6;
+
+  /**
+   * Returns `true` when the draft is JSON-shaped:
+   *   - The full draft is a single code fence whose inner content exceeds
+   *     60% of the total trimmed length, OR
+   *   - The body (after stripping any surrounding fence) parses as a JSON
+   *     array or object.
+   */
+  static isJson(draft: string): boolean {
+    const trimmed = draft.trim();
+    if (trimmed.length === 0) return false;
+
+    const fenceMatch = DraftShape.FENCE_RE.exec(trimmed);
+    const inner = fenceMatch !== null ? (fenceMatch[1] ?? '').trim() : '';
+
+    if (fenceMatch !== null && inner.length > 0 &&
+        inner.length / trimmed.length > DraftShape.FENCE_THRESHOLD) {
+      return true;
+    }
+
+    const body = inner.length > 0 ? inner : trimmed;
+    if ((body.startsWith('{') && body.endsWith('}')) ||
+        (body.startsWith('[') && body.endsWith(']'))) {
+      try {
+        const parsed: unknown = JSON.parse(body);
+        return typeof parsed === 'object' && parsed !== null;
+      } catch { /* not valid JSON */ }
+    }
+    return false;
+  }
+
+  /**
+   * Returns clean human-readable text from a JSON-shaped draft.
+   * Strips code fences, extracts string values from the JSON structure
+   * (joining with ". "), and falls back to removing all JSON-special
+   * characters when the body is not parseable.
+   */
+  static strip(draft: string): string {
+    const trimmed = draft.trim();
+    const fenceMatch = DraftShape.FENCE_RE.exec(trimmed);
+    const body = fenceMatch !== null
+      ? (fenceMatch[1] ?? '').trim()
+      : trimmed;
+
+    if ((body.startsWith('{') && body.endsWith('}')) ||
+        (body.startsWith('[') && body.endsWith(']'))) {
+      try {
+        const parsed: unknown = JSON.parse(body);
+        if (DraftShape.isPlainObject(parsed) || Array.isArray(parsed)) {
+          const strings = DraftShape.gatherStrings(parsed);
+          if (strings.length > 0) return strings.join('. ');
+        }
+      } catch { /* not valid JSON, fall through */ }
+    }
+
+    return body.replace(/[{}[\]"\\]/gu, ' ').replace(/\s+/gu, ' ').trim();
+  }
+
+  private static isPlainObject(v: unknown): v is Record<string, unknown> {
+    return v !== null && typeof v === 'object' && !Array.isArray(v);
+  }
+
+  private static gatherStrings(val: unknown): string[] {
+    if (typeof val === 'string') return val.length > 0 ? [val] : [];
+    if (typeof val === 'number' || typeof val === 'boolean') return [String(val)];
+    if (Array.isArray(val)) return val.flatMap((v: unknown) => DraftShape.gatherStrings(v));
+    if (DraftShape.isPlainObject(val)) {
+      return Object.values(val).flatMap((v: unknown) => DraftShape.gatherStrings(v));
+    }
+    return [];
+  }
+}
+
+/**
+ * Produces a deterministic prose summary from a non-empty shortlist.
+ * Used by `ValidateResponseNode` when the compose/validate loop is exhausted
+ * but real catalog records exist — ensures the visitor always sees real book
+ * titles rather than a silent bad or hallucinated draft.
+ */
+class ShortlistDigest {
+  private static readonly MAX_TITLES = 3;
+
+  /**
+   * Returns 1–2 sentences naming titles, authors, and publication years
+   * from the top of the shortlist. Caller guarantees `shortlist.length > 0`.
+   */
+  static summarize(shortlist: readonly CandidateType[]): string {
+    const top = shortlist.slice(0, ShortlistDigest.MAX_TITLES);
+    const items = top.map((c) => {
+      const { title, authors } = c.book.identity;
+      const year = c.book.publication.firstPublishYear;
+      const firstAuthor = authors[0];
+      const author =
+        firstAuthor !== undefined && firstAuthor.length > 0 ? firstAuthor : undefined;
+      const yearPart = year !== null ? ` (${String(year)})` : '';
+      return author !== undefined
+        ? `"${title}" by ${author}${yearPart}`
+        : `"${title}"${yearPart}`;
+    });
+    const list = items.join(', ');
+    const extra =
+      shortlist.length > ShortlistDigest.MAX_TITLES
+        ? ` and ${String(shortlist.length - ShortlistDigest.MAX_TITLES)} more`
+        : '';
+    const lead = shortlist.length === 1 ? 'I found one match' : 'I found some matches';
+    return `${lead}: ${list}${extra}. Ask me about any of these and I can tell you more.`;
+  }
+}
 
 export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
   private readonly services: ArchivistServices;
@@ -55,6 +187,10 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     const recalledSummary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;
+    // Accumulated repair guidance (JSON-format directive from a prior attempt,
+    // anti-hallucination cause from the validator) rides its own dedicated
+    // compose argument so the recalled-memory channel stays pure.
+    const repairHint = state.failureCause.trim();
     const conversation = state.conversation.length > 0 ? state.conversation : undefined;
 
     // Own deadline so a slow LLM is a flow decision (retry/salvage), not an
@@ -75,20 +211,37 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
       recalledSummary: string | undefined,
       conversation: readonly ConversationTurn[] | undefined,
       signal: AbortSignal,
+      repairHint: string,
     ) => Promise<string>;
     const composeDispatch: Partial<Record<string, ComposeMethod>> = {
-      'lookup-author':     (q, sl, p, rs, cv, sig) => llm.composeAuthor(q, sl, p, rs, cv, sig),
-      'find-reviews':      (q, sl, p, rs, cv, sig) => llm.composeReviews(q, sl, p, rs, cv, sig),
-      'describe-book':     (q, sl, p, rs, cv, sig) => llm.describeBook(q, sl, p, rs, cv, sig),
-      'recommend-similar': (q, sl, p, rs, cv, sig) => llm.composeSimilar(q, sl, p, rs, cv, sig),
+      'lookup-author':     (q, sl, p, rs, cv, sig, rh) => llm.composeAuthor(q, sl, p, rs, cv, sig, rh),
+      'find-reviews':      (q, sl, p, rs, cv, sig, rh) => llm.composeReviews(q, sl, p, rs, cv, sig, rh),
+      'describe-book':     (q, sl, p, rs, cv, sig, rh) => llm.describeBook(q, sl, p, rs, cv, sig, rh),
+      'recommend-similar': (q, sl, p, rs, cv, sig, rh) => llm.composeSimilar(q, sl, p, rs, cv, sig, rh),
     };
     const composeFn: ComposeMethod = composeDispatch[state.intent] ??
-      ((q, sl, p, rs, cv, sig) => llm.compose(q, sl, p, rs, cv, sig));
+      ((q, sl, p, rs, cv, sig, rh) => llm.compose(q, sl, p, rs, cv, sig, rh));
     try {
-      const draft = await composeFn(state.query, state.shortlist, prior, recalledSummary, conversation, signal);
+      const draft = await composeFn(state.query, state.shortlist, prior, recalledSummary, conversation, signal, repairHint);
       // Guard: an empty draft is a fabrication gap — route to retry/salvage
       // so the validate-response node does not receive an empty string.
       if (draft.length === 0) {
+        if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
+          return NodeOutputBuilder.of('retry');
+        }
+        return NodeOutputBuilder.of('salvage');
+      }
+      // Guard: a JSON-shaped draft is a format failure for weak on-device models.
+      // Strip the structure to plain text, record the repair directive in
+      // failureCause so the next attempt receives prose guidance via the
+      // dedicated repairHint compose argument, and route retry/salvage via the
+      // compose budget.
+      if (DraftShape.isJson(draft)) {
+        const stripped = DraftShape.strip(draft);
+        state.failureCause +=
+          'A previous attempt returned raw JSON instead of prose. ' +
+          'Write only flowing prose; no code blocks, no JSON. ' +
+          `Data in plain text: ${stripped}. `;
         if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
           return NodeOutputBuilder.of('retry');
         }
@@ -244,6 +397,11 @@ export class ValidateResponseNode extends ScalarNode<
       state.failureCause += antiHal.cause;
       state.approvalState = 'rejected';
       if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
+        // Budget exhausted: replace a bad draft with a deterministic summary
+        // when the shortlist has real records, so the visitor always sees titles.
+        if (state.shortlist.length > 0) {
+          state.draft = ShortlistDigest.summarize(state.shortlist);
+        }
         return NodeOutputBuilder.of('exhausted');
       }
       return NodeOutputBuilder.of('retry');
@@ -253,9 +411,13 @@ export class ValidateResponseNode extends ScalarNode<
     state.approvalState = ok ? 'approved' : 'rejected';
     if (ok) return NodeOutputBuilder.of('approved');
     if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
+      // Budget exhausted: replace a bad draft with a deterministic summary
+      // when the shortlist has real records, so the visitor always sees titles.
+      if (state.shortlist.length > 0) {
+        state.draft = ShortlistDigest.summarize(state.shortlist);
+      }
       return NodeOutputBuilder.of('exhausted');
     }
     return NodeOutputBuilder.of('retry');
   }
 }
-

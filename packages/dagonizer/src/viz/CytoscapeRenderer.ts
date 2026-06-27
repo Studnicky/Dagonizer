@@ -384,6 +384,7 @@ export class CytoscapeRenderer {
     const edges: CytoscapeEdgeElementType[] = [];
     for (const [output, target] of Object.entries(placement.outputs)) {
       const destId = PlacementUtils.idIn(prefix, target);
+      const selfLoop = fromId === destId ? ' self-loop' : '';
       edges.push({
         "group": 'edges',
         "data": {
@@ -393,7 +394,7 @@ export class CytoscapeRenderer {
           "label":  output,
           "route":  output,
         },
-        "classes": `route-${output}`,
+        "classes": `route-${output}${selfLoop}`,
       });
     }
     return edges;
