@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-executor-node",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "Node.js isolating executor backends for @studnicky/dagonizer: worker threads, fork, cluster, and spawn over the bridge protocol.",
   "private": false,
   "license": "MIT",
@@ -36,7 +36,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@studnicky/dagonizer": "workspace:>=0.28.0"
+    "@studnicky/dagonizer": "workspace:>=0.28.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

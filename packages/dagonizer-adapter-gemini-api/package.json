@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-adapter-gemini-api",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "LLM adapter plugin for @studnicky/dagonizer: GeminiApiAdapter.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-store-sqlite",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "SQLite-backed Store for @studnicky/dagonizer using Node's built-in node:sqlite.",
   "private": false,
   "license": "MIT",
@@ -36,7 +36,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@studnicky/dagonizer": "workspace:>=0.28.0"
+    "@studnicky/dagonizer": "workspace:>=0.28.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

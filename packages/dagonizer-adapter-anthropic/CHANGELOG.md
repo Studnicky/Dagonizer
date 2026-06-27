@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-adapter-anthropic
 
+## 0.28.1
+
 ## 0.28.0
 
 ## [unreleased]
