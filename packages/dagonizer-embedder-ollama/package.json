@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-embedder-ollama",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "Embedder plugin for @studnicky/dagonizer: OllamaEmbedder (local-first via Ollama's /api/embeddings endpoint).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

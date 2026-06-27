@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-embedder-gemini-api",
-  "version": "0.28.0",
+  "version": "0.28.1",
   "description": "Embedder plugin for @studnicky/dagonizer: GeminiApiEmbedder (Google AI Studio REST text-embedding-004).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

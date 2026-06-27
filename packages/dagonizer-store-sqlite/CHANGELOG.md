@@ -1,5 +1,12 @@
 # @studnicky/dagonizer-store-sqlite
 
+## 0.28.1
+
+### Patch Changes
+
+- Updated dependencies [fc7021e]
+  - @studnicky/dagonizer@0.28.1
+
 ## 0.28.0
 
 ### Patch Changes
