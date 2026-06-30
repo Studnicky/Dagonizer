@@ -92,14 +92,61 @@ class EngineStub {
 }
 
 /**
+ * Structural stub that satisfies `WebLlmEngineType` but whose
+ * `interruptGenerate` is a deliberate no-op — it counts calls but does NOT
+ * unblock the hanging stream. Used to verify that the base adapter's
+ * abort+timeout race guarantees promise settlement even when the cooperative
+ * interrupt cannot stop the underlying operation.
+ */
+class FrozenEngineStub {
+  readonly 'interruptGenerate': () => void;
+  readonly 'chat': WebLlmEngineType['chat'];
+
+  #interruptCalled = 0;
+
+  constructor() {
+    const stub = this;
+
+    this['interruptGenerate'] = (): void => {
+      stub.#interruptCalled++;
+      // Deliberate no-op: does not unblock the stream.
+    };
+
+    this['chat'] = {
+      'completions': {
+        'create': (_params: WebLlmStreamingParamsType): Promise<AsyncIterable<{ 'choices': ReadonlyArray<{ 'delta': { 'content'?: string } }> }>> => {
+          type Chunk = { 'choices': ReadonlyArray<{ 'delta': { 'content'?: string } }> };
+          // Plain async iterable whose `next()` never resolves — simulates a
+          // frozen in-browser generation that cannot be cooperatively interrupted.
+          const frozen: AsyncIterable<Chunk> = {
+            [Symbol.asyncIterator](): AsyncIterator<Chunk> {
+              return {
+                next(): Promise<IteratorResult<Chunk>> {
+                  return new Promise<IteratorResult<Chunk>>(() => {});
+                },
+              };
+            },
+          };
+          return Promise.resolve(frozen);
+        },
+      },
+    };
+  }
+
+  get interruptCallCount(): number {
+    return this.#interruptCalled;
+  }
+}
+
+/**
  * A `WebLlmAdapter` subclass that bypasses the real CDN boot and supplies
  * a stub engine. This is the "class extension is the only extension
  * mechanism" pattern mandated by the project standards.
  */
 class TestAdapter extends WebLlmAdapter {
-  readonly #stub: EngineStub;
+  readonly #stub: WebLlmEngineType;
 
-  constructor(stub: EngineStub, options: ConstructorParameters<typeof WebLlmAdapter>[0] = {}) {
+  constructor(stub: WebLlmEngineType, options: ConstructorParameters<typeof WebLlmAdapter>[0] = {}) {
     super(options);
     this.#stub = stub;
   }
@@ -341,4 +388,39 @@ void test('interrupt on external abort: interruptGenerate is called and call rej
   }
 
   assert.ok(stub.interruptCallCount > 0, 'interruptGenerate must have been called on external abort');
+});
+
+void test('base timeout guard rejects even when interruptGenerate is a no-op (frozen engine)', async () => {
+  // FrozenEngineStub.interruptGenerate() counts calls but does NOT unblock
+  // the hanging stream. This proves the base's abort+timeout race settles
+  // the caller's promise independently of any cooperative interrupt.
+  const stub = new FrozenEngineStub();
+  const adapter = new TestAdapter(stub, { 'timeoutMs': 50, 'maxAttempts': 1 });
+  const request = ChatRequestBuilder.from({
+    'messages': [{ 'role': 'user', 'content': 'hi' }],
+  });
+
+  let sentinel: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await assert.rejects(
+      () => Promise.race([
+        adapter.chat(request),
+        new Promise<never>((_, rej) => {
+          sentinel = setTimeout(
+            () => { rej(new Error('TEST TIMED OUT — base guard did not reject')); },
+            1000,
+          );
+        }),
+      ]),
+      (err: unknown) => {
+        assert.ok(err instanceof LlmError, `expected LlmError, got: ${String(err)}`);
+        assert.equal(err.classification, Classifications['TIMEOUT'], 'classification must be TIMEOUT');
+        return true;
+      },
+    );
+  } finally {
+    clearTimeout(sentinel);
+  }
+
+  assert.ok(stub.interruptCallCount > 0, 'interruptGenerate must have been called (best-effort cooperative interrupt)');
 });

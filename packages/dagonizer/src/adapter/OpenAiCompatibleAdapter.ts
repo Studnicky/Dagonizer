@@ -72,9 +72,6 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 /** Short timeout (ms) for the `GET /models` discovery call. */
 const DISCOVERY_TIMEOUT_MS = 2_000;
 
-/** Config with `timeoutMs` materialised from the default. */
-type ResolvedOpenAiCompatibleConfig = OpenAiCompatibleConfigType & { timeoutMs: number };
-
 /** Per-consumer options every OpenAI-compatible adapter accepts. */
 export type OpenAiCompatibleAdapterOptionsType = {
   readonly model?: string;
@@ -91,7 +88,7 @@ export type OpenAiCompatibleAdapterOptionsType = {
 
 export class OpenAiCompatibleAdapter extends BaseAdapter {
   readonly #apiKey: string;
-  readonly #config: ResolvedOpenAiCompatibleConfig;
+  readonly #config: OpenAiCompatibleConfigType;
 
   constructor(
     apiKey: string,
@@ -108,10 +105,11 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
         'baseDelayMs': options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
         ...(resolvedModel !== undefined ? { 'model': resolvedModel } : {}),
         ...(options.systemPrompt !== undefined && options.systemPrompt.length > 0 ? { 'systemPrompt': options.systemPrompt } : {}),
+        ...(config.timeoutMs !== undefined ? { 'timeoutMs': config.timeoutMs } : {}),
       },
     );
     this.#apiKey = apiKey;
-    this.#config = { ...config, 'timeoutMs': config.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS };
+    this.#config = config;
   }
 
   /**
@@ -200,10 +198,6 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   async #sendRequest(request: ChatRequestType, body: Record<string, unknown>): Promise<ChatResponseType> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => { controller.abort(new LlmError(`${this.#config.id} request timeout`, Classifications['TIMEOUT'])); }, this.#config.timeoutMs);
-    const signal = AbortSignal.any([request.signal, controller.signal]);
-
     let res: Response;
     try {
       res = await fetch(this.#config.endpoint, {
@@ -214,15 +208,14 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
           ...this.#config.extraHeaders,
         },
         'body': JSON.stringify(body),
-        signal,
+        'signal': request.signal,
       });
     } catch (err) {
-      // Our own timeout/abort reason is already a classified LlmError
-      // (TIMEOUT). Preserve it; only a genuine transport failure is NETWORK.
+      // The base guard composes the deadline into `request.signal`; a TIMEOUT
+      // LlmError is already classified. Preserve it; only a genuine transport
+      // failure is NETWORK.
       if (err instanceof LlmError) throw err;
       throw LlmError.ofNetworkError(err);
-    } finally {
-      clearTimeout(timeoutId);
     }
 
     if (!res.ok) {

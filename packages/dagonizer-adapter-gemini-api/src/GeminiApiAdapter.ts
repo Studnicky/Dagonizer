@@ -35,8 +35,6 @@ import type { GeminiResponseBodyType } from './GeminiResponseBody.js';
 import { geminiResponseBodyValidator } from './GeminiResponseBody.js';
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
-/** Per-request timeout in ms before the adapter aborts and surfaces TIMEOUT. */
-const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 /** Short timeout for model discovery — no payload, just a list response. */
 const DISCOVERY_TIMEOUT_MS = 3_000;
 
@@ -54,11 +52,10 @@ export type GeminiApiAdapterOptionsType = {
 };
 
 export class GeminiApiAdapter extends BaseAdapter {
-  readonly #apiKey:    string;
-  readonly #timeoutMs: number;
+  readonly #apiKey: string;
 
   constructor(apiKey: string, options: GeminiApiAdapterOptionsType = {}) {
-    const coreOptions: { maxAttempts: number; model?: string; systemPrompt?: string } = {
+    const coreOptions: { maxAttempts: number; model?: string; systemPrompt?: string; timeoutMs?: number } = {
       'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
     };
     if (options.model !== undefined) {
@@ -67,14 +64,16 @@ export class GeminiApiAdapter extends BaseAdapter {
     if (options.systemPrompt !== undefined && options.systemPrompt.length > 0) {
       coreOptions.systemPrompt = options.systemPrompt;
     }
+    if (options.timeoutMs !== undefined) {
+      coreOptions.timeoutMs = options.timeoutMs;
+    }
     super(
       'gemini-api',
       'Gemini API (your AI Studio key)',
       { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
       coreOptions,
     );
-    this.#apiKey    = apiKey;
-    this.#timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.#apiKey = apiKey;
   }
 
   /**
@@ -136,30 +135,21 @@ export class GeminiApiAdapter extends BaseAdapter {
     const url = `${ENDPOINT}/${encodeURIComponent(this.model)}:generateContent?key=${encodeURIComponent(this.#apiKey)}`;
     const body = this.#composeBody(request);
 
-    // Compose a per-request timeout with the caller's signal so either
-    // can abort the fetch independently.
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => { controller.abort(new LlmError('gemini-api request timeout', Classifications['TIMEOUT'])); },
-      this.#timeoutMs,
-    );
-    const signal = AbortSignal.any([request.signal, controller.signal]);
-
     let res: Response;
     try {
       res = await fetch(url, {
         'method':  'POST',
         'headers': { 'content-type': 'application/json' },
         'body':    JSON.stringify(body),
-        signal,
+        'signal':  request.signal,
       });
     } catch (err) {
-      // Our own timeout/abort reason is already a classified LlmError
-      // (TIMEOUT). Preserve it; only a genuine transport failure is NETWORK.
+      // The base guard composes the deadline into request.signal before calling
+      // performChat; an abort from the base or the caller surfaces here as the
+      // abort reason. A caller/base LlmError is already classified — preserve
+      // it. Only a genuine transport failure maps to NETWORK via ofNetworkError.
       if (err instanceof LlmError) throw err;
       throw LlmError.ofNetworkError(err);
-    } finally {
-      clearTimeout(timeoutId);
     }
 
     if (!res.ok) {

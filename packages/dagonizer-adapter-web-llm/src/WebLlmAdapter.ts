@@ -33,7 +33,6 @@ const DEFAULT_MODEL = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 const WEBLLM_ESM = 'https://esm.run/@mlc-ai/web-llm';
 const WEBLLM_MAX_ATTEMPTS = 2;
 const GPU_PROBE_TIMEOUT_MS = 1_500;
-const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 /**
  * Snapshot of the `@mlc-ai/web-llm` prebuilt model catalog
@@ -87,6 +86,14 @@ const PREBUILT_MODELS: readonly LlmModelType[] = PREBUILT_MODEL_IDS.map(
  */
 const enginePromises = new WeakMap<WebLlmAdapter, Promise<WebLlmEngineType>>();
 
+/**
+ * Live engine registry keyed on the adapter instance. Recorded immediately
+ * after the engine resolves in `performChat`; used by `onCancelRequested` to
+ * issue a best-effort cooperative `interruptGenerate()` without an instance
+ * field that would flip type after construction (V8 shape stability).
+ */
+const liveEngines = new WeakMap<WebLlmAdapter, WebLlmEngineType>();
+
 export type WebLlmAdapterOptionsType = {
   readonly model?: string;
   readonly maxAttempts?: number;
@@ -97,17 +104,14 @@ export type WebLlmAdapterOptionsType = {
    */
   readonly systemPrompt?: string;
   /**
-   * Per-request timeout in milliseconds enforced around the in-browser
-   * generation. Defaults to `DEFAULT_REQUEST_TIMEOUT_MS` (60s) when omitted.
-   * Raise it for slow first-token latency on large in-browser models so the
-   * timeout does not pre-empt a longer generation.
+   * Per-request timeout in milliseconds forwarded to the base adapter's hard
+   * abort+timeout guard. Defaults to 60 s when omitted. Raise it for slow
+   * first-token latency on large in-browser models.
    */
   readonly timeoutMs?: number;
 };
 
 export class WebLlmAdapter extends BaseAdapter {
-  readonly #timeoutMs: number;
-
   /**
    * Resolve `navigator.gpu` from the global scope as `unknown`. The
    * standard lib `Navigator` typings predate WebGPU, so the WebGPU object
@@ -137,9 +141,9 @@ export class WebLlmAdapter extends BaseAdapter {
         'maxAttempts': options.maxAttempts ?? WEBLLM_MAX_ATTEMPTS,
         'systemPrompt': options.systemPrompt ?? '',
         ...(options.model !== undefined ? { 'model': options.model } : {}),
+        ...(options.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {}),
       },
     );
-    this.#timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   /**
@@ -189,16 +193,28 @@ export class WebLlmAdapter extends BaseAdapter {
   }
 
   /**
-   * Stream a chat completion from the WebLLM engine, with real cancellation.
+   * Best-effort cooperative interrupt of the in-browser engine. Called by
+   * the base class's abort+timeout guard the instant the request deadline
+   * elapses or the external signal aborts. Correctness — the caller's
+   * promise always rejecting — does not depend on this hook; the base
+   * guarantees that regardless of what `interruptGenerate()` does.
+   */
+  protected override onCancelRequested(): void {
+    const engine = liveEngines.get(this);
+    if (engine !== undefined) engine.interruptGenerate();
+  }
+
+  /**
+   * Stream a chat completion from the WebLLM engine.
    *
-   * Starts a deadline timer that calls `engine.interruptGenerate()` when it
-   * fires, and listens on `request.signal` for an external abort that does
-   * the same. The streaming loop detects the interruption (the iterator
-   * returns early) and rejects with the appropriate `LlmError`. The
-   * `finally` block always clears the timer and removes the abort listener.
+   * Correctness (the caller's promise always settling) is guaranteed by the
+   * base class's abort+timeout race. This method records the live engine so
+   * `onCancelRequested` can issue a cooperative `interruptGenerate()`, then
+   * accumulates the stream and decodes the result.
    */
   protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     const engine = await this.#engine();
+    liveEngines.set(this, engine);
 
     // Reject immediately if the signal is already aborted before any GPU work
     // begins. This avoids starting a generation that would be interrupted right
@@ -218,68 +234,36 @@ export class WebLlmAdapter extends BaseAdapter {
 
     const responseFormat: { 'type': 'json_object' | 'text' } = { 'type': wantsJson ? 'json_object' : 'text' };
 
-    let timedOut = false;
-    let abortedExternally = false;
-    let externalAbortReason: unknown;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let onAbort: (() => void) | undefined;
-
+    let stream: AsyncIterable<{ choices: ReadonlyArray<{ delta: { content?: string } }> }>;
     try {
-      timer = setTimeout(() => {
-        timedOut = true;
-        engine.interruptGenerate();
-      }, this.#timeoutMs);
-
-      onAbort = () => {
-        abortedExternally = true;
-        externalAbortReason = request.signal.reason;
-        engine.interruptGenerate();
-      };
-      request.signal.addEventListener('abort', onAbort);
-
-      let stream: AsyncIterable<{ choices: ReadonlyArray<{ delta: { content?: string } }> }>;
-      try {
-        stream = await engine.chat.completions.create({
-          'stream':          true,
-          'messages':        messages,
-          'temperature':     request.temperature,
-          'max_tokens':      request.maxTokens,
-          'response_format': responseFormat,
-        });
-      } catch (err) {
-        throw this.#classifyWebLlmError(err);
-      }
-
-      let accumulated = '';
-      try {
-        for await (const chunk of stream) {
-          accumulated += chunk.choices[0]?.delta.content ?? '';
-        }
-      } catch (err) {
-        // `interruptGenerate()` may surface as a thrown iterator error rather
-        // than an early return. When our own deadline/abort tripped the
-        // interrupt, the timeout/abort classification wins over whatever the
-        // engine threw, so a cascade still falls through instead of stalling.
-        throw this.#interruptError(timedOut, abortedExternally, externalAbortReason)
-          ?? this.#classifyWebLlmError(err);
-      }
-
-      // If the stream ended (returned early) because of an interrupt, reject accordingly.
-      const interrupted = this.#interruptError(timedOut, abortedExternally, externalAbortReason);
-      if (interrupted !== null) throw interrupted;
-
-      const raw = accumulated;
-      const text = raw.trim();
-      const toolCalls = request.tools.length > 0 ? ToolCallCodec.decode(raw, 'webllm') : [];
-      return {
-        'message': ChatResponseMessageBuilder.from(text, toolCalls),
-        'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
-        'usage': ZERO_TOKEN_USAGE,
-      };
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-      if (onAbort !== undefined) request.signal.removeEventListener('abort', onAbort);
+      stream = await engine.chat.completions.create({
+        'stream':          true,
+        'messages':        messages,
+        'temperature':     request.temperature,
+        'max_tokens':      request.maxTokens,
+        'response_format': responseFormat,
+      });
+    } catch (err) {
+      throw this.#classifyWebLlmError(err);
     }
+
+    let accumulated = '';
+    try {
+      for await (const chunk of stream) {
+        accumulated += chunk.choices[0]?.delta.content ?? '';
+      }
+    } catch (err) {
+      throw this.#classifyWebLlmError(err);
+    }
+
+    const raw = accumulated;
+    const text = raw.trim();
+    const toolCalls = request.tools.length > 0 ? ToolCallCodec.decode(raw, 'webllm') : [];
+    return {
+      'message': ChatResponseMessageBuilder.from(text, toolCalls),
+      'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
+      'usage': ZERO_TOKEN_USAGE,
+    };
   }
 
   protected override classify(error: unknown): ErrorClassificationType {
@@ -383,25 +367,9 @@ export class WebLlmAdapter extends BaseAdapter {
     return webLlmEngineValidator.validate(rawEngine);
   }
 
-  /**
-   * The `LlmError` an in-flight interrupt should surface as, or `null` when no
-   * interrupt fired. A deadline maps to `TIMEOUT`; an external abort preserves a
-   * caller-supplied `LlmError` reason and otherwise falls back to `TIMEOUT` so a
-   * cascade falls through instead of stalling.
-   */
-  #interruptError(timedOut: boolean, abortedExternally: boolean, externalAbortReason: unknown): LlmError | null {
-    if (timedOut) return new LlmError('web-llm request timeout', Classifications['TIMEOUT']);
-    if (abortedExternally) {
-      return externalAbortReason instanceof LlmError
-        ? externalAbortReason
-        : new LlmError('web-llm request aborted', Classifications['TIMEOUT']);
-    }
-    return null;
-  }
-
   #classifyWebLlmError(err: unknown): LlmError {
-    // LlmErrors (e.g. TIMEOUT from #interruptError) pass through unchanged so
-    // the caller's classification is never clobbered by a re-wrap.
+    // LlmErrors pass through unchanged so the caller's classification is never
+    // clobbered by a re-wrap.
     if (err instanceof LlmError) return err;
     const message = err instanceof Error ? err.message : String(err);
     if (/aborted|timeout/iu.test(message)) return new LlmError(message, Classifications['TIMEOUT'], { 'cause': err });

@@ -263,7 +263,7 @@ void test('GeminiNanoAdapter accepts a timeoutMs option at construction', () => 
 
 void test('performChat surfaces a TIMEOUT classification when timeoutMs elapses', async () => {
   // Install a stub whose prompt() hangs indefinitely; set timeoutMs to 1 ms so
-  // the AbortController fires immediately. The error must be an LlmError with
+  // the base deadline fires immediately. The error must be an LlmError with
   // the TIMEOUT classification — not an unclassified AbortError.
   LanguageModelStub.install({
     'availability': async () => Promise.resolve('available'),
