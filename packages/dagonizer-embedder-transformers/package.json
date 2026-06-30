@@ -44,5 +44,8 @@
     "type": "git",
     "url": "git+https://github.com/Studnicky/Dagonizer.git",
     "directory": "packages/dagonizer-embedder-transformers"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0"
   }
 }

@@ -1,8 +1,9 @@
 /**
  * TransformersEmbedder: in-browser text embedder backed by transformers.js
- * (Hugging Face) running on ONNX Runtime WASM. No npm dependency on the
- * foreign library — the bundle is loaded once from the CDN ESM URL at
- * first `connect()` call and memoised for the adapter's lifetime.
+ * (Hugging Face) running on ONNX Runtime WASM. Loads the bundled npm
+ * `@huggingface/transformers` package via dynamic import, lazily and
+ * memoised for the adapter's lifetime, through `LocalModelEmbedder`'s
+ * shared lifecycle.
  *
  * Usage:
  *
@@ -18,16 +19,17 @@
  * which requires no WebGPU and is available in every modern browser. The WASM
  * runtime is the universal floor.
  *
- * `connect()` lazy-loads the pipeline once; `disconnect()` clears it.
- * `performEmbed` calls `connect()` (idempotent) before running the extractor.
+ * `connect()` (inherited) lazy-loads the pipeline once; `disconnect()` clears
+ * it. `performEmbed` (inherited) calls `connect()` (idempotent) before running
+ * the extractor via `embedWith()`.
  */
 
-import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
+import { LocalModelEmbedder, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
-import type { TransformersExtractorInterface } from './TransformersHost.js';
-import { TRANSFORMERS_ESM, transformersModuleValidator } from './TransformersHost.js';
+import type { TransformersExtractorInterface, TransformersModuleInterface } from './TransformersHost.js';
+import { transformersModuleValidator } from './TransformersHost.js';
 
 /** Default model for TransformersEmbedder when no model is specified. */
 const DEFAULT_MODEL = 'Xenova/all-MiniLM-L6-v2';
@@ -66,17 +68,7 @@ const PREBUILT_EMBEDDING_MODELS: readonly LlmModelType[] = Object.keys(KNOWN_DIM
   (id): LlmModelType => ({ 'name': id, 'variant': 'embedding', 'cloud': false, 'costRank': ModelCost.rankFromName(id) }),
 );
 
-/**
- * Pending-extractor registry keyed on the adapter instance. Holding the lazy
- * connect promise here (rather than in a `Promise | null` instance field that
- * flips type after construction) keeps every `TransformersEmbedder` instance's
- * hidden class stable: the instance shape is fixed at construction and never
- * transitions a property's type. The entry is set once on first `connect()`
- * call and reused for the adapter's lifetime.
- */
-const extractorPromises = new WeakMap<TransformersEmbedder, Promise<TransformersExtractorInterface>>();
-
-export class TransformersEmbedder extends BaseEmbedder {
+export class TransformersEmbedder extends LocalModelEmbedder<TransformersModuleInterface, TransformersExtractorInterface> {
   /**
    * Constructor: `(options?)`. All configuration lives in `options`.
    * `options.model` selects the embedding model (default: `Xenova/all-MiniLM-L6-v2`);
@@ -90,53 +82,28 @@ export class TransformersEmbedder extends BaseEmbedder {
     const selectedModel = options.model ?? TRANSFORMERS_EMBEDDER_DEFAULTS.model;
     const dimensions = options.dimensions ?? (KNOWN_DIMENSIONS[selectedModel] ?? DEFAULT_DIMENSIONS);
 
-    super('transformers', `Transformers.js (${selectedModel})`, dimensions, options);
+    super('transformers', `Transformers.js (${selectedModel})`, dimensions, import.meta.url, options);
     this.setModel(selectedModel);
   }
 
   /**
-   * Lazy-load the transformers.js pipeline from the CDN ESM URL. Idempotent:
-   * subsequent calls return the same promise. Uses `extractorPromises` WeakMap
-   * to keep the instance shape stable (no `Promise | null` property flip).
-   *
-   * The dynamic `import()` result is `unknown`; narrowed through the schema
-   * `transformersModuleValidator` at the foreign boundary — no `as` casts.
+   * Import the bundled `@huggingface/transformers` npm package. The dynamic
+   * `import()` result is `unknown`; narrowed through `transformersModuleValidator`
+   * at the foreign boundary — no `as` casts.
    */
-  override async connect(): Promise<void> {
-    if (extractorPromises.has(this)) {
-      await extractorPromises.get(this);
-      return;
-    }
-
-    const model = this.model;
-    const promise = (async (): Promise<TransformersExtractorInterface> => {
-      const raw: unknown = await import(/* @vite-ignore */ TRANSFORMERS_ESM);
-      const mod = transformersModuleValidator.validate(raw);
-      return mod.pipeline('feature-extraction', model);
-    })();
-
-    extractorPromises.set(this, promise);
-    await promise;
+  protected async loadModule(): Promise<TransformersModuleInterface> {
+    const raw: unknown = await import('@huggingface/transformers');
+    return transformersModuleValidator.validate(raw);
   }
 
-  /**
-   * Disconnect clears the memoised extractor promise so the next `connect()`
-   * call re-loads the pipeline.
-   */
-  override async disconnect(): Promise<void> {
-    extractorPromises.delete(this);
+  /** Build the feature-extraction pipeline from the loaded module. */
+  protected async spawnModel(module: TransformersModuleInterface): Promise<TransformersExtractorInterface> {
+    return module.pipeline('feature-extraction', this.model);
   }
 
-  protected async performEmbed(text: string, _signal: AbortSignal): Promise<readonly number[]> {
-    await this.connect();
-    const extractor = await extractorPromises.get(this);
-    if (extractor === undefined) {
-      throw new LlmError(
-        `TransformersEmbedder: extractor not initialised`,
-        Classifications['UNKNOWN'],
-      );
-    }
-    const output = await extractor(text, { 'pooling': 'mean', 'normalize': true });
+  /** Run the extractor against `text` with mean pooling and normalization. */
+  protected async embedWith(model: TransformersExtractorInterface, text: string): Promise<readonly number[]> {
+    const output = await model(text, { 'pooling': 'mean', 'normalize': true });
     return Array.from(output.data);
   }
 

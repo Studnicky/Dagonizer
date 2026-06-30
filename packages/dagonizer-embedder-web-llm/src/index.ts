@@ -1,6 +1,5 @@
 export { WebLlmEmbedder } from './WebLlmEmbedder.js';
 export {
-  WEBLLM_ESM,
   WebLlmEmbedderEngineSchema,
   WebLlmEmbedderModuleSchema,
   webLlmEmbedderEngineValidator,

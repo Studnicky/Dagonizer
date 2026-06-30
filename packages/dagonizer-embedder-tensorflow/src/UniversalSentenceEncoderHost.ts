@@ -1,8 +1,9 @@
 /**
  * UniversalSentenceEncoderHost: JSON Schema 2020-12 description of the
- * dynamically-imported `@tensorflow-models/universal-sentence-encoder` ESM
- * module and its loaded model, plus the entity-narrowing interfaces that
- * supply the callable signatures the schema cannot express.
+ * dynamically-imported bundled npm
+ * `@tensorflow-models/universal-sentence-encoder` module and its loaded
+ * model, plus the entity-narrowing interfaces that supply the callable
+ * signatures the schema cannot express.
  *
  * The dynamic `import()` of the USE bundle is a foreign boundary: the
  * resolved module is `unknown` until validated. JSON Schema has no
@@ -21,12 +22,6 @@
 import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
-
-/**
- * CDN ESM URL for the TensorFlow.js Universal Sentence Encoder bundle.
- * The esm.run CDN resolves the correct version and pulls tfjs transitively.
- */
-export const TFJS_USE_ESM = 'https://esm.run/@tensorflow-models/universal-sentence-encoder';
 
 export const TfjsUseModuleSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer-embedder-tensorflow/TfjsUseModule',

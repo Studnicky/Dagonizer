@@ -2,9 +2,10 @@
  * WebLlmEmbedder: fully in-browser text embedder using `@mlc-ai/web-llm`
  * over WebGPU.
  *
- * Lazy-loads the WebLLM ESM bundle and a quantized Snowflake Arctic Embed
- * model on first `connect()` / `embed()` call; subsequent calls reuse the
- * engine. WebGPU is required (`navigator.gpu`).
+ * Dynamically imports the bundled `@mlc-ai/web-llm` npm dependency and
+ * loads a quantized Snowflake Arctic Embed model on first `connect()` /
+ * `embed()` call; subsequent calls reuse the engine. WebGPU is required
+ * (`navigator.gpu`).
  *
  * The foreign module boundary is narrowed via compiled JSON-Schema validators
  * (`webLlmEmbedderModuleValidator`, `webLlmEmbedderEngineValidator`) —
@@ -19,16 +20,15 @@
  * WebGPU) it returns false — the embedder cascade routes around it.
  */
 
-import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
+import { Classifications, LlmError, LocalModelEmbedder, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import {
-  WEBLLM_ESM,
   webLlmEmbedderEngineValidator,
   webLlmEmbedderModuleValidator,
 } from './WebLlmEmbedderHost.js';
-import type { WebLlmEmbedderEngineType } from './WebLlmEmbedderHost.js';
+import type { WebLlmEmbedderEngineType, WebLlmEmbedderModuleInterface } from './WebLlmEmbedderHost.js';
 
 const DEFAULT_MODEL = 'snowflake-arctic-embed-s-q0f32-MLC-b4';
 const DEFAULT_DIMENSIONS = 384;
@@ -75,16 +75,7 @@ const WEB_LLM_EMBEDDER_DEFAULTS = {
   'dimensions': DEFAULT_DIMENSIONS,
 } as const;
 
-/**
- * Pending-engine registry keyed on the embedder instance. Holding the
- * lazy boot promise here (rather than in a `Promise | null` instance field
- * that flips type after construction) keeps every `WebLlmEmbedder`
- * instance's hidden class stable: the instance shape is fixed at
- * construction and never transitions a property's type.
- */
-const enginePromises = new WeakMap<WebLlmEmbedder, Promise<WebLlmEmbedderEngineType>>();
-
-export class WebLlmEmbedder extends BaseEmbedder {
+export class WebLlmEmbedder extends LocalModelEmbedder<WebLlmEmbedderModuleInterface, WebLlmEmbedderEngineType> {
   /**
    * Resolve `navigator.gpu` from the global scope as `unknown`. The
    * standard lib `Navigator` typings predate WebGPU, so the WebGPU object
@@ -113,7 +104,7 @@ export class WebLlmEmbedder extends BaseEmbedder {
     const dimensions = options.dimensions
       ?? (KNOWN_DIMENSIONS[selectedModel] ?? WEB_LLM_EMBEDDER_DEFAULTS.dimensions);
 
-    super('web-llm', `WebLLM (${selectedModel})`, dimensions, options);
+    super('web-llm', `WebLLM (${selectedModel})`, dimensions, import.meta.url, options);
 
     // Set the model so embed() is immediately usable.
     this.setModel(selectedModel);
@@ -141,32 +132,30 @@ export class WebLlmEmbedder extends BaseEmbedder {
   }
 
   /**
-   * Lazy-load the WebLLM ESM bundle and initialise the embedding engine.
-   * The resolved module is narrowed via `webLlmEmbedderModuleValidator`
-   * and the engine via `webLlmEmbedderEngineValidator` before first use.
-   * Memoized: subsequent calls return the same engine promise.
+   * Import and validate the bundled `@mlc-ai/web-llm` npm module. Requires
+   * WebGPU (`navigator.gpu`); throws `LlmError` when unavailable.
    */
-  override async connect(): Promise<void> {
-    await this.#engine();
+  protected async loadModule(): Promise<WebLlmEmbedderModuleInterface> {
+    if (WebLlmEmbedder.gpu() === undefined) {
+      throw new LlmError('navigator.gpu unavailable', Classifications['MODEL_NOT_FOUND']);
+    }
+    const rawModule: unknown = await import('@mlc-ai/web-llm');
+    return webLlmEmbedderModuleValidator.validate(rawModule);
   }
 
-  /**
-   * Release the cached engine reference so the next `connect()` or
-   * `embed()` call will reload and reinitialise.
-   */
-  override async disconnect(): Promise<void> {
-    enginePromises.delete(this);
+  /** Build and validate the WebLLM embedding engine for the selected model. */
+  protected async spawnModel(module: WebLlmEmbedderModuleInterface): Promise<WebLlmEmbedderEngineType> {
+    const rawEngine: unknown = await module.CreateMLCEngine(this.model);
+    return webLlmEmbedderEngineValidator.validate(rawEngine);
   }
 
-  protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
-    // Ensure the engine is available; connect() is idempotent via the WeakMap.
-    const engine = await this.#engine();
-
+  /** Run the embedding against the live WebLLM engine. */
+  protected async embedWith(model: WebLlmEmbedderEngineType, text: string, signal: AbortSignal): Promise<readonly number[]> {
     if (signal.aborted) {
       throw new LlmError('Embedding aborted', Classifications['TIMEOUT']);
     }
 
-    const result = await engine.embeddings.create({ 'input': [text] });
+    const result = await model.embeddings.create({ 'input': [text] });
     const item = result.data[0];
     if (item === undefined || item.embedding.length === 0) {
       throw new LlmError(
@@ -175,23 +164,5 @@ export class WebLlmEmbedder extends BaseEmbedder {
       );
     }
     return item.embedding;
-  }
-
-  #engine(): Promise<WebLlmEmbedderEngineType> {
-    const existing = enginePromises.get(this);
-    if (existing !== undefined) return existing;
-    const pending = this.#boot();
-    enginePromises.set(this, pending);
-    return pending;
-  }
-
-  async #boot(): Promise<WebLlmEmbedderEngineType> {
-    if (WebLlmEmbedder.gpu() === undefined) {
-      throw new LlmError('navigator.gpu unavailable', Classifications['MODEL_NOT_FOUND']);
-    }
-    const rawModule: unknown = await import(/* @vite-ignore */ WEBLLM_ESM);
-    const mod = webLlmEmbedderModuleValidator.validate(rawModule);
-    const rawEngine: unknown = await mod.CreateMLCEngine(this.model);
-    return webLlmEmbedderEngineValidator.validate(rawEngine);
   }
 }
