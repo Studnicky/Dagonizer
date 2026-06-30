@@ -140,6 +140,12 @@ export const directives = {
   "starterLengthLimit":     'The question must be under 20 words.',
   "starterReturnFormat":    'Return just the question, with no preamble, no quotation marks, and no explanation.',
 
+  // Visitor persona: the leading system message for the bootstrap suggestion
+  // calls. A `role: 'system'` message makes `BaseAdapter.#withDefaultSystemPrompt`
+  // skip its Archivist-persona injection, so a weak model writes as the visitor
+  // rather than echoing a librarian greeting.
+  "visitorPersona":         'You are a curious visitor approaching The Archivist with book questions. Generate one short, natural visitor message as directed.',
+
   "greetingInstruction":    'Write ONE fresh opening greeting for a new visitor walking into the shop.',
   "greetingTone":           'The greeting must be warm, curious, and invite a book question.',
   "greetingLengthLimit":    'Keep it under 30 words.',
@@ -599,10 +605,14 @@ export const prompts = {
     return PromptFormat.withLanguagePreamble(language, body);
   },
 
+  /** System persona for the visitor-role bootstrap calls (starter query, visitor reply). */
+  visitorPersona(): string { return directives.visitorPersona; },
+
   suggestStarterQuery(language: string): string {
+    // Runs under the visitorPersona() system message, so the Archivist persona
+    // directives are intentionally omitted here; starterGenrePool supplies the
+    // full genre frame.
     const body = [
-      directives.persona,
-      directives.specialty,
       directives.starterGenrePool,
       directives.starterPhraseInstruction,
       directives.starterLengthLimit,
