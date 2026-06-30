@@ -6,15 +6,18 @@
  * engine. WebGPU is required (`navigator.gpu`).
  *
  * ToolInterface calling is not native to WebLLM; we use `response_format` with
- * `{ type: 'json_object' }` and the tool-plan JSON Schema in the
- * system context. The model returns a JSON blob that we decode back
- * into `ToolCall[]` via JSON coercion (`ToolCallCodec.decode`).
+ * `{ type: 'json_object', schema: <JSON string> }` to pass the tool-plan or
+ * output JSON Schema natively to `GrammarCompiler.CompileJSONSchema`. The
+ * system message also carries the schema description as belt-and-suspenders
+ * reinforcement. The model returns a JSON blob decoded back into `ToolCall[]`
+ * via JSON coercion (`ToolCallCodec.decode`).
  */
 
 import type {
   ChatRequestType,
   ChatResponseType,
   ErrorClassificationType,
+  ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
@@ -93,6 +96,17 @@ const enginePromises = new WeakMap<WebLlmAdapter, Promise<WebLlmEngineType>>();
  * field that would flip type after construction (V8 shape stability).
  */
 const liveEngines = new WeakMap<WebLlmAdapter, WebLlmEngineType>();
+
+/**
+ * Response format passed to `engine.chat.completions.create`. Widens the
+ * engine's base `{ type }` shape with an optional `schema` field so
+ * `GrammarCompiler.CompileJSONSchema` receives a valid JSON string rather
+ * than an undefined value (which causes a `BindingError`).
+ */
+type WebLlmResponseFormatType = {
+  readonly 'type': 'json_object' | 'text';
+  readonly 'schema'?: string;
+};
 
 export type WebLlmAdapterOptionsType = {
   readonly model?: string;
@@ -227,12 +241,18 @@ export class WebLlmAdapter extends BaseAdapter {
     }
 
     // ToolInterface-calling via JSON-coerce: inject a system message with the
-    // tool-plan schema then ask for json_object.
+    // tool-plan schema and pass the schema natively via response_format.schema
+    // so GrammarCompiler.CompileJSONSchema receives a valid JSON string.
     const messages = WebLlmAdapter.composeMessages(request);
-    const wantsJson = (request.tools.length > 0)
-      || request.outputSchema.variant === 'schema';
+    const schemaString: string | undefined = request.tools.length > 0
+      ? JSON.stringify(this.#toolPlanSchema(request.tools))
+      : request.outputSchema.variant === 'schema'
+        ? JSON.stringify(request.outputSchema.schema)
+        : undefined;
 
-    const responseFormat: { 'type': 'json_object' | 'text' } = { 'type': wantsJson ? 'json_object' : 'text' };
+    const responseFormat: WebLlmResponseFormatType = schemaString !== undefined
+      ? { 'type': 'json_object', 'schema': schemaString }
+      : { 'type': 'text' };
 
     let stream: AsyncIterable<{ choices: ReadonlyArray<{ delta: { content?: string } }> }>;
     try {
@@ -314,6 +334,35 @@ export class WebLlmAdapter extends BaseAdapter {
     }
     messages.push(...conversation);
     return messages;
+  }
+
+  /**
+   * Build a JSON Schema that constrains the `tool_calls` response envelope.
+   * Each tool variant enforces the tool's own `inputSchema` on `arguments` so
+   * the model cannot hallucinate extra fields. Passed natively via
+   * `response_format.schema` to `GrammarCompiler.CompileJSONSchema`.
+   */
+  #toolPlanSchema(tools: readonly ToolDefinitionType[]): Record<string, unknown> {
+    const variants = tools.map((t) => ({
+      'type': 'object',
+      'additionalProperties': false,
+      'properties': {
+        'name':      { 'type': 'string', 'const': t.name },
+        'arguments': t.inputSchema,
+      },
+      'required': ['name', 'arguments'],
+    }));
+    return {
+      'type': 'object',
+      'additionalProperties': false,
+      'properties': {
+        'tool_calls': {
+          'type':  'array',
+          'items': variants.length === 1 ? variants[0] : { 'anyOf': variants },
+        },
+      },
+      'required': ['tool_calls'],
+    };
   }
 
   #engine(): Promise<WebLlmEngineType> {
