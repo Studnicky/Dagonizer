@@ -19,9 +19,12 @@
     "README.md"
   ],
   "scripts": {
+    "fetch-model": "node scripts/fetch-model.mjs",
+    "prebuild": "npm run fetch-model",
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run fetch-model",
     "test": "tsx --test tests/**/*.test.ts",
     "lint": "eslint . --max-warnings 0",
     "prepack": "npm run clean && npm run build"

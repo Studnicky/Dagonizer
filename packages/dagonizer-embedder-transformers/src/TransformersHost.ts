@@ -25,9 +25,10 @@ export const TransformersModuleSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer-embedder-transformers/TransformersModule',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['pipeline'],
+  'required': ['pipeline', 'env'],
   'properties': {
     'pipeline': true,
+    'env': true,
   },
   'additionalProperties': true,
 } as const;
@@ -56,13 +57,36 @@ export interface TransformersExtractorInterface {
 }
 
 /**
+ * Options accepted by `mod.pipeline('feature-extraction', model, options)`.
+ * `dtype: 'q8'` selects the quantized ONNX weight (`onnx/model_quantized.onnx`)
+ * — the only variant this package vendors, so it is the sole literal value.
+ */
+export type TransformersPipelineOptionsType = {
+  readonly dtype: 'q8';
+};
+
+/**
+ * Global configuration object exposed by transformers.js as `mod.env`.
+ * `loadModule()` mutates this once, before spawning the pipeline, to force
+ * model resolution onto the package's vendored `models/` directory and
+ * disable any Hugging Face hub network fetch.
+ */
+export type TransformersEnvType = {
+  allowRemoteModels: boolean;
+  allowLocalModels: boolean;
+  localModelPath: string;
+};
+
+/**
  * Entity-narrowing interface for the imported transformers.js module. Adds the
- * callable signature the schema validates only structurally.
+ * callable signature and `env` shape the schema validates only structurally.
  */
 export interface TransformersModuleInterface extends TransformersModuleBaseType {
+  readonly env: TransformersEnvType;
   pipeline(
     task: 'feature-extraction',
     model: string,
+    options: TransformersPipelineOptionsType,
   ): Promise<TransformersExtractorInterface>;
 }
 
