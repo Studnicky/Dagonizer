@@ -24,8 +24,6 @@
  * the extractor via `embedWith()`.
  */
 
-import { fileURLToPath } from 'node:url';
-
 import { LocalModelEmbedder, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
@@ -107,7 +105,19 @@ export class TransformersEmbedder extends LocalModelEmbedder<TransformersModuleI
 
     super('transformers', `Transformers.js (${selectedModel})`, dimensions, import.meta.url, options);
     this.setModel(selectedModel);
-    this.#localModelPath = options.localModelPath ?? fileURLToPath(this.resolveAssetPath('../models/'));
+    this.#localModelPath = options.localModelPath ?? TransformersEmbedder.#modelPathFrom(this.resolveAssetPath('../models/'));
+  }
+
+  /**
+   * Derive the model directory transformers.js loads from, browser-safe.
+   * A `file:` asset URL (node) becomes a filesystem path via the global `URL`
+   * — no `node:url` import, so the module bundles for the browser, where the
+   * asset URL is already an `http(s):` path transformers.js fetches directly.
+   */
+  static #modelPathFrom(assetUrl: string): string {
+    return assetUrl.startsWith('file:')
+      ? decodeURIComponent(new URL(assetUrl).pathname)
+      : assetUrl;
   }
 
   /**
