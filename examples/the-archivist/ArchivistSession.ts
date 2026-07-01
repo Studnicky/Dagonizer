@@ -60,6 +60,7 @@ import {
 } from './providers/index.ts';
 import type {
   BackendAvailability,
+  EmbedderProvisionOptionsType,
   EmbedderProvisionResultType,
   ProviderId,
 } from './providers/index.ts';
@@ -458,7 +459,17 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * so no CDN imports or GPU probes run during testing.
    */
   protected async provisionEmbedder(): Promise<EmbedderProvisionResultType> {
-    return EmbedderProvisioner.provision();
+    return EmbedderProvisioner.provision(this.embedderAssetPaths());
+  }
+
+  /**
+   * Served asset paths for the on-device transformers embedder (model + WASM),
+   * so it loads fully offline from the app bundle. Default empty — the embedder
+   * falls back to its package-local vendored weights (node/headless). A browser
+   * frontend overrides this to return the bundler-served paths.
+   */
+  protected embedderAssetPaths(): EmbedderProvisionOptionsType {
+    return {};
   }
 
   // ── Public orchestration methods ──────────────────────────────────────────

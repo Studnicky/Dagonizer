@@ -69,12 +69,22 @@ export type TransformersPipelineOptionsType = {
  * Global configuration object exposed by transformers.js as `mod.env`.
  * `loadModule()` mutates this once, before spawning the pipeline, to force
  * model resolution onto the package's vendored `models/` directory and
- * disable any Hugging Face hub network fetch.
+ * disable any Hugging Face hub network fetch. When the caller supplies a
+ * `wasmPaths` option (browser-only), `loadModule()` also points the nested
+ * ONNX Runtime Web backend config at the package's own `.wasm`/`.mjs`
+ * assets instead of the default CDN.
  */
 export type TransformersEnvType = {
   allowRemoteModels: boolean;
   allowLocalModels: boolean;
   localModelPath: string;
+  backends: {
+    onnx: {
+      wasm: {
+        wasmPaths: string;
+      };
+    };
+  };
 };
 
 /**

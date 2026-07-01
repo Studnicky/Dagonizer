@@ -41,22 +41,17 @@ type CandidateEntry = {
   readonly factory: () => EmbedderInterface;
 };
 
-// Preference order: WASM-floor transformers first (always available), then
-// tensorflow USE, then WebGPU-gated web-llm.
-const CANDIDATES: readonly CandidateEntry[] = [
-  {
-    'descriptor': { 'provider': 'transformers', 'model': 'Xenova/all-MiniLM-L6-v2', 'capabilities': EMBEDDER_CAPABILITIES },
-    'factory': () => new TransformersEmbedder(),
-  },
-  {
-    'descriptor': { 'provider': 'tensorflow', 'model': 'universal-sentence-encoder', 'capabilities': EMBEDDER_CAPABILITIES },
-    'factory': () => new UniversalSentenceEncoderEmbedder(),
-  },
-  {
-    'descriptor': { 'provider': 'web-llm', 'model': 'snowflake-arctic-embed-s-q0f32-MLC-b4', 'capabilities': EMBEDDER_CAPABILITIES },
-    'factory': () => new WebLlmEmbedder(),
-  },
-];
+/**
+ * Provisioning options. A Vite consumer supplies the transformers embedder's
+ * served asset paths (from the `virtual:transformers-embedder-assets` module the
+ * package's Vite plugin exposes) so the model + WASM load from the app's own
+ * bundle — fully offline, no CDN. Absent (node, or no plugin) the embedder
+ * falls back to its package-local vendored `models/`.
+ */
+export type EmbedderProvisionOptionsType = {
+  readonly transformersLocalModelPath?: string;
+  readonly transformersWasmPaths?: string;
+};
 
 // Memoized in-flight promise; populated on the first call to provision().
 let provisionPromise: Promise<EmbedderProvisionResultType> | null = null;
@@ -72,20 +67,47 @@ export class EmbedderProvisioner {
    * the cascade. Returns `{ embedder: null, intentClassifier: null }` when
    * no candidate is available or any step throws.
    */
-  static provision(): Promise<EmbedderProvisionResultType> {
+  static provision(options: EmbedderProvisionOptionsType = {}): Promise<EmbedderProvisionResultType> {
     if (provisionPromise !== null) return provisionPromise;
-    provisionPromise = EmbedderProvisioner.#run();
+    provisionPromise = EmbedderProvisioner.#run(options);
     return provisionPromise;
   }
 
-  static async #run(): Promise<EmbedderProvisionResultType> {
+  /**
+   * Preference order: WASM-floor transformers first (always available), then
+   * tensorflow USE, then WebGPU-gated web-llm. The transformers candidate is
+   * parameterised by the browser asset paths supplied to `provision()`.
+   */
+  static #candidates(options: EmbedderProvisionOptionsType): readonly CandidateEntry[] {
+    const transformersOptions = {
+      ...(options.transformersLocalModelPath !== undefined ? { 'localModelPath': options.transformersLocalModelPath } : {}),
+      ...(options.transformersWasmPaths !== undefined ? { 'wasmPaths': options.transformersWasmPaths } : {}),
+    };
+    return [
+      {
+        'descriptor': { 'provider': 'transformers', 'model': 'Xenova/all-MiniLM-L6-v2', 'capabilities': EMBEDDER_CAPABILITIES },
+        'factory': () => new TransformersEmbedder(transformersOptions),
+      },
+      {
+        'descriptor': { 'provider': 'tensorflow', 'model': 'universal-sentence-encoder', 'capabilities': EMBEDDER_CAPABILITIES },
+        'factory': () => new UniversalSentenceEncoderEmbedder(),
+      },
+      {
+        'descriptor': { 'provider': 'web-llm', 'model': 'snowflake-arctic-embed-s-q0f32-MLC-b4', 'capabilities': EMBEDDER_CAPABILITIES },
+        'factory': () => new WebLlmEmbedder(),
+      },
+    ];
+  }
+
+  static async #run(options: EmbedderProvisionOptionsType): Promise<EmbedderProvisionResultType> {
     try {
+      const candidates = EmbedderProvisioner.#candidates(options);
       const registry = new EmbedderRegistry();
-      for (const candidate of CANDIDATES) {
+      for (const candidate of candidates) {
         registry.register(candidate.descriptor, candidate.factory);
       }
 
-      const preferences = CANDIDATES.map((c) => ({
+      const preferences = candidates.map((c) => ({
         'provider': c.descriptor.provider,
         'model': c.descriptor.model,
       }));

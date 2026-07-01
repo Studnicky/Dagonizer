@@ -41,6 +41,7 @@ import {
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type {
   BackendAvailability,
+  EmbedderProvisionOptionsType,
   EmbedderProvisionResultType,
   ProviderId,
 } from '../../../../examples/the-archivist/providers/index.ts';
@@ -474,6 +475,18 @@ class VueArchivistSession extends ArchivistSession {
     embedder.value         = result.embedder;
     intentClassifier.value = result.intentClassifier;
     return result;
+  }
+
+  // Point the transformers embedder at the model + WASM the
+  // `transformersEmbedderAssets()` Vite plugin serves from this app's bundle
+  // (under `{base}@transformers-embedder/`), so the vector intent classifier
+  // runs fully offline in the browser.
+  protected override embedderAssetPaths(): EmbedderProvisionOptionsType {
+    const base = import.meta.env.BASE_URL;
+    return {
+      'transformersLocalModelPath': `${base}@transformers-embedder/models/`,
+      'transformersWasmPaths':      `${base}@transformers-embedder/ort/`,
+    };
   }
 
   // ── Abstract seam overrides ───────────────────────────────────────────────

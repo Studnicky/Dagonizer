@@ -55,10 +55,14 @@ const TRANSFORMERS_PIPELINE_OPTIONS: TransformersPipelineOptionsType = { 'dtype'
  * Caller options for `TransformersEmbedder`. Extends the shared embedder
  * options with `localModelPath` — the filesystem directory transformers.js
  * resolves vendored model files from. Defaults to `models/` at this
- * package's root (vendored via `scripts/fetch-model.mjs`).
+ * package's root (vendored via `scripts/fetch-model.mjs`). `wasmPaths`
+ * (browser-only) points onnxruntime-web at this package's own vendored
+ * `.wasm`/`.mjs` assets instead of the default CDN; ignored/no-op in Node,
+ * since Node uses the native onnxruntime binding rather than WASM.
  */
 export type TransformersEmbedderOptionsType = BaseEmbedderOptionsType & {
   readonly localModelPath?: string;
+  readonly wasmPaths?: string;
 };
 
 /**
@@ -87,6 +91,7 @@ const PREBUILT_EMBEDDING_MODELS: readonly LlmModelType[] = Object.keys(KNOWN_DIM
 
 export class TransformersEmbedder extends LocalModelEmbedder<TransformersModuleInterface, TransformersExtractorInterface> {
   readonly #localModelPath: string;
+  readonly #wasmPaths: string;
 
   /**
    * Constructor: `(options?)`. All configuration lives in `options`.
@@ -106,6 +111,7 @@ export class TransformersEmbedder extends LocalModelEmbedder<TransformersModuleI
     super('transformers', `Transformers.js (${selectedModel})`, dimensions, import.meta.url, options);
     this.setModel(selectedModel);
     this.#localModelPath = options.localModelPath ?? TransformersEmbedder.#modelPathFrom(this.resolveAssetPath('../models/'));
+    this.#wasmPaths = options.wasmPaths ?? '';
   }
 
   /**
@@ -125,7 +131,10 @@ export class TransformersEmbedder extends LocalModelEmbedder<TransformersModuleI
    * `import()` result is `unknown`; narrowed through `transformersModuleValidator`
    * at the foreign boundary — no `as` casts. Points the module's `env` at the
    * vendored `models/` directory and disables remote hub fetches, so model
-   * resolution is fully offline.
+   * resolution is fully offline. When the caller supplied `wasmPaths`, also
+   * points the ONNX Runtime Web backend at the package's own vendored WASM
+   * assets instead of the default CDN; no-op in Node, which uses the native
+   * onnxruntime binding rather than WASM.
    */
   protected async loadModule(): Promise<TransformersModuleInterface> {
     const raw: unknown = await import('@huggingface/transformers');
@@ -133,6 +142,9 @@ export class TransformersEmbedder extends LocalModelEmbedder<TransformersModuleI
     module.env.allowRemoteModels = false;
     module.env.allowLocalModels = true;
     module.env.localModelPath = this.#localModelPath;
+    if (this.#wasmPaths !== '') {
+      module.env.backends.onnx.wasm.wasmPaths = this.#wasmPaths;
+    }
     return module;
   }
 
