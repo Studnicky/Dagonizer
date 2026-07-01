@@ -23,10 +23,11 @@ export type ConversationTurnType = {
 export class DispatcherState extends NodeStateBase {
   /** Declared scalar fields for schema-driven snapshot/restore. */
   static readonly FIELDS: StateFieldsType = {
-    'message':          'string',
-    'response':         'string',
-    'escalationReason': 'string',
-    'humanMode':        'boolean',
+    'message':            'string',
+    'response':           'string',
+    'escalationReason':   'string',
+    'humanMode':          'boolean',
+    'classificationMode': 'string',
   };
 
   /** Current inbound customer message. */
@@ -40,6 +41,12 @@ export class DispatcherState extends NodeStateBase {
    * regardless of content. Set externally before execute() to force human mode.
    */
   humanMode: boolean = false;
+  /**
+   * Classification strategy for `ClassifyMessageNode`: `'embedder'` runs
+   * cosine-similarity triage via `services.intent` with automatic LLM
+   * fallback; `'llm'` runs the LLM classifier exclusively.
+   */
+  classificationMode: 'embedder' | 'llm' = 'embedder';
   /** Full conversation history across turns. */
   conversation: ConversationTurnType[] = [];
 
@@ -53,6 +60,9 @@ export class DispatcherState extends NodeStateBase {
 
   protected override restoreData(snap: JsonObjectType): void {
     NodeStateBase.restoreFields(this, snap, DispatcherState.FIELDS);
+    this.classificationMode = DispatcherState.isClassificationMode(snap['classificationMode'])
+      ? snap['classificationMode']
+      : 'embedder';
     const rawConversation = snap['conversation'];
     if (Array.isArray(rawConversation)) {
       this.conversation = DispatcherState.filterConversation(rawConversation);
@@ -63,6 +73,10 @@ export class DispatcherState extends NodeStateBase {
   // #region type-guards
   private static turnToJson(t: ConversationTurnType): JsonObjectType {
     return { 'role': t.role, 'text': t.text, 'ts': t.ts };
+  }
+
+  private static isClassificationMode(v: unknown): v is 'embedder' | 'llm' {
+    return v === 'embedder' || v === 'llm';
   }
 
   private static isConversationTurn(v: unknown): v is ConversationTurnType {

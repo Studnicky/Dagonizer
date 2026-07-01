@@ -118,7 +118,12 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
    *      so the caller can route around an unusable backend.
    *   3. If the preference is in the live catalogue, pick it.
    *   4. Else pick the cheapest available chat model — the one with the
-   *      lowest `costRank` (ties resolve to the earliest in the catalogue).
+   *      lowest `costRank` (ties resolve to the earliest in the catalogue) —
+   *      preferring fully-local models: a cloud-routed model (e.g. Ollama's
+   *      `:cloud`/`-cloud` tags) needs a provider subscription and fails
+   *      without one, so cloud models are only auto-selected when no local
+   *      chat model is available. An explicit in-catalogue `preferred` at
+   *      step 3 still wins, cloud or not.
    *   5. Return `null` when the catalogue contains no chat models.
    */
   async selectChatModel(options: SelectModelOptionsType = {}): Promise<string | null> {
@@ -144,8 +149,13 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     if (selected === undefined) {
       // Configured default absent from the live catalogue: fall back to the
       // cheapest available chat model by `costRank` (each adapter populates
-      // it from its best cost signal). `chatModels` is non-empty here.
-      selected = chatModels.reduce((cheapest, m) => (m.costRank < cheapest.costRank ? m : cheapest));
+      // it from its best cost signal). Prefer fully-local models — a
+      // cloud-routed model needs a provider subscription and fails without
+      // one, so it is chosen only when no local chat model exists. Both
+      // `chatModels` and the derived pool are non-empty here.
+      const localChatModels = chatModels.filter((m) => !m.cloud);
+      const pool = localChatModels.length > 0 ? localChatModels : chatModels;
+      selected = pool.reduce((cheapest, m) => (m.costRank < cheapest.costRank ? m : cheapest));
     }
     if (selected === undefined) return null;
     this.setModel(selected.name);
