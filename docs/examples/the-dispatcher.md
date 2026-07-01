@@ -25,9 +25,16 @@ The Dispatcher is a warm-handoff customer support pipeline: a customer sends a
 message, a classifier routes it, and either the AI composes a reply instantly or
 the flow suspends and waits for a human operator to respond. The browser runner
 uses the same backend picker as The Archivist — Ollama locally, or cloud providers
-(Groq, Gemini, Cerebras, Mistral, OpenRouter) with API keys. Classification and
-composition both call the LLM; the trolley switch and escalation routing are
-deterministic overrides on top of the LLM decision.
+(Groq, Gemini, Cerebras, Mistral, OpenRouter) with API keys.
+
+Classification runs on-device by default: an offline MiniLM embedder computes
+cosine similarity between the message and three intent anchors (`routine`,
+`escalate`, `off-topic`) — instant, with no LLM round-trip and no adapter-timeout
+exposure. The LLM composes the reply on the routine branch, and also serves as
+the classification fallback when the embedder is unavailable, when it isn't
+confident about a message, or when the Config toggle is set to `llm` mode. The
+trolley switch and escalation routing are deterministic overrides on top of
+whichever classifier decided.
 
 It runs on the same `@studnicky/dagonizer` engine as [The Archivist](./the-archivist)
 and [The Cartographer](./the-cartographer). What changes is the domain primitive:
@@ -52,9 +59,13 @@ Three exit paths, each producing a different outcome:
 
 | Path | Trigger | Terminal branch | What happens |
 |------|---------|----------------|--------------|
-| Routine | LLM classifies message as `routine`; humanMode off | `ai-compose → send-response → end` | LLM composes a reply; flow completes in one execution |
-| Escalated | LLM classifies as `escalate`, or humanMode on, or LLM error | `park-for-operator` parks | Flow suspends; operator tab activates; operator responds; resume continues to `send-response → end` |
-| Off-topic | LLM classifies as `off-topic`, or blank message | `decline → end` | Polite refusal; flow completes immediately |
+| Routine | Classifier (embedder or LLM) resolves `routine`; humanMode off | `ai-compose → send-response → end` | LLM composes a reply; flow completes in one execution |
+| Escalated | Classifier resolves `escalate`, or humanMode on, or classification error | `park-for-operator` parks | Flow suspends; operator tab activates; operator responds; resume continues to `send-response → end` |
+| Off-topic | Classifier resolves `off-topic`, or blank message | `decline → end` | Polite refusal; flow completes immediately |
+
+In `embedder` mode (the default), the on-device embedder classifies first; the
+LLM only steps in when the embedder is unavailable or its top score misses the
+confidence floor. In `llm` mode, the LLM classifies every message directly.
 
 ## The trolley switch
 
@@ -76,6 +87,22 @@ if (state.humanMode) {
 Nothing in the DAG wiring changes; only the classifier's output changes. The
 same `park-for-operator` node handles both content-triggered and switch-triggered
 escalations.
+
+## The classification-mode toggle
+
+A second Config-tab control swaps `state.classificationMode` between
+`'embedder'` (the default) and `'llm'`:
+
+- `'embedder'` — the on-device MiniLM embedder computes cosine similarity
+  between the message and three intent anchors. Instant, no LLM round-trip.
+  When the embedder is unavailable in the session, or its top score misses the
+  confidence floor, classification transparently falls back to the LLM.
+- `'llm'` — every message is classified generatively via the active LLM
+  adapter. Slower, since each message loads/queries the model.
+
+The toggle exists so the two strategies can be compared side by side in the
+demo. The trolley switch still wins over both: `humanMode = true` forces
+`escalate` regardless of `classificationMode`.
 
 ## Architecture
 

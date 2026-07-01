@@ -223,6 +223,72 @@ void describe('selectChatModel', () => {
     assert.equal(selected, 'cheap-second');
   });
 
+  void it('prefers a local chat model over a cheaper cloud one (auto-select skips subscription-gated cloud)', async () => {
+    // A cloud-routed model (e.g. Ollama `:cloud`) reports a near-zero local
+    // footprint, so it ranks cheapest — but it needs a provider subscription
+    // and fails without one. Auto-selection must pick the local model despite
+    // its higher costRank.
+    class MixedAdapter extends BaseAdapter {
+      constructor() {
+        super('mixed', 'MixedAdapter', { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false }, { 'model': 'absent-default' });
+      }
+      override async listModels(): Promise<readonly LlmModelType[]> {
+        return [
+          { 'name': 'glm-5.2:cloud', 'variant': 'chat', 'cloud': true,  'costRank': 1  },
+          { 'name': 'llama3.2:3b',   'variant': 'chat', 'cloud': false, 'costRank': 40 },
+        ];
+      }
+      protected override async performChat(): Promise<never> {
+        throw new LlmError('not implemented', { 'reason': 'UNKNOWN', 'retryable': false });
+      }
+    }
+    const adapter = new MixedAdapter();
+    const selected = await adapter.selectChatModel();
+    assert.equal(selected, 'llama3.2:3b');
+  });
+
+  void it('falls back to a cloud chat model when no local chat model exists', async () => {
+    class CloudOnlyAdapter extends BaseAdapter {
+      constructor() {
+        super('cloud-only', 'CloudOnlyAdapter', { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false }, { 'model': 'absent-default' });
+      }
+      override async listModels(): Promise<readonly LlmModelType[]> {
+        return [
+          { 'name': 'big:cloud',   'variant': 'chat', 'cloud': true, 'costRank': 70 },
+          { 'name': 'small:cloud', 'variant': 'chat', 'cloud': true, 'costRank': 12 },
+        ];
+      }
+      protected override async performChat(): Promise<never> {
+        throw new LlmError('not implemented', { 'reason': 'UNKNOWN', 'retryable': false });
+      }
+    }
+    const adapter = new CloudOnlyAdapter();
+    const selected = await adapter.selectChatModel();
+    assert.equal(selected, 'small:cloud');
+  });
+
+  void it('honors an explicit in-catalogue cloud preference even when a local model exists', async () => {
+    // Step 3 (explicit preferred in catalogue) wins regardless of cloud flag —
+    // the local preference only governs the cheapest-fallback at step 4.
+    class MixedPrefAdapter extends BaseAdapter {
+      constructor() {
+        super('mixed-pref', 'MixedPrefAdapter', { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false });
+      }
+      override async listModels(): Promise<readonly LlmModelType[]> {
+        return [
+          { 'name': 'glm-5.2:cloud', 'variant': 'chat', 'cloud': true,  'costRank': 1  },
+          { 'name': 'llama3.2:3b',   'variant': 'chat', 'cloud': false, 'costRank': 40 },
+        ];
+      }
+      protected override async performChat(): Promise<never> {
+        throw new LlmError('not implemented', { 'reason': 'UNKNOWN', 'retryable': false });
+      }
+    }
+    const adapter = new MixedPrefAdapter();
+    const selected = await adapter.selectChatModel({ 'preferred': 'glm-5.2:cloud' });
+    assert.equal(selected, 'glm-5.2:cloud');
+  });
+
   void it('skips embedding-variant models entirely', async () => {
     // Catalogue has only embedding models
     class EmbedOnlyAdapter extends BaseAdapter {
