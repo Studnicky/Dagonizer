@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-tool-googlebooks",
-  "version": "0.29.1",
+  "version": "0.30.0",
   "description": "Tool plugin for @studnicky/dagonizer: Google Books.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -34,7 +34,7 @@
     "json-schema-to-ts": "^3.1.1"
   },
   "dependencies": {
-    "@studnicky/dagonizer-book-entities": "workspace:>=0.29.1"
+    "@studnicky/dagonizer-book-entities": "workspace:>=0.30.0"
   },
   "peerDependencies": {
     "@studnicky/dagonizer": "workspace:>=0.14.0 <1.0.0"

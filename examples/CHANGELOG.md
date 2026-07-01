@@ -1,5 +1,24 @@
 # @studnicky/dagonizer-examples
 
+## 0.1.0
+
+### Minor Changes
+
+- 4234bc4: Adds `react-agent-memory`: a ReAct agent loop whose reasoning trace streams through a `DagStreamProducer` into an outer scatter that records each step into a shared `RdfStore` with a `wasInformedBy` provenance chain, and a second run against the same store that recalls the first run's reasoning via graph traversal and injects it as prompt context.
+
+  Adds `react-agent-routing`: reuses `react-agent-memory`'s agent loop and node classes unchanged, and demonstrates routing concurrent streamed chat responses through ONE shared `RoutingCallModelNode` instance and ONE shared `StreamChannel<RoutedChatStreamChunkType>` sink. A routing DAG scattering over the same channel classifies each chunk by its stamped `routeKey` and demultiplexes two concurrent conversations into separate, uncontaminated transcripts.
+
+### Patch Changes
+
+- Updated dependencies [4234bc4]
+- Updated dependencies [4234bc4]
+  - @studnicky/dagonizer-adapter-ollama@0.30.0
+  - @studnicky/dagonizer@0.30.0
+  - @studnicky/dagonizer-embedder-ollama@0.30.0
+  - @studnicky/dagonizer-executor-node@0.30.0
+  - @studnicky/dagonizer-patterns-graph@0.30.0
+  - @studnicky/dagonizer-patterns-rag@0.30.0
+
 ## 0.0.16
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-adapter-ollama
 
+## 0.30.0
+
+### Minor Changes
+
+- 4234bc4: `OllamaApiAdapter` overrides `performChatStream` to apply the same 404 → "model not pulled" translation to the streaming path that `performChat` already applies to the buffered path, wrapping the inherited `OpenAiCompatibleAdapter` real SSE streaming.
+
 ## 0.29.1
 
 ## 0.29.0

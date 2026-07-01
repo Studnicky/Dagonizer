@@ -1,5 +1,12 @@
 # @studnicky/dagonizer-store-indexeddb
 
+## 0.30.0
+
+### Patch Changes
+
+- Updated dependencies [4234bc4]
+  - @studnicky/dagonizer@0.30.0
+
 ## 0.29.1
 
 ### Patch Changes
