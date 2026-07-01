@@ -80,6 +80,7 @@ const sidebar = [
     items: [
       { text: 'The Archivist (in-browser demo)',    link: '/examples/the-archivist' },
       { text: 'The Cartographer (in-browser demo)', link: '/examples/the-cartographer' },
+      { text: 'The Dispatcher (in-browser demo)',   link: '/examples/the-dispatcher' },
     ],
   },
   {
