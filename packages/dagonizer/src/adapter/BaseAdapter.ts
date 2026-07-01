@@ -26,8 +26,14 @@ import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 
 import { BaseAdapterCore, type BaseAdapterCoreOptionsType, type SelectModelOptionsType } from './BaseAdapterCore.js';
 import type { AdapterCapabilitiesType, ChatRequestType, ChatResponseType } from './LlmAdapter.js';
-import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
+import { Classifications, LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 import { ModelCost } from './ModelCost.js';
+
+/**
+ * Canonical default per-request hard abort+timeout ceiling in ms. Adapters use
+ * this value unless the constructor `timeoutMs` option overrides it.
+ */
+export const DEFAULT_CHAT_TIMEOUT_MS = 60_000;
 
 /**
  * Caller-facing options for every chat adapter. Extends the shared core options
@@ -39,12 +45,19 @@ import { ModelCost } from './ModelCost.js';
  */
 export type BaseAdapterOptionsType = BaseAdapterCoreOptionsType & {
   readonly systemPrompt?: string;
+  /**
+   * Per-request hard abort+timeout ceiling in ms. Defaults to
+   * `DEFAULT_CHAT_TIMEOUT_MS`. Even an adapter whose underlying operation never
+   * settles rejects within this ceiling.
+   */
+  readonly timeoutMs?: number;
 };
 
 export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterInterface {
   readonly capabilities: AdapterCapabilitiesType;
   /** Consumer-configured default system prompt; `''` when none was set. */
   readonly #systemPrompt: string;
+  readonly #timeoutMs: number;
 
   /**
    * Format a `tool`-role message as the conversational line every text-only
@@ -69,6 +82,7 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     super(id, displayName, options);
     this.capabilities = capabilities;
     this.#systemPrompt = options.systemPrompt ?? '';
+    this.#timeoutMs = options.timeoutMs ?? DEFAULT_CHAT_TIMEOUT_MS;
   }
 
   /**
@@ -138,11 +152,25 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     return selected.name;
   }
 
+  /**
+   * Best-effort cooperative cancellation hook. Invoked by the shared
+   * abort+timeout guard the instant the request's deadline elapses or the
+   * external signal aborts, BEFORE the guard rejects. The default is a no-op;
+   * subclasses whose backend exposes a cooperative interrupt (e.g. an
+   * in-browser engine's `interruptGenerate()`) override this to ask the
+   * backend to stop. Correctness — the caller's promise always rejecting —
+   * does not depend on this hook; it is a best-effort courtesy. Must not throw
+   * and must not block; the guard swallows any error it raises.
+   */
+  protected onCancelRequested(): void {
+    // no-op default — subclasses override to cooperatively interrupt their backend
+  }
+
   async chat(request: ChatRequestType): Promise<ChatResponseType> {
     const prepared = this.#withDefaultSystemPrompt(request);
     return this.retryPolicy.run(async () => {
       try {
-        return await this.performChat(prepared);
+        return await this.#guardChat(prepared);
       } catch (rawError) {
         const classification = this.classify(rawError);
         // QUOTA_EXHAUSTED: honor retry-after hint only when short; cap prevents
@@ -164,6 +192,60 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
         throw new LlmError(LlmError.messageFrom(rawError), classification, { 'cause': rawError });
       }
     }, { 'signal': prepared.signal });
+  }
+
+  /**
+   * Wrap `performChat` in a hard abort+timeout race so the caller's promise
+   * always settles. A per-request timeout and the caller's external signal are
+   * folded into one composed signal that is passed to `performChat` (so an
+   * adapter that forwards `request.signal` to `fetch` aborts naturally). The
+   * race rejects the instant that composed signal aborts — even if the
+   * underlying operation never settles (a hung socket, a frozen on-device
+   * stream) — after giving the subclass one best-effort `onCancelRequested()`
+   * call. The timer is always cleared.
+   */
+  async #guardChat(request: ChatRequestType): Promise<ChatResponseType> {
+    const timeoutController = new AbortController();
+    const timer = setTimeout(() => {
+      timeoutController.abort(new LlmError(`${this.id} request timeout`, Classifications['TIMEOUT']));
+    }, this.#timeoutMs);
+    const composed = AbortSignal.any([request.signal, timeoutController.signal]);
+    const derived: ChatRequestType = { ...request, 'signal': composed };
+    try {
+      return await new Promise<ChatResponseType>((resolve, reject) => {
+        let settled = false;
+        const settleReject = (reason: unknown): void => {
+          if (settled) return;
+          settled = true;
+          reject(reason instanceof Error ? reason : new LlmError(String(reason), Classifications['TIMEOUT']));
+        };
+        const onAbort = (): void => {
+          try {
+            this.onCancelRequested();
+          } catch {
+            // best-effort cooperative cancel; correctness comes from the reject below
+          }
+          settleReject(composed.reason);
+        };
+        if (composed.aborted) {
+          onAbort();
+          return;
+        }
+        composed.addEventListener('abort', onAbort, { 'once': true });
+        Promise.resolve(this.performChat(derived)).then(
+          (result) => {
+            if (settled) return;
+            settled = true;
+            resolve(result);
+          },
+          (error: unknown) => {
+            settleReject(error);
+          },
+        );
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**

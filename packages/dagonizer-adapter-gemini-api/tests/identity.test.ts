@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
+import type { ChatResponseType } from '@studnicky/dagonizer/adapter';
 import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 
 import { GeminiApiAdapter, GeminiModelsResponseSchema, GeminiModelsResponseValidator } from '../src/index.js';
@@ -324,9 +325,13 @@ void test('performChat does not inject default systemPrompt when request already
   }
 });
 
-void test('performChat rejects with LlmError on timeout (hanging fetch that honors abort signal)', async () => {
-  // The abort reason is LlmError(TIMEOUT); the catch block preserves an
-  // already-classified LlmError, so the surfaced classification is TIMEOUT.
+void test('chat rejects with LlmError TIMEOUT when the base deadline elapses (hang-proof)', async () => {
+  // The base owns the per-request timeout: it composes the configured
+  // timeoutMs deadline into request.signal before calling performChat, then
+  // races the call so the promise settles even against a fetch that never
+  // resolves. The stub honors the composed abort signal and rejects with its
+  // reason — the base's LlmError(TIMEOUT) — which performChat's catch block
+  // preserves unchanged, so the surfaced classification is TIMEOUT.
   const restore = FetchStub.install((_input, init) =>
     new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => {
@@ -334,31 +339,43 @@ void test('performChat rejects with LlmError on timeout (hanging fetch that hono
       });
     }),
   );
+  // Test-level sentinel: if a regression strands the deadline (e.g. timeoutMs
+  // stops reaching the base and the 60 000 ms default applies), the sentinel
+  // wins the race and the assertion FAILS fast instead of hanging the suite.
+  const SENTINEL = Symbol('sentinel-timeout');
+  let sentinelTimer: ReturnType<typeof setTimeout> | undefined;
+  const sentinel = new Promise<typeof SENTINEL>((resolve) => {
+    sentinelTimer = setTimeout(() => { resolve(SENTINEL); }, 2_000);
+  });
   try {
     const adapter = new GeminiApiAdapter('key', {
       'model': 'gemini-2.0-flash',
       'maxAttempts': 1,
-      'timeoutMs': 1,
+      'timeoutMs': 50,
     });
     const request = ChatRequestBuilder.from({
       'messages': [{ 'role': 'user', 'content': 'hi' }],
     });
-    await assert.rejects(
-      () => adapter.chat(request),
-      (err: unknown) => {
-        assert.ok(err instanceof LlmError, `expected LlmError, got ${String(err)}`);
-        // The adapter aborts with Classifications['TIMEOUT']; the catch block
-        // re-throws the already-classified LlmError unchanged, so the surfaced
-        // classification is TIMEOUT (a cascade falls through instead of hanging).
-        assert.equal(
-          err.classification.reason,
-          Classifications['TIMEOUT'].reason,
-          'timed-out request surfaces as TIMEOUT (classified abort reason preserved)',
-        );
-        return true;
-      },
+    const outcome = await Promise.race([
+      adapter.chat(request).then(
+        (response): { kind: 'resolved'; response: ChatResponseType } => ({ 'kind': 'resolved', response }),
+        (err: unknown): { kind: 'rejected'; err: unknown } => ({ 'kind': 'rejected', err }),
+      ),
+      sentinel.then((marker): typeof SENTINEL => marker),
+    ]);
+    assert.notEqual(outcome, SENTINEL, 'base deadline must fire well before the 2 000 ms sentinel');
+    assert.ok(typeof outcome === 'object', 'chat settled before the sentinel');
+    assert.equal(outcome.kind, 'rejected', 'a hung fetch under the base deadline rejects');
+    if (outcome.kind !== 'rejected') return;
+    const err = outcome.err;
+    assert.ok(err instanceof LlmError, `expected LlmError, got ${String(err)}`);
+    assert.equal(
+      err.classification.reason,
+      Classifications['TIMEOUT'].reason,
+      'timed-out request surfaces as TIMEOUT (classified abort reason preserved)',
     );
   } finally {
+    if (sentinelTimer !== undefined) clearTimeout(sentinelTimer);
     restore();
   }
 });

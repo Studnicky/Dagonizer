@@ -1,7 +1,7 @@
 /**
  * Smoke: UniversalSentenceEncoderEmbedder exposes the expected id,
  * display name, dimensionality, and listModels shape. No network calls;
- * the CDN module is never loaded in these tests.
+ * the bundled USE module is never loaded in these tests.
  */
 
 import { strict as assert } from 'node:assert';

@@ -4,6 +4,7 @@ import { resolve }                               from 'node:path';
 import { defineConfig, type HeadConfig }          from 'vitepress';
 import { transformerTwoslash }                    from '@shikijs/vitepress-twoslash';
 import { withMermaid }                           from 'vitepress-plugin-mermaid';
+import { transformersEmbedderAssets }             from '../../examples/the-archivist/tooling/transformersEmbedderAssets.ts';
 import type { MermaidConfig }                    from 'mermaid';
 
 import pkg from '../../package.json' with { type: 'json' };
@@ -716,6 +717,10 @@ export default withMermaid(defineConfig({
     docFooter: { next: 'Next', prev: 'Previous' },
   },
   vite: {
+    // Serve (dev) / emit (build) the transformers embedder's vendored model +
+    // onnxruntime WASM from the app bundle, so the in-browser vector intent
+    // classifier runs fully offline. Exposes `virtual:transformers-embedder-assets`.
+    plugins: [transformersEmbedderAssets()],
     // Aliases so the in-browser runners can import the canonical
     // domain files straight from `examples/` and the
     // renderer source from `src/viz/`. Browser bundles use these; the

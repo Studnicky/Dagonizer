@@ -530,7 +530,7 @@ export class ProviderInstantiator {
 
 export { BaseLlmClient } from './BaseLlmClient.ts';
 export { EmbedderProvisioner } from './EmbedderProvisioner.ts';
-export type { EmbedderProvisionResultType } from './EmbedderProvisioner.ts';
+export type { EmbedderProvisionOptionsType, EmbedderProvisionResultType } from './EmbedderProvisioner.ts';
 export {
   AnthropicApiAdapter,
   GeminiApiAdapter,

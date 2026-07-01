@@ -34,7 +34,7 @@
  * unauthenticated in the same way as the local daemon.
  */
 
-import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
+import { Classifications, CloudEmbedder, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
@@ -120,7 +120,7 @@ export type OllamaEmbedderOptionsType = BaseEmbedderOptionsType & {
   readonly apiKey?: string;
 };
 
-export class OllamaEmbedder extends BaseEmbedder {
+export class OllamaEmbedder extends CloudEmbedder {
   readonly #baseUrl: string;
   readonly #apiKey: string;
 
@@ -161,27 +161,33 @@ export class OllamaEmbedder extends BaseEmbedder {
     }
   }
 
-  protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
+  /** Resolves the Ollama embeddings endpoint URL for the configured base URL. */
+  protected endpoint(): string {
+    return `${this.#baseUrl}/api/embeddings`;
+  }
+
+  /** Builds the POST request init, adding the Authorization header when an API key is configured. */
+  protected requestInit(text: string): RequestInit {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.#apiKey.length > 0) {
       headers['Authorization'] = `Bearer ${this.#apiKey}`;
     }
-    const raw = await this.fetchJson(
-      `${this.#baseUrl}/api/embeddings`,
-      {
-        'method': 'POST',
-        headers,
-        'body': JSON.stringify({ 'model': this.model, 'prompt': text }),
-      },
-      signal,
-    );
-    if (!OllamaEmbedResponseValidator.is(raw) || raw.embedding.length === 0) {
+    return {
+      'method': 'POST',
+      headers,
+      'body': JSON.stringify({ 'model': this.model, 'prompt': text }),
+    };
+  }
+
+  /** Validates and extracts the embedding vector from the response body. */
+  protected vectorFrom(body: unknown): readonly number[] {
+    if (!OllamaEmbedResponseValidator.is(body) || body.embedding.length === 0) {
       throw new LlmError(
         `Ollama embed: missing or empty 'embedding' field`,
         Classifications['SCHEMA_VIOLATION'],
       );
     }
-    return raw.embedding;
+    return body.embedding;
   }
 
   /**

@@ -1,12 +1,12 @@
 /**
  * UniversalSentenceEncoderEmbedder: in-browser text embedder running
- * TensorFlow.js Universal Sentence Encoder (USE) via a CDN ESM dynamic
- * import. Runs on WASM and WebGL; no WebGPU required.
+ * TensorFlow.js Universal Sentence Encoder (USE) via a bundled npm
+ * dependency. Runs on WASM and WebGL; no WebGPU required.
  *
- * The USE library is loaded once via a CDN ESM URL (`esm.run`), which
- * pulls the tfjs runtime dependency transitively. No npm dependency on
- * the foreign library is needed — the module boundary is crossed at
- * runtime and narrowed via JSON Schema 2020-12 validators.
+ * The USE library is loaded once via a dynamic `import()` of the bundled
+ * `@tensorflow-models/universal-sentence-encoder` npm package, with
+ * `@tensorflow/tfjs` as an explicit peer dependency. The module boundary
+ * is crossed at runtime and narrowed via JSON Schema 2020-12 validators.
  *
  * USE produces 512-dimensional vectors for any input text. A single
  * default model (`'universal-sentence-encoder'`) is available; no model
@@ -14,7 +14,7 @@
  *
  * Usage:
  *   const embedder = new UniversalSentenceEncoderEmbedder();
- *   await embedder.connect();          // lazy-loads the CDN model
+ *   await embedder.connect();          // lazy-loads the bundled model
  *   const vector = await embedder.embed('the cat sat on the mat');
  *   // vector.length === embedder.dimensions === 512
  *
@@ -23,16 +23,15 @@
  * gate is required.
  */
 
-import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
+import { Classifications, LlmError, LocalModelEmbedder, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import {
-  TFJS_USE_ESM,
   tfjsUseModelValidator,
   tfjsUseModuleValidator,
 } from './UniversalSentenceEncoderHost.js';
-import type { TfjsUseModelInterface } from './UniversalSentenceEncoderHost.js';
+import type { TfjsUseModelInterface, TfjsUseModuleInterface } from './UniversalSentenceEncoderHost.js';
 
 /** Output dimensionality of the Universal Sentence Encoder. */
 const DEFAULT_DIMENSIONS = 512;
@@ -55,12 +54,7 @@ const UNIVERSAL_SENTENCE_ENCODER_DEFAULTS = {
   'dimensions': DEFAULT_DIMENSIONS,
 } as const;
 
-export class UniversalSentenceEncoderEmbedder extends BaseEmbedder {
-  /** Memoized loaded USE model; null until `connect()` resolves. */
-  #model: TfjsUseModelInterface | null;
-  /** In-flight boot promise to prevent concurrent `load()` calls. */
-  #bootPromise: Promise<TfjsUseModelInterface> | null;
-
+export class UniversalSentenceEncoderEmbedder extends LocalModelEmbedder<TfjsUseModuleInterface, TfjsUseModelInterface> {
   /**
    * Constructor: `(options?)`. All configuration lives in `options`.
    * `options.model` selects the model name (default: `'universal-sentence-encoder'`);
@@ -73,46 +67,28 @@ export class UniversalSentenceEncoderEmbedder extends BaseEmbedder {
     const dimensions = options.dimensions
       ?? (KNOWN_DIMENSIONS[selectedModel] ?? DEFAULT_DIMENSIONS);
 
-    super('tensorflow', `TensorFlow.js USE (${selectedModel})`, dimensions, options);
-    this.#model = null;
-    this.#bootPromise = null;
+    super('tensorflow', `TensorFlow.js USE (${selectedModel})`, dimensions, import.meta.url, options);
 
     this.setModel(selectedModel);
   }
 
   /**
-   * Lazy-load the CDN ESM module and invoke `load()` to initialise the
-   * USE model. Memoizes the result so subsequent calls return immediately.
-   * Validates both the imported module and the loaded model shapes via
-   * compiled JSON Schema validators before use.
-   *
-   * Overrides `BaseAdapterCore.connect()`.
+   * Import and validate the bundled USE module. NO CDN — bundled npm
+   * import of `@tensorflow-models/universal-sentence-encoder`.
    */
-  override async connect(): Promise<void> {
-    if (this.#model !== null) return;
-    if (this.#bootPromise !== null) {
-      await this.#bootPromise;
-      return;
-    }
-    this.#bootPromise = this.#boot();
-    this.#model = await this.#bootPromise;
-    this.#bootPromise = null;
-  }
-
-  async #boot(): Promise<TfjsUseModelInterface> {
-    const rawModule: unknown = await import(/* @vite-ignore */ TFJS_USE_ESM);
-    const mod = tfjsUseModuleValidator.validate(rawModule);
-    const rawModel: unknown = await mod.load();
-    return tfjsUseModelValidator.validate(rawModel);
+  protected async loadModule(): Promise<TfjsUseModuleInterface> {
+    const raw: unknown = await import('@tensorflow-models/universal-sentence-encoder');
+    return tfjsUseModuleValidator.validate(raw);
   }
 
   /**
-   * Disconnect clears the memoized model so the next `connect()` call
-   * reloads the CDN module. Overrides `BaseAdapterCore.disconnect()`.
+   * Invoke `load()` on the imported module to initialise the USE model,
+   * then validate the loaded model shape via the compiled JSON Schema
+   * validator before use.
    */
-  override async disconnect(): Promise<void> {
-    this.#model = null;
-    this.#bootPromise = null;
+  protected async spawnModel(module: TfjsUseModuleInterface): Promise<TfjsUseModelInterface> {
+    const rawModel: unknown = await module.load();
+    return tfjsUseModelValidator.validate(rawModel);
   }
 
   /**
@@ -124,19 +100,12 @@ export class UniversalSentenceEncoderEmbedder extends BaseEmbedder {
   }
 
   /**
-   * Embed `text` by calling the memoized USE model. Ensures `connect()`
-   * has run, calls `model.embed([text])`, extracts the first row of the
-   * returned Tensor2D, and disposes the tensor to free GPU/WASM memory.
+   * Embed `text` by calling the built USE model. Calls `model.embed([text])`,
+   * extracts the first row of the returned Tensor2D, and disposes the
+   * tensor to free GPU/WASM memory.
    */
-  protected override async performEmbed(text: string, _signal: AbortSignal): Promise<readonly number[]> {
-    await this.connect();
-    if (this.#model === null) {
-      throw new LlmError(
-        'UniversalSentenceEncoderEmbedder: model not loaded',
-        Classifications['MODEL_NOT_FOUND'],
-      );
-    }
-    const tensor = await this.#model.embed([text]);
+  protected async embedWith(model: TfjsUseModelInterface, text: string): Promise<readonly number[]> {
+    const tensor = await model.embed([text]);
     try {
       const arrays = await tensor.array();
       if (arrays.length === 0 || arrays[0] === undefined || arrays[0].length === 0) {

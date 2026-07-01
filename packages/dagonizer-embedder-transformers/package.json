@@ -16,12 +16,16 @@
   },
   "files": [
     "dist",
+    "models",
     "README.md"
   ],
   "scripts": {
+    "fetch-model": "node scripts/fetch-model.mjs",
+    "prebuild": "npm run fetch-model",
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "npm run fetch-model",
     "test": "tsx --test tests/**/*.test.ts",
     "lint": "eslint . --max-warnings 0",
     "prepack": "npm run clean && npm run build"
@@ -44,5 +48,8 @@
     "type": "git",
     "url": "git+https://github.com/Studnicky/Dagonizer.git",
     "directory": "packages/dagonizer-embedder-transformers"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0"
   }
 }

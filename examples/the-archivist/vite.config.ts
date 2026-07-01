@@ -7,7 +7,12 @@
 
 import { defineConfig } from 'vite';
 
+import { transformersEmbedderAssets } from './tooling/transformersEmbedderAssets.ts';
+
 export default defineConfig({
+  // Stage the transformers embedder's vendored model + onnxruntime WASM into
+  // the bundle so the in-browser vector intent classifier runs fully offline.
+  'plugins': [transformersEmbedderAssets()],
   'root':    import.meta.dirname,
   'server':  { 'port': 5174, 'strictPort': true, 'open': false },
   'build':   { 'target': 'es2022' },

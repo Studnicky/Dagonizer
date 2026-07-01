@@ -44,5 +44,8 @@
     "type": "git",
     "url": "git+https://github.com/Studnicky/Dagonizer.git",
     "directory": "packages/dagonizer-embedder-web-llm"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.84"
   }
 }
