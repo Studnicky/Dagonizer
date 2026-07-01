@@ -23,7 +23,10 @@ permissions:
   contents: write
   pull-requests: write
   packages: write
-  id-token: write
+  # No id-token: publishing to GitHub Packages is token-based via
+  # NODE_AUTH_TOKEN. Granting id-token made changesets/action attempt npm
+  # OIDC trusted publishing ("using npm trusted publishing"), a misleading
+  # no-op path that targets npmjs.org rather than GitHub Packages.
 
 jobs:
   release:
@@ -65,3 +68,68 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Post-publish gate. `changeset publish` reporting "success" and pushing
+      # tags does NOT prove a package reached consumers: a brand-new package can
+      # 404 for a propagation window, or land `private` despite access:public,
+      # and the release still goes green. This step fails the release loudly
+      # unless every just-published package is actually resolvable on the
+      # GitHub Packages registry AND public — so a silent miss can never recur.
+      - name: Verify published packages are resolvable and public
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLISHED: ${{ steps.changesets.outputs.publishedPackages }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -uo pipefail
+          REG="https://npm.pkg.github.com"
+          fails=0
+          while IFS= read -r row; do
+            name=$(printf '%s' "$row" | jq -r '.name')
+            version=$(printf '%s' "$row" | jq -r '.version')
+            enc=$(printf '%s' "$name" | sed 's#/#%2f#')
+
+            # Resolvability: poll the registry manifest (what `npm install`
+            # hits), retrying to absorb publish propagation delay.
+            ok=""
+            for attempt in $(seq 1 10); do
+              body=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" "$REG/$enc" || true)
+              if printf '%s' "$body" | jq -e --arg v "$version" '.versions[$v] != null' >/dev/null 2>&1; then
+                ok=1; break
+              fi
+              echo "   $name@$version not resolvable yet (attempt $attempt/10); retrying in 15s"
+              sleep 15
+            done
+            if [ -z "$ok" ]; then
+              echo "::error title=Publish verification::$name@$version is NOT resolvable on $REG after retries"
+              fails=$((fails+1)); continue
+            fi
+
+            # Visibility: a private package is resolvable to us (we authenticate)
+            # but 404s for consumers. access:public + a public repo should yield
+            # public; assert it so a regression surfaces here, not downstream.
+            pkgshort=${name#@*/}
+            code=$(curl -s -o /tmp/pkg_meta.json -w '%{http_code}' \
+              -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/users/$OWNER/packages/npm/$pkgshort")
+            if [ "$code" = "200" ]; then
+              vis=$(jq -r '.visibility // "unknown"' /tmp/pkg_meta.json)
+              if [ "$vis" = "private" ] || [ "$vis" = "internal" ]; then
+                echo "::error title=Publish verification::$name is published but visibility=$vis (consumers will 404). Set it public at https://github.com/users/$OWNER/packages/npm/package/$pkgshort/settings"
+                fails=$((fails+1)); continue
+              fi
+              echo "✓ $name@$version — resolvable, visibility=$vis"
+            else
+              # Visibility API unreachable (token scope / transient): warn, do
+              # not fail; the resolvability gate above already passed.
+              echo "::warning title=Publish verification::$name visibility check returned HTTP $code; skipping (resolvability OK)"
+              echo "✓ $name@$version — resolvable"
+            fi
+          done < <(printf '%s' "$PUBLISHED" | jq -c '.[]')
+
+          if [ "$fails" -ne 0 ]; then
+            echo "::error title=Publish verification::$fails package(s) failed post-publish verification"
+            exit 1
+          fi
+          echo "All published packages verified resolvable and public."
