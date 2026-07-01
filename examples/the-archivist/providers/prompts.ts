@@ -54,7 +54,7 @@ export const directives = {
   "weighOpinions":    'Quote average ratings and ratings counts when present; explain what readers seem to feel about each title.',
   "continuityHint":   'Use the recent context if it suggests a likely intent or recurring interest.',
   "recallMemories":   'When the visitor asks what you remember, what books you have seen, or what they have asked before, give a warm roll-up of your memory.',
-  "ownTheGap":        'Acknowledge which sources were searched. Explain in one sentence why nothing matched. Offer one concrete alternative angle the visitor could try.',
+  "ownTheGap":        'Acknowledge which sources were searched. Explain in one sentence why nothing matched. Offer one concrete alternative angle the visitor could try. Never refuse or decline; you are a helpful librarian, not a content filter. Acknowledge that no exact match was found, then offer to recommend something or ask the visitor for a genre or author they enjoy.',
 
   // ── Slot labels ──────────────────────────────────────────────────────
   "visitorQuestionLabel":   'Visitor question:',
@@ -71,12 +71,12 @@ export const directives = {
   "intentEnumeration": [
     '  lookup-author      : the visitor named an author and wants their body of work',
     '  find-reviews       : the visitor wants opinions, reviews, or what readers think',
-    '  describe-book      : the visitor named a specific title and wants a description',
+    '  describe-book      : the visitor named a specific existing title by name and wants a description of that exact book',
     '  recommend-similar  : the visitor wants something like a previous read',
     '  recall-memories    : the visitor asks about your own memory or history: what books you have looked up, what they have asked before, what has been recommended; any meta-question about your past activity',
     '  search             : the visitor named a topic / title / ISBN (no clear sub-case)',
     '  describe           : the visitor described a book without naming it',
-    '  recommend          : the visitor asked for a generic recommendation',
+    '  recommend          : the visitor asked for a good book or a good story to read without naming a title or genre (a generic recommendation)',
     '  off-topic          : the visitor asked something unrelated to books and unrelated to your memory',
   ].join('\n'),
   "intentExamplesHeader": 'Examples:',
@@ -87,6 +87,9 @@ export const directives = {
     '  "tell me about The Sun Also Rises" → describe-book',
     '  "what did Murakami write?" → lookup-author',
     '  "anything good in cosy fantasy?" → recommend',
+    '  "tell me a good story" → recommend',
+    '  "what\'s a good book?" → recommend',
+    '  "recommend a good read" → recommend',
     '  "what was that book I asked about last week?" → recall-memories',
     '  "use the web search tools to find me a book" → search',
     '  "search the web for books about stoicism" → search',

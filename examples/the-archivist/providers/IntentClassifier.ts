@@ -60,12 +60,12 @@ export const INTENT_LABELS: readonly ClassifiedIntent[] = [
 export const INTENT_DESCRIPTIONS: Readonly<Record<ClassifiedIntent, string>> = {
   'lookup-author':     'visitor named an author and wants their complete body of work or bibliography',
   'find-reviews':      'visitor wants opinions reviews ratings or what readers think about a book',
-  'describe-book':     'visitor named a specific book title and wants a summary or description of it',
+  'describe-book':     'visitor named a specific existing book title by name and wants a summary of that exact book',
   'recommend-similar': 'visitor wants a book similar to a named title or book they already read or mentioned, like saying something similar to Dune or like the book I just described',
   'recall-memories':   'visitor asks what you remember from earlier in this conversation, what books you have already seen shown mentioned or talked about so far, what they asked you before, or to remind them what was discussed in past messages',
   'search':            'visitor describes a topic theme genre subject or asks if a book exists about something, or explicitly asks to use web search tools lookups or external sources to find books',
   'describe':          'visitor described a book without naming it asking what book that might be',
-  'recommend':         'visitor asks for a generic book recommendation without specifying a topic or prior read',
+  'recommend':         'tell me a good story, recommend a good book, what is a good read, suggest something worth reading, give me something good, no title or genre named',
   'off-topic':         'question is clearly unrelated to books reading or libraries, such as asking about the weather sports scores jokes cooking recipes or current news events',
 };
 
