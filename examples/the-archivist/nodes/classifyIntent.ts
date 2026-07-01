@@ -7,7 +7,8 @@
  *   find-reviews       → `find-reviews`             (ratings tool branch)
  *   describe-book      → `describe-web-search`      (one-hit description branch)
  *   recommend-similar  → `recommend-similar`        (prior-shortlist seeding branch)
- *   search | describe | recommend → `extract-query` (general on-topic pipeline)
+ *   recommend          → `recommend-top-rated`      (rating-ranked branch for vague "good book" asks)
+ *   search | describe  → `extract-query`            (general on-topic pipeline)
  *   off-topic          → `decline-off-topic`
  *
  * Demonstrates: a wide narrowly-typed output union and dispatch into
@@ -20,7 +21,7 @@ import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices, ClassifiedIntent } from '../services.ts';
 
 import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { NodeContextType, NodeOutputType, SchemaObjectType } from '@studnicky/dagonizer';
 
 type IntentOutput =
   | 'lookup-author'
@@ -29,6 +30,7 @@ type IntentOutput =
   | 'recommend-similar'
   | 'recall-memories'
   | 'on-topic'
+  | 'recommend-top-rated'
   | 'off-topic'
   | 'retry'
   | 'salvage';
@@ -46,19 +48,25 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput>
     super();
     this.services = services;
   }
-  readonly outputs = ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'off-topic', 'retry', 'salvage'] as const;
-  override get outputSchema(): Record<'lookup-author' | 'find-reviews' | 'describe-book' | 'recommend-similar' | 'recall-memories' | 'on-topic' | 'off-topic' | 'retry' | 'salvage', SchemaObjectType> {
+  readonly outputs = ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'recommend-top-rated', 'off-topic', 'retry', 'salvage'] as const;
+  override get outputSchema(): Record<'lookup-author' | 'find-reviews' | 'describe-book' | 'recommend-similar' | 'recall-memories' | 'on-topic' | 'recommend-top-rated' | 'off-topic' | 'retry' | 'salvage', SchemaObjectType> {
     return {
-      'lookup-author':     { 'type': 'object' },
-      'find-reviews':      { 'type': 'object' },
-      'describe-book':     { 'type': 'object' },
-      'recommend-similar': { 'type': 'object' },
-      'recall-memories':   { 'type': 'object' },
-      'on-topic':          { 'type': 'object' },
-      'off-topic':         { 'type': 'object' },
-      'retry':             { 'type': 'object' },
-      'salvage':           { 'type': 'object' },
+      'lookup-author':       { 'type': 'object' },
+      'find-reviews':        { 'type': 'object' },
+      'describe-book':       { 'type': 'object' },
+      'recommend-similar':   { 'type': 'object' },
+      'recall-memories':     { 'type': 'object' },
+      'on-topic':            { 'type': 'object' },
+      'recommend-top-rated': { 'type': 'object' },
+      'off-topic':           { 'type': 'object' },
+      'retry':               { 'type': 'object' },
+      'salvage':             { 'type': 'object' },
     };
+  }
+
+  /** Public per-item entry point for tests and dispatch delegation. */
+  public async runItem(state: ArchivistState, context: NodeContextType): Promise<NodeOutputType<IntentOutput>> {
+    return this.executeOne(state, context);
   }
 
   protected override async executeOne(state: ArchivistState, context: NodeContextType) {
@@ -86,8 +94,10 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput>
       state.intent = intent;
       state.clearAttempts(context.nodeName);
       // Map every ClassifiedIntent variant to its node output port.
-      // 'search', 'describe', 'recommend' are general on-topic intents that
-      // route through the main pipeline (extract-query → decide-tools → …).
+      // 'search', 'describe' are general on-topic intents that route through
+      // the main pipeline (extract-query → decide-tools → …). 'recommend' is
+      // a vague "good book / good story" ask: it routes through the dedicated
+      // rating-ranked branch instead of the LLM-relevance-ranked one.
       const intentDispatch: Record<ClassifiedIntent, IntentOutput> = {
         'off-topic':         'off-topic',
         'lookup-author':     'lookup-author',
@@ -97,7 +107,7 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput>
         'recall-memories':   'recall-memories',
         'search':            'on-topic',
         'describe':          'on-topic',
-        'recommend':         'on-topic',
+        'recommend':         'recommend-top-rated',
       };
       return NodeOutputBuilder.of(intentDispatch[intent]);
     } catch (err) {

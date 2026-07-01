@@ -28,6 +28,9 @@
  *     ├─ describe-book     ──► describe-extract ──► [compose-retry-loop]
  *     │                             (inline: decide+4scouts+pickBestMatch+merge+record+gate+recall)
  *     │
+ *     ├─ recommend         ──► recommend-extract ──►  [compose-retry-loop] (success) ──► respond-to-visitor ──► END
+ *     │                             (inline: decide+4scouts+rankByRating+merge+record+gate+recall)        ▲
+ *     │                                                             ▲
  *     ├─ recall-memories   ──► memory-recall ──► compose-memory-recall ──────────────────────────────┐
  *     │                                                                                               ▼
  *     └─ recommend-similar ──► recommend-similar-gate                                  respond-to-visitor ──► END
@@ -53,13 +56,16 @@
  *                         + respondToVisitor. Four placements in this DAG:
  *                         compose-loop (shared by all four convergent branches).
  *
- * Inlined branches (reviews, describe):
- *   Reviews uses `rankByRating` (deterministic, rating-weighted) instead of
- *   `rankCandidates` (LLM-driven). Describe uses `pickBestMatch` to narrow to the
- *   top-3 title-similar candidates before merge. Both are structurally identical to
- *   book-search-scatter except for the post-scout ranking step; keeping them inline
- *   makes the intentional distinction explicit rather than hiding it behind a
- *   embedded-DAG parameter.
+ * Inlined branches (reviews, describe, recommend-top-rated):
+ *   Reviews and recommend-top-rated both use `rankByRating` (deterministic,
+ *   rating-weighted) instead of `rankCandidates` (LLM-driven); recommend-top-rated
+ *   is the structural sibling of find-reviews, reusing the same node objects at
+ *   `recommend-*` placements, for the vague "good book / good story" recommend
+ *   intent that has no topic to rank by relevance. Describe uses `pickBestMatch`
+ *   to narrow to the top-3 title-similar candidates before merge. All three are
+ *   structurally identical to book-search-scatter except for the post-scout
+ *   ranking step; keeping them inline makes the intentional distinction explicit
+ *   rather than hiding it behind a embedded-DAG parameter.
  *
  * Empty-result handling (v5.2):
  *   Empty results route through `compose-empty` → `respond-to-visitor`.
@@ -148,22 +154,23 @@ export class ArchivistBundleFactory {
 
       // #region intent-routes
       // ── 1. classify-intent ───────────────────────────────────────────────────
-      // Wide output union routes to six branches. EmbeddedDAG placements and inline
+      // Wide output union routes to seven branches. EmbeddedDAG placements and inline
       // branches share the same shared terminal: compose-loop and compose-empty.
       // recall-memories routes directly to memory-recall → compose-memory-recall
       // → memory-respond (no search needed; the memory store is the source).
       .node('classify-intent', nodes.classifyIntent, {
-        'lookup-author':     'author-search',
-        'find-reviews':      'reviews-extract',
-        'describe-book':     'describe-extract',
-        'recommend-similar': 'recommend-similar',
-        'recall-memories':   'memory-recall',
-        'on-topic':          'on-topic-search',
-        'off-topic':         'decline-off-topic',
+        'lookup-author':        'author-search',
+        'find-reviews':         'reviews-extract',
+        'describe-book':        'describe-extract',
+        'recommend-similar':    'recommend-similar',
+        'recall-memories':      'memory-recall',
+        'on-topic':             'on-topic-search',
+        'recommend-top-rated':  'recommend-extract',
+        'off-topic':            'decline-off-topic',
         // Own timeout / classifier failure → retry budget decides. 'retry' loops
         // back; 'salvage' defaults to the broadest on-topic search via a node.
-        'retry':             'classify-intent',
-        'salvage':           'classify-intent-salvage',
+        'retry':                'classify-intent',
+        'salvage':              'classify-intent-salvage',
       })
       .node('classify-intent-salvage', nodes.classifyIntentSalvage, {
         'done': 'on-topic-search',
@@ -256,6 +263,51 @@ export class ArchivistBundleFactory {
       .node('reviews-record',  nodes.recordFindings,   { 'recorded': 'reviews-gate' })
       .node('reviews-gate',    nodes.hasCitationsGate, { 'pass': 'reviews-recall', 'fail': 'compose-empty' })
       .node('reviews-recall',  nodes.recallPastVisits, { 'recalled': 'compose-loop' })
+
+      // ── recommend-top-rated branch ───────────────────────────────────────────
+      // Inlined, structural sibling of find-reviews. Reuses rankByRating
+      // (deterministic, rating-weighted) instead of rankCandidates (LLM-driven)
+      // because a vague "good book / good story" request carries no topic for
+      // relevance ranking — rating is the only signal that makes sense.
+      .node('recommend-extract', nodes.extractQuery, {
+        'success': 'recommend-decide-tools',
+        'retry':   'recommend-extract',
+        'salvage': 'recommend-extract-salvage',
+      })
+      .node('recommend-extract-salvage', nodes.extractQuerySalvage, {
+        'done': 'recommend-decide-tools',
+      })
+      .node('recommend-decide-tools', nodes.decideTools, {
+        'tools':    'recommend-build-worksets',
+        'no-tools': 'recommend-build-worksets',
+        'retry':    'recommend-decide-tools',
+        'salvage':  'recommend-decide-tools-salvage',
+      })
+      .node('recommend-decide-tools-salvage', nodes.decideToolsSalvage, {
+        'done': 'recommend-build-worksets',
+      })
+      // Build scatter worksets: converts toolPlan into bookWorksets items so the
+      // scatter can dispatch to each tool:<name> embedded DAG via dagFrom.
+      .node('recommend-build-worksets', nodes.buildBookWorksets, {
+        'ready': 'recommend-scatter',
+      })
+      // Tool-registry scatter: each bookWorksets item names its own tool:<name>
+      // embedded DAG. tool-candidate-merge gather reads each clone's output via
+      // accessor (no cast) and folds CandidateType[] into parent candidates.
+      .scatter('recommend-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
+        'success': 'recommend-rank',
+        'error':   'recommend-rank',
+        'empty':   'recommend-rank',
+      }, {
+        'concurrency': 4,
+        'gather': { 'strategy': 'tool-candidate-merge' },
+        'reducer': 'any-success',
+      })
+      .node('recommend-rank',   nodes.rankByRating,     { 'ranked': 'recommend-merge' })
+      .node('recommend-merge',  nodes.mergeCandidates,  { 'ranked': 'recommend-record', 'empty': 'compose-empty' })
+      .node('recommend-record', nodes.recordFindings,   { 'recorded': 'recommend-gate' })
+      .node('recommend-gate',   nodes.hasCitationsGate, { 'pass': 'recommend-recall', 'fail': 'compose-empty' })
+      .node('recommend-recall', nodes.recallPastVisits, { 'recalled': 'compose-loop' })
 
       // ── describe-book branch ─────────────────────────────────────────────────
       // Inlined. Uses pickBestMatch to narrow multi-hit results to the top-3

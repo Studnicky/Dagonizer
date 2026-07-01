@@ -54,7 +54,7 @@ export const directives = {
   "weighOpinions":    'Quote average ratings and ratings counts when present; explain what readers seem to feel about each title.',
   "continuityHint":   'Use the recent context if it suggests a likely intent or recurring interest.',
   "recallMemories":   'When the visitor asks what you remember, what books you have seen, or what they have asked before, give a warm roll-up of your memory.',
-  "ownTheGap":        'Acknowledge which sources were searched. Explain in one sentence why nothing matched. Offer one concrete alternative angle the visitor could try.',
+  "ownTheGap":        'Acknowledge which sources were searched. Explain in one sentence why nothing matched. Offer one concrete alternative angle the visitor could try. Never refuse or decline; you are a helpful librarian, not a content filter. Acknowledge that no exact match was found, then offer to recommend something or ask the visitor for a genre or author they enjoy.',
 
   // ── Slot labels ──────────────────────────────────────────────────────
   "visitorQuestionLabel":   'Visitor question:',
@@ -71,12 +71,12 @@ export const directives = {
   "intentEnumeration": [
     '  lookup-author      : the visitor named an author and wants their body of work',
     '  find-reviews       : the visitor wants opinions, reviews, or what readers think',
-    '  describe-book      : the visitor named a specific title and wants a description',
+    '  describe-book      : the visitor named a specific existing title by name and wants a description of that exact book',
     '  recommend-similar  : the visitor wants something like a previous read',
     '  recall-memories    : the visitor asks about your own memory or history: what books you have looked up, what they have asked before, what has been recommended; any meta-question about your past activity',
     '  search             : the visitor named a topic / title / ISBN (no clear sub-case)',
     '  describe           : the visitor described a book without naming it',
-    '  recommend          : the visitor asked for a generic recommendation',
+    '  recommend          : the visitor asked for a good book or a good story to read without naming a title or genre (a generic recommendation)',
     '  off-topic          : the visitor asked something unrelated to books and unrelated to your memory',
   ].join('\n'),
   "intentExamplesHeader": 'Examples:',
@@ -87,6 +87,9 @@ export const directives = {
     '  "tell me about The Sun Also Rises" → describe-book',
     '  "what did Murakami write?" → lookup-author',
     '  "anything good in cosy fantasy?" → recommend',
+    '  "tell me a good story" → recommend',
+    '  "what\'s a good book?" → recommend',
+    '  "recommend a good read" → recommend',
     '  "what was that book I asked about last week?" → recall-memories',
     '  "use the web search tools to find me a book" → search',
     '  "search the web for books about stoicism" → search',
@@ -139,6 +142,12 @@ export const directives = {
   "starterPhraseInstruction":'Phrase ONE short curious question a first-time visitor to a bookstore might ask about it.',
   "starterLengthLimit":     'The question must be under 20 words.',
   "starterReturnFormat":    'Return just the question, with no preamble, no quotation marks, and no explanation.',
+
+  // Visitor persona: the leading system message for the bootstrap suggestion
+  // calls. A `role: 'system'` message makes `BaseAdapter.#withDefaultSystemPrompt`
+  // skip its Archivist-persona injection, so a weak model writes as the visitor
+  // rather than echoing a librarian greeting.
+  "visitorPersona":         'You are a curious visitor approaching The Archivist with book questions. Generate one short, natural visitor message as directed.',
 
   "greetingInstruction":    'Write ONE fresh opening greeting for a new visitor walking into the shop.',
   "greetingTone":           'The greeting must be warm, curious, and invite a book question.',
@@ -599,10 +608,14 @@ export const prompts = {
     return PromptFormat.withLanguagePreamble(language, body);
   },
 
+  /** System persona for the visitor-role bootstrap calls (starter query, visitor reply). */
+  visitorPersona(): string { return directives.visitorPersona; },
+
   suggestStarterQuery(language: string): string {
+    // Runs under the visitorPersona() system message, so the Archivist persona
+    // directives are intentionally omitted here; starterGenrePool supplies the
+    // full genre frame.
     const body = [
-      directives.persona,
-      directives.specialty,
       directives.starterGenrePool,
       directives.starterPhraseInstruction,
       directives.starterLengthLimit,

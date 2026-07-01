@@ -1,8 +1,9 @@
 /**
  * TransformersEmbedder: in-browser text embedder backed by transformers.js
- * (Hugging Face) running on ONNX Runtime WASM. No npm dependency on the
- * foreign library — the bundle is loaded once from the CDN ESM URL at
- * first `connect()` call and memoised for the adapter's lifetime.
+ * (Hugging Face) running on ONNX Runtime WASM. Loads the bundled npm
+ * `@huggingface/transformers` package via dynamic import, lazily and
+ * memoised for the adapter's lifetime, through `LocalModelEmbedder`'s
+ * shared lifecycle.
  *
  * Usage:
  *
@@ -18,16 +19,17 @@
  * which requires no WebGPU and is available in every modern browser. The WASM
  * runtime is the universal floor.
  *
- * `connect()` lazy-loads the pipeline once; `disconnect()` clears it.
- * `performEmbed` calls `connect()` (idempotent) before running the extractor.
+ * `connect()` (inherited) lazy-loads the pipeline once; `disconnect()` clears
+ * it. `performEmbed` (inherited) calls `connect()` (idempotent) before running
+ * the extractor via `embedWith()`.
  */
 
-import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
+import { LocalModelEmbedder, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
-import type { TransformersExtractorInterface } from './TransformersHost.js';
-import { TRANSFORMERS_ESM, transformersModuleValidator } from './TransformersHost.js';
+import type { TransformersExtractorInterface, TransformersModuleInterface, TransformersPipelineOptionsType } from './TransformersHost.js';
+import { transformersModuleValidator } from './TransformersHost.js';
 
 /** Default model for TransformersEmbedder when no model is specified. */
 const DEFAULT_MODEL = 'Xenova/all-MiniLM-L6-v2';
@@ -41,6 +43,27 @@ const DEFAULT_DIMENSIONS = 384;
 const TRANSFORMERS_EMBEDDER_DEFAULTS = {
   'model': DEFAULT_MODEL,
 } as const;
+
+/**
+ * The only pipeline dtype this package vendors weights for. Passed to
+ * `mod.pipeline('feature-extraction', model, ...)` so the loader resolves
+ * `onnx/model_quantized.onnx` instead of the (unvendored) fp32 default.
+ */
+const TRANSFORMERS_PIPELINE_OPTIONS: TransformersPipelineOptionsType = { 'dtype': 'q8' };
+
+/**
+ * Caller options for `TransformersEmbedder`. Extends the shared embedder
+ * options with `localModelPath` — the filesystem directory transformers.js
+ * resolves vendored model files from. Defaults to `models/` at this
+ * package's root (vendored via `scripts/fetch-model.mjs`). `wasmPaths`
+ * (browser-only) points onnxruntime-web at this package's own vendored
+ * `.wasm`/`.mjs` assets instead of the default CDN; ignored/no-op in Node,
+ * since Node uses the native onnxruntime binding rather than WASM.
+ */
+export type TransformersEmbedderOptionsType = BaseEmbedderOptionsType & {
+  readonly localModelPath?: string;
+  readonly wasmPaths?: string;
+};
 
 /**
  * Known model → output dimensionality. Sourced from Hugging Face model cards.
@@ -66,77 +89,73 @@ const PREBUILT_EMBEDDING_MODELS: readonly LlmModelType[] = Object.keys(KNOWN_DIM
   (id): LlmModelType => ({ 'name': id, 'variant': 'embedding', 'cloud': false, 'costRank': ModelCost.rankFromName(id) }),
 );
 
-/**
- * Pending-extractor registry keyed on the adapter instance. Holding the lazy
- * connect promise here (rather than in a `Promise | null` instance field that
- * flips type after construction) keeps every `TransformersEmbedder` instance's
- * hidden class stable: the instance shape is fixed at construction and never
- * transitions a property's type. The entry is set once on first `connect()`
- * call and reused for the adapter's lifetime.
- */
-const extractorPromises = new WeakMap<TransformersEmbedder, Promise<TransformersExtractorInterface>>();
+export class TransformersEmbedder extends LocalModelEmbedder<TransformersModuleInterface, TransformersExtractorInterface> {
+  readonly #localModelPath: string;
+  readonly #wasmPaths: string;
 
-export class TransformersEmbedder extends BaseEmbedder {
   /**
    * Constructor: `(options?)`. All configuration lives in `options`.
    * `options.model` selects the embedding model (default: `Xenova/all-MiniLM-L6-v2`);
-   * `options.dimensions` overrides the auto-resolved dimensionality.
+   * `options.dimensions` overrides the auto-resolved dimensionality;
+   * `options.localModelPath` overrides the vendored `models/` directory
+   * transformers.js loads weights from (default: this package's own `models/`).
    *
    * `new TransformersEmbedder()` → `Xenova/all-MiniLM-L6-v2`, 384 dims.
    * `new TransformersEmbedder({ model: 'Xenova/bge-small-en-v1.5' })` → 384 dims.
    * `new TransformersEmbedder({ model: 'custom/model', dimensions: 768 })` → 768 dims.
    */
-  constructor(options: BaseEmbedderOptionsType = {}) {
+  constructor(options: TransformersEmbedderOptionsType = {}) {
     const selectedModel = options.model ?? TRANSFORMERS_EMBEDDER_DEFAULTS.model;
     const dimensions = options.dimensions ?? (KNOWN_DIMENSIONS[selectedModel] ?? DEFAULT_DIMENSIONS);
 
-    super('transformers', `Transformers.js (${selectedModel})`, dimensions, options);
+    super('transformers', `Transformers.js (${selectedModel})`, dimensions, import.meta.url, options);
     this.setModel(selectedModel);
+    this.#localModelPath = options.localModelPath ?? TransformersEmbedder.#modelPathFrom(this.resolveAssetPath('../models/'));
+    this.#wasmPaths = options.wasmPaths ?? '';
   }
 
   /**
-   * Lazy-load the transformers.js pipeline from the CDN ESM URL. Idempotent:
-   * subsequent calls return the same promise. Uses `extractorPromises` WeakMap
-   * to keep the instance shape stable (no `Promise | null` property flip).
-   *
-   * The dynamic `import()` result is `unknown`; narrowed through the schema
-   * `transformersModuleValidator` at the foreign boundary — no `as` casts.
+   * Derive the model directory transformers.js loads from, browser-safe.
+   * A `file:` asset URL (node) becomes a filesystem path via the global `URL`
+   * — no `node:url` import, so the module bundles for the browser, where the
+   * asset URL is already an `http(s):` path transformers.js fetches directly.
    */
-  override async connect(): Promise<void> {
-    if (extractorPromises.has(this)) {
-      await extractorPromises.get(this);
-      return;
-    }
-
-    const model = this.model;
-    const promise = (async (): Promise<TransformersExtractorInterface> => {
-      const raw: unknown = await import(/* @vite-ignore */ TRANSFORMERS_ESM);
-      const mod = transformersModuleValidator.validate(raw);
-      return mod.pipeline('feature-extraction', model);
-    })();
-
-    extractorPromises.set(this, promise);
-    await promise;
+  static #modelPathFrom(assetUrl: string): string {
+    return assetUrl.startsWith('file:')
+      ? decodeURIComponent(new URL(assetUrl).pathname)
+      : assetUrl;
   }
 
   /**
-   * Disconnect clears the memoised extractor promise so the next `connect()`
-   * call re-loads the pipeline.
+   * Import the bundled `@huggingface/transformers` npm package. The dynamic
+   * `import()` result is `unknown`; narrowed through `transformersModuleValidator`
+   * at the foreign boundary — no `as` casts. Points the module's `env` at the
+   * vendored `models/` directory and disables remote hub fetches, so model
+   * resolution is fully offline. When the caller supplied `wasmPaths`, also
+   * points the ONNX Runtime Web backend at the package's own vendored WASM
+   * assets instead of the default CDN; no-op in Node, which uses the native
+   * onnxruntime binding rather than WASM.
    */
-  override async disconnect(): Promise<void> {
-    extractorPromises.delete(this);
+  protected async loadModule(): Promise<TransformersModuleInterface> {
+    const raw: unknown = await import('@huggingface/transformers');
+    const module = transformersModuleValidator.validate(raw);
+    module.env.allowRemoteModels = false;
+    module.env.allowLocalModels = true;
+    module.env.localModelPath = this.#localModelPath;
+    if (this.#wasmPaths !== '') {
+      module.env.backends.onnx.wasm.wasmPaths = this.#wasmPaths;
+    }
+    return module;
   }
 
-  protected async performEmbed(text: string, _signal: AbortSignal): Promise<readonly number[]> {
-    await this.connect();
-    const extractor = await extractorPromises.get(this);
-    if (extractor === undefined) {
-      throw new LlmError(
-        `TransformersEmbedder: extractor not initialised`,
-        Classifications['UNKNOWN'],
-      );
-    }
-    const output = await extractor(text, { 'pooling': 'mean', 'normalize': true });
+  /** Build the feature-extraction pipeline from the loaded module. */
+  protected async spawnModel(module: TransformersModuleInterface): Promise<TransformersExtractorInterface> {
+    return module.pipeline('feature-extraction', this.model, TRANSFORMERS_PIPELINE_OPTIONS);
+  }
+
+  /** Run the extractor against `text` with mean pooling and normalization. */
+  protected async embedWith(model: TransformersExtractorInterface, text: string): Promise<readonly number[]> {
+    const output = await model(text, { 'pooling': 'mean', 'normalize': true });
     return Array.from(output.data);
   }
 

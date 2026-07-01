@@ -1,6 +1,5 @@
 export { UniversalSentenceEncoderEmbedder } from './UniversalSentenceEncoderEmbedder.js';
 export {
-  TFJS_USE_ESM,
   TfjsUseModelSchema,
   TfjsUseModuleSchema,
   tfjsUseModelValidator,

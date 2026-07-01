@@ -258,7 +258,7 @@ export class BaseLlmClient implements LlmClientInterface {
   }
 
   async suggestStarterQuery(): Promise<string> {
-    return (await this.#text(prompts.suggestStarterQuery(this.language))).trim();
+    return this.#textAsVisitor(prompts.suggestStarterQuery(this.language));
   }
 
   async suggestGreeting(): Promise<string> {
@@ -266,7 +266,7 @@ export class BaseLlmClient implements LlmClientInterface {
   }
 
   async suggestVisitorReplyTo(greeting: string): Promise<string> {
-    return (await this.#text(prompts.suggestVisitorReplyTo(this.language, greeting))).trim();
+    return this.#textAsVisitor(prompts.suggestVisitorReplyTo(this.language, greeting));
   }
 
   async explainTool(name: string, context: string): Promise<string> {
@@ -281,6 +281,25 @@ export class BaseLlmClient implements LlmClientInterface {
       ...(signal !== undefined ? { 'signal': signal } : {}),
     }));
     return BaseLlmClient.contentOf(response.message);
+  }
+
+  /**
+   * Generate text under the visitor persona rather than the adapter's baked-in
+   * Archivist persona. A leading `role: 'system'` message causes
+   * `BaseAdapter.#withDefaultSystemPrompt` to skip its Archivist-persona
+   * injection, so weak models produce a visitor question rather than a
+   * librarian greeting. Used by the bootstrap suggestion calls.
+   */
+  async #textAsVisitor(prompt: string): Promise<string> {
+    const response = await this.adapter.chat(ChatRequestBuilder.from({
+      'messages': [
+        { 'role': 'system', 'content': prompts.visitorPersona() },
+        { 'role': 'user',   'content': prompt },
+      ],
+      'temperature': 0.2,
+      'maxTokens':   512,
+    }));
+    return BaseLlmClient.contentOf(response.message).trim();
   }
 
   /** Discriminated-union accessor for the ChatResponse.message shape. */

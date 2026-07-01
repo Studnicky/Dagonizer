@@ -24,7 +24,7 @@
  * shape `OpenAiCompatibleAdapter.mistral()` ships.
  */
 
-import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
+import { Classifications, CloudEmbedder, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
@@ -53,7 +53,7 @@ const MISTRAL_EMBEDDER_DEFAULTS = {
  */
 export type MistralEmbedderOptionsType = BaseEmbedderOptionsType;
 
-export class MistralEmbedder extends BaseEmbedder {
+export class MistralEmbedder extends CloudEmbedder {
   readonly #apiKey: string;
 
   /**
@@ -74,26 +74,29 @@ export class MistralEmbedder extends BaseEmbedder {
     this.setModel(selectedModel);
   }
 
-  protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
-    const raw = await this.fetchJson(
-      ENDPOINT,
-      {
-        'method': 'POST',
-        'headers': {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.#apiKey}`,
-        },
-        'body': JSON.stringify({ 'model': this.model, 'input': [text] }),
+  protected endpoint(): string {
+    return ENDPOINT;
+  }
+
+  protected requestInit(text: string): RequestInit {
+    return {
+      'method': 'POST',
+      'headers': {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.#apiKey}`,
       },
-      signal,
-    );
-    if (!MistralEmbedResponseValidator.is(raw)) {
+      'body': JSON.stringify({ 'model': this.model, 'input': [text] }),
+    };
+  }
+
+  protected vectorFrom(body: unknown): readonly number[] {
+    if (!MistralEmbedResponseValidator.is(body)) {
       throw new LlmError(
         `Mistral embed: missing or empty 'data[0].embedding' field`,
         Classifications['SCHEMA_VIOLATION'],
       );
     }
-    const first = raw.data[0];
+    const first = body.data[0];
     if (first === undefined || first.embedding.length === 0) {
       throw new LlmError(
         `Mistral embed: missing or empty 'data[0].embedding' field`,

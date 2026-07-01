@@ -11,15 +11,16 @@
  *   │ tabs: Conversation|Config │ tabs: DAG | Memory | Trace               │
  *   └──────────────────────────┴───────────────────────────────────────────┘
  *
- * Pure observer: the dispatcher's lifecycle hooks toggle CSS classes on
- * cytoscape nodes / edges via the DagGraph's imperative surface; no
- * setTimeout, no polling, no JS-driven animation loops.
+ * Session orchestration is delegated to VueArchivistSession (extends
+ * ArchivistSession). VueArchivistSession overrides the abstract seam
+ * methods to write to the same reactive refs the template binds.
  */
 
 import { type Ref, computed, onMounted, ref, shallowRef, watch } from 'vue';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
+import { ObservedDag } from '@studnicky/dagonizer';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
 import { ArchivistBundleFactory } from '../../../../examples/the-archivist/dag.ts';
@@ -29,16 +30,25 @@ import { MemoryStore } from '../../../../examples/the-archivist/memory/MemorySto
 import { ONTOLOGY_NTRIPLES } from '../../../../examples/the-archivist/ontology/ArchivistOntology.ts';
 import { SeedLibrary } from '../../../../examples/the-archivist/data/SeedLibrary.ts';
 import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/RdfProvObserver.ts';
-import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
 import { NODE_VARIANTS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
 import { ArchivistNodes } from '../../../../examples/the-archivist/nodes/ArchivistNodes.ts';
-import { ApiKeyStore, BackendMatrix, EmbedderProvisioner, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
+import {
+  ApiKeyStore,
+  BackendMatrix,
+  OllamaModels,
+  ProviderInstantiator,
+} from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
-import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
+import type {
+  BackendAvailability,
+  EmbedderProvisionOptionsType,
+  EmbedderProvisionResultType,
+  ProviderId,
+} from '../../../../examples/the-archivist/providers/index.ts';
 import type { IntentClassifier } from '../../../../examples/the-archivist/providers/IntentClassifier.ts';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
-import { ToolRegistry, ToolInvocationState } from '@studnicky/dagonizer/tool';
+import { ToolRegistry } from '@studnicky/dagonizer/tool';
 import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
@@ -47,7 +57,14 @@ import { BookSearchScatterBundleFactory } from '../../../../examples/the-archivi
 import { ComposeRetryLoopBundleFactory } from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 import type { DAGType } from '@studnicky/dagonizer';
 
-import { ObservedDag } from '../../../../examples/the-archivist/ObservedDag.ts';
+import {
+  ArchivistSession,
+} from '../../../../examples/the-archivist/ArchivistSession.ts';
+import type {
+  SessionDagEvent,
+  SessionNodeEvent,
+} from '../../../../examples/the-archivist/ArchivistSession.ts';
+
 import BackendPicker from './BackendPicker.vue';
 import CheckpointControls from './CheckpointControls.vue';
 import Conversation from './Conversation.vue';
@@ -139,6 +156,7 @@ const conversationContextWindow = ref(6);
 
 function onConversationWindowUpdate(size: number): void {
   conversationContextWindow.value = size;
+  session.setConversationContextWindow(size);
 }
 
 // ── Timeout settings ─────────────────────────────────────────────────────
@@ -150,12 +168,13 @@ const timeoutSettings = ref<TimeoutSettings>({
 
 function onTimeoutSettingsUpdate(settings: TimeoutSettings): void {
   timeoutSettings.value = settings;
+  session.setTimeoutSettings(settings);
 }
 
 /**
  * Overall safety-net deadline: sum of all per-phase budgets plus a small
- * grace window. Per-node timeouts are the primary mechanism; this is a
- * last-resort hard stop for nodes that do not declare their own budget.
+ * grace window. Used by the checkpoint resume path; the main ask() path
+ * uses the session's internal deadline calculation.
  */
 function overallDeadlineMs(): number {
   const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
@@ -164,12 +183,12 @@ function overallDeadlineMs(): number {
 }
 
 // ── Cancel button ────────────────────────────────────────────────────────
+// Abort controller for the checkpoint resume path (managed outside the session).
 let activeAbortController: AbortController | null = null;
 
 function cancel(): void {
-  if (activeAbortController !== null) {
-    activeAbortController.abort(new Error('cancelled by visitor'));
-  }
+  session.cancel();
+  activeAbortController?.abort(new Error('cancelled by visitor'));
 }
 
 // ── Checkpoint ───────────────────────────────────────────────────────────
@@ -178,6 +197,8 @@ const checkpointNode = ref<string | null>(null);
 const hasCheckpoint = ref(
   typeof localStorage !== 'undefined' && localStorage.getItem('dagonizer-archivist-checkpoint') !== null
 );
+// lastResult and lastDagName are captured in session.onRunEnd() for the
+// user-triggered saveCheckpoint() action.
 let lastResult: ExecutionResultType<ArchivistState> | null = null;
 let lastDagName = 'the-archivist';
 
@@ -201,85 +222,6 @@ async function saveCheckpoint(): Promise<void> {
     logger.info(`checkpoint saved at ${lastResult.cursor}`);
   } catch (err) {
     logger.warn(`checkpoint failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
-async function resumeFromCheckpoint(): Promise<void> {
-  if (isRunning.value || activeBackend.value === null) return;
-  const raw = typeof localStorage !== 'undefined'
-    ? localStorage.getItem(CHECKPOINT_KEY)
-    : null;
-  if (raw === null) {
-    logger.warn('no checkpoint found in localStorage');
-    return;
-  }
-  let restored: { state: ArchivistState; dagName: string; cursor: string } | null = null;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    const ckpt = Checkpoint.load(parsed);
-    await ckpt.restoreStores({ 'memory': memoryStore });
-    restored = ckpt.restoreState(
-      CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
-    );
-  } catch (err) {
-    logger.warn(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`);
-    return;
-  }
-
-  runnerMachine.dispatch({ 'type': 'submit' });
-  isRunning.value = true;
-  terminalVariant.value = 'pending';
-  trace.value = [];
-  await dagGraph.value?.reset();
-  memoryTick.value++;
-  logger.clear();
-  logger.info(`resuming from checkpoint at node: ${restored.cursor}`);
-
-  const runId = restored.state.runId !== ''
-    ? restored.state.runId
-    : (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
-      ? crypto.randomUUID()
-      : `r-${String(Date.now())}-${String(Math.floor(Math.random() * 1e6))}`;
-
-  const prov = new RdfProvObserver({
-    'store':              memoryStore,
-    'runId':              runId,
-    'dispatcherAgentId':  `dispatcher:${activeBackend.value}`,
-  });
-
-  let dispatcher: ArchivistBrowserObserver | null = null;
-
-  try {
-    const services = buildServices();
-    const nodes = ArchivistNodes.build(services);
-    const { bookSearchBundle, composeBundle, parentBundle } = ArchivistDagAssembly.populate(nodes, archivistDag, embeddedDagRegistry);
-
-    dispatcher = new ArchivistBrowserObserver(logger, { 'fromCursor': restored.cursor, 'prov': prov });
-
-    dispatcher.registerBundle(archivistToolRegistry.bundle());
-    dispatcher.registerBundle(bookSearchBundle);
-    dispatcher.registerBundle(composeBundle);
-    dispatcher.registerBundle(parentBundle);
-
-    activeAbortController = new AbortController();
-    const deadlineMs = overallDeadlineMs();
-
-    await dispatcher.resume(
-      restored.dagName,
-      restored.state,
-      restored.cursor,
-      { 'signal': activeAbortController.signal, 'deadlineMs': deadlineMs },
-    );
-  } catch (error) {
-    conversation.value = [...conversation.value, {
-      'role': 'archivist',
-      'text': `(error: ${error instanceof Error ? error.message : String(error)})`,
-      'ts': Date.now(),
-    }];
-  } finally {
-    await dispatcher?.destroy();
-    activeAbortController = null;
-    isRunning.value = false;
   }
 }
 
@@ -349,7 +291,7 @@ function makeLlm() {
   });
 }
 
-/** Live LLM client reference, kept in sync with activeBackend changes. */
+/** Live LLM client reference for ToolExplainPanel, kept in sync with activeBackend changes. */
 const currentLlm = computed(() => makeLlm());
 
 function clearMemory(): void {
@@ -362,19 +304,6 @@ function clearMemory(): void {
   memoryTick.value++;
   logger.info('memory store cleared; ontology restored');
 }
-
-// Re-detect backend availability when apiKeys change.
-watch(apiKeys, async () => {
-  backends.value = await BackendMatrix.detect({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
-  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
-}, { 'deep': true });
-
-// Persist the visitor's backend selection so it survives page reloads.
-watch(activeBackend, (id) => {
-  if (typeof localStorage !== 'undefined' && id !== null) {
-    localStorage.setItem('dagonizer-active-backend', id);
-  }
-});
 
 // ── Left-column tabs: Conversation | Config ──────────────────────────────
 const leftTabs = computed(() => [
@@ -393,17 +322,16 @@ const rightTabs = computed(() => {
 });
 
 // Top-level archivist DAG reference for DagGraph display.
-// Populated at mount (stub topology) and refreshed on each real run.
+// Populated at mount (stub topology) and reused throughout — the topology
+// is structurally identical between stub and real nodes.
 const archivistDag = ref<DAGType | null>(null);
 
 // Embedded-DAG registry. Keys match the embeddedDAG placement names in the
-// parent DAG. Populated at mount (stub topology) and refreshed on each real run.
+// parent DAG. Populated at mount (stub topology).
 const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map());
 
-// Stable tool instances. The scout nodes call `tool.execute(...)`, which is an
-// instance method on each Tool class (`new OpenLibrarySearchTool()`), so the
-// services must carry instances, not the class constructors. One instance each,
-// reused across every run — the HTTP tools are stateless.
+// Stable tool instances for the checkpoint resume path and archivistToolRegistry.
+// One instance each: the HTTP tools are stateless.
 const webSearchTool        = new OpenLibrarySearchTool();
 const googleBooksTool      = new GoogleBooksTool();
 const subjectSearchTool    = new SubjectSearchTool();
@@ -411,14 +339,15 @@ const wikipediaSummaryTool = new WikipediaSummaryTool();
 
 // Tool registry: each tool becomes an embeddable `tool:<name>` DAG that the
 // book-search scatter resolves at runtime via `{ dagFrom: 'dagName' }`. Must be
-// registered (before bookSearchScatterBundle) or every scatter item fails to
-// resolve its body DAG and routes to 'error' — parity with the CLI (main.ts).
+// registered before bookSearchScatterBundle or every scatter item fails to
+// resolve its body DAG and routes to 'error'.
 const archivistToolRegistry = new ToolRegistry();
 archivistToolRegistry.register(webSearchTool);
 archivistToolRegistry.register(googleBooksTool);
 archivistToolRegistry.register(subjectSearchTool);
 archivistToolRegistry.register(wikipediaSummaryTool);
 
+/** Build a real services record for the checkpoint resume path. */
 function buildServices(): ArchivistServices {
   const llm = makeLlm();
   if (llm === null) throw new Error('no backend selected');
@@ -429,253 +358,9 @@ function buildServices(): ArchivistServices {
     'wikipediaSummary':  wikipediaSummaryTool,
     'memory':            memoryStore,
     'llm':               llm,
-    // Browser embedder provisioned when available (transformers → tensorflow →
-    // web-llm). Cosine recall and hybrid ranking fall back to Jaccard /
-    // heuristics when no embedder is reachable.
     'embedder':          embedder.value,
     'nodeTimeouts':      {},
   };
-}
-
-/**
- * Dispatch map: after key nodes complete, log what the search pipeline did.
- * Lives here (not in ObservedDag) because it reads ArchivistState-specific fields.
- */
-const ARCHIVIST_NODE_TRACE: Readonly<Record<string, (state: ArchivistState, log: DomConsoleLogger) => void>> = {
-  'extract-query': (state, log) => {
-    log.info(`terms: [${state.terms.join(', ')}]`);
-  },
-  'build-book-worksets': (state, log) => {
-    for (const ws of state.bookWorksets) {
-      const a = ws.arguments;
-      const q = a['query'] ?? a['isbn'] ?? a['author'] ?? a['subject'] ?? '?';
-      log.info(`search: ${ws.dagName.replace('tool:', '')} → "${String(q)}"`);
-    }
-    if (state.bookWorksets.length === 0) {
-      log.warn('search: no worksets built — no tools will run');
-    }
-  },
-  'rank-candidates': (state, log) => {
-    log.info(`candidates from tools: ${state.candidates.length}`);
-  },
-  'merge-candidates': (state, log) => {
-    log.info(`shortlist: ${state.shortlist.length} · prior-memory: ${state.priorCandidates.length}`);
-  },
-};
-
-/**
- * Browser-specific Archivist observer. Extends ObservedDag and drives the Vue
- * reactive state directly: structured trace entries, DAG graph animation,
- * provenance recording, and runner machine pulses.
- *
- * Structured trace rows are emitted only for top-level pipeline nodes
- * (placementPath.length === 0). Inner scatter/tool-clone nodes update
- * the cytoscape graph and prov store without adding trace rows, keeping
- * the feed readable as a clean lifecycle timeline.
- *
- * Tolerated inner tool-clone failures (output === 'error' on a ToolInvocationState)
- * produce a muted 'note' trace entry rather than a red 'error' row.
- *
- * Constructed once per run inside `ask()` / `resumeFromCheckpoint()`.
- */
-class ArchivistBrowserObserver extends ObservedDag<ArchivistState> {
-  readonly #domLogger: DomConsoleLogger;
-  readonly #fromCursor: string | null;
-  readonly #prov: RdfProvObserver;
-  #shownErrorCount = 0;
-
-  constructor(
-    log: DomConsoleLogger,
-    options: { readonly fromCursor: string | null; readonly prov: RdfProvObserver },
-  ) {
-    super(log);
-    this.#domLogger = log;
-    this.#fromCursor = options.fromCursor;
-    this.#prov = options.prov;
-  }
-
-  protected override onFlowStart(dagName: string): void {
-    if (this.#fromCursor !== null) dagGraph.value?.setActive(this.#fromCursor);
-    this.#prov.recordFlowStart(dagName);
-  }
-
-  protected override onNodeStart(
-    nodeName: string,
-    state: ArchivistState,
-    placementPath: readonly string[],
-  ): void {
-    // `placementPath` is the ordered list of parent embedded-DAG placement names.
-    // Join with the node name to form the cytoscape id used by `DagGraph`; this
-    // disambiguates same-named inner placements so only the executing one lights up.
-    const fullId = [...placementPath, nodeName].join('/');
-    // Trace rows are emitted only for top-level nodes; inner nodes update the
-    // graph and prov store without contributing feed rows.
-    if (placementPath.length === 0) {
-      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'start' }];
-    }
-    dagGraph.value?.setActive(fullId);
-    this.#prov.recordNodeStart(nodeName);
-    runnerMachine.pulse({ 'type': 'nodeStart', 'node': nodeName });
-  }
-
-  protected override onNodeEnd(
-    nodeName: string,
-    output: string | null,
-    state: ArchivistState,
-    placementPath: readonly string[],
-  ): void {
-    const fullId = [...placementPath, nodeName].join('/');
-    const isInner = placementPath.length > 0;
-
-    if (isInner) {
-      // Inner tool-clone nodes: update graph + prov without adding start/end
-      // trace rows. A failed clone (output === 'error' on a ToolInvocationState)
-      // emits a single muted 'note' row classifying the tolerated failure.
-      if (output === 'error' && state instanceof ToolInvocationState) {
-        const lastErr = state.errors[state.errors.length - 1];
-        const rawName = lastErr !== undefined
-          ? (lastErr.context['toolName'])
-          : undefined;
-        const toolName = typeof rawName === 'string' && rawName.length > 0
-          ? rawName
-          : (placementPath[placementPath.length - 1] ?? nodeName);
-        const errMsg = lastErr !== undefined ? lastErr.message : '';
-        const isRateLimit = /429|too many requests/i.test(errMsg);
-        const noteMsg = isRateLimit
-          ? `${toolName} · rate-limited · skipped`
-          : `${toolName} · unavailable · skipped`;
-        trace.value = [...trace.value, {
-          'node': toolName,
-          'ts': Date.now(),
-          'variant': 'note',
-          'message': noteMsg,
-        }];
-      }
-    } else {
-      // Top-level nodes emit structured start/end trace rows.
-      trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'variant': 'end' }];
-    }
-
-    dagGraph.value?.setCompleted(fullId);
-    if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
-    // The parent observer fires for nodes inside isolated child states
-    // (e.g. the tool:<name> scatter bodies) whose state is NOT an
-    // ArchivistState — only project the parent's ArchivistState into memory.
-    if (state instanceof ArchivistState) {
-      StateProjection.project(state, memoryStore);
-      // Surface any errors the parent state collected since the last node end
-      // (routed-to-'error' failures collect without throwing onError).
-      for (let i = this.#shownErrorCount; i < state.errors.length; i++) {
-        const err = state.errors[i];
-        if (err === undefined) continue;
-        // Tolerated tool-clone failures (rate limits, unreachable APIs) are
-        // already surfaced as muted 'note' rows from the inner-node path, and
-        // the any-success scatter absorbs them — they are not pipeline errors.
-        // Skip them here so the same failure does not also render as an
-        // alarming 'error' row.
-        if (err.code === 'toolExecutionFailed') continue;
-        trace.value = [...trace.value, {
-          'node': err.operation !== '' ? err.operation : fullId,
-          'ts': Date.now(),
-          'variant': 'error',
-          'message': `${err.code}: ${err.message}`,
-        }];
-      }
-      this.#shownErrorCount = state.errors.length;
-      ARCHIVIST_NODE_TRACE[nodeName]?.(state, this.#domLogger);
-    }
-    this.#prov.recordNodeEnd(nodeName, output ?? undefined);
-    memoryTick.value++;
-    runnerMachine.pulse(output === null
-      ? { 'type': 'nodeEnd', 'node': nodeName }
-      : { 'type': 'nodeEnd', 'node': nodeName, 'output': output });
-  }
-
-  protected override onError(
-    nodeName: string,
-    error: Error,
-    state: ArchivistState,
-    placementPath: readonly string[],
-  ): void {
-    const fullId = [...placementPath, nodeName].join('/');
-    // Only top-level (placementPath empty) errors become red 'error' trace rows.
-    // Inner tool-clone failures are already handled as muted 'note' rows in onNodeEnd.
-    if (placementPath.length === 0) {
-      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'error', 'message': error.message !== '' ? error.message : String(error) }];
-    }
-    dagGraph.value?.setErrored(fullId);
-    this.#prov.recordError(nodeName, error);
-    runnerMachine.pulse({ 'type': 'nodeError', 'node': nodeName, 'error': error });
-  }
-
-  // Phase enter/exit are internal scheduling markers. The base ObservedDag
-  // logs them as `[dag:phase] …` trace lines; suppress that raw framework
-  // noise so the feed reads as a clean node lifecycle (no super call).
-  protected override onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string): void {
-    void dagName; void phase; void placementName;
-  }
-
-  protected override onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string): void {
-    void dagName; void phase; void placementName;
-  }
-
-  protected override onFlowEnd(
-    dagName: string,
-    state: ArchivistState,
-    result: ExecutionResultType<ArchivistState>,
-  ): void {
-    const lifecycleVariant = state.lifecycle.variant;
-    if (lifecycleVariant === 'completed' || lifecycleVariant === 'failed' || lifecycleVariant === 'cancelled' || lifecycleVariant === 'timed_out') {
-      terminalVariant.value = lifecycleVariant;
-    }
-    if (state.draft.length > 0) {
-      conversation.value = [...conversation.value, {
-        'role': 'archivist',
-        'text': state.draft,
-        'ts': Date.now(),
-      }];
-    }
-    lastResult = result;
-    lastDagName = dagName;
-    if (result.cursor !== null) checkpointNode.value = result.cursor;
-    this.#prov.recordFlowEnd(lifecycleVariant);
-    memoryTick.value++;
-    this.#domLogger.result(`intent=${state.intent} · shortlist=${String(state.shortlist.length)} · triples=${String(memoryStore.size)} · lifecycle=${lifecycleVariant}`);
-    runnerMachine.dispatch({ 'type': 'flowEnd', 'lifecycle': lifecycleVariant });
-  }
-}
-
-// ── Static fallback pools ────────────────────────────────────────────────
-const STATIC_GREETINGS: readonly string[] = [
-  'Welcome to the shop. The shelves remember everything they hold. What brings you in?',
-  'Stay a while. I have a long list of books and a longer one of questions about them.',
-  'A reader, then. Tell me what you are looking for, and I will see what the catalog gives up.',
-  'The door is always open here. Name a title, an author, or a feeling, and I will look.',
-  'Good to see you. The shelves run deep on every subject. Where would you like to begin?',
-  'Come in. I keep records on almost everything ever printed. What can I find for you?',
-  'Every visitor arrives with a question worth answering. What is yours?',
-];
-
-const STATIC_VISITOR_REPLIES: readonly string[] = [
-  'Something like Neuromancer but written in the last five years?',
-  'Where should I start with Stanisław Lem?',
-  'A novel about time that doesn\'t lean on time-travel tropes.',
-  'Anything Wittgenstein-adjacent that doesn\'t require a logic background?',
-  'What\'s the best translation of the Three Body Problem trilogy?',
-  'Do you have anything that pairs Ted Chiang with Borges?',
-  'Philosophy for someone who just finished Annihilation.',
-];
-
-function isFreshSession(): boolean {
-  // A fresh session has at most one entry: the archivist greeting (or nothing yet).
-  // Once the visitor has sent any message the session is no longer fresh.
-  const turns = conversation.value;
-  return turns.length === 0 || (turns.length === 1 && turns[0]?.role === 'archivist');
-}
-
-function onTreatAsDesktop(): void {
-  MobileDetection.setOverride('desktop');
-  window.location.reload();
 }
 
 // ── DAG topology ──────────────────────────────────────────────────────────
@@ -762,239 +447,470 @@ class ArchivistDagAssembly {
   }
 }
 
+// ── VueArchivistSession ───────────────────────────────────────────────────
+/**
+ * Vue-specific ArchivistSession subclass. Overrides the abstract seam methods
+ * to write to the reactive refs declared above, keeping the template reactive
+ * to every session lifecycle event without callbacks or intermediate stores.
+ *
+ * Defined inside <script setup> so its method bodies close over the refs
+ * directly — `trace`, `conversation`, `memoryTick`, `dagGraph`, etc. are
+ * accessible by name from every override.
+ */
+class VueArchivistSession extends ArchivistSession {
+  // ── Protected-field accessors for post-boot synchronization ─────────────
+  // ArchivistSession sets these.activeBackend / isMobile internally during
+  // boot(); these thin getters surface the values to the component scope.
+
+  getActiveBackend(): ProviderId | null { return this.activeBackend; }
+  getIsMobile(): boolean                { return this.isMobile; }
+  setBackends(bs: readonly BackendAvailability[]): void { this.backends = bs; }
+
+  // ── Extension seam: embedder provisioning ────────────────────────────────
+  // Sync the Vue shallowRefs so makeLlm() and buildServices() (resume path)
+  // pick up the provisioned embedder / intent classifier.
+
+  protected override async provisionEmbedder(): Promise<EmbedderProvisionResultType> {
+    const result = await super.provisionEmbedder();
+    embedder.value         = result.embedder;
+    intentClassifier.value = result.intentClassifier;
+    return result;
+  }
+
+  // Point the transformers embedder at the model + WASM the
+  // `transformersEmbedderAssets()` Vite plugin serves from this app's bundle
+  // (under `{base}@transformers-embedder/`), so the vector intent classifier
+  // runs fully offline in the browser.
+  protected override embedderAssetPaths(): EmbedderProvisionOptionsType {
+    const base = import.meta.env.BASE_URL;
+    return {
+      'transformersLocalModelPath': `${base}@transformers-embedder/models/`,
+      'transformersWasmPaths':      `${base}@transformers-embedder/ort/`,
+    };
+  }
+
+  // ── Abstract seam overrides ───────────────────────────────────────────────
+
+  protected override onBackendsReady(
+    newBackends: readonly BackendAvailability[],
+    newNoModel: boolean,
+  ): void {
+    backends.value = newBackends;
+    noModel.value  = newNoModel;
+    isMobile.value = this.isMobile;
+  }
+
+  protected override onGreetingReady(greeting: string): void {
+    conversation.value = [
+      ...conversation.value,
+      { 'role': 'archivist', 'text': greeting, 'ts': Date.now() },
+    ];
+  }
+
+  protected override onSampleReplyReady(reply: string): void {
+    visitorQuery.value = reply;
+  }
+
+  protected override onVisitorTurn(query: string): void {
+    conversation.value = [
+      ...conversation.value,
+      { 'role': 'visitor', 'text': query, 'ts': Date.now() },
+    ];
+  }
+
+  protected override onArchivistTurn(draft: string): void {
+    conversation.value = [
+      ...conversation.value,
+      { 'role': 'archivist', 'text': draft, 'ts': Date.now() },
+    ];
+  }
+
+  protected override onNodeEvent(event: SessionNodeEvent): void {
+    // Trace: push the structured entry when the session provides one.
+    const te = event.trace;
+    if (te !== null) {
+      switch (te.variant) {
+        case 'start':
+          trace.value = [...trace.value, { 'variant': 'start', 'node': te.node, 'ts': te.ts }];
+          break;
+        case 'end':
+          trace.value = [...trace.value, { 'variant': 'end', 'node': te.node, 'ts': te.ts, 'output': te.output }];
+          break;
+        case 'note':
+          trace.value = [...trace.value, { 'variant': 'note', 'node': te.node, 'ts': te.ts, 'message': te.message }];
+          break;
+        case 'error':
+          trace.value = [...trace.value, { 'variant': 'error', 'node': te.node, 'ts': te.ts, 'message': te.message }];
+          break;
+      }
+    }
+
+    // DAG graph live-coloring + runner machine pulses.
+    if (event.kind === 'nodeStart') {
+      dagGraph.value?.setActive(event.fullId);
+      runnerMachine.pulse({ 'type': 'nodeStart', 'node': event.node });
+    } else {
+      if (te?.variant === 'error') {
+        dagGraph.value?.setErrored(event.fullId);
+        runnerMachine.pulse({ 'type': 'nodeError', 'node': event.node, 'error': new Error(te.message) });
+      } else {
+        dagGraph.value?.setCompleted(event.fullId);
+        if (event.output !== null) dagGraph.value?.markEdgeTraversed(event.fullId, event.output);
+        runnerMachine.pulse(event.output === null
+          ? { 'type': 'nodeEnd', 'node': event.node }
+          : { 'type': 'nodeEnd', 'node': event.node, 'output': event.output });
+      }
+    }
+  }
+
+  protected override onDagEvent(event: SessionDagEvent): void {
+    if (event.kind === 'flowEnd') {
+      const lc = event.lifecycle;
+      if (
+        lc === 'completed' ||
+        lc === 'failed'    ||
+        lc === 'cancelled' ||
+        lc === 'timed_out'
+      ) {
+        terminalVariant.value = lc;
+      }
+      memoryTick.value++;
+      runnerMachine.dispatch({ 'type': 'flowEnd', 'lifecycle': lc });
+    }
+  }
+
+  protected override onRunEnd(event: Extract<SessionDagEvent, { kind: 'flowEnd' }>): void {
+    // Capture for the user-triggered saveCheckpoint() action.
+    lastResult  = event.execution;
+    lastDagName = event.dagName;
+    if (event.cursor !== null) checkpointNode.value = event.cursor;
+  }
+
+  protected override onMemoryChanged(): void {
+    memoryTick.value++;
+  }
+
+  protected override onError(error: Error): void {
+    conversation.value = [
+      ...conversation.value,
+      { 'role': 'archivist', 'text': `(error: ${error.message})`, 'ts': Date.now() },
+    ];
+  }
+
+  // Reload the ontology and seed library so the memory graph re-renders
+  // with its schema and sample data after every reset.
+  protected override onReset(): void {
+    memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
+    SeedLibrary.loadInto(memoryStore);
+    memoryTick.value++;
+  }
+}
+
+// ── VueResumeObserver ────────────────────────────────────────────────────
+/**
+ * Thin observer for the checkpoint resume path. Extends ObservedDag to
+ * receive lifecycle hooks, records PROV-O quads, and routes every event to
+ * the session's pump methods so the same VueArchivistSession seam overrides
+ * fire — giving the resume path identical trace-panel, DAG-graph, and
+ * memory-graph behavior to a normal ask() run.
+ */
+class VueResumeObserver extends ObservedDag<ArchivistState> {
+  readonly #session: VueArchivistSession;
+  readonly #prov: RdfProvObserver;
+  readonly #fromCursor: string;
+
+  constructor(
+    log: DomConsoleLogger,
+    vueSession: VueArchivistSession,
+    prov: RdfProvObserver,
+    fromCursor: string,
+  ) {
+    super(log);
+    this.#session    = vueSession;
+    this.#prov       = prov;
+    this.#fromCursor = fromCursor;
+  }
+
+  protected override onFlowStart(dagName: string): void {
+    super.onFlowStart(dagName);
+    dagGraph.value?.setActive(this.#fromCursor);
+    this.#prov.recordFlowStart(dagName);
+    this.#session.pumpFlowStart(dagName);
+  }
+
+  protected override onNodeStart(
+    nodeName: string,
+    state: ArchivistState,
+    placementPath: readonly string[],
+  ): void {
+    super.onNodeStart(nodeName, state, placementPath);
+    this.#prov.recordNodeStart(nodeName);
+    this.#session.pumpNodeStart(nodeName, placementPath);
+  }
+
+  protected override onNodeEnd(
+    nodeName: string,
+    output: string | null,
+    state: ArchivistState,
+    placementPath: readonly string[],
+  ): void {
+    super.onNodeEnd(nodeName, output, state, placementPath);
+    this.#prov.recordNodeEnd(nodeName, output ?? undefined);
+    this.#session.pumpNodeEnd(nodeName, output, state, placementPath);
+  }
+
+  protected override onError(
+    nodeName: string,
+    error: Error,
+    state: ArchivistState,
+    placementPath: readonly string[],
+  ): void {
+    super.onError(nodeName, error, state, placementPath);
+    this.#prov.recordError(nodeName, error);
+    this.#session.pumpError(nodeName, error, placementPath);
+  }
+
+  // Phase enter/exit are internal scheduling markers; suppress the base
+  // ObservedDag log lines so the trace feed reads as a clean node lifecycle.
+  protected override onPhaseEnter(): void { /* suppressed */ }
+  protected override onPhaseExit(): void  { /* suppressed */ }
+
+  protected override onFlowEnd(
+    dagName: string,
+    state: ArchivistState,
+    result: ExecutionResultType<ArchivistState>,
+  ): void {
+    super.onFlowEnd(dagName, state, result);
+    this.#prov.recordFlowEnd(state.lifecycle.variant);
+    this.#session.pumpFlowEnd(dagName, state, result);
+  }
+}
+
+// ── Session instantiation ─────────────────────────────────────────────────
+const session = new VueArchivistSession(memoryStore, logger);
+
+// ── Watchers ──────────────────────────────────────────────────────────────
+
+// Persist and re-detect backend availability when apiKeys change; also keep
+// the session in sync so its internal #resolveLlm() uses fresh keys + backends.
+watch(apiKeys, async (keys) => {
+  session.setApiKeys(keys);
+  ApiKeyStore.save(keys);
+  backends.value = await BackendMatrix.detect({
+    'apiKeys': keys,
+    ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}),
+  });
+  noModel.value = BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+  session.setBackends(backends.value);
+}, { 'deep': true });
+
+// Persist the visitor's backend selection and keep the session in sync.
+watch(activeBackend, (id) => {
+  session.setActiveBackend(id);
+  if (typeof localStorage !== 'undefined' && id !== null) {
+    localStorage.setItem('dagonizer-active-backend', id);
+  }
+});
+
+// Persist the ollama model and keep the session in sync.
+watch(ollamaModel, (next) => {
+  session.setOllamaModel(next);
+  OllamaModels.saveModel(next);
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function isFreshSession(): boolean {
+  // A fresh session has at most one entry: the archivist greeting (or nothing yet).
+  // Once the visitor has sent any message the session is no longer fresh.
+  const turns = conversation.value;
+  return turns.length === 0 || (turns.length === 1 && turns[0]?.role === 'archivist');
+}
+
+function onTreatAsDesktop(): void {
+  MobileDetection.setOverride('desktop');
+  window.location.reload();
+}
+
 // ── Boot ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
+  // Populate DAG topology from stub nodes: structurally identical to a real
+  // run but without LLM or HTTP dependencies so the graph renders immediately.
   ArchivistDagAssembly.populate(ArchivistDagAssembly.stubNodes(), archivistDag, embeddedDagRegistry);
 
+  // Seed the memory store before the session boots so the memory graph shows
+  // the ontology structure and sample books before any run.
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
   SeedLibrary.loadInto(memoryStore);
   memoryTick.value++;
 
-  isMobile.value = MobileDetection.isLikelyMobile();
+  // Push initial settings into the session before boot.
+  session.setApiKeys(apiKeys.value);
+  session.setOllamaModel(ollamaModel.value);
+  session.setConversationContextWindow(conversationContextWindow.value);
+  session.setTimeoutSettings(timeoutSettings.value);
 
-  backends.value = await BackendMatrix.detect({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
+  // Detect backends, provision embedder, select best backend.
+  // onBackendsReady fires during boot() and syncs backends/noModel/isMobile refs.
+  await session.boot();
 
-  // Kick off embedder provisioning without blocking auto-seed; the classifier
-  // becomes available when the model download completes and updates refs so
-  // makeLlm() picks it up on subsequent turns.
-  void EmbedderProvisioner.provision().then((r) => {
-    embedder.value = r.embedder;
-    intentClassifier.value = r.intentClassifier;
-  });
+  // Sync the backend chosen by boot() back to the Vue ref so the picker and
+  // resolvedModel computed stay accurate.
+  activeBackend.value = session.getActiveBackend();
 
-  // Show the no-model gate when no real backend is available on this device.
-  if (BackendMatrix.hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
-    noModel.value = true;
+  if (noModel.value) {
     logger.warn('no LLM backend detected; visitor must enable one');
     return;
   }
-  noModel.value = false;
 
-  // Honor a saved user preference only when that backend is runnable right now;
-  // otherwise default to the best available backend (in-browser web models first).
-  const savedEntry = savedBackend !== null
-    ? backends.value.find((b) => b.id === savedBackend) ?? null
-    : null;
-  if (savedEntry !== null && savedEntry.runnable) {
-    logger.info(`backend from saved preference: ${savedBackend}`);
-  } else {
-    const picked = BackendMatrix.pickBest(backends.value, { 'isMobile': isMobile.value });
-    if (picked !== null) {
-      activeBackend.value = picked.id;
-      logger.info(
-        savedBackend === null
-          ? `backend auto-selected: ${picked.displayName}`
-          : `saved preference "${savedBackend}" unavailable; defaulting to ${picked.displayName}`,
-      );
-    }
-  }
-
-  // On a fresh session: generate the Archivist greeting, push it to the
-  // conversation, then generate a contextual visitor reply and pre-fill
-  // the input. Only runs once per session; once the visitor sends a
-  // message the input is cleared (via ask()) and this condition no longer fires.
+  // On a fresh session: generate the Archivist greeting (onGreetingReady
+  // pushes it to conversation.value) and a contextual visitor reply
+  // (onSampleReplyReady pre-fills the input).
   if (isFreshSession() && visitorQuery.value.length === 0) {
-    const llm = makeLlm();
-
-    // Step 1: generate greeting.
-    let greeting = STATIC_GREETINGS[Date.now() % STATIC_GREETINGS.length] as string;
-    if (llm !== null) {
-      try {
-        const generated = await llm.suggestGreeting();
-        if (generated.length > 0) greeting = generated;
-      } catch { /* use static fallback */ }
-    }
-
-    if (isFreshSession()) {
-      conversation.value = [{ 'role': 'archivist', 'text': greeting, 'ts': Date.now() }];
-    }
-
-    // Step 2: generate a visitor reply keyed to the greeting.
-    if (isFreshSession() && visitorQuery.value.length === 0) {
-      if (llm !== null) {
-        try {
-          const reply = await llm.suggestVisitorReplyTo(greeting);
-          if (reply.length > 0 && isFreshSession() && visitorQuery.value.length === 0) {
-            visitorQuery.value = reply;
-          }
-        } catch {
-          visitorQuery.value = STATIC_VISITOR_REPLIES[Date.now() % STATIC_VISITOR_REPLIES.length] as string;
-        }
-      } else {
-        visitorQuery.value = STATIC_VISITOR_REPLIES[Date.now() % STATIC_VISITOR_REPLIES.length] as string;
-      }
-    }
+    const greeting = await session.greet();
+    await session.sampleReply(greeting);
   }
 });
-
-watch(apiKeys, () => { ApiKeyStore.save(apiKeys.value); }, { 'deep': true });
-watch(ollamaModel, (next) => { OllamaModels.saveModel(next); });
 
 // ── Run ──────────────────────────────────────────────────────────────────
 async function ask(): Promise<void> {
   if (isRunning.value || visitorQuery.value.trim().length === 0 || activeBackend.value === null) return;
-  runnerMachine.dispatch({ 'type': 'submit' });
-  isRunning.value = true;
-  terminalVariant.value = 'pending';
-  trace.value = [];
 
   const queryText = visitorQuery.value;
-  conversation.value = [...conversation.value, {
-    'role': 'visitor',
-    'text': queryText,
-    'ts': Date.now(),
-  }];
   // Clear the input immediately after capturing (the send-and-clear pattern).
   visitorQuery.value = '';
+
+  runnerMachine.dispatch({ 'type': 'submit' });
+  isRunning.value       = true;
+  terminalVariant.value = 'pending';
+  trace.value           = [];
 
   await dagGraph.value?.reset();
   memoryTick.value++;
   logger.clear();
   logger.info(`run start, query: "${queryText}"`);
 
-  const runId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
-    ? crypto.randomUUID()
-    : `r-${String(Date.now())}-${String(Math.floor(Math.random() * 1e6))}`;
-  StateProjection.clear(runId, memoryStore);
-  const prov = new RdfProvObserver({
-    'store':              memoryStore,
-    'runId':              runId,
-    'dispatcherAgentId':  `dispatcher:${activeBackend.value}`,
-  });
-
-  const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
-  const resolvedLlm = makeLlm();
-  if (resolvedLlm === null) throw new Error('no backend selected');
-  const services: ArchivistServices = {
-    'webSearch':         webSearchTool,
-    'googleBooks':       googleBooksTool,
-    'subjectSearch':     subjectSearchTool,
-    'wikipediaSummary':  wikipediaSummaryTool,
-    'memory':            memoryStore,
-    'llm':               resolvedLlm,
-    'embedder':          embedder.value,
-    'nodeTimeouts': {
-      'compose-response':        composeMs,
-      'compose-empty':           composeMs,
-      'compose-memory-response': composeMs,
-      'rank-candidates':         rankMs,
-      'open-library-scout':      webSearchMs,
-      'google-books-scout':      webSearchMs,
-      'subject-scout':           webSearchMs,
-      'wikipedia-scout':         webSearchMs,
-    },
-  };
-  let dispatcher: ArchivistBrowserObserver | null = null;
-
   try {
-    const nodes = ArchivistNodes.build(services);
-    const { bookSearchBundle, composeBundle, parentBundle } = ArchivistDagAssembly.populate(nodes, archivistDag, embeddedDagRegistry);
-
-    dispatcher = new ArchivistBrowserObserver(logger, { 'fromCursor': null, 'prov': prov });
-
-    dispatcher.registerBundle(archivistToolRegistry.bundle());
-    dispatcher.registerBundle(bookSearchBundle);
-    dispatcher.registerBundle(composeBundle);
-    dispatcher.registerBundle(parentBundle);
-
-    const visitor = new ArchivistState();
-    visitor.query = queryText;
-    visitor.runId = runId;
-    // Slice the display conversation to the configured window and assign to state
-    // so every LLM prompt receives prior-turn context for pronoun resolution.
-    const recentTurns = conversation.value.slice(-conversationContextWindow.value);
-    visitor.conversation = recentTurns.map((t) => ({ 'role': t.role, 'text': t.text, 'ts': t.ts }));
-
-    activeAbortController = new AbortController();
-    const deadlineMs = overallDeadlineMs();
-
-    await dispatcher.execute(
-      'the-archivist',
-      visitor,
-      { 'signal': activeAbortController.signal, 'deadlineMs': deadlineMs },
-    );
-  } catch (error) {
-    conversation.value = [...conversation.value, {
-      'role': 'archivist',
-      'text': `(error: ${error instanceof Error ? error.message : String(error)})`,
-      'ts': Date.now(),
-    }];
+    // session.ask() fires the full DAG run. Seam overrides above update all
+    // reactive refs: onVisitorTurn, onNodeEvent, onDagEvent, onArchivistTurn,
+    // onMemoryChanged, onRunEnd, onError.
+    await session.ask(queryText);
+  } catch (err) {
+    // Only fatal pre-run errors reach here (e.g. no LLM available).
+    // Errors during DAG execution are handled by session.onError().
+    conversation.value = [
+      ...conversation.value,
+      {
+        'role': 'archivist',
+        'text': `(error: ${err instanceof Error ? err.message : String(err)})`,
+        'ts': Date.now(),
+      },
+    ];
   } finally {
-    await dispatcher?.destroy();
-    activeAbortController = null;
     isRunning.value = false;
   }
 }
 
 function reset(): void {
-  conversation.value = [];
-  trace.value = [];
+  conversation.value    = [];
+  trace.value           = [];
   terminalVariant.value = 'pending';
   selectedSelection.value = null;
-  selectedTool.value = null;
-  checkpointNode.value = null;
-  lastResult = null;
-  visitorQuery.value = '';
-  // Fire-and-forget: the manual reset button is not starting a new run,
-  // so no need to await; the fade plays visually but nothing depends on it.
+  selectedTool.value    = null;
+  checkpointNode.value  = null;
+  lastResult            = null;
+  visitorQuery.value    = '';
   void dagGraph.value?.reset();
-  memoryStore.clear();
-  memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
-  SeedLibrary.loadInto(memoryStore);
-  memoryTick.value++;
-  logger.clear();
   runnerMachine.dispatch({ 'type': 'reset' });
 
-  // Regenerate greeting + visitor reply after reset, same as onMounted.
-  const llm = makeLlm();
-  void (async () => {
-    let greeting = STATIC_GREETINGS[Date.now() % STATIC_GREETINGS.length] as string;
-    if (llm !== null) {
-      try {
-        const generated = await llm.suggestGreeting();
-        if (generated.length > 0) greeting = generated;
-      } catch { /* use static fallback */ }
-    }
+  // session.reset() clears the session's conversation + store + logger,
+  // calls onReset() (reloads ontology + seed), then runs greet() + sampleReply().
+  // The seam overrides push the greeting to conversation.value and set visitorQuery.value.
+  void session.reset();
+}
 
-    if (isFreshSession()) {
-      conversation.value = [{ 'role': 'archivist', 'text': greeting, 'ts': Date.now() }];
-    }
+// ── Checkpoint ────────────────────────────────────────────────────────────
+async function resumeFromCheckpoint(): Promise<void> {
+  if (isRunning.value || activeBackend.value === null) return;
+  const raw = typeof localStorage !== 'undefined'
+    ? localStorage.getItem(CHECKPOINT_KEY)
+    : null;
+  if (raw === null) {
+    logger.warn('no checkpoint found in localStorage');
+    return;
+  }
+  let restored: { state: ArchivistState; dagName: string; cursor: string } | null = null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const ckpt = Checkpoint.load(parsed);
+    await ckpt.restoreStores({ 'memory': memoryStore });
+    restored = ckpt.restoreState(
+      CheckpointRestoreAdapter.wrap((snap) => ArchivistState.restore(snap)),
+    );
+  } catch (err) {
+    logger.warn(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
 
-    if (isFreshSession() && visitorQuery.value.length === 0) {
-      if (llm !== null) {
-        try {
-          const reply = await llm.suggestVisitorReplyTo(greeting);
-          if (reply.length > 0 && isFreshSession() && visitorQuery.value.length === 0) {
-            visitorQuery.value = reply;
-          }
-        } catch {
-          visitorQuery.value = STATIC_VISITOR_REPLIES[Date.now() % STATIC_VISITOR_REPLIES.length] as string;
-        }
-      } else {
-        visitorQuery.value = STATIC_VISITOR_REPLIES[Date.now() % STATIC_VISITOR_REPLIES.length] as string;
-      }
-    }
-  })();
+  runnerMachine.dispatch({ 'type': 'submit' });
+  isRunning.value       = true;
+  terminalVariant.value = 'pending';
+  trace.value           = [];
+  await dagGraph.value?.reset();
+  memoryTick.value++;
+  logger.clear();
+  logger.info(`resuming from checkpoint at node: ${restored.cursor}`);
+
+  const runId = restored.state.runId !== ''
+    ? restored.state.runId
+    : (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+      ? crypto.randomUUID()
+      : `r-${String(Date.now())}-${String(Math.floor(Math.random() * 1e6))}`;
+
+  const prov = new RdfProvObserver({
+    'store':             memoryStore,
+    'runId':             runId,
+    'dispatcherAgentId': `dispatcher:${activeBackend.value}`,
+  });
+
+  let observer: VueResumeObserver | null = null;
+
+  try {
+    const services = buildServices();
+    const nodes = ArchivistNodes.build(services);
+    const { bookSearchBundle, composeBundle, parentBundle } =
+      ArchivistDagAssembly.populate(nodes, archivistDag, embeddedDagRegistry);
+
+    observer = new VueResumeObserver(logger, session, prov, restored.cursor);
+
+    observer.registerBundle(archivistToolRegistry.bundle());
+    observer.registerBundle(bookSearchBundle);
+    observer.registerBundle(composeBundle);
+    observer.registerBundle(parentBundle);
+
+    activeAbortController = new AbortController();
+    const deadlineMs = overallDeadlineMs();
+
+    await observer.resume(
+      restored.dagName,
+      restored.state,
+      restored.cursor,
+      { 'signal': activeAbortController.signal, 'deadlineMs': deadlineMs },
+    );
+  } catch (error) {
+    conversation.value = [
+      ...conversation.value,
+      {
+        'role': 'archivist',
+        'text': `(error: ${error instanceof Error ? error.message : String(error)})`,
+        'ts': Date.now(),
+      },
+    ];
+  } finally {
+    await observer?.destroy();
+    activeAbortController = null;
+    isRunning.value = false;
+  }
 }
 </script>
 

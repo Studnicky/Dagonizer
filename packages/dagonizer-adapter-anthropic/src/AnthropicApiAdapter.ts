@@ -69,7 +69,6 @@ import { AnthropicModelsResponseValidator } from './AnthropicModelsResponse.js';
 
 const DEFAULT_BASE_URL = 'https://api.anthropic.com';
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01';
-const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 /** Short timeout (ms) for the `GET /v1/models` discovery call. */
 const DISCOVERY_TIMEOUT_MS = 2_000;
@@ -204,10 +203,9 @@ export class AnthropicApiAdapter extends BaseAdapter {
   readonly #apiKey: string;
   readonly #baseUrl: string;
   readonly #anthropicVersion: string;
-  readonly #timeoutMs: number;
 
   constructor(apiKey: string, options: AnthropicApiAdapterOptionsType = {}) {
-    const coreOptions: { model: string; maxAttempts?: number; systemPrompt?: string } = {
+    const coreOptions: { model: string; maxAttempts?: number; systemPrompt?: string; timeoutMs?: number } = {
       'model': options.model ?? 'claude-haiku-4-5',
     };
     if (options.maxAttempts !== undefined) {
@@ -215,6 +213,9 @@ export class AnthropicApiAdapter extends BaseAdapter {
     }
     if (options.systemPrompt !== undefined && options.systemPrompt.length > 0) {
       coreOptions.systemPrompt = options.systemPrompt;
+    }
+    if (options.timeoutMs !== undefined) {
+      coreOptions.timeoutMs = options.timeoutMs;
     }
     super(
       'anthropic',
@@ -225,7 +226,6 @@ export class AnthropicApiAdapter extends BaseAdapter {
     this.#apiKey = apiKey;
     this.#baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
     this.#anthropicVersion = options.anthropicVersion ?? DEFAULT_ANTHROPIC_VERSION;
-    this.#timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   /** True when a non-empty API key was supplied. */
@@ -275,13 +275,6 @@ export class AnthropicApiAdapter extends BaseAdapter {
   protected override async performChat(request: ChatRequestType): Promise<ChatResponseType> {
     const body = this.#composeBody(request);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => { controller.abort(new LlmError('anthropic request timeout', Classifications['TIMEOUT'])); },
-      this.#timeoutMs,
-    );
-    const signal = AbortSignal.any([request.signal, controller.signal]);
-
     let res: Response;
     try {
       res = await fetch(`${this.#baseUrl}/v1/messages`, {
@@ -293,15 +286,15 @@ export class AnthropicApiAdapter extends BaseAdapter {
           'anthropic-dangerous-direct-browser-access': 'true',
         },
         'body': JSON.stringify(body),
-        signal,
+        'signal': request.signal,
       });
     } catch (err) {
-      // Our own timeout/abort reason is already a classified LlmError
-      // (TIMEOUT). Preserve it; only a genuine transport failure is NETWORK.
+      // The base composes the deadline into request.signal before calling
+      // performChat, so an abort reason that is already a classified LlmError
+      // (e.g. TIMEOUT from the base ceiling) is preserved unchanged. A genuine
+      // transport failure maps to NETWORK.
       if (err instanceof LlmError) throw err;
       throw LlmError.ofNetworkError(err);
-    } finally {
-      clearTimeout(timeoutId);
     }
 
     if (!res.ok) {

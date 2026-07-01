@@ -457,10 +457,12 @@ void test('caller system message is not overridden by configured systemPrompt', 
 
 void test('timeoutMs fires and rejects with LlmError from the timeout path', async () => {
   // A fetch stub that never resolves but rejects with signal.reason when the
-  // passed signal fires. The abort reason from the adapter's internal controller
-  // is LlmError('anthropic request timeout', TIMEOUT); the catch block re-throws
-  // the already-classified LlmError unchanged, so the final thrown LlmError has
-  // TIMEOUT classification and a message that includes "timeout".
+  // passed signal fires. The base composes the configured timeoutMs ceiling into
+  // request.signal before calling performChat; the adapter forwards that signal
+  // to fetch. When the ceiling fires the base aborts with
+  // LlmError('anthropic request timeout', TIMEOUT). The catch block preserves an
+  // already-classified LlmError unchanged, so the final thrown error has TIMEOUT
+  // classification and a message that includes "timeout".
   globalThis.fetch = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const signal = init?.signal;
     return new Promise<Response>((_resolve, reject) => {

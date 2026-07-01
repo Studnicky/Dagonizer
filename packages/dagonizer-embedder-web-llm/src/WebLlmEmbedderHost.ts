@@ -1,10 +1,10 @@
 /**
  * WebLlmEmbedderHost: JSON Schema 2020-12 descriptions of the dynamically-
- * imported `@mlc-ai/web-llm` ESM module and the embedding engine it creates,
- * plus the entity-narrowing interfaces that supply the callable signatures
- * the schema cannot express.
+ * imported bundled npm `@mlc-ai/web-llm` module and the embedding engine it
+ * creates, plus the entity-narrowing interfaces that supply the callable
+ * signatures the schema cannot express.
  *
- * The dynamic `import()` of the WebLLM bundle is a foreign boundary: the
+ * The dynamic `import()` of the WebLLM module is a foreign boundary: the
  * resolved module is `unknown` until validated. JSON Schema has no
  * `function` type keyword, so `WebLlmEmbedderModuleSchema` asserts only that
  * the imported module exposes `CreateMLCEngine`, and
@@ -24,9 +24,6 @@
 import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 import { Validator } from '@studnicky/dagonizer/validation';
 import type { FromSchema } from 'json-schema-to-ts';
-
-/** CDN ESM URL for the `@mlc-ai/web-llm` bundle. No npm dependency needed. */
-export const WEBLLM_ESM = 'https://esm.run/@mlc-ai/web-llm';
 
 export const WebLlmEmbedderEngineSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer-embedder-web-llm/WebLlmEmbedderEngine',
