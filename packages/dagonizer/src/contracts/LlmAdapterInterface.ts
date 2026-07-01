@@ -11,9 +11,11 @@
 import type { AdapterCapabilitiesType } from '../entities/adapter/AdapterCapabilities.js';
 import type { ChatRequestType } from '../entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../entities/adapter/ChatResponse.js';
+import type { ChatStreamChunkType } from '../entities/adapter/ChatStreamChunk.js';
 import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 
 import type { AbortableOptionsType } from './AbortableOptionsType.js';
+import type { StreamSinkInterface } from './StreamSinkInterface.js';
 
 /** Implemented by every LLM provider adapter. */
 export interface LlmAdapterInterface {
@@ -33,6 +35,26 @@ export interface LlmAdapterInterface {
   listModels(options?: AbortableOptionsType): Promise<readonly LlmModelType[]>;
   /** Send a chat request to the provider and resolve its response. */
   chat(request: ChatRequestType): Promise<ChatResponseType>;
+  /**
+   * Stream a chat request: push incremental text deltas to `sink` as the
+   * response is generated, and resolve with the fully assembled response.
+   *
+   * The default `BaseAdapter` implementation is buffered — it calls the
+   * provider once via `chat()` and pushes a single chunk with the complete
+   * text — so every existing adapter satisfies this contract without change.
+   * Concrete streaming adapters override `performChatStream` to emit real
+   * per-token deltas.
+   *
+   * Streaming is single-attempt: unlike `chat()`, it is NOT retry-wrapped,
+   * because retrying a partially-emitted stream would double-emit deltas.
+   * It is still abort+timeout bounded — a hung stream settles within the
+   * adapter's configured deadline.
+   *
+   * Sink delivery is best-effort: a rejecting `sink.push()` never fails the
+   * call. The resolved `ChatResponseType` is authoritative regardless of
+   * sink health.
+   */
+  chatStream(request: ChatRequestType, sink: StreamSinkInterface<ChatStreamChunkType>): Promise<ChatResponseType>;
   /**
    * Bring up any per-session state (model download, websocket handshake).
    * Adapters that don't need a session implement a no-op; `BaseAdapter`

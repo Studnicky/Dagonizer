@@ -10,6 +10,7 @@
     "@studnicky/dagonizer-adapter-ollama": "workspace:^",
     "@studnicky/dagonizer-embedder-ollama": "workspace:^",
     "@studnicky/dagonizer-executor-node": "workspace:^",
+    "@studnicky/dagonizer-patterns-graph": "workspace:^",
     "@studnicky/dagonizer-patterns-rag": "workspace:^"
   },
   "devDependencies": {

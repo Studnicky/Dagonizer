@@ -19,20 +19,32 @@
  * taxonomy.
  */
 
+import type { StreamSinkInterface } from '@studnicky/dagonizer';
 import type {
   ChatMessageType,
   ChatRequestType,
   ChatResponseType,
+  ChatStreamChunkType,
   ToolCallType,
   ToolChoiceType,
   ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ModelCost, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import {
+  BaseAdapter,
+  ChatResponseMessageBuilder,
+  ChatStreamChunkBuilder,
+  Classifications,
+  DEFAULT_MAX_ATTEMPTS,
+  LlmError,
+  ModelCost,
+  SseLineParser,
+  ZERO_TOKEN_USAGE,
+} from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import { GeminiModelsResponseValidator } from './GeminiModelsResponse.js';
-import type { GeminiResponseBodyType } from './GeminiResponseBody.js';
-import { geminiResponseBodyValidator } from './GeminiResponseBody.js';
+import type { GeminiErrorFrameType, GeminiResponseBodyType } from './GeminiResponseBody.js';
+import { geminiErrorFrameValidator, geminiResponseBodyValidator } from './GeminiResponseBody.js';
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 /** Short timeout for model discovery — no payload, just a list response. */
@@ -167,6 +179,28 @@ export class GeminiApiAdapter extends BaseAdapter {
     return this.#decodeResponse(rawBody);
   }
 
+  /**
+   * Streaming override: POSTs `streamGenerateContent?alt=sse` (same body as
+   * `performChat`, reused via `#composeBody`) and drains the SSE body through
+   * `SseLineParser`, pushing one `ChatStreamChunkType` per non-empty text
+   * delta. Gemini's SSE frames carry no `event:` line and no `[DONE]`
+   * sentinel — each `data:` frame is a full (partial) `generateContent`
+   * response body, so the streamed chunks are decoded through the same
+   * `geminiResponseBodyValidator` the buffered path uses. Single-attempt (no
+   * retry), matching `chatStream`'s contract.
+   *
+   * Tool-turns fall back to the buffered default (`super.performChatStream`):
+   * Gemini's function-call parts arrive fully formed rather than as
+   * incremental deltas, so streaming brings no benefit for tool turns.
+   */
+  protected override async performChatStream(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    if (request.tools.length > 0) return super.performChatStream(request, sink);
+    return this.#sendStreamRequest(request, sink);
+  }
+
   #composeBody(request: ChatRequestType): Record<string, unknown> {
     const generationConfig: Record<string, unknown> = {
       'temperature': request.temperature,
@@ -212,19 +246,171 @@ export class GeminiApiAdapter extends BaseAdapter {
         text += part.text;
       }
     }
-    const finishReason = toolCalls.length > 0
-      ? 'tool_call'
-      : candidate?.finishReason === 'MAX_TOKENS' ? 'length' : 'stop';
     return {
       'message': ChatResponseMessageBuilder.from(text, toolCalls),
-      'finishReason': finishReason,
-      'usage': payload.usageMetadata !== undefined
-        ? {
-          'promptTokens':     payload.usageMetadata.promptTokenCount   ?? 0,
-          'completionTokens': payload.usageMetadata.candidatesTokenCount ?? 0,
-        }
-        : ZERO_TOKEN_USAGE,
+      'finishReason': this.#mapFinishReason(candidate?.finishReason, toolCalls.length > 0),
+      'usage': this.#toUsage(payload.usageMetadata),
     };
+  }
+
+  /**
+   * Shared finish-reason mapping between the buffered and streamed decode
+   * paths: a non-empty tool-call set always wins, `MAX_TOKENS` maps to
+   * `length`, everything else maps to `stop`.
+   */
+  #mapFinishReason(rawFinishReason: string | undefined, hasToolCalls: boolean): ChatResponseType['finishReason'] {
+    if (hasToolCalls) return 'tool_call';
+    return rawFinishReason === 'MAX_TOKENS' ? 'length' : 'stop';
+  }
+
+  /** Shared token-usage construction between the buffered and streamed decode paths. */
+  #toUsage(usageMetadata: GeminiResponseBodyType['usageMetadata']): ChatResponseType['usage'] {
+    return usageMetadata !== undefined
+      ? {
+        'promptTokens':     usageMetadata.promptTokenCount   ?? 0,
+        'completionTokens': usageMetadata.candidatesTokenCount ?? 0,
+      }
+      : ZERO_TOKEN_USAGE;
+  }
+
+  async #sendStreamRequest(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    const url = `${ENDPOINT}/${encodeURIComponent(this.model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(this.#apiKey)}`;
+    const body = this.#composeBody(request);
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        'method':  'POST',
+        'headers': { 'content-type': 'application/json' },
+        'body':    JSON.stringify(body),
+        'signal':  request.signal,
+      });
+    } catch (err) {
+      if (err instanceof LlmError) throw err;
+      throw LlmError.ofNetworkError(err);
+    }
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new LlmError(`Gemini REST ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, { 'body': text }));
+    }
+    if (res.body === null) {
+      throw new LlmError('Gemini API: streamed response has no body', Classifications['NETWORK']);
+    }
+
+    return this.#drainStream(res.body, sink, request);
+  }
+
+  /**
+   * Drain the `streamGenerateContent` SSE body: each frame's `data:` payload
+   * is a full (partial) `generateContent` response, decoded through the same
+   * `geminiResponseBodyValidator` the buffered path uses. Text deltas are
+   * pushed to the sink as they arrive and accumulated for the final assembled
+   * response; `finishReason` and `usageMetadata` are last-seen-wins since
+   * Gemini emits them once, near the end of the stream.
+   *
+   * A mid-stream `error` frame (quota, safety block, …) is detected by
+   * `#decodeStreamChunk` and thrown as a classified `LlmError` rather than
+   * decoded as an empty success chunk. The drain loop itself is wrapped so
+   * an abort/read failure never escapes as a raw `DOMException`: an abort of
+   * `request.signal` rethrows the composed abort reason (already an
+   * `LlmError` when it originates from `BaseAdapter.withDeadline`'s deadline
+   * timer), and any other read failure is classified through the same
+   * network-error path `performChat` uses.
+   */
+  async #drainStream(
+    stream: ReadableStream<Uint8Array>,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+    request: ChatRequestType,
+  ): Promise<ChatResponseType> {
+    let text = '';
+    let rawFinishReason: string | undefined;
+    let usageMetadata: GeminiResponseBodyType['usageMetadata'];
+
+    try {
+      for await (const frame of SseLineParser.linesOf(stream)) {
+        if (frame.data.length === 0) continue;
+        const chunk = this.#decodeStreamChunk(frame.data);
+        const candidate = chunk.candidates?.[0];
+        const parts = candidate?.content?.parts ?? [];
+        let delta = '';
+        for (const part of parts) {
+          if (part.text !== undefined) delta += part.text;
+        }
+        if (delta.length > 0) {
+          text += delta;
+          await this.pushChunk(sink, ChatStreamChunkBuilder.of(delta));
+        }
+        if (candidate?.finishReason !== undefined) rawFinishReason = candidate.finishReason;
+        if (chunk.usageMetadata !== undefined) usageMetadata = chunk.usageMetadata;
+      }
+    } catch (err) {
+      if (request.signal.aborted) {
+        const reason: unknown = request.signal.reason;
+        throw reason instanceof LlmError
+          ? reason
+          : new LlmError('Gemini API: stream aborted', Classifications['TIMEOUT'], { 'cause': reason });
+      }
+      if (err instanceof LlmError) throw err;
+      throw LlmError.ofNetworkError(err);
+    }
+
+    return {
+      'message': ChatResponseMessageBuilder.from(text, []),
+      'finishReason': this.#mapFinishReason(rawFinishReason, false),
+      'usage': this.#toUsage(usageMetadata),
+    };
+  }
+
+  /**
+   * Parse one SSE `data:` line's JSON payload. Probes for Gemini's error
+   * envelope (`{"error":{"code","message","status"}}`) BEFORE the permissive
+   * success-body validator — `GeminiResponseBodySchema` carries no top-level
+   * `required` and `additionalProperties: true`, so an error frame would
+   * otherwise validate as a legal empty success chunk. A matched error frame
+   * is classified through the same `LlmError.classifyHttp` path `performChat`
+   * uses (its `code` doubles as an HTTP-shaped status). SCHEMA_VIOLATION on
+   * malformed JSON or an unrecognized structure.
+   */
+  #decodeStreamChunk(raw: string): GeminiResponseBodyType {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (cause) {
+      throw new LlmError(
+        `Gemini API: malformed stream chunk — ${raw.slice(0, 120)}`,
+        Classifications['SCHEMA_VIOLATION'],
+        { cause },
+      );
+    }
+    if (geminiErrorFrameValidator.is(parsed)) {
+      throw this.#toStreamError(parsed);
+    }
+    if (!geminiResponseBodyValidator.is(parsed)) {
+      throw new LlmError(
+        'Gemini API: streamed chunk schema violation — unexpected structure',
+        Classifications['SCHEMA_VIOLATION'],
+      );
+    }
+    return parsed;
+  }
+
+  /**
+   * Classify a mid-stream Gemini error envelope. `error.code` is an
+   * HTTP-shaped status (`429`, `403`, …) so it routes through the shared
+   * `LlmError.classifyHttp` classifier the buffered path's non-2xx branch
+   * uses; an envelope with no `code` (never observed in practice, but the
+   * schema does not require it) falls back to `UNKNOWN`.
+   */
+  #toStreamError(frame: GeminiErrorFrameType): LlmError {
+    const message = frame.error.message ?? 'Gemini API: streamed error';
+    const classification = frame.error.code !== undefined
+      ? LlmError.classifyHttp(frame.error.code, { 'body': message })
+      : Classifications['UNKNOWN'];
+    return new LlmError(`Gemini API stream error: ${message}`, classification);
   }
 
   #toGeminiContent(message: ChatMessageType): Record<string, unknown> {

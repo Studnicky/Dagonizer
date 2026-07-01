@@ -21,6 +21,8 @@ import type { OpenAiModelsResponseType } from '../entities/adapter/OpenAiModelsR
 import { OpenAiModelsResponseSchema } from '../entities/adapter/OpenAiModelsResponse.js';
 import type { OpenAiResponseBodyType } from '../entities/adapter/OpenAiResponseBody.js';
 import { OpenAiResponseBodySchema } from '../entities/adapter/OpenAiResponseBody.js';
+import type { OpenAiStreamChunkType } from '../entities/adapter/OpenAiStreamChunk.js';
+import { OpenAiStreamChunkSchema } from '../entities/adapter/OpenAiStreamChunk.js';
 import { TextChannelToolCallEnvelopeSchema } from '../entities/adapter/TextChannelToolCallEnvelope.js';
 import type { TextChannelToolCallEnvelopeType } from '../entities/adapter/TextChannelToolCallEnvelope.js';
 import { CheckpointDataSchema } from '../entities/checkpoint/CheckpointData.js';
@@ -253,6 +255,7 @@ export class Validator {
   static readonly llmModel: EntityValidatorInterface<LlmModelType> = Validator.compileNamed('LlmModel', LlmModelSchema);
   static readonly openAiModelsResponse: EntityValidatorInterface<OpenAiModelsResponseType> = Validator.compileNamed('OpenAiModelsResponse', OpenAiModelsResponseSchema);
   static readonly openAiResponseBody: EntityValidatorInterface<OpenAiResponseBodyType> = Validator.compileNamed('OpenAiResponseBody', OpenAiResponseBodySchema);
+  static readonly openAiStreamChunk: EntityValidatorInterface<OpenAiStreamChunkType> = Validator.compileNamed('OpenAiStreamChunk', OpenAiStreamChunkSchema);
   static readonly textChannelToolCallEnvelope: EntityValidatorInterface<TextChannelToolCallEnvelopeType> = Validator.compileNamed('TextChannelToolCallEnvelope', TextChannelToolCallEnvelopeSchema);
 
   // Constant enum schemas

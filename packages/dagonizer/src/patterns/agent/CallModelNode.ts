@@ -13,11 +13,16 @@
  * `'error'` on failure.
  */
 
+import { LlmError } from '../../adapter/LlmError.js';
+import { RoutingStreamSink } from '../../adapter/RoutingStreamSink.js';
 import type { LlmAdapterInterface } from '../../contracts/LlmAdapterInterface.js';
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
+import { NullStreamSink } from '../../contracts/NullStreamSink.js';
+import type { StreamSinkInterface } from '../../contracts/StreamSinkInterface.js';
 import { ScalarNode } from '../../core/ScalarNode.js';
 import type { ChatRequestType } from '../../entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../../entities/adapter/ChatResponse.js';
+import type { RoutedChatStreamChunkType } from '../../entities/adapter/RoutedChatStreamChunk.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
 import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
@@ -29,8 +34,28 @@ export abstract class CallModelNode<
 > extends ScalarNode<TState, 'text' | 'tools' | 'mixed' | 'error'> {
   readonly outputs = ['text', 'tools', 'mixed', 'error'] as const;
 
-  constructor(protected readonly llm: LlmAdapterInterface) {
+  /**
+   * Bound per node INSTANCE, but every chunk that reaches it is
+   * self-describing: `executeOne` wraps `this.sink` in a fresh
+   * `RoutingStreamSink` per execution, stamping each chunk with
+   * `routeKey(state)` and the `{dagName, nodeName}` source. One shared sink
+   * — for example a `StreamChannel` feeding a routing DAG that scatters by
+   * `routeKey` — correctly demultiplexes concurrent runs on a single node
+   * instance; no per-run node instance or dispatcher is needed.
+   */
+  protected readonly sink: StreamSinkInterface<RoutedChatStreamChunkType>;
+
+  constructor(
+    protected readonly llm: LlmAdapterInterface,
+    /**
+     * `sink`: bound per node INSTANCE (see the field doc above). Chunks
+     * forwarded to it are routed (tagged with `routeKey` + `source`), so one
+     * shared sink safely demultiplexes concurrent runs.
+     */
+    options: { sink?: StreamSinkInterface<RoutedChatStreamChunkType> } = {},
+  ) {
     super();
+    this.sink = options.sink ?? new NullStreamSink<RoutedChatStreamChunkType>();
   }
 
   override get outputSchema(): Record<'text' | 'tools' | 'mixed' | 'error', SchemaObjectType> {
@@ -48,6 +73,16 @@ export abstract class CallModelNode<
    */
   protected resolveAdapter(_state: TState, _context: NodeContextType): LlmAdapterInterface {
     return this.llm;
+  }
+
+  /**
+   * The demultiplexing key for this run, read from per-execution state (e.g.
+   * a run/session/conversation id). Default `''` — a single unrouted stream.
+   * A subclass streaming concurrent runs on a shared node instance overrides
+   * this to return a per-run key from `state`.
+   */
+  protected routeKey(_state: TState): string {
+    return '';
   }
 
   /** Read the prepared chat request from state. */
@@ -70,18 +105,21 @@ export abstract class CallModelNode<
     try {
       const adapter = this.resolveAdapter(state, context);
       const request = this.getRequest(state, context);
-      const response = await adapter.chat(request);
+      const source = { 'dagName': context.dagName, 'nodeName': context.nodeName };
+      const routed = RoutingStreamSink.of(this.sink, this.routeKey(state), source);
+      const response = await adapter.chatStream(request, routed);
       this.storeResponse(state, response, context);
       return NodeOutputBuilder.of(response.message.variant);
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
+      const recoverable = cause instanceof LlmError ? cause.classification.retryable : true;
       return NodeOutputBuilder.of('error', {
         'errors': [
           NodeErrorBuilder.from(
             'modelCallFailed',
             error.message,
             'CallModelNode.executeOne',
-            true,
+            recoverable,
             new Date().toISOString(),
           ),
         ],

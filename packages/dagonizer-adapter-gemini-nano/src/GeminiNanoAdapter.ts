@@ -18,13 +18,15 @@
  * `finally` to release the on-device GPU buffer.
  */
 
+import type { StreamSinkInterface } from '@studnicky/dagonizer';
 import type {
   ChatRequestType,
   ChatResponseType,
+  ChatStreamChunkType,
   ErrorClassificationType,
   ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, ChatStreamChunkBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import type {
@@ -169,6 +171,91 @@ export class GeminiNanoAdapter extends BaseAdapter {
       return {
         'message': ChatResponseMessageBuilder.from(text, toolCalls),
         'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
+        'usage': ZERO_TOKEN_USAGE,
+      };
+    } finally {
+      session.destroy();
+    }
+  }
+
+  protected override async performChatStream(request: ChatRequestType, sink: StreamSinkInterface<ChatStreamChunkType>): Promise<ChatResponseType> {
+    // Tool turns still go through the JSON-coercion path (responseConstraint +
+    // ToolCallCodec.decode); there is no streamed variant of that shape, so
+    // the base's default buffered performChatStream (which calls this.chat())
+    // handles it.
+    if (request.tools.length > 0) {
+      return super.performChatStream(request, sink);
+    }
+
+    const lm = GeminiNanoAdapter.languageModel();
+    if (lm === undefined) {
+      throw new LlmError('window.LanguageModel is not present', Classifications['MODEL_NOT_FOUND']);
+    }
+
+    const systemPrompt = this.#collapseSystemMessages(request);
+    const userPrompt = this.#collapseUserMessages(request);
+
+    const createOptions = systemPrompt === ''
+      ? { 'signal': request.signal }
+      : { 'initialPrompts': [{ 'role': 'system' as const, 'content': systemPrompt }], 'signal': request.signal };
+
+    let rawSession: unknown;
+    try {
+      rawSession = await lm.create(createOptions);
+    } catch (err) {
+      throw this.#classifyNanoError(err);
+    }
+    const session = languageModelSessionValidator.validate(rawSession);
+    try {
+      let accumulated = '';
+      // The Prompt API gives no contract on whether `promptStreaming` yields
+      // CUMULATIVE chunks (each chunk is the full text so far) or INCREMENTAL
+      // chunks (each chunk is only the new text). Deciding per-chunk via
+      // `chunk.startsWith(accumulated)` is unsound: `accumulated` only grows,
+      // so any cumulative chunk that is not a monotonic prefix extension of
+      // the previous one (e.g. a momentary repeat of a shorter prefix) fails
+      // the check and gets wrongly appended, corrupting the output. Decide
+      // the mode ONCE from the first two non-empty chunks, then apply it
+      // consistently for the rest of the stream.
+      let mode: 'cumulative' | 'incremental' | undefined;
+      try {
+        const stream = session.promptStreaming(userPrompt, { 'signal': request.signal });
+        for await (const chunk of stream) {
+          if (request.signal.aborted) {
+            throw new LlmError('stream aborted', Classifications['TIMEOUT']);
+          }
+          if (chunk === '') continue;
+          let delta: string;
+          if (accumulated === '') {
+            delta = chunk;
+            accumulated = chunk;
+          } else if (mode === undefined) {
+            mode = chunk.startsWith(accumulated) ? 'cumulative' : 'incremental';
+            if (mode === 'cumulative') {
+              delta = chunk.slice(accumulated.length);
+              accumulated = chunk;
+            } else {
+              delta = chunk;
+              accumulated += chunk;
+            }
+          } else if (mode === 'cumulative') {
+            delta = chunk.slice(accumulated.length);
+            accumulated = chunk;
+          } else {
+            delta = chunk;
+            accumulated += chunk;
+          }
+          if (delta !== '') {
+            await this.pushChunk(sink, ChatStreamChunkBuilder.of(delta));
+          }
+        }
+      } catch (err) {
+        throw this.#classifyNanoError(err);
+      }
+      const text = accumulated.trim();
+      return {
+        'message': ChatResponseMessageBuilder.from(text, []),
+        'finishReason': 'stop',
         'usage': ZERO_TOKEN_USAGE,
       };
     } finally {

@@ -16,6 +16,10 @@
 
 ## [unreleased]
 
+### Minor Changes
+
+- `GeminiApiAdapter` overrides `performChatStream` with real token streaming: it calls the `streamGenerateContent` endpoint and drains the SSE body through the shared `SseLineParser`, pushing one `ChatStreamChunkType` per non-empty text delta on the caller's sink (matching `chatStream`'s contract). A request carrying tools still falls back to the buffered default (`super.performChatStream`).
+
 ### Patch Changes
 
 - Add a consumer-configurable `systemPrompt` option, forwarded to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one, no-op when empty). Lets a consumer frame persona/format once at construction instead of hand-prepending a system message to every call.

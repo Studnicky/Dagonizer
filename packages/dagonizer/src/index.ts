@@ -125,6 +125,14 @@ export {
   ExecutionResponseSchema,
   DAGHandoffSchema,
   JsonValue,
+  ChatStreamChunkBuilder,
+  ChatStreamChunkSchema,
+  RoutedChatStreamChunkBuilder,
+  RoutedChatStreamChunkSchema,
+  ReasoningStepBuilder,
+  ReasoningStepSchema,
+  ReasoningTraceItemBuilder,
+  ReasoningTraceItemSchema,
 } from './entities/index.js';
 export type {
   BackoffStrategyType,
@@ -160,6 +168,10 @@ export type {
   ExecutorIntermediateType,
   ExecutionRequestType,
   ExecutionResponseType,
+  ChatStreamChunkType,
+  RoutedChatStreamChunkType,
+  ReasoningStepType,
+  ReasoningTraceItemType,
 } from './entities/index.js';
 export {
   BridgeMessageSchema,
@@ -204,6 +216,7 @@ export type { InMemoryChannelOptionsType } from './channels/index.js';
 export { StreamChannel, StreamCursor } from './channels/index.js';
 export type { StreamChannelInterface, StreamChannelOptionsType, StreamCursorOptionsType } from './channels/index.js';
 export type { StreamSinkInterface, StreamProducerInterface, ResumableStreamProducerInterface } from './contracts/index.js';
+export { NullStreamSink } from './contracts/index.js';
 
 // =============================================================================
 // CONTAINER
@@ -258,6 +271,7 @@ export { BaseLlmService } from './adapter/BaseLlmService.js';
 // =============================================================================
 
 export {
+  AgentTraceProducer,
   AppendAssistantNode,
   BuildChatRequestNode,
   BuildToolWorksetsNode,

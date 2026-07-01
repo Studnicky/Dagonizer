@@ -30,7 +30,7 @@
  * Output route is always 'ranked'. mergeCandidates then takes the top-K.
  */
 
-import { NodeErrorBuilder, NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import { NodeErrorBuilder, NodeOutputBuilder, ReasoningStepBuilder, ScalarNode } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
@@ -248,6 +248,7 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
         top3First !== undefined && top3Third !== undefined &&
         (top3First.score - top3Third.score) <= TIE_WINDOW;
 
+      let llmTiebreakApplied = false;
       if (needsTiebreak) {
         try {
           const tiebreakCandidates = top3.map((s) => s.candidate);
@@ -266,6 +267,7 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
           // Defensive: if the LLM dropped one (schema drift), fall back.
           if (reorderedTop.length === 3) {
             scored.splice(0, 3, ...reorderedTop);
+            llmTiebreakApplied = true;
           }
         } catch {
           // Salvage: the tiebreak call failed; keep the deterministic order.
@@ -288,6 +290,13 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
         };
       });
       state.candidates = ranked;
+
+      state.reasoning = [
+        ...state.reasoning,
+        llmTiebreakApplied
+          ? ReasoningStepBuilder.action('rankCandidates.llmTiebreak', { candidateCount: top3.length })
+          : ReasoningStepBuilder.thought('ranked candidates by deterministic composite score (no LLM tiebreak needed)'),
+      ];
 
       state.clearAttempts(context.nodeName);
       return NodeOutputBuilder.of('ranked');

@@ -85,10 +85,13 @@ import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
 import type {
   ChatRequestType,
   ChatResponseType,
+  ChatStreamChunkType,
   ToolCallType,
 } from '@studnicky/dagonizer/adapter';
+import { ChatStreamChunkBuilder } from '@studnicky/dagonizer/adapter';
 import type { NodeContextType } from '@studnicky/dagonizer/entities';
 import { NodeStateBase } from '@studnicky/dagonizer';
+import type { StreamSinkInterface } from '@studnicky/dagonizer';
 import type { ToolCallScatterItemType } from '@studnicky/dagonizer/patterns';
 
 // Minimal state for the factory stubs — never used at runtime, only types.
@@ -170,6 +173,16 @@ const _nullLlm: LlmAdapterInterface = {
   'capabilities': { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
   async chat(_r: ChatRequestType): Promise<ChatResponseType> {
     return { 'message': { 'variant': 'text', 'content': '' }, 'finishReason': 'stop', 'usage': { 'promptTokens': 0, 'completionTokens': 0 } };
+  },
+  async chatStream(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    const response = await this.chat(request);
+    if (response.message.variant === 'text') {
+      await sink.push(ChatStreamChunkBuilder.of(response.message.content));
+    }
+    return response;
   },
   async connect():    Promise<void>              { /* no-op */ },
   async disconnect(): Promise<void>              { /* no-op */ },

@@ -16,12 +16,15 @@
  */
 
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { StreamSinkInterface } from '@studnicky/dagonizer';
 import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
 import type {
   ChatRequestType,
   ChatResponseType,
+  ChatStreamChunkType,
   ToolCallType,
 } from '@studnicky/dagonizer/adapter';
+import { ChatStreamChunkBuilder } from '@studnicky/dagonizer/adapter';
 import {
   AppendAssistantNode,
   BuildChatRequestNode,
@@ -86,6 +89,18 @@ class StubLlmAdapter implements LlmAdapterInterface {
       'finishReason': 'stop',
       'usage':        { 'promptTokens': 10, 'completionTokens': 8 },
     };
+  }
+
+  async chatStream(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    // STUB: buffered default — one full chat() call, one pushed chunk.
+    const response = await this.chat(request);
+    if (response.message.variant === 'text') {
+      await sink.push(ChatStreamChunkBuilder.of(response.message.content));
+    }
+    return response;
   }
 
   async connect():    Promise<void>              { /* no-op */ }

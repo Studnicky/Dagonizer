@@ -28,6 +28,7 @@ export { MonadicNode } from '../core/MonadicNode.js';
 
 export {
   AgentBuilder,
+  AgentTraceProducer,
   AppendAssistantNode,
   BuildChatRequestNode,
   BuildToolWorksetsNode,

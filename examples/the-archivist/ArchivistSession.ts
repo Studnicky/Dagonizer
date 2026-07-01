@@ -279,7 +279,7 @@ class SessionObserver extends ObservedDag<ArchivistState> {
       this.#shownErrorCount = state.errors.length;
     }
 
-    this.#prov.recordNodeEnd(nodeName, output ?? undefined);
+    this.#prov.recordNodeEnd(nodeName, output ?? undefined, state.reasoning);
     this.#sink.pumpNodeEnd(nodeName, output, state, placementPath);
   }
 
@@ -623,6 +623,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       'store':             this.store,
       'runId':             runId,
       'dispatcherAgentId': `dispatcher:${this.activeBackend ?? 'injected'}`,
+      'alreadyPersistedReasoning': [],
     });
 
     const rig = this.buildRig(llm, this.embedder);
@@ -728,13 +729,24 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     this.#isRunning = true;
     this.#abortController = new AbortController();
 
-    const runId = ArchivistSession.#generateRunId();
+    // Park/resume is the SAME logical run: the checkpointed `state.runId`
+    // carries forward so the prov graph continues instead of restarting.
+    // `state.reasoning` already holds every step persisted before the park
+    // (via the pre-park observer's writes); it becomes the resume
+    // observer's high-water mark so those steps are never re-persisted and
+    // the `wasInformedBy` chain continues from the true last entity rather
+    // than starting a disconnected one.
+    if (state.runId === '') {
+      throw new Error('ArchivistSession.resumeRun: restored state has no runId; cannot resume the PROV chain');
+    }
+    const runId = state.runId;
     StateProjection.clear(runId, this.store);
 
     const prov = new RdfProvObserver({
       'store':             this.store,
       'runId':             runId,
       'dispatcherAgentId': `dispatcher:${this.activeBackend ?? 'injected'}`,
+      'alreadyPersistedReasoning': state.reasoning,
     });
 
     const rig = this.buildRig(llm, this.embedder);

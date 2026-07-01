@@ -20,7 +20,7 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices, ClassifiedIntent } from '../services.ts';
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import { NodeOutputBuilder, ReasoningStepBuilder, ScalarNode } from '@studnicky/dagonizer';
 import type { NodeContextType, NodeOutputType, SchemaObjectType } from '@studnicky/dagonizer';
 
 type IntentOutput =
@@ -92,6 +92,7 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput>
         return NodeOutputBuilder.of('salvage');
       }
       state.intent = intent;
+      state.reasoning = [...state.reasoning, ReasoningStepBuilder.thought(`classified intent as '${intent}'`)];
       state.clearAttempts(context.nodeName);
       // Map every ClassifiedIntent variant to its node output port.
       // 'search', 'describe' are general on-topic intents that route through

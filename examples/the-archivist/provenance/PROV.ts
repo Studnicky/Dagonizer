@@ -64,6 +64,16 @@ export const DAG_ACT = {
   "LlmCall":       MemoryStore.dagIri('LlmCall'),
 } as const;
 
+/** Custom dag: subclasses of prov:Entity. */
+export const DAG_ENT = {
+  "Reasoning": MemoryStore.dagIri('Reasoning'),
+} as const;
+
+/** Custom dag: predicate carrying a reasoning step's `kind` discriminant. */
+export const DAG_PRED = {
+  "reasoningKind": MemoryStore.dagIri('reasoningKind'),
+} as const;
+
 /** Per-run IRI factories. */
 export const ProvIris = {
   activity(runId: string, name: string, ts: number): NamedNode {
@@ -74,5 +84,14 @@ export const ProvIris = {
   },
   entity(entityVariant: string, key: string): NamedNode {
     return MemoryStore.iri(`urn:dagonizer:entity:${entityVariant}:${encodeURIComponent(key)}`);
+  },
+  /**
+   * Deterministic per-(run, index) IRI — no timestamp component, so a
+   * resumed run can reconstruct the IRI of an already-persisted reasoning
+   * entity from `runId` + `index` alone without re-deriving its wall-clock
+   * persist time.
+   */
+  reasoning(runId: string, index: number): NamedNode {
+    return MemoryStore.iri(`urn:dagonizer:reasoning:${runId}:${String(index)}`);
   },
 };
