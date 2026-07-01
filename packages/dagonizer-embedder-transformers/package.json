@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-embedder-transformers",
-  "version": "0.28.1",
+  "version": "0.29.0",
   "description": "Embedder plugin for @studnicky/dagonizer: TransformersEmbedder (in-browser embeddings via transformers.js / ONNX Runtime, WASM + WebGPU).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
