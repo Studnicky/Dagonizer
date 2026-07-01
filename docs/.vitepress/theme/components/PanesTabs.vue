@@ -13,7 +13,7 @@
  * even when the visitor is looking at another tab.
  */
 
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 
 interface TabDef {
   readonly key: string;
@@ -31,6 +31,14 @@ const props = defineProps<{
 }>();
 
 const activeKey = ref<string>(props.defaultKey ?? props.tabs[0]?.key ?? '');
+
+// `defaultKey` doubles as a controlled active-tab input: a parent that binds a
+// reactive ref (e.g. auto-switching to the Operator pane when a flow parks)
+// drives the active tab by updating it. A static literal never fires this, so
+// uncontrolled callers are unaffected.
+watch(() => props.defaultKey, (key) => {
+  if (key !== undefined && key.length > 0) activeKey.value = key;
+});
 
 function activate(key: string): void { activeKey.value = key; }
 

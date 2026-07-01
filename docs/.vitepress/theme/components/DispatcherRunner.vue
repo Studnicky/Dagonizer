@@ -8,7 +8,7 @@
  *   │ <single-column on narrow; two-column at ≥720px container width>      │
  *   ├──────────────────────────┬───────────────────────────────────────────┤
  *   │ LEFT COL                 │ RIGHT COL                                 │
- *   │ tabs: Stream | Config    │ tabs: Operator | DAG | Trace              │
+ *   │ tabs: Customer | Operator │ tabs: DAG | Config | Trace               │
  *   └──────────────────────────┴───────────────────────────────────────────┘
  *
  * Pure observer: lifecycle hooks toggle CSS classes on cytoscape nodes via
@@ -16,14 +16,15 @@
  *
  * HITL flow:
  *   execute() → ParkForOperatorNode parks → lifecycle = awaiting-input
- *   Right pane auto-switches to Operator tab.
+ *   Left pane auto-switches to the Operator tab (leftActiveKey).
  *   Operator types response → click "Send response".
  *   Checkpoint.capture → restoreState → set response → dispatcher.resume().
  *
  * LLM backend: BackendPicker (same as ArchivistRunner). Detection runs at mount.
  * When no backend is available, the no-model gate shows BackendPicker inline.
- * classify-message and ai-compose call the LLM; trolley switch and escalation
- * routing are deterministic overrides on top of the LLM decision.
+ * classify-message resolves the intent (on-device embedder by default, or the
+ * LLM in `llm` mode); ai-compose calls the LLM. The trolley switch and
+ * escalation routing are deterministic overrides on top of that decision.
  */
 
 import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue';
@@ -92,7 +93,7 @@ const logger           = new DomConsoleLogger({ 'events': logEvents.value });
 const dispatcherDag    = ref<DAGType>(DispatcherBundleFactory.structure());
 const dagGraph         = ref<InstanceType<typeof DagGraph> | null>(null);
 const streamRef        = ref<HTMLOListElement | null>(null);
-const rightActiveKey   = ref<'operator' | 'dag' | 'trace'>('dag');
+const leftActiveKey    = ref<'customer' | 'operator'>('customer');
 const terminalVariant  = ref<'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out'>('pending');
 const escalationReason = ref('');
 
@@ -130,10 +131,12 @@ const DISPATCHER_NODE_VARIANTS: Readonly<Record<string, string>> = {
 /**
  * Dispatch map: log a detail line after key nodes complete.
  */
-const DISPATCHER_NODE_TRACE: Readonly<Record<string, (state: DispatcherState) => void>> = {
-  'classify-message': (state) => {
-    if (state.escalationReason.length > 0) {
+const DISPATCHER_NODE_TRACE: Readonly<Record<string, (state: DispatcherState, output: string | null) => void>> = {
+  'classify-message': (state, output) => {
+    if (output === 'escalate') {
       logger.info(`classify: escalate — ${state.escalationReason}`);
+    } else if (output === 'off-topic') {
+      logger.info('classify: off-topic — declining (unrelated to the bookstore)');
     } else {
       logger.info('classify: routine — AI will compose response');
     }
@@ -187,7 +190,7 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
     trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'variant': 'end' }];
     dagGraph.value?.setCompleted(fullId);
     if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
-    DISPATCHER_NODE_TRACE[nodeName]?.(state);
+    DISPATCHER_NODE_TRACE[nodeName]?.(state, output);
   }
 
   protected override onError(
@@ -234,8 +237,8 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
       parkedExecution = { 'result': result, 'dagName': dagName, 'cursor': result.parked.cursor };
       // Expose only the cursor to Vue so the template can react.
       parked.value = { 'dagName': dagName, 'cursor': result.parked.cursor };
-      // Auto-switch right pane to Operator tab.
-      rightActiveKey.value = 'operator';
+      // Auto-switch left pane to Operator tab.
+      leftActiveKey.value = 'operator';
       logger.info(`parked at cursor: ${result.parked.cursor} · key: ${result.parked.correlationKey}`);
     } else {
       parkedExecution = null;
@@ -247,18 +250,20 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
 }
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
-const leftTabs = computed(() => [
-  { 'key': 'stream', 'label': 'Stream', 'badge': String(conversation.value.length || ''), 'tone': 'default' as const },
-  { 'key': 'config', 'label': 'Config', 'badge': humanMode.value ? 'HUMAN' : '', 'tone': (humanMode.value ? 'warn' : 'default') as 'warn' | 'default' },
-]);
-
-const rightTabs = computed(() => {
-  const traceCount = trace.value.length + logEvents.value.length;
+const leftTabs = computed(() => {
   const operatorBadge = parked.value !== null ? '!' : '';
   const operatorTone = parked.value !== null ? 'warn' : 'default';
   return [
+    { 'key': 'customer', 'label': 'Customer', 'badge': String(conversation.value.length || ''), 'tone': 'default' as const },
     { 'key': 'operator', 'label': 'Operator', 'badge': operatorBadge, 'tone': operatorTone as 'warn' | 'default' },
+  ];
+});
+
+const rightTabs = computed(() => {
+  const traceCount = trace.value.length + logEvents.value.length;
+  return [
     { 'key': 'dag',      'label': 'DAG',      'badge': isRunning.value ? 'live' : '', 'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
+    { 'key': 'config', 'label': 'Config', 'badge': humanMode.value ? 'HUMAN' : '', 'tone': (humanMode.value ? 'warn' : 'default') as 'warn' | 'default' },
     { 'key': 'trace',    'label': 'Trace',    'badge': String(traceCount || ''), 'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
   ];
 });
@@ -404,6 +409,11 @@ async function ask(): Promise<void> {
   terminalVariant.value = 'pending';
   parked.value = null;
   trace.value = [];
+  // Seed the stream with THIS run's customer message so it shows immediately and
+  // the Operator pane quotes the message actually being escalated. Each run uses
+  // a fresh DispatcherState (empty conversation until send-response/decline
+  // appends), so without this the pane would surface a prior run's stale turn.
+  conversation.value = [{ 'role': 'customer', 'text': queryText, 'ts': Date.now() }];
   logger.clear();
   logger.info(`run start — message: "${queryText}" · humanMode: ${String(humanMode.value)}`);
 
@@ -485,7 +495,7 @@ async function sendOperatorResponse(): Promise<void> {
     isRunning.value = false;
     parkedExecution = null;
     parked.value = null;
-    if (rightActiveKey.value === 'operator') rightActiveKey.value = 'dag';
+    if (leftActiveKey.value === 'operator') leftActiveKey.value = 'customer';
   }
 }
 
@@ -555,10 +565,10 @@ function fillPrompt(text: string): void {
           <span :class="['dr-badge', `dr-badge--${lifecycleBadge}`]">{{ lifecycleBadge }}</span>
         </div>
 
-        <PanesTabs :tabs="leftTabs" default-key="stream" class="dr-tabs">
+        <PanesTabs :tabs="leftTabs" :default-key="leftActiveKey" class="dr-tabs">
 
-          <!-- Stream tab: conversation history -->
-          <template #stream>
+          <!-- Customer tab: conversation history -->
+          <template #customer>
             <div class="dr-stream-pane">
               <ol v-if="conversation.length > 0" ref="streamRef" class="dr-conversation">
                 <li
@@ -612,6 +622,84 @@ function fillPrompt(text: string): void {
                   </button>
                 </div>
               </div>
+            </div>
+          </template>
+
+          <!-- Operator tab -->
+          <template #operator>
+            <div class="dr-operator-pane">
+              <template v-if="isAwaiting">
+                <div class="dr-operator-alert">
+                  <span class="dr-operator-alert-icon">!</span>
+                  <span class="dr-operator-alert-text">Customer request requires operator response</span>
+                </div>
+                <div v-if="escalationReason.length > 0" class="dr-operator-reason">
+                  <span class="dr-operator-reason-label">Reason:</span>
+                  {{ escalationReason }}
+                </div>
+                <div v-if="conversation.length > 0" class="dr-operator-last-msg">
+                  <span class="dr-operator-msg-label">Customer said:</span>
+                  <blockquote class="dr-operator-msg-quote">
+                    {{ conversation[conversation.length - 1]?.text ?? '' }}
+                  </blockquote>
+                </div>
+                <textarea
+                  v-model="operatorInput"
+                  class="dr-textarea dr-operator-textarea"
+                  rows="4"
+                  placeholder="Type operator response here…"
+                />
+                <button
+                  type="button"
+                  class="dr-btn dr-btn--primary"
+                  :disabled="operatorInput.trim().length === 0 || isRunning"
+                  @click="sendOperatorResponse"
+                >
+                  {{ isRunning ? 'Resuming…' : 'Send response' }}
+                </button>
+              </template>
+              <template v-else>
+                <div class="dr-operator-idle">
+                  <p class="dr-operator-idle-text">
+                    AI handling — no operator action needed.
+                  </p>
+                  <p class="dr-operator-idle-sub" v-if="conversation.length === 0">
+                    Send a customer message to watch the classifier route it.
+                  </p>
+                  <p class="dr-operator-idle-sub" v-else>
+                    Try an escalation keyword ("refund", "billing") or flip the trolley switch to HUMAN GATE.
+                  </p>
+                </div>
+              </template>
+            </div>
+          </template>
+
+        </PanesTabs>
+      </div>
+
+      <!-- RIGHT: DAG | Config | Trace -->
+      <div class="dr-col dr-col--right">
+        <div class="dr-col-head">
+          <span class="dr-label">Operator / Graph</span>
+          <span class="dr-hint">{{ isAwaiting ? 'awaiting operator' : isRunning ? 'running…' : 'ready' }}</span>
+        </div>
+
+        <PanesTabs
+          :tabs="rightTabs"
+          default-key="dag"
+          class="dr-tabs dr-tabs--right"
+        >
+
+          <!-- DAG tab: live execution graph -->
+          <template #dag>
+            <div class="dr-graph-pane">
+              <DagGraph
+                ref="dagGraph"
+                :dag="dispatcherDag"
+                :node-variants="DISPATCHER_NODE_VARIANTS"
+                :expand-all="false"
+                aria-label="Dispatcher DAG live execution"
+              />
             </div>
           </template>
 
@@ -716,84 +804,6 @@ function fillPrompt(text: string): void {
                 />
               </section>
 
-            </div>
-          </template>
-
-        </PanesTabs>
-      </div>
-
-      <!-- RIGHT: Operator | DAG | Trace -->
-      <div class="dr-col dr-col--right">
-        <div class="dr-col-head">
-          <span class="dr-label">Operator / Graph</span>
-          <span class="dr-hint">{{ isAwaiting ? 'awaiting operator' : isRunning ? 'running…' : 'ready' }}</span>
-        </div>
-
-        <PanesTabs
-          :tabs="rightTabs"
-          :default-key="rightActiveKey"
-          class="dr-tabs dr-tabs--right"
-        >
-
-          <!-- Operator tab -->
-          <template #operator>
-            <div class="dr-operator-pane">
-              <template v-if="isAwaiting">
-                <div class="dr-operator-alert">
-                  <span class="dr-operator-alert-icon">!</span>
-                  <span class="dr-operator-alert-text">Customer request requires operator response</span>
-                </div>
-                <div v-if="escalationReason.length > 0" class="dr-operator-reason">
-                  <span class="dr-operator-reason-label">Reason:</span>
-                  {{ escalationReason }}
-                </div>
-                <div v-if="conversation.length > 0" class="dr-operator-last-msg">
-                  <span class="dr-operator-msg-label">Customer said:</span>
-                  <blockquote class="dr-operator-msg-quote">
-                    {{ conversation[conversation.length - 1]?.text ?? '' }}
-                  </blockquote>
-                </div>
-                <textarea
-                  v-model="operatorInput"
-                  class="dr-textarea dr-operator-textarea"
-                  rows="4"
-                  placeholder="Type operator response here…"
-                />
-                <button
-                  type="button"
-                  class="dr-btn dr-btn--primary"
-                  :disabled="operatorInput.trim().length === 0 || isRunning"
-                  @click="sendOperatorResponse"
-                >
-                  {{ isRunning ? 'Resuming…' : 'Send response' }}
-                </button>
-              </template>
-              <template v-else>
-                <div class="dr-operator-idle">
-                  <p class="dr-operator-idle-text">
-                    AI handling — no operator action needed.
-                  </p>
-                  <p class="dr-operator-idle-sub" v-if="conversation.length === 0">
-                    Send a customer message to watch the classifier route it.
-                  </p>
-                  <p class="dr-operator-idle-sub" v-else>
-                    Try an escalation keyword ("refund", "billing") or flip the trolley switch to HUMAN GATE.
-                  </p>
-                </div>
-              </template>
-            </div>
-          </template>
-
-          <!-- DAG tab: live execution graph -->
-          <template #dag>
-            <div class="dr-graph-pane">
-              <DagGraph
-                ref="dagGraph"
-                :dag="dispatcherDag"
-                :node-variants="DISPATCHER_NODE_VARIANTS"
-                :expand-all="false"
-                aria-label="Dispatcher DAG live execution"
-              />
             </div>
           </template>
 
