@@ -26,20 +26,22 @@
  * routing are deterministic overrides on top of the LLM decision.
  */
 
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
+import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
 import { DispatcherState } from '../../../../examples/the-dispatcher/DispatcherState.ts';
 import type { ConversationTurnType } from '../../../../examples/the-dispatcher/DispatcherState.ts';
 import { DispatcherBundleFactory } from '../../../../examples/the-dispatcher/dag.ts';
 import type { DispatcherServices } from '../../../../examples/the-dispatcher/services.ts';
 import { DispatcherLlmClient } from '../../../../examples/the-dispatcher/providers/DispatcherLlmClient.ts';
+import { DispatcherIntentClassifier } from '../../../../examples/the-dispatcher/providers/DispatcherIntentClassifier.ts';
 
-import { ApiKeyStore, BackendMatrix, BaseLlmClient, MobileDetection, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
-import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
+import { ApiKeyStore, BackendMatrix, BaseLlmClient, EmbedderProvisioner, MobileDetection, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
+import type { BackendAvailability, EmbedderProvisionOptionsType, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import { ObservedDag } from '../../../../examples/the-archivist/ObservedDag.ts';
 import { DomConsoleLogger } from '../../../../examples/the-archivist/logger/DomConsoleLogger.ts';
 import type { LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
@@ -61,6 +63,7 @@ const savedBackend = typeof localStorage !== 'undefined'
   ? (localStorage.getItem('dagonizer-active-backend') as ProviderId | null)
   : null;
 const activeBackend = ref<ProviderId | null>(savedBackend);
+const warmState = ref<'idle' | 'warming' | 'ready' | 'unavailable'>('idle');
 const noModel  = ref(false);
 const isMobile = ref(false);
 const apiKeys  = ref<Partial<Record<ProviderId, string>>>(ApiKeyStore.load());
@@ -77,6 +80,11 @@ const customerQuery    = ref('');
 const operatorInput    = ref('');
 const isRunning        = ref(false);
 const humanMode        = ref(false);
+const classificationMode = ref<'embedder' | 'llm'>('embedder');
+// shallowRef holds opaque service instances by reference: deep reactivity
+// strips the nominal private-field type off class instances (mirrors ArchivistRunner).
+const embedder         = shallowRef<EmbedderInterface | null>(null);
+const dispatcherIntent = shallowRef<DispatcherIntentClassifier | null>(null);
 const conversation     = ref<ConversationTurnType[]>([]);
 const trace            = ref<TraceEvent[]>([]);
 const logEvents        = ref<LogEvent[]>([]);
@@ -145,8 +153,16 @@ const DISPATCHER_NODE_TRACE: Readonly<Record<string, (state: DispatcherState) =>
  * (trace feed, DAG graph, conversation, awaiting-input tab auto-switch).
  */
 class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
-  constructor(log: DomConsoleLogger) {
+  readonly #services: DispatcherServices;
+
+  constructor(log: DomConsoleLogger, services: DispatcherServices) {
     super(log);
+    this.#services = services;
+  }
+
+  protected override onFlowStart(dagName: string): void {
+    super.onFlowStart(dagName);
+    void this.#services.llm.warm().catch(() => { /* best-effort: never block or fail a flow start */ });
   }
 
   protected override onNodeStart(
@@ -274,12 +290,35 @@ watch(activeBackend, (id) => {
   }
 });
 
+watch(activeBackend, () => { void warmActiveBackend(); });
+
 watch(apiKeys, () => { ApiKeyStore.save(apiKeys.value); }, { 'deep': true });
 watch(ollamaModel, (next) => { OllamaModels.saveModel(next); });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 onMounted(async () => {
   isMobile.value = MobileDetection.isLikelyMobile();
+
+  // Provision the on-device embedder independently of LLM backend detection:
+  // classification can use it as soon as it's ready, regardless of which (or
+  // whether any) LLM backend is later selected.
+  try {
+    const base = import.meta.env.BASE_URL;
+    const assetPaths: EmbedderProvisionOptionsType = {
+      'transformersLocalModelPath': `${base}@transformers-embedder/models/`,
+      'transformersWasmPaths':      `${base}@transformers-embedder/ort/`,
+    };
+    const result = await EmbedderProvisioner.provision(assetPaths);
+    if (result.embedder !== null) {
+      embedder.value = result.embedder;
+      dispatcherIntent.value = await DispatcherIntentClassifier.create(result.embedder);
+      logger.info(`embedder provisioned: ${result.embedder.displayName}`);
+    } else {
+      logger.warn('no embedder available; classification will use the LLM path');
+    }
+  } catch (err) {
+    logger.warn(`embedder provisioning failed: ${err instanceof Error ? err.message : String(err)}; falling back to LLM classification`);
+  }
 
   backends.value = await BackendMatrix.detect({
     'apiKeys': apiKeys.value,
@@ -311,6 +350,8 @@ onMounted(async () => {
       );
     }
   }
+
+  void warmActiveBackend();
 });
 
 // ── Services factory ──────────────────────────────────────────────────────────
@@ -323,7 +364,34 @@ function buildServices(): DispatcherServices {
   // ProviderInstantiator returns BaseLlmClient instances; access the underlying
   // adapter so DispatcherLlmClient can drive the chat calls directly.
   if (!(client instanceof BaseLlmClient)) throw new Error('unexpected client type');
-  return { 'llm': new DispatcherLlmClient(client.adapter) };
+  return { 'llm': new DispatcherLlmClient(client.adapter), 'intent': dispatcherIntent.value };
+}
+
+/**
+ * Fires the underlying model's warm-up as soon as a backend is selected, so
+ * cold-load latency is paid during read/type time instead of on the first
+ * real classify()/compose() call. Strictly best-effort: instantiation can
+ * throw synchronously (missing API key, unsupported client type), so the
+ * whole body is guarded — a warm-up failure never escapes to the caller.
+ */
+async function warmActiveBackend(): Promise<void> {
+  if (activeBackend.value === null || warmState.value === 'warming') return;
+  warmState.value = 'warming';
+  try {
+    const client = ProviderInstantiator.instantiate(activeBackend.value, {
+      'apiKeys': apiKeys.value,
+      'model':   resolvedModel.value,
+    });
+    if (!(client instanceof BaseLlmClient)) {
+      warmState.value = 'unavailable';
+      return;
+    }
+    await new DispatcherLlmClient(client.adapter).warm();
+    warmState.value = 'ready';
+  } catch (err) {
+    warmState.value = 'unavailable';
+    logger.warn(`model warm-up failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 // ── Execute ───────────────────────────────────────────────────────────────────
@@ -346,10 +414,11 @@ async function ask(): Promise<void> {
   const bundle = DispatcherBundleFactory.create(services);
 
   const state = new DispatcherState();
-  state.message   = queryText;
-  state.humanMode = humanMode.value;
+  state.message           = queryText;
+  state.humanMode         = humanMode.value;
+  state.classificationMode = classificationMode.value;
 
-  const dispatcher = new DispatcherBrowserObserver(logger);
+  const dispatcher = new DispatcherBrowserObserver(logger, services);
   dispatcher.registerBundle(bundle);
 
   activeAbortController = new AbortController();
@@ -400,7 +469,7 @@ async function sendOperatorResponse(): Promise<void> {
 
   restored.state.response = responseText;
 
-  const dispatcher = new DispatcherBrowserObserver(logger);
+  const dispatcher = new DispatcherBrowserObserver(logger, services);
   dispatcher.registerBundle(bundle);
 
   activeAbortController = new AbortController();
@@ -571,6 +640,43 @@ function fillPrompt(text: string): void {
                 </p>
                 <p class="dr-config-hint" v-else>
                   The classifier routes routine queries to AI; escalation keywords force the operator.
+                </p>
+              </section>
+
+              <!-- Classification mode switch -->
+              <section class="dr-config-section">
+                <h5 class="dr-config-head">Classification mode</h5>
+                <label class="dr-trolley">
+                  <span :class="['dr-trolley-label', classificationMode === 'embedder' ? 'dr-trolley-label--active' : '']">EMBEDDER</span>
+                  <button
+                    type="button"
+                    :class="['dr-trolley-track', classificationMode === 'llm' ? 'dr-trolley-track--human' : '']"
+                    :aria-pressed="classificationMode === 'llm'"
+                    aria-label="Toggle classification mode"
+                    @click="classificationMode = classificationMode === 'embedder' ? 'llm' : 'embedder'"
+                  >
+                    <span class="dr-trolley-thumb" />
+                  </button>
+                  <span :class="['dr-trolley-label', classificationMode === 'llm' ? 'dr-trolley-label--active' : '']">LLM</span>
+                </label>
+                <p class="dr-config-hint" v-if="classificationMode === 'embedder'">
+                  On-device cosine-similarity triage against three intent anchors — instant,
+                  no LLM round-trip after the embedder loads once.
+                </p>
+                <p class="dr-config-hint" v-else>
+                  Generative classification via the LLM adapter — slower, since every message
+                  loads/queries the model.
+                </p>
+                <p class="dr-config-hint" v-if="dispatcherIntent === null">
+                  Embedder unavailable in this session — "embedder" mode transparently falls
+                  back to the LLM classifier for every message.
+                </p>
+                <p class="dr-status-line">
+                  {{ dispatcherIntent !== null ? dispatcherIntent.embedderDisplayName : 'embedder unavailable' }}
+                  · mode: {{ classificationMode }}
+                </p>
+                <p class="dr-status-line" v-if="activeBackend !== null">
+                  model: {{ warmState === 'warming' ? 'warming…' : warmState === 'ready' ? 'ready' : warmState === 'unavailable' ? 'unavailable' : 'idle' }}
                 </p>
               </section>
 
@@ -1056,6 +1162,14 @@ function fillPrompt(text: string): void {
 .dr-trolley-track--human .dr-trolley-thumb {
   transform: translateX(1.5rem);
   background: var(--dagonizer-brand3);
+}
+
+/* ── Status line (embedder / mode readout) ──────────────────────────────── */
+.dr-status-line {
+  margin: 0;
+  font-size: 0.7rem;
+  font-family: var(--vp-font-family-mono);
+  color: var(--vp-c-text-3);
 }
 
 /* ── Example prompts ─────────────────────────────────────────────────────── */

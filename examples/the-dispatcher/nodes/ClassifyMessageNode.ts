@@ -1,17 +1,28 @@
 /**
- * ClassifyMessageNode: LLM-powered triage with deterministic overrides.
+ * ClassifyMessageNode: mode-switched triage with LLM fallback.
  *
  * Routes each inbound customer message to one of three outputs:
  *   'routine'   — AI can handle; routes to ai-compose.
  *   'escalate'  — human operator needed; routes to park-for-operator.
  *   'off-topic' — blank or unrelated; routes to decline.
  *
- * Fast paths (no LLM):
+ * Fast paths (win regardless of `state.classificationMode`):
  *   Trolley switch (state.humanMode === true) forces escalation on every
- *   message before any LLM call is made.
+ *   message before any classification is attempted.
  *   Empty message → off-topic immediately.
  *
- * LLM error handling:
+ * Mode dispatch (`state.classificationMode`):
+ *   `'llm'`      — runs `services.llm.classify` exclusively; `services.intent`
+ *                  is never consulted.
+ *   `'embedder'` — when `services.intent` is provisioned, classifies via
+ *                  cosine similarity against the three intent anchors — no
+ *                  LLM round-trip, so trivial messages never risk the
+ *                  adapter timeout. If the embedder is confident (above its
+ *                  floor), its verdict routes directly. If the embedder is
+ *                  unavailable (`services.intent === null`) or unconfident
+ *                  (returns `null`), the node falls back to the LLM path.
+ *
+ * LLM fallback and error handling:
  *   If the LLM call throws, the node escalates with a safety reason rather
  *   than surfacing an unhandled error — a conservative fallback that keeps
  *   customers in the flow.
@@ -54,7 +65,22 @@ export class ClassifyMessageNode extends ScalarNode<DispatcherState, 'routine' |
       return NodeOutputBuilder.of('off-topic');
     }
 
-    // LLM classification with conservative escalation on error.
+    if (state.classificationMode === 'llm') {
+      return this.classifyViaLlm(state, context);
+    }
+
+    // Embedder mode: cosine similarity against the intent anchors, no LLM
+    // round-trip, no timeout exposure — falls back to the LLM path below
+    // when the embedder is unavailable or unconfident.
+    if (this.#services.intent !== null) {
+      const result = await this.#services.intent.classify(state.message);
+      if (result !== null) return this.route(state, result.intent);
+    }
+    return this.classifyViaLlm(state, context);
+  }
+
+  /** LLM classification with conservative escalation on error. */
+  private async classifyViaLlm(state: DispatcherState, context: NodeContextType) {
     let intent: 'routine' | 'escalate' | 'off-topic';
     try {
       intent = await this.#services.llm.classify(state.message, state.conversation, context.signal);
@@ -62,7 +88,11 @@ export class ClassifyMessageNode extends ScalarNode<DispatcherState, 'routine' |
       state.escalationReason = 'LLM unavailable; escalated for safety';
       return NodeOutputBuilder.of('escalate');
     }
+    return this.route(state, intent);
+  }
 
+  /** Shared routing for both the embedder and LLM classification paths. */
+  private route(state: DispatcherState, intent: 'routine' | 'escalate' | 'off-topic') {
     if (intent === 'escalate') {
       state.escalationReason = 'Agent determined this message requires human review.';
       return NodeOutputBuilder.of('escalate');

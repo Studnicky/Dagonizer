@@ -40,6 +40,7 @@ import { OllamaApiAdapter }  from '@studnicky/dagonizer-adapter-ollama';
 import { DispatcherState }         from './the-dispatcher/DispatcherState.js';
 import { DispatcherBundleFactory } from './the-dispatcher/dag.js';
 import { DispatcherLlmClient }     from './the-dispatcher/providers/DispatcherLlmClient.js';
+import type { DispatcherServices } from './the-dispatcher/services.js';
 
 // ---------------------------------------------------------------------------
 // Env helpers
@@ -82,10 +83,13 @@ const adapter = await cascade.select();
 process.stdout.write(`\nLLM backend: ${adapter.id} (${adapter.displayName})\n`);
 
 // ---------------------------------------------------------------------------
-// Services: wire the LLM adapter into the Dispatcher service bag.
+// Services: wire the LLM adapter into the Dispatcher service bag. This CLI demo
+// runs without an on-device embedder, so `intent` is null — ClassifyMessageNode
+// classifies via the LLM. The browser runner provisions an embedder and passes
+// a DispatcherIntentClassifier here instead.
 // ---------------------------------------------------------------------------
 
-const services = { 'llm': new DispatcherLlmClient(adapter) };
+const services: DispatcherServices = { 'llm': new DispatcherLlmClient(adapter), 'intent': null };
 
 // ---------------------------------------------------------------------------
 // Setup: one dispatcher instance, shared across all three scenarios.

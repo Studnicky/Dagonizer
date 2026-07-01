@@ -80,4 +80,12 @@ export class DispatcherLlmClient extends BaseLlmService implements DispatcherLlm
     const msg = await this.chat(request);
     return BaseLlmService.contentOf(msg).trim();
   }
+
+  async warm(signal?: AbortSignal): Promise<void> {
+    try {
+      await this.text('ok', { 'maxTokens': 1, 'temperature': 0, ...(signal !== undefined ? { 'signal': signal } : {}) });
+    } catch {
+      // Best-effort: a warm-up failure must never surface to the caller.
+    }
+  }
 }
