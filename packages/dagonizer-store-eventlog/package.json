@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-store-eventlog",
-  "version": "0.29.1",
+  "version": "0.30.0",
   "description": "Append-only event-log Store implementation for @studnicky/dagonizer. Every set appends an event; get returns the latest value by walking the log in reverse. Optional file persistence via node:fs/promises.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

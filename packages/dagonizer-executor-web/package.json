@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-executor-web",
-  "version": "0.29.1",
+  "version": "0.30.0",
   "description": "Browser isolating executor backend for @studnicky/dagonizer: Web Worker pools over the bridge protocol.",
   "private": false,
   "license": "MIT",
@@ -36,7 +36,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@studnicky/dagonizer": "workspace:>=0.29.1"
+    "@studnicky/dagonizer": "workspace:>=0.30.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

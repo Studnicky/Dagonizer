@@ -1,5 +1,11 @@
 # @studnicky/dagonizer-adapter-web-llm
 
+## 0.30.0
+
+### Minor Changes
+
+- 4234bc4: `WebLlmAdapter` overrides `performChatStream` to surface real MLC engine token deltas on the caller's sink as `ChatStreamChunkType` pushes, instead of discarding them into a single accumulated string; `usage` is captured from the engine's final chunk when available.
+
 ## 0.29.1
 
 ## 0.29.0

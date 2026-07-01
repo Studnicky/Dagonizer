@@ -419,7 +419,7 @@ importers:
   packages/dagonizer-executor-node:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:>=0.29.1
+        specifier: workspace:>=0.30.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -444,7 +444,7 @@ importers:
   packages/dagonizer-executor-web:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:>=0.29.1
+        specifier: workspace:>=0.30.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -509,7 +509,7 @@ importers:
   packages/dagonizer-store-indexeddb:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:>=0.29.1
+        specifier: workspace:>=0.30.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -537,7 +537,7 @@ importers:
   packages/dagonizer-store-opfs:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:>=0.29.1
+        specifier: workspace:>=0.30.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -562,7 +562,7 @@ importers:
   packages/dagonizer-store-sqlite:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:>=0.29.1
+        specifier: workspace:>=0.30.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -587,7 +587,7 @@ importers:
   packages/dagonizer-store-webstorage:
     dependencies:
       '@studnicky/dagonizer':
-        specifier: workspace:>=0.29.1
+        specifier: workspace:>=0.30.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -615,7 +615,7 @@ importers:
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
       '@studnicky/dagonizer-book-entities':
-        specifier: workspace:>=0.29.1
+        specifier: workspace:>=0.30.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
@@ -631,7 +631,7 @@ importers:
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
       '@studnicky/dagonizer-book-entities':
-        specifier: workspace:>=0.29.1
+        specifier: workspace:>=0.30.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
@@ -647,7 +647,7 @@ importers:
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
       '@studnicky/dagonizer-book-entities':
-        specifier: workspace:>=0.29.1
+        specifier: workspace:>=0.30.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':

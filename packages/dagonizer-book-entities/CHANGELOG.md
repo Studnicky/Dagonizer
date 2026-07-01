@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-book-entities
 
+## 0.30.0
+
 ## 0.29.1
 
 ## 0.29.0
