@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-adapter-anthropic",
-  "version": "0.28.1",
+  "version": "0.29.0",
   "description": "LLM adapter plugin for @studnicky/dagonizer: AnthropicApiAdapter.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-store-indexeddb",
-  "version": "0.28.1",
+  "version": "0.29.0",
   "description": "IndexedDB-backed Store for @studnicky/dagonizer — durable default for in-browser HITL/resume.",
   "private": false,
   "license": "MIT",
@@ -36,7 +36,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@studnicky/dagonizer": "workspace:>=0.28.1"
+    "@studnicky/dagonizer": "workspace:>=0.29.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

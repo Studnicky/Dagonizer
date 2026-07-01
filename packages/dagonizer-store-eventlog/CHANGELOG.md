@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-store-eventlog
 
+## 0.29.0
+
 ## 0.28.1
 
 ## 0.28.0
