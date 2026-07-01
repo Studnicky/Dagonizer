@@ -28,7 +28,7 @@
  */
 
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import { NodeOutputBuilder, ReasoningStepBuilder, ScalarNode } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState, ConversationTurn } from '../ArchivistState.ts';
@@ -247,6 +247,12 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
         }
         return NodeOutputBuilder.of('salvage');
       }
+      // A non-terminal `.thought` kind: this draft still has to clear
+      // validate-response, which can route back here on rejection (another
+      // draft, another attempt). `.final` is reserved for the attempt that
+      // is actually accepted, so retries never accumulate multiple 'final'
+      // reasoning steps in the same run.
+      state.reasoning = [...state.reasoning, ReasoningStepBuilder.thought(`composed response for intent '${state.intent}' from ${String(state.shortlist.length)} shortlisted candidates`)];
       state.draft = draft;
       return NodeOutputBuilder.of('drafted');
     } catch (err) {

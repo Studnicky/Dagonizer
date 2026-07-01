@@ -22,7 +22,8 @@
  */
 
 import { Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ModelCost, OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
-import type { ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
+import type { ChatRequestType, ChatResponseType, ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
+import type { StreamSinkInterface } from '@studnicky/dagonizer/contracts';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import { OllamaTagsResponseValidator } from './OllamaTagsResponse.js';
@@ -166,15 +167,38 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
    * with a hint so the error surfaces actionably to the visitor.
    */
   protected override async performChat(request: ChatRequestType): Promise<ChatResponseType> {
+    return this.#withModelNotFoundTranslation(() => super.performChat(request));
+  }
+
+  /**
+   * Applies the same 404 → "model not pulled" translation to the streaming
+   * path as `performChat` applies to the buffered path, so a missing-model
+   * error is identical whether the caller streams or buffers.
+   */
+  protected override async performChatStream(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    return this.#withModelNotFoundTranslation(() => super.performChatStream(request, sink));
+  }
+
+  /**
+   * Run `thunk`, catching a `MODEL_NOT_FOUND`-classified `LlmError` and
+   * re-throwing it with an Ollama-specific `ollama pull <model>` hint. The
+   * model name is extracted from the raw upstream error message when
+   * available, falling back to the adapter's configured `model`. Any other
+   * error is rethrown unchanged.
+   */
+  async #withModelNotFoundTranslation<T>(thunk: () => Promise<T>): Promise<T> {
     try {
-      return await super.performChat(request);
+      return await thunk();
     } catch (err) {
       if (
         err instanceof LlmError &&
         err.classification.reason === 'MODEL_NOT_FOUND'
       ) {
         // Extract the model name from the raw error message when available.
-        const modelMatch = /model ['"]?([^'"]+)['"]? not found/iu.exec(err.message);
+        const modelMatch = /model\s+\\?['"]?([^\\'"]+?)\\?['"]?\s+not found/iu.exec(err.message);
         const modelName = modelMatch?.[1] ?? this.model;
         throw new LlmError(
           `Ollama model '${modelName}' is not installed. Run: ollama pull ${modelName}`,

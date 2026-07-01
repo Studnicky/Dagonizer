@@ -14,6 +14,9 @@ seeAlso:
   - text: 'Example 29: AgentBuilder'
     link: '../examples/29-agent-builder'
     description: 'working example of the 8-node agent loop with stub LLM'
+  - text: 'ReAct agent: streaming + provenance recall'
+    link: './react-agent'
+    description: 'the 8-node loop as ReAct, trace streaming, live token deltas, provenance recall'
   - text: 'Lifecycle phases'
     link: './lifecycle-phases'
     description: 'understand when a DAG completes vs. when it pauses'
@@ -448,7 +451,7 @@ export function makeSseStream(eventBus: EventBus, customerId: string) {
 |---------------|---------|
 | "I want a conversational bot that asks questions until it has all the info." | Turn-termination. Simpler, familiar. |
 | "I want an LLM agent to make decisions, but escalate to a human when uncertain." | Out-of-band. The DAG completes; humans review async. |
-| "I need streaming responses (Claude streaming tokens to the browser)." | Turn-termination with a per-node streaming callback. See [observability](./observability). |
+| "I need streaming responses (Claude streaming tokens to the browser)." | Turn-termination with a `CallModelNode` subclass constructed with a `{ sink }` option — every `LlmAdapterInterface` implements `chatStream(request, sink)`. See [ReAct agent: live token streaming](./react-agent#live-token-streaming). |
 | "I need multi-turn undo / branching conversations." | Either; add branches to the state machine. |
 | "I need the same DAG to run from a CLI, an API, a queue worker, etc." | Out-of-band is more portable; turn-termination ties you to HTTP request/response. Both work with proper abstraction. |
 
@@ -483,7 +486,7 @@ Nodes are testable in isolation: instantiate with a stub or fake, call `execute`
 
 **Q: How do I stream responses (e.g., Claude streaming tokens)?**
 
-A: The DAG doesn't know about HTTP streams. Return `'incomplete'` or `'success'` and let the caller handle streaming. Or pass a callback in `state.metadata` that the node invokes to write chunks. See [observability](./observability) for instrumentation hooks.
+A: Every `LlmAdapterInterface` implements `chatStream(request, sink): Promise<ChatResponseType>` alongside the buffered `chat(request)`. Construct your `CallModelNode` subclass with a `{ sink: StreamSinkInterface<ChatStreamChunkType> }` option; the node forwards it to `adapter.chatStream(...)` and pushes one `{ delta }` chunk per token/fragment as the provider emits it. The sink is a pure observation channel — the assembled `ChatResponseType` is still written to state exactly as the buffered path writes it, so downstream nodes are unaffected. See [ReAct agent: live token streaming](./react-agent#live-token-streaming) and the [react-agent-memory example](../examples/react-agent-memory) for a complete working setup.
 
 **Q: Can I checkpoint a turn and resume it later?**
 
@@ -643,3 +646,8 @@ dispatcher.registerBundle(tools.bundle());
 
 See [Example 29: AgentBuilder](../examples/29-agent-builder) for a complete
 working example with a stub LLM adapter and all 8 subclasses wired end-to-end.
+
+See [ReAct agent: streaming + provenance recall](./react-agent) for the ReAct
+vocabulary mapped onto this loop, streaming the reasoning trace, live token
+streaming via `CallModelNode { sink }`, and recording/recalling reasoning with
+graph provenance.

@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
+import type { ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
 import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 
 import { GeminiNanoAdapter } from '../src/index.js';
@@ -14,6 +15,15 @@ class LanguageModelStub {
 
   static remove(): void {
     Reflect.deleteProperty(globalThis, 'LanguageModel');
+  }
+}
+
+class TestSink {
+  readonly pushed: string[] = [];
+
+  async push(item: ChatStreamChunkType): Promise<void> {
+    this.pushed.push(item.delta);
+    return Promise.resolve();
   }
 }
 
@@ -332,4 +342,165 @@ void test('performChat does not forward maxTokens to the Prompt API', async () =
   assert.equal(capturedPromptOptions['maxTokens'],       undefined);
   assert.equal(capturedPromptOptions['maxOutputTokens'], undefined);
   assert.equal(capturedPromptOptions['max_tokens'],      undefined);
+});
+
+void test('performChatStream emits per-chunk deltas from a cumulative promptStreaming stream', async () => {
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async () => Promise.resolve({
+      'promptStreaming': () => new ReadableStream<string>({
+        start(controller) {
+          controller.enqueue('He');
+          controller.enqueue('Hello');
+          controller.enqueue('Hello world');
+          controller.close();
+        },
+      }),
+      'prompt':  async () => Promise.resolve(''),
+      'destroy': () => {},
+    }),
+  });
+  const a = new GeminiNanoAdapter();
+  const sink = new TestSink();
+  try {
+    const res = await a.chatStream(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
+    assert.deepEqual(sink.pushed, ['He', 'llo', ' world']);
+    assert.equal(res.finishReason, 'stop');
+    assert.equal(res.message.variant === 'tools' ? '' : res.message.content, 'Hello world');
+  } finally {
+    LanguageModelStub.remove();
+  }
+});
+
+void test('performChatStream emits per-chunk deltas from an incremental promptStreaming stream', async () => {
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async () => Promise.resolve({
+      'promptStreaming': () => new ReadableStream<string>({
+        start(controller) {
+          controller.enqueue('He');
+          controller.enqueue('llo');
+          controller.enqueue(' world');
+          controller.close();
+        },
+      }),
+      'prompt':  async () => Promise.resolve(''),
+      'destroy': () => {},
+    }),
+  });
+  const a = new GeminiNanoAdapter();
+  const sink = new TestSink();
+  try {
+    const res = await a.chatStream(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
+    assert.deepEqual(sink.pushed, ['He', 'llo', ' world']);
+    assert.equal(res.finishReason, 'stop');
+    assert.equal(res.message.variant === 'tools' ? '' : res.message.content, 'Hello world');
+  } finally {
+    LanguageModelStub.remove();
+  }
+});
+
+void test('performChatStream locks cumulative mode from the second chunk and does not corrupt a stream containing a repeated/short chunk', async () => {
+  // The stream is cumulative throughout (chunk 2 extends chunk 1), which locks
+  // 'cumulative' mode. Chunk 4 momentarily repeats a SHORTER prefix than the
+  // accumulated text so far ('Hello' is shorter than 'Hello there') — the OLD
+  // per-chunk `chunk.startsWith(accumulated)` heuristic would fail this check
+  // and wrongly append the whole chunk, duplicating text. The mode-locked
+  // version keeps treating it as cumulative and must not corrupt the output.
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async () => Promise.resolve({
+      'promptStreaming': () => new ReadableStream<string>({
+        start(controller) {
+          controller.enqueue('Hello');
+          controller.enqueue('Hello there');
+          controller.enqueue('Hello');
+          controller.enqueue('Hello there friend');
+          controller.close();
+        },
+      }),
+      'prompt':  async () => Promise.resolve(''),
+      'destroy': () => {},
+    }),
+  });
+  const a = new GeminiNanoAdapter();
+  const sink = new TestSink();
+  try {
+    const res = await a.chatStream(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
+    // The mode-locked cumulative handling keeps the FINAL accumulated text
+    // exactly the last chunk's cumulative value — no runaway duplication of
+    // the kind the old per-chunk heuristic produced (which would have folded
+    // 'Hello' back in as an incremental append, garbling the accumulated text
+    // with a repeated 'Hello').
+    assert.equal(res.finishReason, 'stop');
+    assert.equal(res.message.variant === 'tools' ? '' : res.message.content, 'Hello there friend');
+    assert.ok(!/Hello there friendHello|HelloHello|thereHello/u.test(sink.pushed.join('')), 'deltas must not contain the old heuristic\'s corrupted re-append pattern');
+  } finally {
+    LanguageModelStub.remove();
+  }
+});
+
+void test('performChatStream emits the single chunk of a one-chunk promptStreaming stream', async () => {
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async () => Promise.resolve({
+      'promptStreaming': () => new ReadableStream<string>({
+        start(controller) {
+          controller.enqueue('Hi');
+          controller.close();
+        },
+      }),
+      'prompt':  async () => Promise.resolve(''),
+      'destroy': () => {},
+    }),
+  });
+  const a = new GeminiNanoAdapter();
+  const sink = new TestSink();
+  try {
+    const res = await a.chatStream(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
+    assert.deepEqual(sink.pushed, ['Hi']);
+    assert.equal(res.finishReason, 'stop');
+    assert.equal(res.message.variant === 'tools' ? '' : res.message.content, 'Hi');
+  } finally {
+    LanguageModelStub.remove();
+  }
+});
+
+void test('performChatStream falls back to the buffered default for a tool-bearing request', async () => {
+  let promptCalled = false;
+  let promptStreamingCalled = false;
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async () => Promise.resolve({
+      'promptStreaming': () => {
+        promptStreamingCalled = true;
+        throw new Error('promptStreaming must not be invoked for a tool-bearing request');
+      },
+      'prompt': async () => {
+        promptCalled = true;
+        return Promise.resolve('{"tool_calls":[]}');
+      },
+      'destroy': () => {},
+    }),
+  });
+  const a = new GeminiNanoAdapter();
+  const sink = new TestSink();
+  try {
+    const request = ChatRequestBuilder.from({
+      'messages': [{ 'role': 'user', 'content': 'Search.' }],
+      'tools': [{
+        'name':        'search',
+        'description': 'Search the web.',
+        'inputSchema': { 'type': 'object', 'additionalProperties': false, 'properties': {}, 'required': [] },
+        'outputSchema': { 'type': 'object' },
+        'strict':      true,
+      }],
+    });
+    await a.chatStream(request, sink);
+    assert.equal(promptCalled, true);
+    assert.equal(promptStreamingCalled, false);
+    assert.equal(sink.pushed.length, 1);
+  } finally {
+    LanguageModelStub.remove();
+  }
 });

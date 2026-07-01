@@ -17,9 +17,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { LlmAdapterInterface } from '../../src/contracts/LlmAdapterInterface.js';
+import type { StreamSinkInterface } from '../../src/contracts/StreamSinkInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ChatRequestType } from '../../src/entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../../src/entities/adapter/ChatResponse.js';
+import { ChatStreamChunkBuilder } from '../../src/entities/adapter/ChatStreamChunk.js';
+import type { ChatStreamChunkType } from '../../src/entities/adapter/ChatStreamChunk.js';
 import type { ToolCallType } from '../../src/entities/adapter/ToolCall.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
@@ -199,6 +202,16 @@ class LoopFixture {
             'finishReason': 'stop',
             'usage': { 'promptTokens': 1, 'completionTokens': 1 },
           };
+        },
+        async chatStream(
+          req: ChatRequestType,
+          sink: StreamSinkInterface<ChatStreamChunkType>,
+        ): Promise<ChatResponseType> {
+          const response = await this.chat(req);
+          if (response.message.variant === 'text') {
+            await sink.push(ChatStreamChunkBuilder.of(response.message.content));
+          }
+          return response;
         },
         async connect(): Promise<void> { /* no-op */ },
         async disconnect(): Promise<void> { /* no-op */ },

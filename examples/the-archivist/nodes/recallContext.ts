@@ -41,7 +41,8 @@ import type { RecalledContext } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import { BookBuilder } from '../entities/Book.ts';
 import type { CandidateType } from '../entities/Book.ts';
-import { BOOK_NS, GRAPH_MEMORY, MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
+import { BOOK_NS, GRAPH_MEMORY, MemoryStore, PROV_GRAPH_PREFIX, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
+import { DAG_ENT, DAG_PRED, PROV, RDF_TYPE } from '../provenance/PROV.ts';
 import type { ArchivistServices } from '../services.ts';
 import { TextSimilarity } from './textUtils.ts';
 
@@ -58,6 +59,15 @@ const MAX_PRIOR_INTENTS = 5;
 const MAX_RECENT_CANDIDATES = 6;
 const MAX_PRIOR_CANDIDATES_CONTEXT = 5;
 const JACCARD_THRESHOLD_CONTEXT = 0.35;
+const MAX_PRIOR_REASONING = 5;
+
+/** One `dag:Reasoning` entity's recall-relevant fields, keyed for recency ordering. */
+interface ReasoningCandidate {
+  readonly text: string;
+  readonly kind: string;
+  /** ISO-8601 `prov:startedAtTime` value; `''` when the entity predates the field. */
+  readonly startedAt: string;
+}
 
 export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled'> {
   private readonly services: ArchivistServices;
@@ -72,6 +82,28 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled'> {
   constructor(services: ArchivistServices) {
     super();
     this.services = services;
+  }
+
+  /**
+   * Inserts `candidate` into `list` (sorted most-recent-first by
+   * `startedAt`) and trims to `max`, so `list` never grows past `max`
+   * entries — the discovery scan stays bounded instead of materializing
+   * every reasoning entity ever written before capping.
+   */
+  private static insertReasoningCandidate(
+    list: ReasoningCandidate[],
+    candidate: ReasoningCandidate,
+    max: number,
+  ): void {
+    let index = list.length;
+    while (index > 0) {
+      const prev = list[index - 1];
+      if (prev === undefined || prev.startedAt >= candidate.startedAt) break;
+      index -= 1;
+    }
+    if (index >= max) return;
+    list.splice(index, 0, candidate);
+    if (list.length > max) list.length = max;
   }
 
   protected override async executeOne(state: ArchivistState) {
@@ -209,9 +241,62 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled'> {
         'ts':    p.graphIri.replace(STATE_GRAPH_PREFIX, ''),
       }));
 
+    // ── Query 4: prior reasoning steps carried in the PROV graphs ──────────
+    // Discover every prior run's prov graph (excluding the current run's),
+    // then walk the `dag:Reasoning` entities recorded in each and collect
+    // their narrative text (prov:value) and kind (dag:reasoningKind).
+    const currentProvGraphIri = MemoryStore.provGraphIri(state.runId).value;
+    const priorProvGraphs = new Set<string>();
+    for (const row of memory.select({
+      'subject':   '?e',
+      'predicate': RDF_TYPE,
+      'object':    DAG_ENT.Reasoning,
+      'graph':     '?graph',
+    })) {
+      const graphVal = row['graph']?.value;
+      if (graphVal === undefined) continue;
+      if (!graphVal.startsWith(PROV_GRAPH_PREFIX)) continue;
+      if (graphVal === currentProvGraphIri) continue;
+      priorProvGraphs.add(graphVal);
+    }
+
+    // Bounded top-K by `prov:startedAtTime` (most-recent-first): the running
+    // top-`MAX_PRIOR_REASONING` window never grows past that size, so the
+    // scan never materializes an all-reasoning-ever array before capping.
+    const topReasoningCandidates: ReasoningCandidate[] = [];
+
+    for (const graphIri of priorProvGraphs) {
+      const graph = MemoryStore.iri(graphIri);
+
+      const entityRows = memory.select({
+        'subject':   '?e',
+        'predicate': RDF_TYPE,
+        'object':    DAG_ENT.Reasoning,
+        'graph':     graph,
+      });
+      for (const eRow of entityRows) {
+        const eTerm = eRow['e'];
+        if (eTerm === undefined) continue;
+
+        const valueRows     = memory.select({ 'subject': eTerm, 'predicate': PROV.value,            'object': '?v', 'graph': graph });
+        const kindRows      = memory.select({ 'subject': eTerm, 'predicate': DAG_PRED.reasoningKind, 'object': '?k', 'graph': graph });
+        const startedRows   = memory.select({ 'subject': eTerm, 'predicate': PROV.startedAtTime,     'object': '?t', 'graph': graph });
+
+        const text = valueRows[0]?.['v']?.value;
+        const kind = kindRows[0]?.['k']?.value;
+        if (text === undefined || kind === undefined) continue;
+        const startedAt = startedRows[0]?.['t']?.value ?? '';
+
+        RecallContextNode.insertReasoningCandidate(topReasoningCandidates, { text, kind, startedAt }, MAX_PRIOR_REASONING);
+      }
+    }
+
+    const priorReasoning: Array<RecalledContext['priorReasoning'][number]> = topReasoningCandidates
+      .map((c) => ({ 'text': c.text, 'kind': c.kind }));
+
     // ── Build the LLM-ready summary ───────────────────────────────────────
     let summary = '';
-    if (priorIntents.length > 0 || recentCandidates.length > 0) {
+    if (priorIntents.length > 0 || recentCandidates.length > 0 || priorReasoning.length > 0) {
       const parts: string[] = [];
       if (priorIntents.length > 0) {
         const top = priorIntents[0];
@@ -228,6 +313,10 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled'> {
       } else if (recentCandidates.length > 0) {
         const titleList = recentCandidates.slice(0, 3).map((c) => `"${c.book.identity.title}"`).join(', ');
         parts.push(`Recent shortlisted titles: ${titleList}.`);
+      }
+      const topReasoning = priorReasoning[0];
+      if (topReasoning !== undefined) {
+        parts.push(`Prior reasoning: ${topReasoning.text}`);
       }
       summary = parts.join(' ');
     }
@@ -251,6 +340,7 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled'> {
       'priorIntents':        priorIntents,
       'recentCandidates':    recentCandidates,
       'similarPriorQueries': similarPriorQueries,
+      'priorReasoning':      priorReasoning,
       'summary':             summary,
     };
 

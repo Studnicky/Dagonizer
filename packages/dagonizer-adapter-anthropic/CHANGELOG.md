@@ -16,6 +16,10 @@
 
 ## [unreleased]
 
+### Minor Changes
+
+- `AnthropicApiAdapter` overrides `performChatStream` with real token streaming: it POSTs `/v1/messages` with `stream: true` and drains the SSE body through the shared `SseLineParser`, dispatching Anthropic's named events into `ChatStreamChunkType` pushes on the caller's sink as they arrive. A request carrying tools still falls back to the buffered default (`super.performChatStream`) — partial tool-call JSON is unsafe to parse incrementally.
+
 ### Patch Changes
 
 - Add a consumer-configurable `systemPrompt` option, forwarded to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one, no-op when empty). Lets a consumer frame persona/format once at construction instead of hand-prepending a system message to every call.

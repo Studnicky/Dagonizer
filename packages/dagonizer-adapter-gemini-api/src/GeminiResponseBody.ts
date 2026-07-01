@@ -99,3 +99,48 @@ export type GeminiResponseBodyType = FromSchema<typeof GeminiResponseBodySchema>
  */
 export const geminiResponseBodyValidator: EntityValidatorInterface<GeminiResponseBodyType> =
   Validator.compile<GeminiResponseBodyType>(GeminiResponseBodySchema);
+
+/**
+ * Google AI Studio's error envelope: `{"error":{"code":429,"message":"…",
+ * "status":"RESOURCE_EXHAUSTED"}}`. Gemini emits this shape both as an
+ * HTTP-level error body and — critically for `streamGenerateContent` — as a
+ * mid-stream SSE `data:` frame carrying the same top-level `error` field
+ * instead of `candidates`. `GeminiResponseBodySchema` is deliberately
+ * permissive (no top-level `required`, `additionalProperties: true`), so an
+ * error frame validates against it as an empty success chunk unless it is
+ * detected explicitly first.
+ */
+export const GeminiErrorDetailSchema = {
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'properties': {
+    'code': { 'type': 'number' },
+    'message': { 'type': 'string' },
+    'status': { 'type': 'string' },
+  },
+  'additionalProperties': true,
+} as const;
+
+export const GeminiErrorFrameSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer-adapter-gemini-api/GeminiErrorFrame',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['error'],
+  'properties': {
+    'error': GeminiErrorDetailSchema,
+  },
+  'additionalProperties': true,
+} as const;
+
+/** TypeScript type derived from `GeminiErrorFrameSchema` via `json-schema-to-ts`. */
+export type GeminiErrorFrameType = FromSchema<typeof GeminiErrorFrameSchema>;
+
+/**
+ * Validator for Gemini's error envelope, compiled once at module load
+ * through the engine's shared Ajv. `#drainStream` probes each parsed SSE
+ * frame against this validator BEFORE the permissive success-body
+ * validator, so a mid-stream `error` frame is classified and thrown rather
+ * than silently decoded as an empty success chunk.
+ */
+export const geminiErrorFrameValidator: EntityValidatorInterface<GeminiErrorFrameType> =
+  Validator.compile<GeminiErrorFrameType>(GeminiErrorFrameSchema);

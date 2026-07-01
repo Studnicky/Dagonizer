@@ -109,3 +109,10 @@ npx tsx examples/24-llm-adapter.ts
 ```
 
 Ollama must be running and `llama3.2` (or the model you set) must be pulled.
+
+## See also
+
+For live per-token streaming (`chatStream`, a `{ sink }`-configured
+`CallModelNode`, and routing concurrent conversations through one shared
+sink), see [ReAct agent: live token streaming](../guide/react-agent#live-token-streaming)
+and [Reference: Adapters](../reference/adapters).

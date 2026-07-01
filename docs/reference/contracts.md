@@ -12,6 +12,9 @@ seeAlso:
   - text: 'Reference: Store'
     link: './store'
     description: '`Store`, `BaseStore`, `MemoryStore`, `StoreError`'
+  - text: 'Reference: Adapters'
+    link: './adapters'
+    description: 'LlmAdapterInterface implementations, buffered vs. streaming, cascades'
 ---
 
 # Contracts
@@ -364,13 +367,15 @@ import type { GatherExecutionType, GatherRecordType, OutcomeRecordType } from '@
 ## LlmAdapterInterface / LlmClientInterface
 
 ```ts twoslash
-import type { AdapterCapabilitiesType, ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
+import type { AdapterCapabilitiesType, ChatRequestType, ChatResponseType, ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
+import type { StreamSinkInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface LlmAdapterInterface {
   readonly id:           string;
   readonly displayName:  string;
   readonly capabilities: AdapterCapabilitiesType;
   chat(request: ChatRequestType): Promise<ChatResponseType>;
+  chatStream(request: ChatRequestType, sink: StreamSinkInterface<ChatStreamChunkType>): Promise<ChatResponseType>;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   probe(): Promise<boolean>;
@@ -382,6 +387,8 @@ interface LlmClientInterface {
 ```
 
 `LlmAdapterInterface` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@studnicky/dagonizer/adapter` to inherit retry and error classification. `BaseAdapterOptionsType` also carries two cross-cutting options every adapter accepts: `systemPrompt`, a default persona the base injects as the leading system message of any request that carries none (never overriding an explicit system turn), and `timeoutMs` (default `60_000`), a per-request deadline. An expired deadline surfaces as a `TIMEOUT` classification so a cascade falls through instead of hanging. `LlmClientInterface` is the minimal chat surface pattern bases accept — any `LlmAdapterInterface` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapterInterface` directly.
+
+`chat()` is the buffered call: it resolves once with the complete `ChatResponseType`. `chatStream(request, sink)` additionally pushes incremental `ChatStreamChunkType` (`{ delta }`) values to `sink` as the response is generated, while still resolving with the same fully-assembled `ChatResponseType` — the sink is a pure observation channel, not an alternate return path. `BaseAdapter`'s default `performChatStream` is buffered: it calls `chat()` internally and pushes exactly one chunk carrying the full response text, so every adapter satisfies the streaming contract even without a real streaming backend. Anthropic, the Gemini API adapter, and the OpenAI-compatible base (Ollama plus the Groq/Cerebras/Mistral/OpenRouter presets built on it) override `performChatStream` to push real per-token deltas parsed from a server-sent-events response body. `gemini-nano` streams via the in-browser `LanguageModel` session's `promptStreaming()` async iterable; `web-llm` streams via the `@mlc-ai/web-llm` engine's own stream. Every override falls back to the buffered default for tool-bearing requests (`request.tools.length > 0`), because partial tool-call JSON is unsafe to parse mid-stream. `chatStream` is single-attempt — unlike `chat()` it is not retry-wrapped, since retrying a partially-emitted stream would double-emit deltas already delivered — but it is still bounded by the same abort+timeout deadline (`timeoutMs`). `sink.push()` delivery is best-effort: a rejecting sink never fails the call. See [Adapters](./adapters) for the full per-provider streaming reference and [ReAct agent: live token streaming](../guide/react-agent#live-token-streaming) for a working `CallModelNode` + sink example.
 
 ## NodeInvokerInterface
 

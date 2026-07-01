@@ -4,6 +4,8 @@
  * Entities are grouped by domain so each schema and its derived type live
  * together:
  *
+ *   adapter/: LLM chat wire shapes (ChatMessageType, ChatResponseType, ChatStreamChunkType, …)
+ *   agent/: ReasoningStepType, ReasoningTraceItemType (agent reasoning-trace steps)
  *   dag/: DAGType and its node-entry sub-shapes
  *   state-machines/: DAGLifecycleStateType wire shape
  *   node/: NodeUnionType, NodeContextType, NodeOutputType, NodeErrorType, NodeWarningType, NodeResultType, NodeStateDataType
@@ -230,8 +232,14 @@ export type { ChatResponseType } from './adapter/ChatResponse.js';
 export { ChatResponseMessageSchema } from './adapter/ChatResponseMessage.js';
 export type { ChatResponseMessageType } from './adapter/ChatResponseMessage.js';
 
+export { ChatStreamChunkSchema, ChatStreamChunkBuilder } from './adapter/ChatStreamChunk.js';
+export type { ChatStreamChunkType } from './adapter/ChatStreamChunk.js';
+
 export { LlmModelSchema } from './adapter/LlmModel.js';
 export type { LlmModelType } from './adapter/LlmModel.js';
+
+export { RoutedChatStreamChunkSchema, RoutedChatStreamChunkBuilder } from './adapter/RoutedChatStreamChunk.js';
+export type { RoutedChatStreamChunkType } from './adapter/RoutedChatStreamChunk.js';
 
 export { OpenAiModelsResponseSchema } from './adapter/OpenAiModelsResponse.js';
 export type { OpenAiModelsResponseType } from './adapter/OpenAiModelsResponse.js';
@@ -247,6 +255,15 @@ export type { ToolCallType } from './adapter/ToolCall.js';
 
 export { ToolDefinitionSchema } from './adapter/ToolDefinition.js';
 export type { ToolDefinitionType } from './adapter/ToolDefinition.js';
+
+// ---------------------------------------------------------------------------
+// agent (reasoning-trace wire shapes)
+// ---------------------------------------------------------------------------
+
+export { ReasoningStepSchema, ReasoningStepBuilder } from './agent/ReasoningStep.js';
+export type { ReasoningStepType } from './agent/ReasoningStep.js';
+export { ReasoningTraceItemSchema, ReasoningTraceItemBuilder } from './agent/ReasoningTraceItem.js';
+export type { ReasoningTraceItemType } from './agent/ReasoningTraceItem.js';
 
 // ---------------------------------------------------------------------------
 // json primitives

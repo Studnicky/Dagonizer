@@ -12,6 +12,7 @@ import type { BookWorksetItemType } from './nodes/buildBookWorksets.ts';
 
 import { NodeStateBase } from '@studnicky/dagonizer';
 import type { JsonObjectType, StateFieldsType } from '@studnicky/dagonizer/types';
+import type { ReasoningStepType } from '@studnicky/dagonizer';
 
 /**
  * A single turn in the visitor–archivist conversation.
@@ -62,6 +63,8 @@ export interface RecalledContext {
     readonly query: string;
     readonly ts: string;
   }>;
+  /** Reasoning steps recalled from prior runs' PROV graphs. */
+  readonly priorReasoning: ReadonlyArray<{ readonly text: string; readonly kind: string }>;
   /** 1–2 sentence LLM-ready hint; empty string when nothing was recalled. */
   readonly summary: string;
 }
@@ -155,6 +158,7 @@ export class ArchivistState extends NodeStateBase {
     'priorIntents':        [],
     'recentCandidates':    [],
     'similarPriorQueries': [],
+    'priorReasoning':      [],
     'summary':             '',
   };
   /**
@@ -181,6 +185,13 @@ export class ArchivistState extends NodeStateBase {
    * Written fresh before every scatter; always array-typed (never undefined).
    */
   bookWorksets: ReadonlyArray<BookWorksetItemType> = [];
+  /**
+   * The agent's own reasoning steps, accumulated across the current run via
+   * `ReasoningStepBuilder`. Each step is provenance-linked by
+   * `RdfProvObserver.recordReasoning` into the PROV graph. Always
+   * initialized; never undefined (V8 shape stability).
+   */
+  reasoning: readonly ReasoningStepType[] = [];
 
   /**
    * Memory roll-up produced by `recallMemories` for the `recall-memories`
@@ -213,11 +224,13 @@ export class ArchivistState extends NodeStateBase {
       'priorIntents':        [...this.recalledContext.priorIntents],
       'recentCandidates':    [...this.recalledContext.recentCandidates],
       'similarPriorQueries': [...this.recalledContext.similarPriorQueries],
+      'priorReasoning':      [...this.recalledContext.priorReasoning],
       'summary':             this.recalledContext.summary,
     };
     copy.conversation      = [...this.conversation];
     copy.priorCandidates   = [...this.priorCandidates];
     copy.bookWorksets      = [...this.bookWorksets];
+    copy.reasoning         = [...this.reasoning];
     copy.memoryDigest = {
       'bookCount':       this.memoryDigest.bookCount,
       'queryCount':      this.memoryDigest.queryCount,
@@ -242,11 +255,13 @@ export class ArchivistState extends NodeStateBase {
         "priorIntents":        this.recalledContext.priorIntents.map(ArchivistState.priorIntentToJson),
         "recentCandidates":    this.recalledContext.recentCandidates.map(ArchivistState.candidateToJson),
         "similarPriorQueries": this.recalledContext.similarPriorQueries.map(ArchivistState.priorQueryToJson),
+        "priorReasoning":      this.recalledContext.priorReasoning.map(ArchivistState.priorReasoningToJson),
         "summary":             this.recalledContext.summary,
       },
       "priorCandidates": this.priorCandidates.map(ArchivistState.candidateToJson),
       "conversation": this.conversation.map(ArchivistState.turnToJson),
       "bookWorksets": this.bookWorksets.map((w) => ({ "dagName": w.dagName, "arguments": w.arguments })),
+      "reasoning": this.reasoning.map(ArchivistState.reasoningStepToJson),
       "memoryDigest": {
         "bookCount":       this.memoryDigest.bookCount,
         "queryCount":      this.memoryDigest.queryCount,
@@ -302,6 +317,31 @@ export class ArchivistState extends NodeStateBase {
   private static turnToJson(t: ConversationTurn): JsonObjectType {
     return { "role": t.role, "text": t.text, "ts": t.ts };
   }
+
+  private static priorReasoningToJson(p: RecalledContext['priorReasoning'][number]): JsonObjectType {
+    return { "text": p.text, "kind": p.kind };
+  }
+
+  /**
+   * `ReasoningStepType.action.args` is `Record<string, unknown>` at the
+   * builder boundary; serialize only JSON-safe primitives, mirroring
+   * `candidateToJson`'s `notesOut` sanitizer.
+   */
+  private static reasoningStepToJson(step: ReasoningStepType): JsonObjectType {
+    if (step.kind === 'action') {
+      const argsOut: JsonObjectType = {};
+      for (const [k, v] of Object.entries(step.args)) {
+        if (v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+          argsOut[k] = v;
+        }
+      }
+      return { "kind": step.kind, "tool": step.tool, "args": argsOut };
+    }
+    if (step.kind === 'observation') {
+      return { "kind": step.kind, "output": step.output };
+    }
+    return { "kind": step.kind, "text": step.text };
+  }
   // #endregion snapshot-helpers
 
   protected override restoreData(snap: JsonObjectType): void {
@@ -329,6 +369,7 @@ export class ArchivistState extends NodeStateBase {
       const rawPriorIntents = rc['priorIntents'];
       const rawRecentCandidates = rc['recentCandidates'];
       const rawSimilarPriorQueries = rc['similarPriorQueries'];
+      const rawPriorReasoning = rc['priorReasoning'];
       this.recalledContext = {
         'priorIntents': Array.isArray(rawPriorIntents)
           ? ArchivistState.filterPriorIntents(rawPriorIntents)
@@ -338,6 +379,9 @@ export class ArchivistState extends NodeStateBase {
           : [],
         'similarPriorQueries': Array.isArray(rawSimilarPriorQueries)
           ? ArchivistState.filterSimilarPriorQueries(rawSimilarPriorQueries)
+          : [],
+        'priorReasoning': Array.isArray(rawPriorReasoning)
+          ? ArchivistState.filterPriorReasoning(rawPriorReasoning)
           : [],
         'summary': typeof rc['summary'] === 'string' ? rc['summary'] : '',
       };
@@ -353,6 +397,10 @@ export class ArchivistState extends NodeStateBase {
     const rawBookWorksets = snap['bookWorksets'];
     if (Array.isArray(rawBookWorksets)) {
       this.bookWorksets = ArchivistState.filterBookWorksetItems(rawBookWorksets);
+    }
+    const rawReasoning = snap['reasoning'];
+    if (Array.isArray(rawReasoning)) {
+      this.reasoning = ArchivistState.filterReasoningSteps(rawReasoning);
     }
     const md = snap['memoryDigest'];
     if (md !== null && md !== undefined && typeof md === 'object' && !Array.isArray(md)) {
@@ -410,6 +458,22 @@ export class ArchivistState extends NodeStateBase {
     const out: BookWorksetItemType[] = [];
     for (const item of arr) {
       if (ArchivistState.isBookWorksetItem(item)) out.push(item);
+    }
+    return out;
+  }
+
+  private static filterPriorReasoning(arr: unknown[]): RecalledContext['priorReasoning'] {
+    const out: RecalledContext['priorReasoning'][number][] = [];
+    for (const item of arr) {
+      if (ArchivistState.isPriorReasoning(item)) out.push(item);
+    }
+    return out;
+  }
+
+  private static filterReasoningSteps(arr: unknown[]): ReasoningStepType[] {
+    const out: ReasoningStepType[] = [];
+    for (const item of arr) {
+      if (ArchivistState.isReasoningStep(item)) out.push(item);
     }
     return out;
   }
@@ -498,6 +562,28 @@ export class ArchivistState extends NodeStateBase {
     if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
     if (!('intent' in v && 'count' in v)) return false;
     return typeof v.intent === 'string' && typeof v.count === 'number';
+  }
+
+  private static isPriorReasoning(v: unknown): v is RecalledContext['priorReasoning'][number] {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+    if (!('text' in v && 'kind' in v)) return false;
+    return typeof v.text === 'string' && typeof v.kind === 'string';
+  }
+
+  private static isReasoningStep(v: unknown): v is ReasoningStepType {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+    if (!('kind' in v)) return false;
+    if (v.kind === 'thought' || v.kind === 'final') {
+      return 'text' in v && typeof v.text === 'string';
+    }
+    if (v.kind === 'action') {
+      return 'tool' in v && typeof v.tool === 'string'
+        && 'args' in v && typeof v.args === 'object' && v.args !== null && !Array.isArray(v.args);
+    }
+    if (v.kind === 'observation') {
+      return 'output' in v && typeof v.output === 'string';
+    }
+    return false;
   }
   // #endregion type-guards
 }

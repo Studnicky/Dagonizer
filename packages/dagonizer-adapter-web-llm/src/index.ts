@@ -14,4 +14,6 @@ export type {
   WebLlmInitReportType,
   WebLlmModuleBaseType,
   WebLlmModuleInterface,
+  WebLlmStreamChunkType,
+  WebLlmStreamingParamsType,
 } from './WebLlmHost.js';

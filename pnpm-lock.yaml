@@ -90,6 +90,9 @@ importers:
       '@studnicky/dagonizer-executor-node':
         specifier: workspace:^
         version: link:../packages/dagonizer-executor-node
+      '@studnicky/dagonizer-patterns-graph':
+        specifier: workspace:^
+        version: link:../packages/dagonizer-patterns-graph
       '@studnicky/dagonizer-patterns-rag':
         specifier: workspace:^
         version: link:../packages/dagonizer-patterns-rag

@@ -82,6 +82,16 @@ export type PromptOptionsType = {
  */
 export interface LanguageModelSessionInterface extends LanguageModelSessionBaseType {
   prompt(input: string, options?: PromptOptionsType): Promise<string>;
+  /**
+   * Streaming counterpart to `prompt`. The real W3C/WICG "Prompt API for Web"
+   * spec defines `LanguageModelSession.promptStreaming` as returning
+   * `ReadableStream<string>` — not a bare async iterable, not a Promise.
+   * `ReadableStream` is an ambient global under this package's ES2024 lib +
+   * `@types/node`, whose `stream/web` declaration carries
+   * `[Symbol.asyncIterator]`, so `for await` over the return value type-checks
+   * with no import and no cast.
+   */
+  promptStreaming(input: string, options?: PromptOptionsType): ReadableStream<string>;
   destroy(): void;
 }
 

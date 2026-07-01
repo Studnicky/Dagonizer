@@ -21,7 +21,10 @@
 
 import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
 import type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
+import type { StreamSinkInterface } from '../contracts/StreamSinkInterface.js';
 import type { ChatMessageType } from '../entities/adapter/ChatMessage.js';
+import { ChatStreamChunkBuilder } from '../entities/adapter/ChatStreamChunk.js';
+import type { ChatStreamChunkType } from '../entities/adapter/ChatStreamChunk.js';
 import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 
 import { BaseAdapterCore, type BaseAdapterCoreOptionsType, type SelectModelOptionsType } from './BaseAdapterCore.js';
@@ -205,16 +208,90 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
   }
 
   /**
-   * Wrap `performChat` in a hard abort+timeout race so the caller's promise
-   * always settles. A per-request timeout and the caller's external signal are
-   * folded into one composed signal that is passed to `performChat` (so an
-   * adapter that forwards `request.signal` to `fetch` aborts naturally). The
-   * race rejects the instant that composed signal aborts — even if the
-   * underlying operation never settles (a hung socket, a frozen on-device
-   * stream) — after giving the subclass one best-effort `onCancelRequested()`
-   * call. The timer is always cleared.
+   * Stream a chat request. Streaming is single-attempt: NOT wrapped in
+   * retryPolicy. Retrying a partially-emitted stream would re-push deltas
+   * already delivered to the sink, so a mid-stream failure surfaces to the
+   * caller rather than silently replaying. The system-prompt injection that
+   * `chat()` performs is applied identically here so buffered and streamed
+   * paths behave the same.
+   *
+   * The full call — including every `performChatStream` override — is
+   * bounded by the same abort+timeout deadline `chat()` uses, so a hung
+   * stream still settles within `this.#timeoutMs`.
+   *
+   * Sink delivery is best-effort: a rejecting `sink.push()` never fails the
+   * call (see `pushChunk`). The resolved `ChatResponseType` is authoritative
+   * regardless of sink health.
    */
-  async #guardChat(request: ChatRequestType): Promise<ChatResponseType> {
+  async chatStream(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    const prepared = this.#withDefaultSystemPrompt(request);
+    return this.withDeadline(prepared, (derived) => this.performChatStream(derived, sink));
+  }
+
+  /**
+   * Buffered default streaming implementation: perform ONE full chat call
+   * through the same guarded/classified path `chat()` uses, push a single
+   * chunk carrying the complete response text, and return the assembled
+   * response. `content` is empty for a pure tool-call response, so the
+   * emitted chunk carries `''` in that case (no text was produced).
+   *
+   * Concrete streaming adapters override this to emit real per-token deltas
+   * while assembling the same `ChatResponseType` to return. Overrides MUST
+   * remain single-attempt (no retry) for the same reason `chatStream` is not
+   * retry-wrapped.
+   */
+  protected async performChatStream(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    // `this.chat()` re-applies the (idempotent) default-system-prompt step;
+    // applying it twice is a no-op, so the buffered path reuses chat()'s full
+    // guard/timeout/classify + retry envelope unchanged.
+    const response = await this.chat(request);
+    const fullText = response.message.variant === 'tools' ? '' : response.message.content;
+    await this.pushChunk(sink, ChatStreamChunkBuilder.of(fullText));
+    return response;
+  }
+
+  /**
+   * Push one chunk to `sink`, swallowing a rejection. `sink` is a best-effort
+   * observability side-channel: a dead or misbehaving consumer must not fail
+   * an otherwise-valid generation. Back-pressure is preserved for a healthy
+   * sink — its `push()` is still awaited normally; only a REJECTION is
+   * swallowed.
+   */
+  protected async pushChunk(
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+    chunk: ChatStreamChunkType,
+  ): Promise<void> {
+    try {
+      await sink.push(chunk);
+    } catch {
+      // sink is a best-effort observability side-channel; a dead consumer must not fail a valid generation
+    }
+  }
+
+  /**
+   * Wrap `run` in a hard abort+timeout race so the caller's promise always
+   * settles. A per-request timeout and the caller's external signal are
+   * folded into one composed signal that is threaded into the derived
+   * request `run` receives (so an adapter that forwards `request.signal` to
+   * `fetch` aborts naturally). The race rejects the instant that composed
+   * signal aborts — even if the underlying operation never settles (a hung
+   * socket, a frozen on-device stream) — after giving the subclass one
+   * best-effort `onCancelRequested()` call. The timer is always cleared.
+   *
+   * Shared by `chat()` (via `#guardChat`) and `chatStream()` so every
+   * `performChat`/`performChatStream` override — including every concrete
+   * adapter's streaming override — settles within `this.#timeoutMs`.
+   */
+  protected async withDeadline<T>(
+    request: ChatRequestType,
+    run: (derived: ChatRequestType) => Promise<T>,
+  ): Promise<T> {
     const timeoutController = new AbortController();
     const timer = setTimeout(() => {
       timeoutController.abort(new LlmError(`${this.id} request timeout`, Classifications['TIMEOUT']));
@@ -222,7 +299,7 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     const composed = AbortSignal.any([request.signal, timeoutController.signal]);
     const derived: ChatRequestType = { ...request, 'signal': composed };
     try {
-      return await new Promise<ChatResponseType>((resolve, reject) => {
+      return await new Promise<T>((resolve, reject) => {
         let settled = false;
         const settleReject = (reason: unknown): void => {
           if (settled) return;
@@ -242,7 +319,7 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
           return;
         }
         composed.addEventListener('abort', onAbort, { 'once': true });
-        Promise.resolve(this.performChat(derived)).then(
+        Promise.resolve(run(derived)).then(
           (result) => {
             if (settled) return;
             settled = true;
@@ -256,6 +333,13 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * Wrap `performChat` in the shared abort+timeout race via `withDeadline`.
+   */
+  async #guardChat(request: ChatRequestType): Promise<ChatResponseType> {
+    return this.withDeadline(request, (derived) => this.performChat(derived));
   }
 
   /**

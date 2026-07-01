@@ -16,6 +16,10 @@
 
 ## [unreleased]
 
+### Minor Changes
+
+- `GeminiNanoAdapter` overrides `performChatStream` with real on-device token streaming: it opens the session with `LanguageModel.create()` and drains `session.promptStreaming()`, pushing one `ChatStreamChunkType` per delta on the caller's sink as the on-device model generates. A request carrying tools still falls back to the buffered default (`super.performChatStream`) — tool turns need the JSON-coercion (`responseConstraint` + `ToolCallCodec.decode`) shape, which has no streamed variant.
+
 ### Patch Changes
 
 - Add a per-request `timeoutMs` option (default 60s) enforced around `LanguageModel.create()` and `session.prompt()`; an expired deadline aborts the on-device call and surfaces as a `TIMEOUT` classification so a cascade falls through rather than hanging.
