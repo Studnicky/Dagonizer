@@ -6,12 +6,12 @@
  *
  *   ┌──────────────────────────────────────────────────────────────────────┐
  *   │ <single-column on narrow; two-column at ≥720px container width>      │
- *   ├──────────────────────────┬───────────────────────────────────────────┤
- *   │ LEFT COL                 │ RIGHT COL                                 │
- *   │ tabs: Stream | Insights  │ tabs: DAG | Before/After | Trace          │
- *   │ (live feed + % bar)      │                                           │
- *   │ [pinned Run bar]         │                                           │
- *   └──────────────────────────┴───────────────────────────────────────────┘
+ *   ├───────────────────────────────────┬────────────────────────────────────┤
+ *   │ LEFT COL                          │ RIGHT COL                          │
+ *   │ tabs: Stream | Insights | Compare  │ tabs: DAG | Config | Trace         │
+ *   │ (live feed + % bar)                │                                    │
+ *   │ [pinned Run bar]                   │                                    │
+ *   └───────────────────────────────────┴────────────────────────────────────┘
  *
  * No LLM — purely deterministic data orchestration. Subclasses ObservedDag
  * (generic Dagonizer subclass) and reuses DagGraph (animated cytoscape host).
@@ -310,15 +310,15 @@ const leftTabs = computed(() => [
     'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default',
   },
   {
-    'key': 'config',
-    'label': 'Config',
-    'badge': String(clampedTotal.value),
-    'tone': 'default' as const,
-  },
-  {
     'key': 'insights',
     'label': 'Insights',
     'badge': isDone.value && continentRows.value.length > 0 ? String(continentRows.value.length) : '',
+    'tone': 'accent' as const,
+  },
+  {
+    'key': 'compare',
+    'label': 'Compare',
+    'badge': isDone.value ? String(records.value.length) : '',
     'tone': 'accent' as const,
   },
 ]);
@@ -331,10 +331,10 @@ const rightTabs = computed(() => [
     'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default',
   },
   {
-    'key': 'before-after',
-    'label': 'Before / After',
-    'badge': isDone.value ? String(records.value.length) : '',
-    'tone': 'accent' as const,
+    'key': 'config',
+    'label': 'Config',
+    'badge': String(clampedTotal.value),
+    'tone': 'default' as const,
   },
   {
     'key': 'trace',
@@ -427,7 +427,7 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     latestRunState = state;
     records.value = [...state.sampleRecords];
     // The streaming flow decodes inline; there is no materialised
-    // canonical-event array. The Before/After accordion's pre-stream source
+    // canonical-event array. The Compare accordion's pre-stream source
     // panel is wired in the separate UI follow-up.
     canonicalEvents.value = [];
     insightsMap.value = new Map(state.insights);
@@ -638,14 +638,14 @@ onMounted(() => {
     <!-- Main layout -->
     <div class="cr-grid">
 
-      <!-- LEFT: Stream | Insights + pinned Run bar -->
+      <!-- LEFT: Stream | Insights | Compare + pinned Run bar -->
       <div class="cr-col cr-col--left">
         <div class="cr-col-head">
           <span class="cr-label">Cartographer</span>
           <span class="cr-hint">{{ flowHint }}</span>
         </div>
 
-        <!-- Tab host: Stream and Insights -->
+        <!-- Tab host: Stream, Insights, and Compare -->
         <PanesTabs :tabs="leftTabs" default-key="stream" class="cr-tabs cr-tabs--left">
 
           <!-- Stream tab: live record feed + progress bar -->
@@ -687,6 +687,177 @@ onMounted(() => {
                   </template>
                 </div>
               </div>
+            </div>
+          </template>
+
+          <!-- Insights tab: routing savings + continent + journey cards -->
+          <template #insights>
+            <div class="cr-left-pane">
+              <p class="cr-intro">
+                A deterministic multi-source ETL pipeline: CSV facility scans, JSON position
+                pings, and gzip NDJSON sensor readings fan into one canonical model, then every
+                event routes through only the nodes it needs — geo-resolution skipped when the
+                source pre-resolved location, GDPR redaction skipped when PII is absent or not
+                required. The branching is visible live in the DAG pane.
+              </p>
+
+              <template v-if="isDone && savings.n > 0">
+                <h5 class="cr-section-head">Routing savings</h5>
+                <table class="cr-table cr-table--compact">
+                  <thead>
+                    <tr><th>Branch</th><th>RAN</th><th>SKIPPED</th><th>Skip %</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Geo lookup (sub-DAG)</td>
+                      <td>{{ savings.geoRan }}</td>
+                      <td>{{ savings.geoSkipped }}</td>
+                      <td>{{ pct(savings.geoSkipped, savings.n) }}</td>
+                    </tr>
+                    <tr>
+                      <td>IP geolocation (freeipapi)</td>
+                      <td>{{ savings.ipRan }}</td>
+                      <td>{{ savings.ipSkipped }}</td>
+                      <td>{{ pct(savings.ipSkipped, savings.n) }}</td>
+                    </tr>
+                    <tr>
+                      <td>GDPR redaction sub-DAG</td>
+                      <td>{{ savings.redactionRan }}</td>
+                      <td>{{ savings.redactionSkipped }}</td>
+                      <td>{{ pct(savings.redactionSkipped, savings.n) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </template>
+
+              <template v-if="isDone && continentRows.length > 0">
+                <h5 class="cr-section-head">Continent insights</h5>
+                <table class="cr-table">
+                  <thead>
+                    <tr>
+                      <th>Continent</th>
+                      <th>Scans</th>
+                      <th>On-time %</th>
+                      <th>Revenue (USD)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in continentRows" :key="row.region">
+                      <td>{{ row.region }}</td>
+                      <td>{{ row.shipmentCount }}</td>
+                      <td>{{ row.shipmentCount > 0 ? pct(row.onTimeCount, row.shipmentCount) : '—' }}</td>
+                      <td>{{ usdFromMinor(row.totalSubtotalUsdMinor) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </template>
+
+              <template v-if="isDone && sampleJourneys.length > 0">
+                <h5 class="cr-section-head">Sample journeys</h5>
+                <div v-for="j in sampleJourneys" :key="j.shipmentId" class="cr-journey-card">
+                  <div class="cr-journey-head">
+                    <span class="cr-journey-id">{{ j.shipmentId }}</span>
+                    <span :class="['cr-journey-badge', j.delivered ? (j.onTime ? 'badge--ok' : 'badge--late') : 'badge--exception']">
+                      {{ j.delivered ? (j.onTime ? 'on-time' : `${j.delayHours}h late`) : 'exception' }}
+                    </span>
+                  </div>
+                  <div class="cr-journey-meta">
+                    {{ j.scanCount }} scans · {{ j.pathKm.toFixed(0) }} km ·
+                    {{ j.timezones.length }} tz · {{ j.jurisdictions.join(', ') }}
+                  </div>
+                </div>
+              </template>
+
+              <template v-if="!isDone">
+                <p class="cr-placeholder">Run the pipeline to see continent insights and journey data.</p>
+              </template>
+            </div>
+          </template>
+
+          <!-- Compare tab: ABox accordion list — one entity per processed event -->
+          <template #compare>
+            <div class="cr-panels-pane">
+
+              <template v-if="!isDone">
+                <p class="cr-placeholder">Run the pipeline to see the before / after transformations.</p>
+              </template>
+
+              <template v-else-if="aboxEntities.length > 0">
+                <p class="cr-ba-intro">
+                  {{ aboxEntities.length }} ABox entities — click a row to inspect its
+                  pre-stream (CanonicalEvent) and post-stream (EnrichedShipment) payloads side by side.
+                </p>
+                <div class="cr-ba-list">
+                  <AboxAccordion :entities="aboxEntities" />
+                </div>
+              </template>
+
+              <template v-else>
+                <p class="cr-placeholder">No records found in this run.</p>
+              </template>
+
+            </div>
+          </template>
+
+        </PanesTabs>
+
+        <!-- Pinned Run bar: mirrors SendForm pattern, always at the bottom of the left col -->
+        <footer class="cr-run-bar">
+          <div class="cr-run-row">
+            <div class="cr-run-status-text">
+              <template v-if="isRunning">
+                <span class="cr-run-status cr-run-status--live">streaming {{ progressPct > 0 ? `${progressPct}%` : '…' }}</span>
+              </template>
+              <template v-else-if="isDone">
+                <span class="cr-run-status cr-run-status--done">{{ records.length }} events</span>
+              </template>
+            </div>
+            <div class="cr-run-actions">
+              <button
+                v-if="isDone && !isRunning"
+                type="button"
+                class="cr-btn cr-btn--reset"
+                @click="reset"
+              >reset</button>
+              <button
+                v-if="isRunning"
+                type="button"
+                class="cr-btn cr-btn--cancel"
+                @click="cancel"
+              >
+                <Spinner />
+                <span class="cr-btn-glyph">✕</span>
+              </button>
+              <button
+                v-else
+                type="button"
+                :class="['cr-btn', 'cr-btn--run']"
+                @click="run"
+              >Run</button>
+            </div>
+          </div>
+        </footer>
+
+      </div>
+
+      <!-- RIGHT: DAG | Config | Trace -->
+      <div class="cr-col cr-col--right">
+        <div class="cr-col-head">
+          <span class="cr-label">Graph</span>
+          <span class="cr-hint">{{ trace.length }} events</span>
+        </div>
+        <PanesTabs :tabs="rightTabs" default-key="dag" class="cr-tabs cr-tabs--right">
+
+          <!-- DAG tab: live execution graph -->
+          <template #dag>
+            <div class="graph-pane">
+              <DagGraph
+                ref="dagGraph"
+                :dag="cartographerWorkersDAG"
+                :embedded-d-a-gs="embeddedDagRegistry"
+                :expand-all="true"
+                aria-label="Cartographer DAG live execution"
+              />
             </div>
           </template>
 
@@ -799,177 +970,6 @@ onMounted(() => {
                 DAG/trace updates are frame-throttled, so a 1,000,000-event run does not freeze the
                 tab. The Stream badge shows the true processed count.
               </div>
-
-            </div>
-          </template>
-
-          <!-- Insights tab: routing savings + continent + journey cards -->
-          <template #insights>
-            <div class="cr-left-pane">
-              <p class="cr-intro">
-                A deterministic multi-source ETL pipeline: CSV facility scans, JSON position
-                pings, and gzip NDJSON sensor readings fan into one canonical model, then every
-                event routes through only the nodes it needs — geo-resolution skipped when the
-                source pre-resolved location, GDPR redaction skipped when PII is absent or not
-                required. The branching is visible live in the DAG pane.
-              </p>
-
-              <template v-if="isDone && savings.n > 0">
-                <h5 class="cr-section-head">Routing savings</h5>
-                <table class="cr-table cr-table--compact">
-                  <thead>
-                    <tr><th>Branch</th><th>RAN</th><th>SKIPPED</th><th>Skip %</th></tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>Geo lookup (sub-DAG)</td>
-                      <td>{{ savings.geoRan }}</td>
-                      <td>{{ savings.geoSkipped }}</td>
-                      <td>{{ pct(savings.geoSkipped, savings.n) }}</td>
-                    </tr>
-                    <tr>
-                      <td>IP geolocation (freeipapi)</td>
-                      <td>{{ savings.ipRan }}</td>
-                      <td>{{ savings.ipSkipped }}</td>
-                      <td>{{ pct(savings.ipSkipped, savings.n) }}</td>
-                    </tr>
-                    <tr>
-                      <td>GDPR redaction sub-DAG</td>
-                      <td>{{ savings.redactionRan }}</td>
-                      <td>{{ savings.redactionSkipped }}</td>
-                      <td>{{ pct(savings.redactionSkipped, savings.n) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </template>
-
-              <template v-if="isDone && continentRows.length > 0">
-                <h5 class="cr-section-head">Continent insights</h5>
-                <table class="cr-table">
-                  <thead>
-                    <tr>
-                      <th>Continent</th>
-                      <th>Scans</th>
-                      <th>On-time %</th>
-                      <th>Revenue (USD)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in continentRows" :key="row.region">
-                      <td>{{ row.region }}</td>
-                      <td>{{ row.shipmentCount }}</td>
-                      <td>{{ row.shipmentCount > 0 ? pct(row.onTimeCount, row.shipmentCount) : '—' }}</td>
-                      <td>{{ usdFromMinor(row.totalSubtotalUsdMinor) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </template>
-
-              <template v-if="isDone && sampleJourneys.length > 0">
-                <h5 class="cr-section-head">Sample journeys</h5>
-                <div v-for="j in sampleJourneys" :key="j.shipmentId" class="cr-journey-card">
-                  <div class="cr-journey-head">
-                    <span class="cr-journey-id">{{ j.shipmentId }}</span>
-                    <span :class="['cr-journey-badge', j.delivered ? (j.onTime ? 'badge--ok' : 'badge--late') : 'badge--exception']">
-                      {{ j.delivered ? (j.onTime ? 'on-time' : `${j.delayHours}h late`) : 'exception' }}
-                    </span>
-                  </div>
-                  <div class="cr-journey-meta">
-                    {{ j.scanCount }} scans · {{ j.pathKm.toFixed(0) }} km ·
-                    {{ j.timezones.length }} tz · {{ j.jurisdictions.join(', ') }}
-                  </div>
-                </div>
-              </template>
-
-              <template v-if="!isDone">
-                <p class="cr-placeholder">Run the pipeline to see continent insights and journey data.</p>
-              </template>
-            </div>
-          </template>
-
-        </PanesTabs>
-
-        <!-- Pinned Run bar: mirrors SendForm pattern, always at the bottom of the left col -->
-        <footer class="cr-run-bar">
-          <div class="cr-run-row">
-            <div class="cr-run-status-text">
-              <template v-if="isRunning">
-                <span class="cr-run-status cr-run-status--live">streaming {{ progressPct > 0 ? `${progressPct}%` : '…' }}</span>
-              </template>
-              <template v-else-if="isDone">
-                <span class="cr-run-status cr-run-status--done">{{ records.length }} events</span>
-              </template>
-            </div>
-            <div class="cr-run-actions">
-              <button
-                v-if="isDone && !isRunning"
-                type="button"
-                class="cr-btn cr-btn--reset"
-                @click="reset"
-              >reset</button>
-              <button
-                v-if="isRunning"
-                type="button"
-                class="cr-btn cr-btn--cancel"
-                @click="cancel"
-              >
-                <Spinner />
-                <span class="cr-btn-glyph">✕</span>
-              </button>
-              <button
-                v-else
-                type="button"
-                :class="['cr-btn', 'cr-btn--run']"
-                @click="run"
-              >Run</button>
-            </div>
-          </div>
-        </footer>
-
-      </div>
-
-      <!-- RIGHT: DAG | Before/After | Trace -->
-      <div class="cr-col cr-col--right">
-        <div class="cr-col-head">
-          <span class="cr-label">Graph</span>
-          <span class="cr-hint">{{ trace.length }} events</span>
-        </div>
-        <PanesTabs :tabs="rightTabs" default-key="dag" class="cr-tabs cr-tabs--right">
-
-          <!-- DAG tab: live execution graph -->
-          <template #dag>
-            <div class="graph-pane">
-              <DagGraph
-                ref="dagGraph"
-                :dag="cartographerWorkersDAG"
-                :embedded-d-a-gs="embeddedDagRegistry"
-                :expand-all="true"
-                aria-label="Cartographer DAG live execution"
-              />
-            </div>
-          </template>
-
-          <!-- Before / After tab: ABox accordion list — one entity per processed event -->
-          <template #before-after>
-            <div class="cr-panels-pane">
-
-              <template v-if="!isDone">
-                <p class="cr-placeholder">Run the pipeline to see the before / after transformations.</p>
-              </template>
-
-              <template v-else-if="aboxEntities.length > 0">
-                <p class="cr-ba-intro">
-                  {{ aboxEntities.length }} ABox entities — click a row to inspect its
-                  pre-stream (CanonicalEvent) and post-stream (EnrichedShipment) payloads side by side.
-                </p>
-                <div class="cr-ba-list">
-                  <AboxAccordion :entities="aboxEntities" />
-                </div>
-              </template>
-
-              <template v-else>
-                <p class="cr-placeholder">No records found in this run.</p>
-              </template>
 
             </div>
           </template>
@@ -1561,7 +1561,7 @@ onMounted(() => {
   padding: 0.26rem 0.5rem;
 }
 
-/* ── Panels pane (Before/After tab) ──────────────────────────────────── */
+/* ── Panels pane (Compare tab) ──────────────────────────────────────── */
 .cr-panels-pane {
   display: flex;
   flex-direction: column;
@@ -1691,7 +1691,7 @@ onMounted(() => {
   font-family: var(--vp-font-family-mono);
 }
 
-/* ── Before/After record header ─────────────────────────────────────────── */
+/* ── Compare record header ─────────────────────────────────────────────── */
 .cr-ba-header {
   display: flex;
   align-items: baseline;
@@ -1843,7 +1843,7 @@ onMounted(() => {
   border-radius: 6px;
 }
 
-/* ── Before/After accordion intro line ──────────────────────────────────── */
+/* ── Compare accordion intro line ──────────────────────────────────────── */
 .cr-ba-intro {
   margin: 0 0 0.5rem;
   font-size: 0.8rem;
