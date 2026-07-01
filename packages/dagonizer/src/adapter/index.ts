@@ -99,6 +99,7 @@ export { BaseEmbedder } from './BaseEmbedder.js';
 export type { BaseEmbedderOptionsType } from './BaseEmbedder.js';
 
 export { LocalModelEmbedder } from './LocalModelEmbedder.js';
+export { CloudEmbedder } from './CloudEmbedder.js';
 
 export { EmbedderRegistry } from './EmbedderRegistry.js';
 export type { EmbedderFactoryType } from './EmbedderRegistry.js';

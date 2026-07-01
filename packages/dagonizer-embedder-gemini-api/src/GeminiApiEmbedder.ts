@@ -22,7 +22,7 @@
  * `LlmModelType` variant (`embedding` / `chat` / `unknown`). Never throws.
  */
 
-import { BaseEmbedder, Classifications, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
+import { Classifications, CloudEmbedder, LlmError, ModelCost } from '@studnicky/dagonizer/adapter';
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
@@ -48,7 +48,7 @@ const GEMINI_API_EMBEDDER_DEFAULTS = {
  */
 export type GeminiApiEmbedderOptionsType = BaseEmbedderOptionsType;
 
-export class GeminiApiEmbedder extends BaseEmbedder {
+export class GeminiApiEmbedder extends CloudEmbedder {
   readonly #apiKey: string;
 
   /**
@@ -64,24 +64,26 @@ export class GeminiApiEmbedder extends BaseEmbedder {
     this.#apiKey = apiKey;
   }
 
-  protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
-    const url = `${EMBED_ENDPOINT}/${encodeURIComponent(this.model)}:embedContent?key=${encodeURIComponent(this.#apiKey)}`;
-    const raw = await this.fetchJson(
-      url,
-      {
-        'method': 'POST',
-        'headers': { 'Content-Type': 'application/json' },
-        'body': JSON.stringify({ 'content': { 'parts': [{ 'text': text }] } }),
-      },
-      signal,
-    );
-    if (!GeminiApiEmbedResponseValidator.is(raw) || raw.embedding.values.length === 0) {
+  protected endpoint(): string {
+    return `${EMBED_ENDPOINT}/${encodeURIComponent(this.model)}:embedContent?key=${encodeURIComponent(this.#apiKey)}`;
+  }
+
+  protected requestInit(text: string): RequestInit {
+    return {
+      'method': 'POST',
+      'headers': { 'Content-Type': 'application/json' },
+      'body': JSON.stringify({ 'content': { 'parts': [{ 'text': text }] } }),
+    };
+  }
+
+  protected vectorFrom(body: unknown): readonly number[] {
+    if (!GeminiApiEmbedResponseValidator.is(body) || body.embedding.values.length === 0) {
       throw new LlmError(
         `Gemini embed: missing or empty 'embedding.values' field`,
         Classifications['SCHEMA_VIOLATION'],
       );
     }
-    return raw.embedding.values;
+    return body.embedding.values;
   }
 
   /**
