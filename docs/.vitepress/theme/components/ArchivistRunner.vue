@@ -305,19 +305,19 @@ function clearMemory(): void {
   logger.info('memory store cleared; ontology restored');
 }
 
-// ── Left-column tabs: Conversation | Config ──────────────────────────────
+// ── Left-column tabs: Conversation | Memory ──────────────────────────────
 const leftTabs = computed(() => [
-  { 'key': 'conversation', 'label': 'Conversation', 'badge': '', 'tone': 'default' as const },
-  { 'key': 'config',       'label': 'Config',       'badge': '', 'tone': 'default' as const },
+  { 'key': 'conversation', 'label': 'Conversation', 'badge': '',                              'tone': 'default' as const },
+  { 'key': 'memory',       'label': 'Memory',       'badge': String(tripleCount.value || ''), 'tone': 'accent'  as const },
 ]);
 
-// ── Right-column tabs: DAG | Memory | Trace ──────────────────────────────
+// ── Right-column tabs: DAG | Config | Trace ──────────────────────────────
 const rightTabs = computed(() => {
   const traceCount = trace.value.length + logger.history().length;
   return [
-    { 'key': 'dag',    'label': 'DAG',    'badge': isRunning.value ? 'live' : '',   'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
-    { 'key': 'memory', 'label': 'Memory', 'badge': String(tripleCount.value || ''), 'tone': 'accent' as const },
-    { 'key': 'trace',  'label': 'Trace',  'badge': String(traceCount || ''),        'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
+    { 'key': 'dag',    'label': 'DAG',    'badge': isRunning.value ? 'live' : '', 'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
+    { 'key': 'config', 'label': 'Config', 'badge': '',                            'tone': 'default' as const },
+    { 'key': 'trace',  'label': 'Trace',  'badge': String(traceCount || ''),      'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
   ];
 });
 
@@ -983,7 +983,7 @@ async function resumeFromCheckpoint(): Promise<void> {
     <template v-else>
       <div class="ar-grid">
 
-        <!-- LEFT: Conversation | Config -->
+        <!-- LEFT: Conversation | Memory -->
         <div class="ar-col ar-col--left">
           <div class="ar-col-head">
             <span class="ar-label">Archivist</span>
@@ -1017,6 +1017,56 @@ async function resumeFromCheckpoint(): Promise<void> {
                   @ask="ask"
                   @cancel="cancel"
                   @reset="reset"
+                />
+              </div>
+            </template>
+
+            <!-- Memory tab: cosmos.gl RDF graph -->
+            <template #memory>
+              <div class="graph-pane">
+                <MemoryGraph
+                  :store="memoryStore"
+                  :tick="memoryTick"
+                  @clear="clearMemory"
+                  @select="onMemorySelect"
+                />
+                <TripleInspector
+                  :store="memoryStore"
+                  :tick="memoryTick"
+                  :selection="selectedSelection"
+                  @close="selectedSelection = null"
+                />
+              </div>
+            </template>
+          </PanesTabs>
+        </div>
+
+        <!-- RIGHT: DAG | Config | Trace -->
+        <div class="ar-col ar-col--right">
+          <div class="ar-col-head">
+            <span class="ar-label">Graph</span>
+            <span class="ar-hint">{{ tripleCount }} triples</span>
+          </div>
+          <PanesTabs :tabs="rightTabs" default-key="dag" class="ar-tabs ar-tabs--right">
+
+            <!-- DAG tab: live execution graph -->
+            <template #dag>
+              <div class="graph-pane">
+                <DagGraph
+                  v-if="archivistDag !== null"
+                  ref="dagGraph"
+                  :dag="archivistDag"
+                  :embedded-d-a-gs="embeddedDagRegistry"
+                  :node-variants="NODE_VARIANTS"
+                  :expand-all="true"
+                  aria-label="Archivist DAG live execution"
+                  @node-click="onToolSelect"
+                />
+                <ToolExplainPanel
+                  :selected-tool="selectedTool"
+                  :llm="currentLlm"
+                  :tool-context-map="toolContextMap"
+                  @close="selectedTool = null"
                 />
               </div>
             </template>
@@ -1057,56 +1107,6 @@ async function resumeFromCheckpoint(): Promise<void> {
                 <section class="ar-config-section">
                   <TimeoutPane @update:settings="onTimeoutSettingsUpdate" />
                 </section>
-              </div>
-            </template>
-          </PanesTabs>
-        </div>
-
-        <!-- RIGHT: DAG | Memory | Trace -->
-        <div class="ar-col ar-col--right">
-          <div class="ar-col-head">
-            <span class="ar-label">Graph</span>
-            <span class="ar-hint">{{ tripleCount }} triples</span>
-          </div>
-          <PanesTabs :tabs="rightTabs" default-key="dag" class="ar-tabs ar-tabs--right">
-
-            <!-- DAG tab: live execution graph -->
-            <template #dag>
-              <div class="graph-pane">
-                <DagGraph
-                  v-if="archivistDag !== null"
-                  ref="dagGraph"
-                  :dag="archivistDag"
-                  :embedded-d-a-gs="embeddedDagRegistry"
-                  :node-variants="NODE_VARIANTS"
-                  :expand-all="true"
-                  aria-label="Archivist DAG live execution"
-                  @node-click="onToolSelect"
-                />
-                <ToolExplainPanel
-                  :selected-tool="selectedTool"
-                  :llm="currentLlm"
-                  :tool-context-map="toolContextMap"
-                  @close="selectedTool = null"
-                />
-              </div>
-            </template>
-
-            <!-- Memory tab: cosmos.gl RDF graph -->
-            <template #memory>
-              <div class="graph-pane">
-                <MemoryGraph
-                  :store="memoryStore"
-                  :tick="memoryTick"
-                  @clear="clearMemory"
-                  @select="onMemorySelect"
-                />
-                <TripleInspector
-                  :store="memoryStore"
-                  :tick="memoryTick"
-                  :selection="selectedSelection"
-                  @close="selectedSelection = null"
-                />
               </div>
             </template>
 

@@ -1,5 +1,12 @@
 # @studnicky/dagonizer-store-opfs
 
+## 0.29.1
+
+### Patch Changes
+
+- Updated dependencies [6bdafa4]
+  - @studnicky/dagonizer@0.29.1
+
 ## 0.29.0
 
 ### Patch Changes
