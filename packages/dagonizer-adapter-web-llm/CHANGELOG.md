@@ -18,6 +18,10 @@
 
 ## [unreleased]
 
+### Minor Changes
+
+- `WebLlmAdapter` overrides `performChatStream` to surface real engine token deltas: it opens the same MLC streaming session `performChat` uses (identical message composition, `response_format`, and `stream_options`) and pushes each non-empty delta to the caller's sink as a `ChatStreamChunkType`, instead of discarding it into a single accumulated string. `usage` is captured from the final chunk when the engine attaches one (`stream_options: { include_usage: true }`), falling back to `ZERO_TOKEN_USAGE` otherwise.
+
 ### Patch Changes
 
 - `performChat` runs the MLC engine through its streaming path (`create({ stream: true, … })`), accumulating delta chunks. A per-request `timeoutMs` deadline (default 60s) and the request abort signal each call `engine.interruptGenerate()`, which truly halts in-flight WebGPU generation — unlike the previous non-cancellable `create()` race, which freed the caller but left compute running. An expired deadline surfaces as a `TIMEOUT` classification and an external abort preserves a caller-supplied `LlmError` reason (falling back to `TIMEOUT`), so a cascade falls through rather than hanging. An interrupt that surfaces as a thrown iterator error rather than an early return is still classified from the deadline/abort state, never downgraded.

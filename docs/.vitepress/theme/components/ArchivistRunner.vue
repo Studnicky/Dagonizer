@@ -655,7 +655,7 @@ class VueResumeObserver extends ObservedDag<ArchivistState> {
     placementPath: readonly string[],
   ): void {
     super.onNodeEnd(nodeName, output, state, placementPath);
-    this.#prov.recordNodeEnd(nodeName, output ?? undefined);
+    this.#prov.recordNodeEnd(nodeName, output ?? undefined, state.reasoning);
     this.#session.pumpNodeEnd(nodeName, output, state, placementPath);
   }
 
@@ -868,9 +868,10 @@ async function resumeFromCheckpoint(): Promise<void> {
       : `r-${String(Date.now())}-${String(Math.floor(Math.random() * 1e6))}`;
 
   const prov = new RdfProvObserver({
-    'store':             memoryStore,
-    'runId':             runId,
-    'dispatcherAgentId': `dispatcher:${activeBackend.value}`,
+    'store':                      memoryStore,
+    'runId':                      runId,
+    'dispatcherAgentId':          `dispatcher:${activeBackend.value}`,
+    'alreadyPersistedReasoning':  restored.state.reasoning,
   });
 
   let observer: VueResumeObserver | null = null;

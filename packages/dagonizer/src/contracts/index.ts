@@ -94,5 +94,6 @@ export type { PluginInterface, PluginReceiverType } from './PluginInterface.js';
 
 // Streaming: push-side sink and producer contracts for `StreamChannel`.
 export type { StreamSinkInterface } from './StreamSinkInterface.js';
+export { NullStreamSink } from './NullStreamSink.js';
 export type { StreamProducerInterface } from './StreamProducerInterface.js';
 export type { ResumableStreamProducerInterface } from './ResumableStreamProducerInterface.js';

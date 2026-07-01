@@ -60,6 +60,14 @@ export type WebLlmCompletionParamsType = {
   readonly temperature?: number;
   readonly max_tokens?: number;
   readonly response_format?: { type: 'json_object' | 'text' };
+  /**
+   * Requests a final chunk carrying token-usage totals, mirroring the OpenAI
+   * streaming convention. WebLLM's engine attaches `usage` to the last
+   * streamed chunk when this is set; the adapter's streaming path reads it
+   * to populate `ChatResponseType.usage` instead of hardcoding
+   * `ZERO_TOKEN_USAGE`.
+   */
+  readonly stream_options?: { readonly include_usage: true };
 };
 
 /** Streaming variant of the chat-completion request. */
@@ -67,9 +75,14 @@ export type WebLlmStreamingParamsType = WebLlmCompletionParamsType & {
   readonly stream: true;
 };
 
-/** One chunk emitted by the streaming completion. */
+/**
+ * One chunk emitted by the streaming completion. The final chunk of a
+ * request sent with `stream_options: { include_usage: true }` carries
+ * `usage` alongside an empty (or absent) delta.
+ */
 export type WebLlmStreamChunkType = {
   readonly choices: ReadonlyArray<{ delta: { content?: string } }>;
+  readonly usage?: { readonly prompt_tokens?: number; readonly completion_tokens?: number };
 };
 
 /** Chat-completion result returned by the WebLLM engine (non-streaming). */

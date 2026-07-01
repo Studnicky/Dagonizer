@@ -117,6 +117,7 @@ import { childDag as sharedChildDAG, parentDag as sharedParentDAG } from '../exa
 import { dag as streamChannelDag } from '../examples/dags/34-stream-channel.js';
 import { fanInDag, resumeDag }     from '../examples/dags/35-stream-fanin-resume.js';
 import { innerDag, outerDag }      from '../examples/dags/36-dag-stream-producer.js';
+import { agentDag as reactAgentMemoryAgentDag, traceDag as reactAgentMemoryTraceDag } from '../examples/dags/react-agent-memory.js';
 import { fanInCandidatesDag, streamProducerCandidatesDag } from '../examples/the-archivist/streaming/ArchivistStreamingDAGs.js';
 
 import { cartographerDAG, eventPipelineTypedDAG }  from '../examples/the-cartographer/dag.js';
@@ -157,6 +158,8 @@ const dags: ReadonlyArray<readonly [string, DAGType]> = [
   ['dags / 35-stream-fanin-resume (resume)',  resumeDag],
   ['dags / 36-dag-stream-producer (inner)',                    innerDag],
   ['dags / 36-dag-stream-producer (outer)',                    outerDag],
+  ['dags / react-agent-memory (agentDag)',                     reactAgentMemoryAgentDag],
+  ['dags / react-agent-memory (traceDag)',                     reactAgentMemoryTraceDag],
   ['the-archivist / fanInCandidatesDag',                       fanInCandidatesDag],
   ['the-archivist / streamProducerCandidatesDag',              streamProducerCandidatesDag],
 ];

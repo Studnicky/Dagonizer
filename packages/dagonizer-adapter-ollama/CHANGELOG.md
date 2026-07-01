@@ -10,6 +10,10 @@
 
 ## [unreleased]
 
+### Minor Changes
+
+- `OllamaApiAdapter` overrides `performChatStream` to apply the same 404 → "model not pulled" translation to the streaming path that `performChat` already applies to the buffered path, wrapping the inherited `OpenAiCompatibleAdapter` SSE streaming (`super.performChatStream`) so a missing-model error is identical whether the caller streams or buffers.
+
 ### Patch Changes
 
 - Add a consumer-configurable `systemPrompt` option, forwarded through `OpenAiCompatibleAdapter` to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one, no-op when empty). Lets a consumer frame persona/format once at construction instead of hand-prepending a system message to every call.

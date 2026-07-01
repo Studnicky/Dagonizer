@@ -16,9 +16,12 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { LlmAdapterInterface } from '../../src/contracts/LlmAdapterInterface.js';
+import type { StreamSinkInterface } from '../../src/contracts/StreamSinkInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ChatRequestType } from '../../src/entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../../src/entities/adapter/ChatResponse.js';
+import { ChatStreamChunkBuilder } from '../../src/entities/adapter/ChatStreamChunk.js';
+import type { ChatStreamChunkType } from '../../src/entities/adapter/ChatStreamChunk.js';
 import type { ToolCallType } from '../../src/entities/adapter/ToolCall.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { JsonValue } from '../../src/entities/JsonValue.js';
@@ -127,6 +130,17 @@ class FakeTextToolAdapter {
       'finishReason': 'stop',
       'usage': { 'promptTokens': 1, 'completionTokens': 1 },
     };
+  }
+
+  async chatStream(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    const response = await this.chat(request);
+    if (response.message.variant === 'text') {
+      await sink.push(ChatStreamChunkBuilder.of(response.message.content));
+    }
+    return response;
   }
 
   async connect(): Promise<void> { /* no-op */ }

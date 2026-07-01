@@ -35,7 +35,7 @@ features:
     details: 'Isolate a state clone and run a body (registered node or sub-DAG) in it. Gather produced clone state back into the parent via map, append, partition, or custom strategies. Route on the aggregate outcome.'
   - icon: ⫴
     title: Streaming & Backpressure
-    details: 'ScatterNode accepts an AsyncIterable or AsyncGenerator as its source — a stream drains through the same bounded worker pool as a finite array. concurrency IS the backpressure: the engine pulls the next item only when a worker frees. Resume is durable via an inbox queue: un-acked items reprocess on restart; the stream is never re-read from the beginning.'
+    details: 'ScatterNode accepts an AsyncIterable or AsyncGenerator as its source — a stream drains through the same bounded worker pool as a finite array. concurrency IS the backpressure: the engine pulls the next item only when a worker frees. Resume is durable via an inbox queue: un-acked items reprocess on restart; the stream is never re-read from the beginning. Separately, every LlmAdapterInterface implements chatStream(request, sink) so a CallModelNode can push live per-token deltas to an observation sink while the assembled response still lands in state through the normal path.'
   - icon: ✕
     title: Retry Policies
     details: 'RetryPolicy provides constant, linear, exponential, and decorrelated-jitter strategies. Filter by error type. Cooperates with the abort signal so retries stop on cancellation.'

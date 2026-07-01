@@ -54,6 +54,9 @@ export type {
 export { BaseAdapter } from './BaseAdapter.js';
 export type { BaseAdapterOptionsType } from './BaseAdapter.js';
 
+export { SseLineParser } from './SseLineParser.js';
+export type { SseFrameType } from './SseLineParser.js';
+
 export { OpenAiCompatibleAdapter } from './OpenAiCompatibleAdapter.js';
 export type {
   OpenAiCompatibleAdapterOptionsType,
@@ -68,6 +71,27 @@ export type { OpenAiCostEntryType } from './ModelCost.js';
 // the `./adapter` public subpath alongside the adapter that parses it.
 export { OpenAiResponseBodySchema } from '../entities/adapter/OpenAiResponseBody.js';
 export type { OpenAiResponseBodyType } from '../entities/adapter/OpenAiResponseBody.js';
+
+// `OpenAiStreamChunk` is a schema entity (canonical home `entities/adapter/`).
+// Re-exported here so the OpenAI-compatible SSE wire shape stays reachable
+// through the `./adapter` public subpath alongside the streaming adapter.
+export { OpenAiStreamChunkSchema } from '../entities/adapter/OpenAiStreamChunk.js';
+export type { OpenAiStreamChunkType } from '../entities/adapter/OpenAiStreamChunk.js';
+
+// `ChatStreamChunk` is a schema entity (canonical home `entities/adapter/`).
+// Re-exported here so the streamed-chunk wire shape stays reachable through
+// the `./adapter` public subpath alongside the rest of the chat surface.
+export { ChatStreamChunkSchema, ChatStreamChunkBuilder } from '../entities/adapter/ChatStreamChunk.js';
+export type { ChatStreamChunkType } from '../entities/adapter/ChatStreamChunk.js';
+
+// `RoutedChatStreamChunk` is a schema entity (canonical home `entities/adapter/`).
+// Re-exported here so the routed streamed-chunk wire shape stays reachable
+// through the `./adapter` public subpath alongside `RoutingStreamSink`, the
+// decorator that produces it.
+export { RoutedChatStreamChunkSchema, RoutedChatStreamChunkBuilder } from '../entities/adapter/RoutedChatStreamChunk.js';
+export type { RoutedChatStreamChunkType } from '../entities/adapter/RoutedChatStreamChunk.js';
+
+export { RoutingStreamSink } from './RoutingStreamSink.js';
 
 export {
   Classifications,

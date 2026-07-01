@@ -20,8 +20,12 @@
  * error signal, causing the adapter to retry the request without tools.
  */
 
+import type { StreamSinkInterface } from '../contracts/StreamSinkInterface.js';
+import { ChatStreamChunkBuilder } from '../entities/adapter/ChatStreamChunk.js';
+import type { ChatStreamChunkType } from '../entities/adapter/ChatStreamChunk.js';
 import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 import type { OpenAiResponseBodyType } from '../entities/adapter/OpenAiResponseBody.js';
+import type { OpenAiStreamChunkType } from '../entities/adapter/OpenAiStreamChunk.js';
 import { Validator } from '../validation/Validator.js';
 
 import { BaseAdapter } from './BaseAdapter.js';
@@ -41,6 +45,7 @@ import type {
 } from './LlmAdapter.js';
 import { Classifications, LlmError } from './LlmError.js';
 import { ModelCost } from './ModelCost.js';
+import { SseLineParser } from './SseLineParser.js';
 
 /** Provider-specific configuration the subclass passes in. */
 export type OpenAiCompatibleConfigType = {
@@ -163,6 +168,25 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   /**
+   * Streaming override: POSTs the same endpoint with `stream: true` +
+   * `stream_options: { include_usage: true }` and drains the SSE body
+   * through `SseLineParser`, pushing one `ChatStreamChunkType` per non-empty
+   * `delta.content`. Single-attempt (no retry), matching `chatStream`'s
+   * contract.
+   *
+   * Tool-turns fall back to the buffered default (`super.performChatStream`):
+   * partial-JSON `tool_calls` deltas are unsafe to parse mid-stream, so any
+   * request carrying tools is never sent with `stream: true`.
+   */
+  protected override async performChatStream(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    if (request.tools.length > 0) return super.performChatStream(request, sink);
+    return this.#sendStreamRequest(request, sink);
+  }
+
+  /**
    * Override in a concrete subclass to enable the tools-fallback path.
    * Return `true` when the given error signals that the provider refused
    * the request because of tool definitions (e.g. Cerebras' 400 on
@@ -198,25 +222,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   async #sendRequest(request: ChatRequestType, body: Record<string, unknown>): Promise<ChatResponseType> {
-    let res: Response;
-    try {
-      res = await fetch(this.#config.endpoint, {
-        'method': 'POST',
-        'headers': {
-          'content-type': 'application/json',
-          'authorization': `Bearer ${this.#apiKey}`,
-          ...this.#config.extraHeaders,
-        },
-        'body': JSON.stringify(body),
-        'signal': request.signal,
-      });
-    } catch (err) {
-      // The base guard composes the deadline into `request.signal`; a TIMEOUT
-      // LlmError is already classified. Preserve it; only a genuine transport
-      // failure is NETWORK.
-      if (err instanceof LlmError) throw err;
-      throw LlmError.ofNetworkError(err);
-    }
+    const res = await this.#postJson(request, body);
 
     if (!res.ok) {
       const text = await res.text();
@@ -234,6 +240,122 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
       );
     }
     return this.#decodeResponse(rawBody);
+  }
+
+  /** Shared headers for every request this adapter sends: `content-type`, bearer auth, provider extras. */
+  #requestHeaders(): Record<string, string> {
+    return {
+      'content-type': 'application/json',
+      'authorization': `Bearer ${this.#apiKey}`,
+      ...this.#config.extraHeaders,
+    };
+  }
+
+  /** POST `body` to the configured endpoint with the shared headers + signal; classifies transport failures. */
+  async #postJson(request: ChatRequestType, body: Record<string, unknown>): Promise<Response> {
+    try {
+      return await fetch(this.#config.endpoint, {
+        'method': 'POST',
+        'headers': this.#requestHeaders(),
+        'body': JSON.stringify(body),
+        'signal': request.signal,
+      });
+    } catch (err) {
+      // The base guard composes the deadline into `request.signal`; a TIMEOUT
+      // LlmError is already classified. Preserve it; only a genuine transport
+      // failure is NETWORK.
+      if (err instanceof LlmError) throw err;
+      throw LlmError.ofNetworkError(err);
+    }
+  }
+
+  async #sendStreamRequest(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    const body = {
+      ...this.#composeBody(request, true),
+      'stream': true,
+      'stream_options': { 'include_usage': true },
+    };
+    const res = await this.#postJson(request, body);
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new LlmError(`${this.#config.displayName} ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, { 'body': text }));
+    }
+    if (res.body === null) {
+      throw new LlmError(`${this.#config.displayName}: streamed response has no body`, Classifications['NETWORK']);
+    }
+
+    return this.#drainStream(res.body, sink, request.signal);
+  }
+
+  async #drainStream(
+    stream: ReadableStream<Uint8Array>,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+    signal: AbortSignal,
+  ): Promise<ChatResponseType> {
+    let text = '';
+    let finishReason: ChatResponseType['finishReason'] = 'stop';
+    let usage = ZERO_TOKEN_USAGE;
+
+    try {
+      for await (const frame of SseLineParser.linesOf(stream)) {
+        if (frame.data === '[DONE]') break;
+        if (frame.data.length === 0) continue;
+
+        const chunk = this.#decodeStreamChunk(frame.data);
+        const choice = chunk.choices[0];
+        if (choice !== undefined) {
+          const delta = choice.delta?.content ?? '';
+          if (delta.length > 0) {
+            text += delta;
+            await this.pushChunk(sink, ChatStreamChunkBuilder.of(delta));
+          }
+          if (choice.finish_reason === 'length') finishReason = 'length';
+        }
+        if (chunk.usage !== undefined) {
+          usage = { 'promptTokens': chunk.usage.prompt_tokens ?? 0, 'completionTokens': chunk.usage.completion_tokens ?? 0 };
+        }
+      }
+    } catch (err) {
+      if (signal.aborted) {
+        throw signal.reason instanceof LlmError
+          ? signal.reason
+          : new LlmError(`${this.#config.displayName}: stream aborted`, Classifications['TIMEOUT'], { 'cause': signal.reason });
+      }
+      if (err instanceof LlmError) throw err;
+      throw LlmError.ofNetworkError(err);
+    }
+
+    return {
+      'message': ChatResponseMessageBuilder.from(text, []),
+      'finishReason': finishReason,
+      'usage': usage,
+    };
+  }
+
+  /** Parse + schema-validate one SSE `data:` line's JSON payload; SCHEMA_VIOLATION on any failure. */
+  #decodeStreamChunk(raw: string): OpenAiStreamChunkType {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (cause) {
+      throw new LlmError(
+        `${this.#config.displayName}: malformed stream chunk — ${raw.slice(0, 120)}`,
+        Classifications['SCHEMA_VIOLATION'],
+        { cause },
+      );
+    }
+    if (!Validator.openAiStreamChunk.is(parsed)) {
+      const detail = Validator.openAiStreamChunk.errors(parsed) ?? [];
+      throw new LlmError(
+        `${this.#config.displayName}: stream chunk schema violation:\n  - ${detail.join('\n  - ')}`,
+        Classifications['SCHEMA_VIOLATION'],
+      );
+    }
+    return parsed;
   }
 
   #composeBody(request: ChatRequestType, includeTools: boolean): Record<string, unknown> {

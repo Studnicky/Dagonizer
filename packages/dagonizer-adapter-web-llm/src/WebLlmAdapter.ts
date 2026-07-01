@@ -13,19 +13,23 @@
  * via JSON coercion (`ToolCallCodec.decode`).
  */
 
+import type { StreamSinkInterface } from '@studnicky/dagonizer';
 import type {
   ChatRequestType,
   ChatResponseType,
+  ChatStreamChunkType,
   ErrorClassificationType,
+  TokenUsageType,
   ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, Classifications, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, ChatStreamChunkBuilder, Classifications, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import type {
   WebLlmEngineType,
   WebLlmInitReportType,
   WebLlmModuleInterface,
+  WebLlmStreamChunkType,
 } from './WebLlmHost.js';
 import {
   webLlmEngineValidator,
@@ -219,53 +223,17 @@ export class WebLlmAdapter extends BaseAdapter {
   }
 
   /**
-   * Stream a chat completion from the WebLLM engine.
+   * Buffered chat completion from the WebLLM engine.
    *
    * Correctness (the caller's promise always settling) is guaranteed by the
-   * base class's abort+timeout race. This method records the live engine so
-   * `onCancelRequested` can issue a cooperative `interruptGenerate()`, then
-   * accumulates the stream and decodes the result.
+   * base class's abort+timeout race. Opens the stream through `#openStream`
+   * (shared with `performChatStream`), discards every delta except the
+   * concatenated text, and decodes the result. `usage` is always
+   * `ZERO_TOKEN_USAGE` on this path — per-token accounting is only available
+   * to a caller that reads the deltas as they arrive, via `chatStream`.
    */
   protected async performChat(request: ChatRequestType): Promise<ChatResponseType> {
-    const engine = await this.#engine();
-    liveEngines.set(this, engine);
-
-    // Reject immediately if the signal is already aborted before any GPU work
-    // begins. This avoids starting a generation that would be interrupted right
-    // away and keeps the fast-abort path zero-cost.
-    if (request.signal.aborted) {
-      const reason: unknown = request.signal.reason;
-      throw reason instanceof LlmError
-        ? reason
-        : new LlmError('web-llm request aborted', Classifications['TIMEOUT']);
-    }
-
-    // ToolInterface-calling via JSON-coerce: inject a system message with the
-    // tool-plan schema and pass the schema natively via response_format.schema
-    // so GrammarCompiler.CompileJSONSchema receives a valid JSON string.
-    const messages = WebLlmAdapter.composeMessages(request);
-    const schemaString: string | undefined = request.tools.length > 0
-      ? JSON.stringify(this.#toolPlanSchema(request.tools))
-      : request.outputSchema.variant === 'schema'
-        ? JSON.stringify(request.outputSchema.schema)
-        : undefined;
-
-    const responseFormat: WebLlmResponseFormatType = schemaString !== undefined
-      ? { 'type': 'json_object', 'schema': schemaString }
-      : { 'type': 'text' };
-
-    let stream: AsyncIterable<{ choices: ReadonlyArray<{ delta: { content?: string } }> }>;
-    try {
-      stream = await engine.chat.completions.create({
-        'stream':          true,
-        'messages':        messages,
-        'temperature':     request.temperature,
-        'max_tokens':      request.maxTokens,
-        'response_format': responseFormat,
-      });
-    } catch (err) {
-      throw this.#classifyWebLlmError(err);
-    }
+    const stream = await this.#openStream(request);
 
     let accumulated = '';
     try {
@@ -284,6 +252,117 @@ export class WebLlmAdapter extends BaseAdapter {
       'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
       'usage': ZERO_TOKEN_USAGE,
     };
+  }
+
+  /**
+   * Streaming chat completion from the WebLLM engine: pushes each non-empty
+   * delta to `sink` as it arrives instead of discarding it. Opens the stream
+   * through the same `#openStream` setup `performChat` uses (identical
+   * message composition, response_format, and `stream_options` — the two
+   * paths differ only in what they do with the deltas). Captures `usage`
+   * from the final chunk when the engine attaches one (requested via
+   * `stream_options: { include_usage: true }` in `#openStream`), falling
+   * back to `ZERO_TOKEN_USAGE` when the engine never sends it.
+   *
+   * A tool-bearing request falls back to the buffered default
+   * (`super.performChatStream`): partial-JSON `tool_calls` deltas are unsafe
+   * to expose mid-stream, so any request carrying tools is never streamed
+   * token-by-token.
+   *
+   * Every loop iteration re-checks `request.signal`: `withDeadline` already
+   * guarantees the caller's promise rejects the instant the composed signal
+   * aborts, but without this check the in-flight `for await` here would keep
+   * running in the background — draining the engine's async iterable and
+   * pushing further deltas to `sink` after the call already settled. The
+   * in-loop check issues a best-effort `engine.interruptGenerate()` and
+   * throws, so an abort stops generation promptly instead of leaking it.
+   */
+  protected override async performChatStream(
+    request: ChatRequestType,
+    sink: StreamSinkInterface<ChatStreamChunkType>,
+  ): Promise<ChatResponseType> {
+    if (request.tools.length > 0) return super.performChatStream(request, sink);
+
+    const stream = await this.#openStream(request);
+    const engine = liveEngines.get(this);
+
+    let accumulated = '';
+    let usage: TokenUsageType = ZERO_TOKEN_USAGE;
+    try {
+      for await (const chunk of stream) {
+        if (request.signal.aborted) {
+          if (engine !== undefined) engine.interruptGenerate();
+          throw WebLlmAdapter.#abortErrorFrom(request.signal);
+        }
+        const delta = chunk.choices[0]?.delta.content ?? '';
+        if (delta.length > 0) {
+          accumulated += delta;
+          await this.pushChunk(sink, ChatStreamChunkBuilder.of(delta));
+        }
+        if (chunk.usage !== undefined) {
+          usage = {
+            'promptTokens': chunk.usage.prompt_tokens ?? 0,
+            'completionTokens': chunk.usage.completion_tokens ?? 0,
+          };
+        }
+      }
+    } catch (err) {
+      throw this.#classifyWebLlmError(err);
+    }
+
+    const raw = accumulated;
+    const text = raw.trim();
+    const toolCalls = request.tools.length > 0 ? ToolCallCodec.decode(raw, 'webllm') : [];
+    return {
+      'message': ChatResponseMessageBuilder.from(text, toolCalls),
+      'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
+      'usage': usage,
+    };
+  }
+
+  /**
+   * Shared setup for both the buffered and streaming chat paths: resolves
+   * the engine, records it in `liveEngines` for `onCancelRequested`,
+   * rejects on an already-aborted signal, composes the message array and
+   * `response_format`, and opens the stream. `stream_options: { include_usage:
+   * true }` is always requested so the streaming path can read `usage` off
+   * the final chunk; the buffered path simply ignores it.
+   */
+  async #openStream(request: ChatRequestType): Promise<AsyncIterable<WebLlmStreamChunkType>> {
+    const engine = await this.#engine();
+    liveEngines.set(this, engine);
+
+    // Reject immediately if the signal is already aborted before any GPU work
+    // begins. This avoids starting a generation that would be interrupted right
+    // away and keeps the fast-abort path zero-cost.
+    if (request.signal.aborted) throw WebLlmAdapter.#abortErrorFrom(request.signal);
+
+    // ToolInterface-calling via JSON-coerce: inject a system message with the
+    // tool-plan schema and pass the schema natively via response_format.schema
+    // so GrammarCompiler.CompileJSONSchema receives a valid JSON string.
+    const messages = WebLlmAdapter.composeMessages(request);
+    const schemaString: string | undefined = request.tools.length > 0
+      ? JSON.stringify(this.#toolPlanSchema(request.tools))
+      : request.outputSchema.variant === 'schema'
+        ? JSON.stringify(request.outputSchema.schema)
+        : undefined;
+
+    const responseFormat: WebLlmResponseFormatType = schemaString !== undefined
+      ? { 'type': 'json_object', 'schema': schemaString }
+      : { 'type': 'text' };
+
+    try {
+      return await engine.chat.completions.create({
+        'stream':          true,
+        'messages':        messages,
+        'temperature':     request.temperature,
+        'max_tokens':      request.maxTokens,
+        'response_format': responseFormat,
+        'stream_options':  { 'include_usage': true },
+      });
+    } catch (err) {
+      throw this.#classifyWebLlmError(err);
+    }
   }
 
   protected override classify(error: unknown): ErrorClassificationType {
@@ -414,6 +493,18 @@ export class WebLlmAdapter extends BaseAdapter {
       throw this.#classifyWebLlmError(err);
     }
     return webLlmEngineValidator.validate(rawEngine);
+  }
+
+  /**
+   * Classify an already-aborted `AbortSignal` into an `LlmError`. Shared by
+   * `#openStream`'s pre-flight check and `performChatStream`'s in-loop
+   * check so both abort paths raise the identical classification.
+   */
+  static #abortErrorFrom(signal: AbortSignal): LlmError {
+    const reason: unknown = signal.reason;
+    return reason instanceof LlmError
+      ? reason
+      : new LlmError('web-llm request aborted', Classifications['TIMEOUT']);
   }
 
   #classifyWebLlmError(err: unknown): LlmError {

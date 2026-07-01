@@ -18,6 +18,8 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, test } from 'node:test';
 
+import type { StreamSinkInterface } from '@studnicky/dagonizer';
+import type { ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
 import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 
 import { AnthropicApiAdapter } from '../src/index.js';
@@ -118,6 +120,33 @@ const SEARCH_TOOL = {
   'outputSchema': { 'type': 'object' },
   'strict':       false,
 } as const;
+
+/** Encodes a sequence of named SSE frames into a `ReadableStream<Uint8Array>`. */
+class SseFixture {
+  private constructor() { /* static class */ }
+
+  static of(frames: readonly { readonly event: string; readonly data: unknown }[]): ReadableStream<Uint8Array> {
+    const encoder = new TextEncoder();
+    const text = frames.map((f) => `event: ${f.event}\ndata: ${JSON.stringify(f.data)}\n\n`).join('');
+    const bytes = encoder.encode(text);
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes);
+        controller.close();
+      },
+    });
+  }
+}
+
+/** Records every chunk pushed by the adapter during a streaming call. */
+class RecordingSink implements StreamSinkInterface<ChatStreamChunkType> {
+  readonly pushed: ChatStreamChunkType[] = [];
+
+  async push(item: ChatStreamChunkType): Promise<void> {
+    this.pushed.push(item);
+    return Promise.resolve();
+  }
+}
 
 // ── Setup / teardown ──────────────────────────────────────────────────────
 
@@ -496,4 +525,233 @@ void test('timeoutMs fires and rejects with LlmError from the timeout path', asy
     thrown.message.includes('timeout'),
     `expected message to include "timeout", got: ${thrown.message}`,
   );
+});
+
+// ── Streaming ──────────────────────────────────────────────────────────────
+
+void test('chatStream drains SSE frames into sink chunks and an assembled response', async () => {
+  globalThis.fetch = async (): Promise<Response> => {
+    const body = SseFixture.of([
+      { 'event': 'message_start', 'data': { 'type': 'message_start', 'message': { 'usage': { 'input_tokens': 12 } } } },
+      {
+        'event': 'content_block_delta',
+        'data': { 'type': 'content_block_delta', 'index': 0, 'delta': { 'type': 'text_delta', 'text': 'Hello' } },
+      },
+      {
+        'event': 'content_block_delta',
+        'data': { 'type': 'content_block_delta', 'index': 0, 'delta': { 'type': 'text_delta', 'text': ' there.' } },
+      },
+      {
+        'event': 'message_delta',
+        'data': { 'type': 'message_delta', 'delta': { 'stop_reason': 'end_turn' }, 'usage': { 'output_tokens': 8 } },
+      },
+      { 'event': 'message_stop', 'data': { 'type': 'message_stop' } },
+    ]);
+    return new Response(body, { 'status': 200, 'headers': { 'content-type': 'text/event-stream' } });
+  };
+
+  const adapter = new AnthropicApiAdapter('sk-ant-test');
+  const sink = new RecordingSink();
+  const response = await adapter.chatStream(
+    ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
+    sink,
+  );
+
+  assert.equal(sink.pushed.length, 2);
+  assert.equal(sink.pushed[0]?.delta, 'Hello');
+  assert.equal(sink.pushed[1]?.delta, ' there.');
+
+  assert.equal(response.message.variant, 'text');
+  if (response.message.variant === 'text') {
+    assert.equal(response.message.content, 'Hello there.');
+  }
+  assert.equal(response.finishReason, 'stop');
+  assert.equal(response.usage.promptTokens, 12);
+  assert.equal(response.usage.completionTokens, 8);
+});
+
+void test('chatStream with tools falls back to the buffered path (no stream: true on wire)', async () => {
+  const capture = new FetchCapture();
+  globalThis.fetch = capture.stub(TOOL_USE_RESPONSE);
+
+  const adapter = new AnthropicApiAdapter('sk-ant-test');
+  const sink = new RecordingSink();
+  await adapter.chatStream(
+    ChatRequestBuilder.from({
+      'messages': [{ 'role': 'user', 'content': 'Search for cats.' }],
+      'tools':    [SEARCH_TOOL],
+    }),
+    sink,
+  );
+
+  assert.equal(Object.prototype.hasOwnProperty.call(capture.body, 'stream'), false);
+});
+
+void test('chatStream drains a text_delta frame split across two chunk() boundaries', async () => {
+  // Same happy-path frames as the passing test above, but the SSE bytes are
+  // enqueued as two separate ReadableStream chunks with the split landing
+  // mid-frame — SseLineParser must reassemble the frame across the read()
+  // boundary rather than treating each enqueue as a complete frame.
+  globalThis.fetch = async (): Promise<Response> => {
+    const encoder = new TextEncoder();
+    const full = [
+      { 'event': 'message_start', 'data': { 'type': 'message_start', 'message': { 'usage': { 'input_tokens': 12 } } } },
+      {
+        'event': 'content_block_delta',
+        'data': { 'type': 'content_block_delta', 'index': 0, 'delta': { 'type': 'text_delta', 'text': 'Hello there.' } },
+      },
+      {
+        'event': 'message_delta',
+        'data': { 'type': 'message_delta', 'delta': { 'stop_reason': 'end_turn' }, 'usage': { 'output_tokens': 8 } },
+      },
+      { 'event': 'message_stop', 'data': { 'type': 'message_stop' } },
+    ].map((f) => `event: ${f.event}\ndata: ${JSON.stringify(f.data)}\n\n`).join('');
+    const bytes = encoder.encode(full);
+    const splitAt = Math.floor(bytes.length / 2); // lands inside a frame, not on a boundary
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, splitAt));
+        controller.enqueue(bytes.slice(splitAt));
+        controller.close();
+      },
+    });
+    return new Response(stream, { 'status': 200, 'headers': { 'content-type': 'text/event-stream' } });
+  };
+
+  const adapter = new AnthropicApiAdapter('sk-ant-test');
+  const sink = new RecordingSink();
+  const response = await adapter.chatStream(
+    ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
+    sink,
+  );
+
+  assert.equal(sink.pushed.map((c) => c.delta).join(''), 'Hello there.');
+  assert.equal(response.finishReason, 'stop');
+  assert.equal(response.usage.promptTokens, 12);
+  assert.equal(response.usage.completionTokens, 8);
+});
+
+void test('chatStream rejects with a classified LlmError (not a raw AbortError) on a hung stream', async () => {
+  // The SSE body emits message_start then hangs forever on the next chunk.
+  // BaseAdapter.withDeadline composes a short-lived timeout into
+  // request.signal; when it fires, the composed abort reason is already an
+  // LlmError('… request timeout', TIMEOUT) rather than a raw DOMException —
+  // proving the caller never observes an unclassified AbortError for a
+  // stalled stream, end to end through the public chatStream() API.
+  const encoder = new TextEncoder();
+  let pullCount = 0;
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      pullCount += 1;
+      if (pullCount === 1) {
+        controller.enqueue(encoder.encode(
+          'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":5}}}\n\n',
+        ));
+        return;
+      }
+      await new Promise<void>(() => { /* never resolves — simulates a stalled connection */ });
+    },
+  });
+
+  globalThis.fetch = async (): Promise<Response> => new Response(body, {
+    'status':  200,
+    'headers': { 'content-type': 'text/event-stream' },
+  });
+
+  const adapter = new AnthropicApiAdapter('sk-ant-test', { 'timeoutMs': 20, 'maxAttempts': 1 });
+  const sink = new RecordingSink();
+
+  let thrown: unknown;
+  try {
+    await adapter.chatStream(
+      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
+      sink,
+    );
+  } catch (err) {
+    thrown = err;
+  }
+
+  assert.ok(thrown instanceof LlmError, `expected a classified LlmError, got: ${String(thrown)}`);
+  if (thrown instanceof LlmError) {
+    assert.equal(thrown.classification.reason, 'TIMEOUT');
+  }
+});
+
+void test('a mid-stream read failure is classified as a NETWORK LlmError, not left as a raw DOMException', async () => {
+  // The underlying stream read rejects with a raw AbortError-shaped
+  // DOMException (as a real fetch body reader does on a socket-level abort)
+  // with request.signal never aborted. Before the #drainStream try/catch,
+  // this raw DOMException would propagate unclassified through
+  // BaseAdapter.withDeadline's reject path (it IS an Error, so the guard
+  // that only wraps non-Error reasons lets it straight through). The fix
+  // classifies it via the same LlmError.ofNetworkError path #postJson uses.
+  const encoder = new TextEncoder();
+  let pullCount = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pullCount += 1;
+      if (pullCount === 1) {
+        controller.enqueue(encoder.encode(
+          'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":5}}}\n\n',
+        ));
+        return;
+      }
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    },
+  });
+
+  globalThis.fetch = async (): Promise<Response> => new Response(body, {
+    'status':  200,
+    'headers': { 'content-type': 'text/event-stream' },
+  });
+
+  const adapter = new AnthropicApiAdapter('sk-ant-test');
+  const sink = new RecordingSink();
+
+  let thrown: unknown;
+  try {
+    await adapter.chatStream(
+      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
+      sink,
+    );
+  } catch (err) {
+    thrown = err;
+  }
+
+  assert.ok(thrown instanceof LlmError, `expected a classified LlmError, got: ${String(thrown)}`);
+  if (thrown instanceof LlmError) {
+    assert.equal(thrown.classification, Classifications['NETWORK']);
+  }
+});
+
+void test('an "error" SSE event is classified as a SCHEMA_VIOLATION LlmError surfacing the provider message', async () => {
+  globalThis.fetch = async (): Promise<Response> => {
+    const body = SseFixture.of([
+      { 'event': 'message_start', 'data': { 'type': 'message_start', 'message': { 'usage': { 'input_tokens': 4 } } } },
+      {
+        'event': 'error',
+        'data': { 'type': 'error', 'error': { 'type': 'overloaded_error', 'message': 'Overloaded' } },
+      },
+    ]);
+    return new Response(body, { 'status': 200, 'headers': { 'content-type': 'text/event-stream' } });
+  };
+
+  const adapter = new AnthropicApiAdapter('sk-ant-test');
+  const sink = new RecordingSink();
+
+  let thrown: unknown;
+  try {
+    await adapter.chatStream(
+      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
+      sink,
+    );
+  } catch (err) {
+    thrown = err;
+  }
+
+  assert.ok(thrown instanceof LlmError, `expected a classified LlmError, got: ${String(thrown)}`);
+  if (thrown instanceof LlmError) {
+    assert.equal(thrown.classification, Classifications['SCHEMA_VIOLATION']);
+    assert.ok(thrown.message.includes('Overloaded'), `expected message to surface the provider text, got: ${thrown.message}`);
+  }
 });

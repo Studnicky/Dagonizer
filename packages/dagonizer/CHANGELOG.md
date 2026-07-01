@@ -1,5 +1,18 @@
 # @studnicky/dagonizer
 
+## [unreleased]
+
+### Minor Changes
+
+- `LlmAdapterInterface.chatStream(request, sink)` adds a streaming seam over `StreamSinkInterface<ChatStreamChunkType>`. `BaseAdapter` ships a provider-agnostic buffered default: one full `chat()` call, then a single chunk pushed to the sink. Concrete streaming adapters override `performChatStream` to push incremental deltas as they arrive.
+- New `ChatStreamChunk` entity (`ChatStreamChunkSchema` + `ChatStreamChunkType` + `ChatStreamChunkBuilder.of`) carries one incremental text delta from a streaming chat call.
+- New `ReasoningStep` entity (`ReasoningStepSchema` + `ReasoningStepType` + `ReasoningStepBuilder`) models one step — `thought` / `action` / `observation` / `final` — of an agent's reasoning trace as a discriminated union.
+- New `ReasoningTraceItem` entity (`ReasoningTraceItemSchema` + `ReasoningTraceItemType` + `ReasoningTraceItemBuilder`) pairs a `ReasoningStepType` with a monotonic `ordinal`, so a streamed step is self-describing — a downstream consumer can derive a `wasInformedBy`-style chain from `ordinal - 1` with no cross-item state.
+- New `AgentTraceProducer`, a `DagStreamProducer<ReasoningTraceItemType>` subclass, streams a running agent loop's node results as ordinal-tagged `ReasoningTraceItemType` items via a fixed node-name → reasoning-kind dispatch map. The ordinal increments only for emitted items, so the sequence stays contiguous. Consumers extend it and implement `describe(stage)` to supply each step's text.
+- `CallModelNode` streams its model call via `chatStream`, taking an optional `sink` in its constructor options (`StreamSinkInterface<ChatStreamChunkType>`) that defaults to a no-op `NullStreamSink` when omitted.
+- New `SseLineParser`, a shared isomorphic Server-Sent-Events framer: decodes a `ReadableStream<Uint8Array>` into `SseFrameType` frames (`event:`/`data:` accumulation, blank-line flush, `:`-comment skip, multi-`data:` join) over Web Streams + `TextDecoder` only, so it runs unchanged in Node and the browser. `OpenAiCompatibleAdapter` overrides `performChatStream` to POST with `stream: true` and drain the response body through `SseLineParser`, pushing one `ChatStreamChunkType` per non-empty delta; a request carrying tools still falls back to the buffered default.
+- New `RoutedChatStreamChunk` entity (`RoutedChatStreamChunkSchema` + `RoutedChatStreamChunkType` + `RoutedChatStreamChunkBuilder.of`) tags one streamed text delta with a `routeKey` and its originating `{dagName, nodeName}` source. New `RoutingStreamSink` decorates the per-execution sink handed to `adapter.chatStream`, forwarding each plain `ChatStreamChunkType` push to a shared downstream sink as a stamped `RoutedChatStreamChunkType`. `CallModelNode` gains an overridable `routeKey(state)` seam (default `''`) and constructs a fresh `RoutingStreamSink` per execution in `executeOne`, so ONE shared sink — for example a `StreamChannel<RoutedChatStreamChunkType>` feeding a routing DAG that scatters by `routeKey` — correctly demultiplexes many concurrent runs sharing a single node instance.
+
 ## 0.29.1
 
 ### Patch Changes

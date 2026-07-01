@@ -1,6 +1,13 @@
 ---
 title: 'Streaming producers'
 description: 'Bridge push producers into scatter sources via StreamChannel: driven, fanIn, resumable, and DagStreamProducer. Back-pressure keeps peak memory O(capacity).'
+seeAlso:
+  - text: 'ReAct agent: streaming + provenance recall'
+    link: './react-agent'
+    description: 'AgentTraceProducer, a DagStreamProducer subclass that streams an agent-loop reasoning trace'
+  - text: 'Example: ReAct agent memory'
+    link: '../examples/react-agent-memory'
+    description: 'working example: trace streaming via StreamChannel.driven + an outer scatter'
 ---
 
 # Streaming producers
@@ -148,3 +155,5 @@ state.source = StreamChannel.driven(LabelStreamProducer.of([0, 1, 2, 3, 4]));
 | `StreamProducerInterface<T>` | `@studnicky/dagonizer` or `@studnicky/dagonizer/contracts` |
 | `ResumableStreamProducerInterface<T>` | `@studnicky/dagonizer` or `@studnicky/dagonizer/contracts` |
 | `DagStreamProducer<T>` | `@studnicky/dagonizer` or `@studnicky/dagonizer/patterns` |
+
+`AgentTraceProducer` (`@studnicky/dagonizer/patterns`) is a `DagStreamProducer<ReasoningStepType>` subclass purpose-built for streaming an agent loop's ReAct reasoning trace. See [ReAct agent: streaming + provenance recall](./react-agent) for the full pattern and [Example: ReAct agent memory](../examples/react-agent-memory) for a runnable version.
