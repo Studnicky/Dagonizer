@@ -129,7 +129,7 @@ export class BookSearchScatterBundleFactory {
         'error':   'rank-candidates',
         'empty':   'rank-candidates',
       }, {
-        'concurrency': 4,
+        'execution': { 'mode': 'item', 'concurrency': 4 },
         'gather': { 'strategy': 'tool-candidate-merge' },
         'reducer': 'any-success',
       })

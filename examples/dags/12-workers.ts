@@ -134,7 +134,7 @@ export const dag: DAGType = {
       "body":         { "dag": 'square-item' },   // scatter body: run this sub-DAG per item
       "source":       'tasks',                     // state field holding the source array
       "itemKey":      'task',                      // metadata key each item is written under
-      "concurrency":  2,                           // run up to 2 items concurrently
+      "execution": { "mode": "item", "concurrency": 2 },                           // run up to 2 items concurrently
       "container":    'cpu',                       // route each item through the worker container
       "gather": {
         "strategy":   GatherStrategyNames.APPEND,     // collect results into a state array

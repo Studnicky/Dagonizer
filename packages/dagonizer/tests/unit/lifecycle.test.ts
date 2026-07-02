@@ -42,20 +42,18 @@ void describe('DAGLifecycleMachine', () => {
     assert.equal(next.error, error);
   });
 
-  void it('terminal states are sticky (return same reference)', () => {
+  void it('terminal states are sticky (any event throws)', () => {
     const running = DAGLifecycleMachine.transition(
       DAGLifecycleMachine.initial(),
       { 'type': 'start', 'at': 1000 },
     );
     const completed = DAGLifecycleMachine.transition(running, { 'type': 'succeed', 'at': 2000 });
-    const again = DAGLifecycleMachine.transition(completed, { 'type': 'fail', 'error': new Error(), 'at': 3000 });
-    assert.equal(again, completed);
+    assert.throws(() => DAGLifecycleMachine.transition(completed, { 'type': 'fail', 'error': new Error(), 'at': 3000 }));
   });
 
-  void it('illegal transitions return the input by reference', () => {
+  void it('illegal transitions throw', () => {
     const pending = DAGLifecycleMachine.initial();
-    const same = DAGLifecycleMachine.transition(pending, { 'type': 'succeed', 'at': 1000 });
-    assert.equal(same, pending);
+    assert.throws(() => DAGLifecycleMachine.transition(pending, { 'type': 'succeed', 'at': 1000 }));
   });
 
   void it('cancel carries reason when provided', () => {

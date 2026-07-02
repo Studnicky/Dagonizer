@@ -2,22 +2,19 @@
 seeAlso:
   - text: 'Reference: Validation'
     link: './validation'
-  - text: 'Reference: Entities'
-    link: './entities'
-    description: '`DAGErrorJSON`'
 ---
 
 # Errors
 
 `@studnicky/dagonizer/errors`
 
-All errors thrown by the dispatcher are `DAGError` instances or subclasses. They carry a `code` string, an ISO timestamp, and an optional `context` record for structured logging.
+All errors thrown by the dispatcher are `DAGError` instances. `DAGError` is a single class distinguished by its `code` string — not a class hierarchy. Every throw site constructs `DAGError` with a `code` (`CONFIGURATION_ERROR`, `EXECUTION_ERROR`, `NOT_FOUND_ERROR`, `VALIDATION_ERROR`, `NODE_TIMEOUT`, or the container-specific `DAG_CONTAINER_ERROR`); callers distinguish by `error.code`, not `instanceof` on a subclass. Structured per-error data (e.g. a timed-out node's name and budget) lives in `context`.
+
+`DAGError` extends `@studnicky/errors`'s `ModuleError`, gaining cause-chain traversal (`findCauseOfType`, `getCauseChain`, `hasCauseOfType`) and a `retryable` classification.
 
 ---
 
 ## Class: `DAGError`
-
-Base error class. Extends `Error`.
 
 ```ts twoslash
 import { DAGError } from '@studnicky/dagonizer';
@@ -32,6 +29,8 @@ new DAGError('something failed', {
   code: 'DAG_ERROR',               // default: 'DAG_ERROR'
   context: { flowName: 'my-flow' },
   cause: new Error('root cause'),  // cause chaining
+  retryable: false,
+  statusCode: 500,
 });
 ```
 
@@ -41,154 +40,67 @@ new DAGError('something failed', {
 |----------|------|-------------|
 | `name` | `string` | `'DAGError'` |
 | `code` | `string` | Error classification code |
-| `timestamp` | `Date` | Wall-clock timestamp at construction |
-| `context` | `Record<string, unknown>` | Structured context payload |
+| `timestamp` | `number` | Unix millisecond timestamp at construction |
+| `context` | `Record<string, unknown>` | Structured context payload (always present, defaults to `{}`) |
 | `cause` | `Error \| undefined` | Chained cause |
+| `retryable` | `boolean` | Whether the condition may succeed on retry |
+| `statusCode` | `number \| undefined` | HTTP status code, when applicable |
 
 ### `toJSON()`
 
 ```ts twoslash
 import { DAGError } from '@studnicky/dagonizer';
 // ---cut---
-const error = new DAGError('something failed', { context: { flowName: 'my-flow' } });
+const error = new DAGError('something failed', { code: 'EXECUTION_ERROR', context: { flowName: 'my-flow' } });
 console.log(JSON.stringify(error.toJSON(), null, 2));
 ```
 
-Returns a JSON-safe representation with all fields including `stack` (if present) and a normalized `cause` shape.
+Inherited from `ModuleError`. Returns a JSON-safe representation: `code`, `message`, `name`, `retryable`, `stack`, `context` (when present), `statusCode` (when present), and `cause` (recursively serialized when the cause is itself a `ModuleError`, or `{ message, name, stack }` for a plain `Error`).
+
+`toSerializedError()` (inherited from `BaseError`) returns the same shape typed as `SerializedErrorType`, walking the full cause chain to `CAUSE_CHAIN_DEPTH_LIMIT`.
 
 ---
 
-## Class: `ConfigurationError`
+## Error codes
 
-Thrown when flow or node configuration is invalid (registration time).
-
-```ts twoslash
-import { ConfigurationError } from '@studnicky/dagonizer';
-```
-
-`code`: `'CONFIGURATION_ERROR'`
-
-Typically thrown by `registerNode` when `validate()` returns `{ valid: false }`.
-
----
-
-## Class: `ExecutionError`
-
-Thrown during flow execution when the dispatcher encounters an unrecoverable runtime condition.
+| Code | Thrown when |
+|------|-------------|
+| `CONFIGURATION_ERROR` | Flow or node configuration is invalid (registration time). Typically thrown by `registerNode` when `validate()` returns `{ valid: false }`. |
+| `EXECUTION_ERROR` | The dispatcher encounters an unrecoverable runtime condition during flow execution. |
+| `NOT_FOUND_ERROR` | A referenced node or flow is not found during execution. |
+| `VALIDATION_ERROR` | Schema validation fails (e.g. `DAGSchema` or `CheckpointDataSchema`). The `message` contains every Ajv failure formatted as `<instancePath>: <message>`, one per line. |
+| `NODE_TIMEOUT` | A node's per-node `timeoutMs` budget expires. `context` carries `nodeName` and `timeoutMs`. |
+| `DAG_CONTAINER_ERROR` | A container operation fails for infrastructure reasons (pool destroyed, semaphore timeout, abort). See [Reference: Container](./container). |
 
 ```ts twoslash
-import { ExecutionError } from '@studnicky/dagonizer';
+import { DAGError } from '@studnicky/dagonizer';
+// ---cut---
+// Configuration error at registration time.
+new DAGError('invalid node config', { code: 'CONFIGURATION_ERROR', context: { nodeName: 'fetch-user' } });
+
+// Node timeout, with the budget and node name in context.
+new DAGError('node timed out', {
+  code: 'NODE_TIMEOUT',
+  context: { nodeName: 'my-node', timeoutMs: 5000 },
+  cause: new Error('root'),
+});
 ```
-
-`code`: `'EXECUTION_ERROR'`
-
----
-
-## Class: `NotFoundError`
-
-Thrown when a referenced node or flow is not found during execution.
-
-```ts twoslash
-import { NotFoundError } from '@studnicky/dagonizer';
-```
-
-`code`: `'NOT_FOUND_ERROR'`
-
----
-
-## Class: `ValidationError`
-
-Thrown when schema validation fails (e.g. `DAGSchema` or `CheckpointDataSchema`).
-
-```ts twoslash
-import { ValidationError } from '@studnicky/dagonizer';
-```
-
-`code`: `'VALIDATION_ERROR'`
-
-The `message` contains every Ajv failure formatted as `<instancePath>: <message>`, one per line.
 
 ```ts
 <<< @/../examples/03-schema.ts#validate
 ```
 
----
-
-## Class: `NodeTimeoutError`
-
-Thrown when a node's per-node `timeoutMs` budget expires.
+Callers distinguish error kind by inspecting `error.code`:
 
 ```ts twoslash
-import { NodeTimeoutError } from '@studnicky/dagonizer';
-```
-
-`code`: `'NODE_TIMEOUT'`
-
-### Additional properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `nodeName` | `string` | Name of the node that timed out |
-| `timeoutMs` | `number` | The budget that elapsed (ms) |
-
-### Constructor
-
-```ts twoslash
-import { NodeTimeoutError } from '@studnicky/dagonizer';
+import { DAGError } from '@studnicky/dagonizer';
+declare const error: DAGError;
 // ---cut---
-new NodeTimeoutError('my-node', 5000, { cause: new Error('root') });
+if (error instanceof DAGError && error.code === 'VALIDATION_ERROR') {
+  // handle validation failure
+}
 ```
 
----
-
-## Interface: `DAGErrorInterface`
-
-Structural shape of `DAGError` for callers that need to accept it without a class reference:
-
-```ts twoslash
-import type { DAGErrorInterface } from '@studnicky/dagonizer';
-// DAGErrorInterface extends Error and carries:
-//   readonly code: string
-//   readonly timestamp: Date
-//   readonly context: Record<string, unknown>   (always present, never undefined)
-//   readonly cause?: Error
-const _check: DAGErrorInterface = {} as DAGErrorInterface;
-```
-
----
-
-## Interface: `DAGErrorJSON`
-
-Shape returned by `DAGError.toJSON()`:
-
-```ts twoslash
-import type { DAGErrorJSONType } from '@studnicky/dagonizer';
-// DAGErrorJSONType (schema-derived; all fields required):
-//   name: string
-//   message: string
-//   code: string
-//   timestamp: string               // ISO 8601
-//   stack: string | null            // null when unavailable
-//   context: Record<string, unknown>
-//   cause: { name: string; message: string; stack: string | null } | null
-const _check: DAGErrorJSONType = {} as DAGErrorJSONType;
-```
-
----
-
-## Error hierarchy
-
-```
-Error
-└── DAGError              ('DAG_ERROR')
-    ├── ConfigurationError ('CONFIGURATION_ERROR')
-    ├── ExecutionError     ('EXECUTION_ERROR')
-    ├── NodeTimeoutError   ('NODE_TIMEOUT')
-    ├── NotFoundError      ('NOT_FOUND_ERROR')
-    └── ValidationError    ('VALIDATION_ERROR')
-```
-
-All subclasses inherit `toJSON()` and the `context`/`timestamp` properties from `DAGError`.
 ## Related guides
 
 - [Schema & JSON loading](../guide/schema)

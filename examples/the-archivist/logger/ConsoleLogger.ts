@@ -3,7 +3,17 @@
  *
  * Demo/example utility — NOT a framework export. Lives here in examples/
  * because logging strategy is the consumer's responsibility.
+ *
+ * `trace`/`debug`/`info`/`error` accept `@studnicky/logger`'s structured
+ * `LogBodyDataType`/`LogFaultDataType` — the same shape `ObservedDag`'s
+ * `DagLoggerInterface` calls, so a `ConsoleLogger` instance satisfies that
+ * contract directly. `warn`/`fatal` are ConsoleLogger-only levels (outside
+ * `DagLoggerInterface`) and keep the plain-string call shape.
  */
+
+import type { LogBodyDataType, LogFaultDataType } from '@studnicky/logger/interfaces';
+
+import { LogBody } from '@studnicky/logger';
 
 const HAS_NODE_STDIO =
   typeof process !== 'undefined'
@@ -43,12 +53,28 @@ export class ConsoleLogger {
     this.onEmit({ 'level': 'info', 'message': '(log cleared)', 'ts': Date.now() });
   }
 
-  trace(message: string): void { this.#emit('trace', message); }
-  debug(message: string): void { this.#emit('debug', message); }
-  info(message: string):  void { this.#emit('info',  message); }
+  trace(body: LogBodyDataType): void { this.#emit('trace', body.message); }
+  debug(body: LogBodyDataType): void { this.#emit('debug', body.message); }
+  info(body: LogBodyDataType):  void { this.#emit('info',  body.message); }
   warn(message: string):  void { this.#emit('warn',  message); }
-  error(message: string): void { this.#emit('error', message); }
+  error(fault: LogFaultDataType): void { this.#emit('error', fault.message); }
   fatal(message: string): void { this.#emit('fatal', message); }
+
+  /**
+   * Convenience for a plain single-line info message with no extra
+   * structured context — builds a minimal `LogBody` and calls `info()`.
+   */
+  note(message: string): void {
+    this.info(
+      LogBody.create()
+        .component('app')
+        .operation('log')
+        .status('complete')
+        .message(message)
+        .context({})
+        .build(),
+    );
+  }
 
   result(message: string): void {
     const event: LogEvent = { 'level': 'info', message, 'ts': Date.now() };

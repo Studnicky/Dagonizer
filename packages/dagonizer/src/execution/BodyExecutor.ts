@@ -42,8 +42,8 @@ export interface BodyRunPortInterface {
   nextCorrelationId(dagName: string): string;
   /** Build an observer relay bound to `state` for worker-side event forwarding. */
   relayFor(state: NodeStateInterface): ObserverRelayInterface;
-  /** Build a node context for a body invocation, substituting a never-firing signal when absent. */
-  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType;
+  /** Build a node context for a body invocation. `signal` is always a valid `AbortSignal`. */
+  bodyContext(dagName: string, nodeName: string, signal: AbortSignal): NodeContextType;
 }
 
 /**
@@ -105,7 +105,7 @@ export class BodyExecutor {
     cloneState: NodeStateInterface,
     parentState: NodeStateInterface,
     containerRole: string | undefined,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
   ): Promise<BodyRunResultType> {
@@ -123,11 +123,11 @@ export class BodyExecutor {
     placementName: string,
     cloneState: NodeStateInterface,
     parentState: NodeStateInterface,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     innerPath: readonly string[],
     bufferIntermediates: boolean,
   ): Promise<BodyRunResultType> {
-    const childOptions: ExecuteOptionsType = { ...(signal !== null && { 'signal': signal }) };
+    const childOptions: ExecuteOptionsType = { 'signal': signal };
     const iter = this.#source.runBodyNodes(bodyDag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
 
     const intermediates: Array<NodeResultType<NodeStateInterface>> = [];
@@ -173,7 +173,7 @@ export class BodyExecutor {
     placementName: string,
     cloneState: NodeStateInterface,
     parentState: NodeStateInterface,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     innerPath: readonly string[],
     bufferIntermediates: boolean,
     container: DagContainerInterface,

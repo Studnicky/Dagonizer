@@ -9,6 +9,8 @@
  * Snapshot/restore covers both fields so the state survives checkpoint/resume.
  */
 
+import { Predicates } from '@studnicky/predicates';
+
 import type { JsonObjectType } from '../entities/json.js';
 import { JsonValue } from '../entities/JsonValue.js';
 import { NodeStateBase } from '../NodeStateBase.js';
@@ -40,7 +42,7 @@ export class ToolInvocationState extends NodeStateBase {
    * call site.
    */
   static isArgumentRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
+    return Predicates.matchesType('object', value);
   }
 
   protected override snapshotData(): JsonObjectType {

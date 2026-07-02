@@ -69,9 +69,8 @@ cartographer (top-level)
   scatter('process-stream', 'sources',       ← STREAMING: one run of stream-event per source payload
           { dag: 'stream-event' },
           gather: insights-fold,             ← O(1) fold into state.insights / state.journeys / state.sampleRecords
-          concurrency: 16,
           container: 'cpu',                  ← browser demo: WorkerThreadContainer (real OS threads)
-          reservoir: { keyField: 'eventType', capacity })
+          execution: { mode: 'reservoir', concurrency: 16, reservoir: { keyField: 'eventType', capacity } })
     └─ stream-event                          ← decode-payload → route-event-type-variant
          ├─ position-ping       ──► pipeline-position-ping    (parse → geo-pipeline → enrich-leg → aggregate)
          ├─ sensor-reading      ──► pipeline-sensor-reading   (parse → geo-pipeline → cold-chain → enrich-leg → aggregate)

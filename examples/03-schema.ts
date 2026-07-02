@@ -4,14 +4,14 @@
  * Demonstrates the ingest boundary: `DAGDocument.load(json)` is the single
  * point where `unknown` enters the engine. It parses JSON, runs the Ajv
  * validator against DAGSchema, and returns a typed `DAG` or throws a
- * `ValidationError` listing every schema failure.
+ * `DAGError` (code `VALIDATION_ERROR`) listing every schema failure.
  *
  * Also shows the round-trip: `DAGDocument.serialize(dag)` produces the JSON
  * string that `DAGDocument.load()` can parse back to an equivalent object.
  *
  * Watch: the canonical JSON-LD shape (with '@context', '@id', '@type') is
  * required by the schema. A document missing these fields produces a
- * ValidationError with an itemised Ajv failure list.
+ * DAGError (code VALIDATION_ERROR) with an itemised Ajv failure list.
  *
  * DAG definition (dag-literal JSON, load, echo node): examples/dags/03-schema.ts
  *
@@ -21,8 +21,8 @@
 import * as fs from 'node:fs/promises';
 import {
   Dagonizer,
+  DAGError,
   NodeStateBase,
-  ValidationError,
 } from '@studnicky/dagonizer';
 import { DAGDocument } from '@studnicky/dagonizer/dag';
 import { DAGSchema } from '@studnicky/dagonizer/entities';
@@ -34,7 +34,7 @@ process.stdout.write(`\nLoaded:  ${dag.name} v${dag.version} (${dag.nodes.length
 // ── Execute ──────────────────────────────────────────────────────────────
 // #region load-and-register
 // DAGDocument.load() is the single ingest boundary: parse JSON, validate schema,
-// return a fully-typed DAG or throw ValidationError.
+// return a fully-typed DAG or throw DAGError (code VALIDATION_ERROR).
 const dispatcher = new Dagonizer<NodeStateBase>();
 dispatcher.registerNode(new EchoNode());
 dispatcher.registerDAG(dag);
@@ -60,7 +60,7 @@ process.stdout.write(`DAGSchema.$id: ${DAGSchema.$id}\n`);
 
 // ── Validator.dag ─────────────────────────────────────────────────────────
 // #region validator-validate
-// Validator.dag.validate() returns a narrowed DAG or throws ValidationError.
+// Validator.dag.validate() returns a narrowed DAG or throws DAGError (code VALIDATION_ERROR).
 // This is the lower-level call that DAGDocument.load and registerDAG use.
 const validated = Validator.dag.validate(JSON.parse(DAGDocument.serialize(dag)));
 process.stdout.write(`Validator.dag.validate @type: ${validated['@type']}\n`);
@@ -111,25 +111,25 @@ const compact = DAGDocument.serializeCompact(dag);
 process.stdout.write(`compact length: ${String(compact.length)} (no whitespace)\n`);
 // #endregion serialize-compact
 
-// ── ValidationError: schema rejects any document missing required JSON-LD fields
+// ── DAGError (code VALIDATION_ERROR): schema rejects any document missing required JSON-LD fields
 // #region validate
 try {
   // Missing '@context', '@id', '@type', 'entrypoint', 'nodes': schema rejects it.
   DAGDocument.load(JSON.stringify({ "name": 'broken', "version": '1' }));
 } catch (error) {
-  if (error instanceof ValidationError) {
+  if (error instanceof DAGError && error.code === 'VALIDATION_ERROR') {
     const firstLine = error.message.split('\n')[0];
-    process.stdout.write(`ValidationError (first failure): ${firstLine}\n`);
+    process.stdout.write(`DAGError (first failure): ${firstLine}\n`);
   }
 }
 // #endregion validate
 
 // #region validation-error
-// ValidationError exposes a machine-readable code and a human-readable message.
+// DAGError exposes a machine-readable code and a human-readable message.
 try {
   DAGDocument.load('{ "name": "broken" }');
 } catch (error) {
-  if (error instanceof ValidationError) {
+  if (error instanceof DAGError && error.code === 'VALIDATION_ERROR') {
     process.stdout.write(`code: ${error.code}\n`);       // 'VALIDATION_ERROR'
     process.stdout.write(`message: ${error.message.split('\n')[0]}\n`);
   }
@@ -138,4 +138,4 @@ try {
 
 process.stdout.write('\nLesson: DAGDocument.load() is the single ingest boundary;\n');
 process.stdout.write('        serialize() + load() is a lossless round-trip.\n');
-process.stdout.write('        Missing JSON-LD fields produce itemised ValidationError.\n');
+process.stdout.write('        Missing JSON-LD fields produce an itemised DAGError (code VALIDATION_ERROR).\n');

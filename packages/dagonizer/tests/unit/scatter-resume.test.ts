@@ -110,7 +110,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-interrupt/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 1,
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
           'gather': { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
         { '@id': 'urn:noocodex:dag:scatter-interrupt/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
@@ -157,7 +157,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-resume/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 1,
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
           'gather': { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
         { '@id': 'urn:noocodex:dag:scatter-resume/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
@@ -201,7 +201,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-aggregate/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 1,
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
           'gather': { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
         { '@id': 'urn:noocodex:dag:scatter-aggregate/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
@@ -266,7 +266,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': `urn:noocodex:dag:${dagName}/node/fan`, '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'producer' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 1,
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
           'gather': { 'strategy': 'map', 'mapping': { 'produced': 'results' } },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
         { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
@@ -350,12 +350,12 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-twin/node/fanA', '@type': 'ScatterNode',
           'name': 'fanA', 'body': { 'node': 'workerA' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 1,
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
           'gather': { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'fanB', 'partial': 'fanB', 'all-error': 'fanB', 'empty': 'fanB' } },
         { '@id': 'urn:noocodex:dag:scatter-twin/node/fanB', '@type': 'ScatterNode',
           'name': 'fanB', 'body': { 'node': 'workerB' },
-          'source': 'items2', 'itemKey': 'item', 'concurrency': 1,
+          'source': 'items2', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
           'gather': { 'strategy': 'append', 'target': 'processed2' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
         { '@id': 'urn:noocodex:dag:scatter-twin/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
@@ -433,7 +433,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-batched/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 3,
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 3 },
           'gather': { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
         { '@id': 'urn:noocodex:dag:scatter-batched/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
@@ -464,7 +464,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-ckpt/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 1,
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
           'gather': { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'tail', 'partial': 'tail', 'all-error': 'tail', 'empty': 'tail' } },
         { '@id': 'urn:noocodex:dag:scatter-ckpt/node/tail', '@type': 'SingleNode',
@@ -534,7 +534,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-e2e/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 1,
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 1 },
           'gather': { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
         { '@id': 'urn:noocodex:dag:scatter-e2e/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }

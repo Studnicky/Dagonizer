@@ -221,7 +221,7 @@ class TestEmbedDag {
           'body':        { 'dag': 'emb-scatter-body' },
           'source':      'items',
           'itemKey':     'item',
-          concurrency,
+          'execution':   { 'mode': 'item', concurrency },
           'gather':      { 'strategy': 'embed-counter-gather' },
           'outputs': {
             'all-success': 'end',

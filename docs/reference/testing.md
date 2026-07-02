@@ -57,16 +57,13 @@ clock.tickNs(100_000_000n);
 
 Advance the virtual clock by `deltaNs` nanoseconds.
 
-### `.setNs(ns)`
+The clock only moves forward — `tickNs`/`tickMs` are relative advances, there is no method to set an absolute value after construction. To start the clock at a specific nanosecond value, pass it to the constructor:
 
 ```ts twoslash
 import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
-const clock = new VirtualClockProvider(0n);
 // ---cut---
-clock.setNs(500_000_000n);
+const clock = new VirtualClockProvider(500_000_000n);
 ```
-
-Set the virtual clock to an absolute nanosecond value.
 
 ### Usage
 

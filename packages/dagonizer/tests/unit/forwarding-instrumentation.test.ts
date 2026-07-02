@@ -25,6 +25,10 @@ class CollectingChannel {
 const CORR = 'corr-test';
 const BASE = ['parent-embed'];
 const state = new NodeStateBase();
+// WorkerObserver doesn't override onFlowStart (suppressed on the container
+// path), so calling it through `this` resolves to the base Dagonizer's
+// 3-param signature, which now requires a signal.
+const SIGNAL = new AbortController().signal;
 
 // Subclass exposes WorkerObserver's protected hooks so a test can fire each
 // hook directly and inspect the BridgeMessageType the observer sends.
@@ -34,7 +38,7 @@ class ExposedObserver extends WorkerObserver<NodeStateBase> {
   callPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, s: NodeStateBase, path: readonly string[]): void { this.onPhaseEnter(dagName, phase, placementName, s, path); }
   callPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, s: NodeStateBase, path: readonly string[]): void { this.onPhaseExit(dagName, phase, placementName, s, path); }
   callError(nodeName: string, error: Error, s: NodeStateBase, path: readonly string[]): void { this.onError(nodeName, error, s, path); }
-  callFlowStart(dagName: string, s: NodeStateBase): void { this.onFlowStart(dagName, s); }
+  callFlowStart(dagName: string, s: NodeStateBase): void { this.onFlowStart(dagName, s, SIGNAL); }
 }
 
 void describe('WorkerObserver — all-five-hook routing (G6)', () => {

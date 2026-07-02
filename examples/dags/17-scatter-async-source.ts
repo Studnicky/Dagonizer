@@ -114,7 +114,7 @@ export const dag: DAGType = {
       "body":      { "node": 'consume' },
       "source":    'stream',            // async-iterable field; engine normalises it
       "itemKey":   'stream-item',       // metadata key each pulled item is bound to
-      "concurrency": 2,                 // max 2 items in-flight simultaneously
+      "execution": { "mode": "item", "concurrency": 2 },                 // max 2 items in-flight simultaneously
       "gather": {
         "strategy": GatherStrategyNames.MAP,
         "mapping":  { "item": 'results' }, // clone.item (scalar) → parent.results[]

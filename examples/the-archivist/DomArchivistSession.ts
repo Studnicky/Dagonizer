@@ -128,7 +128,7 @@ export class DomArchivistSession extends ArchivistSession {
       this.appendErrorLine('No runnable LLM backend detected. Supply ?apiKey= or run Ollama locally.');
     }
     if (backends.length > 0) {
-      this.logger.info(`backends detected: ${backends.map((b) => b.id).join(', ')}`);
+      this.logger.note(`backends detected: ${backends.map((b) => b.id).join(', ')}`);
     }
   }
 
@@ -156,7 +156,7 @@ export class DomArchivistSession extends ArchivistSession {
    */
   protected override onNodeEvent(event: SessionNodeEvent): void {
     if (event.trace?.variant === 'note') {
-      this.logger.info(event.trace.message);
+      this.logger.note(event.trace.message);
     }
   }
 
@@ -167,7 +167,7 @@ export class DomArchivistSession extends ArchivistSession {
    */
   protected override onDagEvent(event: SessionDagEvent): void {
     if (event.kind === 'flowStart') {
-      this.logger.info(`dag: ${event.dagName} started`);
+      this.logger.note(`dag: ${event.dagName} started`);
     }
   }
 

@@ -5,6 +5,13 @@
  *   linear: delay grows linearly with attempt number
  *   exponential: delay grows exponentially (default)
  *   decorrelated-jitter: randomized jitter to spread retry load
+ *
+ * `@studnicky/retry` ships its own `BackoffStrategyType`, but it is a
+ * `(attemptNumber, baseDelayMs) => number` function — not a JSON-serializable
+ * value. `RetryPolicyOptionsType.strategy` is a wire-shape field (schemas are
+ * the source of truth here), so this schema-derived string enum stays as the
+ * DAG-specific, serializable strategy selector; `RetryPolicy.getDelay()`
+ * dispatches on it.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

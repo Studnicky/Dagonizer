@@ -157,6 +157,9 @@ importers:
       '@studnicky/dagonizer-tool-wikipedia':
         specifier: workspace:^
         version: link:../../packages/dagonizer-tool-wikipedia
+      '@studnicky/logger':
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       fake-indexeddb:
         specifier: ^6.0.0
@@ -192,6 +195,54 @@ importers:
 
   packages/dagonizer:
     dependencies:
+      '@studnicky/cache':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/clock':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/concurrency':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/context':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/errors':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/event-bus':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/fsm':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/json':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/logger':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/predicates':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/resilience':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/retry':
+        specifier: ^4.0.0
+        version: 4.0.0(@studnicky/logger@4.0.0)(@studnicky/timing@4.0.0)
+      '@studnicky/scheduler':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/throttle':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/types':
+        specifier: ^4.0.0
+        version: 4.0.0
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
@@ -1719,6 +1770,94 @@ packages:
   '@shikijs/vscode-textmate@10.0.2':
     resolution: {integrity: sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg==}
 
+  '@studnicky/cache@4.0.0':
+    resolution: {integrity: sha512-B4MXr2DgCPK38fjHso4hKfLFXay6cbE+vexQ3eTHQsE4D8w2NSqnfghuvEZYLCR3MapKYER3vUvlBI7wsC9QRA==, tarball: https://npm.pkg.github.com/download/@studnicky/cache/4.0.0/df0904f2690a6df4796cf1329bc3bbd569a3a73f}
+    engines: {node: '>=24.0.0'}
+
+  '@studnicky/circular-buffer@4.0.0':
+    resolution: {integrity: sha512-cXKFydDH1O3JciEfdj2QjzT/wy9XcRrJGNuZhLZ+WiJG+5wXs0cNpwUXtfFQvBD9UXn2bQMJTa6Gy5v0/PmqAw==, tarball: https://npm.pkg.github.com/download/@studnicky/circular-buffer/4.0.0/f2eafbeb2638bf879db62d6b4773e9ec80586210}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/clock@4.0.0':
+    resolution: {integrity: sha512-hkdHu673y8m9H0xaKV8TSw65knFA+/b/ldDiV3cLewo7fDu3BDVDj9yfSrCoZM/jQADd/ByOxiobkZTfAZHIGQ==, tarball: https://npm.pkg.github.com/download/@studnicky/clock/4.0.0/1b5c2258650cd3757e8b6ec9cf75695d5fe5d105}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/concurrency@4.0.0':
+    resolution: {integrity: sha512-l6w1joeY+6mE7sAa77OPS42WOWnzk+VvyFecnileDvAAYdQfbmoi8OXoTVzmPbk6ay9WYZMfNkYyeqiM67IUCQ==, tarball: https://npm.pkg.github.com/download/@studnicky/concurrency/4.0.0/aa53d26f55f0a7e5b7d90a356a7f047d47c0dae5}
+    engines: {node: '>=24.0.0'}
+
+  '@studnicky/config@4.0.0':
+    resolution: {integrity: sha512-jvq+TM+4EHM/celRJI/QiAHXqgnKxF092mrv8hcFyJEWUnkg4ppvjAJQHoDNFNKpsknYcpC9udxURcfzMFERkA==, tarball: https://npm.pkg.github.com/download/@studnicky/config/4.0.0/c0e0244df67c7a2fcfb3527fda1ecc57d6c9da34}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/context@4.0.0':
+    resolution: {integrity: sha512-d74yDUd6Bu2espmeWz07fz8OaJvLTfBl1x6EAy9aHvtGSjzRTQ/GAB4ceNLZouEqgsrsCFF0dOPr+dZTMMiH6Q==, tarball: https://npm.pkg.github.com/download/@studnicky/context/4.0.0/2dabe2a9cbc2815f21c6cff542cea25633b691f3}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/errors@4.0.0':
+    resolution: {integrity: sha512-aoiJZCae+jtrkVabSPAER85tVZBE+uGy4dErz6Z4IPEaG8+KqSUm54uz0sZCGLkZLZJPV4MkypqTmC7l8KMajw==, tarball: https://npm.pkg.github.com/download/@studnicky/errors/4.0.0/bfc02356f68616ec65079371a913be9500a64838}
+    engines: {node: '>=24.12.0', npm: '>=11.0.0'}
+
+  '@studnicky/event-bus@4.0.0':
+    resolution: {integrity: sha512-c5xbdZ8drAYONOmja+cTUMPe4zY9jjtM6DQR4c+7xYqvnA6OPu00e83h3ZmV7CzZtlk4TAptmrDAEZLQ0IYyqA==, tarball: https://npm.pkg.github.com/download/@studnicky/event-bus/4.0.0/f6ae2fadbb8ea270c6f61c084ecfa3ed33841519}
+    engines: {node: '>=24.0.0'}
+
+  '@studnicky/fsm@4.0.0':
+    resolution: {integrity: sha512-tQP0AVytNeB9n1cClDulis09j2BDisfvRGcm/iLbpwnfuXcYneoOhcF3Rmso9gqQa2cyBcO6vu85eI4Skft39w==, tarball: https://npm.pkg.github.com/download/@studnicky/fsm/4.0.0/0c41c2f39544246206e10ff49f57a2a4da57f3f5}
+    engines: {node: '>=24.0.0'}
+
+  '@studnicky/json@4.0.0':
+    resolution: {integrity: sha512-FnYtLikrn1cP9B7mPIT3n+4oTJ/VDV6D0zbdqbhm1fvt16Ph8gmr11WGj+9kbb5k1KvZk7faKComVcY9Gf2ryw==, tarball: https://npm.pkg.github.com/download/@studnicky/json/4.0.0/c875b46b2e891112acd0ed2a73037f5f57218784}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/logger@4.0.0':
+    resolution: {integrity: sha512-q9nMv9Zdbi+dFFCwBnB6ub+Cm1FA7Csc1uXg9UmuWRkz7gxqpE9XUi5qnk5p8c2S57LE0hvAIbnb2AEiof3HlQ==, tarball: https://npm.pkg.github.com/download/@studnicky/logger/4.0.0/df373873d771d1213d31da3ba1e54295a9e7ea70}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/predicates@4.0.0':
+    resolution: {integrity: sha512-Saw0mhEV1kmFHBuMCN6z1BF/EmZsRXH789WJ/cY+12/X0li/plD0IijqD66VkPEXeUG0NUtbd+MxRVgKYmCS9w==, tarball: https://npm.pkg.github.com/download/@studnicky/predicates/4.0.0/aa461a0194875126a7fc5196880e2c1f4cf0df9e}
+    engines: {node: '>=24.0.0'}
+
+  '@studnicky/resilience@4.0.0':
+    resolution: {integrity: sha512-X9juljLaW7m/u7alF3WZffAXJCEkwwEFNFDVHGoa85uEOE3h4c3FIgTM+Ou5q5yFzOMBXNutWfEPqm6pRnpa1Q==, tarball: https://npm.pkg.github.com/download/@studnicky/resilience/4.0.0/984e482b6545b92a9c8070d116bae2cd66c279f2}
+    engines: {node: '>=24.0.0'}
+
+  '@studnicky/retry@4.0.0':
+    resolution: {integrity: sha512-EBcnfhpWFuvxdIpT1e6PGTS5Z42lttieKOnEXbEDHPbyo06Muq2RcbMFU5v90ktaf2+U7Yr8JznTVHKZQZ6JSw==, tarball: https://npm.pkg.github.com/download/@studnicky/retry/4.0.0/c3df870fa2fbe5f3c9b4b16060a374e126723f14}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+    peerDependencies:
+      '@studnicky/logger': 4.0.0
+      '@studnicky/timing': 4.0.0
+    peerDependenciesMeta:
+      '@studnicky/logger':
+        optional: true
+      '@studnicky/timing':
+        optional: true
+
+  '@studnicky/sample-buffer@4.0.0':
+    resolution: {integrity: sha512-zlrQ5qFJmLGIfg9Jr4G7VbPpij1PlX1Oboff+843m5LZTaklY4UeskywWxwva/f7lVx4M2H+V6NwaBcvc1r8YA==, tarball: https://npm.pkg.github.com/download/@studnicky/sample-buffer/4.0.0/fbcad8f6064a60415d3d5366fc1d9ed3d9821749}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/scheduler@4.0.0':
+    resolution: {integrity: sha512-Xyki0dJK2Qo+73m6ofuXG4Bfmp3plg4gnVHNkJ5aeYx/GSPgyO0eUKkpDEYZwcdtaCWNcVs9lC5ZPXuzjuLNLw==, tarball: https://npm.pkg.github.com/download/@studnicky/scheduler/4.0.0/5bddf52193ca3e1866bc7e5a54379fd16a18e7b4}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/signal@4.0.0':
+    resolution: {integrity: sha512-2CLiB3jp3ZB1Gk5QSZY8gpzweIycIxcQAlgDDHz/DmF5ILeOVRtfW0R/nzHLHMz70W8sw07YgoPZL/A1+EQ7ig==, tarball: https://npm.pkg.github.com/download/@studnicky/signal/4.0.0/0882947a8761dbe2bd9b02474321df3d2339362f}
+    engines: {node: '>=24.0.0'}
+
+  '@studnicky/throttle@4.0.0':
+    resolution: {integrity: sha512-lUDGokeXP+zN/4Ko936IFo6d3I82Du88A9ptKVMvJ9nxrHQK9wl2m9awIJoqEV7b/U02uIdAYlnsJG+G21a2Pg==, tarball: https://npm.pkg.github.com/download/@studnicky/throttle/4.0.0/b3c4ca771172416a3e8f177c982bf200ded41420}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/timing@4.0.0':
+    resolution: {integrity: sha512-5nXmHLs+olcUt+dkikPuqgcvBHduvi9QsRSqNmjZvSsHik14PS6ewUAaq7wljJAVHXrJjhxxAmH5d1rgrbM1dQ==, tarball: https://npm.pkg.github.com/download/@studnicky/timing/4.0.0/87c8566b7b5fb2b18e36df1a0e79ee95178d3c48}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
+  '@studnicky/types@4.0.0':
+    resolution: {integrity: sha512-HLWBolk1Bs+yDLKuH8eJuAEGYurejJIag8QCwTRieURmyjdjKC42S0y+WT0uDFE858L+cjaURIkzkICT7gfwMg==, tarball: https://npm.pkg.github.com/download/@studnicky/types/4.0.0/eca85f58865a3f0ff1d1eee26467f7280568dba9}
+    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
+
   '@tensorflow-models/universal-sentence-encoder@1.3.3':
     resolution: {integrity: sha512-mipL7ad0CW6uQ68FUkNgkNj/zgA4qgBnNcnMMkNTdL9MUMnzCxu3AE8pWnx2ReKHwdqEG4e8IpaYKfH4B8bojg==}
     peerDependencies:
@@ -2258,6 +2397,14 @@ packages:
   adm-zip@0.5.18:
     resolution: {integrity: sha512-ufJnssQGbxzLNS1Ho9bCtX4rQKCCvoVuDLHoJyc3F9dOGDB4BkWs2Ci0kv53lqocAEQ/Cbi+I2XCsNYGqVYqng==}
     engines: {node: '>=12.0'}
+
+  ajv-formats@3.0.1:
+    resolution: {integrity: sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==}
+    peerDependencies:
+      ajv: ^8.0.0
+    peerDependenciesMeta:
+      ajv:
+        optional: true
 
   ajv@6.15.0:
     resolution: {integrity: sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==}
@@ -4932,6 +5079,124 @@ snapshots:
 
   '@shikijs/vscode-textmate@10.0.2': {}
 
+  '@studnicky/cache@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/circular-buffer@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/clock@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/concurrency@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/config@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/context@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/errors@4.0.0':
+    dependencies:
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/event-bus@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/fsm@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+
+  '@studnicky/json@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/types': 4.0.0
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+
+  '@studnicky/logger@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/predicates@4.0.0':
+    dependencies:
+      '@studnicky/json': 4.0.0
+
+  '@studnicky/resilience@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/retry@4.0.0(@studnicky/logger@4.0.0)(@studnicky/timing@4.0.0)':
+    dependencies:
+      '@studnicky/config': 4.0.0
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+    optionalDependencies:
+      '@studnicky/logger': 4.0.0
+      '@studnicky/timing': 4.0.0
+
+  '@studnicky/sample-buffer@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/scheduler@4.0.0':
+    dependencies:
+      '@studnicky/clock': 4.0.0
+      '@studnicky/errors': 4.0.0
+
+  '@studnicky/signal@4.0.0':
+    dependencies:
+      '@studnicky/errors': 4.0.0
+
+  '@studnicky/throttle@4.0.0':
+    dependencies:
+      '@studnicky/circular-buffer': 4.0.0
+      '@studnicky/config': 4.0.0
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/sample-buffer': 4.0.0
+      '@studnicky/types': 4.0.0
+
+  '@studnicky/timing@4.0.0':
+    dependencies:
+      '@studnicky/config': 4.0.0
+      '@studnicky/errors': 4.0.0
+      '@studnicky/json': 4.0.0
+      '@studnicky/types': 4.0.0
+    optional: true
+
+  '@studnicky/types@4.0.0':
+    dependencies:
+      json-schema-to-ts: 3.1.1
+
   '@tensorflow-models/universal-sentence-encoder@1.3.3(@tensorflow/tfjs-converter@4.22.0(@tensorflow/tfjs-core@4.22.0))(@tensorflow/tfjs-core@4.22.0)':
     dependencies:
       '@tensorflow/tfjs-converter': 4.22.0(@tensorflow/tfjs-core@4.22.0)
@@ -5520,6 +5785,10 @@ snapshots:
   acorn@8.16.0: {}
 
   adm-zip@0.5.18: {}
+
+  ajv-formats@3.0.1(ajv@8.20.0):
+    optionalDependencies:
+      ajv: 8.20.0
 
   ajv@6.15.0:
     dependencies:

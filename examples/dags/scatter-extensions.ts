@@ -203,11 +203,14 @@ export const reservoirDag: DAGType = {
       body:        { node: 'score' },
       source:      'items',
       itemKey:     'item',
-      concurrency: 4,
-      reservoir: {
-        keyField: 'route',  // accessor path on each source item → the partition key
-        capacity: 10,       // release a batch when 10 items accumulate per key
-        idleMs:   500,      // flush partial batches after 500 ms idle
+      execution: {
+        mode:       'reservoir',
+        concurrency: 4,
+        reservoir: {
+          keyField: 'route',  // accessor path on each source item → the partition key
+          capacity: 10,       // release a batch when 10 items accumulate per key
+          idleMs:   500,      // flush partial batches after 500 ms idle
+        },
       },
       gather: {
         strategy: 'top-n',

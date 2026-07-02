@@ -9,11 +9,11 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * The dispatcher's `relayFor` passes a stable adapter bound to those hooks.
  */
 export interface DispatcherHooksInterface {
-  onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
-  onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void;
-  onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void;
-  onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
-  onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
+  onNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
+  onNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
+  onError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
+  onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
+  onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
 }
 
 /**
@@ -36,23 +36,23 @@ export class ObserverRelay implements ObserverRelayInterface {
     this.#state = state;
   }
 
-  onNodeStart(nodeName: string, placementPath: readonly string[]): void {
-    this.#hooks.onNodeStart(nodeName, this.#state, placementPath);
+  onNodeStart(nodeName: string, placementPath: readonly string[], signal: AbortSignal): void {
+    this.#hooks.onNodeStart(nodeName, this.#state, placementPath, signal);
   }
 
-  onNodeEnd(nodeName: string, output: string | null, placementPath: readonly string[]): void {
-    this.#hooks.onNodeEnd(nodeName, output, this.#state, placementPath);
+  onNodeEnd(nodeName: string, output: string | null, placementPath: readonly string[], signal: AbortSignal): void {
+    this.#hooks.onNodeEnd(nodeName, output, this.#state, placementPath, signal);
   }
 
-  onError(nodeName: string, error: Error, placementPath: readonly string[]): void {
-    this.#hooks.onError(nodeName, error, this.#state, placementPath);
+  onError(nodeName: string, error: Error, placementPath: readonly string[], signal: AbortSignal): void {
+    this.#hooks.onError(nodeName, error, this.#state, placementPath, signal);
   }
 
-  onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void {
-    this.#hooks.onPhaseEnter(dagName, phase, placementName, this.#state, placementPath);
+  onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[], signal: AbortSignal): void {
+    this.#hooks.onPhaseEnter(dagName, phase, placementName, this.#state, placementPath, signal);
   }
 
-  onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void {
-    this.#hooks.onPhaseExit(dagName, phase, placementName, this.#state, placementPath);
+  onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[], signal: AbortSignal): void {
+    this.#hooks.onPhaseExit(dagName, phase, placementName, this.#state, placementPath, signal);
   }
 }

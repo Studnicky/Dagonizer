@@ -5,16 +5,21 @@
  * every lifecycle event is published to the configured topic. Multiple
  * downstream consumers subscribe to the same bus topic.
  *
+ * Each publish is fire-and-forget: the lifecycle hooks on
+ * `DispatcherObserverType` are synchronous, so the observer does not await
+ * the bus's per-subscriber `BusQueue` delivery. A slow subscriber applies
+ * backpressure to its own queue without blocking the dispatcher.
+ *
  * @example
  * ```ts
  * import { Dagonizer } from '@studnicky/dagonizer';
  * import { EventBus, BusObserver } from '@studnicky/dagonizer/progress';
  *
- * const bus = new EventBus();
+ * const bus = EventBus.of();
  * const dispatcher = new Dagonizer<MyState>({
  *   observers: [new BusObserver(bus, 'dag-events')],
  * });
- * bus.subscribe('dag-events', (event) => console.log(event.payload));
+ * bus.subscribe('dag-events', (event) => { console.log(event.payload); });
  * ```
  */
 
@@ -65,31 +70,31 @@ export class BusObserver implements DispatcherObserverType {
   }
 
   onFlowStart(dagName: string, _state: NodeStateInterface): void {
-    this.#bus.publish(this.#topic, { 'event': 'flowStart', 'dagName': dagName } satisfies DagLifecycleEventType);
+    void this.#bus.publish(this.#topic, { 'event': 'flowStart', 'dagName': dagName } satisfies DagLifecycleEventType);
   }
 
   onFlowEnd(dagName: string, _state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>): void {
     const outcome = result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none';
-    this.#bus.publish(this.#topic, { 'event': 'flowEnd', 'dagName': dagName, 'outcome': outcome } satisfies DagLifecycleEventType);
+    void this.#bus.publish(this.#topic, { 'event': 'flowEnd', 'dagName': dagName, 'outcome': outcome } satisfies DagLifecycleEventType);
   }
 
   onNodeStart(nodeName: string, _state: NodeStateInterface, placementPath: readonly string[]): void {
-    this.#bus.publish(this.#topic, { 'event': 'nodeStart', 'nodeName': nodeName, 'placementPath': placementPath } satisfies DagLifecycleEventType);
+    void this.#bus.publish(this.#topic, { 'event': 'nodeStart', 'nodeName': nodeName, 'placementPath': placementPath } satisfies DagLifecycleEventType);
   }
 
   onNodeEnd(nodeName: string, output: string | null, _state: NodeStateInterface, placementPath: readonly string[]): void {
-    this.#bus.publish(this.#topic, { 'event': 'nodeEnd', 'nodeName': nodeName, 'output': output, 'placementPath': placementPath } satisfies DagLifecycleEventType);
+    void this.#bus.publish(this.#topic, { 'event': 'nodeEnd', 'nodeName': nodeName, 'output': output, 'placementPath': placementPath } satisfies DagLifecycleEventType);
   }
 
   onError(nodeName: string, error: Error, _state: NodeStateInterface, placementPath: readonly string[]): void {
-    this.#bus.publish(this.#topic, { 'event': 'nodeError', 'nodeName': nodeName, 'error': error.message, 'placementPath': placementPath } satisfies DagLifecycleEventType);
+    void this.#bus.publish(this.#topic, { 'event': 'nodeError', 'nodeName': nodeName, 'error': error.message, 'placementPath': placementPath } satisfies DagLifecycleEventType);
   }
 
   onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, _state: NodeStateInterface, _placementPath: readonly string[]): void {
-    this.#bus.publish(this.#topic, { 'event': 'phaseEnter', 'dagName': dagName, 'phase': phase, 'placementName': placementName } satisfies DagLifecycleEventType);
+    void this.#bus.publish(this.#topic, { 'event': 'phaseEnter', 'dagName': dagName, 'phase': phase, 'placementName': placementName } satisfies DagLifecycleEventType);
   }
 
   onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, _state: NodeStateInterface, _placementPath: readonly string[]): void {
-    this.#bus.publish(this.#topic, { 'event': 'phaseExit', 'dagName': dagName, 'phase': phase, 'placementName': placementName } satisfies DagLifecycleEventType);
+    void this.#bus.publish(this.#topic, { 'event': 'phaseExit', 'dagName': dagName, 'phase': phase, 'placementName': placementName } satisfies DagLifecycleEventType);
   }
 }

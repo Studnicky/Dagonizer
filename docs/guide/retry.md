@@ -85,9 +85,12 @@ All strategies apply `jitterFactor` (default `0.1`, plus or minus 10%) to spread
 Precedence:
 
 1. If `attempt >= maxAttempts`, do not retry.
-2. If `abortOn` is set and the error matches, do not retry.
-3. If `retryOn` is set and the error does not match, do not retry.
-4. Otherwise, retry.
+2. If `abortOn` is set and the error matches, do not retry — a consumer's explicit abort list always wins, even against a `DAGError` that self-reports `retryable: true`.
+3. If `retryOn` is set, the error must match it to retry; a miss does not retry, even against a `DAGError` that self-reports `retryable: true`.
+4. If no `retryOn` filter is set and the error is a `DAGError`, retry only when `error.retryable` is `true` — the error's own classification is the fallback signal, replacing the blanket "no filter = retry everything" default.
+5. Otherwise (no filters, non-`DAGError` error), retry.
+
+A `DAGError` constructed with `retryable: false` (the schema default — see [Reference: Errors](../reference/errors)) is therefore not retried unless an explicit `retryOn` matcher opts it back in, or the throw site passes `retryable: true`.
 
 ### Abort cooperation
 
@@ -110,6 +113,32 @@ Install `VirtualScheduler` before the policy run so retry sleeps do not block re
 <<< @/../examples/07-retry.ts#deterministic-testing
 
 See [Testing](../reference/testing) for the full `VirtualScheduler` and `VirtualClockProvider` API.
+
+## Composing with adapter resilience
+
+`RetryPolicy`, `BaseAdapter`'s opt-in circuit breaker/token bucket, and `DAGError.retryable` are three independent failure-handling concerns. Each answers a different question, and `BaseAdapter.chat()` composes all three in one fixed order for its OWN internal handling:
+
+1. **Circuit breaking** (`CircuitBreaker`, outermost) — fail fast once a backend has failed enough times in a row. An open circuit rejects `chat()` with `CircuitBreakerOpenError` instantly, before anything else runs.
+2. **Rate limiting** (`TokenBucket`, next) — bound throughput. An exhausted bucket rejects `chat()` with `TokenBucketExhaustedError`, again before any attempt or retry.
+3. **Retry** (`RetryableErrorPolicy`, an internal `RetryPolicy` subclass, innermost) — re-run one transient failure with backoff, honoring each `LlmError`'s `classification.retryable` flag.
+
+This ordering means a call that is about to fail fast (open circuit, empty bucket) never burns a retry attempt or a rate-limit token it was never going to use — see [Reference: Adapters](../reference/adapters#baseadapter) for the field-level configuration (`circuitBreaker`/`tokenBucket` on `BaseAdapterOptionsType`).
+
+**A consumer's own OUTER `RetryPolicy` is a different scenario.** Wrapping the whole `chat()` call in your own retry policy (`await outer.run(() => adapter.chat(request))`) sits ABOVE all three internal mechanisms. When the circuit is open, `chat()` throws `CircuitBreakerOpenError` immediately — no internal retry is even attempted — and a naive outer `RetryPolicy` with no filters would retry that rejection anyway, hammering an already-open circuit `maxAttempts` times. List both resilience errors in `abortOn` to avoid this:
+
+```ts
+import { RetryPolicy } from '@studnicky/dagonizer/runtime';
+import { CircuitBreakerOpenError, TokenBucketExhaustedError } from '@studnicky/dagonizer/adapter';
+
+const outer = RetryPolicy.from({
+  maxAttempts: 3,
+  abortOn: [CircuitBreakerOpenError, TokenBucketExhaustedError],
+});
+
+const response = await outer.run(() => adapter.chat(request));
+```
+
+This is documented guidance, not an enforced default — a consumer who wants an outer retry to keep probing through a half-open circuit configures their own policy differently. See [Error filtering](#error-filtering) above for how `abortOn` composes with the `DAGError.retryable` fallback.
 
 ## Choosing between them
 

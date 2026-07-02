@@ -46,7 +46,7 @@ reasoning via graph traversal to inform the next.
   step to the item at `item.ordinal - 1` in the same run). The chain is
   derived entirely from each item's own `ordinal` field, so it stays correct
   regardless of the order items are actually recorded in — the scatter's
-  `concurrency: 1` here is a default, not a correctness requirement.
+  `execution: { mode: 'item', concurrency: 1 }` here is a default, not a correctness requirement.
 - **Cross-run recall via graph traversal.** `ReActRecall.hint(store, priorRunId)`
   finds the prior run's `final` step, walks `wasInformedBy` backward to the
   first step, and formats the chain as a one-line hint — injected as a

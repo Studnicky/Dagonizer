@@ -6,7 +6,7 @@
  *
  * classify() — asks the LLM to output a single word: routine, escalate, or off-topic.
  * compose()  — generates a concise support reply (≤3 sentences) using recent
- *              conversation history as context.
+ *              conversation history as context, in the visitor's device language.
  *
  * Both calls pass the AbortSignal through so the DAG's cancellation mechanism
  * propagates to in-flight HTTP requests.
@@ -18,6 +18,7 @@ import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 
 import type { ConversationTurnType } from '../DispatcherState.ts';
 import type { DispatcherLlmInterface } from '../services.ts';
+import { UserLanguage } from '../language/UserLanguage.ts';
 
 const SYSTEM_CLASSIFY = `You are a customer support classifier for Noocodex, an online bookstore.
 Classify the customer message as exactly one of:
@@ -31,9 +32,25 @@ const SYSTEM_SUPPORT = `You are a helpful customer support agent for Noocodex, a
 Be concise, friendly, and professional. If you cannot help, say so clearly and offer to escalate.
 Keep responses under 3 sentences.`;
 
+/**
+ * Construction options for `DispatcherLlmClient`. `language` is the
+ * visitor's device language (ISO 639-1), threaded into the compose system
+ * prompt so replies come back in the visitor's own language. Defaulted to
+ * `'en'` when absent so existing callers stay correct.
+ */
+export interface DispatcherLlmClientOptions {
+  readonly language?: string;
+}
+
 export class DispatcherLlmClient extends BaseLlmService implements DispatcherLlmInterface {
-  constructor(adapter: LlmAdapterInterface) {
+  /** Visitor device language; passed to the compose system prompt. */
+  readonly language: string;
+
+  constructor(adapter: LlmAdapterInterface, options: DispatcherLlmClientOptions = {}) {
     super(adapter);
+    this.language = options.language !== undefined && options.language.length > 0
+      ? options.language
+      : 'en';
   }
 
   async classify(
@@ -68,7 +85,7 @@ export class DispatcherLlmClient extends BaseLlmService implements DispatcherLlm
 
     const request = ChatRequestBuilder.from({
       'messages': [
-        { 'role': 'user', 'content': SYSTEM_SUPPORT },
+        { 'role': 'user', 'content': DispatcherLlmClient.systemSupport(this.language) },
         ...history,
         { 'role': 'user', 'content': message },
       ],
@@ -79,6 +96,16 @@ export class DispatcherLlmClient extends BaseLlmService implements DispatcherLlm
 
     const msg = await this.chat(request);
     return BaseLlmService.contentOf(msg).trim();
+  }
+
+  /**
+   * Prepend a language directive to `SYSTEM_SUPPORT` so composed replies
+   * come back in the visitor's device language rather than always English.
+   */
+  private static systemSupport(language: string): string {
+    const code = UserLanguage.normalize(language);
+    const name = UserLanguage.displayName(code);
+    return `${SYSTEM_SUPPORT}\nRespond in ${name} (${code}).`;
   }
 
   async warm(signal?: AbortSignal): Promise<void> {

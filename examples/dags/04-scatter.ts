@@ -117,7 +117,7 @@ export const dag: DAGType = {
       "body":         { "node": 'probe' },             // which registered node to invoke per clone
       "source":       'urls',                          // state field to read the items array from
       "itemKey":      'url',                           // metadata key each item is written under
-      "concurrency":  2,                               // max clones in-flight simultaneously
+      "execution": { "mode": "item", "concurrency": 2 },                               // max clones in-flight simultaneously
       "gather": {
         "strategy":   GatherStrategyNames.PARTITION,      // route clones by their output key
         "partitions": { "ok": 'succeeded', "fail": 'failed' },  // output key → state field name

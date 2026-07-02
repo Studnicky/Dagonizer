@@ -199,7 +199,7 @@ export const fanInDag: DAGType = {
       'body':        { 'node': 'collect' },
       'source':      'source',
       'itemKey':     'fan-item',
-      'concurrency': 2,
+      'execution': { 'mode': 'item', 'concurrency': 2 },
       'gather': {
         'strategy': 'append',
         'target':   'results',
@@ -239,7 +239,7 @@ export const resumeDag: DAGType = {
       'body':        { 'node': 'collect' },
       'source':      'source',
       'itemKey':     'fan-item',
-      'concurrency': 2,
+      'execution': { 'mode': 'item', 'concurrency': 2 },
       'gather': {
         'strategy': 'append',
         'target':   'results',

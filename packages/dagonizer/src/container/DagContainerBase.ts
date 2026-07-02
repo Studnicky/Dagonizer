@@ -25,11 +25,11 @@ import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface
 import type { Batch } from '../entities/batch/Batch.js';
 import type { ItemType } from '../entities/batch/Item.js';
 import type { JsonObjectType } from '../entities/json.js';
+import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import { ChannelDispatch } from './ChannelDispatch.js';
 import type { InitMessageShapeType } from './ChannelDispatch.js';
-import { DagContainerError } from './DagContainerError.js';
 import { DagOutcome } from './DagOutcome.js';
 import type { BatchRunResultType } from './DagOutcome.js';
 import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED } from './TransportErrorCode.js';
@@ -165,8 +165,9 @@ export abstract class DagContainerBase<TWorker = unknown>
    *
    * @param signal - AbortSignal from the calling task. If the signal fires
    *   while the caller is parked in the waiter queue, the parked promise
-   *   rejects immediately with a DagContainerError('aborted') so the caller
-   *   is not stranded until an unrelated slot frees.
+   *   rejects immediately with a `DAGError` (code `DAG_CONTAINER_ERROR`,
+   *   message `'aborted'`) so the caller is not stranded until an unrelated
+   *   slot frees.
    *
    * Correctness note: after waking from a wait, the loop re-checks #destroyed
    * and #free rather than assuming a specific state, so evictions and concurrent
@@ -174,8 +175,8 @@ export abstract class DagContainerBase<TWorker = unknown>
    */
   protected async acquireChannel(signal: AbortSignal): Promise<MessageChannelInterface> {
     while (true) {
-      if (this.#destroyed) throw new DagContainerError('container destroyed');
-      if (signal.aborted) throw new DagContainerError('aborted');
+      if (this.#destroyed) throw new DAGError('container destroyed', { 'code': 'DAG_CONTAINER_ERROR' });
+      if (signal.aborted) throw new DAGError('aborted', { 'code': 'DAG_CONTAINER_ERROR' });
 
       const free = this.#free.pop();
       if (free !== undefined) {
@@ -434,8 +435,9 @@ export abstract class DagContainerBase<TWorker = unknown>
    * Park the caller until a slot becomes available (free or pool shrank).
    *
    * If `signal` fires while the caller is parked, the waiter entry is removed
-   * from the queue and the promise rejects with DagContainerError('aborted').
-   * The abort listener is always removed in a finally block to prevent leaks.
+   * from the queue and the promise rejects with a `DAGError` (code
+   * `DAG_CONTAINER_ERROR`, message `'aborted'`). The abort listener is
+   * always removed in a finally block to prevent leaks.
    */
   #waitForSlot(signal: AbortSignal): Promise<void> {
     return new Promise<void>((resolve, reject) => {
@@ -445,7 +447,7 @@ export abstract class DagContainerBase<TWorker = unknown>
       const onAbort = (): void => {
         const idx = this.#waiters.indexOf(entry);
         if (idx !== -1) this.#waiters.splice(idx, 1);
-        reject(new DagContainerError('aborted'));
+        reject(new DAGError('aborted', { 'code': 'DAG_CONTAINER_ERROR' }));
       };
       signal.addEventListener('abort', onAbort, { 'once': true });
 

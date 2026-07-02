@@ -90,7 +90,7 @@ The full signature is shown in the scatter placement example:
 | Field | Type | Description |
 |---|---|---|
 | `itemKey?` | `string` | Metadata key the clone reads for the current item. Default `'currentItem'`. |
-| `concurrency?` | `number` | Max clones running concurrently. Default: source length. |
+| `execution?` | `{ mode: 'item', concurrency?, throttle? } \| { mode: 'reservoir', concurrency?, reservoir }` | Unified concurrency-limiting policy — the exact wire shape `ScatterNode.execution` accepts. Default: `{ mode: 'item', concurrency: 1 }`. See [`ScatterNode`](/reference/nodes#scatternode) for the full `item` vs `reservoir` semantics. |
 | `inputs?` | `Partial<Record<string, Path<TState>>>` | Parent → clone field copy before the body runs. Becomes `stateMapping.input` on the entity. Keys are child-state keys; values are parent-state dotted paths. |
 | `gather` | `GatherConfig` | **Required.** How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
 | `reducer?` | `string` | Outcome reducer name. Defaults to `'aggregate'`. Built-in reducers: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |

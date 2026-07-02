@@ -1,8 +1,8 @@
 export { Clock } from './Clock.js';
+export { DagExecutionContext, DagExecutionContextKeys, DagExecutionScope } from './DagExecutionContext.js';
 export { DottedPathAccessor } from './DottedPathAccessor.js';
 export { RealTimeScheduler } from './RealTimeScheduler.js';
 export { Scheduler } from './Scheduler.js';
-export { SignalComposer } from './SignalComposer.js';
 export { RetryPolicy } from './RetryPolicy.js';
 
 // `Timeout` is an entity (dependency-free reified time budget). It lives at
@@ -16,6 +16,7 @@ export { Timeout } from '../entities/Timeout.js';
 export type { ClockProviderInterface } from '../contracts/ClockProviderInterface.js';
 export type { SchedulerProviderInterface } from '../contracts/SchedulerProviderInterface.js';
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
+export type { ErrorMatcherType } from '../contracts/ErrorMatcherType.js';
 export type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
 export type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 

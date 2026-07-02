@@ -54,6 +54,14 @@ export type {
 export { BaseAdapter } from './BaseAdapter.js';
 export type { BaseAdapterOptionsType } from './BaseAdapter.js';
 
+// `CircuitBreaker`/`TokenBucket` are `@studnicky/resilience` classes, used
+// directly (not wrapped) as the `circuitBreaker`/`tokenBucket` fields of
+// `BaseAdapterOptionsType`. Re-exported here so a consumer configuring
+// resilience for an adapter needs only this subpath — no separate
+// `@studnicky/resilience` import for the common case of building one
+// breaker/bucket and passing it into an adapter constructor.
+export { CircuitBreaker, CircuitBreakerOpenError, TokenBucket, TokenBucketExhaustedError } from '@studnicky/resilience';
+
 export { SseLineParser } from './SseLineParser.js';
 export type { SseFrameType } from './SseLineParser.js';
 

@@ -1,6 +1,6 @@
 import type { BackoffStrategyType } from '../entities/runtime/BackoffStrategy.js';
 
-import type { ErrorConstructorType } from './ErrorConstructorType.js';
+import type { ErrorMatcherType } from './ErrorMatcherType.js';
 
 /**
  * Trailing config object for `RetryPolicy.from(partial)` and the `RetryPolicy`
@@ -21,8 +21,14 @@ export type RetryPolicyOptionsType = {
   multiplier?: number;
   /** Fractional jitter applied to the computed delay; `0` = no jitter, `1` = full-width jitter. */
   jitterFactor?: number;
-  /** Error classes that trigger a retry. An error not in this list is re-thrown immediately. */
-  retryOn?: ErrorConstructorType[];
-  /** Error classes that abort the retry loop immediately regardless of `retryOn`. */
-  abortOn?: ErrorConstructorType[];
+  /**
+   * Error classes (or `DAGError` code strings) that trigger a retry. An
+   * error not matched by this list is re-thrown immediately.
+   */
+  retryOn?: ErrorMatcherType[];
+  /**
+   * Error classes (or `DAGError` code strings) that abort the retry loop
+   * immediately regardless of `retryOn`.
+   */
+  abortOn?: ErrorMatcherType[];
 };

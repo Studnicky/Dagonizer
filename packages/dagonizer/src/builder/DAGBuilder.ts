@@ -21,9 +21,9 @@ import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
-import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
+import type { ScatterExecutionOptionsType, ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { TerminalNodeType } from '../entities/dag/TerminalNode.js';
-import { ConfigurationError } from '../errors/index.js';
+import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { PathType } from './PathType.js';
@@ -44,9 +44,9 @@ type ParentPath<T extends NodeStateInterface> =
 /**
  * Configuration for a scatter node added via `DAGBuilder.scatter`.
  *
- * `gather` is required: every scatter must declare how clone state merges
- * back into the parent. Use `{ strategy: 'discard' }` for side-effect-only
- * scatters where no clone state needs to flow back.
+ * `gather` declares how clone state merges back into the parent; omitting
+ * it defaults to `{ strategy: 'discard' }` (side-effect-only fan-out).
+ * Declare it explicitly to merge clone state back into the parent.
  *
  * `TState` narrows `inputs` values and `gather.mapping` values to dotted
  * paths that exist on the state when a concrete subtype is passed.
@@ -54,8 +54,6 @@ type ParentPath<T extends NodeStateInterface> =
 export type ScatterOptionsType<TState extends NodeStateInterface = NodeStateInterface> = {
   /** Metadata key under which each item is written per clone. Defaults to `currentItem`. */
   itemKey?: string;
-  /** Maximum number of clones run concurrently. Defaults to item count. */
-  concurrency?: number;
   /**
    * Seed each clone before its body runs (becomes `stateMapping.input`); same
    * concept and orientation as `EmbeddedDAGNode` `inputs`: keys are child-state
@@ -65,10 +63,12 @@ export type ScatterOptionsType<TState extends NodeStateInterface = NodeStateInte
   inputs?: Record<string, ParentPath<TState>>;
   /**
    * Gather config: how produced clone state merges back into the parent.
-   * Required — every scatter must declare the merge strategy. Declare
-   * `{ strategy: 'discard' }` for side-effect-only fan-outs.
+   * Defaults to `{ strategy: 'discard' }` (side-effect-only fan-out, no
+   * clone state flows back) when omitted — see `SCATTER_GATHER_DEFAULT`
+   * in `ScatterOptions.ts`. Declare explicitly to merge clone state back
+   * into the parent.
    */
-  gather: GatherConfigType;
+  gather?: GatherConfigType;
   /** Outcome reducer name. Defaults to `'aggregate'`. */
   reducer?: string;
   /**
@@ -79,19 +79,12 @@ export type ScatterOptionsType<TState extends NodeStateInterface = NodeStateInte
    */
   container?: string;
   /**
-   * Input-batching policy. When present, the scatter buffers items by
-   * `keyField` (an accessor path on each item) and releases a batch per key
-   * when `capacity` items accumulate or `idleMs` milliseconds of idle elapses.
-   * Absent means batch-size-1 (today's behavior; no runtime effect yet).
+   * Concurrency-limiting policy: ONE discriminated `mode` structure instead of
+   * separate `concurrency`/`throttle`/`reservoir` knobs — the exact wire shape
+   * `ScatterNode.execution` accepts (see `ScatterNode.ts` for full semantics).
+   * Defaults to `{ mode: 'item', concurrency: 1 }` when omitted.
    */
-  reservoir?: {
-    /** Accessor path on each item whose resolved value is the partition key. */
-    readonly keyField: string;
-    /** Release a key's batch when it reaches this many items. Must be >= 1. */
-    readonly capacity: number;
-    /** Release a key's partial batch after this many idle milliseconds. Must be > 0 when present. */
-    readonly idleMs?: number;
-  };
+  execution?: ScatterExecutionOptionsType;
 }
 
 /**
@@ -223,9 +216,9 @@ export class DAGBuilder {
     outputs: Record<string, string>,
     options: ScatterOptionsType<TState>,
   ): this {
-    // Materialise static defaults (itemKey, reducer) at build time so the produced
-    // ScatterNode always carries them. Fields whose defaults are data-dependent at
-    // runtime (concurrency) or whose absence is semantically meaningful (inputs,
+    // Materialise static defaults (itemKey, reducer, gather) at build time so the
+    // produced ScatterNode always carries them. Fields whose defaults are data-dependent
+    // at runtime (execution) or whose absence is semantically meaningful (inputs,
     // container) remain optional and are spread only when the caller provides them.
     const resolved = ScatterOptions.resolve(options);
 
@@ -251,14 +244,12 @@ export class DAGBuilder {
       'itemKey': resolved.itemKey,
       'reducer': resolved.reducer,
       // Optional fields spread at construction — no post-construction shape mutation.
-      // concurrency: left optional — default is source.length at runtime (data-dependent).
-      ...(resolved.concurrency !== undefined ? { 'concurrency': resolved.concurrency } : {}),
       // stateMapping.input: left optional — absence means "no clone seeding" (semantically meaningful).
       ...(resolved.inputs !== undefined ? { 'stateMapping': { 'input': resolved.inputs } } : {}),
       // container: left optional — absence means "run in-process" (semantically meaningful).
       ...(resolved.container !== undefined ? { 'container': resolved.container } : {}),
-      // reservoir: left optional — absence means batch-size-1 (today's behavior unchanged).
-      ...(resolved.reservoir !== undefined ? { 'reservoir': resolved.reservoir } : {}),
+      // execution: left optional — default is `{ mode: 'item', concurrency: 1 }` at runtime (data-dependent).
+      ...(resolved.execution !== undefined ? { 'execution': resolved.execution } : {}),
     };
 
     this.#nodes.push(scatterNode);
@@ -413,7 +404,7 @@ export class DAGBuilder {
    */
   build(): DAGType {
     if (this.#entrypoint === null) {
-      throw new ConfigurationError(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint; call .entrypoint() or add at least one node first`);
+      throw new DAGError(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint; call .entrypoint() or add at least one node first`, { 'code': 'CONFIGURATION_ERROR' });
     }
     const dag: DAGType = {
       '@context': DAG_CONTEXT,

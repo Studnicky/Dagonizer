@@ -27,6 +27,7 @@ import type { NodeContextType } from '../../entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
 import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
+import { DAGError } from '../../errors/DAGError.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class CallModelNode<
@@ -111,7 +112,7 @@ export abstract class CallModelNode<
       this.storeResponse(state, response, context);
       return NodeOutputBuilder.of(response.message.variant);
     } catch (cause) {
-      const error = cause instanceof Error ? cause : new Error(String(cause));
+      const error = DAGError.coerce(cause);
       const recoverable = cause instanceof LlmError ? cause.classification.retryable : true;
       return NodeOutputBuilder.of('error', {
         'errors': [

@@ -37,6 +37,7 @@ import type { ExecutorIntermediateType } from '../entities/executor/ExecutorInte
 import { JsonObject } from '../entities/json.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { NodeErrorBuilder } from '../entities/node/NodeError.js';
+import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
 
@@ -81,7 +82,7 @@ export class DagHost {
       // R3: catch unhandled rejections from message dispatch and forward them
       // as a channel-scoped error rather than leaking an unhandled rejection.
       this.#handleMessage(raw).catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = DAGError.messageOf(err);
         try {
           this.#channel.send({
             'variant': 'error',
@@ -132,7 +133,7 @@ export class DagHost {
       'execute': (m) => {
         // R3: fire-and-forget with error capture so failures reach the caller.
         this.#handleExecute(m.request.correlationId, m.request).catch((err: unknown) => {
-          const errMsg = err instanceof Error ? err.message : String(err);
+          const errMsg = DAGError.messageOf(err);
           try {
             this.#channel.send({
               'variant': 'error',
@@ -258,7 +259,7 @@ export class DagHost {
         'capabilities': [],
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = DAGError.messageOf(error);
       this.#channel.send({
         'variant': 'error',
         'correlationId': null,
@@ -467,7 +468,7 @@ export class DagHost {
         this.#channel.send({ 'variant': 'result', 'response': response });
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = DAGError.messageOf(error);
 
       // On unhandled exception, return failed items for all items in the request.
       const failedItems = restoredItems.map(({ id, state }) => ({

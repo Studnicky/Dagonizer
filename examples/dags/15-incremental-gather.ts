@@ -198,7 +198,7 @@ export const incrementalDag: DAGType = {
       "body":      { "node": 'shout' },
       "source":    'words',
       "itemKey":   'word',
-      "concurrency": 1,                     // serial so fold ordering is deterministic
+      "execution": { "mode": "item", "concurrency": 1 },                     // serial so fold ordering is deterministic
       "gather": {
         "strategy": 'logging-map',              // consumer-registered strategy name
         "mapping":  { "processed": 'results' }, // clone.processed (scalar) → parent.results
@@ -240,7 +240,7 @@ export const batchDag: DAGType = {
       "body":      { "node": 'shout' },
       "source":    'words',
       "itemKey":   'word',
-      "concurrency": 1,
+      "execution": { "mode": "item", "concurrency": 1 },
       "gather": {
         "strategy": 'batch-only',            // reduce is no-op → finalize handles all records at end
         "mapping":  { "results": 'results' },

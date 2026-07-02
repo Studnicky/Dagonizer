@@ -3,37 +3,38 @@
  *
  * Test-only. Install via `Clock.configure(new VirtualClockProvider(0n))`.
  * Advance virtual time by nanoseconds with `tickNs()` (or by milliseconds
- * via `tickMs()` for convenience). Pair with `VirtualScheduler` so the
- * scheduler and Clock observe the same virtual time.
+ * via `tickMs()` for convenience).
+ *
+ * Backed by `@studnicky/clock`'s `VirtualClockProvider` + `VirtualTimeCounter`.
+ * The counter tracks whole milliseconds only (substrate's virtual time model
+ * is ms-granular, not ns-granular) — `tickNs()` truncates its delta to whole
+ * milliseconds before advancing. `hrtime()` is therefore always a whole-ms
+ * value expressed in nanoseconds. The counter only moves forward: a
+ * zero-or-negative delta is a no-op, matching `VirtualTimeCounter.advance()`.
  */
+
+import { VirtualClockProvider as SubstrateVirtualClockProvider, VirtualTimeCounter } from '@studnicky/clock';
 
 import type { ClockProviderInterface } from '../dist/contracts/ClockProviderInterface.js';
 
 const NS_PER_MS = 1_000_000n;
 
-export class VirtualClockProvider implements ClockProviderInterface {
-  #hrtimeNs: bigint;
+export class VirtualClockProvider extends SubstrateVirtualClockProvider implements ClockProviderInterface {
+  readonly #counter: VirtualTimeCounter;
 
   constructor(initialNs: bigint = 0n) {
-    this.#hrtimeNs = initialNs;
+    const counter = VirtualTimeCounter.create({ 'startMs': Number(initialNs / NS_PER_MS) });
+    super(counter);
+    this.#counter = counter;
   }
 
-  hrtime(): bigint {
-    return this.#hrtimeNs;
-  }
-
-  /** Set virtual hrtime to a specific nanosecond value. */
-  setNs(ns: bigint): void {
-    this.#hrtimeNs = ns;
-  }
-
-  /** Advance virtual time by `deltaNs` nanoseconds. */
+  /** Advance virtual time by `deltaNs` nanoseconds, truncated to whole milliseconds. */
   tickNs(deltaNs: bigint): void {
-    this.#hrtimeNs += deltaNs;
+    this.#counter.advance(Number(deltaNs / NS_PER_MS));
   }
 
-  /** Convenience: advance virtual time by `deltaMs` milliseconds. */
+  /** Advance virtual time by `deltaMs` milliseconds. */
   tickMs(deltaMs: number): void {
-    this.#hrtimeNs += BigInt(deltaMs) * NS_PER_MS;
+    this.#counter.advance(deltaMs);
   }
 }

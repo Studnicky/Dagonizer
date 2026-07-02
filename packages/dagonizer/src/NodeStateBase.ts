@@ -1,3 +1,5 @@
+import { Predicates } from '@studnicky/predicates';
+
 import type { JsonObjectType, JsonValueType } from './entities/json.js';
 import { JsonValue } from './entities/JsonValue.js';
 import type { NodeErrorType } from './entities/node/NodeError.js';
@@ -383,14 +385,13 @@ export class NodeStateBase implements NodeStateInterface {
     event: Parameters<typeof DAGLifecycleMachine.transition>[1],
     targetVariant: DAGLifecycleStateType['variant'],
   ): void {
-    const next = DAGLifecycleMachine.transition(this.#lifecycle, event);
-
-    if (next === this.#lifecycle) {
+    try {
+      this.#lifecycle = DAGLifecycleMachine.transition(this.#lifecycle, event);
+    } catch {
       throw new DAGError(
         `Cannot mark ${targetVariant}: lifecycle is ${this.#lifecycle.variant}`,
       );
     }
-    this.#lifecycle = next;
   }
 
   /**
@@ -488,8 +489,8 @@ export class NodeStateBase implements NodeStateInterface {
       'string':  (k, v) => { if (typeof v === 'string')                      Reflect.set(state, k, v); },
       'number':  (k, v) => { if (typeof v === 'number')                      Reflect.set(state, k, v); },
       'boolean': (k, v) => { if (typeof v === 'boolean')                     Reflect.set(state, k, v); },
-      'array':   (k, v) => { if (Array.isArray(v))                           Reflect.set(state, k, v); },
-      'object':  (k, v) => { if (typeof v === 'object' && !Array.isArray(v)) Reflect.set(state, k, v); },
+      'array':   (k, v) => { if (Predicates.matchesType('array', v))  Reflect.set(state, k, v); },
+      'object':  (k, v) => { if (Predicates.matchesType('object', v)) Reflect.set(state, k, v); },
       'unknown': (k, v) => {                                                  Reflect.set(state, k, v); },
     };
     for (const [key, fieldType] of Object.entries(fields)) {

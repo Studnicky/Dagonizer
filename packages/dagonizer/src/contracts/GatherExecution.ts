@@ -75,13 +75,12 @@ export type GatherExecutionType<TItem = unknown> = {
   /** Name of the DAG being executed. Used by `invoker.invokeNode` to dispatch gather nodes. */
   dagName: string;
   /**
-   * The active abort signal for the scatter body, or `null` when the run
-   * has no cancellation signal. `null` is a deliberate sentinel meaning
-   * "no signal present" — distinct from the optional `signal?` pattern
-   * used elsewhere in the engine, where the field may simply be absent.
-   * Strategies and invokers check `signal !== null` before forwarding.
+   * The active abort signal for the scatter body. Always a valid
+   * `AbortSignal` — a run with no caller-supplied cancellation surface
+   * carries `Signal.never()`, so strategies and invokers can forward it
+   * unconditionally with no null-check.
    */
-  signal: AbortSignal | null;
+  signal: AbortSignal;
   /** State path accessor the dispatcher is configured with; used by built-in strategies to read and write state paths. */
   accessor: StateAccessorInterface;
   /** The only dispatch seam for `custom` gather strategies to invoke a registered node through the engine. */

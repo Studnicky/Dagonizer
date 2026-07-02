@@ -38,59 +38,61 @@ class TestTraceProducer extends AgentTraceProducer {
   }
 }
 
-/** Builds a minimal `NodeResultType<NodeStateInterface>` for one node's result. */
-function stageOf(nodeName: string, output: string | null): NodeResultType<NodeStateInterface> {
-  return {
-    'nodeName': nodeName,
-    'output': output,
-    'skipped': false,
-    'state': new NodeStateBase(),
-    'intermediateResults': [],
-  };
+/** Builds `NodeResultType<NodeStateInterface>` fixtures for one node's result. */
+class NodeResultFixture {
+  static ofStage(nodeName: string, output: string | null): NodeResultType<NodeStateInterface> {
+    return {
+      'nodeName': nodeName,
+      'output': output,
+      'skipped': false,
+      'state': new NodeStateBase(),
+      'intermediateResults': [],
+    };
+  }
 }
 
 void describe('AgentTraceProducer.select', () => {
   void it('maps call-model to an ordinal-0 thought item', () => {
     const producer = new TestTraceProducer((async function* () { /* unused: select is exercised directly */ })());
-    const items = [...producer.selectFor(stageOf('call-model', 'text'))];
+    const items = [...producer.selectFor(NodeResultFixture.ofStage('call-model', 'text'))];
     assert.deepEqual(items, [{ 'ordinal': 0, 'step': { 'kind': 'thought', 'text': 'described' } }]);
   });
 
   void it('maps decode-tools to an action item with empty args', () => {
     const producer = new TestTraceProducer((async function* () { /* unused */ })());
-    const items = [...producer.selectFor(stageOf('decode-tools', 'tools'))];
+    const items = [...producer.selectFor(NodeResultFixture.ofStage('decode-tools', 'tools'))];
     assert.deepEqual(items, [{ 'ordinal': 0, 'step': { 'kind': 'action', 'tool': 'described', 'args': {} } }]);
   });
 
   void it('maps collect-results to an observation item', () => {
     const producer = new TestTraceProducer((async function* () { /* unused */ })());
-    const items = [...producer.selectFor(stageOf('collect-results', 'ok'))];
+    const items = [...producer.selectFor(NodeResultFixture.ofStage('collect-results', 'ok'))];
     assert.deepEqual(items, [{ 'ordinal': 0, 'step': { 'kind': 'observation', 'output': 'described' } }]);
   });
 
   void it('maps append-assistant to a final item', () => {
     const producer = new TestTraceProducer((async function* () { /* unused */ })());
-    const items = [...producer.selectFor(stageOf('append-assistant', 'done'))];
+    const items = [...producer.selectFor(NodeResultFixture.ofStage('append-assistant', 'done'))];
     assert.deepEqual(items, [{ 'ordinal': 0, 'step': { 'kind': 'final', 'text': 'described' } }]);
   });
 
   void it('yields no item for a node name absent from the dispatch map', () => {
     const producer = new TestTraceProducer((async function* () { /* unused */ })());
-    const items = [...producer.selectFor(stageOf('normalize-response', 'text'))];
+    const items = [...producer.selectFor(NodeResultFixture.ofStage('normalize-response', 'text'))];
     assert.deepEqual(items, []);
   });
 
   void it('yields no item for a stage whose output is "error", even for a mapped node name', () => {
     const producer = new TestTraceProducer((async function* () { /* unused */ })());
-    const items = [...producer.selectFor(stageOf('call-model', 'error'))];
+    const items = [...producer.selectFor(NodeResultFixture.ofStage('call-model', 'error'))];
     assert.deepEqual(items, []);
   });
 
   void it('assigns ordinals 0, 1, 2, ... in emission order across multiple select calls', () => {
     const producer = new TestTraceProducer((async function* () { /* unused */ })());
-    const first = [...producer.selectFor(stageOf('call-model', 'text'))];
-    const second = [...producer.selectFor(stageOf('decode-tools', 'tools'))];
-    const third = [...producer.selectFor(stageOf('collect-results', 'ok'))];
+    const first = [...producer.selectFor(NodeResultFixture.ofStage('call-model', 'text'))];
+    const second = [...producer.selectFor(NodeResultFixture.ofStage('decode-tools', 'tools'))];
+    const third = [...producer.selectFor(NodeResultFixture.ofStage('collect-results', 'ok'))];
     assert.equal(first[0]?.ordinal, 0);
     assert.equal(second[0]?.ordinal, 1);
     assert.equal(third[0]?.ordinal, 2);
@@ -98,10 +100,10 @@ void describe('AgentTraceProducer.select', () => {
 
   void it('does not consume an ordinal for skipped stages (unmapped node name or errored output)', () => {
     const producer = new TestTraceProducer((async function* () { /* unused */ })());
-    const emittedFirst = [...producer.selectFor(stageOf('call-model', 'text'))];
-    const skippedUnmapped = [...producer.selectFor(stageOf('normalize-response', 'text'))];
-    const skippedError = [...producer.selectFor(stageOf('decode-tools', 'error'))];
-    const emittedSecond = [...producer.selectFor(stageOf('decode-tools', 'tools'))];
+    const emittedFirst = [...producer.selectFor(NodeResultFixture.ofStage('call-model', 'text'))];
+    const skippedUnmapped = [...producer.selectFor(NodeResultFixture.ofStage('normalize-response', 'text'))];
+    const skippedError = [...producer.selectFor(NodeResultFixture.ofStage('decode-tools', 'error'))];
+    const emittedSecond = [...producer.selectFor(NodeResultFixture.ofStage('decode-tools', 'tools'))];
 
     assert.equal(emittedFirst[0]?.ordinal, 0);
     assert.deepEqual(skippedUnmapped, []);

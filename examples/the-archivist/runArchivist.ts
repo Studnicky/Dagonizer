@@ -66,7 +66,7 @@ import {
   LlmError,
   type CatalogueEntryType,
 } from '@studnicky/dagonizer/adapter';
-import { ExecutionError, NodeTimeoutError } from '@studnicky/dagonizer/errors';
+import { DAGError } from '@studnicky/dagonizer/errors';
 import type { AdapterCapabilitiesType } from '@studnicky/dagonizer/adapter';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 import { Checkpoint, CheckpointRestoreAdapter, MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
@@ -182,7 +182,7 @@ if (Env.get('OPENROUTER_API_KEY').length > 0) {
 
 const cascade = LlmAdapterCascadeBuilder.build(catalogue);
 const adapter = await cascade.select();
-logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
+logger.note(`backend: ${adapter.id} (${adapter.displayName})`);
 // #endregion adapter-cascade
 
 // #region embedder-cascade
@@ -243,10 +243,10 @@ let resolvedEmbedder: EmbedderInterface | null = null;
 try {
   resolvedEmbedder = await embedderCascade.select();
   intentClassifier = await IntentClassifier.create(resolvedEmbedder);
-  logger.info(`embedder: ${resolvedEmbedder.id} (${resolvedEmbedder.displayName})`);
+  logger.note(`embedder: ${resolvedEmbedder.id} (${resolvedEmbedder.displayName})`);
 } catch (err) {
   if (err instanceof LlmError && err.classification.reason === 'NO_ADAPTER_AVAILABLE') {
-    logger.info('embedder: none reachable; intent classification via LLM only, recall falls back to Jaccard');
+    logger.note('embedder: none reachable; intent classification via LLM only, recall falls back to Jaccard');
   } else {
     throw err;
   }
@@ -349,18 +349,19 @@ const onceTrigger = new OnceTrigger<ArchivistInput, ArchivistState, ArchivistRes
 );
 
 // #region error-taxonomy
-// ExecutionError wraps a node throw that was not a timeout.
-// NodeTimeoutError fires when the dispatcher's per-node deadline elapses.
+// DAGError (code NODE_TIMEOUT) fires when the dispatcher's per-node deadline elapses.
+// DAGError (code EXECUTION_ERROR) wraps a node throw that was not a timeout.
 // LlmError wraps adapter-level failures (rate limit, bad credentials, etc.).
-// Distinguish by class so callers can log or retry at the right granularity.
+// Distinguish by `.code` (Dagonizer's own error taxonomy is one class) so
+// callers can log or retry at the right granularity.
 try {
   await onceTrigger.attach(archivistRunner);
 } catch (err) {
-  if (err instanceof NodeTimeoutError) {
+  if (err instanceof DAGError && err.code === 'NODE_TIMEOUT') {
     logger.warn(`node timed out: ${err.message}`);
     throw err;
   }
-  if (err instanceof ExecutionError) {
+  if (err instanceof DAGError && err.code === 'EXECUTION_ERROR') {
     logger.warn(`execution failed: ${err.message}`);
     throw err;
   }
@@ -403,7 +404,7 @@ logger.result(`triples=${String(services.memory.size)} written`);
 //   // Consumer A: mirror every event through the existing logger.
 //   archivistBus.subscribe('lifecycle', (envelope) => {
 //     const p = envelope.payload as DagLifecycleEventType;
-//     logger.info(`[bus] ${p.event}${'nodeName' in p ? ` node=${p.nodeName}` : ''}`);
+//     logger.note(`[bus] ${p.event}${'nodeName' in p ? ` node=${p.nodeName}` : ''}`);
 //   });
 //
 //   // Consumer B: SSE stream for a browser client — pipe stream.readable as a

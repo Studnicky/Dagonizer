@@ -171,7 +171,7 @@ export class JsonLdRenderer {
         };
       },
       'ScatterNode': (sp) => {
-        // ScatterNode carries several optional fields (source, itemKey, concurrency,
+        // ScatterNode carries several optional fields (source, itemKey, execution,
         // stateMapping, gather, reducer, container). Build a mutable accumulator
         // then freeze on return. The open index is required because JSON-LD
         // property keys are arbitrary vocabulary-prefixed strings.
@@ -186,7 +186,7 @@ export class JsonLdRenderer {
         };
         if (sp.source !== undefined)       out['dag:source']       = sp.source;
         if (sp.itemKey !== undefined)      out['dag:itemKey']      = sp.itemKey;
-        if (sp.concurrency !== undefined)  out['dag:concurrency']  = sp.concurrency;
+        if (sp.execution !== undefined)    out['dag:execution']    = sp.execution;
         if (sp.stateMapping !== undefined) out['dag:stateMapping'] = sp.stateMapping;
         if (sp.gather !== undefined)       out['dag:gather']       = sp.gather;
         if (sp.reducer !== undefined)      out['dag:reducer']      = sp.reducer;

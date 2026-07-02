@@ -173,7 +173,7 @@ export const routingDag: DAGType = {
       // Chunks route by their own `routeKey`; TranscriptStore.append is safe
       // under any interleaving (single-threaded event loop), so raising this
       // is a free performance choice, not a correctness requirement.
-      'concurrency': 4,
+      'execution': { 'mode': 'item', 'concurrency': 4 },
       'gather': {
         'strategy': 'append',
         'target':   'chunks',

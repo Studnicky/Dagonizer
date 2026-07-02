@@ -7,7 +7,7 @@ import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
-import { DAGError, ValidationError } from '../errors/index.js';
+import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 export class DAGValidator {
@@ -156,8 +156,9 @@ export class DAGValidator {
       // Container is only valid for dag bodies. Throw immediately — this is a structural
       // error that must surface before any execution.
       if (scatter.container !== undefined) {
-        throw new ValidationError(
+        throw new DAGError(
           `ScatterNode '${scatter.name}' has a node body; 'container' is only valid for a dag body`,
+          { 'code': 'VALIDATION_ERROR' },
         );
       }
       const bodyNodeIri = ContextResolver.expand(scatter.body.node, context);
@@ -187,32 +188,29 @@ export class DAGValidator {
       }
     }
 
-    if (scatter.reservoir !== undefined) {
-      DAGValidator.validateReservoir(scatter, errors);
+    if (scatter.execution !== undefined && scatter.execution.mode === 'reservoir') {
+      DAGValidator.validateReservoir(scatter, scatter.execution.reservoir, errors);
     }
   }
 
   private static validateReservoir(
     scatter: ScatterNodeType,
+    reservoir: { keyField: string; capacity: number; idleMs?: number },
     errors: string[],
   ): void {
-    // reservoir is already narrowed to defined by the caller; assert shape exists.
-    const reservoir = scatter.reservoir;
-    if (reservoir === undefined) return;
-
     // keyField: schema enforces minLength:1 but surface a clear semantic message.
     if (reservoir.keyField.trim().length === 0) {
-      errors.push(`ScatterNode '${scatter.name}' reservoir.keyField must be a non-empty accessor path`);
+      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.keyField must be a non-empty accessor path`);
     }
 
     // capacity: schema enforces minimum:1 but surface a clear semantic message.
     if (reservoir.capacity < 1) {
-      errors.push(`ScatterNode '${scatter.name}' reservoir.capacity must be >= 1 (got ${reservoir.capacity})`);
+      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.capacity must be >= 1 (got ${reservoir.capacity})`);
     }
 
     // idleMs: schema enforces minimum:1 but surface a clear semantic message.
     if (reservoir.idleMs !== undefined && reservoir.idleMs < 1) {
-      errors.push(`ScatterNode '${scatter.name}' reservoir.idleMs must be > 0 when present (got ${reservoir.idleMs})`);
+      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.idleMs must be > 0 when present (got ${reservoir.idleMs})`);
     }
 
   }

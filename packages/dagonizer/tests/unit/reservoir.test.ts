@@ -92,7 +92,7 @@ class ReservoirDag {
           'body':   { 'node': 'worker' },
           'source': 'items',
           'itemKey': 'currentItem',
-          'reservoir': { keyField, 'capacity': capacity },
+          'execution': { 'mode': 'reservoir', 'reservoir': { keyField, 'capacity': capacity } },
           // No `field`: append strategy appends record.item (the ReservoirItem) to target.
           'gather': { 'strategy': 'append', 'target': 'gathered' },
           'outputs': {
@@ -706,7 +706,7 @@ void describe('Reservoir scatter — no idleMs, no idle timers', () => {
         'freshIter':        ControlledSource.of(items, gate),
         'nextIndex':        0,
         'signal':           null,
-        'reservoir':        { 'keyField': 'key', 'capacity': CAPACITY },
+        'reservoir':        { 'keyField': 'key', 'capacity': CAPACITY, 'idleMs': null },
         accessor,
       },
     );

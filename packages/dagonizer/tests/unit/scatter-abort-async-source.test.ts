@@ -10,7 +10,7 @@
  *
  * Fix: the pull-loop condition adds `&& signal?.aborted !== true`; after the
  * drain loop, if the signal is aborted and no pool error occurred, throw
- * `ExecutionError.ofSignal(signal)` BEFORE any `ScatterCheckpoint.clear()`.
+ * `DAGError.ofSignal(signal)` BEFORE any `ScatterCheckpoint.clear()`.
  *
  * This test file:
  *   1. Reproduces the defect against current code (should FAIL before the fix).
@@ -77,7 +77,7 @@ class TestAbortDag {
           'body':        { 'node': 'worker' },
           'source':      'items',
           'itemKey':     'item',
-          'concurrency': concurrency,
+          'execution': { 'mode': 'item', 'concurrency': concurrency },
           'gather':      { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
@@ -205,7 +205,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
           'body':        { 'node': 'worker' },
           'source':      'items',
           'itemKey':     'item',
-          'concurrency': 2,
+          'execution': { 'mode': 'item', 'concurrency': 2 },
           'gather':      { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
@@ -319,7 +319,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
           'body':        { 'node': 'worker' },
           'source':      'items',
           'itemKey':     'item',
-          'concurrency': 1,
+          'execution': { 'mode': 'item', 'concurrency': 1 },
           'gather':      { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },

@@ -177,7 +177,7 @@ class GatherHarness {
       'state':    state,
       'records':  records,
       'dagName':  'test',
-      'signal':   null,
+      'signal':   new AbortController().signal,
       'accessor': accessor,
       'invoker':  { invokeNode: async (): Promise<void> => { /* no-op for test */ } },
     });
@@ -215,7 +215,7 @@ class GatherHarness {
       'state':    stateB,
       'records':  [...recordsA, ...recordsB],
       'dagName':  'test',
-      'signal':   null,
+      'signal':   new AbortController().signal,
       'accessor': accessor,
       'invoker':  { invokeNode: async (): Promise<void> => { /* no-op for test */ } },
     });

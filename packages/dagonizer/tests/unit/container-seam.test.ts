@@ -22,7 +22,7 @@
  *       option is supplied.
  *
  * Container validation at registerDAG:
- *   - a ScatterNode with a node body AND a container key throws ValidationError.
+ *   - a ScatterNode with a node body AND a container key throws DAGError (code VALIDATION_ERROR).
  *   - a ScatterNode with a dag body AND a container key is valid (no throw).
  */
 
@@ -42,8 +42,9 @@ import { Placement } from '../../src/entities/dag/Placement.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { JsonValue } from '../../src/entities/JsonValue.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
-import { DAGError, ValidationError } from '../../src/errors/index.js';
+import { DAGError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -497,14 +498,14 @@ void describe('Container seam — W1', () => {
 // ---------------------------------------------------------------------------
 
 void describe('Container validation — node-body scatter', () => {
-  void it('throws ValidationError when ScatterNode has node body AND container key', () => {
+  void it('throws DAGError (code VALIDATION_ERROR) when ScatterNode has node body AND container key', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(bodyNode);
 
     assert.throws(
       () => dispatcher.registerDAG(invalidScatterDAG),
-      ValidationError,
-      'Expected a ValidationError for node-body scatter with container',
+      DAGErrorPredicate.isValidationError,
+      'Expected a DAGError (code VALIDATION_ERROR) for node-body scatter with container',
     );
   });
 

@@ -99,7 +99,7 @@ interface ExecuteOptionsType {
 }
 ```
 
-`Dagonizer.execute` and `Dagonizer.resume` accept this as their third argument. `SignalComposer.compose` folds the two fields into a single signal.
+`Dagonizer.execute` and `Dagonizer.resume` accept this as their third argument. `Signal.compose` (from `@studnicky/signal`) folds the two fields into a single signal.
 
 ## ClockProviderInterface
 

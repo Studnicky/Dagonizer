@@ -306,12 +306,15 @@ export class CytoscapeRenderer {
       },
       'ScatterNode': (sp) => {
         const bodyRef = 'node' in sp.body ? sp.body.node : ('dag' in sp.body ? sp.body.dag : `dagFrom:${sp.body.dagFrom}`);
-        // Add dag-reservoir class when reservoir config is present, so a
+        // Add dag-reservoir class when reservoir mode is configured, so a
         // stylesheet or animation layer can target it for the glyph and
         // per-key fill. Per-key fill and per-firing batch size are runtime
         // values — the animation layer renders them from observer buffer-size
         // deltas; this renderer populates the static config only.
-        const scatterClasses = sp.reservoir !== undefined
+        const reservoirConfig = sp.execution !== undefined && sp.execution.mode === 'reservoir'
+          ? sp.execution.reservoir
+          : null;
+        const scatterClasses = reservoirConfig !== null
           ? `${base.classes} dag-reservoir`
           : base.classes;
         return {
@@ -323,13 +326,13 @@ export class CytoscapeRenderer {
             "source":      sp.source,
             "gather":      sp.gather,
             ...(sp.reducer  !== undefined ? { "reducer":  sp.reducer }  : {}),
-            ...(sp.reservoir !== undefined
+            ...(reservoirConfig !== null
               ? {
                   "reservoir": {
-                    "keyField": sp.reservoir.keyField,
-                    "capacity": sp.reservoir.capacity,
-                    ...(sp.reservoir.idleMs !== undefined
-                      ? { "idleMs": sp.reservoir.idleMs }
+                    "keyField": reservoirConfig.keyField,
+                    "capacity": reservoirConfig.capacity,
+                    ...(reservoirConfig.idleMs !== undefined
+                      ? { "idleMs": reservoirConfig.idleMs }
                       : {}),
                   },
                 }

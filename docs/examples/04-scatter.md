@@ -34,7 +34,7 @@ The complete `BookSearchScatterDAG`, the sub-DAG the Archivist places three time
 
 ## What it demonstrates
 
-- **`ScatterNode` with a descriptor source.** The source is a static provider list (`['openlibrary', 'googlebooks', 'subject', 'wikipedia']`). One clone runs per descriptor with `concurrency: 4`, so all four run concurrently.
+- **`ScatterNode` with a descriptor source.** The source is a static provider list (`['openlibrary', 'googlebooks', 'subject', 'wikipedia']`). One clone runs per descriptor; `execution: { mode: 'item', concurrency: 2 }` caps how many clones run at once.
 - **Heterogeneous fan-out via a dispatching body.** `scoutDispatch` reads `state.metadata.currentItem` (the provider name) and routes to the matching scout implementation. The engine runs four clones and is indifferent to whether the bodies are identical; the dispatcher is the body.
 - **Required gather.** Every scatter declares `gather`. This one uses `{ strategy: 'collect', target: 'scoutResults' }` — each clone's output lands at `state.scoutResults[index]` in source order.
 - **`any-success` outcome reducer.** Routes `'success'` when at least one clone succeeded; routes `'error'` when every clone errored; routes `'empty'` when there were no source items.

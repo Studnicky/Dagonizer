@@ -121,7 +121,7 @@ class StreamResumeDag {
           'body':        { 'node': 'worker' },
           'source':      'source',
           'itemKey':     'item',
-          'concurrency': concurrency,
+          'execution': { 'mode': 'item', 'concurrency': concurrency },
           'gather':      { 'strategy': 'append', 'target': 'processed' },
           'outputs': {
             'all-success': 'end',

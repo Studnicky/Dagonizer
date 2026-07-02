@@ -47,7 +47,7 @@ import type { DagonizerOptionsType } from '@studnicky/dagonizer';
 import { GeoResolvers } from './services/GeoResolvers.ts';
 import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
 
-import { ExecutionError } from '@studnicky/dagonizer/errors';
+import { DAGError } from '@studnicky/dagonizer/errors';
 import { StreamChannel, StreamCursor } from '@studnicky/dagonizer/channels';
 import { EventStreamSource } from './services/EventStreamSource.ts';
 
@@ -255,7 +255,7 @@ class CartographerResumableScenario {
       );
       interruptedCursor = interruptedResult.cursor;
     } catch (err) {
-      if (!(err instanceof ExecutionError)) throw err;
+      if (!(err instanceof DAGError && err.code === 'EXECUTION_ERROR')) throw err;
     }
 
     // Read the durable stream cursor from the interrupted checkpoint.
@@ -538,7 +538,7 @@ try {
   }
   await execution;
 } catch (err) {
-  if (err instanceof ExecutionError) {
+  if (err instanceof DAGError && err.code === 'EXECUTION_ERROR') {
     logger.fatal('runCartographer', 'execute', `execution failed: ${err.message}`);
     process.exit(1);
   }

@@ -80,5 +80,5 @@ This is equivalent to passing both as `signal` plus `deadlineMs`. Pick whichever
 ## Related reference
 
 - [Phase 06, Cancellation demo](../examples/06-cancellation)
-- [Reference, Runtime, `SignalComposer`](../reference/runtime)
+- [`@studnicky/signal`, `Signal`](https://github.com/Studnicky/noocodec-substrate/tree/main/packages/signal)
 - [Reference, Contracts, `ExecuteOptionsType`](../reference/contracts)

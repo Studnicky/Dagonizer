@@ -7,7 +7,6 @@ import { BackoffStrategyNames } from '../../src/entities/runtime/BackoffStrategy
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
-import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -63,10 +62,11 @@ void describe('placement-level retry wiring', () => {
   });
 
   void it('(b) backoff delays match the configured strategy', async () => {
-    const clock = new VirtualClockProvider(0n);
-    const sched = new VirtualScheduler(0);
-    Clock.configure(clock);
-    Scheduler.configure(sched);
+    // `RetryPolicy` delays are scheduled by `@studnicky/retry`'s `Retry` (a
+    // real timer, not the injected `Scheduler`), so this asserts wall-clock
+    // elapsed time against a small real `baseDelay` rather than driving a
+    // `VirtualScheduler`.
+    const BASE_DELAY_MS = 20;
 
     const calls: number[] = [];
     const d = new Dagonizer<NodeStateBase>();
@@ -81,23 +81,20 @@ void describe('placement-level retry wiring', () => {
 
     const testDag = new DAGBuilder('backoff-dag', '1')
       .node('step', flakyNode, { 'success': 'end' }, {
-        'retry': { 'maxAttempts': 3, 'baseDelay': 200, 'strategy': BackoffStrategyNames.CONSTANT, 'jitterFactor': 0 },
+        'retry': { 'maxAttempts': 3, 'baseDelay': BASE_DELAY_MS, 'strategy': BackoffStrategyNames.CONSTANT, 'jitterFactor': 0 },
       })
       .terminal('end')
       .build();
     d.registerDAG(testDag);
 
     const state = new NodeStateBase();
-    const runPromise = d.execute('backoff-dag', state);
+    const startedAt = Date.now();
+    await d.execute('backoff-dag', state);
+    const elapsedMs = Date.now() - startedAt;
 
-    // Drive the VirtualScheduler until the run settles.
-    // 2 failed attempts each queue a 200ms sleep; advance in steps until done.
-    await drainScheduler(sched, 200, runPromise);
-    await runPromise;
-
-    // Success on the 3rd attempt: 2 constant-strategy sleeps of 200ms each
+    // Success on the 3rd attempt: 2 constant-strategy sleeps of BASE_DELAY_MS each.
     assert.equal(calls.length, 3);
-    assert.equal(sched.virtualNow, 400);
+    assert.ok(elapsedMs >= BASE_DELAY_MS * 2, `expected at least ${(BASE_DELAY_MS * 2).toString()}ms elapsed, got ${elapsedMs.toString()}ms`);
     assert.equal(state.lifecycle.variant, 'completed');
   });
 

@@ -219,7 +219,7 @@ async function saveCheckpoint(): Promise<void> {
       'variant': 'end',
       'output': 'checkpoint saved',
     }];
-    logger.info(`checkpoint saved at ${lastResult.cursor}`);
+    logger.note(`checkpoint saved at ${lastResult.cursor}`);
   } catch (err) {
     logger.warn(`checkpoint failed: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -302,7 +302,7 @@ function clearMemory(): void {
   memoryStore.clear();
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
   memoryTick.value++;
-  logger.info('memory store cleared; ontology restored');
+  logger.note('memory store cleared; ontology restored');
 }
 
 // ── Left-column tabs: Conversation | Memory ──────────────────────────────
@@ -631,8 +631,8 @@ class VueResumeObserver extends ObservedDag<ArchivistState> {
     this.#fromCursor = fromCursor;
   }
 
-  protected override onFlowStart(dagName: string): void {
-    super.onFlowStart(dagName);
+  protected override onFlowStart(dagName: string, state: ArchivistState, signal: AbortSignal): void {
+    super.onFlowStart(dagName, state, signal);
     dagGraph.value?.setActive(this.#fromCursor);
     this.#prov.recordFlowStart(dagName);
     this.#session.pumpFlowStart(dagName);
@@ -642,8 +642,9 @@ class VueResumeObserver extends ObservedDag<ArchivistState> {
     nodeName: string,
     state: ArchivistState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onNodeStart(nodeName, state, placementPath);
+    super.onNodeStart(nodeName, state, placementPath, signal);
     this.#prov.recordNodeStart(nodeName);
     this.#session.pumpNodeStart(nodeName, placementPath);
   }
@@ -653,8 +654,9 @@ class VueResumeObserver extends ObservedDag<ArchivistState> {
     output: string | null,
     state: ArchivistState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onNodeEnd(nodeName, output, state, placementPath);
+    super.onNodeEnd(nodeName, output, state, placementPath, signal);
     this.#prov.recordNodeEnd(nodeName, output ?? undefined, state.reasoning);
     this.#session.pumpNodeEnd(nodeName, output, state, placementPath);
   }
@@ -664,8 +666,9 @@ class VueResumeObserver extends ObservedDag<ArchivistState> {
     error: Error,
     state: ArchivistState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onError(nodeName, error, state, placementPath);
+    super.onError(nodeName, error, state, placementPath, signal);
     this.#prov.recordError(nodeName, error);
     this.#session.pumpError(nodeName, error, placementPath);
   }
@@ -679,8 +682,9 @@ class VueResumeObserver extends ObservedDag<ArchivistState> {
     dagName: string,
     state: ArchivistState,
     result: ExecutionResultType<ArchivistState>,
+    signal: AbortSignal,
   ): void {
-    super.onFlowEnd(dagName, state, result);
+    super.onFlowEnd(dagName, state, result, signal);
     this.#prov.recordFlowEnd(state.lifecycle.variant);
     this.#session.pumpFlowEnd(dagName, state, result);
   }
@@ -788,7 +792,7 @@ async function ask(): Promise<void> {
   await dagGraph.value?.reset();
   memoryTick.value++;
   logger.clear();
-  logger.info(`run start, query: "${queryText}"`);
+  logger.note(`run start, query: "${queryText}"`);
 
   try {
     // session.ask() fires the full DAG run. Seam overrides above update all
@@ -859,7 +863,7 @@ async function resumeFromCheckpoint(): Promise<void> {
   await dagGraph.value?.reset();
   memoryTick.value++;
   logger.clear();
-  logger.info(`resuming from checkpoint at node: ${restored.cursor}`);
+  logger.note(`resuming from checkpoint at node: ${restored.cursor}`);
 
   const runId = restored.state.runId !== ''
     ? restored.state.runId

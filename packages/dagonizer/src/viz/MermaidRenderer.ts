@@ -133,7 +133,7 @@ export class MermaidRenderer {
         roleToIds.set(token, ids);
       }
       // Track reservoir-configured ScatterNode placements.
-      if (placement['@type'] === 'ScatterNode' && placement.reservoir !== undefined) {
+      if (placement['@type'] === 'ScatterNode' && placement.execution !== undefined && placement.execution.mode === 'reservoir') {
         reservoirIds.push(placement.name);
       }
     }
@@ -348,12 +348,12 @@ export class MermaidRenderer {
     const shapeDispatch: PlacementDispatchType<string> = {
       'SingleNode': () => `${placement.name}[${label}]`,
       'ScatterNode': (sp) => {
-        if (sp.reservoir !== undefined) {
+        if (sp.execution !== undefined && sp.execution.mode === 'reservoir') {
           // Reservoir-configured scatter: augment label with key/capacity marker.
           // Per-key fill and per-firing batch size are runtime values — the
           // animation layer renders them from observer buffer-size deltas.
           const reservoirLabel = MermaidRenderer.escapeLabel(
-            `${placement.name}\\n▣ ${sp.reservoir.keyField} ×${sp.reservoir.capacity}`,
+            `${placement.name}\\n▣ ${sp.execution.reservoir.keyField} ×${sp.execution.reservoir.capacity}`,
           );
           return `${placement.name}[/${reservoirLabel}/]`;
         }

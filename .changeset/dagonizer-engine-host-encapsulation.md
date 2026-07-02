@@ -1,0 +1,11 @@
+---
+'@studnicky/dagonizer': major
+---
+
+`Dagonizer` now `implements` only `DagonizerInterface<TState>`; the eight internal engine-wiring interfaces (`DispatcherRelaySourceInterface`, `GatherSourceInterface`, `LeafExecutorSourceInterface`, `EmbeddedDagExecutorSourceType`, `BodyRunPortInterface`, `ScatterDispatchSourceInterface`, `NodeSchedulerSourceInterface`, `DagRegistrarSourceInterface`) are satisfied by a private engine-host object constructed once in the dispatcher's constructor and passed to `EngineComposer.compose` instead of `this`. No external consumer ever obtains a reference to that object.
+
+The following members are no longer public on `Dagonizer`: `relayFlowStart`, `relayFlowEnd`, `relayNodeStart`, `relayNodeEnd`, `relayError`, `relayPhaseEnter`, `relayPhaseExit`, `resolveContainer`, `hasContainers`, `nextCorrelationId`, `relayFor`, `bodyContext`, `nodeContext`, `runNodeOnState`, `runBodyNodes`, `runScatterNodes`, `executeDAGNode`, `withNodeTimeout`, and the `outputSchemaValidator` getter. The `dags`, `nodes`, `nodeIndex`, and `stateFactories` registries are no longer public mutable `Map` fields — `dispatcher.nodes.set(...)` and `dispatcher.dags.clear()` no longer compile. `accessor`, `stateMapper`, and `channels` are also no longer public fields.
+
+`DagonizerInterface` gains four narrow read-only accessors that cover every legitimate external read of the former Map fields: `hasNode(name): boolean`, `hasDag(name): boolean`, `nodeNames(): readonly string[]`, `dagNames(): readonly string[]`, and `getChildStateFactory(dagName): ChildStateFactoryType | undefined`. `getDAG`, `getNode`, `listDAGs`, `listNodes`, `registerDAG`, `registerNode`, `registerBundle`, `registerPlugin`, `execute`, `resume`, and `destroy` are unchanged. Consumers reading the former Map fields directly (e.g. `dispatcher.nodes.size`, `dispatcher.stateFactories.get(name)`) migrate to the new accessors (`dispatcher.nodeNames().length`, `dispatcher.getChildStateFactory(name)`).
+
+`EngineComposer.compose`'s `EngineHostType` parameter is unchanged in shape; `EngineBundleType` drops the `relayHooks` field, since the engine host now builds its own `DispatcherHooks` adapter internally rather than Dagonizer holding a copy for its (now-removed) `relayFor` method.

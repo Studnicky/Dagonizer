@@ -126,7 +126,8 @@ export class ScoutUtils {
 // Each scatter clone ran a `tool:<name>` embedded DAG on a fresh
 // ToolInvocationState. On success, ToolInvokeNode sets `toolState.output` to
 // the tool's return value (a CandidateType[]). On error the clone's output
-// is the empty array at the default value, so the strategy safely no-ops.
+// stays at its default value of null, so the Array.isArray check below
+// safely no-ops.
 
 class ToolCandidateGatherStrategy extends GatherStrategy {
   readonly name = 'tool-candidate-merge';
@@ -141,7 +142,12 @@ class ToolCandidateGatherStrategy extends GatherStrategy {
       el !== null &&
       'book' in el &&
       typeof el.book === 'object' &&
-      el.book !== null
+      el.book !== null &&
+      'publication' in el.book &&
+      typeof el.book.publication === 'object' &&
+      el.book.publication !== null &&
+      'languages' in el.book.publication &&
+      Array.isArray(el.book.publication.languages)
     );
   }
 

@@ -1,147 +1,97 @@
-import type { DAGErrorJSONType } from '../entities/errors/DAGErrorJSON.js';
-
-/**
- * Interface for DAGError class.
- *
- * Describes the runtime `DAGError` instance. The `toJSON()` method returns
- * `DAGErrorJSON`: the persistence/transport shape with an ISO-8601 string
- * timestamp. The class itself carries a `Date` timestamp and an Error-typed
- * `cause`, neither of which are JSON-expressible.
- */
-export interface DAGErrorInterface extends Error {
-  readonly 'code': string;
-  readonly 'context': Record<string, unknown>;
-  readonly 'timestamp': Date;
-  readonly 'cause'?: Error;
-
-  /**
-   * Serialize to JSON. Returns the `DAGErrorJSON` wire shape.
-   */
-  toJSON(): DAGErrorJSONType;
-}
+import { ModuleError } from '@studnicky/errors';
 
 /** Empty context object: the canonical "no context" sentinel for `DAGError`. */
 const EMPTY_CONTEXT: Record<string, unknown> = {};
 
-/** Module-level defaults for `DAGError` options. `cause` is not defaulted — it is a genuine optional sentinel. */
+/** Module-level defaults for `DAGError` options. `cause`/`statusCode` are not defaulted — genuine optional sentinels. */
 const DAG_ERROR_DEFAULTS = {
-  'code':    'DAG_ERROR',
-  'context': EMPTY_CONTEXT,
+  'code':      'DAG_ERROR',
+  'context':   EMPTY_CONTEXT,
+  'retryable': false,
 } as const;
 
 /**
- * Error thrown by the DAG dispatcher for configuration or execution problems.
+ * Error thrown by the DAG dispatcher for configuration, execution,
+ * validation, not-found, and node-timeout conditions alike.
+ *
+ * Extends `@studnicky/errors`'s `ModuleError`, gaining cause-chain
+ * traversal (`findCauseOfType`, `getCauseChain`, `hasCauseOfType`) and a
+ * `retryable` classification for free. `ModuleError`'s own constructor is
+ * `protected`; `DAGError` exists to make it callable, with the same
+ * option shape (`code`, `context`, `cause`, `retryable`, `statusCode`).
+ *
+ * Dagonizer's error taxonomy is ONE class distinguished by `.code`, not a
+ * class hierarchy: every throw site uses `DAGError` with a `code` string
+ * (`CONFIGURATION_ERROR`, `EXECUTION_ERROR`, `NOT_FOUND_ERROR`,
+ * `VALIDATION_ERROR`, `NODE_TIMEOUT`); callers distinguish by `error.code`,
+ * not `instanceof` on a subclass. Structured per-error data (e.g. a
+ * timed-out node's name and budget) lives in `context`, not bespoke fields.
+ *
+ * `context` narrows `ModuleError`'s `Record<string, unknown> | undefined`
+ * to a required `Record<string, unknown>` — `DAGError` always resolves a
+ * context object, defaulting to `{}` (this repo does not carry optional/
+ * undefined fields past a construction boundary).
  */
-export class DAGError extends Error implements DAGErrorInterface {
-  readonly 'code': string;
-  readonly 'context': Record<string, unknown>;
-  readonly 'timestamp': Date;
-  /** Narrowed from the base `Error.cause: unknown`; the dispatcher only ever chains `Error` causes. */
-  declare readonly 'cause'?: Error;
+export class DAGError extends ModuleError {
+  override readonly 'context': Record<string, unknown> = EMPTY_CONTEXT;
 
   constructor(
     message: string,
-    options: { code?: string; context?: Record<string, unknown>; cause?: Error } = {}
+    options: {
+      code?: string;
+      context?: Record<string, unknown>;
+      cause?: Error;
+      retryable?: boolean;
+      statusCode?: number;
+    } = {}
   ) {
-    const { cause, ...rest } = options;
+    const { cause, statusCode, ...rest } = options;
     const resolved = { ...DAG_ERROR_DEFAULTS, ...rest };
-    super(message, cause !== undefined ? { 'cause': cause } : {});
+    super(message, {
+      'cause':      cause,
+      'code':       resolved.code,
+      'context':    resolved.context,
+      'retryable':  resolved.retryable,
+      'statusCode': statusCode,
+    });
     this.name = 'DAGError';
-    this.code = resolved.code;
     this.context = resolved.context;
-    this.timestamp = new Date();
-    Error.captureStackTrace(this, this.constructor);
-  }
-
-  toJSON(): DAGErrorJSONType {
-    // Stable shape: all keys always present, `null` when absent.
-    // Every serialized DAGError has the same hidden class for V8 stability.
-    return {
-      'cause': this.cause !== undefined
-        ? {
-            'message': this.cause.message,
-            'name':    this.cause.name,
-            'stack':   this.cause.stack ?? null,
-          }
-        : null,
-      'code':      this.code,
-      'context':   this.context,
-      'message':   this.message,
-      'name':      this.name,
-      'stack':     this.stack ?? null,
-      'timestamp': this.timestamp.toISOString(),
-    };
-  }
-}
-
-/**
- * Error thrown when flow or node configuration is invalid.
- */
-export class ConfigurationError extends DAGError {
-  constructor(message: string, options: { 'context'?: Record<string, unknown>; 'cause'?: Error } = {}) {
-    super(message, { ...options, 'code': 'CONFIGURATION_ERROR' });
-    this.name = 'ConfigurationError';
-  }
-}
-
-/**
- * Error thrown during flow execution.
- */
-export class ExecutionError extends DAGError {
-  constructor(message: string, options: { 'context'?: Record<string, unknown>; 'cause'?: Error } = {}) {
-    super(message, { ...options, 'code': 'EXECUTION_ERROR' });
-    this.name = 'ExecutionError';
   }
 
   /**
    * Extract the abort reason from a signal, wrapping non-Error reasons in
-   * `ExecutionError`. Used by scheduler and retry implementations that must
-   * normalise AbortSignal.reason into a typed error.
+   * `DAGError` (code `EXECUTION_ERROR`). Used by scheduler and retry
+   * implementations that must normalise `AbortSignal.reason` into a typed
+   * error.
    */
   static ofSignal(signal?: AbortSignal): Error {
     const reason = signal?.reason;
     if (reason instanceof Error) return reason;
-    return new ExecutionError(typeof reason === 'string' ? reason : 'aborted');
+    return new DAGError(typeof reason === 'string' ? reason : 'aborted', { 'code': 'EXECUTION_ERROR' });
   }
-}
 
-/**
- * Error thrown when a referenced node or flow is not found.
- */
-export class NotFoundError extends DAGError {
-  constructor(message: string, options: { 'context'?: Record<string, unknown>; 'cause'?: Error } = {}) {
-    super(message, { ...options, 'code': 'NOT_FOUND_ERROR' });
-    this.name = 'NotFoundError';
+  /**
+   * Normalise an unknown catch-clause value into an `Error`, wrapping
+   * non-Error causes in `DAGError` (code `EXECUTION_ERROR`).
+   */
+  static coerce(cause: unknown): Error {
+    if (cause instanceof Error) return cause;
+    return new DAGError(String(cause), { 'code': 'EXECUTION_ERROR' });
   }
-}
 
-/**
- * Error thrown when validation fails.
- */
-export class ValidationError extends DAGError {
-  constructor(message: string, options: { 'context'?: Record<string, unknown>; 'cause'?: Error } = {}) {
-    super(message, { ...options, 'code': 'VALIDATION_ERROR' });
-    this.name = 'ValidationError';
+  /**
+   * Extract a message string from an unknown catch-clause value: the
+   * `Error`'s own message, or the value's string coercion.
+   */
+  static messageOf(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
-}
 
-/**
- * Error thrown when a node's per-node `timeoutMs` budget expires.
- *
- * Carries the node name and the budget that elapsed so callers can
- * distinguish node-level timeouts from run-level deadline exhaustion.
- */
-export class NodeTimeoutError extends DAGError {
-  readonly 'nodeName': string;
-  readonly 'timeoutMs': number;
-
-  constructor(nodeName: string, timeoutMs: number, options: { 'cause'?: Error } = {}) {
-    super(
-      `Node "${nodeName}" exceeded its ${String(timeoutMs)} ms timeout`,
-      { 'code': 'NODE_TIMEOUT', 'context': { nodeName, timeoutMs }, ...options }
-    );
-    this.name = 'NodeTimeoutError';
-    this.nodeName = nodeName;
-    this.timeoutMs = timeoutMs;
+  /**
+   * True when `reason` is an `Error` named `TimeoutError` — the shape
+   * produced by `AbortSignal.timeout()` rejections.
+   */
+  static isTimeout(reason: unknown): boolean {
+    return reason instanceof Error && reason.name === 'TimeoutError';
   }
 }

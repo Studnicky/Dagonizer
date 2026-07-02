@@ -7,10 +7,7 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
-import {
-  ConfigurationError,
-  DAGError,
-} from '../../src/errors/index.js';
+import { DAGError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -109,7 +106,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:fan/node/scatter', '@type': 'ScatterNode',
           'name': 'scatter', 'body': { 'node': 'double' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 2,
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 2 },
           'gather': { 'strategy': 'append', 'target': 'doubled' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
         { '@id': 'urn:noocodex:dag:fan/node/end', '@type': 'TerminalNode',
@@ -393,12 +390,12 @@ void describe('Dagonizer iterative execution', () => {
 });
 
 void describe('error hierarchy', () => {
-  void it('ConfigurationError extends DAGError', () => {
-    const error = new ConfigurationError('boom');
+  void it('DAGError carries the CONFIGURATION_ERROR code', () => {
+    const error = new DAGError('boom', { 'code': 'CONFIGURATION_ERROR' });
     assert.ok(error instanceof DAGError);
     assert.equal(error.code, 'CONFIGURATION_ERROR');
     const serialized = error.toJSON();
-    assert.equal(serialized.code, 'CONFIGURATION_ERROR');
-    assert.equal(serialized.name, 'ConfigurationError');
+    assert.equal(serialized['code'], 'CONFIGURATION_ERROR');
+    assert.equal(serialized['name'], 'DAGError');
   });
 });

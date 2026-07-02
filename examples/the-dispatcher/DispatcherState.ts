@@ -28,6 +28,7 @@ export class DispatcherState extends NodeStateBase {
     'escalationReason':   'string',
     'humanMode':          'boolean',
     'classificationMode': 'string',
+    'language':           'string',
   };
 
   /** Current inbound customer message. */
@@ -41,6 +42,13 @@ export class DispatcherState extends NodeStateBase {
    * regardless of content. Set externally before execute() to force human mode.
    */
   humanMode: boolean = false;
+  /**
+   * Visitor's device language (ISO 639-1), threaded into `DispatcherLlmClient`
+   * so composed replies come back in the visitor's own language. Set
+   * externally before execute() from `UserLanguage.detect()` (or a URL
+   * override); defaults to `'en'` when never set.
+   */
+  language: string = 'en';
   /**
    * Classification strategy for `ClassifyMessageNode`: `'embedder'` runs
    * cosine-similarity triage via `services.intent` with automatic LLM

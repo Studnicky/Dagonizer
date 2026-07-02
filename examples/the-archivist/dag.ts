@@ -254,7 +254,7 @@ export class ArchivistBundleFactory {
         'error':   'reviews-rank',
         'empty':   'reviews-rank',
       }, {
-        'concurrency': 4,
+        'execution': { 'mode': 'item', 'concurrency': 4 },
         'gather': { 'strategy': 'tool-candidate-merge' },
         'reducer': 'any-success',
       })
@@ -299,7 +299,7 @@ export class ArchivistBundleFactory {
         'error':   'recommend-rank',
         'empty':   'recommend-rank',
       }, {
-        'concurrency': 4,
+        'execution': { 'mode': 'item', 'concurrency': 4 },
         'gather': { 'strategy': 'tool-candidate-merge' },
         'reducer': 'any-success',
       })
@@ -329,7 +329,7 @@ export class ArchivistBundleFactory {
         'error':   'compose-empty',
         'empty':   'compose-empty',
       }, {
-        'concurrency': 4,
+        'execution': { 'mode': 'item', 'concurrency': 4 },
         'gather': { 'strategy': 'tool-candidate-merge' },
         'reducer': 'any-success',
       })
