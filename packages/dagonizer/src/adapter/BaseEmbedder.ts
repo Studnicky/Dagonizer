@@ -19,10 +19,11 @@
  * the error taxonomy stay shared across the two surfaces.
  */
 
+import { Signal } from '@studnicky/signal';
+
 import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
 import type { EmbedderInterface } from '../contracts/EmbedderInterface.js';
 import type { LlmModelType } from '../entities/adapter/LlmModel.js';
-import { SignalComposer } from '../runtime/SignalComposer.js';
 
 import { BaseAdapterCore, type BaseAdapterCoreOptionsType, type SelectModelOptionsType } from './BaseAdapterCore.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
@@ -101,7 +102,7 @@ export abstract class BaseEmbedder extends BaseAdapterCore implements EmbedderIn
   }
 
   async embed(text: string, options?: AbortableOptionsType): Promise<readonly number[]> {
-    const signal = options?.signal ?? SignalComposer.never();
+    const signal = options?.signal ?? Signal.never();
     return this.retryPolicy.run(async () => {
       try {
         return await this.performEmbed(text, signal);

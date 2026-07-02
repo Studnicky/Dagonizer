@@ -1,12 +1,8 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 
 import { BackoffStrategyNames } from '../../src/entities/runtime/BackoffStrategy.js';
-import { Clock } from '../../src/runtime/Clock.js';
 import { RetryPolicy } from '../../src/runtime/RetryPolicy.js';
-import { Scheduler } from '../../src/runtime/Scheduler.js';
-import { VirtualClockProvider } from '../../testing/VirtualClock.js';
-import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 
 class TransientError extends Error { constructor() { super('transient'); } }
 class FatalError extends Error { constructor() { super('fatal'); } }
@@ -63,13 +59,12 @@ void describe('RetryPolicy.shouldRetry filtering', () => {
   });
 });
 
+// `RetryPolicy` schedules its backoff delays through `@studnicky/retry`'s
+// `Retry` (a real timer, not the injected `Scheduler`), so this suite uses
+// small real delays instead of a `VirtualScheduler`.
 void describe('RetryPolicy.run execution loop', () => {
-  afterEach(() => { Scheduler.reset(); Clock.reset(); });
-
   void it('returns the task result on first success without retrying', async () => {
-    const sched = new VirtualScheduler();
-    Scheduler.configure(sched);
-    const p = RetryPolicy.from({ "maxAttempts": 3, "jitterFactor": 0, "baseDelay": 100 });
+    const p = RetryPolicy.from({ "maxAttempts": 3, "jitterFactor": 0, "baseDelay": 10 });
     const attempts: number[] = [];
     const result = await p.run((attempt) => {
       attempts.push(attempt);
@@ -80,41 +75,31 @@ void describe('RetryPolicy.run execution loop', () => {
     assert.deepEqual(attempts, [1]);
   });
 
-  void it('retries with backoff under the virtual scheduler until the task succeeds', async () => {
-    const clock = new VirtualClockProvider(0n);
-    const sched = new VirtualScheduler(0);
-    Clock.configure(clock);
-    Scheduler.configure(sched);
-
+  void it('retries with backoff until the task succeeds', async () => {
+    const BASE_DELAY_MS = 10;
     const attempts: number[] = [];
     const p = RetryPolicy.from({
       "maxAttempts": 3,
-      "baseDelay": 100,
+      "baseDelay": BASE_DELAY_MS,
       "strategy": BackoffStrategyNames.CONSTANT,
       "jitterFactor": 0,
     });
 
-    const promise = p.run((attempt) => {
+    const startedAt = Date.now();
+    const result = await p.run((attempt) => {
       attempts.push(attempt);
       if (attempt < 3) throw new TransientError();
       return Promise.resolve('done');
     });
+    const elapsedMs = Date.now() - startedAt;
 
-    // Each attempt rejects then awaits a 100ms virtual sleep.
-    // Advance virtual time to drain both retries.
-    for (let i = 0; i < 5; i++) {
-      // Allow microtasks to settle so the next after() promise is registered.
-      await new Promise<void>((r) => setImmediate(r));
-      sched.advance(100);
-    }
-    const result = await promise;
     assert.equal(result, 'done');
     assert.deepEqual(attempts, [1, 2, 3]);
+    // Two constant-strategy sleeps of BASE_DELAY_MS each.
+    assert.ok(elapsedMs >= BASE_DELAY_MS * 2, `expected at least ${(BASE_DELAY_MS * 2).toString()}ms elapsed, got ${elapsedMs.toString()}ms`);
   });
 
   void it('aborts mid-wait when the signal fires between attempts', async () => {
-    const sched = new VirtualScheduler(0);
-    Scheduler.configure(sched);
     const controller = new AbortController();
     const p = RetryPolicy.from({ "maxAttempts": 5, "baseDelay": 1000, "strategy": BackoffStrategyNames.CONSTANT, "jitterFactor": 0 });
 
@@ -125,8 +110,6 @@ void describe('RetryPolicy.run execution loop', () => {
   });
 
   void it('throws the last error after exhausting all attempts', async () => {
-    const sched = new VirtualScheduler(0);
-    Scheduler.configure(sched);
     const attempts: number[] = [];
     const p = RetryPolicy.from({ "maxAttempts": 2, "baseDelay": 0, "strategy": BackoffStrategyNames.CONSTANT, "jitterFactor": 0 });
     await assert.rejects(p.run((attempt) => {
@@ -141,8 +124,6 @@ void describe('RetryPolicy.run execution loop', () => {
     // Abort fires synchronously inside the task body; by the time `await task`
     // returns, signal.aborted is already true. The post-task abort check must
     // catch this before returning the (stale) result.
-    const sched = new VirtualScheduler(0);
-    Scheduler.configure(sched);
     const controller = new AbortController();
     const p = RetryPolicy.from({ "maxAttempts": 3, "baseDelay": 0, "strategy": BackoffStrategyNames.CONSTANT, "jitterFactor": 0 });
 

@@ -17,6 +17,18 @@
  * carries the cursor (next node to run on resume). The state's
  * `lifecycle.variant` records what happened.
  *
+ * Correlation context: `Dagonizer.execute()`/`resume()` seeds a
+ * `DagExecutionContext` `ContextScope` with a correlation id and the DAG
+ * name, and passes it here. Every `gen.next()` call is driven through
+ * `scope.execute()` rather than awaited directly — an `AsyncLocalStorage`
+ * scope only propagates through the async chain initiated *inside* the
+ * `execute()` call, and an async generator does not begin (or resume)
+ * running its body until `next()` is called, so each turn must be
+ * individually wrapped for the seeded values to reach the node bodies and
+ * lifecycle hooks that run during that turn, however deeply nested (embedded
+ * DAG bodies and scatter items are driven by nested generators within the
+ * same turn). The scope is terminated once the flow body completes.
+ *
  * @example
  * ```ts
  * // Sync-style
@@ -31,6 +43,8 @@
  * ```
  */
 
+import type { ContextScope } from '@studnicky/context';
+
 import type { ExecutionResultType } from './entities/execution/ExecutionResult.js';
 import type { NodeResultType } from './entities/node/NodeResult.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
@@ -38,11 +52,13 @@ import type { NodeStateInterface } from './NodeStateBase.js';
 export class Execution<TState extends NodeStateInterface>
 implements AsyncIterable<NodeResultType<NodeStateInterface>>, PromiseLike<ExecutionResultType<TState>> {
   readonly #generator: AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void>;
+  readonly #scope: ContextScope;
   #drained: Promise<ExecutionResultType<TState>> | null = null;
   #cachedResult: ExecutionResultType<TState> | null = null;
 
   /**
-   * Wrap an already-created flow generator.
+   * Wrap an already-created flow generator with the `ContextScope` that
+   * carries this run's correlation context.
    *
    * The dispatcher passes `this.runNodes(...)` directly: an async generator
    * function returns a generator that does not begin executing until the first
@@ -50,8 +66,12 @@ implements AsyncIterable<NodeResultType<NodeStateInterface>>, PromiseLike<Execut
    * once, lazily, on the first iteration or `await`. There is no factory
    * function-pass-in — the generator IS the execution.
    */
-  constructor(generator: AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void>) {
+  constructor(
+    generator: AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void>,
+    scope: ContextScope,
+  ) {
     this.#generator = generator;
+    this.#scope = scope;
   }
 
   [Symbol.asyncIterator](): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void> {
@@ -78,10 +98,15 @@ implements AsyncIterable<NodeResultType<NodeStateInterface>>, PromiseLike<Execut
       return this.#cachedResult;
     }
     const gen = this.#generator;
+    const scope = this.#scope;
     while (true) {
-      const next = await gen.next();
+      // Each turn is driven through `scope.execute()` (not awaited directly)
+      // so the seeded correlation context is active for every node/hook that
+      // runs during this turn — see the class-level doc comment.
+      const next = await scope.execute(() => gen.next());
       if (next.done === true) {
         this.#cachedResult = next.value;
+        scope.terminate();
         return next.value;
       }
       yield next.value;

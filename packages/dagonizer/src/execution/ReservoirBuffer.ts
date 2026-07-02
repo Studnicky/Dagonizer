@@ -12,14 +12,22 @@
  * preventing any idle release from firing during complete-flush or after drain.
  *
  * The non-reservoir path (ScatterWorkerPool) is NOT used here. This class has
- * its own pull/buffer/dispatch loop with the same semaphore semantics as
- * ScatterWorkerPool but at batch granularity.
+ * its own pull/buffer/dispatch loop at batch granularity, delegating
+ * concurrency gating to an owned `Semaphore` instance (one permit per
+ * `concurrencyLimit` slot) — the same real-semaphore approach ScatterWorkerPool
+ * uses at item granularity. Every batch dispatch (pull-loop capacity release,
+ * idle release, complete-flush release, and resume replay) acquires a permit
+ * before executing and releases it once the batch settles, so `concurrencyLimit`
+ * is a hard cap on concurrently in-flight batches everywhere, including resume
+ * replay and idle-timer releases.
  */
+
+import { Semaphore } from '@studnicky/concurrency/semaphore';
 
 import type { ReservoirDriverInterface } from '../contracts/ReservoirDriver.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
-import { ExecutionError } from '../errors/index.js';
+import { DAGError } from '../errors/index.js';
 import { Scheduler } from '../runtime/Scheduler.js';
 
 // V8-stable buffered item shape. Module-private; not exported.
@@ -53,7 +61,7 @@ export type ReservoirBufferOptionsType = {
  */
 export class ReservoirBuffer {
   readonly #driver: ReservoirDriverInterface;
-  readonly #concurrencyLimit: number;
+  readonly #semaphore: Semaphore;
   readonly #inbox: ScatterInboxItemType[];
   readonly #freshIter: AsyncIterator<unknown>;
   readonly #signal: AbortSignal | null;
@@ -63,14 +71,13 @@ export class ReservoirBuffer {
   readonly #poolErrors: unknown[];
   readonly #keyGeneration: Map<string, number>;
   readonly #idleAbort: AbortController | null;
+  readonly #workerPromises: Promise<void>[];
   #nextIndex: number;
   #freshDone: boolean;
-  #activeWorkers: number;
-  #slotResolve: (() => void) | null;
 
   constructor(driver: ReservoirDriverInterface, options: ReservoirBufferOptionsType) {
     this.#driver = driver;
-    this.#concurrencyLimit = options.concurrencyLimit;
+    this.#semaphore = Semaphore.builder().withPermits(options.concurrencyLimit).build();
     this.#inbox = options.inbox;
     this.#freshIter = options.freshIter;
     this.#signal = options.signal;
@@ -80,10 +87,9 @@ export class ReservoirBuffer {
     this.#poolErrors = [];
     this.#keyGeneration = new Map<string, number>();
     this.#idleAbort = options.reservoir.idleMs !== undefined ? new AbortController() : null;
+    this.#workerPromises = [];
     this.#nextIndex = options.nextIndex;
     this.#freshDone = false;
-    this.#activeWorkers = 0;
-    this.#slotResolve = null;
   }
 
   /**
@@ -97,39 +103,41 @@ export class ReservoirBuffer {
     return this.#accessor.get(item, keyField);
   }
 
-  /** Resolve any pending waitForSlot promise when a slot becomes free. */
-  #releaseSlot(): void {
-    const fn = this.#slotResolve;
-    this.#slotResolve = null;
-    fn?.();
+  /**
+   * Block until at least one semaphore permit is available, without holding
+   * it — used by the pull/flush loops to pace pulling ahead of dispatch
+   * capacity. Acquires then immediately releases: functionally "wait for a
+   * free slot," with no ownership transferred to the caller.
+   */
+  async #waitForCapacity(): Promise<void> {
+    const release = await this.#semaphore.acquire();
+    release();
   }
 
-  /** Resolve when a batch slot is free (blocks when pool is at capacity). */
-  #waitForSlot(): Promise<void> {
-    return new Promise<void>((res) => { this.#slotResolve = res; });
-  }
-
-  #workerDone(): void {
-    this.#activeWorkers--;
-    this.#releaseSlot();
-  }
-
+  /**
+   * Acquire a semaphore permit, execute the batch, ack it, then release the
+   * permit once the execute+ack cycle settles. The acquire is awaited inside
+   * this method (fire-and-forget from the caller's perspective) so every call
+   * site — pull-loop capacity release, idle release, complete-flush release,
+   * and resume replay — is gated by the same real concurrency cap.
+   */
   #spawnBatchWorker(items: BufferedItem[]): void {
-    this.#activeWorkers++;
-    const workerPromise = this.#driver.executeBatch(items).then(
-      (batchResult) => this.#driver.ackBatch(batchResult).then(
-        () => { this.#workerDone(); },
+    const workerPromise = this.#semaphore.acquire().then((release) =>
+      this.#driver.executeBatch(items).then(
+        (batchResult) => this.#driver.ackBatch(batchResult).then(
+          () => { release(); },
+          (err: unknown) => {
+            this.#poolErrors.push(err);
+            release();
+          },
+        ),
         (err: unknown) => {
           this.#poolErrors.push(err);
-          this.#workerDone();
+          release();
         },
       ),
-      (err: unknown) => {
-        this.#poolErrors.push(err);
-        this.#workerDone();
-      },
     );
-    workerPromise.catch(() => { /* handled above */ });
+    this.#workerPromises.push(workerPromise);
   }
 
   /**
@@ -218,8 +226,8 @@ export class ReservoirBuffer {
 
     // Pull loop: fill buffers until source is exhausted, errors accumulate, or aborted.
     while (this.#poolErrors.length === 0 && this.#signal?.aborted !== true) {
-      if (this.#activeWorkers >= this.#concurrencyLimit) {
-        await this.#waitForSlot();
+      if (this.#semaphore.available === 0) {
+        await this.#waitForCapacity();
         continue;
       }
       if (this.#freshDone) break;
@@ -286,8 +294,8 @@ export class ReservoirBuffer {
       for (const [key, buf] of this.#activeBuffers) {
         if (buf.length > 0) {
           // Wait for a slot before dispatching.
-          while (this.#activeWorkers >= this.#concurrencyLimit) {
-            await this.#waitForSlot();
+          while (this.#semaphore.available === 0) {
+            await this.#waitForCapacity();
           }
           const batch = [...buf];
           this.#activeBuffers.delete(key);
@@ -297,18 +305,16 @@ export class ReservoirBuffer {
     }
 
     // Wait for all in-flight batch workers to settle.
-    while (this.#activeWorkers > 0) {
-      await this.#waitForSlot();
-    }
+    await Promise.all(this.#workerPromises);
 
     // Abort: throw before caller calls ScatterCheckpoint.clear() so checkpoint is preserved.
     if (this.#signal?.aborted === true && this.#poolErrors.length === 0) {
-      throw ExecutionError.ofSignal(this.#signal);
+      throw DAGError.ofSignal(this.#signal);
     }
 
     if (this.#poolErrors.length > 0) {
       const first = this.#poolErrors[0];
-      throw first instanceof Error ? first : new ExecutionError(String(first));
+      throw first instanceof Error ? first : new DAGError(String(first), { 'code': 'EXECUTION_ERROR' });
     }
   }
 }

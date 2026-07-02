@@ -7,7 +7,7 @@ import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
-import { DAGError, ValidationError } from '../errors/index.js';
+import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 export class DAGValidator {
@@ -156,8 +156,9 @@ export class DAGValidator {
       // Container is only valid for dag bodies. Throw immediately — this is a structural
       // error that must surface before any execution.
       if (scatter.container !== undefined) {
-        throw new ValidationError(
+        throw new DAGError(
           `ScatterNode '${scatter.name}' has a node body; 'container' is only valid for a dag body`,
+          { 'code': 'VALIDATION_ERROR' },
         );
       }
       const bodyNodeIri = ContextResolver.expand(scatter.body.node, context);

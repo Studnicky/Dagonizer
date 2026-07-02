@@ -101,6 +101,18 @@ export const ScatterNodeSchema = {
       },
       'additionalProperties': false,
     },
+    // Optional second concurrency gate wrapping item dispatch on the
+    // non-reservoir path, backed by `@studnicky/throttle`'s `Throttle`. Absent
+    // means no throttle (today's behavior unchanged): only the `concurrency`
+    // semaphore gates dispatch.
+    'throttle': {
+      'type': 'object',
+      'required': ['concurrencyLimit'],
+      'properties': {
+        'concurrencyLimit': { 'type': 'integer', 'minimum': 1 },
+      },
+      'additionalProperties': false,
+    },
   },
   'additionalProperties': false,
 } as const;
@@ -110,6 +122,15 @@ export type ScatterNodeType = FromSchema<typeof ScatterNodeSchema>;
 
 /** Empty state-mapping input: the default when `stateMapping` is absent on a `ScatterNode`. */
 const SCATTER_EMPTY_INPUT: Readonly<Record<string, string>> = Object.freeze({});
+
+/**
+ * Engine-internal shape of a resolved `ScatterNode.throttle` option.
+ * `null` is the canonical "no throttle" sentinel — the required-with-defaults
+ * counterpart of the wire schema's optional `throttle` field.
+ */
+export type ScatterThrottleOptionsType = {
+  concurrencyLimit: number;
+} | null;
 
 /**
  * Default-filling helpers for `ScatterNode` fields that are optional in the
@@ -126,5 +147,13 @@ export class ScatterNodeDefaults {
    */
   static inputMapping(node: ScatterNodeType): Readonly<Record<string, string>> {
     return node.stateMapping?.input ?? SCATTER_EMPTY_INPUT;
+  }
+
+  /**
+   * Return the resolved `throttle` option, defaulting to `null` (no throttle)
+   * when `throttle` is absent from the wire node.
+   */
+  static throttle(node: ScatterNodeType): ScatterThrottleOptionsType {
+    return node.throttle ?? null;
   }
 }

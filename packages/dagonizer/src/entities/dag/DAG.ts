@@ -173,6 +173,14 @@ const DAGNodeEntrySchema = {
           },
           'additionalProperties': false,
         },
+        'throttle': {
+          'type': 'object',
+          'required': ['concurrencyLimit'],
+          'properties': {
+            'concurrencyLimit': { 'type': 'integer', 'minimum': 1 },
+          },
+          'additionalProperties': false,
+        },
       },
       'additionalProperties': false,
     },

@@ -35,6 +35,7 @@
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { ObservedDag } from '@studnicky/dagonizer';
 import type { DagLoggerInterface } from '@studnicky/dagonizer';
+import { LogBody } from '@studnicky/logger';
 import { ToolInvocationState, ToolRegistry } from '@studnicky/dagonizer/tool';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 import type { ExecuteOptionsType } from '@studnicky/dagonizer/contracts';
@@ -523,15 +524,31 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
 
     if (savedEntry !== null && savedEntry.runnable) {
       this.activeBackend = savedEntry.id;
-      this.logger.info(`backend from saved preference: ${savedEntry.id}`);
+      this.logger.info(
+        LogBody.create()
+          .component('archivist')
+          .operation('backend-select')
+          .status('complete')
+          .message(`backend from saved preference: ${savedEntry.id}`)
+          .context({ 'backendId': savedEntry.id, 'source': 'saved-preference' })
+          .build(),
+      );
     } else {
       const picked = BackendMatrix.pickBest(this.backends, { 'isMobile': this.isMobile });
       if (picked !== null) {
         this.activeBackend = picked.id;
         this.logger.info(
-          savedId === null
-            ? `backend auto-selected: ${picked.displayName}`
-            : `saved preference "${savedId}" unavailable; defaulting to ${picked.displayName}`,
+          LogBody.create()
+            .component('archivist')
+            .operation('backend-select')
+            .status('complete')
+            .message(
+              savedId === null
+                ? `backend auto-selected: ${picked.displayName}`
+                : `saved preference "${savedId}" unavailable; defaulting to ${picked.displayName}`,
+            )
+            .context({ 'backendId': picked.id, 'source': savedId === null ? 'auto' : 'fallback' })
+            .build(),
         );
       }
     }
@@ -835,7 +852,17 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       // Log per-node supplemental summary via the dispatch map.
       if (state instanceof ArchivistState) {
         const supplement = NODE_TRACE_MESSAGES[nodeName]?.(state);
-        if (supplement !== undefined) this.logger.info(supplement);
+        if (supplement !== undefined) {
+          this.logger.info(
+            LogBody.create()
+              .component('archivist')
+              .operation('node-summary')
+              .status('complete')
+              .message(supplement)
+              .context({ nodeName })
+              .build(),
+          );
+        }
       }
     }
 

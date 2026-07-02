@@ -18,7 +18,7 @@ import type { NodeInvokerSourceInterface } from './NodeInvoker.js';
 export interface GatherSourceInterface {
   readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   readonly accessor: StateAccessorInterface;
-  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType;
+  nodeContext(dagName: string, placementName: string, signal: AbortSignal): NodeContextType;
   runNodeOnState(node: NodeInterface<NodeStateInterface, string>, state: NodeStateInterface, context: NodeContextType): Promise<string>;
 }
 
@@ -54,7 +54,7 @@ export class Gather
     state: NodeStateInterface,
     records: ReadonlyArray<GatherRecordType>,
     dagName: string,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
   ): GatherExecutionType {
     const invoker = new NodeInvoker(this, state, dagName, signal);
     return {
@@ -76,15 +76,16 @@ export class Gather
    * Satisfies `NodeInvokerSourceInterface` so `NodeInvoker` instances
    * produced by `composeGatherExecution` can forward here.
    *
-   * Null-signal substitution (SignalComposer.never()) is performed inside
-   * the source's `nodeContext` implementation so `Gather` has no direct
-   * dependency on `SignalComposer`.
+   * `signal` is always a valid `AbortSignal` — a run with no caller-supplied
+   * cancellation surface carries `Signal.never()`, resolved upstream by the
+   * source's `nodeContext` implementation, so `Gather` has no direct
+   * dependency on `Signal`.
    */
   async invokeRegisteredNode(
     nodeName: string,
     state: NodeStateInterface,
     dagName: string,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
   ): Promise<void> {
     const nodeIri = ContextResolver.expand(nodeName, {});
     if (!this.#source.nodes.has(nodeIri)) {

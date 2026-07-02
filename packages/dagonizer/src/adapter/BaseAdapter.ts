@@ -17,7 +17,18 @@
  *
  * `QUOTA_EXHAUSTED` retry-after hints are only honored up to `MAX_QUOTA_WAIT_MS`;
  * past that cap the adapter gives up immediately rather than blocking the caller.
+ *
+ * Circuit breaking and rate limiting are opt-in, per-instance capabilities
+ * layered around `chat()`. Both wrap OUTSIDE the retry loop — the circuit
+ * breaker outermost, the token bucket immediately inside it, the retry-wrapped
+ * attempt innermost — so an open circuit or an exhausted bucket fails a call
+ * once, instantly, without burning retry attempts or backoff delays. A
+ * consumer supplies real `@studnicky/resilience` `CircuitBreaker`/`TokenBucket`
+ * instances via the constructor options; `null` (the default for both) means
+ * the capability is disabled and `chat()` behaves exactly as it did before.
  */
+
+import type { CircuitBreaker, TokenBucket } from '@studnicky/resilience';
 
 import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
 import type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
@@ -54,6 +65,21 @@ export type BaseAdapterOptionsType = BaseAdapterCoreOptionsType & {
    * settles rejects within this ceiling.
    */
   readonly timeoutMs?: number;
+  /**
+   * Circuit breaker guarding `chat()`. Wraps the entire retry-wrapped attempt
+   * (outermost), so a tripped circuit rejects a call with
+   * `CircuitBreakerOpenError` instantly — no attempt is made, no retry
+   * budget is spent. `null` (the default) disables circuit breaking.
+   */
+  readonly circuitBreaker?: CircuitBreaker | null;
+  /**
+   * Token bucket rate limiter guarding `chat()`. Consumes exactly one token
+   * per logical `chat()` call — not once per retry attempt — immediately
+   * before the retry-wrapped attempt runs; an exhausted bucket throws
+   * `TokenBucketExhaustedError` and the call fails fast without entering the
+   * retry loop. `null` (the default) disables rate limiting.
+   */
+  readonly tokenBucket?: TokenBucket | null;
 };
 
 export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterInterface {
@@ -61,6 +87,10 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
   /** Consumer-configured default system prompt; `''` when none was set. */
   readonly #systemPrompt: string;
   readonly #timeoutMs: number;
+  /** Circuit breaker guarding `chat()`; `null` when circuit breaking is disabled. */
+  readonly #circuitBreaker: CircuitBreaker | null;
+  /** Token bucket rate limiter guarding `chat()`; `null` when rate limiting is disabled. */
+  readonly #tokenBucket: TokenBucket | null;
 
   /**
    * Format a `tool`-role message as the conversational line every text-only
@@ -86,6 +116,8 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     this.capabilities = capabilities;
     this.#systemPrompt = options.systemPrompt ?? '';
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_CHAT_TIMEOUT_MS;
+    this.#circuitBreaker = options.circuitBreaker ?? null;
+    this.#tokenBucket = options.tokenBucket ?? null;
   }
 
   /**
@@ -181,7 +213,7 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
 
   async chat(request: ChatRequestType): Promise<ChatResponseType> {
     const prepared = this.#withDefaultSystemPrompt(request);
-    return this.retryPolicy.run(async () => {
+    const attempt = async (): Promise<ChatResponseType> => this.retryPolicy.run(async () => {
       try {
         return await this.#guardChat(prepared);
       } catch (rawError) {
@@ -205,6 +237,29 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
         throw new LlmError(LlmError.messageFrom(rawError), classification, { 'cause': rawError });
       }
     }, { 'signal': prepared.signal });
+    return this.#guardResilience(attempt);
+  }
+
+  /**
+   * Layer the configured circuit breaker and token bucket around `run` —
+   * the entire retry-wrapped `chat()` attempt. Circuit breaker outermost: an
+   * open circuit rejects with `CircuitBreakerOpenError` before the token
+   * bucket is even consulted, so a call that is about to fail fast does not
+   * also spend a rate-limit token. Token bucket next: `consume()` throws
+   * `TokenBucketExhaustedError` immediately when no token is available,
+   * again before `run` (and therefore before any retry attempt) executes.
+   * Both errors propagate as their own `@studnicky/resilience` type — no
+   * Dagonizer wrapping — since neither is a provider-native chat failure.
+   * Either or both guards are skipped entirely when their configured
+   * instance is `null`.
+   */
+  async #guardResilience(run: () => Promise<ChatResponseType>): Promise<ChatResponseType> {
+    const throttled = async (): Promise<ChatResponseType> => {
+      if (this.#tokenBucket !== null) this.#tokenBucket.consume();
+      return run();
+    };
+    if (this.#circuitBreaker !== null) return this.#circuitBreaker.execute(throttled);
+    return throttled();
   }
 
   /**

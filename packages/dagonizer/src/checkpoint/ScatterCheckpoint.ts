@@ -145,8 +145,8 @@ export class ScatterCheckpoint {
    * the error would be harder to trace. Returns `undefined` when no
    * checkpoint entry exists for this placement.
    *
-   * Throws `ValidationError` when the stored value is present but does not
-   * satisfy `StoredScatterProgressSchema`.
+   * Throws `DAGError` (code `VALIDATION_ERROR`) when the stored value is
+   * present but does not satisfy `StoredScatterProgressSchema`.
    */
   static read(
     state: NodeStateInterface,

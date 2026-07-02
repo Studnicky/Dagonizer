@@ -10,7 +10,7 @@
  *
  * Extends `DAGError` (code `'TOOL_ERROR'`) so `instanceof DAGError` holds for
  * every tool failure and the dispatcher's framework-error guards classify it
- * uniformly alongside `StoreError`, `ExecutionError`, and the rest.
+ * uniformly alongside `StoreError` and every other `DAGError`-coded failure.
  */
 
 import { DAGError } from '../errors/DAGError.js';
@@ -37,7 +37,6 @@ export type ToolErrorOptionsType = {
 
 export class ToolError extends DAGError {
   readonly reason: ToolErrorReasonType;
-  readonly retryable: boolean;
   // Always initialised (null = no HTTP status) so every ToolError instance
   // shares one stable V8 hidden class; declaration order matches assignment.
   readonly status: number | null;
@@ -45,11 +44,11 @@ export class ToolError extends DAGError {
   constructor(message: string, options: ToolErrorOptionsType) {
     super(message, {
       'code': 'TOOL_ERROR',
+      'retryable': options.retryable,
       ...(options.cause instanceof Error && { 'cause': options.cause }),
     });
     this.name = 'ToolError';
     this.reason = options.reason;
-    this.retryable = options.retryable;
     this.status = options.status ?? null;
   }
 }

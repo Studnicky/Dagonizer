@@ -8,12 +8,14 @@
  *   TST-17: DAGHandoffType stateSnapshotRef (by-reference) publishing path.
  *   TST-18: registerBundle/registerDAG unbound container role → throws DAGError.
  *   TST-19: Checkpoint.restoreStores with a store type/version mismatch.
- *   TST-20: SignalComposer.compose with a pre-aborted signal.
+ *   TST-20: Signal.compose with a pre-aborted signal.
  *   TST-15: Abort mid-scatter dag-body (contained): checkpoint survives abort.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+
+import { Signal } from '@studnicky/signal';
 
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
 import type { DagOutcomeType } from '../../src/container/DagOutcome.js';
@@ -33,7 +35,6 @@ import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { SignalComposer } from '../../src/runtime/SignalComposer.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -380,18 +381,17 @@ void describe('TST-19: Checkpoint.restoreStores — type/version mismatch → St
   });
 });
 
-// ── TST-20: SignalComposer.compose with a pre-aborted signal ──────────────────
+// ── TST-20: Signal.compose with a pre-aborted signal ───────────────────────────
 
-void describe('TST-20: SignalComposer.compose — pre-aborted signal', () => {
+void describe('TST-20: Signal.compose — pre-aborted signal', () => {
   void it('composed result is already aborted when the supplied signal is pre-aborted', () => {
     const controller = new AbortController();
     controller.abort(new Error('pre-aborted'));
 
-    const composed = SignalComposer.compose({ 'signal': controller.signal });
+    const composed = Signal.compose({ 'signal': controller.signal });
 
     // Composing a pre-aborted signal with no deadline returns the same signal
     // (single-input path), which is already aborted.
-    assert.ok(composed !== null, 'composed signal must not be null');
     assert.ok(composed.aborted, 'composed signal must be aborted immediately');
   });
 
@@ -401,12 +401,11 @@ void describe('TST-20: SignalComposer.compose — pre-aborted signal', () => {
     c1.abort();
     c2.abort();
 
-    const composed = SignalComposer.compose({
+    const composed = Signal.compose({
       'signal': c1.signal,
       'deadlineMs': 0,  // AbortSignal.timeout(0) fires immediately
     });
 
-    assert.ok(composed !== null, 'composed signal must not be null');
     // The composed signal must be aborted (either immediately or after a tick).
     // AbortSignal.any aborts as soon as any input aborts.
     assert.ok(composed.aborted, 'composed signal must be aborted when a pre-aborted signal is composed');
@@ -416,12 +415,12 @@ void describe('TST-20: SignalComposer.compose — pre-aborted signal', () => {
     const controller = new AbortController();
     controller.abort('test-reason');
 
-    const composed = SignalComposer.compose({ 'signal': controller.signal });
+    const composed = Signal.compose({ 'signal': controller.signal });
 
     // Single-input path: the supplied signal is returned as-is.
     assert.strictEqual(composed, controller.signal,
       'single-input path must return the supplied signal directly');
-    assert.ok(composed?.aborted, 'returned signal must be aborted');
+    assert.ok(composed.aborted, 'returned signal must be aborted');
   });
 });
 

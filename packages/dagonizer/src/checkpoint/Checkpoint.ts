@@ -48,7 +48,7 @@ import type { SnapshottableInterface, StoreSnapshotType } from '../contracts/Sna
 import type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
 import type { JsonObjectType } from '../entities/json.js';
-import { DAGError, ValidationError } from '../errors/DAGError.js';
+import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateBase, NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
 
@@ -187,8 +187,8 @@ export class Checkpoint {
 
   /**
    * Parse a raw value (typically from `JSON.parse`) into a `Checkpoint`
-   * instance. Validates against `CheckpointDataSchema`. Throws
-   * `ValidationError` on schema failure.
+   * instance. Validates against `CheckpointDataSchema`. Throws `DAGError`
+   * (code `VALIDATION_ERROR`) on schema failure.
    */
   static load(raw: unknown): Checkpoint {
     const valid = Validator.checkpoint.validate(raw);
@@ -198,8 +198,8 @@ export class Checkpoint {
   /**
    * Load a checkpoint from a `CheckpointStoreInterface` by key. Returns `null` when
    * the store has no entry for the key. Composes `store.load` + `JSON.parse`
-   * + `Checkpoint.load`. Throws `ValidationError` when the stored JSON fails
-   * schema validation.
+   * + `Checkpoint.load`. Throws `DAGError` (code `VALIDATION_ERROR`) when
+   * the stored JSON fails schema validation.
    */
   static async recall(store: CheckpointStoreInterface, key: string): Promise<Checkpoint | null> {
     const json = await store.load(key);
@@ -209,7 +209,7 @@ export class Checkpoint {
       parsed = JSON.parse(json);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new ValidationError(`Checkpoint '${key}' contains invalid JSON: ${message}`);
+      throw new DAGError(`Checkpoint '${key}' contains invalid JSON: ${message}`, { 'code': 'VALIDATION_ERROR' });
     }
     return Checkpoint.load(parsed);
   }
@@ -238,13 +238,13 @@ export class Checkpoint {
    * Pass a `CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap))`
    * to wrap an inline lambda in the adapter contract.
    *
-   * Throws `ValidationError` when `this.data.cursor === null`.
+   * Throws `DAGError` (code `VALIDATION_ERROR`) when `this.data.cursor === null`.
    */
   restoreState<TState extends NodeStateInterface>(
     adapter: CheckpointRestoreAdapterInterface<TState>,
   ): RecalledCheckpointType<TState> {
     if (this.data.cursor === null) {
-      throw new ValidationError(`Cannot restore from a CheckpointData with null cursor: the DAG had no resumable position`);
+      throw new DAGError(`Cannot restore from a CheckpointData with null cursor: the DAG had no resumable position`, { 'code': 'VALIDATION_ERROR' });
     }
     return {
       'state': adapter.restore(this.data.state),

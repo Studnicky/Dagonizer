@@ -231,7 +231,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
 
     const rawBody: unknown = await res.json();
     // Untrusted provider response: a schema failure is an upstream contract
-    // violation, surfaced as SCHEMA_VIOLATION (not a raw ValidationError).
+    // violation, surfaced as SCHEMA_VIOLATION (not a raw DAGError).
     if (!Validator.openAiResponseBody.is(rawBody)) {
       const detail = Validator.openAiResponseBody.errors(rawBody) ?? [];
       throw new LlmError(

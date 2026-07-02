@@ -1,3 +1,5 @@
+import type { ContextScope } from '@studnicky/context';
+
 import type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
@@ -16,7 +18,7 @@ import type { ExecutionResultType } from './entities/execution/ExecutionResult.j
 import { NodeContextBuilder } from './entities/node/NodeContext.js';
 import type { NodeContextType } from './entities/node/NodeContext.js';
 import type { NodeResultType } from './entities/node/NodeResult.js';
-import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
+import { DAGError } from './errors/index.js';
 import type { BodyRunPortInterface } from './execution/BodyExecutor.js';
 import type { EmbeddedDagExecutorSourceType } from './execution/EmbeddedDagExecutor.js';
 import { EngineComposer } from './execution/EngineComposer.js';
@@ -30,9 +32,9 @@ import type { NodeStateInterface } from './NodeStateBase.js';
 import type { DispatcherRelaySourceInterface } from './observer/DispatcherHooks.js';
 import { ObserverRelay } from './observer/ObserverRelay.js';
 import type { DispatcherHooksInterface } from './observer/ObserverRelay.js';
+import { DagExecutionContext, DagExecutionContextKeys } from './runtime/DagExecutionContext.js';
 import { DottedPathAccessor } from './runtime/DottedPathAccessor.js';
 import { Scheduler } from './runtime/Scheduler.js';
-import { SignalComposer } from './runtime/SignalComposer.js';
 import { StateMapper } from './runtime/StateMapper.js';
 import { Validator } from './validation/Validator.js';
 
@@ -622,22 +624,23 @@ implements
 
   /**
    * Build a node context for a sub-DAG body invocation. Forwards to
-   * `NodeContextBuilder.of`, substituting a never-firing signal when the run
-   * has none. Satisfies both `BodyRunPortInterface` (the embedded/scatter DAG
-   * body run) and `ScatterDispatchSourceInterface` (the scatter node body).
+   * `NodeContextBuilder.of`. `signal` is always a valid `AbortSignal` — a run
+   * with no caller-supplied cancellation surface carries `Signal.never()`.
+   * Satisfies both `BodyRunPortInterface` (the embedded/scatter DAG body run)
+   * and `ScatterDispatchSourceInterface` (the scatter node body).
    */
-  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType {
-    return NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.validateOutputs, this.#outputSchemaValidator);
+  bodyContext(dagName: string, nodeName: string, signal: AbortSignal): NodeContextType {
+    return NodeContextBuilder.of(dagName, nodeName, signal, this.validateOutputs, this.#outputSchemaValidator);
   }
 
   /**
-   * Build a node context for a placement execution. Substitutes a never-firing
-   * signal when the run has none. Satisfies `GatherSourceInterface` and
+   * Build a node context for a placement execution. `signal` is always a
+   * valid `AbortSignal`. Satisfies `GatherSourceInterface` and
    * `LeafExecutorSourceInterface` so `Gather` and `LeafExecutor` can build
-   * contexts without importing `SignalComposer` directly.
+   * contexts without importing `Signal` directly.
    */
-  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType {
-    return NodeContextBuilder.of(dagName, placementName, signal ?? SignalComposer.never(), this.validateOutputs, this.#outputSchemaValidator);
+  nodeContext(dagName: string, placementName: string, signal: AbortSignal): NodeContextType {
+    return NodeContextBuilder.of(dagName, placementName, signal, this.validateOutputs, this.#outputSchemaValidator);
   }
 
   /**
@@ -797,7 +800,7 @@ implements
     initialState: TState,
     options: ExecuteOptionsType = {},
   ): Execution<TState> {
-    return new Execution<TState>(this.runNodes(dagName, initialState, null, options));
+    return new Execution<TState>(this.runNodes(dagName, initialState, null, options), this.dagExecutionScope(dagName));
   }
 
   /**
@@ -816,7 +819,7 @@ implements
     options: ExecuteOptionsType = {},
   ): readonly Execution<TState>[] {
     return batchStates.map((state) =>
-      new Execution<TState>(this.runNodes(dagName, state, null, options)),
+      new Execution<TState>(this.runNodes(dagName, state, null, options), this.dagExecutionScope(dagName)),
     );
   }
 
@@ -825,6 +828,11 @@ implements
    * begins at the given cursor instead of the flow's entrypoint. Caller
    * is responsible for rehydrating `state` (typically via
    * `Checkpoint.load(raw).restoreState(fn)`) before calling.
+   *
+   * A resumed run gets a fresh correlation id: it runs on a new async call
+   * stack (typically a new process), so the original run's correlation id
+   * has no meaning here. Consumers that need to correlate a resume with its
+   * original run do so via the checkpoint's own identity, not this context.
    */
   resume(
     dagName: string,
@@ -832,7 +840,21 @@ implements
     fromStage: string,
     options: ExecuteOptionsType = {},
   ): Execution<TState> {
-    return new Execution<TState>(this.runNodes(dagName, state, fromStage, options));
+    return new Execution<TState>(this.runNodes(dagName, state, fromStage, options), this.dagExecutionScope(dagName));
+  }
+
+  /**
+   * Initialize a `DagExecutionContext` scope for one `execute()`/`resume()`
+   * run, seeded with a fresh correlation id and `dagName`. `Execution` drives
+   * the flow generator through this scope so both values are readable via
+   * `DagExecutionContext.tryGet()` from any node body or lifecycle hook that
+   * runs during the run, without threading them through `NodeContextType`.
+   */
+  private dagExecutionScope(dagName: string): ContextScope {
+    return DagExecutionContext.initialize({
+      [DagExecutionContextKeys.CORRELATION_ID]: globalThis.crypto.randomUUID(),
+      [DagExecutionContextKeys.DAG_NAME]: dagName,
+    });
   }
 
   /**
@@ -879,14 +901,14 @@ implements
    *
    * The child signal is passed to the node so signal-aware IO (fetch, retry)
    * also cancels. Nodes that do not observe the signal are hard-stopped by the
-   * race. On expiry `NodeTimeoutError` propagates; `executeSingleNode` re-throws
+   * race. On expiry a `DAGError` (code `NODE_TIMEOUT`) propagates; `executeSingleNode` re-throws
    * so the `runNodes` catch block fires `onError` and marks state failed.
    *
    * Timer and parent-abort listener are cleaned up in `finally`.
    */
   async withNodeTimeout<TResult>(
     dagNode: NodeInterface<NodeStateInterface, string>,
-    parentSignal: AbortSignal | null,
+    parentSignal: AbortSignal,
     fn: (signal: AbortSignal) => Promise<TResult>,
   ): Promise<TResult> {
     const timeout = dagNode.timeout;
@@ -894,23 +916,23 @@ implements
 
     if (ms === null) {
       // No per-node budget; pass parent signal through unchanged.
-      const sig = parentSignal ?? SignalComposer.never();
-      return fn(sig);
+      return fn(parentSignal);
     }
 
     const childCtrl = new AbortController();
-    const onParentAbort = (): void => { childCtrl.abort(parentSignal?.reason); };
+    const onParentAbort = (): void => { childCtrl.abort(parentSignal.reason); };
 
-    if (parentSignal !== null) {
-      if (parentSignal.aborted) {
-        // Parent already aborted before node started.
-        childCtrl.abort(parentSignal.reason);
-      } else {
-        parentSignal.addEventListener('abort', onParentAbort, { 'once': true });
-      }
+    if (parentSignal.aborted) {
+      // Parent already aborted before node started.
+      childCtrl.abort(parentSignal.reason);
+    } else {
+      parentSignal.addEventListener('abort', onParentAbort, { 'once': true });
     }
 
-    const timeoutError = new NodeTimeoutError(dagNode.name, ms);
+    const timeoutError = new DAGError(
+      `Node "${dagNode.name}" exceeded its ${String(ms)} ms timeout`,
+      { 'code': 'NODE_TIMEOUT', 'context': { 'nodeName': dagNode.name, 'timeoutMs': ms }, 'retryable': true },
+    );
 
     // Deadline race: resolves when time elapses (child not yet aborted),
     // rejects immediately if child is already aborted (parent propagation).
@@ -943,10 +965,8 @@ implements
     } finally {
       // Cancel the pending Scheduler entry (no-op if already resolved/aborted)
       // and detach the parent-abort listener.
-      childCtrl.abort(new ExecutionError('node-timeout-cleanup'));
-      if (parentSignal !== null) {
-        parentSignal.removeEventListener('abort', onParentAbort);
-      }
+      childCtrl.abort(new DAGError('node-timeout-cleanup', { 'code': 'EXECUTION_ERROR' }));
+      parentSignal.removeEventListener('abort', onParentAbort);
       await schedulerPromise;
     }
   }
@@ -961,7 +981,7 @@ implements
     entry: DAGNodeType,
     state: TState,
     dagName: string,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     placementPath: readonly string[],
     bufferIntermediates: boolean = true,
   ): Promise<RunNodeResultType> {

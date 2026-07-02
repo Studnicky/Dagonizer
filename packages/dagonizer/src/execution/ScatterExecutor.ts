@@ -3,6 +3,7 @@ import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
 import { GatherStrategies } from '../core/GatherStrategies.js';
 import { OutcomeReducers } from '../core/OutcomeReducers.js';
+import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -51,7 +52,7 @@ export class ScatterExecutor {
     scatter: ScatterNodeType,
     state: NodeStateInterface,
     dagName: string,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     placementPath: readonly string[],
   ): Promise<RunNodeResultType> {
     // ── 1. Resolve source and scatter defaults ───────────────────────────────
@@ -60,6 +61,9 @@ export class ScatterExecutor {
     const reducerName = scatter.reducer ?? 'aggregate';
     const itemKey = scatter.itemKey ?? 'currentItem';
     const concurrencyLimit = scatter.concurrency ?? DEFAULT_SCATTER_CONCURRENCY;
+    // Second, opt-in concurrency gate for the non-reservoir path only (see
+    // step 6): `null` means no throttle, matching the pre-throttle behavior.
+    const throttleOptions = ScatterNodeDefaults.throttle(scatter);
 
     const raw = this.#scatterSource.accessor.get(state, scatter.source);
 
@@ -81,8 +85,9 @@ export class ScatterExecutor {
 
     // ── 2. Restore checkpoint (inbox model) ─────────────────────────────────
     // ScatterCheckpoint.read validates the raw metadata value at the boundary
-    // so corrupt or migrated checkpoints throw ValidationError here rather
-    // than causing silent type mismatches deep in the scatter loop.
+    // so corrupt or migrated checkpoints throw a DAGError (code
+    // VALIDATION_ERROR) here rather than causing silent type mismatches
+    // deep in the scatter loop.
     const storedProgress = ScatterCheckpoint.read(state, scatter.name);
 
     // Determine gather strategy (needed before compactable check).
@@ -198,6 +203,13 @@ export class ScatterExecutor {
 
     if (scatter.reservoir !== undefined) {
       // Reservoir path: buffer-then-release loop keyed by item field.
+      // `throttle` is not wired here: a Throttle's value is pacing individual
+      // dispatch calls, but the reservoir path dispatches whole batches whose
+      // size varies with capacity/idle/flush triggers — per-batch throttling
+      // would gate a variable-size unit rather than the discrete per-item work
+      // `throttle` targets on the non-reservoir path. `scatter.throttle` is
+      // reservoir-incompatible; only `scatter.concurrency` (the semaphore)
+      // gates batch dispatch here.
       const reservoirBuf = new ReservoirBuffer(driver, {
         'concurrencyLimit': concurrencyLimit,
         'inbox': inbox,
@@ -210,13 +222,14 @@ export class ScatterExecutor {
       // drain() throws on abort or batch error; checkpoint is preserved on throw.
       await reservoirBuf.drain();
     } else {
-      // Non-reservoir path: original per-item worker pool (byte-identical).
+      // Non-reservoir path: per-item worker pool, optionally throttled.
       const pool = new ScatterWorkerPool(driver, {
         'concurrencyLimit': concurrencyLimit,
         'inbox': inbox,
         'freshIter': freshIter,
         'nextIndex': nextIndex,
         'signal': signal,
+        'throttle': throttleOptions,
       });
       // drain() throws on abort or worker error; checkpoint is preserved on throw.
       await pool.drain();

@@ -1,84 +1,69 @@
 /**
- * virtual-clock: deterministic retry timing under VirtualClockProvider +
+ * virtual-clock: deterministic per-node-timeout testing under
  * VirtualScheduler from @studnicky/dagonizer/testing.
  *
- * Virtual time providers replace the real wall-clock so retry backoff intervals
- * are driven by programmatic calls to scheduler.advance(ms) rather than actual
- * waits. This makes retry behaviour testable in zero elapsed wall-clock time.
+ * `RetryPolicy`'s backoff delays run on `@studnicky/retry`'s own internal
+ * timer (not the injected `Scheduler`), so `VirtualScheduler.advance()` no
+ * longer drives retry timing — that seam is gone. Per-node `timeout`
+ * budgets are unaffected: `Dagonizer.withNodeTimeout` arms its deadline via
+ * `Scheduler.current().after(ms, ...)` (src/Dagonizer.ts), so installing a
+ * `VirtualScheduler` before `dispatcher.execute()` still lets the deadline
+ * be driven deterministically with `scheduler.advance(ms)`, in zero real
+ * wall-clock time.
  *
- * The example uses a flaky operation that fails on the first two attempts and
- * succeeds on the third. Exponential backoff delays are 100ms → 200ms (300ms
- * total virtual time). Both ClockProviderInterface and Scheduler are restored to real
- * time after the demonstration.
+ * The example runs a single-node DAG whose node has a 200ms `timeout` and
+ * never resolves on its own; advancing the VirtualScheduler past the budget
+ * fires the timeout deterministically.
  *
- * DAG definition (re-exported providers): examples/dags/virtual-clock.ts
+ * DAG definition (state, slow node, DAG): examples/dags/virtual-clock.ts
  *
  * Run: npx tsx examples/virtual-clock.ts
  */
 
-import { BackoffStrategyNames } from '@studnicky/dagonizer';
-import { Clock, RetryPolicy, Scheduler } from '@studnicky/dagonizer/runtime';
-import { VirtualClockProvider, VirtualScheduler } from '@studnicky/dagonizer/testing';
+import { Dagonizer } from '@studnicky/dagonizer';
+import { Scheduler, SlowNode, SlowState, VirtualScheduler, dag } from './dags/virtual-clock.js';
 
-process.stdout.write('\n=== VirtualClock: deterministic retry under programmatic time ===\n\n');
+process.stdout.write('\n=== VirtualClock: deterministic per-node timeout under programmatic time ===\n\n');
 
-// ── Install virtual time ────────────────────────────────────────────────────
+// ── Install a virtual scheduler ─────────────────────────────────────────────
 
-const clock     = new VirtualClockProvider(0n);   // starts at t=0 ns
-const scheduler = new VirtualScheduler(0);         // starts at t=0 ms
-
-// VirtualClock drives Clock.monotonicMs(); VirtualScheduler drives Scheduler.
-// Both must be installed before the RetryPolicy runs.
-Clock.configure(clock);
+const scheduler = new VirtualScheduler(0); // starts at t=0 ms
 Scheduler.configure(scheduler);
 
-// ── Flaky operation: succeeds on the third attempt ─────────────────────────
+// ── Run the DAG: the node never resolves on its own; the 200ms timeout ─────
+// ── budget on SlowNode must fire to complete the run.                   ────
 
-let attempts = 0;
+const dispatcher = new Dagonizer<SlowState>();
+dispatcher.registerNode(new SlowNode());
+dispatcher.registerDAG(dag);
 
-// ── RetryPolicy with exponential backoff, zero jitter for determinism ───────
+const state = new SlowState();
+const startedAt = Date.now();
+const runPromise = dispatcher.execute('virtual-clock-dag', state);
 
-const policy = RetryPolicy.from({
-  maxAttempts:  5,
-  strategy:     BackoffStrategyNames.EXPONENTIAL,
-  baseDelay:    100,    // 100ms → 200ms → 400ms …
-  jitterFactor: 0,      // no jitter: delays are exact, enabling deterministic advance
-});
+// Drive the timeout concurrently while the run awaits: yield so the node's
+// `.after(200)` registers in the VirtualScheduler, advance past the budget,
+// then yield again so the deadline rejection and abort propagation settle.
+const advancer = (async (): Promise<void> => {
+  await new Promise<void>((r) => setImmediate(r)); // let the node start and register .after(200)
+  scheduler.advance(201);                          // trigger the timeout
+  await new Promise<void>((r) => setImmediate(r)); // flush .then() → deadlineReject + childCtrl.abort
+  scheduler.runAll();                              // drain any remaining entries
+  await new Promise<void>((r) => setImmediate(r)); // flush abort propagation to the node signal
+})();
 
-// ── Drive retries by advancing virtual time ─────────────────────────────────
+const result = await runPromise;
+await advancer;
+const elapsedMs = Date.now() - startedAt;
 
-// Run the policy; each retry will park waiting in the VirtualScheduler.
-// The operation fails on attempts 1 and 2, succeeds on attempt 3.
-const runPromise = policy.run(async () => {
-  attempts++;
-  if (attempts < 3) throw new Error('transient catalogue timeout');
-  return 'The Archivist Compendium, Vol. 1';
-});
-
-// Drive retries: yield control so each retry's `after()` promise registers in
-// the VirtualScheduler, then advance past that backoff window.  Without the
-// setImmediate yield the advance() call runs before the pending entry exists.
-
-// Attempt 1 fails; policy schedules a 100ms wait.
-await new Promise<void>((r) => setImmediate(r));   // let microtasks settle
-scheduler.advance(100);                             // drain the 100ms backoff
-
-// Attempt 2 fails; policy schedules a 200ms wait.
-await new Promise<void>((r) => setImmediate(r));   // let microtasks settle
-scheduler.advance(200);                             // drain the 200ms backoff
-
-// Attempt 3 succeeds; the promise resolves without further advancement.
-const title = await runPromise;
-// title === 'The Archivist Compendium, Vol. 1'
-// attempts === 3
-// scheduler.virtualNow === 300 (100 + 200 ms of virtual time elapsed)
-
-// ── Restore real-time providers so subsequent tests are unaffected ──────────
+// ── Restore the real scheduler so subsequent code is unaffected ────────────
 Scheduler.reset();
-Clock.reset();
 
-if (title !== 'The Archivist Compendium, Vol. 1') throw new Error(`unexpected title: ${title}`);
+if (result.state.lifecycle.variant !== 'failed') {
+  throw new Error(`expected the node timeout to fail the run, got ${result.state.lifecycle.variant}`);
+}
 
-process.stdout.write('demonstrateVirtualClock completed: 3 attempts, 300ms virtual time elapsed\n');
-process.stdout.write('\nLesson: VirtualClockProvider + VirtualScheduler replace global time;\n');
-process.stdout.write('        advance() drains pending timers without real waits.\n');
+process.stdout.write(`demonstrateVirtualClock completed: node timeout fired at 200ms virtual time, ${String(elapsedMs)}ms real time elapsed\n`);
+process.stdout.write('\nLesson: VirtualScheduler still drives per-node `timeout` deadlines\n');
+process.stdout.write('        (Scheduler.current().after()); it no longer drives RetryPolicy\n');
+process.stdout.write('        backoff, which sleeps on substrate\'s own internal timer.\n');

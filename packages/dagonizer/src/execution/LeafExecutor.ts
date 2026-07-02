@@ -17,10 +17,10 @@ export interface LeafExecutorSourceInterface {
   readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
-  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType;
+  nodeContext(dagName: string, placementName: string, signal: AbortSignal): NodeContextType;
   runNodeOnState(node: NodeInterface<NodeStateInterface, string>, state: NodeStateInterface, context: NodeContextType): Promise<string>;
 }
 
@@ -31,9 +31,9 @@ export interface LeafExecutorSourceInterface {
  * Depends only on the narrow `LeafExecutorSourceInterface` port: node registry,
  * timeout wrapper, context builder, and node-on-state runner.
  *
- * The timeout wrapper provides the `nodeSignal` (always a non-null `AbortSignal`)
+ * The timeout wrapper provides the `nodeSignal` (always a valid `AbortSignal`)
  * used to build the node context, so `LeafExecutor` has no direct dependency
- * on `SignalComposer`.
+ * on `Signal`.
  */
 export class LeafExecutor {
   readonly #source: LeafExecutorSourceInterface;
@@ -46,7 +46,7 @@ export class LeafExecutor {
     nodeConfig: SingleNodePlacementType,
     state: NodeStateInterface,
     dagName: string,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
   ): Promise<RunNodeResultType> {
     const nodeIri = ContextResolver.expand(nodeConfig.node, {});
     const dagNode = this.#source.nodes.get(nodeIri);

@@ -11,7 +11,6 @@
  *   node/: NodeUnionType, NodeContextType, NodeOutputType, NodeErrorType, NodeWarningType, NodeResultType, NodeStateDataType
  *   execution/: ExecutionResultType
  *   validation/: ValidationResultType
- *   errors/: DAGErrorJSONType
  *   constants/: GatherStrategyNames, ScatterOutputNames, MetadataKeys, OutputNames, NodeTypes
  *   runtime/: BackoffStrategyNames
  *   primitives/: JsonSchemaType (draft-2020-12 TS model)
@@ -42,7 +41,7 @@ export { GatherConfigSchema } from './dag/GatherConfig.js';
 export type { GatherConfigType } from './dag/GatherConfig.js';
 
 export { ScatterNodeSchema, ScatterNodeDefaults } from './dag/ScatterNode.js';
-export type { ScatterNodeType } from './dag/ScatterNode.js';
+export type { ScatterNodeType, ScatterThrottleOptionsType } from './dag/ScatterNode.js';
 
 export { EmbeddedDAGNodeSchema, EmbeddedDAGNodeDefaults } from './dag/EmbeddedDAGNode.js';
 export type { EmbeddedDAGNodeType } from './dag/EmbeddedDAGNode.js';
@@ -113,13 +112,6 @@ export type { ParkedType } from './execution/Parked.js';
 
 export { ValidationResultSchema } from './validation/ValidationResult.js';
 export type { ValidationResultType } from './validation/ValidationResult.js';
-
-// ---------------------------------------------------------------------------
-// errors
-// ---------------------------------------------------------------------------
-
-export { DAGErrorJSONSchema } from './errors/DAGErrorJSON.js';
-export type { DAGErrorJSONType } from './errors/DAGErrorJSON.js';
 
 // ---------------------------------------------------------------------------
 // constants

@@ -1,13 +1,21 @@
 /**
  * ScatterWorkerPool: bounded worker-pool for scatter execution.
  *
- * Owns the slot semaphore, active-worker counter, error accumulator, and the
- * drain loop that drives concurrent item execution. Item body execution and
+ * Delegates concurrency gating to an owned `Semaphore` instance (one permit
+ * per `concurrencyLimit` slot). Owns the error accumulator and the drain loop
+ * that drives concurrent item execution. Item body execution and
  * acknowledgment are delegated to a `ScatterPoolDriverInterface`
  * instance so the pool has no knowledge of DAG internals; it only manages
  * concurrency.
  *
  * Each pulled item is dispatched immediately as a single-item execution.
+ *
+ * When `throttle` is set (non-`null`), dispatch is additionally gated through
+ * an owned `Throttle` instance (`@studnicky/throttle`) as a second, independent
+ * concurrency window wrapping `driver.executeItem`. The `Semaphore` remains the
+ * hard cap on pulling ahead of dispatch capacity; the `Throttle`, when present,
+ * further paces the actual item-execution calls. `throttle: null` (the default)
+ * means no second gate: behavior is unchanged from the semaphore-only path.
  *
  * Semantics preserved from the inline implementation:
  * - True backpressure: a new item is only pulled once a worker slot is free.
@@ -19,9 +27,13 @@
  *   The first error is thrown after draining; the rest remain available on `errors`.
  */
 
-import type { ScatterPoolDriverInterface } from '../contracts/ScatterPoolDriver.js';
+import { Semaphore } from '@studnicky/concurrency/semaphore';
+import { Throttle } from '@studnicky/throttle';
+
+import type { ScatterPoolDriverInterface, ScatterItemResultType } from '../contracts/ScatterPoolDriver.js';
+import type { ScatterThrottleOptionsType } from '../entities/dag/ScatterNode.js';
 import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
-import { ExecutionError } from '../errors/index.js';
+import { DAGError } from '../errors/index.js';
 /**
  * Options for constructing a `ScatterWorkerPool`.
  *
@@ -42,6 +54,12 @@ export type ScatterWorkerPoolOptionsType = {
   nextIndex: number;
   /** Run-level abort signal. `null` when no cancellation was requested. */
   signal: AbortSignal | null;
+  /**
+   * Optional second concurrency gate wrapping `driver.executeItem` dispatch.
+   * `null` means no throttle: only the `concurrencyLimit` semaphore gates
+   * dispatch (unchanged from the pre-throttle behavior).
+   */
+  throttle: ScatterThrottleOptionsType;
 };
 
 /**
@@ -57,29 +75,31 @@ export type ScatterWorkerPoolOptionsType = {
  */
 export class ScatterWorkerPool {
   readonly #driver: ScatterPoolDriverInterface;
-  readonly #concurrencyLimit: number;
+  readonly #semaphore: Semaphore;
+  readonly #throttle: Throttle | null;
   readonly #inbox: ScatterInboxItemType[];
   readonly #inboxIter: AsyncIterator<ScatterInboxItemType, undefined>;
   readonly #freshIter: AsyncIterator<unknown>;
   readonly #signal: AbortSignal | null;
+  readonly #workerPromises: Promise<void>[];
   #nextIndex: number;
   #inboxDone: boolean;
   #freshDone: boolean;
-  #activeWorkers: number;
-  #slotResolve: (() => void) | null;
   readonly #poolErrors: unknown[];
 
   constructor(driver: ScatterPoolDriverInterface, options: ScatterWorkerPoolOptionsType) {
     this.#driver = driver;
-    this.#concurrencyLimit = options.concurrencyLimit;
+    this.#semaphore = Semaphore.builder().withPermits(options.concurrencyLimit).build();
+    this.#throttle = options.throttle !== null
+      ? Throttle.builder().withConcurrencyLimit(options.throttle.concurrencyLimit).build()
+      : null;
     this.#inbox = options.inbox;
     this.#freshIter = options.freshIter;
     this.#signal = options.signal;
     this.#nextIndex = options.nextIndex;
     this.#inboxDone = false;
     this.#freshDone = false;
-    this.#activeWorkers = 0;
-    this.#slotResolve = null;
+    this.#workerPromises = [];
     this.#poolErrors = [];
     // Inbox iterator: a stateful cursor over the #inbox array.
     // The inbox may grow (gap-filling during pre-scan) before drain() is called;
@@ -143,41 +163,47 @@ export class ScatterWorkerPool {
     return null;
   }
 
-  /** Resolve any pending `waitForSlot` promise when a slot becomes free. */
-  #releaseSlot(): void {
-    const fn = this.#slotResolve;
-    this.#slotResolve = null;
-    fn?.();
+  /**
+   * Dispatch one item's body execution, routed through the owned `Throttle`
+   * when one is configured, else called directly. `Throttle.execute` resolves
+   * to `undefined` only when the throttle itself has been aborted or drained —
+   * this pool never calls `abort()`/`drain()` on its throttle, so that branch
+   * is an invariant violation, surfaced as a `DAGError` rather than silently
+   * dropping the item.
+   */
+  #dispatchItem(index: number, item: unknown): Promise<ScatterItemResultType> {
+    if (this.#throttle === null) {
+      return this.#driver.executeItem(index, item);
+    }
+    return this.#throttle.execute(() => this.#driver.executeItem(index, item)).then((result) => {
+      if (result === undefined) {
+        throw new DAGError('Throttle detached scatter item execution unexpectedly', { 'code': 'EXECUTION_ERROR' });
+      }
+      return result;
+    });
   }
 
-  /** Resolve when a slot is free (blocks when pool is at capacity). */
-  #waitForSlot(): Promise<void> {
-    return new Promise<void>((res) => { this.#slotResolve = res; });
-  }
-
-  #workerDone(): void {
-    this.#activeWorkers--;
-    this.#releaseSlot();
-  }
-
-  #spawnWorker(index: number, item: unknown): void {
-    this.#activeWorkers++;
-    const workerPromise = this.#driver.executeItem(index, item).then(
+  /**
+   * Spawn a single-item worker holding an already-acquired semaphore permit.
+   * `release` returns the permit to the pool (or hands it to the next queued
+   * waiter) once the item's execute+ack cycle settles.
+   */
+  #spawnWorker(index: number, item: unknown, release: () => void): void {
+    const workerPromise: Promise<void> = this.#dispatchItem(index, item).then(
       (res) => this.#driver.ackItem(res).then(
-        () => { this.#workerDone(); },
+        () => { release(); },
         (err: unknown) => {
           this.#poolErrors.push(err);
-          this.#workerDone();
+          release();
         },
       ),
       (err: unknown) => {
         // R7: push to accumulator — never overwrite; concurrent failures all preserved.
         this.#poolErrors.push(err);
-        this.#workerDone();
+        release();
       },
     );
-    // Attach a no-op catch so the promise is always handled.
-    workerPromise.catch(() => { /* handled above */ });
+    this.#workerPromises.push(workerPromise);
   }
 
   /**
@@ -195,36 +221,42 @@ export class ScatterWorkerPool {
   async drain(): Promise<void> {
     // Pull loop: fills slots until sources are exhausted, a worker error
     // accumulates, or the run-level signal is aborted.
-    // Check capacity BEFORE pulling so fresh items are only pushed to the
+    // Acquire a permit BEFORE pulling so fresh items are only pushed to the
     // inbox when a worker slot is available (preserves inbox-empty-after-ack
-    // invariant with concurrency=1).
-    while (this.#poolErrors.length === 0 && this.#signal?.aborted !== true) {
-      if (this.#activeWorkers >= this.#concurrencyLimit) {
-        await this.#waitForSlot();
-        continue;
+    // invariant with concurrency=1); `acquire()` blocks when the pool is at
+    // capacity and resolves as soon as a permit frees up. The error/abort
+    // check runs AFTER `acquire()` resolves (not just at loop entry) so a
+    // worker error recorded while this iteration was queued for a permit is
+    // observed before the next item is pulled.
+    for (;;) {
+      const release = await this.#semaphore.acquire();
+      if (this.#poolErrors.length > 0 || this.#signal?.aborted === true) {
+        release();
+        break;
       }
       const pulled = await this.#pullNext();
-      if (pulled === null) break; // both sources exhausted
-      this.#spawnWorker(pulled.index, pulled.item);
+      if (pulled === null) {
+        release();
+        break; // both sources exhausted
+      }
+      this.#spawnWorker(pulled.index, pulled.item, release);
     }
 
-    // Wait for all in-flight workers to settle.
-    while (this.#activeWorkers > 0) {
-      await this.#waitForSlot();
-    }
+    // Wait for all spawned workers to settle.
+    await Promise.all(this.#workerPromises);
 
     // R1: if the signal was aborted and no worker error caused the exit,
     // throw BEFORE the caller calls ScatterCheckpoint.clear() so the
     // checkpoint is preserved on state for resume.
     if (this.#signal?.aborted === true && this.#poolErrors.length === 0) {
-      throw ExecutionError.ofSignal(this.#signal);
+      throw DAGError.ofSignal(this.#signal);
     }
 
     if (this.#poolErrors.length > 0) {
       // Throw the first error; remaining errors are preserved in `this.errors`
       // for aggregate diagnostics.
       const first = this.#poolErrors[0];
-      throw first instanceof Error ? first : new ExecutionError(String(first));
+      throw first instanceof Error ? first : new DAGError(String(first), { 'code': 'EXECUTION_ERROR' });
     }
   }
 }

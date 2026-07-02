@@ -31,10 +31,15 @@ import { ExecutionRequestSchema } from '../../src/entities/executor/ExecutionReq
 import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionResponse.js';
 import { NodeErrorSchema, NodeErrorBuilder  } from '../../src/entities/node/NodeError.js';
 import type { NodeErrorType } from '../../src/entities/node/NodeError.js';
-import { DAGError, ValidationError  } from '../../src/errors/DAGError.js';
+import { DAGError } from '../../src/errors/DAGError.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
+
+/** `assert.throws` predicate: a `DAGError` coded `VALIDATION_ERROR`. */
+function isValidationError(err: unknown): boolean {
+  return err instanceof DAGError && err.code === 'VALIDATION_ERROR';
+}
 
 // ---------------------------------------------------------------------------
 // TST-W3-1: BridgeMessageType inline shape structural identity
@@ -329,11 +334,11 @@ void describe('TST-W3-2: Validator.gatherConfig', () => {
       'config without strategy must be invalid');
   });
 
-  void it('validate() throws ValidationError for invalid input', () => {
+  void it('validate() throws DAGError (code VALIDATION_ERROR) for invalid input', () => {
     assert.throws(
       () => Validator.gatherConfig.validate({}),
-      ValidationError,
-      'validate() must throw ValidationError for missing strategy',
+      isValidationError,
+      'validate() must throw DAGError (code VALIDATION_ERROR) for missing strategy',
     );
   });
 
@@ -402,11 +407,11 @@ void describe('TST-W3-3: Validator.interruptionInfo', () => {
       'empty nodeName must be rejected');
   });
 
-  void it('validate() throws ValidationError for invalid input', () => {
+  void it('validate() throws DAGError (code VALIDATION_ERROR) for invalid input', () => {
     assert.throws(
       () => Validator.interruptionInfo.validate({ 'nodeName': 'step1', 'reason': 'invalid-reason' }),
-      ValidationError,
-      'validate() must throw ValidationError for unknown reason',
+      isValidationError,
+      'validate() must throw DAGError (code VALIDATION_ERROR) for unknown reason',
     );
   });
 
@@ -463,11 +468,11 @@ void describe('TST-W3-4: Validator.openAiResponseBody', () => {
       'choices must be an array, not a string');
   });
 
-  void it('validate() throws ValidationError for a non-object body', () => {
+  void it('validate() throws DAGError (code VALIDATION_ERROR) for a non-object body', () => {
     assert.throws(
       () => Validator.openAiResponseBody.validate(42),
-      ValidationError,
-      'validate() must throw ValidationError for non-object input',
+      isValidationError,
+      'validate() must throw DAGError (code VALIDATION_ERROR) for non-object input',
     );
   });
 
@@ -603,15 +608,16 @@ void describe('TST-W3-6: StoreError extends DAGError', () => {
     }
   });
 
-  void it('StoreError inherits DAGError.toJSON() shape', () => {
+  void it('StoreError inherits ModuleError.toJSON() shape via DAGError', () => {
     const err = new StoreError('test', {
       'reason': 'KEY_NOT_FOUND',
       'key': 'x',
     });
     const json = err.toJSON();
-    assert.equal(json.code, 'STORE_ERROR');
-    assert.ok(typeof json.timestamp === 'string' && json.timestamp.length > 0,
-      'toJSON must include ISO timestamp');
+    assert.equal(json['code'], 'STORE_ERROR');
+    assert.equal(json['name'], 'StoreError');
+    assert.ok(typeof json['stack'] === 'string' && json['stack'].length > 0,
+      'toJSON must include the stack trace');
   });
 });
 

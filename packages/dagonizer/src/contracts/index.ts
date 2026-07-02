@@ -53,6 +53,7 @@ export type { ClockProviderInterface } from './ClockProviderInterface.js';
 
 // Error construction and execution options.
 export type { ErrorConstructorType } from './ErrorConstructorType.js';
+export type { ErrorMatcherType } from './ErrorMatcherType.js';
 export type { ExecuteOptionsType } from './ExecuteOptionsType.js';
 // Nodes: the node contract and the back-into-the-engine invoker.
 export type { NodeInterface, SchemaObjectType } from './NodeInterface.js';

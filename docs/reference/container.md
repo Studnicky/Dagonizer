@@ -24,7 +24,6 @@ DAG containment infrastructure: pool-owning base, isolate-side host runtime, and
 ```ts twoslash
 import {
   DagContainerBase,
-  DagContainerError,
   DagHost,
   DagOutcome,
   DagTask,
@@ -121,7 +120,7 @@ Acquired a pool slot, sends the task to the isolate, and waits for the outcome. 
 declare function destroy(): Promise<void>;
 ```
 
-Gracefully shuts down all pool entries. Signals each worker to stop (shutdown message), waits up to `shutdownGraceMs`, then force-terminates any that did not exit. After `destroy()`, `runDag` throws `DagContainerError`.
+Gracefully shuts down all pool entries. Signals each worker to stop (shutdown message), waits up to `shutdownGraceMs`, then force-terminates any that did not exit. After `destroy()`, `runDag` throws `DAGError` with code `DAG_CONTAINER_ERROR`.
 
 ### `onTransportDeath(entry, code, reason)`
 
@@ -222,16 +221,17 @@ Default grace period in milliseconds before a shutting-down worker is force-term
 
 ---
 
-## Class: `DagContainerError`
+## Container errors
+
+Container operations throw `DAGError` with code `DAG_CONTAINER_ERROR`:
 
 ```ts twoslash
-import { DagContainerError } from '@studnicky/dagonizer/container';
 import { DAGError } from '@studnicky/dagonizer';
 // ---cut---
-const _isSubclass: boolean = DagContainerError.prototype instanceof DAGError;
+new DAGError('container destroyed', { code: 'DAG_CONTAINER_ERROR' });
 ```
 
-Thrown when a container operation fails for infrastructure reasons (pool destroyed, semaphore timeout). Distinguished from domain errors by its class; `instanceof DagContainerError` is the guard.
+Thrown when a container operation fails for infrastructure reasons (pool destroyed, semaphore timeout, abort). Distinguished from domain errors by `error.code === 'DAG_CONTAINER_ERROR'`, not by class — `DAGError` is one class for every error kind. See [Reference: Errors](./errors).
 
 ---
 

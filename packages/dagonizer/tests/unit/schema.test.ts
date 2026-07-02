@@ -5,10 +5,15 @@ import { DAGDocument } from '../../src/dag/DAGDocument.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
-import { DAGError, ValidationError } from '../../src/errors/index.js';
+import { DAGError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
+
+/** `assert.throws` predicate: a `DAGError` coded `VALIDATION_ERROR`. */
+function isValidationError(err: unknown): boolean {
+  return err instanceof DAGError && err.code === 'VALIDATION_ERROR';
+}
 
 // validDAG: a minimal well-formed DAG — SingleNode routes to an explicit TerminalNode.
 const validDAG: DAGType = {
@@ -36,7 +41,7 @@ void describe('Validator.dag', () => {
     const bad = { ...validDAG };
     Reflect.deleteProperty(bad, 'entrypoint');
     assert.equal(Validator.dag.is(bad), false);
-    assert.throws(() => Validator.dag.validate(bad), ValidationError);
+    assert.throws(() => Validator.dag.validate(bad), isValidationError);
   });
 
   void it('rejects a flat DAG missing @context, @id, @type', () => {
@@ -45,7 +50,7 @@ void describe('Validator.dag', () => {
       'name': 'x', 'version': '1', 'entrypoint': 's',
       'nodes': [{ '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': {} }],
     };
-    assert.throws(() => Validator.dag.validate(flat), ValidationError);
+    assert.throws(() => Validator.dag.validate(flat), isValidationError);
   });
 
   void it('rejects unknown @type on a node placement', () => {
@@ -56,7 +61,7 @@ void describe('Validator.dag', () => {
       'name': 'x', 'version': '1', 'entrypoint': 's',
       'nodes': [{ '@id': 'urn:x', '@type': 'NotANodeType', 'name': 's', 'node': 'op', 'outputs': {} }],
     };
-    assert.throws(() => Validator.dag.validate(bad), ValidationError);
+    assert.throws(() => Validator.dag.validate(bad), isValidationError);
   });
 
   void it('rejects a SingleNode whose output value is null', () => {
@@ -71,7 +76,7 @@ void describe('Validator.dag', () => {
       }],
     };
     assert.equal(Validator.dag.is(bad), false, 'null route must fail schema validation');
-    assert.throws(() => Validator.dag.validate(bad), ValidationError);
+    assert.throws(() => Validator.dag.validate(bad), isValidationError);
 
     // A single null route and multiple null routes both fail schema validation:
     // null is never a valid output target, regardless of how many appear.
@@ -150,11 +155,11 @@ void describe('DAGDocument.load', () => {
   });
 
   void it('rejects malformed JSON', () => {
-    assert.throws(() => DAGDocument.load('{not json'), ValidationError);
+    assert.throws(() => DAGDocument.load('{not json'), isValidationError);
   });
 
   void it('rejects schema-noncompliant JSON', () => {
-    assert.throws(() => DAGDocument.load('{"name": "x"}'), ValidationError);
+    assert.throws(() => DAGDocument.load('{"name": "x"}'), isValidationError);
   });
 });
 
@@ -178,12 +183,12 @@ void describe('DAGDocument.ofValue', () => {
   });
 
   void it('rejects schema-noncompliant value', () => {
-    assert.throws(() => DAGDocument.ofValue({ 'name': 'x' }), ValidationError);
+    assert.throws(() => DAGDocument.ofValue({ 'name': 'x' }), isValidationError);
   });
 });
 
 void describe('Dagonizer.registerDAG schema pre-pass', () => {
-  void it('rejects schema-invalid DAGs with ValidationError, not DAGError', () => {
+  void it('rejects schema-invalid DAGs with DAGError coded VALIDATION_ERROR, not the semantic-tier DAG_ERROR code', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(TestNode.make('op', ['success']));
 
@@ -204,10 +209,10 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
       ],
     };
 
-    assert.throws(() => dispatcher.registerDAG(bad), ValidationError);
+    assert.throws(() => dispatcher.registerDAG(bad), isValidationError);
   });
 
-  void it('semantic errors still surface as DAGError', () => {
+  void it('semantic errors surface as DAGError with the default DAG_ERROR code, not VALIDATION_ERROR', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(TestNode.make('op', ['success']));
 
@@ -230,7 +235,7 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
       assert.fail('expected registerDAG to throw');
     } catch (error) {
       assert.ok(error instanceof DAGError);
-      assert.ok(!(error instanceof ValidationError));
+      assert.ok(error.code !== 'VALIDATION_ERROR');
     }
   });
 });

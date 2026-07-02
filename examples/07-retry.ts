@@ -15,9 +15,7 @@
  * Run: npx tsx examples/07-retry.ts
  */
 
-import { BackoffStrategyNames, RetryPolicy, Scheduler } from '@studnicky/dagonizer';
-import { Clock, Dagonizer } from '@studnicky/dagonizer';
-import { VirtualClockProvider, VirtualScheduler } from '@studnicky/dagonizer/testing';
+import { BackoffStrategyNames, Dagonizer, RetryPolicy } from '@studnicky/dagonizer';
 import { FetchState, FetchNode, FlakyDownstream, TransientError, dag } from './dags/07-retry.js';
 
 // ---------------------------------------------------------------------------
@@ -41,39 +39,29 @@ process.stdout.write('        passing context.signal ensures abort short-circuit
 // #endregion runtime
 
 // ---------------------------------------------------------------------------
-// Deterministic testing: VirtualScheduler makes retry sleeps instant
+// Elapsed-time verification: retry backoff runs on a real timer
 // ---------------------------------------------------------------------------
 
-// #region deterministic-testing
-// Install VirtualScheduler and VirtualClockProvider before the policy run so
-// retry sleeps do not block real wall time. Drive each backoff window with
-// scheduler.advance(ms); call Clock.reset() + Scheduler.reset() when done.
-const clock     = new VirtualClockProvider(0n);
-const scheduler = new VirtualScheduler(0);
-Clock.configure(clock);
-Scheduler.configure(scheduler);
-
+// #region elapsed-time-verification
+// `RetryPolicy` schedules its backoff delays through `@studnicky/retry`'s
+// `Retry`, which sleeps on its own internal timer rather than the injected
+// `Scheduler` — `VirtualScheduler.advance()` has no effect on retry timing.
+// This run verifies the EXPONENTIAL backoff actually elapses real wall-clock
+// time: baseDelay=50ms → waits of 50ms then 100ms (150ms total) before the
+// third attempt succeeds.
 const testPolicy = RetryPolicy.from({
   maxAttempts:  3,
   strategy:     BackoffStrategyNames.EXPONENTIAL,
-  baseDelay:    1_000,   // 1 s → 2 s; instant under VirtualScheduler
+  baseDelay:    50,
   jitterFactor: 0,
   retryOn:      [TransientError],
 });
 const testDownstream = new FlakyDownstream(); // throws twice, succeeds on third
-const testRun = testPolicy.run(() => testDownstream.call());
+const startedAt = Date.now();
+const testResult = await testPolicy.run(() => testDownstream.call());
+const elapsedMs = Date.now() - startedAt;
+// #endregion elapsed-time-verification
 
-// Step through each backoff window without real wall-clock delay.
-await new Promise<void>((r) => setImmediate(r)); // let first backoff register
-scheduler.advance(1_000);                         // drain the 1 s backoff
-
-await new Promise<void>((r) => setImmediate(r)); // let second backoff register
-scheduler.advance(2_000);                         // drain the 2 s backoff
-
-const testResult = await testRun;                 // attempt 3 succeeds
-Clock.reset();
-Scheduler.reset();
-// #endregion deterministic-testing
-
-process.stdout.write(`\nDeterministic test: result="${testResult}" after ${String(testDownstream.attempts)} attempts\n`);
-process.stdout.write('VirtualScheduler: retry sleeps are instant; drive with advance(ms).\n');
+process.stdout.write(`\nElapsed-time test: result="${testResult}" after ${String(testDownstream.attempts)} attempts, ${String(elapsedMs)}ms elapsed\n`);
+process.stdout.write('Lesson: RetryPolicy backoff runs on a real timer owned by substrate\'s Retry;\n');
+process.stdout.write('        VirtualScheduler.advance() no longer drives retry delays.\n');

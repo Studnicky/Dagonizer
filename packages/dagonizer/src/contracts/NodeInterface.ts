@@ -59,7 +59,7 @@ export interface NodeInterface<
    * `AbortController` from the run's signal and schedules an abort after `n` ms.
    * The child signal is passed as `context.signal` to this node's `execute()`
    * call only; other nodes in the same run are unaffected. On expiry the engine
-   * throws a `NodeTimeoutError`, fires `onError`, and marks the run failed.
+   * throws a `DAGError` (code `NODE_TIMEOUT`), fires `onError`, and marks the run failed.
    *
    * `Timeout.none()` means no per-node budget; the node is subject only to the
    * run-level `deadlineMs` / `signal` from `ExecuteOptionsType`.

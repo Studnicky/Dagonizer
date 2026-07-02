@@ -61,7 +61,7 @@ export class EmbeddedDagExecutor {
   async executeEmbeddedDAG(
     placement: EmbeddedDAGNodeType,
     state: NodeStateInterface,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     placementPath: readonly string[],
     bufferIntermediates: boolean = true,
   ): Promise<RunNodeResultType> {

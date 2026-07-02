@@ -11,7 +11,7 @@
  *
  * Usage:
  * ```ts
- * const bus = new EventBus();
+ * const bus = EventBus.of();
  * const stream = SseStream.of(bus, ['runs', 'escalations']);
  * // Pipe `stream.readable` as the response body.
  * ```

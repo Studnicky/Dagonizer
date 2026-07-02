@@ -6,7 +6,7 @@
  * consumers continue to see a single import path.
  *
  * `ChatRequestBuilder` and `ChatResponseMessageBuilder` remain here because
- * they have runtime logic (`SignalComposer.never()`, discriminated dispatch).
+ * they have runtime logic (`Signal.never()`, discriminated dispatch).
  * Module-level defaults for `ChatRequestType` fields also live here.
  *
  *   ┌──────────────────────────────────────────────────────────────┐
@@ -19,11 +19,12 @@
  *   └──────────────────────────────────────────────────────────────┘
  */
 
+import { Signal } from '@studnicky/signal';
+
 import type { ChatRequestType, LlmOutputSchemaType, PartialChatRequestType, ToolChoiceType } from '../entities/adapter/ChatRequest.js';
 import type { ChatResponseMessageType } from '../entities/adapter/ChatResponseMessage.js';
 import type { TokenUsageType } from '../entities/adapter/TokenUsage.js';
 import type { ToolCallType } from '../entities/adapter/ToolCall.js';
-import { SignalComposer } from '../runtime/SignalComposer.js';
 
 // ── Re-export entity schemas + types from their canonical location ────────────
 //
@@ -97,7 +98,7 @@ export class ChatRequestBuilder {
       'outputSchema': defaults.outputSchema,
       'maxTokens':    defaults.maxTokens,
       'temperature':  defaults.temperature,
-      'signal':       partial.signal ?? SignalComposer.never(),
+      'signal':       partial.signal ?? Signal.never(),
     };
   }
 }

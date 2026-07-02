@@ -9,7 +9,7 @@
  */
 
 import type { DAGType } from '../entities/dag/DAG.js';
-import { ValidationError } from '../errors/index.js';
+import { DAGError } from '../errors/index.js';
 import { Validator } from '../validation/Validator.js';
 
 /**
@@ -44,7 +44,8 @@ export class DAGDocument {
    * Parse JSON and validate against `DAGSchema`. The single permitted ingest
    * boundary where `unknown` enters the package.
    *
-   * Throws `ValidationError` for malformed JSON or schema-noncompliant input.
+   * Throws `DAGError` (code `VALIDATION_ERROR`) for malformed JSON or
+   * schema-noncompliant input.
    *
    * @param options.overrides — field overrides merged into the decoded DAG
    * before schema validation. Use to inject runtime values (e.g. concurrency)
@@ -56,11 +57,11 @@ export class DAGDocument {
       parsed = JSON.parse(json);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new ValidationError(`Invalid JSON: ${message}`);
+      throw new DAGError(`Invalid JSON: ${message}`, { 'code': 'VALIDATION_ERROR' });
     }
     if (options.overrides !== undefined) {
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        throw new ValidationError('Cannot apply overrides: parsed JSON must be an object');
+        throw new DAGError('Cannot apply overrides: parsed JSON must be an object', { 'code': 'VALIDATION_ERROR' });
       }
       return Validator.dag.validate({ ...parsed, ...options.overrides });
     }
@@ -78,7 +79,7 @@ export class DAGDocument {
   static ofValue(value: unknown, options: DAGDocumentLoadOptionsType = {}): DAGType {
     if (options.overrides !== undefined) {
       if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        throw new ValidationError('Cannot apply overrides: value must be an object');
+        throw new DAGError('Cannot apply overrides: value must be an object', { 'code': 'VALIDATION_ERROR' });
       }
       return Validator.dag.validate({ ...value, ...options.overrides });
     }

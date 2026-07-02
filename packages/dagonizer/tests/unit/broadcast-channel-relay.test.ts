@@ -7,6 +7,10 @@
  *   - Echo suppression: a paired relay setup delivers once per side and does not loop.
  *   - close(): unsubscribes from the bus and closes the channel; idempotent.
  *
+ * `bus.drain()` is awaited after every publish / postMessage so the
+ * per-subscriber `BusQueue` (which delivers via a queued microtask, not
+ * synchronously) has finished fan-out before assertions run.
+ *
  * `MockChannel` is a structural double — a static-class-built paired registry
  * so two mock instances sharing a name deliver to each other, simulating
  * cross-context BroadcastChannel delivery.
@@ -17,6 +21,7 @@ import { describe, it } from 'node:test';
 
 import type { BroadcastChannelLikeInterface } from '../../src/progress/BroadcastChannelRelay.js';
 import { BroadcastChannelRelay } from '../../src/progress/BroadcastChannelRelay.js';
+import type { BusEventEnvelopeType } from '../../src/progress/BusEventEnvelope.js';
 import { EventBus } from '../../src/progress/EventBus.js';
 
 // ---------------------------------------------------------------------------
@@ -120,8 +125,8 @@ class ChannelPair {
 // ---------------------------------------------------------------------------
 
 describe('BroadcastChannelRelay outbound', () => {
-  it('publishes an envelope over the channel when the bus fires on a subscribed topic', () => {
-    const bus  = new EventBus();
+  it('publishes an envelope over the channel when the bus fires on a subscribed topic', async () => {
+    const bus  = EventBus.of();
     const { 'a': chanA, 'b': chanB } = ChannelPair.of('ch-out-1');
 
     const relay = BroadcastChannelRelay.of(bus, ['runs'], chanA);
@@ -129,7 +134,8 @@ describe('BroadcastChannelRelay outbound', () => {
     const received: unknown[] = [];
     chanB.addEventListener('message', (evt) => { received.push(evt.data); });
 
-    bus.publish('runs', { 'nodeId': 'x' });
+    await bus.publish('runs', { 'nodeId': 'x' });
+    await bus.drain();
 
     assert.equal(received.length, 1);
     const msg = received[0];
@@ -140,12 +146,12 @@ describe('BroadcastChannelRelay outbound', () => {
     assert.equal(typeof rec['timestamp'], 'number');
 
     relay.close();
-    bus.dispose();
+    await bus.close();
     MockChannel.reset();
   });
 
-  it('posts for each subscribed topic independently', () => {
-    const bus  = new EventBus();
+  it('posts for each subscribed topic independently', async () => {
+    const bus  = EventBus.of();
     const { 'a': chanA, 'b': chanB } = ChannelPair.of('ch-out-2');
 
     const relay = BroadcastChannelRelay.of(bus, ['alpha', 'beta'], chanA);
@@ -153,13 +159,14 @@ describe('BroadcastChannelRelay outbound', () => {
     const received: unknown[] = [];
     chanB.addEventListener('message', (evt) => { received.push(evt.data); });
 
-    bus.publish('alpha', 1);
-    bus.publish('beta', 2);
+    await bus.publish('alpha', 1);
+    await bus.publish('beta', 2);
+    await bus.drain();
 
     assert.equal(received.length, 2);
 
     relay.close();
-    bus.dispose();
+    await bus.close();
     MockChannel.reset();
   });
 });
@@ -169,28 +176,29 @@ describe('BroadcastChannelRelay outbound', () => {
 // ---------------------------------------------------------------------------
 
 describe('BroadcastChannelRelay inbound', () => {
-  it('republishes a valid envelope from the channel onto the local bus', () => {
-    const bus  = new EventBus();
+  it('republishes a valid envelope from the channel onto the local bus', async () => {
+    const bus  = EventBus.of();
     const { 'a': chanA, 'b': chanB } = ChannelPair.of('ch-in-1');
 
     const relay = BroadcastChannelRelay.of(bus, ['runs'], chanA);
 
     const received: unknown[] = [];
-    bus.subscribe('runs', (e) => { received.push(e.payload); });
+    bus.subscribe('runs', (e: BusEventEnvelopeType<unknown>) => { received.push(e.payload); });
 
     // Simulate a message arriving from the other context.
     chanB.postMessage({ 'topic': 'runs', 'payload': { 'nodeId': 'y' }, 'timestamp': 1000 });
+    await bus.drain();
 
     assert.equal(received.length, 1);
     assert.deepEqual(received[0], { 'nodeId': 'y' });
 
     relay.close();
-    bus.dispose();
+    await bus.close();
     MockChannel.reset();
   });
 
-  it('ignores inbound messages with a malformed envelope (missing topic)', () => {
-    const bus  = new EventBus();
+  it('ignores inbound messages with a malformed envelope (missing topic)', async () => {
+    const bus  = EventBus.of();
     const { 'a': chanA, 'b': chanB } = ChannelPair.of('ch-in-2');
 
     const relay = BroadcastChannelRelay.of(bus, ['runs'], chanA);
@@ -201,16 +209,17 @@ describe('BroadcastChannelRelay inbound', () => {
     chanB.postMessage({ 'notTopic': 'runs', 'payload': null, 'timestamp': 1000 });
     chanB.postMessage('plain string');
     chanB.postMessage(null);
+    await bus.drain();
 
     assert.equal(count, 0);
 
     relay.close();
-    bus.dispose();
+    await bus.close();
     MockChannel.reset();
   });
 
-  it('ignores inbound messages with a non-numeric timestamp', () => {
-    const bus  = new EventBus();
+  it('ignores inbound messages with a non-numeric timestamp', async () => {
+    const bus  = EventBus.of();
     const { 'a': chanA, 'b': chanB } = ChannelPair.of('ch-in-3');
 
     const relay = BroadcastChannelRelay.of(bus, ['runs'], chanA);
@@ -219,11 +228,12 @@ describe('BroadcastChannelRelay inbound', () => {
     bus.subscribe('runs', () => { count++; });
 
     chanB.postMessage({ 'topic': 'runs', 'payload': null, 'timestamp': 'bad' });
+    await bus.drain();
 
     assert.equal(count, 0);
 
     relay.close();
-    bus.dispose();
+    await bus.close();
     MockChannel.reset();
   });
 });
@@ -233,8 +243,8 @@ describe('BroadcastChannelRelay inbound', () => {
 // ---------------------------------------------------------------------------
 
 describe('BroadcastChannelRelay topic filtering', () => {
-  it('does NOT post outbound for events on a non-subscribed topic', () => {
-    const bus  = new EventBus();
+  it('does NOT post outbound for events on a non-subscribed topic', async () => {
+    const bus  = EventBus.of();
     const { 'a': chanA, 'b': chanB } = ChannelPair.of('ch-filter-1');
 
     const relay = BroadcastChannelRelay.of(bus, ['runs'], chanA);
@@ -242,17 +252,18 @@ describe('BroadcastChannelRelay topic filtering', () => {
     const received: unknown[] = [];
     chanB.addEventListener('message', (evt) => { received.push(evt.data); });
 
-    bus.publish('other-topic', 'should not appear');
+    await bus.publish('other-topic', 'should not appear');
+    await bus.drain();
 
     assert.equal(received.length, 0);
 
     relay.close();
-    bus.dispose();
+    await bus.close();
     MockChannel.reset();
   });
 
-  it('does NOT republish inbound messages on a non-subscribed topic', () => {
-    const bus  = new EventBus();
+  it('does NOT republish inbound messages on a non-subscribed topic', async () => {
+    const bus  = EventBus.of();
     const { 'a': chanA, 'b': chanB } = ChannelPair.of('ch-filter-2');
 
     const relay = BroadcastChannelRelay.of(bus, ['runs'], chanA);
@@ -263,11 +274,12 @@ describe('BroadcastChannelRelay topic filtering', () => {
 
     // Arrives on a topic the relay is not watching.
     chanB.postMessage({ 'topic': 'other-topic', 'payload': null, 'timestamp': 1000 });
+    await bus.drain();
 
     assert.equal(count, 0);
 
     relay.close();
-    bus.dispose();
+    await bus.close();
     MockChannel.reset();
   });
 });
@@ -277,9 +289,9 @@ describe('BroadcastChannelRelay topic filtering', () => {
 // ---------------------------------------------------------------------------
 
 describe('BroadcastChannelRelay echo suppression', () => {
-  it('a two-relay paired setup delivers once per side with no infinite loop', () => {
-    const busA  = new EventBus();
-    const busB  = new EventBus();
+  it('a two-relay paired setup delivers once per side with no infinite loop', async () => {
+    const busA  = EventBus.of();
+    const busB  = EventBus.of();
     const chanA = new MockChannel('echo-ch');
     const chanB = new MockChannel('echo-ch');
 
@@ -289,11 +301,13 @@ describe('BroadcastChannelRelay echo suppression', () => {
     const countA: unknown[] = [];
     const countB: unknown[] = [];
 
-    busA.subscribe('evt', (e) => { countA.push(e.payload); });
-    busB.subscribe('evt', (e) => { countB.push(e.payload); });
+    busA.subscribe('evt', (e: BusEventEnvelopeType<unknown>) => { countA.push(e.payload); });
+    busB.subscribe('evt', (e: BusEventEnvelopeType<unknown>) => { countB.push(e.payload); });
 
     // Publish once on busA.
-    busA.publish('evt', 'ping');
+    await busA.publish('evt', 'ping');
+    await busA.drain();
+    await busB.drain();
 
     // busB should receive exactly one event.
     assert.equal(countB.length, 1);
@@ -304,14 +318,14 @@ describe('BroadcastChannelRelay echo suppression', () => {
 
     relayA.close();
     relayB.close();
-    busA.dispose();
-    busB.dispose();
+    await busA.close();
+    await busB.close();
     MockChannel.reset();
   });
 
-  it('inbound from channel does not echo back over the channel', () => {
-    const busA  = new EventBus();
-    const busB  = new EventBus();
+  it('inbound from channel does not echo back over the channel', async () => {
+    const busA  = EventBus.of();
+    const busB  = EventBus.of();
     const chanA = new MockChannel('echo-ch2');
     const chanB = new MockChannel('echo-ch2');
 
@@ -321,8 +335,8 @@ describe('BroadcastChannelRelay echo suppression', () => {
     const receivedOnBusA: unknown[] = [];
     const receivedOnBusB: unknown[] = [];
 
-    busA.subscribe('evt', (e) => { receivedOnBusA.push(e.payload); });
-    busB.subscribe('evt', (e) => { receivedOnBusB.push(e.payload); });
+    busA.subscribe('evt', (e: BusEventEnvelopeType<unknown>) => { receivedOnBusA.push(e.payload); });
+    busB.subscribe('evt', (e: BusEventEnvelopeType<unknown>) => { receivedOnBusB.push(e.payload); });
 
     // chanB.postMessage simulates an external context sending to chanA's peers.
     // In MockChannel semantics, postMessage fires listeners on all peers (chanA).
@@ -330,6 +344,8 @@ describe('BroadcastChannelRelay echo suppression', () => {
     // #suppressOutbound = true, preventing chanA from echoing back to chanB
     // (which would make busB fire).
     chanB.postMessage({ 'topic': 'evt', 'payload': 'from-outside', 'timestamp': 2000 });
+    await busA.drain();
+    await busB.drain();
 
     // relayA's inbound handler republishes on busA. busA fires once.
     assert.equal(receivedOnBusA.length, 1);
@@ -346,8 +362,8 @@ describe('BroadcastChannelRelay echo suppression', () => {
 
     relayA.close();
     relayB.close();
-    busA.dispose();
-    busB.dispose();
+    await busA.close();
+    await busB.close();
     MockChannel.reset();
   });
 });
@@ -357,8 +373,8 @@ describe('BroadcastChannelRelay echo suppression', () => {
 // ---------------------------------------------------------------------------
 
 describe('BroadcastChannelRelay close()', () => {
-  it('stops further outbound delivery after close', () => {
-    const bus  = new EventBus();
+  it('stops further outbound delivery after close', async () => {
+    const bus  = EventBus.of();
     const { 'a': chanA, 'b': chanB } = ChannelPair.of('ch-close-1');
 
     const relay = BroadcastChannelRelay.of(bus, ['runs'], chanA);
@@ -366,19 +382,21 @@ describe('BroadcastChannelRelay close()', () => {
     const received: unknown[] = [];
     chanB.addEventListener('message', (evt) => { received.push(evt.data); });
 
-    bus.publish('runs', 'before');
+    await bus.publish('runs', 'before');
+    await bus.drain();
     relay.close();
-    bus.publish('runs', 'after');
+    await bus.publish('runs', 'after');
+    await bus.drain();
 
     assert.equal(received.length, 1);
     assert.equal((received[0] as Record<string, unknown>)['payload'], 'before');
 
-    bus.dispose();
+    await bus.close();
     MockChannel.reset();
   });
 
-  it('stops further inbound delivery after close', () => {
-    const bus  = new EventBus();
+  it('stops further inbound delivery after close', async () => {
+    const bus  = EventBus.of();
     const { 'a': chanA, 'b': chanB } = ChannelPair.of('ch-close-2');
 
     const relay = BroadcastChannelRelay.of(bus, ['runs'], chanA);
@@ -387,17 +405,19 @@ describe('BroadcastChannelRelay close()', () => {
     bus.subscribe('runs', () => { count++; });
 
     chanB.postMessage({ 'topic': 'runs', 'payload': null, 'timestamp': 1000 });
+    await bus.drain();
     relay.close();
     chanB.postMessage({ 'topic': 'runs', 'payload': null, 'timestamp': 2000 });
+    await bus.drain();
 
     assert.equal(count, 1);
 
-    bus.dispose();
+    await bus.close();
     MockChannel.reset();
   });
 
-  it('close() is idempotent — calling twice does not throw', () => {
-    const bus  = new EventBus();
+  it('close() is idempotent — calling twice does not throw', async () => {
+    const bus  = EventBus.of();
     const { 'a': chanA } = ChannelPair.of('ch-close-3');
 
     const relay = BroadcastChannelRelay.of(bus, ['runs'], chanA);
@@ -407,7 +427,7 @@ describe('BroadcastChannelRelay close()', () => {
       relay.close();
     });
 
-    bus.dispose();
+    await bus.close();
     MockChannel.reset();
   });
 });

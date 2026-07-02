@@ -73,6 +73,6 @@ const dagJson = JSON.stringify({
 // ---------------------------------------------------------------------------
 
 // #region load
-// DAGDocument.load() throws ValidationError if JSON is malformed or schema fails.
+// DAGDocument.load() throws DAGError (code VALIDATION_ERROR) if JSON is malformed or schema fails.
 export const dag = DAGDocument.load(dagJson);
 // #endregion load

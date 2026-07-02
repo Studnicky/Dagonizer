@@ -26,8 +26,8 @@ export class WorkSetCheckpoint {
    * Read and validate the stored work-set progress blob from state metadata.
    *
    * Returns `undefined` when no blob is present (size-1 canonical run).
-   * Throws `ValidationError` when the stored value is present but does not
-   * satisfy `WorkSetProgressSchema`.
+   * Throws `DAGError` (code `VALIDATION_ERROR`) when the stored value is
+   * present but does not satisfy `WorkSetProgressSchema`.
    */
   static read(state: NodeStateInterface): WorkSetProgressType | undefined {
     const raw = state.getMetadata(WORKSET_PROGRESS_KEY);

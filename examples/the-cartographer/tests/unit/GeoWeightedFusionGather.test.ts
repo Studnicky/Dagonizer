@@ -125,7 +125,7 @@ class GeoFusionHarness {
       'state':    state,
       'records':  records,
       'dagName':  'test',
-      'signal':   null,
+      'signal':   new AbortController().signal,
       'accessor': accessor,
       'invoker':  { invokeNode: async (): Promise<void> => { /* no-op */ } },
     });

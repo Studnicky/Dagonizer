@@ -25,7 +25,7 @@ import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { ScatterAckedResultType, ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { Timeout } from '../entities/Timeout.js';
-import { DAGError, ExecutionError } from '../errors/index.js';
+import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
 
@@ -76,11 +76,11 @@ export interface ScatterDispatchAdapterInterface {
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
-  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType;
+  context(dagName: string, nodeName: string, signal: AbortSignal): NodeContextType;
   runNodes(
     dagName: string,
     state: NodeStateInterface,
@@ -111,11 +111,11 @@ export interface ScatterDispatchSourceInterface {
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult>;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
-  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType;
+  bodyContext(dagName: string, nodeName: string, signal: AbortSignal): NodeContextType;
   runScatterNodes(
     dagName: string,
     state: NodeStateInterface,
@@ -164,13 +164,13 @@ export class ScatterDispatchAdapter
 
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     fn: (sig: AbortSignal) => Promise<TResult>,
   ): Promise<TResult> {
     return this.#source.withNodeTimeout(node, signal, fn);
   }
 
-  context(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType {
+  context(dagName: string, nodeName: string, signal: AbortSignal): NodeContextType {
     return this.#source.bodyContext(dagName, nodeName, signal);
   }
 
@@ -214,7 +214,7 @@ export type ScatterRunContextType = {
   readonly scatter: ScatterNodeType;
   readonly state: NodeStateInterface;
   readonly dagName: string;
-  readonly signal: AbortSignal | null;
+  readonly signal: AbortSignal;
   readonly placementPath: readonly string[];
   readonly itemKey: string;
   readonly inbox: ScatterInboxItemType[];
@@ -410,8 +410,9 @@ export class ScatterPoolDriver
       // collected the error into cloneState; the throw is the scatter-only
       // re-queue policy (embedded routes the collected error instead).
       if (body.infrastructureError !== null) {
-        throw new ExecutionError(
+        throw new DAGError(
           `ScatterNode '${scatter.name}': container infrastructure failure — ${body.infrastructureError.message ?? 'transport lost'}`,
+          { 'code': 'EXECUTION_ERROR' },
         );
       }
 
@@ -555,9 +556,9 @@ export class ScatterPoolDriver
       const results: ScatterItemResultType[] = [];
       for (let i = 0; i < items.length; i++) {
         const buffered = items[i];
-        if (buffered === undefined) throw new ExecutionError(`ScatterDispatch: invariant — items[${i}] is undefined`);
+        if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
         const clone = clones[i];
-        if (clone === undefined) throw new ExecutionError(`ScatterDispatch: invariant — clones[${i}] is undefined`);
+        if (clone === undefined) throw new DAGError(`ScatterDispatch: invariant — clones[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
         for (const err of clone.errors) state.collectError(err);
         for (const warn of clone.warnings) state.collectWarning(warn);
         results.push({
@@ -650,7 +651,7 @@ export class ScatterPoolDriver
       // seam (inputBatch + terminalByItemId), mirroring the batch-native embedded
       // -DAG firing in runNodes. The per-item items live in `batch`; `repClone`
       // is a standalone clone supplied only to satisfy the `state` argument.
-      const childOptions: ExecuteOptionsType = { ...(signal !== null && { 'signal': signal }) };
+      const childOptions: ExecuteOptionsType = { 'signal': signal };
       const terminalByItemId = new Map<string, 'completed' | 'failed'>();
       const repClone = state.clone();
       const iter = this.#adapter.runNodes(batchBodyDagName, repClone, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': batch, terminalByItemId });
@@ -665,9 +666,9 @@ export class ScatterPoolDriver
       const results: ScatterItemResultType[] = [];
       for (let i = 0; i < items.length; i++) {
         const buffered = items[i];
-        if (buffered === undefined) throw new ExecutionError(`ScatterDispatch: invariant — items[${i}] is undefined`);
+        if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
         const clone = clones[i];
-        if (clone === undefined) throw new ExecutionError(`ScatterDispatch: invariant — clones[${i}] is undefined`);
+        if (clone === undefined) throw new DAGError(`ScatterDispatch: invariant — clones[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
         const terminalOutcome = terminalByItemId.get(String(buffered.index)) ?? null;
         const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
         const output = PlacementRouter.route(terminalOutcome, hasUnrecoverable);
@@ -713,7 +714,7 @@ export class ScatterPoolDriver
       for (let i = 0; i < items.length; i++) {
         const clone: NodeStateInterface = clones[i] ?? state;
         const buffered = items[i];
-        if (buffered === undefined) throw new ExecutionError(`ScatterDispatch: invariant — items[${i}] is undefined`);
+        if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
         const itemCorrelationId = this.#adapter.nextCorrelationId(batchBodyDagName);
         const itemContext = this.#adapter.context(batchBodyDagName, scatter.name, signal);
         const task = new DagTask(
@@ -733,8 +734,9 @@ export class ScatterPoolDriver
     for (const outcome of outcomes) {
       if (outcome.errors.some((e) => TransportErrorCode.isInfrastructureFailure(e.code))) {
         const infra = outcome.errors.find((e) => TransportErrorCode.isInfrastructureFailure(e.code));
-        throw new ExecutionError(
+        throw new DAGError(
           `ScatterNode '${scatter.name}': container infrastructure failure — ${infra?.message ?? 'transport lost'}`,
+          { 'code': 'EXECUTION_ERROR' },
         );
       }
     }
@@ -743,9 +745,9 @@ export class ScatterPoolDriver
     const results: ScatterItemResultType[] = [];
     for (let i = 0; i < items.length; i++) {
       const buffered = items[i];
-      if (buffered === undefined) throw new ExecutionError(`ScatterDispatch: invariant — items[${i}] is undefined`);
+      if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
       const clone = clones[i];
-      if (clone === undefined) throw new ExecutionError(`ScatterDispatch: invariant — clones[${i}] is undefined`);
+      if (clone === undefined) throw new DAGError(`ScatterDispatch: invariant — clones[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
       const outcome = outcomes.find((o) => o.id === String(buffered.index));
 
       if (outcome === undefined) {
@@ -842,7 +844,7 @@ export class ScatterPoolDriver
     let writeIdx = 0;
     for (let readIdx = 0; readIdx < inbox.length; readIdx++) {
       const entry = inbox[readIdx];
-      if (entry === undefined) throw new ExecutionError(`ScatterDispatch: invariant — inbox[${readIdx}] is undefined`);
+      if (entry === undefined) throw new DAGError(`ScatterDispatch: invariant — inbox[${readIdx}] is undefined`, { 'code': 'EXECUTION_ERROR' });
       if (!toRemove.has(entry.index)) {
         inbox[writeIdx++] = entry;
       }

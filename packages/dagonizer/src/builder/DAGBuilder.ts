@@ -23,7 +23,7 @@ import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { TerminalNodeType } from '../entities/dag/TerminalNode.js';
-import { ConfigurationError } from '../errors/index.js';
+import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { PathType } from './PathType.js';
@@ -413,7 +413,7 @@ export class DAGBuilder {
    */
   build(): DAGType {
     if (this.#entrypoint === null) {
-      throw new ConfigurationError(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint; call .entrypoint() or add at least one node first`);
+      throw new DAGError(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint; call .entrypoint() or add at least one node first`, { 'code': 'CONFIGURATION_ERROR' });
     }
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
