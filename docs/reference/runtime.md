@@ -21,7 +21,6 @@ import {
   RealTimeScheduler,
   RetryPolicy,
   Scheduler,
-  SignalComposer,
 } from '@studnicky/dagonizer/runtime';
 import type {
   ClockProviderInterface,
@@ -30,6 +29,7 @@ import type {
   SchedulerProviderInterface,
   StateAccessorInterface,
 } from '@studnicky/dagonizer/runtime';
+import { Signal } from '@studnicky/signal';
 ```
 
 ---
@@ -179,7 +179,7 @@ const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategyNames
 const shouldRetry: boolean = policy.shouldRetry(new Error('oops'), 1);
 ```
 
-Decision predicate. Override for conditional logic beyond the `retryOn` / `abortOn` lists.
+Decision predicate. Order: `abortOn` match stops retrying; `retryOn` (when set) must match to retry; with no `retryOn` filter, a `DAGError` falls back to its own `error.retryable` field; otherwise retry. See [Guide: Retry — Error filtering](../guide/retry#error-filtering) for the full precedence and [Composing with adapter resilience](../guide/retry#composing-with-adapter-resilience) for `abortOn: [CircuitBreakerOpenError, TokenBucketExhaustedError]` guidance. Override `shouldRetry` for conditional logic beyond `retryOn` / `abortOn`.
 
 ---
 
@@ -200,29 +200,31 @@ type BackoffStrategy = (typeof BackoffStrategyNames)[keyof typeof BackoffStrateg
 
 ---
 
-## Class: `SignalComposer`
+## Class: `Signal` (`@studnicky/signal`)
 
-Fold `signal` and `deadlineMs` from `ExecuteOptionsType` into a single `AbortSignal`. Static class.
+Fold `signal` and `deadlineMs` from `ExecuteOptionsType` into a single `AbortSignal`. Static class, imported from the `@studnicky/signal` package (a dependency of `@studnicky/dagonizer`, not re-exported from `./runtime`).
 
-### `SignalComposer.compose(options)`
+### `Signal.compose(options)`
 
 ```ts twoslash
-import { SignalComposer } from '@studnicky/dagonizer/runtime';
 import type { ExecuteOptionsType } from '@studnicky/dagonizer/contracts';
+import { Signal } from '@studnicky/signal';
 // ---cut---
 declare const ctrl: AbortController;
 declare const url: string;
-const signal = SignalComposer.compose({ signal: ctrl.signal, deadlineMs: 5000 });
-if (signal !== null) {
-  await fetch(url, { signal });
-}
+const signal = Signal.compose({ signal: ctrl.signal, deadlineMs: 5000 });
+await fetch(url, { signal });
 ```
 
-- Neither field supplied: returns `null`.
+- Neither field supplied: returns `Signal.never()` (a never-aborting sentinel — always a valid `AbortSignal`, never `null`).
 - One field supplied: returns that signal directly.
 - Both supplied: returns `AbortSignal.any([signal, AbortSignal.timeout(deadlineMs)])`.
 
-`deadlineMs` is wired through `AbortSignal.timeout()`, which surfaces a platform `TimeoutError` as the abort reason. `Dagonizer` inspects that reason to mark the lifecycle `timed_out` rather than `cancelled`.
+`deadlineMs` is wired through `AbortSignal.timeout()`, which surfaces a platform `TimeoutError` as the abort reason. `Dagonizer` inspects that reason to mark the lifecycle `timed_out` rather than `cancelled`. A negative or `NaN` `deadlineMs` throws `SignalError`.
+
+### `Signal.never()`
+
+Returns a cached, never-aborting `AbortSignal`. Used throughout the engine wherever a run has no caller-supplied cancellation surface, so every node context carries a valid signal — never `null`.
 
 ---
 

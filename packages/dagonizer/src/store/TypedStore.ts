@@ -11,7 +11,7 @@
  * record; `get`/`update` call `validator.validate(raw)` on each read, and the
  * validator IS the type-guard (an Ajv `ValidateFunction<Schema[K]>`), so the
  * typed value is produced without a cast. A stored value that does not match
- * its key's schema throws a `ValidationError` on read. For raw, unvalidated
+ * its key's schema throws a `DAGError` (code `VALIDATION_ERROR`) on read. For raw, unvalidated
  * access, use the underlying `StoreInterface` (`typedStore.inner`).
  *
  * `Schema` is constrained so every value type must extend `JsonValueType`.

@@ -21,6 +21,7 @@ import type { NodeContextType } from '../../entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
 import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
+import { DAGError } from '../../errors/DAGError.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 /**
@@ -110,7 +111,7 @@ export abstract class BuildToolWorksetsNode<
       this.writeExclusiveWorkset(state, exclusiveItems, context);
       return NodeOutputBuilder.of('ready');
     } catch (cause) {
-      const error = cause instanceof Error ? cause : new Error(String(cause));
+      const error = DAGError.coerce(cause);
       return NodeOutputBuilder.of('error', {
         'errors': [
           NodeErrorBuilder.from(

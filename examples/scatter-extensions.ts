@@ -47,7 +47,7 @@ const dag: DAGType = {
       body:         { node: 'score' },
       source:       'items',
       itemKey:      'item',
-      concurrency:  5,
+      execution: { mode: 'item', concurrency: 5 },
       reducer:      'threshold-75',    // custom OutcomeReducer: >= 75% success
       gather: {
         strategy: 'top-n',            // custom GatherStrategy: top-3 by score

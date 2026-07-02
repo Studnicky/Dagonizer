@@ -12,6 +12,8 @@
  * string — so there is zero per-dispatch overhead from graph work.
  */
 
+import { Predicates } from '@studnicky/predicates';
+
 import { DAGError } from '../errors/DAGError.js';
 
 export class ContextResolver {
@@ -44,7 +46,7 @@ export class ContextResolver {
    * via a type-guard predicate — no `as` casts. Arrays and `null` are excluded.
    */
   static isContext(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
+    return Predicates.matchesType('object', value);
   }
 
   /**

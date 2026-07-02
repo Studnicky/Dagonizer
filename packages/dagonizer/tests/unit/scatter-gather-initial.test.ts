@@ -99,7 +99,7 @@ class TestGatherInitialDag {
           'body':  { 'node': 'worker' },
           'source':  'items',
           'itemKey': 'item',
-          'concurrency': 1,
+          'execution': { 'mode': 'item', 'concurrency': 1 },
           'gather': { 'strategy': strategyName },
           'outputs': {
             'all-success': 'end',

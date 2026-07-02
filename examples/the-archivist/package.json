@@ -29,7 +29,8 @@
     "@studnicky/dagonizer-embedder-web-llm": "workspace:^",
     "@studnicky/dagonizer-tool-googlebooks": "workspace:^",
     "@studnicky/dagonizer-tool-openlibrary": "workspace:^",
-    "@studnicky/dagonizer-tool-wikipedia": "workspace:^"
+    "@studnicky/dagonizer-tool-wikipedia": "workspace:^",
+    "@studnicky/logger": "^4.0.0"
   },
   "devDependencies": {
     "fake-indexeddb": "^6.0.0",

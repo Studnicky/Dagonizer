@@ -5,7 +5,7 @@
  * Static class; namespaced sub-validators per entity:
  *
  *   Validator.dag.is(x):       type predicate
- *   Validator.dag.validate(x): narrow or throw ValidationError
+ *   Validator.dag.validate(x): narrow or throw DAGError (code VALIDATION_ERROR)
  *   Validator.dag.errors(x):   formatted error strings or null
  *
  * Every top-level entity schema in `entities/` ships with a
@@ -51,8 +51,6 @@ import type { SingleNodeType } from '../entities/dag/SingleNode.js';
 import { SingleNodeSchema } from '../entities/dag/SingleNode.js';
 import type { TerminalNodeType } from '../entities/dag/TerminalNode.js';
 import { TerminalNodeSchema } from '../entities/dag/TerminalNode.js';
-import { DAGErrorJSONSchema } from '../entities/errors/DAGErrorJSON.js';
-import type { DAGErrorJSONType } from '../entities/errors/DAGErrorJSON.js';
 import { ExecutionResultSchema, InterruptionInfoSchema } from '../entities/execution/ExecutionResult.js';
 import type { ExecutionResultWireType, InterruptionInfoType } from '../entities/execution/ExecutionResult.js';
 import { ParkedSchema } from '../entities/execution/Parked.js';
@@ -111,7 +109,7 @@ import {
   WorkSetItemSchema,
   WorkSetProgressSchema,
 } from '../entities/workset/WorkSetProgress.js';
-import { ValidationError } from '../errors/DAGError.js';
+import { DAGError } from '../errors/DAGError.js';
 
 import { sharedAjv } from './sharedAjv.js';
 
@@ -119,7 +117,7 @@ import { sharedAjv } from './sharedAjv.js';
 export interface EntityValidatorInterface<T> {
   /** Type predicate. Returns true when value satisfies the schema. */
   is(value: unknown): value is T;
-  /** Throws ValidationError if invalid; returns value narrowed to T on success. */
+  /** Throws DAGError (code VALIDATION_ERROR) if invalid; returns value narrowed to T on success. */
   validate(value: unknown): T;
   /** Returns formatted error strings, or null if valid. */
   errors(value: unknown): string[] | null;
@@ -151,7 +149,7 @@ export class Validator {
    * (adapters, embedders, tools) validate their own external wire/host
    * shapes through this method; they never instantiate their own Ajv.
    *
-   * The validator name surfaced in thrown `ValidationError` messages is
+   * The validator name surfaced in thrown `DAGError` messages is
    * derived from the schema's `$id`. Schemas already registered (because
    * they were compiled before, or inlined in a parent that compiled
    * first) are looked up rather than recompiled.
@@ -196,9 +194,9 @@ export class Validator {
       validate(value): T {
         if (validator(value)) return value;
         const ajvErrors: readonly ErrorObject[] = validator.errors ?? [];
-        throw new ValidationError(
+        throw new DAGError(
           `Invalid ${name}:\n  - ${Validator.formatErrors(ajvErrors).join('\n  - ')}`,
-          { 'context': { ajvErrors } },
+          { 'code': 'VALIDATION_ERROR', 'context': { ajvErrors } },
         );
       },
       errors(value): string[] | null {
@@ -237,7 +235,6 @@ export class Validator {
   // Persistence + reporting
   static readonly checkpoint:       EntityValidatorInterface<CheckpointDataType>    = Validator.compileNamed('CheckpointData',    CheckpointDataSchema);
   static readonly validationResult: EntityValidatorInterface<ValidationResultType>  = Validator.compileNamed('ValidationResult',  ValidationResultSchema);
-  static readonly dagErrorJson:     EntityValidatorInterface<DAGErrorJSONType>      = Validator.compileNamed('DAGErrorJSON',      DAGErrorJSONSchema);
 
   // Hand-off channels
   static readonly dagHandoff: EntityValidatorInterface<DAGHandoffType> = Validator.compileNamed('DAGHandoff', DAGHandoffSchema);

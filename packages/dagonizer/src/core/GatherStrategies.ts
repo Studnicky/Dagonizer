@@ -41,6 +41,8 @@ import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
+import { Registry } from './Registry.js';
+
 
 export type { GatherExecutionType, GatherRecordType };
 
@@ -271,74 +273,15 @@ const BUILTIN_STRATEGIES: ReadonlyArray<GatherStrategy> = [
 ];
 
 /**
- * Static registry of `GatherStrategy` instances. Defaults register at
- * module load. Consumers add more via `GatherStrategies.register`.
+ * Registry of `GatherStrategy` instances, extending the shared `Registry`
+ * base. Defaults register at construction. Consumers add more via
+ * `GatherStrategies.register`.
  */
-export class GatherStrategies {
-  private constructor() { /* static class */ }
-
-  private static readonly registry = new Map<string, GatherStrategy>(
-    BUILTIN_STRATEGIES.map((s) => [s.name, s]),
-  );
-
-  /**
-   * Register a strategy. Throws `DAGError` when a strategy with the same
-   * `name` is already registered — protects against silent overwrite of
-   * built-ins or consumer-registered strategies. Use `replace()` for
-   * intentional overrides (e.g. test-time substitution).
-   */
-  static register(strategy: GatherStrategy): void {
-    if (GatherStrategies.registry.has(strategy.name)) {
-      throw new DAGError(`GatherStrategy '${strategy.name}' is already registered; use GatherStrategies.replace() to intentionally override`);
-    }
-    GatherStrategies.registry.set(strategy.name, strategy);
-  }
-
-  /**
-   * Explicitly replace an existing registration. Does not throw when the
-   * name is already present. Use this for intentional test-time or
-   * plugin-override substitution where overwriting an existing entry is
-   * the deliberate goal.
-   */
-  static replace(strategy: GatherStrategy): void {
-    GatherStrategies.registry.set(strategy.name, strategy);
-  }
-
-  /**
-   * Remove a previously registered strategy by name. No-op if the name is
-   * not present. Used in test `afterEach` to undo `register` calls and
-   * prevent cross-test pollution of the global registry.
-   */
-  static unregister(name: string): void {
-    GatherStrategies.registry.delete(name);
-  }
-
-  /**
-   * Reset the registry to the built-in strategies, discarding any
-   * consumer-registered entries. Used in test `afterEach` to restore a clean
-   * baseline.
-   */
-  static reset(): void {
-    GatherStrategies.registry.clear();
-    for (const s of BUILTIN_STRATEGIES) {
-      GatherStrategies.registry.set(s.name, s);
-    }
-  }
-
-  /**
-   * Resolve a strategy by name. Throws `DAGError` when no strategy is
-   * registered under `name`.
-   */
-  static resolve(name: string): GatherStrategy {
-    const strategy = GatherStrategies.registry.get(name);
-    if (strategy === undefined) {
-      throw new DAGError(`Unknown gather strategy: ${name}`);
-    }
-    return strategy;
-  }
-
-  /** Names of every registered strategy, in registration order. */
-  static list(): readonly string[] {
-    return [...GatherStrategies.registry.keys()];
+class GatherStrategyRegistry extends Registry<GatherStrategy> {
+  constructor() {
+    super(BUILTIN_STRATEGIES, 'GatherStrategy', 'GatherStrategies', 'gather strategy');
   }
 }
+
+/** Singleton registry instance; the public surface consumers call into. */
+export const GatherStrategies = new GatherStrategyRegistry();

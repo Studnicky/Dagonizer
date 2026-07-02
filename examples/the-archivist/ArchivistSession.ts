@@ -35,6 +35,7 @@
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { ObservedDag } from '@studnicky/dagonizer';
 import type { DagLoggerInterface } from '@studnicky/dagonizer';
+import { LogBody } from '@studnicky/logger';
 import { ToolInvocationState, ToolRegistry } from '@studnicky/dagonizer/tool';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 import type { ExecuteOptionsType } from '@studnicky/dagonizer/contracts';
@@ -69,6 +70,7 @@ import { MobileDetection } from './providers/MobileDetection.ts';
 import { RdfProvObserver } from './provenance/RdfProvObserver.ts';
 import type { ArchivistServices, LlmClientInterface } from './services.ts';
 import { StateProjection } from './state/StateProjection.ts';
+import { UserLanguage } from './language/UserLanguage.ts';
 
 // ── Static fallback pools ────────────────────────────────────────────────────
 // Single source of truth: previously duplicated in ArchivistRunner.vue.
@@ -181,6 +183,14 @@ export interface ArchivistSessionOptions {
   readonly timeoutSettings?: Partial<SessionTimeoutSettings>;
   /** Pre-built LlmClientInterface; bypasses BackendMatrix when set. */
   readonly llm?: LlmClientInterface;
+  /**
+   * Visitor's device language (ISO 639-1), threaded into the LLM client's
+   * prompts and into `ArchivistState.userLanguage` (tool-arg language
+   * restriction, candidate language filtering). Defaults to
+   * `UserLanguage.detect()` (browser `navigator.language`, Node
+   * `process.env.LANG`, else `'en'`) when not supplied.
+   */
+  readonly visitorLanguage?: string;
 }
 
 // ── Node-trace dispatch map ──────────────────────────────────────────────────
@@ -238,8 +248,8 @@ class SessionObserver extends ObservedDag<ArchivistState> {
     this.#shownErrorCount = 0;
   }
 
-  protected override onFlowStart(dagName: string): void {
-    super.onFlowStart(dagName);
+  protected override onFlowStart(dagName: string, state: ArchivistState, signal: AbortSignal): void {
+    super.onFlowStart(dagName, state, signal);
     this.#prov.recordFlowStart(dagName);
     this.#sink.pumpFlowStart(dagName);
   }
@@ -248,8 +258,9 @@ class SessionObserver extends ObservedDag<ArchivistState> {
     nodeName: string,
     state: ArchivistState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onNodeStart(nodeName, state, placementPath);
+    super.onNodeStart(nodeName, state, placementPath, signal);
     this.#prov.recordNodeStart(nodeName);
     this.#sink.pumpNodeStart(nodeName, placementPath);
   }
@@ -259,8 +270,9 @@ class SessionObserver extends ObservedDag<ArchivistState> {
     output: string | null,
     state: ArchivistState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onNodeEnd(nodeName, output, state, placementPath);
+    super.onNodeEnd(nodeName, output, state, placementPath, signal);
 
     // Surface routed-to-'error' failures collected on top-level state.
     // Tolerated tool-clone failures (toolExecutionFailed) are filtered: they
@@ -288,8 +300,9 @@ class SessionObserver extends ObservedDag<ArchivistState> {
     error: Error,
     state: ArchivistState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onError(nodeName, error, state, placementPath);
+    super.onError(nodeName, error, state, placementPath, signal);
     this.#prov.recordError(nodeName, error);
     this.#sink.pumpError(nodeName, error, placementPath);
   }
@@ -308,8 +321,9 @@ class SessionObserver extends ObservedDag<ArchivistState> {
     dagName: string,
     state: ArchivistState,
     result: ExecutionResultType<ArchivistState>,
+    signal: AbortSignal,
   ): void {
-    super.onFlowEnd(dagName, state, result);
+    super.onFlowEnd(dagName, state, result, signal);
     this.#prov.recordFlowEnd(state.lifecycle.variant);
     this.#sink.pumpFlowEnd(dagName, state, result);
   }
@@ -341,6 +355,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   // ── Session config (mutable via set* methods) ─────────────────────────────
   protected conversationContextWindow: number;
   protected timeoutSettings: SessionTimeoutSettings;
+  protected visitorLanguage: string;
 
   // ── Backend state ─────────────────────────────────────────────────────────
   protected activeBackend: ProviderId | null;
@@ -363,6 +378,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     this.store                   = store;
     this.logger                  = logger;
     this.conversationContextWindow = options.conversationContextWindow ?? 6;
+    this.visitorLanguage         = options.visitorLanguage ?? UserLanguage.detect();
     this.timeoutSettings         = {
       composeMs:   options.timeoutSettings?.composeMs   ?? DEFAULT_TIMEOUT_SETTINGS.composeMs,
       webSearchMs: options.timeoutSettings?.webSearchMs ?? DEFAULT_TIMEOUT_SETTINGS.webSearchMs,
@@ -523,15 +539,31 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
 
     if (savedEntry !== null && savedEntry.runnable) {
       this.activeBackend = savedEntry.id;
-      this.logger.info(`backend from saved preference: ${savedEntry.id}`);
+      this.logger.info(
+        LogBody.create()
+          .component('archivist')
+          .operation('backend-select')
+          .status('complete')
+          .message(`backend from saved preference: ${savedEntry.id}`)
+          .context({ 'backendId': savedEntry.id, 'source': 'saved-preference' })
+          .build(),
+      );
     } else {
       const picked = BackendMatrix.pickBest(this.backends, { 'isMobile': this.isMobile });
       if (picked !== null) {
         this.activeBackend = picked.id;
         this.logger.info(
-          savedId === null
-            ? `backend auto-selected: ${picked.displayName}`
-            : `saved preference "${savedId}" unavailable; defaulting to ${picked.displayName}`,
+          LogBody.create()
+            .component('archivist')
+            .operation('backend-select')
+            .status('complete')
+            .message(
+              savedId === null
+                ? `backend auto-selected: ${picked.displayName}`
+                : `saved preference "${savedId}" unavailable; defaulting to ${picked.displayName}`,
+            )
+            .context({ 'backendId': picked.id, 'source': savedId === null ? 'auto' : 'fallback' })
+            .build(),
         );
       }
     }
@@ -641,6 +673,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     const visitor = new ArchivistState();
     visitor.query    = query;
     visitor.runId    = runId;
+    visitor.userLanguage = this.visitorLanguage;
     visitor.conversation = this.conversation
       .slice(-this.conversationContextWindow)
       .map((t) => ({ 'role': t.role, 'text': t.text, 'ts': t.ts }));
@@ -835,7 +868,17 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       // Log per-node supplemental summary via the dispatch map.
       if (state instanceof ArchivistState) {
         const supplement = NODE_TRACE_MESSAGES[nodeName]?.(state);
-        if (supplement !== undefined) this.logger.info(supplement);
+        if (supplement !== undefined) {
+          this.logger.info(
+            LogBody.create()
+              .component('archivist')
+              .operation('node-summary')
+              .status('complete')
+              .message(supplement)
+              .context({ nodeName })
+              .build(),
+          );
+        }
       }
     }
 
@@ -1026,8 +1069,9 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       ? this.ollamaModel
       : (this.backends.find((b) => b.id === this.activeBackend)?.resolvedModel ?? '');
     return ProviderInstantiator.instantiate(this.activeBackend, {
-      'apiKeys': this.apiKeys,
-      'model':   model,
+      'apiKeys':  this.apiKeys,
+      'model':    model,
+      'language': this.visitorLanguage,
       ...(this.intentClassifier !== null ? { 'intentClassifier': this.intentClassifier } : {}),
     });
   }

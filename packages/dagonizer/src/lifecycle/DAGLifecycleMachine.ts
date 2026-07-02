@@ -1,6 +1,6 @@
 /**
- * DAGLifecycleMachine: pure reducer + initial-state factory + terminal
- * predicate for the lifecycle defined in `DAGLifecycleStateType.ts`.
+ * DAGLifecycleMachine: `@studnicky/fsm` `StateMachine` subclass + static
+ * facade for the lifecycle defined in `DAGLifecycleState.ts`.
  *
  * Side-effect-free: no IO, no logging. The `at` field on each event carries
  * the monotonic clock value; callers supply it explicitly (production callers
@@ -17,71 +17,67 @@
  *   awaiting-input + start              → running        (restarts execution)
  *
  * Terminal stickiness: every variant in {completed, failed, cancelled, timed_out}
- * ignores all events and returns itself unchanged (by reference).
+ * rejects all events. The `awaiting-input` variant is NOT terminal — execution
+ * can resume. `isTerminal()` excludes it; `isParked()` detects it.
  *
- * The `awaiting-input` variant is NOT terminal — execution can resume.
- * `isTerminal()` excludes it; `isParked()` detects it.
+ * `DAGLifecycleMachineReducer.reduce()` throws for both terminal stickiness
+ * and illegal transitions from an active state; `StateMachine.transition()`
+ * (the `@studnicky/fsm` base class) wraps that throw in a `ReducerThrewError`.
+ * `NodeStateBase.#dispatch` catches it and re-throws as a `DAGError`.
  *
- * Illegal transitions return the input state by reference. `NodeStateBase`
- * detects `next === current` after dispatch and throws a `DAGError`.
+ * `DAGLifecycleMachine` is a thin static facade over one module-level
+ * `DAGLifecycleMachineReducer` singleton — the established pattern in this
+ * codebase for exposing a stateless-FSM-logic instance through static call
+ * sites (mirrors `Clock`/`Scheduler`). The reducer logic itself lives on the
+ * real `StateMachine` subclass, not reimplemented in the facade.
  */
+
+import type { FsmStepType } from '@studnicky/fsm';
+import { StateMachine } from '@studnicky/fsm';
 
 import type {
   DAGLifecycleEventType,
   DAGLifecycleStateType,
 } from './DAGLifecycleState.js';
 
-type StateVariant = DAGLifecycleStateType['variant'];
+type ActiveVariant = 'pending' | 'running' | 'awaiting-input';
+type TerminalVariant = 'completed' | 'failed' | 'cancelled' | 'timed_out';
+type ActiveState = Extract<DAGLifecycleStateType, { variant: ActiveVariant }>;
 type EventType = DAGLifecycleEventType['type'];
-type Handler<K extends StateVariant, T extends EventType> = (
-  state: Extract<DAGLifecycleStateType, { variant: K }>,
-  event: Extract<DAGLifecycleEventType, { type: T }>,
-) => DAGLifecycleStateType;
+type Handler = (state: ActiveState, event: DAGLifecycleEventType) => DAGLifecycleStateType;
 
 /**
- * Pure reducer for `DAGLifecycleStateType`. Static class; never
- * instantiated. Use `initial()` to seed a new state and `transition()` to
- * advance it. Illegal transitions return the input state unchanged;
- * `NodeStateBase.dispatch` detects the identity return and throws.
+ * Real `@studnicky/fsm` `StateMachine` subclass carrying the lifecycle
+ * reducer logic. Never instantiated directly by consumers; `DAGLifecycleMachine`
+ * (the static facade below) holds the one module-level singleton.
  */
-export class DAGLifecycleMachine {
-  private constructor() {
-    /* utility class; never instantiated */
+class DAGLifecycleMachineReducer extends StateMachine<DAGLifecycleStateType, DAGLifecycleEventType, never> {
+  constructor() {
+    super();
   }
 
-  static initial(): DAGLifecycleStateType {
+  getInitialState(): DAGLifecycleStateType {
     return { 'variant': 'pending', 'startedAt': null, 'finishedAt': null, 'error': null, 'reason': null, 'correlationKey': null };
   }
 
-  static transition(
-    state: DAGLifecycleStateType,
-    event: DAGLifecycleEventType,
-  ): DAGLifecycleStateType {
-    // Terminal stickiness: delegate to `isTerminal` — the single source of
-    // truth for which variants are terminal so the two sites never diverge.
-    if (DAGLifecycleMachine.isTerminal(state)) {
-      return state;
+  reduce(state: DAGLifecycleStateType, event: DAGLifecycleEventType): FsmStepType<DAGLifecycleStateType, never> {
+    if (DAGLifecycleMachineReducer.isTerminalState(state)) {
+      throw new Error(`Illegal transition: '${event.type}' on terminal lifecycle state '${state.variant}'`);
     }
 
-    // `isTerminal` is a type-predicate, so the early return above narrows
-    // `state` to the active (pending | running | awaiting-input) variants — no cast.
-    type ActiveState = Extract<DAGLifecycleStateType, { variant: 'pending' | 'running' | 'awaiting-input' }>;
+    // `isTerminalState` is a type-predicate; the guard above narrows `state`
+    // to the active (pending | running | awaiting-input) variants — no cast.
     const activeState: ActiveState = state;
-    // The TRANSITION_TABLE is keyed on `ActiveState['variant']` × `EventType`,
-    // but the index signature returns `Handler<K,T> | undefined`. The wider
-    // cast to a plain `(state, event) => DAGLifecycleStateType` is necessary
-    // because the generic K/T are not propagatable through a dynamic index
-    // lookup; the shape is structurally identical at runtime.
-    const transition = DAGLifecycleMachine.TRANSITION_TABLE[activeState.variant][event.type] as
-      | ((state: ActiveState, event: DAGLifecycleEventType) => DAGLifecycleStateType)
-      | undefined;
-    return transition ? transition(activeState, event) : state;
+    const handler = DAGLifecycleMachineReducer.TRANSITION_TABLE[activeState.variant][event.type];
+    if (handler === undefined) {
+      throw new Error(`Illegal transition: '${event.type}' from lifecycle state '${activeState.variant}'`);
+    }
+
+    return { 'state': handler(activeState, event), 'effects': [] };
   }
 
   /** True iff `state` has reached one of the four terminal variants. `awaiting-input` is NOT terminal. */
-  static isTerminal(
-    state: DAGLifecycleStateType,
-  ): state is Extract<DAGLifecycleStateType, { variant: 'completed' | 'failed' | 'cancelled' | 'timed_out' }> {
+  static isTerminalState(state: DAGLifecycleStateType): state is Extract<DAGLifecycleStateType, { variant: TerminalVariant }> {
     return (
       state.variant === 'completed'
       || state.variant === 'failed'
@@ -91,23 +87,21 @@ export class DAGLifecycleMachine {
   }
 
   /** True iff `state` is parked (`awaiting-input`). The run can resume via `dispatcher.resume()`. */
-  static isParked(
-    state: DAGLifecycleStateType,
-  ): state is Extract<DAGLifecycleStateType, { variant: 'awaiting-input' }> {
+  static isParkedState(state: DAGLifecycleStateType): state is Extract<DAGLifecycleStateType, { variant: 'awaiting-input' }> {
     return state.variant === 'awaiting-input';
   }
 
-  private static handlePendingStart(
-    _state: Extract<DAGLifecycleStateType, { variant: 'pending' }>,
-    event: Extract<DAGLifecycleEventType, { type: 'start' }>,
-  ): DAGLifecycleStateType {
+  private static handlePendingStart(state: ActiveState, event: DAGLifecycleEventType): DAGLifecycleStateType {
+    if (state.variant !== 'pending' || event.type !== 'start') {
+      throw new Error('DAGLifecycleMachine dispatch invariant violated: expected pending state and start event');
+    }
     return { 'variant': 'running', 'startedAt': event.at, 'finishedAt': null, 'error': null, 'reason': null, 'correlationKey': null };
   }
 
-  private static handleRunningSucceed(
-    state: Extract<DAGLifecycleStateType, { variant: 'running' }>,
-    event: Extract<DAGLifecycleEventType, { type: 'succeed' }>,
-  ): DAGLifecycleStateType {
+  private static handleRunningSucceed(state: ActiveState, event: DAGLifecycleEventType): DAGLifecycleStateType {
+    if (state.variant !== 'running' || event.type !== 'succeed') {
+      throw new Error('DAGLifecycleMachine dispatch invariant violated: expected running state and succeed event');
+    }
     return {
       'variant': 'completed',
       'startedAt': state.startedAt,
@@ -118,10 +112,10 @@ export class DAGLifecycleMachine {
     };
   }
 
-  private static handleRunningFail(
-    state: Extract<DAGLifecycleStateType, { variant: 'running' }>,
-    event: Extract<DAGLifecycleEventType, { type: 'fail' }>,
-  ): DAGLifecycleStateType {
+  private static handleRunningFail(state: ActiveState, event: DAGLifecycleEventType): DAGLifecycleStateType {
+    if (state.variant !== 'running' || event.type !== 'fail') {
+      throw new Error('DAGLifecycleMachine dispatch invariant violated: expected running state and fail event');
+    }
     return {
       'variant': 'failed',
       'startedAt': state.startedAt,
@@ -132,10 +126,10 @@ export class DAGLifecycleMachine {
     };
   }
 
-  private static handleRunningCancel(
-    state: Extract<DAGLifecycleStateType, { variant: 'running' }>,
-    event: Extract<DAGLifecycleEventType, { type: 'cancel' }>,
-  ): DAGLifecycleStateType {
+  private static handleRunningCancel(state: ActiveState, event: DAGLifecycleEventType): DAGLifecycleStateType {
+    if (state.variant !== 'running' || event.type !== 'cancel') {
+      throw new Error('DAGLifecycleMachine dispatch invariant violated: expected running state and cancel event');
+    }
     return {
       'variant': 'cancelled',
       'startedAt': state.startedAt,
@@ -146,10 +140,10 @@ export class DAGLifecycleMachine {
     };
   }
 
-  private static handleRunningTimeout(
-    state: Extract<DAGLifecycleStateType, { variant: 'running' }>,
-    event: Extract<DAGLifecycleEventType, { type: 'timeout' }>,
-  ): DAGLifecycleStateType {
+  private static handleRunningTimeout(state: ActiveState, event: DAGLifecycleEventType): DAGLifecycleStateType {
+    if (state.variant !== 'running' || event.type !== 'timeout') {
+      throw new Error('DAGLifecycleMachine dispatch invariant violated: expected running state and timeout event');
+    }
     return {
       'variant': 'timed_out',
       'startedAt': state.startedAt,
@@ -160,10 +154,10 @@ export class DAGLifecycleMachine {
     };
   }
 
-  private static handleRunningPark(
-    state: Extract<DAGLifecycleStateType, { variant: 'running' }>,
-    event: Extract<DAGLifecycleEventType, { type: 'park' }>,
-  ): DAGLifecycleStateType {
+  private static handleRunningPark(state: ActiveState, event: DAGLifecycleEventType): DAGLifecycleStateType {
+    if (state.variant !== 'running' || event.type !== 'park') {
+      throw new Error('DAGLifecycleMachine dispatch invariant violated: expected running state and park event');
+    }
     return {
       'variant': 'awaiting-input',
       'startedAt': state.startedAt,
@@ -174,26 +168,65 @@ export class DAGLifecycleMachine {
     };
   }
 
-  private static handleAwaitingInputStart(
-    _state: Extract<DAGLifecycleStateType, { variant: 'awaiting-input' }>,
-    event: Extract<DAGLifecycleEventType, { type: 'start' }>,
-  ): DAGLifecycleStateType {
+  private static handleAwaitingInputStart(state: ActiveState, event: DAGLifecycleEventType): DAGLifecycleStateType {
+    if (state.variant !== 'awaiting-input' || event.type !== 'start') {
+      throw new Error('DAGLifecycleMachine dispatch invariant violated: expected awaiting-input state and start event');
+    }
     return { 'variant': 'running', 'startedAt': event.at, 'finishedAt': null, 'error': null, 'reason': null, 'correlationKey': null };
   }
 
-  private static readonly TRANSITION_TABLE: { [K in 'pending' | 'running' | 'awaiting-input']: { [T in EventType]?: Handler<K, T> } } = {
+  private static readonly TRANSITION_TABLE: { [K in ActiveVariant]: { [T in EventType]?: Handler } } = {
     'pending': {
-      'start': DAGLifecycleMachine.handlePendingStart,
+      'start': DAGLifecycleMachineReducer.handlePendingStart,
     },
     'running': {
-      'succeed': DAGLifecycleMachine.handleRunningSucceed,
-      'fail': DAGLifecycleMachine.handleRunningFail,
-      'cancel': DAGLifecycleMachine.handleRunningCancel,
-      'timeout': DAGLifecycleMachine.handleRunningTimeout,
-      'park': DAGLifecycleMachine.handleRunningPark,
+      'succeed': DAGLifecycleMachineReducer.handleRunningSucceed,
+      'fail': DAGLifecycleMachineReducer.handleRunningFail,
+      'cancel': DAGLifecycleMachineReducer.handleRunningCancel,
+      'timeout': DAGLifecycleMachineReducer.handleRunningTimeout,
+      'park': DAGLifecycleMachineReducer.handleRunningPark,
     },
     'awaiting-input': {
-      'start': DAGLifecycleMachine.handleAwaitingInputStart,
+      'start': DAGLifecycleMachineReducer.handleAwaitingInputStart,
     },
   };
+}
+
+const reducer: DAGLifecycleMachineReducer = new DAGLifecycleMachineReducer();
+
+/**
+ * Static facade over the `DAGLifecycleMachineReducer` singleton. Use
+ * `initial()` to seed a new state and `transition()` to advance it. Illegal
+ * transitions throw (via `StateMachine.transition()`'s `ReducerThrewError`
+ * wrapping); `NodeStateBase.#dispatch` catches and re-throws as a `DAGError`.
+ */
+export class DAGLifecycleMachine {
+  private constructor() {
+    /* utility class; never instantiated */
+  }
+
+  static initial(): DAGLifecycleStateType {
+    return reducer.getInitialState();
+  }
+
+  static transition(
+    state: DAGLifecycleStateType,
+    event: DAGLifecycleEventType,
+  ): DAGLifecycleStateType {
+    return reducer.transition(state, event).state;
+  }
+
+  /** True iff `state` has reached one of the four terminal variants. `awaiting-input` is NOT terminal. */
+  static isTerminal(
+    state: DAGLifecycleStateType,
+  ): state is Extract<DAGLifecycleStateType, { variant: TerminalVariant }> {
+    return DAGLifecycleMachineReducer.isTerminalState(state);
+  }
+
+  /** True iff `state` is parked (`awaiting-input`). The run can resume via `dispatcher.resume()`. */
+  static isParked(
+    state: DAGLifecycleStateType,
+  ): state is Extract<DAGLifecycleStateType, { variant: 'awaiting-input' }> {
+    return DAGLifecycleMachineReducer.isParkedState(state);
+  }
 }

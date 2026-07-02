@@ -152,7 +152,7 @@ export const dag: DAGType = {
       "body":      { "node": 'process-job' },
       "source":    'jobs',
       "itemKey":   'job',
-      "concurrency": 1,              // serial so abort cuts cleanly mid-source
+      "execution": { "mode": "item", "concurrency": 1 },              // serial so abort cuts cleanly mid-source
       "gather": {
         "strategy": GatherStrategyNames.MAP,
         "mapping":  { "processed": 'completed' }, // clone.processed (scalar) → parent.completed[]

@@ -1,3 +1,5 @@
+import { Signal } from '@studnicky/signal';
+
 import type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
@@ -8,7 +10,7 @@ import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.
 import type { PluginInterface } from './contracts/PluginInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
 import { ContextResolver } from './dag/ContextResolver.js';
-import type { DagRegistrar, DagRegistrarSourceInterface } from './dag/DagRegistrar.js';
+import type { DagRegistrar } from './dag/DagRegistrar.js';
 import { Batch } from './entities/batch/Batch.js';
 import type { DAGType } from './entities/dag/DAG.js';
 import type { DAGNodeType } from './entities/dag/Placement.js';
@@ -16,23 +18,21 @@ import type { ExecutionResultType } from './entities/execution/ExecutionResult.j
 import { NodeContextBuilder } from './entities/node/NodeContext.js';
 import type { NodeContextType } from './entities/node/NodeContext.js';
 import type { NodeResultType } from './entities/node/NodeResult.js';
-import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
-import type { BodyRunPortInterface } from './execution/BodyExecutor.js';
-import type { EmbeddedDagExecutorSourceType } from './execution/EmbeddedDagExecutor.js';
+import { DAGError } from './errors/index.js';
+import type { EngineHostType } from './execution/EngineComposer.js';
 import { EngineComposer } from './execution/EngineComposer.js';
-import type { GatherSourceInterface } from './execution/Gather.js';
-import type { LeafExecutorSourceInterface } from './execution/LeafExecutor.js';
-import type { NodeScheduler, NodeSchedulerSourceInterface } from './execution/NodeScheduler.js';
+import type { NodeScheduler } from './execution/NodeScheduler.js';
 import type { PlacementDispatch } from './execution/PlacementDispatch.js';
-import type { RunNodeResultType, RunNodesBatchType, RunOptionsType, ScatterDispatchSourceInterface } from './execution/ScatterDispatch.js';
+import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './execution/ScatterDispatch.js';
 import { Execution } from './Execution.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
-import type { DispatcherRelaySourceInterface } from './observer/DispatcherHooks.js';
+import { DispatcherHooks } from './observer/DispatcherHooks.js';
 import { ObserverRelay } from './observer/ObserverRelay.js';
 import type { DispatcherHooksInterface } from './observer/ObserverRelay.js';
+import { DagExecutionContext, DagExecutionContextKeys } from './runtime/DagExecutionContext.js';
+import type { DagExecutionScope } from './runtime/DagExecutionContext.js';
 import { DottedPathAccessor } from './runtime/DottedPathAccessor.js';
 import { Scheduler } from './runtime/Scheduler.js';
-import { SignalComposer } from './runtime/SignalComposer.js';
 import { StateMapper } from './runtime/StateMapper.js';
 import { Validator } from './validation/Validator.js';
 
@@ -105,13 +105,13 @@ export type { ScatterAckedResultType, ScatterInboxItemType, ScatterProgressType,
  * these records to a dispatcher that does not use subclassing.
  */
 export type DispatcherObserverType = {
-  readonly onFlowStart?:  (dagName: string, state: NodeStateInterface) => void;
-  readonly onFlowEnd?:    (dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>) => void;
-  readonly onNodeStart?:  (nodeName: string, state: NodeStateInterface, placementPath: readonly string[]) => void;
-  readonly onNodeEnd?:    (nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]) => void;
-  readonly onError?:      (nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]) => void;
-  readonly onPhaseEnter?: (dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]) => void;
-  readonly onPhaseExit?:  (dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]) => void;
+  readonly onFlowStart?:  (dagName: string, state: NodeStateInterface, signal: AbortSignal) => void;
+  readonly onFlowEnd?:    (dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>, signal: AbortSignal) => void;
+  readonly onNodeStart?:  (nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal) => void;
+  readonly onNodeEnd?:    (nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal) => void;
+  readonly onError?:      (nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal) => void;
+  readonly onPhaseEnter?: (dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal) => void;
+  readonly onPhaseExit?:  (dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal) => void;
 };
 
 /**
@@ -217,6 +217,24 @@ export interface DagonizerInterface<
   getNode(name: string): NodeInterface<NodeStateInterface, string> | undefined;
 
   /**
+   * Look up the child-state factory registered for a DAG name. Every registered
+   * DAG has an entry (`ChildStateFactory.cloneParent` when no override was
+   * supplied at `registerDAG` time). Returns `undefined` when the DAG has not
+   * been registered.
+   */
+  getChildStateFactory(dagName: string): ChildStateFactoryType | undefined;
+
+  /**
+   * True when a node with this name is registered.
+   */
+  hasNode(name: string): boolean;
+
+  /**
+   * True when a DAG with this name is registered.
+   */
+  hasDag(name: string): boolean;
+
+  /**
    * List every registered DAG. Useful for visualization, contract checks,
    * and tooling that needs to walk the registry.
    */
@@ -228,6 +246,18 @@ export interface DagonizerInterface<
    * `getNode`: the registry stores nodes with potentially heterogeneous state types.
    */
   listNodes(): readonly NodeInterface<NodeStateInterface, string>[];
+
+  /**
+   * Names of every registered DAG. Cheaper than `listDAGs()` when only the
+   * keys are needed (registry size checks, name-existence tooling).
+   */
+  dagNames(): readonly string[];
+
+  /**
+   * Names of every registered node. Cheaper than `listNodes()` when only the
+   * keys are needed (registry size checks, name-existence tooling).
+   */
+  nodeNames(): readonly string[];
 
   /**
    * Resume a DAG from a given node name. The caller is responsible for
@@ -278,9 +308,19 @@ export interface DagonizerInterface<
  *
  * Subclass to attach observability by overriding `onFlowStart`, `onFlowEnd`,
  * `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`.
- * Default implementations are no-ops. These hooks are the ONE canonical
- * observability surface — they fire for both in-process nodes AND for
- * nodes running inside worker/contained sub-DAGs (via the internal relay).
+ * Default implementations are no-ops — a bare `Dagonizer` produces zero
+ * structured logs by default; this is intentional (no forced logging
+ * dependency for consumers who don't want one), not an oversight. These
+ * hooks are the ONE canonical observability surface — they fire for both
+ * in-process nodes AND for nodes running inside worker/contained sub-DAGs
+ * (via the internal relay).
+ *
+ * For structured logging with zero hook-writing, extend `ObservedDag`
+ * (`./ObservedDag.js`) instead of `Dagonizer` directly — it wires every
+ * lifecycle hook to an injected `DagLoggerInterface` (`trace`/`debug`/`info`/
+ * `error`), including the run's correlation id via `DagExecutionContext`.
+ * Use bare `Dagonizer` (as below) when you want silence, or when your own
+ * hook overrides are the entire observability surface you need.
  *
  * Cancellation: pass `{ signal }` (and/or `{ deadlineMs }`) to `execute()`.
  * The dispatcher composes them via `AbortSignal.any()` and marks state
@@ -315,59 +355,25 @@ export interface DagonizerInterface<
  * ```
  */
 export class Dagonizer<TState extends NodeStateInterface>
-implements
-  DagonizerInterface<TState>,
-  DispatcherRelaySourceInterface,
-  GatherSourceInterface,
-  LeafExecutorSourceInterface,
-  EmbeddedDagExecutorSourceType,
-  BodyRunPortInterface,
-  ScatterDispatchSourceInterface,
-  NodeSchedulerSourceInterface,
-  DagRegistrarSourceInterface {
-  // Read by NodeScheduler via NodeSchedulerSourceInterface.
-  readonly dags = new Map<string, DAGType>();
-  // Read by ScatterDispatchAdapter / NodeScheduler via their source interfaces.
-  // Typed NodeStateInterface so heterogeneous child-node states (whose concrete
-  // class may differ from TState) are stored without casts. TState remains on the
-  // public execute/resume/executeBatch boundary; internally nodes are base-typed.
-  readonly nodes = new Map<string, NodeInterface<NodeStateInterface, string>>();
-  // Read by NodeScheduler via NodeSchedulerSourceInterface.
-  readonly nodeIndex = new Map<string, DAGNodeType>();
-  // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
-  readonly accessor: StateAccessorInterface;
-  // Read by ScatterDispatchAdapter via ScatterDispatchSourceInterface.
-  readonly stateMapper: StateMapper;
-  // Every registered DAG has an entry here; ChildStateFactory.cloneParent is stored
-  // at registerDAG time when the caller omits an override. Read by ScatterDispatchAdapter
-  // and EmbeddedDagExecutor via their source interfaces.
-  readonly stateFactories = new Map<string, ChildStateFactoryType>();
+implements DagonizerInterface<TState> {
+  /**
+   * The engine module wiring host. Owns every registry (`dags`, `nodes`,
+   * `nodeIndex`, `stateFactories`) and every internal relay/context/execution
+   * seam the composed engine modules (`BodyExecutor`, `NodeScheduler`,
+   * `ScatterDispatch`, `Gather`, `LeafExecutor`, `EmbeddedDagExecutor`,
+   * `DagRegistrar`, `DispatcherHooks`) drive through the eight narrow source
+   * ports `EngineHostType` intersects. Constructed once, privately, as a local
+   * class inside the constructor — that keeps it lexically inside `Dagonizer`'s
+   * own class body, so its methods may call back into this instance's protected
+   * hooks (`onFlowStart`, …) and private fields (`placementDispatch`, `runNodes`)
+   * without those members ever becoming part of `Dagonizer`'s own public surface.
+   * No external consumer ever obtains a reference to this object.
+   */
+  readonly #host: EngineHostType;
+  /** Bound container backends, read by `destroy()` for teardown. */
   private readonly containers: Readonly<Record<string, DagContainerInterface>>;
-  // Read by NodeScheduler via NodeSchedulerSourceInterface (hand-off publish).
-  readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
-  // Read by NodeScheduler via NodeSchedulerSourceInterface (hand-off envelope).
-  readonly registryVersion: string;
-  /** Threaded into every `NodeContextType.validateOutputs` field. */
-  readonly validateOutputs: boolean;
-  /**
-   * Injected into every `NodeContextType.outputSchemaValidator` field.
-   * `null` when `validateOutputs` is false — zero overhead in production.
-   */
-  readonly #outputSchemaValidator: OutputSchemaValidatorInterface | null;
-  /**
-   * Stable `DispatcherHooksInterface` adapter bound to this instance's protected
-   * hooks. Created once in the constructor and reused by every `relayFor` call
-   * so relay construction allocates only the `ObserverRelay` instance (stable
-   * hidden class) without a fresh closure-bearing adapter on each invocation.
-   */
-  readonly #relayHooks: DispatcherHooksInterface;
-  /**
-   * Muxed observer records supplied via `DagonizerOptionsType.observers`.
-   * Each lifecycle hook iterates this array after calling the subclass override.
-   * Empty (frozen) array when no observers are supplied — zero overhead.
-   */
-  readonly #observers: ReadonlyArray<DispatcherObserverType>;
-  #correlationSeq = 0;
+  /** Bound egress channels, read by `destroy()` for teardown. */
+  private readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
 
   /**
    * Per-`@type` execution dispatch. Built once per dispatcher instance (not per
@@ -379,14 +385,14 @@ implements
 
   /**
    * Work-set node-graph scheduler. Built once per dispatcher instance, bound to
-   * this instance via the narrow `NodeSchedulerSourceInterface`. Owns the
+   * the engine host via the narrow `NodeSchedulerSourceInterface`. Owns the
    * streaming DAG traversal; `runNodes` delegates to `this.nodeScheduler.run`.
    */
   private readonly nodeScheduler: NodeScheduler;
 
   /**
    * Registration + validation cluster. Built once per dispatcher instance, bound
-   * to this instance via the narrow `DagRegistrarSourceInterface` (the live
+   * to the engine host via the narrow `DagRegistrarSourceInterface` (the live
    * `dags` / `nodes` / `nodeIndex` registries plus the container-binding seams).
    * The public `registerDAG` / `registerNode` / `registerBundle` methods delegate
    * here so `Dagonizer` stays the composition root.
@@ -404,44 +410,396 @@ implements
    */
   constructor(options: DagonizerOptionsType = {}) {
     const resolved = Dagonizer.options(options);
-    this.accessor = resolved.accessor;
-    this.stateMapper = new StateMapper(this.accessor);
     this.containers = resolved.containers;
     this.channels = resolved.channels;
-    this.registryVersion = resolved.registryVersion;
-    this.validateOutputs = resolved.validateOutputs;
-    this.#outputSchemaValidator = resolved.validateOutputs ? new DispatcherOutputSchemaValidator() : null;
-    this.#observers = resolved.observers;
+
+    // `self` gives the locally-declared EngineHost class below access to this
+    // instance's protected hooks and private fields — private-name and protected
+    // accessibility in JS/TS are lexically scoped to the textual class body, and
+    // a class declared inside this constructor is textually nested inside
+    // `Dagonizer`'s own declaration, so the access is legal even though EngineHost
+    // is a distinct class. EngineHost's own members stay outside this class's
+    // `implements` list, so none of them appear on `Dagonizer`'s public surface —
+    // only the private `#host` field ever holds a reference to the instance.
+    const self = this;
+
+    class EngineHost implements EngineHostType {
+      readonly dags = new Map<string, DAGType>();
+      readonly nodes = new Map<string, NodeInterface<NodeStateInterface, string>>();
+      readonly nodeIndex = new Map<string, DAGNodeType>();
+      readonly stateFactories = new Map<string, ChildStateFactoryType>();
+      readonly accessor: StateAccessorInterface;
+      readonly stateMapper: StateMapper;
+      readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
+      readonly registryVersion: string;
+      readonly #containers: Readonly<Record<string, DagContainerInterface>>;
+      readonly #validateOutputs: boolean;
+      readonly #outputSchemaValidator: OutputSchemaValidatorInterface | null;
+      readonly #observers: ReadonlyArray<DispatcherObserverType>;
+      readonly #hooksAdapter: DispatcherHooksInterface;
+      #correlationSeq = 0;
+
+      constructor() {
+        this.accessor = resolved.accessor;
+        this.stateMapper = new StateMapper(resolved.accessor);
+        this.channels = resolved.channels;
+        this.registryVersion = resolved.registryVersion;
+        this.#containers = resolved.containers;
+        this.#validateOutputs = resolved.validateOutputs;
+        this.#outputSchemaValidator = resolved.validateOutputs ? new DispatcherOutputSchemaValidator() : null;
+        this.#observers = resolved.observers;
+        // Reused by every `relayFor` call so relay construction allocates only
+        // the `ObserverRelay` instance (stable hidden class), not a fresh
+        // closure-bearing adapter each time.
+        this.#hooksAdapter = new DispatcherHooks(this);
+      }
+
+      /**
+       * Output-schema validator for this dispatcher instance. Non-null when
+       * `validateOutputs` is true; `null` otherwise.
+       */
+      get outputSchemaValidator(): OutputSchemaValidatorInterface | null {
+        return this.#outputSchemaValidator;
+      }
+
+      /**
+       * Resolve a logical container role to its bound `DagContainerInterface`, or
+       * return `null` when the role is undefined or not bound (null = in-process path).
+       */
+      resolveContainer(role: string | undefined): DagContainerInterface | null {
+        if (role === undefined) return null;
+        const bound = this.#containers[role];
+        return bound !== undefined ? bound : null;
+      }
+
+      /**
+       * True when this dispatcher has opted into container dispatch by binding at
+       * least one container role. A dispatcher with no bound containers runs every
+       * body in-process and never enforces role binding at registration.
+       */
+      hasContainers(): boolean {
+        return Object.keys(this.#containers).length > 0;
+      }
+
+      /**
+       * Generate a monotonic correlation id for container requests and hand-off
+       * envelopes. No randomness; no Date.now.
+       */
+      nextCorrelationId(dagName: string): string {
+        return `${dagName}:${++this.#correlationSeq}`;
+      }
+
+      /**
+       * Build an `ObserverRelayInterface` bound to this dispatcher instance's protected
+       * hooks. The relay is passed to `container.runDag` so worker-side events
+       * flow back to the parent's `onNodeStart/onNodeEnd/onError/onPhaseEnter/onPhaseExit`.
+       *
+       * `onFlowStart`/`onFlowEnd` are deliberately excluded from the relay:
+       * those are top-level concerns owned by the parent's own `execute()` call.
+       */
+      relayFor(state: NodeStateInterface): ObserverRelayInterface {
+        return new ObserverRelay(this.#hooksAdapter, state);
+      }
+
+      /**
+       * Build a node context for a sub-DAG body invocation. Forwards to
+       * `NodeContextBuilder.of`. `signal` is always a valid `AbortSignal` — a run
+       * with no caller-supplied cancellation surface carries `Signal.never()`.
+       */
+      bodyContext(dagName: string, nodeName: string, signal: AbortSignal): NodeContextType {
+        return NodeContextBuilder.of(dagName, nodeName, signal, this.#validateOutputs, this.#outputSchemaValidator);
+      }
+
+      /**
+       * Build a node context for a placement execution. `signal` is always a
+       * valid `AbortSignal`.
+       */
+      nodeContext(dagName: string, placementName: string, signal: AbortSignal): NodeContextType {
+        return NodeContextBuilder.of(dagName, placementName, signal, this.#validateOutputs, this.#outputSchemaValidator);
+      }
+
+      /**
+       * Run a node over a single `state` as a size-1 batch. The canonical size-1
+       * node-run primitive the focused executor modules drive.
+       *
+       * Wraps `state` in `Batch.of(state)`, calls `node.execute(batch, context)`,
+       * asserts the size-1 invariant (exactly one route with exactly one item), and
+       * returns the single output port key.
+       *
+       * Throws `DAGError` if the returned `RoutedBatchType` does not contain exactly
+       * one route with exactly one item (invariant violation for size-1 dispatch).
+       */
+      async runNodeOnState(
+        node: NodeInterface<NodeStateInterface, string>,
+        state: NodeStateInterface,
+        context: NodeContextType,
+      ): Promise<string> {
+        const batch = Batch.of(state);
+        const routed = await node.execute(batch, context);
+        if (routed.size !== 1) {
+          throw new DAGError(
+            `Node '${node.name}' returned ${routed.size} routes for a size-1 batch (expected exactly 1).`,
+          );
+        }
+        const entry = routed.entries().next().value;
+        if (entry === undefined) {
+          throw new DAGError(`Node '${node.name}' returned an empty RoutedBatchType for a size-1 batch.`);
+        }
+        const [output, resultBatch] = entry;
+        if (resultBatch.size !== 1) {
+          throw new DAGError(
+            `Node '${node.name}' route '${output}' contains ${resultBatch.size} items for a size-1 batch (expected exactly 1).`,
+          );
+        }
+        return output;
+      }
+
+      /**
+       * Run a sub-DAG body in-process through the canonical `runNodes` generator.
+       * `BodyExecutor` drives this generator to execute an embedded-DAG or scatter
+       * DAG body in-process. Forwards to `Dagonizer`'s private `runNodes`,
+       * defaulting the batch tail to `{}`.
+       */
+      runBodyNodes(
+        dagName: string,
+        state: NodeStateInterface,
+        fromStage: string | null,
+        options: ExecuteOptionsType,
+        runOptions: RunOptionsType,
+        placementPath: readonly string[],
+        batch?: RunNodesBatchType,
+      ): AsyncGenerator<NodeResultType<NodeStateInterface>, { terminalOutcome: 'completed' | 'failed' | null }, void> {
+        return self.runNodes(dagName, state, fromStage, options, runOptions, placementPath, batch ?? {});
+      }
+
+      /**
+       * Run a scatter body sub-DAG through the canonical `runNodes` generator. The
+       * scatter adapter drives this generator to execute each item's DAG body
+       * in-process.
+       */
+      runScatterNodes(
+        dagName: string,
+        state: NodeStateInterface,
+        fromStage: string | null,
+        options: ExecuteOptionsType,
+        runOptions: RunOptionsType,
+        placementPath: readonly string[],
+        batch?: RunNodesBatchType,
+      ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<NodeStateInterface>, void> {
+        return self.runNodes(dagName, state, fromStage, options, runOptions, placementPath, batch ?? {});
+      }
+
+      /**
+       * Wrap a node execute call with a per-node timeout when `dagNode.timeout`
+       * carries a budget. Derives a child `AbortController` from the run's signal,
+       * arms a Scheduler timer, and races the node's execute against a deadline
+       * rejection.
+       *
+       * The child signal is passed to the node so signal-aware IO (fetch, retry)
+       * also cancels. Nodes that do not observe the signal are hard-stopped by the
+       * race. On expiry a `DAGError` (code `NODE_TIMEOUT`) propagates; `executeSingleNode` re-throws
+       * so the `runNodes` catch block fires `onError` and marks state failed.
+       *
+       * Timer and parent-abort listener are cleaned up in `finally`.
+       */
+      async withNodeTimeout<TResult>(
+        dagNode: NodeInterface<NodeStateInterface, string>,
+        parentSignal: AbortSignal,
+        fn: (signal: AbortSignal) => Promise<TResult>,
+      ): Promise<TResult> {
+        const timeout = dagNode.timeout;
+        const ms = timeout.ms;
+
+        if (ms === null) {
+          // No per-node budget; pass parent signal through unchanged.
+          return fn(parentSignal);
+        }
+
+        const childCtrl = new AbortController();
+        // The child signal represents the same logical run scope as `parentSignal`,
+        // just under a narrower cancellation budget — alias it so a timed node's
+        // `context.signal` resolves `DagExecutionContext.tryGet` identically to an
+        // untimed node's.
+        DagExecutionContext.alias(childCtrl.signal, parentSignal);
+        const onParentAbort = (): void => { childCtrl.abort(parentSignal.reason); };
+
+        if (parentSignal.aborted) {
+          // Parent already aborted before node started.
+          childCtrl.abort(parentSignal.reason);
+        } else {
+          parentSignal.addEventListener('abort', onParentAbort, { 'once': true });
+        }
+
+        const timeoutError = new DAGError(
+          `Node "${dagNode.name}" exceeded its ${String(ms)} ms timeout`,
+          { 'code': 'NODE_TIMEOUT', 'context': { 'nodeName': dagNode.name, 'timeoutMs': ms }, 'retryable': true },
+        );
+
+        // Deadline race: resolves when time elapses (child not yet aborted),
+        // rejects immediately if child is already aborted (parent propagation).
+        // The Scheduler is swappable via VirtualScheduler in tests.
+        // `!` asserts definite assignment: the Promise constructor synchronously
+        // assigns `deadlineReject` before any await, so it is always set before use.
+        let deadlineReject!: (reason: Error) => void;
+        const deadlinePromise = new Promise<never>((_resolve, reject) => {
+          deadlineReject = reject;
+        });
+
+        const schedulerPromise = Scheduler.current()
+          .after(ms, { 'signal': childCtrl.signal })
+          .then(() => {
+            childCtrl.abort(timeoutError);
+            deadlineReject(timeoutError);
+          })
+          .catch(() => { /* scheduler aborted early (cleanup or parent abort) */ });
+
+        // Start the node execute. Attach a no-op catch so the rejected promise
+        // does not surface as an unhandled rejection when the deadline race wins
+        // and the finally block aborts the child signal (causing execute to reject
+        // after Promise.race has already settled).
+        const nodePromise = fn(childCtrl.signal);
+        nodePromise.catch(() => { /* swallowed: deadline race already settled */ });
+
+        try {
+          // Race the node execute against the deadline rejection.
+          return await Promise.race([nodePromise, deadlinePromise]);
+        } finally {
+          // Cancel the pending Scheduler entry (no-op if already resolved/aborted)
+          // and detach the parent-abort listener.
+          childCtrl.abort(new DAGError('node-timeout-cleanup', { 'code': 'EXECUTION_ERROR' }));
+          parentSignal.removeEventListener('abort', onParentAbort);
+          await schedulerPromise;
+        }
+      }
+
+      /**
+       * Dispatch a composite (`ScatterNode` / `EmbeddedDAGNode`) placement for one
+       * item through the per-`@type` `PlacementDispatch`. The scheduler's
+       * per-item composite path drives this for each item in a fired batch.
+       */
+      async executeDAGNode(
+        entry: DAGNodeType,
+        state: NodeStateInterface,
+        dagName: string,
+        signal: AbortSignal,
+        placementPath: readonly string[],
+        bufferIntermediates: boolean = true,
+      ): Promise<RunNodeResultType> {
+        return self.placementDispatch.dispatch(entry, state, dagName, signal, placementPath, bufferIntermediates);
+      }
+
+      /**
+       * Relay a flow-start event from the node scheduler into `onFlowStart`, then
+       * call each muxed observer's `onFlowStart` callback in registration order.
+       */
+      relayFlowStart(dagName: string, state: NodeStateInterface, signal: AbortSignal): void {
+        self.onFlowStart(dagName, state, signal);
+        for (const obs of this.#observers) {
+          obs.onFlowStart?.(dagName, state, signal);
+        }
+      }
+
+      /**
+       * Relay a flow-end event from the node scheduler into `onFlowEnd`, then
+       * call each muxed observer's `onFlowEnd` callback in registration order.
+       */
+      relayFlowEnd(dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>, signal: AbortSignal): void {
+        self.onFlowEnd(dagName, state, result, signal);
+        for (const obs of this.#observers) {
+          obs.onFlowEnd?.(dagName, state, result, signal);
+        }
+      }
+
+      /**
+       * Relay a node-start event from a worker/contained sub-DAG into `onNodeStart`,
+       * then call each muxed observer's `onNodeStart` callback in registration order.
+       */
+      relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
+        self.onNodeStart(nodeName, state, placementPath, signal);
+        for (const obs of this.#observers) {
+          obs.onNodeStart?.(nodeName, state, placementPath, signal);
+        }
+      }
+
+      /**
+       * Relay a node-end event from a worker/contained sub-DAG into `onNodeEnd`,
+       * then call each muxed observer's `onNodeEnd` callback in registration order.
+       */
+      relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
+        self.onNodeEnd(nodeName, output, state, placementPath, signal);
+        for (const obs of this.#observers) {
+          obs.onNodeEnd?.(nodeName, output, state, placementPath, signal);
+        }
+      }
+
+      /**
+       * Relay an error event from a worker/contained sub-DAG into `onError`,
+       * then call each muxed observer's `onError` callback in registration order.
+       */
+      relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
+        self.onError(nodeName, error, state, placementPath, signal);
+        for (const obs of this.#observers) {
+          obs.onError?.(nodeName, error, state, placementPath, signal);
+        }
+      }
+
+      /**
+       * Relay a phase-enter event from a worker/contained sub-DAG into `onPhaseEnter`,
+       * then call each muxed observer's `onPhaseEnter` callback in registration order.
+       */
+      relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
+        self.onPhaseEnter(dagName, phase, placementName, state, placementPath, signal);
+        for (const obs of this.#observers) {
+          obs.onPhaseEnter?.(dagName, phase, placementName, state, placementPath, signal);
+        }
+      }
+
+      /**
+       * Relay a phase-exit event from a worker/contained sub-DAG into `onPhaseExit`,
+       * then call each muxed observer's `onPhaseExit` callback in registration order.
+       */
+      relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void {
+        self.onPhaseExit(dagName, phase, placementName, state, placementPath, signal);
+        for (const obs of this.#observers) {
+          obs.onPhaseExit?.(dagName, phase, placementName, state, placementPath, signal);
+        }
+      }
+    }
+
+    this.#host = new EngineHost();
     // Construct the engine module graph in one place. `EngineComposer.compose`
     // owns the dependency ordering (bodyExecutor before its consumers, the three
-    // executors before placementDispatch); `this` satisfies `EngineHostType`
+    // executors before placementDispatch); `#host` satisfies `EngineHostType`
     // because it implements every narrow source port the modules require. The
-    // root retains only the modules it drives directly — the relay-hooks adapter,
-    // the per-`@type` dispatch, the scheduler, and the registrar. The five
-    // intermediate executors (`bodyExecutor`, `gather`, `leafExecutor`,
-    // `embeddedDagExecutor`, `scatterExecutor`) are wired into the graph by the
-    // composer and held only by their consumers, so the root keeps no field for
-    // them. Wire in declaration order to keep the hidden class stable.
-    const engine = EngineComposer.compose(this);
-    this.#relayHooks = engine.relayHooks;
+    // root retains only the modules it drives directly — the per-`@type` dispatch,
+    // the scheduler, and the registrar. The five intermediate executors
+    // (`bodyExecutor`, `gather`, `leafExecutor`, `embeddedDagExecutor`,
+    // `scatterExecutor`) are wired into the graph by the composer and held only
+    // by their consumers, so the root keeps no field for them. Wire in
+    // declaration order to keep the hidden class stable.
+    const engine = EngineComposer.compose(this.#host);
     this.placementDispatch = engine.placementDispatch;
     this.nodeScheduler = engine.nodeScheduler;
     this.dagRegistrar = engine.dagRegistrar;
   }
 
   // ---------------------------------------------------------------------------
-  // Observability hooks: protected, no-op defaults. Subclass + override.
+  // Observability hooks: protected, no-op defaults. Subclass + override, or
+  // extend `ObservedDag` for ready-made structured logging (see class docs
+  // above) instead of overriding these directly.
   // ---------------------------------------------------------------------------
 
-  protected onFlowStart(_dagName: string, _state: NodeStateInterface): void { /* override */ }
-  protected onFlowEnd(_dagName: string, _state: NodeStateInterface, _result: ExecutionResultType<NodeStateInterface>): void { /* override */ }
+  protected onFlowStart(_dagName: string, _state: NodeStateInterface, _signal: AbortSignal): void { /* override */ }
+  protected onFlowEnd(_dagName: string, _state: NodeStateInterface, _result: ExecutionResultType<NodeStateInterface>, _signal: AbortSignal): void { /* override */ }
   /**
    * Fires before a node begins executing. `placementPath` is the ordered
    * list of parent embedded-DAG placement names that led to this node.
    * Empty (`[]`) for top-level placements, `['on-topic-search']` for one
    * level of embedded-DAG nesting, and so on. Use it to disambiguate same-
-   * named inner placements across multiple embedded-DAG instances. The
-   * dispatcher always passes it; an override may take fewer arguments.
+   * named inner placements across multiple embedded-DAG instances. `signal`
+   * is the run's `AbortSignal`, the same anchor `DagExecutionContext.tryGet`
+   * resolves. The dispatcher always passes both; an override may take fewer
+   * arguments.
    *
    * This hook fires for BOTH in-process nodes AND for nodes running in
    * worker/contained sub-DAGs (via the internal observer relay).
@@ -450,275 +808,29 @@ implements
    * node — including embedded child nodes whose concrete class may differ from
    * the dispatcher's `TState`. Consumers that need typed fields narrow locally.
    */
-  protected onNodeStart(_nodeName: string, _state: NodeStateInterface, _placementPath: readonly string[]): void { /* override */ }
+  protected onNodeStart(_nodeName: string, _state: NodeStateInterface, _placementPath: readonly string[], _signal: AbortSignal): void { /* override */ }
   /**
    * Fires after a node completes successfully. See {@link onNodeStart} for
-   * `placementPath` and `state` typing semantics. Fires for in-process and worker nodes.
+   * `placementPath`, `state`, and `signal` semantics. Fires for in-process and worker nodes.
    */
-  protected onNodeEnd(_nodeName: string, _output: string | null, _state: NodeStateInterface, _placementPath: readonly string[]): void { /* override */ }
+  protected onNodeEnd(_nodeName: string, _output: string | null, _state: NodeStateInterface, _placementPath: readonly string[], _signal: AbortSignal): void { /* override */ }
   /**
    * Fires when the dispatcher catches an error from a node (or from the
-   * abort/timeout machinery). See {@link onNodeStart} for `placementPath`
-   * and `state` typing semantics. Fires for in-process and worker nodes.
+   * abort/timeout machinery). See {@link onNodeStart} for `placementPath`,
+   * `state`, and `signal` semantics. Fires for in-process and worker nodes.
    */
-  protected onError(_nodeName: string, _error: Error, _state: NodeStateInterface, _placementPath: readonly string[]): void { /* override */ }
+  protected onError(_nodeName: string, _error: Error, _state: NodeStateInterface, _placementPath: readonly string[], _signal: AbortSignal): void { /* override */ }
   /**
    * Fires before a `pre` or `post` phase placement runs. `placementPath`
    * follows the same semantics as `onNodeStart`. Fires for in-process and
    * worker phases.
    */
-  protected onPhaseEnter(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: NodeStateInterface, _placementPath: readonly string[]): void { /* override */ }
+  protected onPhaseEnter(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: NodeStateInterface, _placementPath: readonly string[], _signal: AbortSignal): void { /* override */ }
   /**
    * Fires after a `pre` or `post` phase placement completes (success or
    * collected error). See {@link onPhaseEnter}.
    */
-  protected onPhaseExit(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: NodeStateInterface, _placementPath: readonly string[]): void { /* override */ }
-
-  // ---------------------------------------------------------------------------
-  // Relay seam: public entries the container path (WorkerObserver/ChannelDispatch)
-  // and the `DispatcherHooks` adapter drive so worker-side events surface through
-  // the same protected observability hooks the in-process path fires. Each relay
-  // entry forwards into the matching protected hook, the one place that
-  // protected access is in scope. They satisfy `DispatcherRelaySourceInterface`.
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Relay a flow-start event from the node scheduler into `onFlowStart`, then
-   * call each muxed observer's `onFlowStart` callback in registration order.
-   */
-  relayFlowStart(dagName: string, state: NodeStateInterface): void {
-    this.onFlowStart(dagName, state);
-    for (const obs of this.#observers) {
-      obs.onFlowStart?.(dagName, state);
-    }
-  }
-
-  /**
-   * Relay a flow-end event from the node scheduler into `onFlowEnd`, then
-   * call each muxed observer's `onFlowEnd` callback in registration order.
-   */
-  relayFlowEnd(dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>): void {
-    this.onFlowEnd(dagName, state, result);
-    for (const obs of this.#observers) {
-      obs.onFlowEnd?.(dagName, state, result);
-    }
-  }
-
-  /**
-   * Relay a node-start event from a worker/contained sub-DAG into `onNodeStart`,
-   * then call each muxed observer's `onNodeStart` callback in registration order.
-   */
-  relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
-    this.onNodeStart(nodeName, state, placementPath);
-    for (const obs of this.#observers) {
-      obs.onNodeStart?.(nodeName, state, placementPath);
-    }
-  }
-
-  /**
-   * Relay a node-end event from a worker/contained sub-DAG into `onNodeEnd`,
-   * then call each muxed observer's `onNodeEnd` callback in registration order.
-   */
-  relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void {
-    this.onNodeEnd(nodeName, output, state, placementPath);
-    for (const obs of this.#observers) {
-      obs.onNodeEnd?.(nodeName, output, state, placementPath);
-    }
-  }
-
-  /**
-   * Relay an error event from a worker/contained sub-DAG into `onError`,
-   * then call each muxed observer's `onError` callback in registration order.
-   */
-  relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void {
-    this.onError(nodeName, error, state, placementPath);
-    for (const obs of this.#observers) {
-      obs.onError?.(nodeName, error, state, placementPath);
-    }
-  }
-
-  /**
-   * Relay a phase-enter event from a worker/contained sub-DAG into `onPhaseEnter`,
-   * then call each muxed observer's `onPhaseEnter` callback in registration order.
-   */
-  relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
-    this.onPhaseEnter(dagName, phase, placementName, state, placementPath);
-    for (const obs of this.#observers) {
-      obs.onPhaseEnter?.(dagName, phase, placementName, state, placementPath);
-    }
-  }
-
-  /**
-   * Relay a phase-exit event from a worker/contained sub-DAG into `onPhaseExit`,
-   * then call each muxed observer's `onPhaseExit` callback in registration order.
-   */
-  relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void {
-    this.onPhaseExit(dagName, phase, placementName, state, placementPath);
-    for (const obs of this.#observers) {
-      obs.onPhaseExit?.(dagName, phase, placementName, state, placementPath);
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Container support
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Resolve a logical container role to its bound `DagContainerInterface`, or
-   * return `null` when the role is undefined or not bound (null = in-process path).
-   */
-  resolveContainer(role: string | undefined): DagContainerInterface | null {
-    if (role === undefined) return null;
-    const bound = this.containers[role];
-    return bound !== undefined ? bound : null;
-  }
-
-  /**
-   * True when this dispatcher has opted into container dispatch by binding at
-   * least one container role. A dispatcher with no bound containers runs every
-   * body in-process and never enforces role binding at registration.
-   *
-   * Public to satisfy `DagRegistrarSourceInterface`: the registrar's
-   * container-role-binding gate reads it through that port.
-   */
-  hasContainers(): boolean {
-    return Object.keys(this.containers).length > 0;
-  }
-
-  /**
-   * Generate a monotonic correlation id for container requests and hand-off
-   * envelopes. Uses a private `#correlationSeq` counter. No randomness; no Date.now.
-   */
-  nextCorrelationId(dagName: string): string {
-    return `${dagName}:${++this.#correlationSeq}`;
-  }
-
-  /**
-   * Build an `ObserverRelayInterface` bound to this dispatcher instance's protected
-   * hooks. The relay is passed to `container.runDag` so worker-side events
-   * flow back to the parent's `onNodeStart/onNodeEnd/onError/onPhaseEnter/onPhaseExit`.
-   *
-   * `onFlowStart`/`onFlowEnd` are deliberately excluded from the relay:
-   * those are top-level concerns owned by the parent's own `execute()` call.
-   *
-   * Returns an `ObserverRelay` instance (stable hidden class) rather than a
-   * fresh anonymous object-literal, so V8 inline-caches stay monomorphic on the
-   * container dispatch path. The stable `#relayHooks` adapter (a `DispatcherHooks`
-   * bound to this dispatcher) supplies the protected-hook forwarding.
-   */
-  relayFor(state: NodeStateInterface): ObserverRelayInterface {
-    return new ObserverRelay(this.#relayHooks, state);
-  }
-
-  /**
-   * Output-schema validator for this dispatcher instance. Non-null when
-   * `validateOutputs` is true; `null` otherwise. Exposed as a public getter
-   * to satisfy `NodeSchedulerSourceInterface` and `ScatterDispatchSourceInterface`
-   * without making the private field accessible to subclasses.
-   */
-  get outputSchemaValidator(): OutputSchemaValidatorInterface | null {
-    return this.#outputSchemaValidator;
-  }
-
-  /**
-   * Build a node context for a sub-DAG body invocation. Forwards to
-   * `NodeContextBuilder.of`, substituting a never-firing signal when the run
-   * has none. Satisfies both `BodyRunPortInterface` (the embedded/scatter DAG
-   * body run) and `ScatterDispatchSourceInterface` (the scatter node body).
-   */
-  bodyContext(dagName: string, nodeName: string, signal: AbortSignal | null): NodeContextType {
-    return NodeContextBuilder.of(dagName, nodeName, signal ?? SignalComposer.never(), this.validateOutputs, this.#outputSchemaValidator);
-  }
-
-  /**
-   * Build a node context for a placement execution. Substitutes a never-firing
-   * signal when the run has none. Satisfies `GatherSourceInterface` and
-   * `LeafExecutorSourceInterface` so `Gather` and `LeafExecutor` can build
-   * contexts without importing `SignalComposer` directly.
-   */
-  nodeContext(dagName: string, placementName: string, signal: AbortSignal | null): NodeContextType {
-    return NodeContextBuilder.of(dagName, placementName, signal ?? SignalComposer.never(), this.validateOutputs, this.#outputSchemaValidator);
-  }
-
-  /**
-   * Run a node over a single `state` as a size-1 batch. Satisfies
-   * `GatherSourceInterface` and `LeafExecutorSourceInterface`, the canonical
-   * size-1 node-run primitive the focused executor modules drive.
-   *
-   * Wraps `state` in `Batch.of(state)`, calls `node.execute(batch, context)`,
-   * asserts the size-1 invariant (exactly one route with exactly one item), and
-   * returns the single output port key.
-   *
-   * The node owns error-forwarding: `ScalarNode.execute` forwards per-item
-   * errors to `item.state.collectError` during `execute`. Since `Batch.of`
-   * wraps the same state reference, mutations are visible after this call.
-   *
-   * Throws `DAGError` if the returned `RoutedBatchType` does not contain exactly
-   * one route with exactly one item (invariant violation for size-1 dispatch).
-   */
-  async runNodeOnState(
-    node: NodeInterface<TState, string>,
-    state: TState,
-    context: NodeContextType,
-  ): Promise<string> {
-    const batch = Batch.of(state);
-    const routed = await node.execute(batch, context);
-    if (routed.size !== 1) {
-      throw new DAGError(
-        `Node '${node.name}' returned ${routed.size} routes for a size-1 batch (expected exactly 1).`,
-      );
-    }
-    const entry = routed.entries().next().value;
-    if (entry === undefined) {
-      throw new DAGError(`Node '${node.name}' returned an empty RoutedBatchType for a size-1 batch.`);
-    }
-    const [output, resultBatch] = entry;
-    if (resultBatch.size !== 1) {
-      throw new DAGError(
-        `Node '${node.name}' route '${output}' contains ${resultBatch.size} items for a size-1 batch (expected exactly 1).`,
-      );
-    }
-    return output;
-  }
-
-  /**
-   * Run a sub-DAG body in-process through the canonical `runNodes` generator.
-   * Satisfies `BodyRunPortInterface`; `BodyExecutor` drives this generator to
-   * execute an embedded-DAG or scatter DAG body in-process. Forwards to the
-   * private `runNodes`, defaulting the batch tail to `{}`.
-   */
-  runBodyNodes(
-    dagName: string,
-    state: NodeStateInterface,
-    fromStage: string | null,
-    options: ExecuteOptionsType,
-    runOptions: RunOptionsType,
-    placementPath: readonly string[],
-    batch?: RunNodesBatchType,
-  ): AsyncGenerator<NodeResultType<NodeStateInterface>, { terminalOutcome: 'completed' | 'failed' | null }, void> {
-    // runNodes accepts NodeStateInterface and crosses the single TState boundary
-    // internally; child states from isolation factories pass through directly.
-    return this.runNodes(dagName, state, fromStage, options, runOptions, placementPath, batch ?? {});
-  }
-
-  /**
-   * Run a scatter body sub-DAG through the canonical `runNodes` generator. Part
-   * of `ScatterDispatchSourceInterface`; the scatter adapter drives this
-   * generator to execute each item's DAG body in-process.
-   */
-  runScatterNodes(
-    dagName: string,
-    state: NodeStateInterface,
-    fromStage: string | null,
-    options: ExecuteOptionsType,
-    runOptions: RunOptionsType,
-    placementPath: readonly string[],
-    batch?: RunNodesBatchType,
-  ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<NodeStateInterface>, void> {
-    // runNodes accepts NodeStateInterface and crosses the single TState boundary
-    // internally; the scatter adapter's child states pass through directly.
-    return this.runNodes(dagName, state, fromStage, options, runOptions, placementPath, batch ?? {});
-  }
+  protected onPhaseExit(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: NodeStateInterface, _placementPath: readonly string[], _signal: AbortSignal): void { /* override */ }
 
   // ---------------------------------------------------------------------------
 
@@ -728,7 +840,7 @@ implements
     // backend's `destroy()` is optional; guard the call. Safe to call more than
     // once — the registries are cleared at the end and re-destroying an
     // already-torn-down backend is the backend's own idempotency concern.
-    for (const node of this.nodes.values()) {
+    for (const node of this.#host.nodes.values()) {
       if (node.destroy) {
         await node.destroy();
       }
@@ -743,9 +855,9 @@ implements
         await channel.destroy();
       }
     }
-    this.nodes.clear();
-    this.dags.clear();
-    this.nodeIndex.clear();
+    this.#host.nodes.clear();
+    this.#host.dags.clear();
+    this.#host.nodeIndex.clear();
   }
 
   /**
@@ -753,7 +865,7 @@ implements
    * not been registered.
    */
   getDAG(name: string): DAGType | undefined {
-    return this.dags.get(ContextResolver.expand(name, {}));
+    return this.#host.dags.get(ContextResolver.expand(name, {}));
   }
 
   /**
@@ -761,7 +873,31 @@ implements
    * has not been registered.
    */
   getNode(name: string): NodeInterface<NodeStateInterface, string> | undefined {
-    return this.nodes.get(ContextResolver.expand(name, {}));
+    return this.#host.nodes.get(ContextResolver.expand(name, {}));
+  }
+
+  /**
+   * Look up the child-state factory registered for a DAG name. Every registered
+   * DAG has an entry (`ChildStateFactory.cloneParent` when no override was
+   * supplied at `registerDAG` time). Returns `undefined` when the DAG has not
+   * been registered.
+   */
+  getChildStateFactory(dagName: string): ChildStateFactoryType | undefined {
+    return this.#host.stateFactories.get(dagName);
+  }
+
+  /**
+   * True when a node with this name is registered.
+   */
+  hasNode(name: string): boolean {
+    return this.#host.nodes.has(ContextResolver.expand(name, {}));
+  }
+
+  /**
+   * True when a DAG with this name is registered.
+   */
+  hasDag(name: string): boolean {
+    return this.#host.dags.has(ContextResolver.expand(name, {}));
   }
 
   /**
@@ -769,7 +905,7 @@ implements
    * shallow copy; mutating it does not affect the registry.
    */
   listDAGs(): readonly DAGType[] {
-    return [...this.dags.values()];
+    return [...this.#host.dags.values()];
   }
 
   /**
@@ -777,7 +913,23 @@ implements
    * shallow copy; mutating it does not affect the registry.
    */
   listNodes(): readonly NodeInterface<NodeStateInterface, string>[] {
-    return [...this.nodes.values()];
+    return [...this.#host.nodes.values()];
+  }
+
+  /**
+   * Names of every registered DAG. Cheaper than `listDAGs()` when only the
+   * keys are needed (registry size checks, name-existence tooling).
+   */
+  dagNames(): readonly string[] {
+    return [...this.#host.dags.keys()];
+  }
+
+  /**
+   * Names of every registered node. Cheaper than `listNodes()` when only the
+   * keys are needed (registry size checks, name-existence tooling).
+   */
+  nodeNames(): readonly string[] {
+    return [...this.#host.nodes.keys()];
   }
 
   /**
@@ -797,7 +949,14 @@ implements
     initialState: TState,
     options: ExecuteOptionsType = {},
   ): Execution<TState> {
-    return new Execution<TState>(this.runNodes(dagName, initialState, null, options));
+    // Compose the run's signal once, here, and thread the SAME signal object
+    // both into the scope anchor (so `DagExecutionContext.tryGet` resolves
+    // it) and down into `runNodes` (stripped of `deadlineMs`, so `Signal.compose`
+    // there short-circuits to the identical object rather than re-wrapping it —
+    // see `dagExecutionScope`'s doc comment).
+    const signal = Dagonizer.rootSignal(options);
+    const scope = this.dagExecutionScope(dagName, signal);
+    return new Execution<TState>(this.runNodes(dagName, initialState, null, { signal }), scope);
   }
 
   /**
@@ -815,9 +974,14 @@ implements
     batchStates: readonly TState[],
     options: ExecuteOptionsType = {},
   ): readonly Execution<TState>[] {
-    return batchStates.map((state) =>
-      new Execution<TState>(this.runNodes(dagName, state, null, options)),
-    );
+    // Each item gets its own composed signal and scope — item runs are
+    // isolated, so a shared signal would incorrectly couple their abort and
+    // correlation-context lifetimes.
+    return batchStates.map((state) => {
+      const signal = Dagonizer.rootSignal(options);
+      const scope = this.dagExecutionScope(dagName, signal);
+      return new Execution<TState>(this.runNodes(dagName, state, null, { signal }), scope);
+    });
   }
 
   /**
@@ -825,6 +989,11 @@ implements
    * begins at the given cursor instead of the flow's entrypoint. Caller
    * is responsible for rehydrating `state` (typically via
    * `Checkpoint.load(raw).restoreState(fn)`) before calling.
+   *
+   * A resumed run gets a fresh correlation id: it runs on a new async call
+   * stack (typically a new process), so the original run's correlation id
+   * has no meaning here. Consumers that need to correlate a resume with its
+   * original run do so via the checkpoint's own identity, not this context.
    */
   resume(
     dagName: string,
@@ -832,7 +1001,45 @@ implements
     fromStage: string,
     options: ExecuteOptionsType = {},
   ): Execution<TState> {
-    return new Execution<TState>(this.runNodes(dagName, state, fromStage, options));
+    const signal = Dagonizer.rootSignal(options);
+    const scope = this.dagExecutionScope(dagName, signal);
+    return new Execution<TState>(this.runNodes(dagName, state, fromStage, { signal }), scope);
+  }
+
+  /**
+   * Compose `options` into this run's root `AbortSignal`, guaranteeing a
+   * fresh, distinct `AbortSignal` OBJECT even when `options` supplies neither
+   * `signal` nor `deadlineMs` — `Signal.compose` falls back to `Signal.never()`
+   * in that case, a memoized SHARED singleton reused across every call with
+   * no options. Reusing that shared object as a `DagExecutionContext` scope
+   * anchor would collide across every concurrent no-options `execute()` call
+   * (the anchor map is keyed by object identity, and each new run would
+   * silently overwrite the previous run's anchor entry — precisely the
+   * cross-run leak this scope design exists to prevent). `AbortSignal.any()`
+   * always constructs a NEW following signal, even for a single-element
+   * array, so wrapping the composed signal in it restores per-run identity
+   * uniqueness while faithfully preserving abort/timeout/reason semantics.
+   */
+  private static rootSignal(options: ExecuteOptionsType): AbortSignal {
+    return AbortSignal.any([Signal.compose(options)]);
+  }
+
+  /**
+   * Initialize a `DagExecutionContext` scope for one `execute()`/`resume()`/
+   * `executeBatch()` run, seeded with a fresh correlation id and `dagName`,
+   * and anchored to `signal` — the SAME `AbortSignal` object the caller
+   * threads down into `runNodes`. Every node body and lifecycle hook that
+   * fires during the run carries that identical signal (directly, or via
+   * `DagExecutionScope.alias` for a `withNodeTimeout`-derived child signal),
+   * so `DagExecutionContext.tryGet(signal, key)` resolves this scope from
+   * anywhere, correct across any `await` boundary or interleaved concurrent
+   * run — see `runtime/DagExecutionContext.ts` for the full design.
+   */
+  private dagExecutionScope(dagName: string, signal: AbortSignal): DagExecutionScope {
+    return DagExecutionContext.initialize({
+      [DagExecutionContextKeys.CORRELATION_ID]: globalThis.crypto.randomUUID(),
+      [DagExecutionContextKeys.DAG_NAME]: dagName,
+    }, signal);
   }
 
   /**
@@ -842,7 +1049,7 @@ implements
    *
    * Thin delegate to `this.nodeScheduler.run`. The scheduler owns the work-set
    * traversal cluster; `Dagonizer` stays the orchestration layer. `execute`,
-   * `resume`, `executeBatch`, and the executor modules' `runBodyNodes` /
+   * `resume`, `executeBatch`, and the engine host's `runBodyNodes` /
    * `runScatterNodes` seams all drive the run through this method.
    *
    * `runOptions.embedded` is a private implementation detail for recursive
@@ -869,105 +1076,6 @@ implements
       dagName, state, fromStage, options, runOptions, placementPath, batch,
     );
   }
-
-
-  /**
-   * Wrap a node execute call with a per-node timeout when `dagNode.timeout`
-   * carries a budget. Derives a child `AbortController` from the run's signal,
-   * arms a Scheduler timer, and races the node's execute against a deadline
-   * rejection.
-   *
-   * The child signal is passed to the node so signal-aware IO (fetch, retry)
-   * also cancels. Nodes that do not observe the signal are hard-stopped by the
-   * race. On expiry `NodeTimeoutError` propagates; `executeSingleNode` re-throws
-   * so the `runNodes` catch block fires `onError` and marks state failed.
-   *
-   * Timer and parent-abort listener are cleaned up in `finally`.
-   */
-  async withNodeTimeout<TResult>(
-    dagNode: NodeInterface<NodeStateInterface, string>,
-    parentSignal: AbortSignal | null,
-    fn: (signal: AbortSignal) => Promise<TResult>,
-  ): Promise<TResult> {
-    const timeout = dagNode.timeout;
-    const ms = timeout.ms;
-
-    if (ms === null) {
-      // No per-node budget; pass parent signal through unchanged.
-      const sig = parentSignal ?? SignalComposer.never();
-      return fn(sig);
-    }
-
-    const childCtrl = new AbortController();
-    const onParentAbort = (): void => { childCtrl.abort(parentSignal?.reason); };
-
-    if (parentSignal !== null) {
-      if (parentSignal.aborted) {
-        // Parent already aborted before node started.
-        childCtrl.abort(parentSignal.reason);
-      } else {
-        parentSignal.addEventListener('abort', onParentAbort, { 'once': true });
-      }
-    }
-
-    const timeoutError = new NodeTimeoutError(dagNode.name, ms);
-
-    // Deadline race: resolves when time elapses (child not yet aborted),
-    // rejects immediately if child is already aborted (parent propagation).
-    // The Scheduler is swappable via VirtualScheduler in tests.
-    // `!` asserts definite assignment: the Promise constructor synchronously
-    // assigns `deadlineReject` before any await, so it is always set before use.
-    let deadlineReject!: (reason: Error) => void;
-    const deadlinePromise = new Promise<never>((_resolve, reject) => {
-      deadlineReject = reject;
-    });
-
-    const schedulerPromise = Scheduler.current()
-      .after(ms, { 'signal': childCtrl.signal })
-      .then(() => {
-        childCtrl.abort(timeoutError);
-        deadlineReject(timeoutError);
-      })
-      .catch(() => { /* scheduler aborted early (cleanup or parent abort) */ });
-
-    // Start the node execute. Attach a no-op catch so the rejected promise
-    // does not surface as an unhandled rejection when the deadline race wins
-    // and the finally block aborts the child signal (causing execute to reject
-    // after Promise.race has already settled).
-    const nodePromise = fn(childCtrl.signal);
-    nodePromise.catch(() => { /* swallowed: deadline race already settled */ });
-
-    try {
-      // Race the node execute against the deadline rejection.
-      return await Promise.race([nodePromise, deadlinePromise]);
-    } finally {
-      // Cancel the pending Scheduler entry (no-op if already resolved/aborted)
-      // and detach the parent-abort listener.
-      childCtrl.abort(new ExecutionError('node-timeout-cleanup'));
-      if (parentSignal !== null) {
-        parentSignal.removeEventListener('abort', onParentAbort);
-      }
-      await schedulerPromise;
-    }
-  }
-
-  /**
-   * Dispatch a composite (`ScatterNode` / `EmbeddedDAGNode`) placement for one
-   * item through the per-`@type` `PlacementDispatch`. Satisfies
-   * `NodeSchedulerSourceInterface`; the scheduler's per-item composite path
-   * drives this for each item in a fired batch.
-   */
-  async executeDAGNode(
-    entry: DAGNodeType,
-    state: TState,
-    dagName: string,
-    signal: AbortSignal | null,
-    placementPath: readonly string[],
-    bufferIntermediates: boolean = true,
-  ): Promise<RunNodeResultType> {
-    return this.placementDispatch.dispatch(entry, state, dagName, signal, placementPath, bufferIntermediates);
-  }
-
 
   /**
    * Register a DAG configuration.

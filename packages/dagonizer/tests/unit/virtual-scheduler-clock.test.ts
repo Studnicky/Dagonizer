@@ -8,9 +8,11 @@
  *   further values. The in-flight after() is rejected and the async generator
  *   catches it and stops.
  *
- * S2 — VirtualClockProvider setNs / tickNs:
- *   setNs sets virtual hrtime to an absolute nanosecond value;
- *   tickNs advances by a delta; tickMs converts milliseconds.
+ * S2 — VirtualClockProvider tickNs / tickMs:
+ *   tickNs advances virtual hrtime by a nanosecond delta (truncated to whole
+ *   milliseconds — the underlying `VirtualTimeCounter` is ms-granular);
+ *   tickMs advances by a millisecond delta directly. Virtual time is
+ *   forward-only: a zero-or-negative delta is a no-op.
  */
 
 import assert from 'node:assert/strict';
@@ -94,33 +96,33 @@ void describe('VirtualScheduler.every() — abort (S1)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// S2 — VirtualClockProvider setNs / tickNs
+// S2 — VirtualClockProvider tickNs / tickMs
 // ---------------------------------------------------------------------------
 
-void describe('VirtualClockProvider setNs / tickNs / tickMs (S2)', () => {
+void describe('VirtualClockProvider tickNs / tickMs (S2)', () => {
   void it('initial hrtime is 0 by default', () => {
     const clock = new VirtualClockProvider();
     assert.strictEqual(clock.hrtime(), 0n);
   });
 
-  void it('setNs sets hrtime to an absolute nanosecond value', () => {
-    const clock = new VirtualClockProvider(0n);
-    clock.setNs(500_000_000n);
-    assert.strictEqual(clock.hrtime(), 500_000_000n);
-  });
-
-  void it('setNs overwrites the previous value', () => {
-    const clock = new VirtualClockProvider(1_000n);
-    clock.setNs(50n);
-    assert.strictEqual(clock.hrtime(), 50n, 'setNs must overwrite, not add');
-  });
-
-  void it('tickNs advances hrtime by the given delta', () => {
+  void it('tickNs advances hrtime by the given delta, truncated to whole milliseconds', () => {
     const clock = new VirtualClockProvider(0n);
     clock.tickNs(1_000_000n);
     assert.strictEqual(clock.hrtime(), 1_000_000n);
+    clock.tickNs(2_000_000n);
+    assert.strictEqual(clock.hrtime(), 3_000_000n);
+  });
+
+  void it('tickNs is a no-op for a sub-millisecond delta (virtual time is ms-granular)', () => {
+    const clock = new VirtualClockProvider(0n);
     clock.tickNs(500n);
-    assert.strictEqual(clock.hrtime(), 1_000_500n);
+    assert.strictEqual(clock.hrtime(), 0n);
+  });
+
+  void it('tickNs is a no-op for a zero-or-negative delta (virtual time is forward-only)', () => {
+    const clock = new VirtualClockProvider(1_000_000n);
+    clock.tickNs(-1_000_000n);
+    assert.strictEqual(clock.hrtime(), 1_000_000n);
   });
 
   void it('tickMs converts ms to ns and advances hrtime', () => {
@@ -131,8 +133,8 @@ void describe('VirtualClockProvider setNs / tickNs / tickMs (S2)', () => {
     assert.strictEqual(clock.hrtime(), 11_000_000n);
   });
 
-  void it('constructor accepts a custom initial nanosecond value', () => {
-    const clock = new VirtualClockProvider(999_999n);
-    assert.strictEqual(clock.hrtime(), 999_999n);
+  void it('constructor accepts a custom initial nanosecond value, truncated to whole milliseconds', () => {
+    const clock = new VirtualClockProvider(1_000_000n);
+    assert.strictEqual(clock.hrtime(), 1_000_000n);
   });
 });

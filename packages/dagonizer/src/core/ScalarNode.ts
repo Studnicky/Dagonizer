@@ -12,6 +12,7 @@
  * directly and implementing `execute`.
  */
 
+import type { SchemaObjectType } from '../contracts/NodeInterface.js';
 import { Batch } from '../entities/batch/Batch.js';
 import type { ItemType } from '../entities/batch/Item.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
@@ -21,10 +22,33 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import { MonadicNode } from './MonadicNode.js';
 
+/** The permissive per-port schema `ScalarNode.permissiveSchema` writes for every listed output. */
+const PERMISSIVE_PORT_SCHEMA: SchemaObjectType = { 'type': 'object' };
+
 export abstract class ScalarNode<
   TState extends NodeStateInterface,
   TOutput extends string,
 > extends MonadicNode<TState, TOutput> {
+  /**
+   * Convenience for nodes that don't need per-output-port validation: builds
+   * an `outputSchema` record with `{ type: 'object' }` for every listed output
+   * name, in place of hand-writing the boilerplate record literal.
+   *
+   * @example
+   * ```ts
+   * override get outputSchema() { return ScalarNode.permissiveSchema(this.outputs); }
+   * ```
+   */
+  static permissiveSchema<TOutput extends string>(
+    outputs: readonly TOutput[],
+  ): Record<TOutput, SchemaObjectType> {
+    const schema: Record<string, SchemaObjectType> = {};
+    for (const output of outputs) {
+      schema[output] = PERMISSIVE_PORT_SCHEMA;
+    }
+    return schema;
+  }
+
   /**
    * Per-item execution. Subclasses implement this; the base class maps it over
    * the batch and groups items by the returned output port.

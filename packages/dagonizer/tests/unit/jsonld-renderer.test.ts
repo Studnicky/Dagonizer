@@ -52,7 +52,7 @@ void describe('JsonLdRenderer.render', () => {
     assert.equal(root?.['dag:entrypoint'], 'urn:dagonizer:mini#greet');
   });
 
-  void it('renders ScatterNode (body.node) with source, itemKey, concurrency, gather config', () => {
+  void it('renders ScatterNode (body.node) with source, itemKey, execution, gather config', () => {
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scrape',
@@ -67,7 +67,7 @@ void describe('JsonLdRenderer.render', () => {
         'body':        { 'node': 'worker' },
         'source':      'items',
         'itemKey':     'item',
-        'concurrency': 3,
+        'execution': { 'mode': 'item', 'concurrency': 3 },
         'gather':      { 'strategy': 'append', 'target': 'collected' },
         'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
       },
@@ -80,7 +80,7 @@ void describe('JsonLdRenderer.render', () => {
     // body serializes as { dag:node: 'worker' } for a node-body scatter
     assert.deepEqual(fan?.['dag:body'], { 'dag:node': 'worker' });
     assert.equal(fan?.['dag:itemKey'], 'item');
-    assert.equal(fan?.['dag:concurrency'], 3);
+    assert.deepEqual(fan?.['dag:execution'], { 'mode': 'item', 'concurrency': 3 });
     assert.deepEqual(fan?.['dag:gather'], { 'strategy': 'append', 'target': 'collected' });
     assert.equal(fan?.['dag:source'], 'items');
   });

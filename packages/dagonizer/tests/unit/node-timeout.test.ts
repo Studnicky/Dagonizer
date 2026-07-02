@@ -3,7 +3,7 @@
  *
  * Verifies that a node's `timeout` field causes the engine to pass a
  * scoped child signal, race the execute against a deadline, and surface a
- * `NodeTimeoutError` through the `onError` hook.
+ * `DAGError` (code `NODE_TIMEOUT`) through the `onError` hook.
  *
  * Uses `VirtualScheduler` so the tests are deterministic and fast; no real
  * wall-clock timers fire.
@@ -38,7 +38,7 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { Timeout } from '../../src/entities/Timeout.js';
-import { NodeTimeoutError } from '../../src/errors/DAGError.js';
+import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
@@ -151,7 +151,7 @@ void describe('per-node timeout', () => {
     assert.deepEqual(result.interruptedAt, { 'nodeName': 'stage', 'reason': 'timeout' });
   });
 
-  void it('fires onError with NodeTimeoutError when the node times out', async () => {
+  void it('fires onError with a DAGError (code NODE_TIMEOUT) when the node times out', async () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
 
@@ -198,11 +198,11 @@ void describe('per-node timeout', () => {
     assert.equal(errors.length, 1, 'onError should fire exactly once');
     const [entry] = errors;
     assert.ok(entry !== undefined);
-    if (!(entry.error instanceof NodeTimeoutError)) {
-      throw new Error(`expected NodeTimeoutError, got ${entry.error.constructor.name}`);
+    if (!(entry.error instanceof DAGError) || entry.error.code !== 'NODE_TIMEOUT') {
+      throw new Error(`expected DAGError (code NODE_TIMEOUT), got ${entry.error.constructor.name}`);
     }
-    assert.equal(entry.error.nodeName, 'tardy');
-    assert.equal(entry.error.timeoutMs, 200);
+    assert.equal(entry.error.context['nodeName'], 'tardy');
+    assert.equal(entry.error.context['timeoutMs'], 200);
   });
 
   void it('nodes without timeout complete normally', async () => {

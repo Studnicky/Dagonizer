@@ -7,7 +7,7 @@
  *
  *   1. Class-shape interfaces: colocated with their class. Describe the
  *      public face of a single class (`DagonizerInterface`,
- *      `NodeStateInterface`, `DAGErrorInterface`).
+ *      `NodeStateInterface`).
  *   2. Adapter contracts: live in `src/contracts/`, single source of truth.
  *      What consumers implement to swap a backend (`ClockProviderInterface`,
  *      `SchedulerProviderInterface`, `NodeInterface`).
@@ -24,7 +24,6 @@
 
 export type { DagonizerInterface } from '../Dagonizer.js';
 export type { NodeStateInterface, StateFieldType, StateFieldsType } from '../NodeStateBase.js';
-export type { DAGErrorInterface } from '../errors/DAGError.js';
 
 // ---------------------------------------------------------------------------
 // Adapter contracts
@@ -39,6 +38,7 @@ export type { HandoffChannelInterface } from '../contracts/HandoffChannelInterfa
 export type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
+export type { ErrorMatcherType } from '../contracts/ErrorMatcherType.js';
 export type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
 export type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 export type { NodeInterface } from '../contracts/NodeInterface.js';
@@ -93,7 +93,6 @@ export type { NodeWarningType } from '../entities/node/NodeWarning.js';
 
 export type { ExecutionResultWireType } from '../entities/execution/ExecutionResult.js';
 export type { ValidationResultType } from '../entities/validation/ValidationResult.js';
-export type { DAGErrorJSONType } from '../entities/errors/DAGErrorJSON.js';
 export type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
 export type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 export type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';

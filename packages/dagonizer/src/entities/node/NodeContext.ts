@@ -33,6 +33,16 @@ export type NodeContextWireType = FromSchema<typeof NodeContextSchema>;
  *
  * Nodes should pass `context.signal` to every awaitable IO (fetch, retry,
  * subprocess) so cancellation propagates cleanly.
+ *
+ * A node that needs its run's correlation id or DAG name reads it via
+ * `DagExecutionContext.correlationIdOf(context.signal)` /
+ * `.dagNameOf(context.signal)` (`runtime/DagExecutionContext.ts`) — both
+ * return `undefined` when the node runs outside `Dagonizer.execute()`/
+ * `resume()` (e.g. invoked directly in a test). Not stored as a field on
+ * this type: the value depends on external mutable scope state resolved at
+ * read time, which would break the fixed-key-order V8 shape guarantee this
+ * type otherwise holds if computed once at construction and then gone stale
+ * relative to the live scope.
  */
 export type NodeContextType = NodeContextWireType & {
   /** AbortSignal: fires when the caller aborts or the deadline expires. */

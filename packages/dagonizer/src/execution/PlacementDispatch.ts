@@ -17,7 +17,7 @@ export interface LeafPlacementExecutorInterface {
     placement: SingleNodePlacementType,
     state: NodeStateInterface,
     dagName: string,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
   ): Promise<RunNodeResultType>;
 }
 
@@ -29,7 +29,7 @@ export interface EmbeddedPlacementExecutorInterface {
   executeEmbeddedDAG(
     placement: EmbeddedDAGNodeType,
     state: NodeStateInterface,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
   ): Promise<RunNodeResultType>;
@@ -44,7 +44,7 @@ export interface ScatterPlacementExecutorInterface {
     placement: ScatterNodeType,
     state: NodeStateInterface,
     dagName: string,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     placementPath: readonly string[],
   ): Promise<RunNodeResultType>;
 }
@@ -83,7 +83,7 @@ export class PlacementDispatch {
     entry: DAGNodeType,
     state: NodeStateInterface,
     dagName: string,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
   ): Promise<RunNodeResultType> {

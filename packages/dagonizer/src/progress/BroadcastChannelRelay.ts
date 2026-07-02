@@ -12,14 +12,15 @@
  * bare identifier — so this module carries zero DOM-lib dependency.
  *
  * Echo suppression: a message arriving on the channel republishes onto the
- * local bus. Because `EventBus.publish` is synchronous, setting
- * `#suppressOutbound = true` before the republish and resetting it in a
- * `finally` block reliably prevents the inbound event from echoing back out
- * over the channel.
+ * local bus. `EventBus.publish` resolves only after every subscriber queue
+ * (including the relay's own outbound subscription) has accepted the event,
+ * so setting `#suppressOutbound = true` before `await`-ing the republish and
+ * resetting it in a `finally` block reliably prevents the inbound event from
+ * echoing back out over the channel.
  *
  * Usage:
  * ```ts
- * const bus = new EventBus();
+ * const bus = EventBus.of();
  * // inject an already-constructed channel (e.g. for tests):
  * const relay = BroadcastChannelRelay.of(bus, ['dag-events'], channel);
  * // or resolve from globalThis (browser / worker):
@@ -184,7 +185,7 @@ export class BroadcastChannelRelay implements BroadcastChannelRelayInterface {
 
     // Bind the inbound handler once so we can remove it by reference in close().
     this.#onMessage = (event: InboundMessageEventType): void => {
-      BroadcastChannelRelay.#handleInbound(this, event);
+      void BroadcastChannelRelay.#handleInbound(this, event);
     };
 
     // Outbound: for each topic, subscribe on the bus and forward to channel.
@@ -297,18 +298,18 @@ export class BroadcastChannelRelay implements BroadcastChannelRelayInterface {
    * Handle an inbound `message` event from the channel.
    *
    * Validates the envelope, filters to known topics, sets the re-entrancy
-   * suppression flag, republishes on the bus, then resets the flag in a
-   * `finally`. Because `EventBus.publish` is synchronous, the flag is reset
-   * before any subsequent outbound listener could fire.
+   * suppression flag, awaits the republish on the bus (so every subscriber
+   * queue — including the relay's own outbound subscription — has already
+   * observed the flag), then resets the flag in a `finally`.
    */
-  static #handleInbound(relay: BroadcastChannelRelay, event: InboundMessageEventType): void {
+  static async #handleInbound(relay: BroadcastChannelRelay, event: InboundMessageEventType): Promise<void> {
     const envelope = event['data'];
     if (!BroadcastChannelRelay.#isEnvelope(envelope)) return;
     if (!relay.#topics.has(envelope.topic)) return;
 
     relay.#suppressOutbound = true;
     try {
-      relay.#bus.publish(envelope.topic, envelope.payload);
+      await relay.#bus.publish(envelope.topic, envelope.payload);
     } finally {
       relay.#suppressOutbound = false;
     }

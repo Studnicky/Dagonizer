@@ -41,12 +41,7 @@ export type {
 // =============================================================================
 
 export {
-  ConfigurationError,
   DAGError,
-  ExecutionError,
-  NodeTimeoutError,
-  NotFoundError,
-  ValidationError,
 } from './errors/index.js';
 
 // =============================================================================
@@ -111,7 +106,6 @@ export {
   ExecutionResultSchema,
   ParkedSchema,
   ValidationResultSchema,
-  DAGErrorJSONSchema,
   GatherStrategySchema,
   ScatterOutputSchema,
   MetadataKeySchema,
@@ -161,7 +155,6 @@ export type {
   InterruptionInfoType,
   ParkedType,
   ValidationResultType,
-  DAGErrorJSONType,
   JsonSchemaType,
   JsonSchemaObjectType,
   JsonSchemaTypeNameType,
@@ -203,6 +196,7 @@ export {
 export type {
   ClockProviderInterface,
   ErrorConstructorType,
+  ErrorMatcherType,
   RetryPolicyOptionsType,
   SchedulerProviderInterface,
 } from './runtime/index.js';
@@ -314,7 +308,6 @@ export type { DagLifecycleEventType } from './progress/BusObserver.js';
 export type { DagonizerInterface } from './Dagonizer.js';
 export type { DispatcherBundleType } from './contracts/DispatcherBundle.js';
 export type { NodeStateInterface, StateFieldType, StateFieldsType } from './NodeStateBase.js';
-export type { DAGErrorInterface } from './errors/DAGError.js';
 
 // Child-state factory: class with clone-parent default.
 export { ChildStateFactory } from './runtime/ChildStateFactory.js';

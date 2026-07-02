@@ -3,10 +3,13 @@
  *
  * Exports:
  * - `BusEventEnvelopeSchema` / `BusEventEnvelopeWireType` / `BusEventEnvelopeType<T>` / `BusEventEnvelopeBuilder`
- * - `EventBus` / `EventBusInterface` / `BusListenerType` / `BusUnsubscribeType`
+ * - `EventBus` / `EventBusInterface` / `BusListenerType` / `BusTopicMapType`
+ * - `UnsubscribeType` (re-exported from `@studnicky/event-bus`)
  * - `SseStream` / `SseStreamOptionsType`
  * - `BusObserver` / `DagLifecycleEventType`
  */
+
+export type { UnsubscribeType } from '@studnicky/event-bus';
 
 export {
   BusEventEnvelopeBuilder,
@@ -22,7 +25,7 @@ export {
 } from './EventBus.js';
 export type {
   BusListenerType,
-  BusUnsubscribeType,
+  BusTopicMapType,
   EventBusInterface,
 } from './EventBus.js';
 

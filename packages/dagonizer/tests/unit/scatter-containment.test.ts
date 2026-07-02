@@ -135,7 +135,7 @@ const runnerDag: DAGType = Validator.dag.validate({
       'body': { 'dag': BODY_DAG_NAME },
       'source': 'items',
       'itemKey': 'item',
-      'concurrency': 1,
+      'execution': { 'mode': 'item', 'concurrency': 1 },
       'gather': { 'strategy': 'discard' },
       'container': CONTAINER_ROLE,
       'outputs': {
@@ -170,7 +170,7 @@ const inProcessRunnerDag: DAGType = Validator.dag.validate({
       'body': { 'dag': BODY_DAG_NAME },
       'source': 'items',
       'itemKey': 'item',
-      'concurrency': 1,
+      'execution': { 'mode': 'item', 'concurrency': 1 },
       'gather': { 'strategy': 'discard' },
       'outputs': {
         'all-success': 'end',
@@ -204,7 +204,7 @@ const nodeBodyRunnerDag: DAGType = Validator.dag.validate({
       'body': { 'node': 'node-body-worker' },
       'source': 'items',
       'itemKey': 'item',
-      'concurrency': 1,
+      'execution': { 'mode': 'item', 'concurrency': 1 },
       'gather': { 'strategy': 'discard' },
       'outputs': {
         'all-success': 'end',

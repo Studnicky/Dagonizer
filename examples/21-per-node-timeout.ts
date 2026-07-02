@@ -6,8 +6,8 @@
  *   1. Derives a child AbortController from the run's signal.
  *   2. Arms a Scheduler timer for the budget's milliseconds.
  *   3. Races the node's `execute()` call against the deadline.
- *   4. On expiry: aborts the child signal, throws `NodeTimeoutError`,
- *      fires `onError`, and marks the run `failed` with
+ *   4. On expiry: aborts the child signal, throws `DAGError` (code
+ *      `NODE_TIMEOUT`), fires `onError`, and marks the run `failed` with
  *      `result.interruptedAt.reason === 'timeout'`.
  *
  * Key differences from run-level deadlineMs (ExecuteOptions):
@@ -17,7 +17,7 @@
  *
  * Two runs demonstrate the contrast:
  *   (a) fastNode (Timeout.ofMs(200)): resolves in ~0 ms → completed normally.
- *   (b) slowNode (Timeout.ofMs(50)):  tries to wait 5 s → NodeTimeoutError after 50 ms.
+ *   (b) slowNode (Timeout.ofMs(50)):  tries to wait 5 s → DAGError (code NODE_TIMEOUT) after 50 ms.
  *
  * DAG definitions (state, nodes, dags): examples/dags/21-per-node-timeout.ts
  *
@@ -39,7 +39,7 @@ const fastState = new TaskState();
 const fastResult = await fastDispatcher.execute('fast-dag', fastState);
 
 // ---------------------------------------------------------------------------
-// Run (b): slow node — exceeds budget, NodeTimeoutError
+// Run (b): slow node — exceeds budget, DAGError (code NODE_TIMEOUT)
 // ---------------------------------------------------------------------------
 
 const slowDispatcher = new Dagonizer<TaskState>();

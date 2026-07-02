@@ -55,7 +55,10 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'body':        { '@id': `${NS}body` },
   'source':      { '@id': `${NS}source` },
   'itemKey':     { '@id': `${NS}itemKey` },
+  'execution':   { '@id': `${NS}execution` },
   'concurrency': { '@id': `${NS}concurrency` },
+  'throttle':    { '@id': `${NS}throttle` },
+  'reservoir':   { '@id': `${NS}reservoir` },
   'gather':      { '@id': `${NS}gather` },
   'reducer':     { '@id': `${NS}reducer` },
 
@@ -148,7 +151,6 @@ const DAGNodeEntrySchema = {
         },
         'source':      { 'type': 'string', 'minLength': 1 },
         'itemKey':     { 'type': 'string', 'minLength': 1 },
-        'concurrency': { 'type': 'integer', 'minimum': 1 },
         'stateMapping': {
           'type': 'object',
           'properties': {
@@ -163,15 +165,48 @@ const DAGNodeEntrySchema = {
           'additionalProperties': { 'type': 'string' },
         },
         'container': { 'type': 'string', 'minLength': 1 },
-        'reservoir': {
-          'type': 'object',
-          'required': ['keyField', 'capacity'],
-          'properties': {
-            'keyField':  { 'type': 'string', 'minLength': 1 },
-            'capacity':  { 'type': 'integer', 'minimum': 1 },
-            'idleMs':    { 'type': 'integer', 'minimum': 1 },
-          },
-          'additionalProperties': false,
+        // Unified concurrency-limiting policy: ONE discriminated `mode` structure
+        // instead of three uncoordinated sibling knobs. See ScatterNode.ts's doc
+        // comment for the full `item` vs `reservoir` semantics.
+        'execution': {
+          'oneOf': [
+            {
+              'type': 'object',
+              'required': ['mode'],
+              'properties': {
+                'mode': { 'type': 'string', 'const': 'item' },
+                'concurrency': { 'type': 'integer', 'minimum': 1 },
+                'throttle': {
+                  'type': 'object',
+                  'required': ['concurrencyLimit'],
+                  'properties': {
+                    'concurrencyLimit': { 'type': 'integer', 'minimum': 1 },
+                  },
+                  'additionalProperties': false,
+                },
+              },
+              'additionalProperties': false,
+            },
+            {
+              'type': 'object',
+              'required': ['mode', 'reservoir'],
+              'properties': {
+                'mode': { 'type': 'string', 'const': 'reservoir' },
+                'concurrency': { 'type': 'integer', 'minimum': 1 },
+                'reservoir': {
+                  'type': 'object',
+                  'required': ['keyField', 'capacity'],
+                  'properties': {
+                    'keyField':  { 'type': 'string', 'minLength': 1 },
+                    'capacity':  { 'type': 'integer', 'minimum': 1 },
+                    'idleMs':    { 'type': 'integer', 'minimum': 1 },
+                  },
+                  'additionalProperties': false,
+                },
+              },
+              'additionalProperties': false,
+            },
+          ],
         },
       },
       'additionalProperties': false,

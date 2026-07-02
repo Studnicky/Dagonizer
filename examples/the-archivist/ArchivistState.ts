@@ -512,13 +512,17 @@ export class ArchivistState extends NodeStateBase {
     if (typeof v.score !== 'number' || typeof v.source !== 'string') return false;
     const book = v.book;
     if (typeof book !== 'object' || book === null || Array.isArray(book)) return false;
-    if (!('identity' in book)) return false;
+    if (!('identity' in book && 'publication' in book)) return false;
     const identity = book.identity;
     if (typeof identity !== 'object' || identity === null) return false;
     if (!('isbn' in identity && 'title' in identity && 'authors' in identity)) return false;
-    return typeof identity.isbn === 'string'
-      && typeof identity.title === 'string'
-      && Array.isArray(identity.authors);
+    if (typeof identity.isbn !== 'string'
+      || typeof identity.title !== 'string'
+      || !Array.isArray(identity.authors)) return false;
+    const publication = book.publication;
+    if (typeof publication !== 'object' || publication === null) return false;
+    if (!('languages' in publication)) return false;
+    return Array.isArray(publication.languages);
   }
 
   private static isPriorIntent(v: unknown): v is RecalledContext['priorIntents'][number] {

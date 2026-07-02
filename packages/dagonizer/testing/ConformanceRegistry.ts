@@ -405,7 +405,7 @@ class ConformanceDags {
           'body': { 'dag': SCATTER_ITEM_BODY_DAG },
           'source': 'scatterItems',
           'itemKey': 'currentItem',
-          'concurrency': 1,
+          'execution': { 'mode': 'item', 'concurrency': 1 },
           'container': CONFORMANCE_CONTAINER_ROLE,
           'gather': { 'strategy': 'map', 'mapping': { 'value': 'gatheredItems' } },
           'reducer': 'aggregate',

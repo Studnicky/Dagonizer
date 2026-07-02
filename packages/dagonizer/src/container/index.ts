@@ -23,7 +23,6 @@ export type {
   PoolEntryType,
 } from './DagContainerBase.js';
 export { DEFAULT_SHUTDOWN_GRACE_MS } from './DagContainerBase.js';
-export { DagContainerError } from './DagContainerError.js';
 export { DagOutcome } from './DagOutcome.js';
 export type { BatchRunResultType } from './DagOutcome.js';
 export type { DagOutcomeType } from '../contracts/DagOutcomeType.js';

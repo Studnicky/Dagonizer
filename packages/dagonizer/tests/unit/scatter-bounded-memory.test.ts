@@ -128,7 +128,7 @@ class TestScatterDag {
           'body':        { 'node': 'pass' },
           'source':      'items',
           'itemKey':     'item',
-          'concurrency': concurrency,
+          'execution': { 'mode': 'item', 'concurrency': concurrency },
           'gather':      { 'strategy': 'counting-test' },
           'outputs': {
             'all-success': 'end',
@@ -163,7 +163,7 @@ class TestScatterDag {
           'body':        { 'dag': MULTI_BODY_DAG_NAME },
           'source':      'items',
           'itemKey':     'item',
-          'concurrency': concurrency,
+          'execution': { 'mode': 'item', 'concurrency': concurrency },
           'gather':      { 'strategy': 'multi-node-body-gather' },
           'outputs': {
             'all-success': 'end',
@@ -333,7 +333,7 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
           'body':        { 'node': 'track-pass' },
           'source':      'items',
           'itemKey':     'item',
-          'concurrency': 2,
+          'execution': { 'mode': 'item', 'concurrency': 2 },
           'gather':      { 'strategy': 'record-counting-custom' },
           'outputs': {
             'all-success': 'end',

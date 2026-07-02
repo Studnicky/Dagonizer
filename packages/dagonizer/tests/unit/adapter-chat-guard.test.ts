@@ -106,9 +106,11 @@ class RejectingSink implements StreamSinkInterface<ChatStreamChunkType> {
   }
 }
 
-/** Rejects after `ms` ms — hang-proof ceiling that fails the test on timeout. */
-function testCeiling(ms: number, label: string): Promise<never> {
-  return new Promise((_, reject) => setTimeout(() => { reject(new Error(label)); }, ms));
+/** Builds a hang-proof ceiling that rejects after `ms` ms, failing the test on timeout. */
+class TestCeiling {
+  static of(ms: number, label: string): Promise<never> {
+    return new Promise((_, reject) => setTimeout(() => { reject(new Error(label)); }, ms));
+  }
 }
 
 void describe('BaseAdapter chat guard (abort+timeout race)', () => {
@@ -121,7 +123,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
     );
 
     await assert.rejects(
-      Promise.race([chatCall, testCeiling(1000, 'TEST TIMED OUT — guard did not reject within 1000ms')]),
+      Promise.race([chatCall, TestCeiling.of(1000, 'TEST TIMED OUT — guard did not reject within 1000ms')]),
       (err: unknown) => {
         assert.ok(err instanceof LlmError, `expected LlmError, got ${String(err)}`);
         assert.equal(err.classification.reason, 'TIMEOUT');
@@ -145,7 +147,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
     );
 
     await assert.rejects(
-      Promise.race([chatCall, testCeiling(1000, 'TEST TIMED OUT — external abort did not propagate within 1000ms')]),
+      Promise.race([chatCall, TestCeiling.of(1000, 'TEST TIMED OUT — external abort did not propagate within 1000ms')]),
       (err: unknown) => {
         assert.ok(err instanceof Error, `expected Error, got ${String(err)}`);
         assert.ok(
@@ -188,7 +190,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
     );
 
     await assert.rejects(
-      Promise.race([streamCall, testCeiling(1000, 'TEST TIMED OUT — chatStream did not reject within 1000ms')]),
+      Promise.race([streamCall, TestCeiling.of(1000, 'TEST TIMED OUT — chatStream did not reject within 1000ms')]),
       (err: unknown) => {
         assert.ok(err instanceof LlmError, `expected LlmError, got ${String(err)}`);
         assert.equal(err.classification.reason, 'TIMEOUT');

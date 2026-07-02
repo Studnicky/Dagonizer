@@ -466,6 +466,140 @@ void test('performChatStream emits the single chunk of a one-chunk promptStreami
   }
 });
 
+void test('performChat resolves outputLanguage to "en" when no option is set and no navigator global exists', async () => {
+  // Modern Node ships its own getter-only `navigator` global, so this test
+  // explicitly removes it (rather than assuming absence) to exercise the
+  // fallback path in OutputLanguage.detect() when neither an explicit option
+  // nor a browser locale is available. `Object.defineProperty` with
+  // `configurable: true` replaces the getter-only descriptor; the original
+  // is restored in `finally`.
+  const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Reflect.deleteProperty(globalThis, 'navigator');
+  let createOptions: Record<string, unknown> | undefined;
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async (options: Record<string, unknown>) => {
+      createOptions = options;
+      return Promise.resolve({ 'prompt': async () => Promise.resolve('ok'), 'destroy': () => {} });
+    },
+  });
+  const a = new GeminiNanoAdapter();
+  try {
+    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
+  } finally {
+    LanguageModelStub.remove();
+    if (originalNavigatorDescriptor !== undefined) {
+      Object.defineProperty(globalThis, 'navigator', originalNavigatorDescriptor);
+    }
+  }
+  assert.ok(createOptions !== undefined);
+  assert.equal(createOptions['outputLanguage'], 'en');
+});
+
+void test('performChat forwards an explicitly configured outputLanguage to LanguageModel.create()', async () => {
+  let createOptions: Record<string, unknown> | undefined;
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async (options: Record<string, unknown>) => {
+      createOptions = options;
+      return Promise.resolve({ 'prompt': async () => Promise.resolve('ok'), 'destroy': () => {} });
+    },
+  });
+  const a = new GeminiNanoAdapter({ 'outputLanguage': 'fr' });
+  try {
+    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Bonjour.' }] }));
+  } finally {
+    LanguageModelStub.remove();
+  }
+  assert.ok(createOptions !== undefined);
+  assert.equal(createOptions['outputLanguage'], 'fr');
+});
+
+void test('performChat narrows an unsupported explicit outputLanguage down to "en"', async () => {
+  let createOptions: Record<string, unknown> | undefined;
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async (options: Record<string, unknown>) => {
+      createOptions = options;
+      return Promise.resolve({ 'prompt': async () => Promise.resolve('ok'), 'destroy': () => {} });
+    },
+  });
+  // 'zh' is not in Chrome's supported output-language set (de/en/es/fr/ja).
+  const a = new GeminiNanoAdapter({ 'outputLanguage': 'zh' });
+  try {
+    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
+  } finally {
+    LanguageModelStub.remove();
+  }
+  assert.ok(createOptions !== undefined);
+  assert.equal(createOptions['outputLanguage'], 'en');
+});
+
+void test('performChat detects and narrows navigator.language when no explicit outputLanguage is configured', async () => {
+  // Simulate the browser: install a `navigator.language` global carrying a
+  // full BCP-47 tag, and confirm the adapter narrows it to the 2-letter
+  // Chrome-supported code at construction time. Node 21+ ships its own
+  // getter-only `navigator` global, so `Object.assign` cannot overwrite it —
+  // `Object.defineProperty` with `configurable: true` replaces it and the
+  // original descriptor is restored in `finally`.
+  const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', {
+    'value':        { 'language': 'es-MX' },
+    'configurable': true,
+    'writable':     true,
+  });
+  let createOptions: Record<string, unknown> | undefined;
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async (options: Record<string, unknown>) => {
+      createOptions = options;
+      return Promise.resolve({ 'prompt': async () => Promise.resolve('ok'), 'destroy': () => {} });
+    },
+  });
+  const a = new GeminiNanoAdapter();
+  try {
+    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hola.' }] }));
+  } finally {
+    LanguageModelStub.remove();
+    if (originalNavigatorDescriptor !== undefined) {
+      Object.defineProperty(globalThis, 'navigator', originalNavigatorDescriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, 'navigator');
+    }
+  }
+  assert.ok(createOptions !== undefined);
+  assert.equal(createOptions['outputLanguage'], 'es');
+});
+
+void test('performChatStream forwards the resolved outputLanguage to LanguageModel.create()', async () => {
+  let createOptions: Record<string, unknown> | undefined;
+  LanguageModelStub.install({
+    'availability': async () => Promise.resolve('available'),
+    'create':       async (options: Record<string, unknown>) => {
+      createOptions = options;
+      return Promise.resolve({
+        'promptStreaming': () => new ReadableStream<string>({
+          start(controller) {
+            controller.enqueue('Hi');
+            controller.close();
+          },
+        }),
+        'prompt':  async () => Promise.resolve(''),
+        'destroy': () => {},
+      });
+    },
+  });
+  const a = new GeminiNanoAdapter({ 'outputLanguage': 'ja' });
+  const sink = new TestSink();
+  try {
+    await a.chatStream(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
+  } finally {
+    LanguageModelStub.remove();
+  }
+  assert.ok(createOptions !== undefined);
+  assert.equal(createOptions['outputLanguage'], 'ja');
+});
+
 void test('performChatStream falls back to the buffered default for a tool-bearing request', async () => {
   let promptCalled = false;
   let promptStreamingCalled = false;

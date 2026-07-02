@@ -1,8 +1,9 @@
 /**
  * Unit tests for `@studnicky/dagonizer/progress`:
  *   - BusEventEnvelopeBuilder: wire envelope construction
- *   - EventBus: publish→subscribe delivery, unsubscribe, clear, dispose,
- *               throwing-listener isolation, multi-listener fan-out
+ *   - EventBus: publish→subscribe delivery (backed by `@studnicky/event-bus`'s
+ *               typed async pub/sub + per-subscriber `BusQueue`), unsubscribe,
+ *               close, throwing-handler isolation, multi-handler fan-out
  *   - SseStream: SSE frame format, connected frame, bus→stream delivery,
  *                unsubscribe-on-cancel, heartbeat interval (disabled in tests),
  *                frame/comment static helpers
@@ -13,6 +14,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { BusEventEnvelopeType } from '../../src/progress/BusEventEnvelope.js';
 import { BusEventEnvelopeBuilder } from '../../src/progress/BusEventEnvelope.js';
 import { BusObserver } from '../../src/progress/BusObserver.js';
 import type { DagLifecycleEventType } from '../../src/progress/BusObserver.js';
@@ -53,164 +55,176 @@ describe('BusEventEnvelopeBuilder', () => {
 // ── EventBus ─────────────────────────────────────────────────────────────────
 
 describe('EventBus.publish → subscribe', () => {
-  it('delivers a typed event to a subscriber', () => {
-    const bus = new EventBus();
+  it('delivers a typed event to a subscriber', async () => {
+    const bus = EventBus.of();
     const received: unknown[] = [];
 
-    bus.subscribe('topic', (e) => { received.push(e.payload); });
-    bus.publish('topic', { 'n': 1 });
-    bus.publish('topic', { 'n': 2 });
+    bus.subscribe('topic', (e: BusEventEnvelopeType<unknown>) => { received.push(e.payload); });
+    await bus.publish('topic', { 'n': 1 });
+    await bus.publish('topic', { 'n': 2 });
+    await bus.drain();
 
     assert.deepEqual(received, [{ 'n': 1 }, { 'n': 2 }]);
-    bus.dispose();
+    await bus.close();
   });
 
-  it('delivers to multiple listeners on the same topic', () => {
-    const bus = new EventBus();
+  it('delivers to multiple listeners on the same topic', async () => {
+    const bus = EventBus.of();
     let countA = 0;
     let countB = 0;
 
     bus.subscribe('x', () => { countA++; });
     bus.subscribe('x', () => { countB++; });
-    bus.publish('x', null);
+    await bus.publish('x', null);
+    await bus.drain();
 
     assert.equal(countA, 1);
     assert.equal(countB, 1);
-    bus.dispose();
+    await bus.close();
   });
 
-  it('does not deliver to listeners on a different topic', () => {
-    const bus = new EventBus();
+  it('does not deliver to listeners on a different topic', async () => {
+    const bus = EventBus.of();
     let fired = false;
 
     bus.subscribe('other', () => { fired = true; });
-    bus.publish('target', 'payload');
+    await bus.publish('target', 'payload');
+    await bus.drain();
 
     assert.equal(fired, false);
-    bus.dispose();
+    await bus.close();
   });
 
-  it('delivers the envelope with the correct topic field', () => {
-    const bus = new EventBus();
+  it('delivers the envelope with the correct topic field', async () => {
+    const bus = EventBus.of();
     const topics: string[] = [];
 
-    bus.subscribe('t', (e) => { topics.push(e.topic); });
-    bus.publish('t', null);
+    bus.subscribe('t', (e: BusEventEnvelopeType<unknown>) => { topics.push(e.topic); });
+    await bus.publish('t', null);
+    await bus.drain();
 
     assert.deepEqual(topics, ['t']);
-    bus.dispose();
+    await bus.close();
   });
 });
 
 describe('EventBus.subscribe → unsubscribe', () => {
-  it('unsubscribe stops future delivery', () => {
-    const bus = new EventBus();
+  it('unsubscribe stops future delivery', async () => {
+    const bus = EventBus.of();
     let count = 0;
     const unsub = bus.subscribe('t', () => { count++; });
 
-    bus.publish('t', null);
+    await bus.publish('t', null);
     unsub();
-    bus.publish('t', null);
+    await bus.publish('t', null);
+    await bus.drain();
 
     assert.equal(count, 1);
-    bus.dispose();
+    await bus.close();
   });
 
-  it('calling unsubscribe twice is a no-op', () => {
-    const bus = new EventBus();
+  it('calling unsubscribe twice is a no-op', async () => {
+    const bus = EventBus.of();
     let count = 0;
     const unsub = bus.subscribe('t', () => { count++; });
 
-    bus.publish('t', null);
+    await bus.publish('t', null);
     unsub();
     unsub(); // should not throw
-    bus.publish('t', null);
+    await bus.publish('t', null);
+    await bus.drain();
 
     assert.equal(count, 1);
-    bus.dispose();
+    await bus.close();
   });
 
-  it('one listener unsubscribes without affecting siblings', () => {
-    const bus = new EventBus();
+  it('one listener unsubscribes without affecting siblings', async () => {
+    const bus = EventBus.of();
     let countA = 0;
     let countB = 0;
 
     const unsubA = bus.subscribe('t', () => { countA++; });
     bus.subscribe('t', () => { countB++; });
 
-    bus.publish('t', null);
+    await bus.publish('t', null);
     unsubA();
-    bus.publish('t', null);
+    await bus.publish('t', null);
+    await bus.drain();
 
     assert.equal(countA, 1);
     assert.equal(countB, 2);
-    bus.dispose();
+    await bus.close();
   });
 });
 
-describe('EventBus.clear', () => {
-  it('removes all listeners on the cleared topic', () => {
-    const bus = new EventBus();
+describe('EventBus multi-listener unsubscribe', () => {
+  it('unsubscribing every listener on a topic silences it', async () => {
+    const bus = EventBus.of();
     let count = 0;
 
-    bus.subscribe('t', () => { count++; });
-    bus.subscribe('t', () => { count++; });
-    bus.clear('t');
-    bus.publish('t', null);
+    const unsubA = bus.subscribe('t', () => { count++; });
+    const unsubB = bus.subscribe('t', () => { count++; });
+    unsubA();
+    unsubB();
+    await bus.publish('t', null);
+    await bus.drain();
 
     assert.equal(count, 0);
-    bus.dispose();
+    await bus.close();
   });
 
-  it('clear on a topic with no listeners is a no-op', () => {
-    const bus = new EventBus();
-    assert.doesNotThrow(() => { bus.clear('nonexistent'); });
-    bus.dispose();
+  it('unsubscribing a topic with no listeners is a no-op', async () => {
+    const bus = EventBus.of();
+    const unsub = bus.subscribe('nonexistent', () => {});
+    assert.doesNotThrow(() => { unsub(); unsub(); });
+    await bus.close();
   });
 
-  it('does not affect other topics', () => {
-    const bus = new EventBus();
+  it('does not affect other topics', async () => {
+    const bus = EventBus.of();
     let countA = 0;
     let countB = 0;
 
-    bus.subscribe('a', () => { countA++; });
+    const unsubA = bus.subscribe('a', () => { countA++; });
     bus.subscribe('b', () => { countB++; });
-    bus.clear('a');
-    bus.publish('a', null);
-    bus.publish('b', null);
+    unsubA();
+    await bus.publish('a', null);
+    await bus.publish('b', null);
+    await bus.drain();
 
     assert.equal(countA, 0);
     assert.equal(countB, 1);
-    bus.dispose();
+    await bus.close();
   });
 });
 
-describe('EventBus.dispose', () => {
-  it('silences all topics after dispose', () => {
-    const bus = new EventBus();
+describe('EventBus.close', () => {
+  it('silences all topics after close', async () => {
+    const bus = EventBus.of();
     let count = 0;
 
     bus.subscribe('a', () => { count++; });
     bus.subscribe('b', () => { count++; });
-    bus.dispose();
-    bus.publish('a', null);
-    bus.publish('b', null);
+    await bus.close();
+    await bus.publish('a', null);
+    await bus.publish('b', null);
 
     assert.equal(count, 0);
   });
 });
 
 describe('EventBus throwing-listener isolation', () => {
-  it('a throwing listener does not prevent subsequent listeners from firing', () => {
-    const bus = new EventBus();
+  it('a throwing listener does not prevent subsequent listeners from firing', async () => {
+    const bus = EventBus.of();
     const received: number[] = [];
 
     bus.subscribe('t', () => { throw new Error('boom'); });
     bus.subscribe('t', () => { received.push(1); });
 
-    assert.doesNotThrow(() => { bus.publish('t', null); });
+    await assert.doesNotReject(async () => { await bus.publish('t', null); });
+    await bus.drain();
     assert.deepEqual(received, [1]);
-    bus.dispose();
+    await bus.close();
   });
 });
 
@@ -256,29 +270,29 @@ class StreamReader {
 
 describe('SseStream.of — connected frame', () => {
   it('emits a connected frame as the first chunk', async () => {
-    const bus = new EventBus();
+    const bus = EventBus.of();
     const stream = SseStream.of(bus, ['t'], { 'heartbeatMs': 0 });
 
-    // Publish synchronously BEFORE we start reading, so the listener is wired.
-    // Then pull the connected frame only.
+    // Pull the connected frame only; the listener is wired during `start`.
     const chunks = await StreamReader.take(stream.readable, 1);
     assert.equal(chunks[0], 'data: {"connected":true}\n\n');
 
-    bus.dispose();
+    await bus.close();
   });
 });
 
 describe('SseStream.of — event delivery', () => {
   it('forwards a published event as an SSE data frame', async () => {
-    const bus = new EventBus();
+    const bus = EventBus.of();
     const stream = SseStream.of(bus, ['runs'], { 'heartbeatMs': 0 });
     const reader = stream.readable.getReader();
 
     // Pull connected frame.
     await reader.read();
 
-    // Publish an event — the bus subscriber fires synchronously.
-    bus.publish('runs', { 'nodeId': 'start' });
+    // Publish an event and wait for the subscriber queue to deliver it.
+    await bus.publish('runs', { 'nodeId': 'start' });
+    await bus.drain();
 
     const { value } = await reader.read();
     reader.cancel();
@@ -292,21 +306,23 @@ describe('SseStream.of — event delivery', () => {
     assert.equal(parsed.topic, 'runs');
     assert.deepEqual(parsed.payload, { 'nodeId': 'start' });
 
-    bus.dispose();
+    await bus.close();
   });
 
   it('subscribes to multiple topics and forwards events from each', async () => {
-    const bus = new EventBus();
+    const bus = EventBus.of();
     const stream = SseStream.of(bus, ['a', 'b'], { 'heartbeatMs': 0 });
     const reader = stream.readable.getReader();
 
     // Discard connected frame.
     await reader.read();
 
-    bus.publish('a', 1);
+    await bus.publish('a', 1);
+    await bus.drain();
     const frameA = await reader.read();
 
-    bus.publish('b', 2);
+    await bus.publish('b', 2);
+    await bus.drain();
     const frameB = await reader.read();
 
     reader.cancel();
@@ -326,13 +342,13 @@ describe('SseStream.of — event delivery', () => {
     assert.equal(eventB.topic, 'b');
     assert.equal(eventB.payload, 2);
 
-    bus.dispose();
+    await bus.close();
   });
 });
 
 describe('SseStream.of — cancel teardown', () => {
   it('unsubscribes from the bus when the consumer cancels', async () => {
-    const bus = new EventBus();
+    const bus = EventBus.of();
     const stream = SseStream.of(bus, ['t'], { 'heartbeatMs': 0 });
 
     // Pull connected frame, then cancel.
@@ -342,19 +358,20 @@ describe('SseStream.of — cancel teardown', () => {
     // errors (the bus is still alive; subscription was cleaned up).
     let fired = false;
     bus.subscribe('t', () => { fired = true; });
-    bus.publish('t', null);
+    await bus.publish('t', null);
+    await bus.drain();
 
     // The StreamReader.take cancels the reader. The SseStream unsubscribe ran.
     // The new 'fired' subscriber we added above should still fire (it's a new one).
     assert.equal(fired, true);
 
-    bus.dispose();
+    await bus.close();
   });
 });
 
 describe('SseStream.of — heartbeat (interval=0 disables)', () => {
   it('with heartbeatMs:0 the stream does not emit heartbeat frames between events', async () => {
-    const bus = new EventBus();
+    const bus = EventBus.of();
     const stream = SseStream.of(bus, ['t'], { 'heartbeatMs': 0 });
 
     // Verify connected frame, publish one event, collect both.
@@ -362,13 +379,14 @@ describe('SseStream.of — heartbeat (interval=0 disables)', () => {
     const connectedFrame = (await reader.read()).value;
     assert.equal(connectedFrame, 'data: {"connected":true}\n\n');
 
-    bus.publish('t', 'hello');
+    await bus.publish('t', 'hello');
+    await bus.drain();
     const eventFrame = (await reader.read()).value;
     assert.ok(eventFrame?.includes('"hello"'));
 
     reader.cancel();
     reader.releaseLock();
-    bus.dispose();
+    await bus.close();
   });
 });
 
@@ -379,17 +397,20 @@ class BusObserverTestState extends NodeStateBase {}
 
 /**
  * Pull the first payload off the bus after invoking `fn`. Returns the
- * `DagLifecycleEventType` payload (unboxed from the envelope).
+ * `DagLifecycleEventType` payload (unboxed from the envelope). `fn` triggers a
+ * fire-and-forget `bus.publish` (via `BusObserver`); `bus.drain()` waits for
+ * the subscriber queue to deliver it before the payload is read.
  */
 class BusCapture {
   private constructor() { /* static class */ }
 
-  static first(bus: EventBus, topic: string, fn: () => void): DagLifecycleEventType {
+  static async first(bus: EventBus, topic: string, fn: () => void): Promise<DagLifecycleEventType> {
     let captured: DagLifecycleEventType | undefined;
-    const unsub = bus.subscribe(topic, (e) => {
+    const unsub = bus.subscribe(topic, (e: BusEventEnvelopeType<unknown>) => {
       if (captured === undefined) captured = e.payload as DagLifecycleEventType;
     });
     fn();
+    await bus.drain();
     unsub();
     assert.ok(captured !== undefined, 'expected at least one event');
     return captured;
@@ -397,29 +418,29 @@ class BusCapture {
 }
 
 describe('BusObserver.onFlowStart', () => {
-  it('publishes a flowStart event with dagName', () => {
-    const bus = new EventBus();
+  it('publishes a flowStart event with dagName', async () => {
+    const bus = EventBus.of();
     const observer = new BusObserver(bus, 'dag-events');
     const state = new BusObserverTestState();
 
-    const payload = BusCapture.first(bus, 'dag-events', () => {
+    const payload = await BusCapture.first(bus, 'dag-events', () => {
       observer.onFlowStart?.('my-dag', state);
     });
 
     assert.equal(payload.event, 'flowStart');
     assert.equal((payload as Extract<DagLifecycleEventType, { event: 'flowStart' }>).dagName, 'my-dag');
-    bus.dispose();
+    await bus.close();
   });
 });
 
 describe('BusObserver.onNodeStart', () => {
-  it('publishes a nodeStart event with nodeName and placementPath', () => {
-    const bus = new EventBus();
+  it('publishes a nodeStart event with nodeName and placementPath', async () => {
+    const bus = EventBus.of();
     const observer = new BusObserver(bus, 'events');
     const state = new BusObserverTestState();
     const path = ['parent', 'child'] as const;
 
-    const payload = BusCapture.first(bus, 'events', () => {
+    const payload = await BusCapture.first(bus, 'events', () => {
       observer.onNodeStart?.('search-node', state, path);
     });
 
@@ -427,17 +448,17 @@ describe('BusObserver.onNodeStart', () => {
     const ev = payload as Extract<DagLifecycleEventType, { event: 'nodeStart' }>;
     assert.equal(ev.nodeName, 'search-node');
     assert.deepEqual(ev.placementPath, ['parent', 'child']);
-    bus.dispose();
+    await bus.close();
   });
 });
 
 describe('BusObserver.onNodeEnd', () => {
-  it('publishes a nodeEnd event with output field', () => {
-    const bus = new EventBus();
+  it('publishes a nodeEnd event with output field', async () => {
+    const bus = EventBus.of();
     const observer = new BusObserver(bus, 'events');
     const state = new BusObserverTestState();
 
-    const payload = BusCapture.first(bus, 'events', () => {
+    const payload = await BusCapture.first(bus, 'events', () => {
       observer.onNodeEnd?.('rank-node', 'success', state, []);
     });
 
@@ -446,27 +467,27 @@ describe('BusObserver.onNodeEnd', () => {
     assert.equal(ev.nodeName, 'rank-node');
     assert.equal(ev.output, 'success');
     assert.deepEqual(ev.placementPath, []);
-    bus.dispose();
+    await bus.close();
   });
 
-  it('publishes nodeEnd with null output for terminal nodes', () => {
-    const bus = new EventBus();
+  it('publishes nodeEnd with null output for terminal nodes', async () => {
+    const bus = EventBus.of();
     const observer = new BusObserver(bus, 'events');
     const state = new BusObserverTestState();
 
-    const payload = BusCapture.first(bus, 'events', () => {
+    const payload = await BusCapture.first(bus, 'events', () => {
       observer.onNodeEnd?.('terminal-node', null, state, []);
     });
 
     const ev = payload as Extract<DagLifecycleEventType, { event: 'nodeEnd' }>;
     assert.equal(ev.output, null);
-    bus.dispose();
+    await bus.close();
   });
 });
 
 describe('BusObserver.onFlowEnd', () => {
-  it('publishes a flowEnd event with terminalOutcome as outcome', () => {
-    const bus = new EventBus();
+  it('publishes a flowEnd event with terminalOutcome as outcome', async () => {
+    const bus = EventBus.of();
     const observer = new BusObserver(bus, 'events');
     const state = new BusObserverTestState();
     const result = {
@@ -479,7 +500,7 @@ describe('BusObserver.onFlowEnd', () => {
       'terminalOutcome': 'completed' as const,
     };
 
-    const payload = BusCapture.first(bus, 'events', () => {
+    const payload = await BusCapture.first(bus, 'events', () => {
       observer.onFlowEnd?.('my-dag', state, result);
     });
 
@@ -487,11 +508,11 @@ describe('BusObserver.onFlowEnd', () => {
     const ev = payload as Extract<DagLifecycleEventType, { event: 'flowEnd' }>;
     assert.equal(ev.dagName, 'my-dag');
     assert.equal(ev.outcome, 'completed');
-    bus.dispose();
+    await bus.close();
   });
 
-  it('falls back to interruptedAt.reason when terminalOutcome is null', () => {
-    const bus = new EventBus();
+  it('falls back to interruptedAt.reason when terminalOutcome is null', async () => {
+    const bus = EventBus.of();
     const observer = new BusObserver(bus, 'events');
     const state = new BusObserverTestState();
     const result = {
@@ -504,24 +525,24 @@ describe('BusObserver.onFlowEnd', () => {
       'terminalOutcome': null,
     };
 
-    const payload = BusCapture.first(bus, 'events', () => {
+    const payload = await BusCapture.first(bus, 'events', () => {
       observer.onFlowEnd?.('my-dag', state, result);
     });
 
     const ev = payload as Extract<DagLifecycleEventType, { event: 'flowEnd' }>;
     assert.equal(ev.outcome, 'abort');
-    bus.dispose();
+    await bus.close();
   });
 });
 
 describe('BusObserver.onError', () => {
-  it('publishes a nodeError event with error message', () => {
-    const bus = new EventBus();
+  it('publishes a nodeError event with error message', async () => {
+    const bus = EventBus.of();
     const observer = new BusObserver(bus, 'events');
     const state = new BusObserverTestState();
     const error = new Error('fetch failed');
 
-    const payload = BusCapture.first(bus, 'events', () => {
+    const payload = await BusCapture.first(bus, 'events', () => {
       observer.onError?.('fetch-node', error, state, ['outer']);
     });
 
@@ -530,43 +551,45 @@ describe('BusObserver.onError', () => {
     assert.equal(ev.nodeName, 'fetch-node');
     assert.equal(ev.error, 'fetch failed');
     assert.deepEqual(ev.placementPath, ['outer']);
-    bus.dispose();
+    await bus.close();
   });
 });
 
 describe('BusObserver — multiple subscribers receive the same event', () => {
-  it('two bus subscribers both receive the nodeStart event', () => {
-    const bus = new EventBus();
+  it('two bus subscribers both receive the nodeStart event', async () => {
+    const bus = EventBus.of();
     const observer = new BusObserver(bus, 'shared');
     const state = new BusObserverTestState();
 
     const payloadsA: DagLifecycleEventType[] = [];
     const payloadsB: DagLifecycleEventType[] = [];
 
-    bus.subscribe('shared', (e) => { payloadsA.push(e.payload as DagLifecycleEventType); });
-    bus.subscribe('shared', (e) => { payloadsB.push(e.payload as DagLifecycleEventType); });
+    bus.subscribe('shared', (e: BusEventEnvelopeType<unknown>) => { payloadsA.push(e.payload as DagLifecycleEventType); });
+    bus.subscribe('shared', (e: BusEventEnvelopeType<unknown>) => { payloadsB.push(e.payload as DagLifecycleEventType); });
 
     observer.onNodeStart?.('classify', state, []);
+    await bus.drain();
 
     assert.equal(payloadsA.length, 1);
     assert.equal(payloadsB.length, 1);
     assert.equal(payloadsA[0]?.event, 'nodeStart');
     assert.equal(payloadsB[0]?.event, 'nodeStart');
-    bus.dispose();
+    await bus.close();
   });
 });
 
 describe('BusObserver.onPhaseEnter / onPhaseExit', () => {
-  it('publishes phaseEnter and phaseExit events', () => {
-    const bus = new EventBus();
+  it('publishes phaseEnter and phaseExit events', async () => {
+    const bus = EventBus.of();
     const observer = new BusObserver(bus, 'events');
     const state = new BusObserverTestState();
     const captured: DagLifecycleEventType[] = [];
 
-    bus.subscribe('events', (e) => { captured.push(e.payload as DagLifecycleEventType); });
+    bus.subscribe('events', (e: BusEventEnvelopeType<unknown>) => { captured.push(e.payload as DagLifecycleEventType); });
 
     observer.onPhaseEnter?.('my-dag', 'pre', 'pre-phase', state, []);
     observer.onPhaseExit?.('my-dag', 'pre', 'pre-phase', state, []);
+    await bus.drain();
 
     assert.equal(captured.length, 2);
     assert.equal(captured[0]?.event, 'phaseEnter');
@@ -575,6 +598,6 @@ describe('BusObserver.onPhaseEnter / onPhaseExit', () => {
     assert.equal(enter.dagName, 'my-dag');
     assert.equal(enter.phase, 'pre');
     assert.equal(enter.placementName, 'pre-phase');
-    bus.dispose();
+    await bus.close();
   });
 });

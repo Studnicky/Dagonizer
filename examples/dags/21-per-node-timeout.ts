@@ -5,8 +5,8 @@
  *
  * Demonstrates per-node timeout: set `timeout: Timeout.ofMs(n)` directly on
  * the NodeInterface object. The engine reads `node.timeout` and derives a
- * child AbortController. When the budget expires, the engine throws
- * NodeTimeoutError, fires onError, and marks the run failed
+ * child AbortController. When the budget expires, the engine throws a
+ * DAGError (code NODE_TIMEOUT), fires onError, and marks the run failed
  * (interruptedAt.reason === 'timeout').
  *
  * The parent run-level signal is NOT aborted; per-node timeout is scoped to
@@ -62,7 +62,7 @@ export class FastTaskNode extends ScalarNode<TaskState, 'done'> {
 export class SlowTaskNode extends ScalarNode<TaskState, 'done'> {
   readonly name = 'slow-task';
   readonly outputs = ['done'] as const;
-  // Per-node timeout budget: 50 ms. The node tries to wait 5 s → NodeTimeoutError.
+  // Per-node timeout budget: 50 ms. The node tries to wait 5 s → DAGError (code NODE_TIMEOUT).
   override readonly timeout = Timeout.ofMs(50);
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };

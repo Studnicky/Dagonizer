@@ -31,37 +31,40 @@ import { ResolveAddressNode } from '../../nodes/geo/resolveAddress.ts';
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Minimal resolved GeoCandidate for a given ISO-2 country. */
-function candidateFor(country: string, overrides: Partial<GeoCandidate> = {}): GeoCandidate {
-  return {
-    'modality':    'ip',
-    'resolved':    true,
-    'country':     country,
-    'countryName': country === 'DE' ? 'Germany' : country,
-    'continent':   '',
-    'region':      '',
-    'locality':    '',
-    'lat':         0,
-    'lng':         0,
-    'water':       false,
-    ...overrides,
-  };
-}
+/** Builds GeoCandidate fixtures for resolver-node tests. */
+class GeoCandidateFixture {
+  /** Minimal resolved GeoCandidate for a given ISO-2 country. */
+  static for(country: string, overrides: Partial<GeoCandidate> = {}): GeoCandidate {
+    return {
+      'modality':    'ip',
+      'resolved':    true,
+      'country':     country,
+      'countryName': country === 'DE' ? 'Germany' : country,
+      'continent':   '',
+      'region':      '',
+      'locality':    '',
+      'lat':         0,
+      'lng':         0,
+      'water':       false,
+      ...overrides,
+    };
+  }
 
-/** Unresolved GeoCandidate (transport found nothing usable). */
-function unresolvedCandidate(): GeoCandidate {
-  return {
-    'modality':    'ip',
-    'resolved':    false,
-    'country':     '',
-    'countryName': '',
-    'continent':   '',
-    'region':      '',
-    'locality':    '',
-    'lat':         0,
-    'lng':         0,
-    'water':       false,
-  };
+  /** Unresolved GeoCandidate (transport found nothing usable). */
+  static unresolved(): GeoCandidate {
+    return {
+      'modality':    'ip',
+      'resolved':    false,
+      'country':     '',
+      'countryName': '',
+      'continent':   '',
+      'region':      '',
+      'locality':    '',
+      'lat':         0,
+      'lng':         0,
+      'water':       false,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -286,7 +289,7 @@ describe('ResolveIpNode — ip kind', () => {
       'kind': 'ip', 'weight': 0.9, 'ipAddress': '8.8.8.8',
     });
     state.setMetadata('geo-signal', descriptor);
-    const fakeOutcome = GeoLookupOutcome.resolved(candidateFor('US'));
+    const fakeOutcome = GeoLookupOutcome.resolved(GeoCandidateFixture.for('US'));
     const node = new PublicResolveIpNode(
       new FakeIpGeolocator(fakeOutcome),
     );
@@ -303,7 +306,7 @@ describe('ResolveIpNode — ip kind', () => {
       'kind': 'ip', 'weight': 0.9, 'ipAddress': '0.0.0.0',
     });
     state.setMetadata('geo-signal', descriptor);
-    const fakeOutcome = GeoLookupOutcome.resolved(unresolvedCandidate());
+    const fakeOutcome = GeoLookupOutcome.resolved(GeoCandidateFixture.unresolved());
     const node = new PublicResolveIpNode(
       new FakeIpGeolocator(fakeOutcome),
     );
@@ -320,7 +323,7 @@ describe('ResolveIpNode — ip kind', () => {
     });
     state.setMetadata('geo-signal', descriptor);
     const err = GeoErrorRecord.capture('ip-geolocate', new Error('timeout'), '1.2.3.4');
-    const fakeOutcome = GeoLookupOutcome.failed(unresolvedCandidate(), err);
+    const fakeOutcome = GeoLookupOutcome.failed(GeoCandidateFixture.unresolved(), err);
     const node = new PublicResolveIpNode(
       new FakeIpGeolocator(fakeOutcome),
     );
@@ -338,7 +341,7 @@ describe('ResolveAddressNode — address kind', () => {
     });
     state.setMetadata('geo-signal', descriptor);
     const fakeOutcome = GeoLookupOutcome.resolved(
-      candidateFor('US', { 'modality': 'address' }),
+      GeoCandidateFixture.for('US', { 'modality': 'address' }),
     );
     const node = new PublicResolveAddressNode(
       new FakeAddressGeocoder(fakeOutcome),
@@ -358,7 +361,7 @@ describe('ResolveAddressNode — address kind', () => {
     state.setMetadata('geo-signal', descriptor);
     const err = GeoErrorRecord.capture('address-geocode', new Error('HTTP 502'), 'bad address');
     const fakeOutcome = GeoLookupOutcome.failed(
-      candidateFor('', { 'resolved': false }),
+      GeoCandidateFixture.for('', { 'resolved': false }),
       err,
     );
     const node = new PublicResolveAddressNode(

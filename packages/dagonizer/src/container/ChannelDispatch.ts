@@ -49,6 +49,8 @@ type PendingEntry = {
   correlationId: string;
   settle: (outcome: DagOutcomeType) => void;
   relay: ObserverRelayInterface | null;
+  /** The parent's own signal for this container-node dispatch — see `ObserverRelayInterface`. */
+  signal: AbortSignal;
   settled: boolean;
   variant: 'single';
 }
@@ -58,6 +60,8 @@ type BatchPendingEntry = {
   correlationId: string;
   settle: (results: BatchRunResultType[]) => void;
   relay: ObserverRelayInterface | null;
+  /** The parent's own signal for this container-node dispatch — see `ObserverRelayInterface`. */
+  signal: AbortSignal;
   settled: boolean;
   variant: 'batch';
   itemIds: readonly string[];
@@ -137,6 +141,7 @@ export class ChannelDispatch {
         'correlationId': correlationId,
         'settle': resolve,
         'relay': relay,
+        'signal': signal,
         'settled': false,
         'variant': 'single',
       };
@@ -182,6 +187,7 @@ export class ChannelDispatch {
         'correlationId': correlationId,
         'settle': resolve,
         'relay': relay,
+        'signal': signal,
         'settled': false,
         'variant': 'batch',
         'itemIds': itemIds,
@@ -360,28 +366,29 @@ export class ChannelDispatch {
         // BridgeMessage schema; a `string[]` widens to the `readonly string[]`
         // the ObserverRelayInterface expects with no cast.
         const path: readonly string[] = m.placementPath;
+        const { signal } = entry;
         // Dispatch map over hook type: each hook handler forwards the event to the relay.
         // InstrMsg is a single flat shape (not a union on hook), so the map is
         // Record<hook, (hm: InstrMsg) => void>. The call site passes m directly.
         type InstrMsg = typeof m;
         const hookDispatch: Partial<Record<InstrMsg['hook'], (hm: InstrMsg) => void>> = {
           'nodeStart': (hm) => {
-            relay.onNodeStart(hm.nodeName, path);
+            relay.onNodeStart(hm.nodeName, path, signal);
           },
           'nodeEnd': (hm) => {
-            relay.onNodeEnd(hm.nodeName, hm.output, path);
+            relay.onNodeEnd(hm.nodeName, hm.output, path, signal);
           },
           'error': (hm) => {
-            relay.onError(hm.nodeName, new Error(hm.message), path);
+            relay.onError(hm.nodeName, new Error(hm.message), path, signal);
           },
           'phaseEnter': (hm) => {
             if (hm.phase === 'pre' || hm.phase === 'post') {
-              relay.onPhaseEnter(hm.dagName, hm.phase, hm.nodeName, path);
+              relay.onPhaseEnter(hm.dagName, hm.phase, hm.nodeName, path, signal);
             }
           },
           'phaseExit': (hm) => {
             if (hm.phase === 'pre' || hm.phase === 'post') {
-              relay.onPhaseExit(hm.dagName, hm.phase, hm.nodeName, path);
+              relay.onPhaseExit(hm.dagName, hm.phase, hm.nodeName, path, signal);
             }
           },
         };

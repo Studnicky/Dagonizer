@@ -192,6 +192,7 @@ const sidebar = [
     text: 'Reference',
     collapsed: false,
     items: [
+      { text: 'Import Map', link: '/reference/import-map' },
       { text: 'Dagonizer',  link: '/reference/dagonizer' },
       { text: 'Execution',  link: '/reference/execution' },
       { text: 'Nodes',      link: '/reference/nodes' },

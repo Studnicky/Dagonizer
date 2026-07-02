@@ -1,14 +1,28 @@
 /**
- * RetryPolicy: configurable retry-with-backoff policy.
+ * RetryPolicy: configurable retry-with-backoff policy, built on
+ * `@studnicky/retry`'s `Retry`.
  *
- * Strategy enum: constant, linear, exponential, decorrelated-jitter.
- * Filtering: `retryOn` + `abortOn` lists of Error constructors. When neither
- * is provided, every error is retried up to `maxAttempts`.
+ * `Retry` supplies the attempt-lifecycle FSM, request statistics
+ * (`getStats()`/`resetStats()`), and observability hooks (`onAttempt`,
+ * `onSuccess`, `onRetryableError`, `onRetryScheduled`, `onGiveUp`).
+ * `RetryPolicy` extends it (class extension is the canonical extension
+ * point in this repo) and adds exactly the DAG-specific surface substrate
+ * doesn't have:
  *
- * Delay is scheduled via `Scheduler.current()` so tests can install a
- * `VirtualScheduler` and step through retries deterministically. Cancellation
- * is honored via `AbortSignal`; `run(task, { signal })` aborts mid-wait when
- * the signal fires.
+ *   - a declarative `strategy` enum (`constant`/`linear`/`exponential`/
+ *     `decorrelated-jitter`) plus `baseDelay`/`maxDelay`/`multiplier`/
+ *     `jitterFactor`, computed by `getDelay()` and applied via the
+ *     `onRetryScheduled` hook (substrate's own backoff helpers are
+ *     function-typed, not schema-serializable — see `BackoffStrategy.ts`
+ *     for why the enum stays);
+ *   - `retryOn`/`abortOn` error-constructor filters, evaluated by
+ *     `shouldRetry()` and wired into substrate's `classifyError()` seam;
+ *   - `AbortSignal` cancellation on `run()`, racing the underlying
+ *     `execute()` call so an abort resolves the caller immediately.
+ *
+ * `run()` unwraps substrate's `MaxRetriesExceededError`/`NonRetryableError`
+ * wrapper types back to the original task error, preserving this class's
+ * pre-existing "throws the last raw error" contract for callers.
  *
  * Class extension is the canonical extension point: subclass `RetryPolicy`
  * and override `shouldRetry` / `getDelay` for custom behavior. No callbacks.
@@ -17,14 +31,15 @@
  * `RetryPolicyOptionsType` partial; defaults are materialised once here.
  */
 
+import type { ErrorClassificationType, RetryContextType } from '@studnicky/retry';
+import { MaxRetriesExceededError, NonRetryableError, Retry } from '@studnicky/retry';
+
 import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
-import type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
+import type { ErrorMatcherType } from '../contracts/ErrorMatcherType.js';
 import type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType.js';
 import { BackoffStrategyNames } from '../entities/runtime/BackoffStrategy.js';
 import type { BackoffStrategyType } from '../entities/runtime/BackoffStrategy.js';
-import { DAGError, ExecutionError } from '../errors/DAGError.js';
-
-import { Scheduler } from './Scheduler.js';
+import { DAGError } from '../errors/DAGError.js';
 
 const DEFAULT_BASE_DELAY_MS = 1000;
 const DEFAULT_MAX_DELAY_MS = 30_000;
@@ -32,9 +47,10 @@ const DEFAULT_MULTIPLIER = 2;
 const DEFAULT_JITTER_FACTOR = 0.1;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DECORRELATED_JITTER_MULTIPLIER = 3;
+const FIRST_ATTEMPT = 1;
 
-/** Empty error-constructor list: the canonical "no filter" sentinel. */
-const EMPTY_ERROR_CONSTRUCTORS: readonly ErrorConstructorType[] = [];
+/** Empty error-matcher list: the canonical "no filter" sentinel. */
+const EMPTY_ERROR_MATCHERS: readonly ErrorMatcherType[] = [];
 
 /** Canonical defaults for `RetryPolicyOptionsType` numeric/strategy fields. */
 const RETRY_POLICY_DEFAULTS = {
@@ -44,10 +60,9 @@ const RETRY_POLICY_DEFAULTS = {
   'maxDelay':     DEFAULT_MAX_DELAY_MS,
   'multiplier':   DEFAULT_MULTIPLIER,
   'jitterFactor': DEFAULT_JITTER_FACTOR,
-  'retryOn':      EMPTY_ERROR_CONSTRUCTORS,
-  'abortOn':      EMPTY_ERROR_CONSTRUCTORS,
+  'retryOn':      EMPTY_ERROR_MATCHERS,
+  'abortOn':      EMPTY_ERROR_MATCHERS,
 } as const;
-
 
 const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyType, (attempt: number, baseDelay: number, multiplier: number) => number>> = {
   'constant': (_attempt, baseDelay) => baseDelay,
@@ -66,18 +81,25 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyType, (attempt: number, 
 /**
  * Retry-with-backoff policy. Strategy enum (`CONSTANT`, `LINEAR`,
  * `EXPONENTIAL`, `DECORRELATED_JITTER`), `retryOn`/`abortOn` filters, and
- * a `run(task, options)` execution loop.
+ * a `run(task, options)` execution loop, layered on `@studnicky/retry`'s
+ * `Retry`.
  *
- * Delay waits are scheduled via `Scheduler.current()`; install
- * `VirtualScheduler` in tests to advance time deterministically.
+ * `retryOn`/`abortOn` accept a mix of arbitrary error constructors (matched
+ * via `instanceof`, for a consumer's own error classes) and `DAGError` code
+ * strings (matched via `error instanceof DAGError && error.code === ...`,
+ * for Dagonizer's own error taxonomy — one class, distinguished by `.code`).
+ * When no `retryOn` filter is configured, a `DAGError` falls back to its own
+ * `error.retryable` field (see `shouldRetry()`), so a `DAGError` that
+ * self-reports `retryable: false` is not retried even with empty filter
+ * lists.
  *
  * @example
  * ```ts
  * const policy = RetryPolicy.from({
  *   maxAttempts: 3,
  *   strategy: BackoffStrategyNames.EXPONENTIAL,
- *   retryOn: [NetworkError],
- *   abortOn: [AuthError],
+ *   retryOn: [NetworkError, 'EXECUTION_ERROR'],
+ *   abortOn: [AuthError, 'VALIDATION_ERROR'],
  * });
  *
  * // Inside a node's execute():
@@ -86,8 +108,27 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyType, (attempt: number, 
  *   { signal: context.signal },
  * );
  * ```
+ *
+ * @example Guarding an outer retry around `BaseAdapter.chat()`
+ * ```ts
+ * // BaseAdapter.chat() already retries transient failures INSIDE its own
+ * // circuit-breaker/token-bucket guard (see BaseAdapter's class doc). An
+ * // outer RetryPolicy wrapping the whole chat() call is a different
+ * // scenario: an open circuit or exhausted bucket rejects chat()
+ * // immediately with CircuitBreakerOpenError/TokenBucketExhaustedError, and
+ * // a naive outer retry would hammer an already-open circuit. List both in
+ * // abortOn so the outer policy fails fast instead of retrying them —
+ * // this is documented guidance, not an enforced default; a consumer who
+ * // legitimately wants to retry through a half-open circuit configures
+ * // their own policy differently.
+ * const outer = RetryPolicy.from({
+ *   maxAttempts: 3,
+ *   abortOn: [CircuitBreakerOpenError, TokenBucketExhaustedError],
+ * });
+ * const response = await outer.run(() => adapter.chat(request));
+ * ```
  */
-export class RetryPolicy {
+export class RetryPolicy extends Retry {
   readonly maxAttempts: number;
   readonly strategy: BackoffStrategyType;
   readonly baseDelay: number;
@@ -95,20 +136,27 @@ export class RetryPolicy {
   readonly multiplier: number;
   readonly jitterFactor: number;
   /**
-   * Filter: error types that may be retried. Empty array (`[]`) means "no
-   * filter — retry any error type". A non-empty array means "retry only
-   * errors that are instances of one of these constructors".
+   * Filter: error matchers (constructors or `DAGError` code strings) that
+   * may be retried. Empty array (`[]`) means "no filter — retry any error
+   * type". A non-empty array means "retry only errors matched by one of
+   * these matchers".
    *
    * Stored as a required field with an `[]` default. No `null` sentinel;
    * `length === 0` is the canonical "no filter" representation.
    */
-  readonly retryOn: readonly ErrorConstructorType[];
+  readonly retryOn: readonly ErrorMatcherType[];
   /**
-   * Filter: error types that abort retrying immediately. Empty array (`[]`)
-   * means "no abort filter". A non-empty array causes any matching error to
-   * be re-thrown without further attempts, regardless of `retryOn`.
+   * Filter: error matchers (constructors or `DAGError` code strings) that
+   * abort retrying immediately. Empty array (`[]`) means "no abort filter".
+   * A non-empty array causes any matched error to be re-thrown without
+   * further attempts, regardless of `retryOn`.
    */
-  readonly abortOn: readonly ErrorConstructorType[];
+  readonly abortOn: readonly ErrorMatcherType[];
+
+  /** Attempt number (1-based) of the in-flight `execute()` call, tracked via `onAttempt`. */
+  #currentAttempt: number = FIRST_ATTEMPT;
+  /** Abort signal for the in-flight `run()` call, if any. */
+  #signal: AbortSignal | undefined;
 
   /**
    * Single canonical construction path. Use `RetryPolicy.from(partial)` to
@@ -121,6 +169,7 @@ export class RetryPolicy {
    */
   protected constructor(options: RetryPolicyOptionsType = {}) {
     const resolved = { ...RETRY_POLICY_DEFAULTS, ...options };
+    super({ 'maxRetries': Math.max(0, resolved.maxAttempts - 1) });
     this.maxAttempts  = resolved.maxAttempts;
     this.strategy     = resolved.strategy;
     this.baseDelay    = resolved.baseDelay;
@@ -137,6 +186,33 @@ export class RetryPolicy {
    */
   static from(partial: RetryPolicyOptionsType = {}): RetryPolicy {
     return new RetryPolicy(partial);
+  }
+
+  /** Unwrap substrate's `Retry` wrapper errors back to the original task error. */
+  private static unwrapError(error: unknown): Error {
+    if (error instanceof NonRetryableError) {
+      return error.originalError;
+    }
+    if (error instanceof MaxRetriesExceededError) {
+      const last = error.errors.at(-1);
+      return last ?? error;
+    }
+    if (error instanceof Error) {
+      return error;
+    }
+    return new DAGError(String(error), { 'code': 'EXECUTION_ERROR' });
+  }
+
+  /**
+   * Test whether `error` is matched by `matcher`: an `instanceof` check for
+   * an error constructor, or a `DAGError` code-string match for Dagonizer's
+   * own error taxonomy.
+   */
+  private static matches(error: Error, matcher: ErrorMatcherType): boolean {
+    if (typeof matcher === 'string') {
+      return error instanceof DAGError && error.code === matcher;
+    }
+    return error instanceof matcher;
   }
 
   /**
@@ -164,10 +240,21 @@ export class RetryPolicy {
   /**
    * Decide whether the given error should be retried at this attempt.
    * Order of checks:
-   *  1. attempt < maxAttempts
-   *  2. error not in abortOn list (if provided)
-   *  3. if retryOn list provided, error must be in it
-   *  4. otherwise retry
+   *  1. `attempt < maxAttempts` — otherwise stop.
+   *  2. `abortOn` — a consumer's explicit abort list is authoritative:
+   *     any match stops retrying, even a `DAGError` that self-reports
+   *     `retryable: true`.
+   *  3. `retryOn` — a consumer's explicit retry list is authoritative:
+   *     a non-empty list means "retry only these"; a miss stops
+   *     retrying, even a `DAGError` that self-reports `retryable: true`.
+   *  4. No explicit `retryOn` filter configured: a `DAGError` falls back
+   *     to its own `error.retryable` classification — the error's own
+   *     "don't retry me" (or "do retry me") wins over the blanket
+   *     no-filter default. A non-`DAGError` error with no filters keeps
+   *     the long-standing default: retry everything.
+   *
+   * Explicit matchers (steps 2–3) are always consumer-authoritative overrides
+   * and are evaluated before the error's own self-classification (step 4).
    */
   shouldRetry(error: Error, attempt: number): boolean {
     if (attempt >= this.maxAttempts) {
@@ -176,25 +263,59 @@ export class RetryPolicy {
 
     // abortOn: non-empty list means "abort on any matching error type".
     if (this.abortOn.length > 0) {
-      for (const ErrorType of this.abortOn) {
-        if (error instanceof ErrorType) {
+      for (const matcher of this.abortOn) {
+        if (RetryPolicy.matches(error, matcher)) {
           return false;
         }
       }
     }
 
     // retryOn: non-empty list means "retry only matching error types".
-    // Empty list means "retry all error types" (no filter).
     if (this.retryOn.length > 0) {
-      for (const ErrorType of this.retryOn) {
-        if (error instanceof ErrorType) {
+      for (const matcher of this.retryOn) {
+        if (RetryPolicy.matches(error, matcher)) {
           return true;
         }
       }
       return false;
     }
 
+    // No explicit retryOn filter: a DAGError's own `.retryable` classification
+    // is the fallback signal, overriding the blanket "no filter = retry
+    // everything" default. A non-DAGError error with no filters configured
+    // still retries — the original default for arbitrary error types.
+    if (error instanceof DAGError) {
+      return error.retryable;
+    }
+
     return true;
+  }
+
+  /**
+   * Substrate's error-classification seam. Delegates to `shouldRetry()` so
+   * `retryOn`/`abortOn` stay the single source of truth for retry-vs-abort
+   * decisions, whether reached via `Retry.execute()` or a direct
+   * `shouldRetry()` call. `attemptNumber` arrives 0-indexed from substrate;
+   * `shouldRetry` expects the 1-based numbering this class has always used.
+   */
+  protected override classifyError(error: Error, attemptNumber: number): ErrorClassificationType {
+    const retryable = this.shouldRetry(error, attemptNumber + 1);
+    return retryable ? { 'retryable': true } : { 'retryable': false };
+  }
+
+  /** Tracks the 1-based attempt number of the in-flight `execute()` call. */
+  protected override onAttempt(attemptNumber: number): void {
+    this.#currentAttempt = attemptNumber + 1;
+  }
+
+  /**
+   * Substrate's retry-scheduling seam. Applies the configured `strategy`
+   * backoff via `getDelay()`. When the `run()` signal has already fired,
+   * skips the wait — the outer `run()` promise has already settled via the
+   * abort race in `run()`, so there is no caller left to observe the delay.
+   */
+  protected override onRetryScheduled(context: RetryContextType): void {
+    context.delayMs = this.#signal?.aborted === true ? 0 : this.getDelay(context.attemptNumber + 1);
   }
 
   /**
@@ -203,62 +324,55 @@ export class RetryPolicy {
    * `options.signal` fires; the abort takes effect at the next decision
    * point (after the current attempt or during the next wait).
    */
-  async run<T>(task: (attempt: number) => Promise<T> | T, options?: AbortableOptionsType): Promise<T> {
-    const signal = options?.signal;
-    let lastError: Error | null = null;
-    let attempt = 0;
-
-    while (attempt < this.maxAttempts) {
-      if (signal?.aborted) {
-        throw ExecutionError.ofSignal(signal);
-      }
-      attempt++;
-
-      try {
-        const result = await task(attempt);
-        // Detect abort that raced with task completion: if the signal fired
-        // while `task` was executing but before `await` returned control here,
-        // treat it as an abort rather than a successful result. This is a
-        // retry-loop concern only — a single-attempt policy (`maxAttempts === 1`,
-        // the NO_RETRY default) has no retry decision to gate, so it honors a
-        // completed result even under a raced abort. Callers that route on
-        // completion (the node-dispatch FIRE seam) depend on that: a node that
-        // finishes and routes its output is a success, and cancellation is a
-        // loop-boundary decision made by the caller, not a discarded result.
-        if (signal?.aborted === true && this.maxAttempts > 1) {
-          throw ExecutionError.ofSignal(signal);
-        }
-        return result;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new ExecutionError(String(error));
-
-        if (!this.shouldRetry(lastError, attempt)) {
-          throw lastError;
-        }
-
-        const delay = this.getDelay(attempt, { 'error': lastError });
-        await RetryPolicy.sleep(delay, signal !== undefined ? { signal } : {});
-      }
-    }
-
-    throw lastError ?? new ExecutionError('Retry attempts exhausted');
-  }
-
-  /**
-   * Sleep `ms` via the installed `Scheduler`. Resolves early if
-   * `options.signal` aborts during the wait.
-   */
-  private static async sleep(ms: number, options: AbortableOptionsType = {}): Promise<void> {
-    if (ms <= 0) return;
+  async run<T>(task: (attempt: number) => Promise<T> | T, options: AbortableOptionsType = {}): Promise<T> {
     const signal = options.signal;
-    try {
-      await Scheduler.current().after(ms, options);
-    } catch (err) {
-      // Re-throw abort errors as the signal's reason for consistent error shape.
-      if (signal?.aborted === true) {
-        throw ExecutionError.ofSignal(signal);
-      }
-      throw err;
+
+    if (signal?.aborted === true) {
+      throw DAGError.ofSignal(signal);
     }
+
+    this.#signal = signal;
+    this.#currentAttempt = FIRST_ATTEMPT;
+
+    const execution = this.execute(async () => {
+      const result = await task(this.#currentAttempt);
+
+      // Detect abort that raced with task completion: if the signal fired
+      // while `task` was executing but before `await` returned control here,
+      // treat it as an abort rather than a successful result. This is a
+      // retry-loop concern only — a single-attempt policy (`maxAttempts === 1`,
+      // the NO_RETRY default) has no retry decision to gate, so it honors a
+      // completed result even under a raced abort. Callers that route on
+      // completion (the node-dispatch FIRE seam) depend on that: a node that
+      // finishes and routes its output is a success, and cancellation is a
+      // loop-boundary decision made by the caller, not a discarded result.
+      if (signal?.aborted === true && this.maxAttempts > 1) {
+        throw DAGError.ofSignal(signal);
+      }
+      return result;
+    }).catch((error: unknown) => {
+      throw RetryPolicy.unwrapError(error);
+    });
+
+    if (signal === undefined) {
+      return execution;
+    }
+
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = (): void => {
+        reject(DAGError.ofSignal(signal));
+      };
+      signal.addEventListener('abort', onAbort, { 'once': true });
+      execution.then(
+        (value) => {
+          signal.removeEventListener('abort', onAbort);
+          resolve(value);
+        },
+        (error: unknown) => {
+          signal.removeEventListener('abort', onAbort);
+          reject(error);
+        },
+      );
+    });
   }
 }

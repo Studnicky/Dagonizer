@@ -13,7 +13,7 @@ export interface NodeInvokerSourceInterface {
    * `DAGError` when the node is not registered. No-op when the lookup races to
    * `undefined` after the existence check.
    */
-  invokeRegisteredNode(nodeName: string, state: NodeStateInterface, dagName: string, signal: AbortSignal | null): Promise<void>;
+  invokeRegisteredNode(nodeName: string, state: NodeStateInterface, dagName: string, signal: AbortSignal): Promise<void>;
 }
 
 /**
@@ -29,13 +29,13 @@ export class NodeInvoker implements NodeInvokerInterface {
   readonly #source: NodeInvokerSourceInterface;
   readonly #state: NodeStateInterface;
   readonly #dagName: string;
-  readonly #signal: AbortSignal | null;
+  readonly #signal: AbortSignal;
 
   constructor(
     source: NodeInvokerSourceInterface,
     state: NodeStateInterface,
     dagName: string,
-    signal: AbortSignal | null,
+    signal: AbortSignal,
   ) {
     this.#source = source;
     this.#state = state;

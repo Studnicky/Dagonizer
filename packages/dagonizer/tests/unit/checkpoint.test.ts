@@ -15,7 +15,7 @@ import type { CheckpointDataType, DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
-import { DAGError, ValidationError } from '../../src/errors/index.js';
+import { DAGError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
@@ -23,6 +23,7 @@ import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
+import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ── State fixtures ───────────────────────────────────────────────────────────
@@ -352,7 +353,7 @@ void describe('Checkpoint round-trip', () => {
   });
 
   void it('load rejects malformed CheckpointData', () => {
-    assert.throws(() => Checkpoint.load({ 'version': '1' }), ValidationError);
+    assert.throws(() => Checkpoint.load({ 'version': '1' }), DAGErrorPredicate.isValidationError);
   });
 
   void it('load rejects a checkpoint missing the stores field (no silent acceptance of stale checkpoints)', () => {
@@ -377,7 +378,7 @@ void describe('Checkpoint round-trip', () => {
       'state': {}, 'executedNodes': ['a', 'b'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
-    assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapter.wrap((snap) => NodeStateBase.restore(snap))), ValidationError);
+    assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapter.wrap((snap) => NodeStateBase.restore(snap))), DAGErrorPredicate.isValidationError);
   });
 
   void it('CheckpointRestoreAdapter.wrap wraps a restore function in the adapter contract', () => {
@@ -415,6 +416,47 @@ void describe('MemoryCheckpointStore', () => {
     assert.equal(await store.load('k'), null);
     assert.equal(store.size, 0);
   });
+
+  void it('evicts the least-recently-used entry once capacity is exceeded', async () => {
+    const store = new MemoryCheckpointStore({ 'capacity': 2 });
+    await store.save('a', '1');
+    await store.save('b', '2');
+    // Insert a third distinct key: capacity 2 forces an LRU eviction. 'a' was
+    // least-recently touched (no load/save since 'b'), so 'a' is evicted.
+    await store.save('c', '3');
+
+    assert.equal(store.size, 2);
+    assert.equal(await store.load('a'), null);
+    assert.equal(await store.load('b'), '2');
+    assert.equal(await store.load('c'), '3');
+  });
+
+  void it('promotes an entry to most-recently-used on load, protecting it from eviction', async () => {
+    const store = new MemoryCheckpointStore({ 'capacity': 2 });
+    await store.save('a', '1');
+    await store.save('b', '2');
+    // Touch 'a' so it becomes MRU; 'b' is now the LRU entry.
+    await store.load('a');
+    await store.save('c', '3');
+
+    assert.equal(await store.load('a'), '1');
+    assert.equal(await store.load('b'), null);
+    assert.equal(await store.load('c'), '3');
+  });
+
+  void it('defaults to DEFAULT_CHECKPOINT_CAPACITY when no options are supplied', async () => {
+    const store = new MemoryCheckpointStore();
+    assert.equal(MemoryCheckpointStore.defaultOptions.capacity, 500);
+    for (let i = 0; i < 500; i += 1) {
+      await store.save(`k${i}`, String(i));
+    }
+    assert.equal(store.size, 500);
+    // One more entry past the default capacity evicts the oldest ('k0').
+    await store.save('k500', '500');
+    assert.equal(store.size, 500);
+    assert.equal(await store.load('k0'), null);
+    assert.equal(await store.load('k500'), '500');
+  });
 });
 
 // ── ckpt.persist + Checkpoint.recall ──────────────────────────────────────────
@@ -448,7 +490,7 @@ void describe('ckpt.persist + Checkpoint.recall', () => {
     await cpStore.save('bad', '{not json');
     await assert.rejects(
       Checkpoint.recall(cpStore, 'bad'),
-      ValidationError,
+      DAGErrorPredicate.isValidationError,
     );
   });
 });

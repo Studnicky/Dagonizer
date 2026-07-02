@@ -138,7 +138,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
         'all-error':   'end',
         'partial':     'end',
       }, {
-        'concurrency': 4,
+        'execution': { 'mode': 'item', 'concurrency': 4 },
         'gather':  { 'strategy': 'flat-merge-test' },
         'reducer': 'any-success',
       })
@@ -179,7 +179,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
         'error':   'fail',
         'empty':   'fail',
       }, {
-        'concurrency': 4,
+        'execution': { 'mode': 'item', 'concurrency': 4 },
         'gather':  { 'strategy': 'discard' },
         'reducer': 'any-success',
       })

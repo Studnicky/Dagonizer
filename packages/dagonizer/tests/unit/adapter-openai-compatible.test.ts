@@ -47,26 +47,31 @@ class CapturingFetch {
   }
 }
 
-/** Run `fn` with the global fetch replaced by `stub`; restore in finally. */
-async function withFetch<T>(
-  stub: typeof globalThis.fetch,
-  fn: () => Promise<T>,
-): Promise<T> {
-  const saved = globalThis.fetch;
-  globalThis.fetch = stub;
-  try {
-    return await fn();
-  } finally {
-    globalThis.fetch = saved;
+/** Runs `fn` with the global fetch replaced by `stub`, for the duration of one call. */
+class FetchHarness {
+  static async with<T>(
+    stub: typeof globalThis.fetch,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const saved = globalThis.fetch;
+    globalThis.fetch = stub;
+    try {
+      return await fn();
+    } finally {
+      globalThis.fetch = saved;
+    }
   }
 }
 
-/** A minimal ChatRequestType with 256 maxTokens and no tools. */
-function baseRequest() {
-  return ChatRequestBuilder.from({
-    'messages': [{ 'role': 'user', 'content': 'Hello.' }],
-    'maxTokens': 256,
-  });
+/** Builds ChatRequestType fixtures for adapter tests. */
+class ChatRequestFixture {
+  /** A minimal ChatRequestType with 256 maxTokens and no tools. */
+  static base() {
+    return ChatRequestBuilder.from({
+      'messages': [{ 'role': 'user', 'content': 'Hello.' }],
+      'maxTokens': 256,
+    });
+  }
 }
 
 // ── 1. Per-preset token field ─────────────────────────────────────────────────
@@ -76,7 +81,7 @@ void describe('OpenAiCompatibleAdapter — per-preset token field', () => {
     const adapter = OpenAiCompatibleAdapter.groq('test-key');
     const cf = new CapturingFetch();
 
-    await withFetch(cf.stub(), () => adapter.chat(baseRequest()));
+    await FetchHarness.with(cf.stub(), () => adapter.chat(ChatRequestFixture.base()));
 
     assert.ok(cf.capturedBody !== null, 'fetch must have been called');
     assert.equal(cf.capturedBody['max_completion_tokens'], 256, 'groq must use max_completion_tokens');
@@ -87,7 +92,7 @@ void describe('OpenAiCompatibleAdapter — per-preset token field', () => {
     const adapter = OpenAiCompatibleAdapter.cerebras('test-key');
     const cf = new CapturingFetch();
 
-    await withFetch(cf.stub(), () => adapter.chat(baseRequest()));
+    await FetchHarness.with(cf.stub(), () => adapter.chat(ChatRequestFixture.base()));
 
     assert.ok(cf.capturedBody !== null, 'fetch must have been called');
     assert.equal(cf.capturedBody['max_completion_tokens'], 256, 'cerebras must use max_completion_tokens');
@@ -98,7 +103,7 @@ void describe('OpenAiCompatibleAdapter — per-preset token field', () => {
     const adapter = OpenAiCompatibleAdapter.mistral('test-key');
     const cf = new CapturingFetch();
 
-    await withFetch(cf.stub(), () => adapter.chat(baseRequest()));
+    await FetchHarness.with(cf.stub(), () => adapter.chat(ChatRequestFixture.base()));
 
     assert.ok(cf.capturedBody !== null, 'fetch must have been called');
     assert.equal(cf.capturedBody['max_tokens'], 256, 'mistral must use max_tokens');
@@ -109,7 +114,7 @@ void describe('OpenAiCompatibleAdapter — per-preset token field', () => {
     const adapter = OpenAiCompatibleAdapter.openRouter('test-key');
     const cf = new CapturingFetch();
 
-    await withFetch(cf.stub(), () => adapter.chat(baseRequest()));
+    await FetchHarness.with(cf.stub(), () => adapter.chat(ChatRequestFixture.base()));
 
     assert.ok(cf.capturedBody !== null, 'fetch must have been called');
     assert.equal(cf.capturedBody['max_tokens'], 256, 'openRouter must use max_tokens');
@@ -124,7 +129,7 @@ void describe('OpenAiCompatibleAdapter — systemPrompt seam', () => {
     const adapter = OpenAiCompatibleAdapter.groq('test-key', { 'systemPrompt': 'You are X.' });
     const cf = new CapturingFetch();
 
-    await withFetch(cf.stub(), () => adapter.chat(
+    await FetchHarness.with(cf.stub(), () => adapter.chat(
       ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }),
     ));
 
@@ -140,7 +145,7 @@ void describe('OpenAiCompatibleAdapter — systemPrompt seam', () => {
     const adapter = OpenAiCompatibleAdapter.groq('test-key', { 'systemPrompt': 'Default.' });
     const cf = new CapturingFetch();
 
-    await withFetch(cf.stub(), () => adapter.chat(
+    await FetchHarness.with(cf.stub(), () => adapter.chat(
       ChatRequestBuilder.from({
         'messages': [
           { 'role': 'system', 'content': 'Caller persona.' },
@@ -187,7 +192,7 @@ void describe('OpenAiCompatibleAdapter — timeoutMs abort path', () => {
       });
 
     await assert.rejects(
-      () => withFetch(hangingFetch, () => adapter.chat(baseRequest())),
+      () => FetchHarness.with(hangingFetch, () => adapter.chat(ChatRequestFixture.base())),
       (err: unknown): err is LlmError => {
         if (!(err instanceof LlmError)) return false;
         // The timeout AbortController fires with Classifications['TIMEOUT'] as its reason.

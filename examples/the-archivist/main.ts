@@ -123,7 +123,7 @@ const logger = new DomConsoleLogger({ 'panel': logEl });
 const userLanguage = urlLang.length > 0
   ? UserLanguage.normalize(urlLang)
   : UserLanguage.detect();
-logger.info(`language: ${userLanguage} (${UserLanguage.displayName(userLanguage)})`);
+logger.note(`language: ${userLanguage} (${UserLanguage.displayName(userLanguage)})`);
 
 // ── IndexedDB stores ──────────────────────────────────────────────────────────
 
@@ -153,7 +153,7 @@ if (geminiNanoModel !== null) {
 // WebGPU-accelerated in-browser model. Progress logged via subclass seam.
 class LoggingWebLlmAdapter extends WebLlmAdapter {
   protected override onInitProgress(report: WebLlmInitReportType): void {
-    logger.info(`web-llm: ${report.text} (${String(Math.round(report.progress * 100))}%)`);
+    logger.note(`web-llm: ${report.text} (${String(Math.round(report.progress * 100))}%)`);
   }
 }
 
@@ -220,19 +220,20 @@ if (typeof storedNquads === 'string' && storedNquads.length > 0) {
     'type':    'archivist-memory-v1',
     'entries': [{ 'key': 'nquads', 'value': storedNquads }],
   });
-  logger.info(`memory: restored ${String(store.size)} quads from IndexedDB`);
+  logger.note(`memory: restored ${String(store.size)} quads from IndexedDB`);
 }
 
 // ── LLM client (LlmAdapterCascade result → BaseLlmClient) ────────────────────
 // EmbedderProvisioner is called once inside `session.boot()` — no duplicate here.
 
 const llm = new BaseLlmClient(adapter, { 'language': userLanguage });
-logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
+logger.note(`backend: ${adapter.id} (${adapter.displayName})`);
 
 // ── DomArchivistSession ───────────────────────────────────────────────────────
 
 const session = new DomArchivistSession(store, logger, {
   'llm': llm,
+  'visitorLanguage': userLanguage,
   'dom': { button, input, logEl, conversationEl, hitlBanner, hitlInput, hitlResumeButton },
   'stores': { kvStore, ckptStore },
 });
@@ -269,7 +270,7 @@ const session = new DomArchivistSession(store, logger, {
 const pendingKey    = await kvStore.get('hitl:pendingKey');
 const hasPendingHitl = typeof pendingKey === 'string' && pendingKey.length > 0;
 if (hasPendingHitl) {
-  logger.info(`hitl: pending resume for correlation key '${String(pendingKey)}'`);
+  logger.note(`hitl: pending resume for correlation key '${String(pendingKey)}'`);
   hitlBanner.style.display = 'flex';
 }
 

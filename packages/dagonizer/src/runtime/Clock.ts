@@ -1,34 +1,30 @@
 /**
  * Clock: engine-owned monotonic clock provider.
  *
- * Single concept of time: monotonic high-resolution nanoseconds from a
- * platform clock. No wall-clock; that's a different concern (logging,
- * tracing) and lives elsewhere.
+ * Single concept of time: monotonic high-resolution nanoseconds, derived from
+ * `@studnicky/clock`'s `RealTimeClockProvider` (backed by `performance.now()`)
+ * by default. No wall-clock; that's a different concern (logging, tracing)
+ * and lives elsewhere.
  *
- * Default provider derives nanoseconds from `performance.now()` (in ms,
- * fractional). Both Node 16+ and every modern browser ship
- * `performance.now()` on `globalThis`, so the same default works
- * unmodified in Node, the browser, and bundlers like Vite. This is the
- * ONLY permitted call site for `performance.now()` outside this file.
+ * `Clock` is a thin static facade over one substrate `Clock` instance. A
+ * static facade — rather than direct substrate `Clock` instances threaded
+ * through every call site — is kept here because `RetryPolicy.ts` (a
+ * permanently off-limits file for this phase) depends on the sibling
+ * `Scheduler.current()` static-singleton pattern; `Clock` mirrors that shape
+ * for consistency, and its own call sites (`NodeStateBase.ts`,
+ * `ReservoirBuffer.ts`) are FSM/engine-internal code with no natural
+ * constructor-injection seam today.
  *
  * Static class; no instances, no free helpers.
  */
 
+import { Clock as SubstrateClock, RealTimeClockProvider } from '@studnicky/clock';
+
 import type { ClockProviderInterface } from '../contracts/ClockProviderInterface.js';
-
-const PERF: { now(): number } = globalThis.performance;
-
-class RealTimeClockProvider implements ClockProviderInterface {
-  hrtime(): bigint {
-    // `performance.now()` returns fractional milliseconds; multiply to
-    // nanoseconds and floor via BigInt construction.
-    return BigInt(Math.floor(PERF.now() * 1_000_000));
-  }
-}
 
 const NS_PER_MS = 1_000_000n;
 
-let activeProvider: ClockProviderInterface = new RealTimeClockProvider();
+let activeClock: SubstrateClock = SubstrateClock.create(RealTimeClockProvider.create());
 
 /**
  * Engine-owned monotonic clock. All time reads go through `Clock.hrtime()` or
@@ -40,7 +36,7 @@ export class Clock {
 
   /** Monotonic high-resolution time in nanoseconds since arbitrary origin. */
   static hrtime(): bigint {
-    return activeProvider.hrtime();
+    return activeClock.hrtime();
   }
 
   /**
@@ -49,16 +45,16 @@ export class Clock {
    * scheduler delays, and other relative-time math.
    */
   static monotonicMs(): number {
-    return Number(activeProvider.hrtime() / NS_PER_MS);
+    return Number(activeClock.hrtime() / NS_PER_MS);
   }
 
   /** Install a custom clock provider. Engine-only; called at boot or in tests. */
   static configure(provider: ClockProviderInterface): void {
-    activeProvider = provider;
+    activeClock = SubstrateClock.create(provider);
   }
 
   /** Reset to the real-time provider. */
   static reset(): void {
-    activeProvider = new RealTimeClockProvider();
+    activeClock = SubstrateClock.create(RealTimeClockProvider.create());
   }
 }

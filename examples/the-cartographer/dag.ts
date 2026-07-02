@@ -111,9 +111,8 @@ export const cartographerDAG: DAGType = new DAGBuilder('cartographer', '1.0')
     },
     {
       'itemKey':     'source-payload',
-      'concurrency': 16,
       'gather': { 'strategy': 'insights-fold' },
-      'reservoir': { 'keyField': 'eventType', 'capacity': 1000 },
+      'execution': { 'mode': 'reservoir', 'concurrency': 16, 'reservoir': { 'keyField': 'eventType', 'capacity': 1000 } },
     },
   )
 
@@ -162,7 +161,7 @@ export const cartographerResumeDAG: DAGType = new DAGBuilder('cartographer-resum
     },
     {
       'itemKey':     'source-payload',
-      'concurrency': 16,
+      'execution': { 'mode': 'item', 'concurrency': 16 },
       'gather': { 'strategy': 'insights-fold' },
     },
   )
@@ -373,10 +372,9 @@ export class CartographerWorkersDag {
         },
         {
           'itemKey':     'source-payload',
-          'concurrency': 16,
           'container':   'cpu',
           'gather': { 'strategy': 'insights-fold' },
-          'reservoir': { 'keyField': 'eventType', 'capacity': capacity },
+          'execution': { 'mode': 'reservoir', 'concurrency': 16, 'reservoir': { 'keyField': 'eventType', 'capacity': capacity } },
         },
       )
 

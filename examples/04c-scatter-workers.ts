@@ -89,7 +89,7 @@ const scrapeWithContainerDag: DAGType = {
       "body":         { "dag": 'probe-item' },  // sub-DAG body — required for containers
       "source":       'urls',
       "itemKey":      'url',
-      "concurrency":  2,
+      "execution": { "mode": "item", "concurrency": 2 },
       // container: 'io',                        // ← uncomment + bind WorkerThreadContainer
       //                                         //   to route each item to a worker thread
       "gather": {

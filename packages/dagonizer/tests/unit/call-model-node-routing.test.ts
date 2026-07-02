@@ -46,8 +46,11 @@ class RunState extends NodeStateBase {
 //    between each push, so two concurrent `chatStream` calls genuinely
 //    interleave their pushes into whatever sink they were each handed. ─────
 
-function yieldTask(): Promise<void> {
-  return new Promise((resolve) => { setTimeout(resolve, 0); });
+/** Yields the current macrotask, letting other scheduled callbacks interleave. */
+class TaskQueue {
+  static yield(): Promise<void> {
+    return new Promise((resolve) => { setTimeout(resolve, 0); });
+  }
 }
 
 class InterleavingWordAdapter implements LlmAdapterInterface {
@@ -71,7 +74,7 @@ class InterleavingWordAdapter implements LlmAdapterInterface {
     const response = await this.chat(request);
     const words = response.message.variant === 'text' ? response.message.content.split(' ') : [];
     for (const word of words) {
-      await yieldTask();
+      await TaskQueue.yield();
       await sink.push(ChatStreamChunkBuilder.of(word));
     }
     return response;
@@ -89,7 +92,7 @@ class CollectingSink implements StreamSinkInterface<RoutedChatStreamChunkType> {
   readonly received: RoutedChatStreamChunkType[] = [];
 
   async push(item: RoutedChatStreamChunkType): Promise<void> {
-    await yieldTask();
+    await TaskQueue.yield();
     this.received.push(item);
   }
 }

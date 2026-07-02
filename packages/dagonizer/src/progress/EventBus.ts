@@ -1,117 +1,89 @@
 /**
- * EventBus: in-process, synchronous, topic-keyed publish/subscribe.
+ * EventBus: DAG progress bus.
  *
- * Domain-free. No persistence, no Node.js-only APIs. Isomorphic (runs in
- * browser and Node). Zero external dependencies.
+ * Extends `@studnicky/event-bus`'s `EventBus`, fixing the topic map so every
+ * topic carries a `BusEventEnvelopeType<unknown>` payload. Publish wraps the
+ * caller's raw payload in an envelope (topic, payload, `Date.now()`
+ * timestamp) before handing it to the inherited typed async pub/sub.
  *
- * Each subscriber receives a fully-typed `BusEventEnvelopeInterface<TPayload>`
- * on every publish to its topic. Delivery is synchronous (listeners fire in
- * subscription order before `publish` returns). A throwing listener is caught
- * and does not prevent subsequent listeners from being called.
+ * Delivery goes through a per-subscriber `BusQueue`: a bounded FIFO queue
+ * that isolates one subscriber's errors and pacing from every other
+ * subscriber. A slow subscriber's queue fills toward its high-water mark and
+ * `publish()` applies backpressure (its returned promise stays pending)
+ * instead of delivering synchronously with no bound, or dropping events.
  *
  * Usage:
  * ```ts
- * const bus = new EventBus();
- * const unsub = bus.subscribe('runs', (event) => console.log(event.payload));
- * bus.publish('runs', { nodeId: 'a' });
+ * const bus = EventBus.of();
+ * const unsub = bus.subscribe('runs', (event) => { console.log(event.payload); });
+ * await bus.publish('runs', { nodeId: 'a' });
  * unsub(); // deregister
- * bus.clear('runs'); // drop all listeners on one topic
- * bus.dispose(); // drop all listeners on all topics
+ * await bus.close(); // stop delivery on every topic, drain in-flight queues
  * ```
  */
+
+import { EventBus as SubstrateEventBus } from '@studnicky/event-bus';
+import type { EventHandlerType, UnsubscribeType } from '@studnicky/event-bus';
 
 import type { BusEventEnvelopeType } from './BusEventEnvelope.js';
 import { BusEventEnvelopeBuilder } from './BusEventEnvelope.js';
 
-/** A listener callback invoked for each event published on a topic. */
-export type BusListenerType<TPayload = unknown> = (
-  event: BusEventEnvelopeType<TPayload>,
-) => void;
+/** Topic map for the progress bus: every topic carries a `BusEventEnvelopeType<unknown>` payload. */
+export type BusTopicMapType = Record<string, BusEventEnvelopeType<unknown>>;
 
-/** Function returned by `EventBus.subscribe` that removes the listener when called. */
-export type BusUnsubscribeType = () => void;
+/**
+ * Handler for a subscribed topic. Receives the envelope and the
+ * subscription's `AbortSignal` (aborts on unsubscribe, caller-signal abort,
+ * or bus close).
+ */
+export type BusListenerType = EventHandlerType<BusEventEnvelopeType<unknown>>;
 
 /**
  * Class-shape interface for `EventBus`.
  *
- * Describes the public surface: `publish`, `subscribe`, `clear`, `dispose`.
+ * Describes the public surface: `publish`, `subscribe`, `drain`, `close`.
  * Lives in the same file as the class per the three-tier taxonomy.
  */
 export interface EventBusInterface {
   /**
-   * Publish `payload` to all listeners on `topic`. The payload is `unknown`:
-   * the bus cannot statically correlate a topic to a payload shape, so
-   * subscribers narrow what they receive. This keeps storage and delivery
-   * cast-free.
+   * Wrap `payload` in a `BusEventEnvelopeType` and publish it to every
+   * subscriber on `topic`. Resolves once every subscriber queue has accepted
+   * the event (backpressure delays resolution when a queue is at its
+   * high-water mark).
    */
-  publish(topic: string, payload: unknown): void;
-  /** Subscribe to `topic`. The listener receives `BusEventEnvelopeType` (payload `unknown`). Returns a zero-arg unsubscribe handle. */
-  subscribe(topic: string, listener: BusListenerType): BusUnsubscribeType;
-  /** Remove all listeners for `topic`. */
-  clear(topic: string): void;
-  /** Remove all listeners on every topic. Renders the bus inert. */
-  dispose(): void;
+  publish(topic: string, payload: unknown): Promise<void>;
+  /**
+   * Subscribe to `topic`. The handler receives a `BusEventEnvelopeType<unknown>`
+   * and the subscription's `AbortSignal`. Returns a zero-arg unsubscribe handle.
+   */
+  subscribe(topic: string, handler: BusListenerType, options?: { 'signal'?: AbortSignal }): UnsubscribeType;
+  /** Wait for every subscriber queue to empty. */
+  drain(): Promise<void>;
+  /** Stop delivery on every topic and drain in-flight subscriber queues. */
+  close(): Promise<void>;
 }
 
 /**
- * In-process topic-keyed event bus.
+ * DAG progress bus. Extends `@studnicky/event-bus`'s `EventBus`, fixing the
+ * topic map to `BusTopicMapType` so every topic shares the same envelope
+ * payload shape.
  *
- * V8 shape: `#listeners` is the only instance property, initialised in the
- * constructor. The hidden class is stable across all `EventBus` instances.
+ * V8 shape: no additional instance fields beyond the base class; the hidden
+ * class is the base class's hidden class.
  */
-export class EventBus implements EventBusInterface {
-  readonly #listeners: Map<string, Set<BusListenerType>>;
-
-  constructor() {
-    this.#listeners = new Map();
+export class EventBus extends SubstrateEventBus<BusTopicMapType> implements EventBusInterface {
+  /** Materialise a `EventBus` fixed to `BusTopicMapType`. The base class's protected constructor forces this factory. */
+  static of(): EventBus {
+    const result = new this();
+    return result;
   }
 
   /**
-   * Publish `payload` to all listeners on `topic`.
-   *
-   * Delivery is synchronous. A listener that throws is caught and ignored so
-   * that subsequent listeners still receive the event.
+   * Wrap `payload` in a `BusEventEnvelopeType` (topic, payload, `Date.now()`
+   * timestamp) and publish it to every subscriber on `topic`.
    */
-  publish(topic: string, payload: unknown): void {
-    const bucket = this.#listeners.get(topic);
-    if (bucket === undefined || bucket.size === 0) return;
-
+  override async publish(topic: string, payload: unknown): Promise<void> {
     const envelope = BusEventEnvelopeBuilder.of(topic, payload);
-    for (const listener of bucket) {
-      try {
-        listener(envelope);
-      } catch {
-        // Swallow: one misbehaving listener must not starve the rest.
-      }
-    }
-  }
-
-  /**
-   * Subscribe to `topic`. The listener receives a `BusEventEnvelopeType` whose
-   * `payload` is `unknown` on each publish; narrow it inside the listener.
-   *
-   * Returns a zero-arg function that removes the listener.
-   */
-  subscribe(topic: string, listener: BusListenerType): BusUnsubscribeType {
-    let bucket = this.#listeners.get(topic);
-    if (bucket === undefined) {
-      bucket = new Set();
-      this.#listeners.set(topic, bucket);
-    }
-    bucket.add(listener);
-
-    return (): void => {
-      this.#listeners.get(topic)?.delete(listener);
-    };
-  }
-
-  /** Remove all listeners for `topic`. A no-op when the topic has no listeners. */
-  clear(topic: string): void {
-    this.#listeners.delete(topic);
-  }
-
-  /** Remove all listeners on every topic. After this call the bus is inert. */
-  dispose(): void {
-    this.#listeners.clear();
+    await super.publish(topic, envelope);
   }
 }

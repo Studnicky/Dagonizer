@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ValidationError } from '../../src/errors/index.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
 
 void describe('Validator per-entity sub-validators', () => {
   void it('Validator.node accepts a minimal Node', () => {
@@ -10,7 +10,7 @@ void describe('Validator per-entity sub-validators', () => {
   });
 
   void it('Validator.node rejects missing fields', () => {
-    assert.throws(() => Validator.node.validate({ 'outputs': ['done'] }), ValidationError);
+    assert.throws(() => Validator.node.validate({ 'outputs': ['done'] }), DAGErrorPredicate.isValidationError);
   });
 
   void it('Validator.nodeContext accepts a wire shape', () => {
@@ -135,7 +135,7 @@ void describe('Validator per-entity sub-validators', () => {
         'name':   'broken',
         'outputs': { 'success': 'end' },
       }),
-      ValidationError,
+      DAGErrorPredicate.isValidationError,
     );
   });
 

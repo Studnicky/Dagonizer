@@ -1,13 +1,20 @@
 /**
  * VirtualScheduler: in-memory deterministic scheduler for tests and replay.
  *
- * Stores pending resolvers in a sorted array ordered by monotonic-ms. Time is
- * virtual: no platform timers are used. Advance via `advance(ms)`,
- * `runUntil(atMs)`, or `runAll()`. Pair with `VirtualClockProvider` so
- * `Clock` and the scheduler observe the same virtual time.
- *
  * Test-only. Install via `Scheduler.configure(new VirtualScheduler())`.
+ *
+ * Backed by `@studnicky/scheduler`'s min-heap `VirtualScheduler`, paired with
+ * its own `VirtualTimeCounter`. Time is virtual: no platform timers are used.
+ * Advance via `advance(ms)` (inherited), `runUntil(atMs)` (inherited), or
+ * `runAll()` (inherited). This subclass adds the Promise/`AbortSignal` layer
+ * (`after`/`at`/`every`) that substrate's callback-based `scheduleAt` does
+ * not provide, plus abort-aware bookkeeping so `cancelAll()` rejects every
+ * pending `after`/`at` promise (substrate's `cancelAll()` only marks tasks
+ * cancelled — it never invokes their `fire` callback).
  */
+
+import { VirtualTimeCounter } from '@studnicky/clock';
+import * as SchedulerPkg from '@studnicky/scheduler';
 
 import type { SchedulerProviderInterface } from '../dist/contracts/SchedulerProviderInterface.js';
 
@@ -18,26 +25,28 @@ class SchedulerAbortError extends Error {
   }
 }
 
-type PendingType = {
-  readonly atMs: number;
-  readonly resolve: () => void;
+type PendingRejectType = {
   readonly reject: (reason: Error) => void;
-  readonly signal: AbortSignal | undefined;
-}
+};
 
-export class VirtualScheduler implements SchedulerProviderInterface {
-  #virtualNow: number;
-  readonly #pending: PendingType[] = [];   // sorted by atMs ascending
+export class VirtualScheduler extends SchedulerPkg.VirtualScheduler implements SchedulerProviderInterface {
+  readonly #counter: VirtualTimeCounter;
+  readonly #pending = new Map<string, PendingRejectType>();
 
   constructor(initialAtMs: number = 0) {
-    this.#virtualNow = initialAtMs;
+    const counter = VirtualTimeCounter.create({ 'startMs': initialAtMs });
+    super(counter);
+    this.#counter = counter;
   }
 
   /** Current virtual time in ms. */
-  get virtualNow(): number { return this.#virtualNow; }
+  get virtualNow(): number { return this.#counter.nowMs(); }
+
+  /** Number of active pending `after`/`at` entries. Useful in tests. */
+  get pendingCount(): number { return this.#pending.size; }
 
   after(delayMs: number, options?: { signal?: AbortSignal }): Promise<void> {
-    return this.at(this.#virtualNow + Math.max(0, delayMs), options);
+    return this.at(this.#counter.nowMs() + Math.max(0, delayMs), options);
   }
 
   at(atMs: number, options?: { signal?: AbortSignal }): Promise<void> {
@@ -48,15 +57,20 @@ export class VirtualScheduler implements SchedulerProviderInterface {
         return;
       }
 
-      const entry: PendingType = { atMs, resolve, reject, signal };
-      this.#insert(entry);
+      const task = this.scheduleAt(atMs, () => {
+        this.#pending.delete(task.id);
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      });
+      this.#pending.set(task.id, { reject });
 
-      if (signal !== undefined) {
-        signal.addEventListener('abort', () => {
-          this.#remove(entry);
-          reject(signal.reason instanceof Error ? signal.reason : new SchedulerAbortError('aborted'));
-        }, { 'once': true });
-      }
+      const onAbort = (): void => {
+        this.#pending.delete(task.id);
+        task.cancel();
+        signal?.removeEventListener('abort', onAbort);
+        reject(signal?.reason instanceof Error ? signal.reason : new SchedulerAbortError('aborted'));
+      };
+      signal?.addEventListener('abort', onAbort, { 'once': true });
     });
   }
 
@@ -72,54 +86,11 @@ export class VirtualScheduler implements SchedulerProviderInterface {
     }
   }
 
-  cancelAll(): void {
-    while (this.#pending.length > 0) {
-      const entry = this.#pending.shift();
-      entry?.reject(new SchedulerAbortError('cancelled'));
+  override cancelAll(): void {
+    super.cancelAll();
+    for (const entry of this.#pending.values()) {
+      entry.reject(new SchedulerAbortError('cancelled'));
     }
-  }
-
-  /** Test API: advance virtual time by `deltaMs`. */
-  advance(deltaMs: number): void { this.runUntil(this.#virtualNow + deltaMs); }
-
-  /** Advance virtual time to `atMs`, resolving all pending entries due by then. */
-  runUntil(atMs: number): void {
-    let head = this.#pending[0];
-    while (head !== undefined && head.atMs <= atMs) {
-      this.#pending.shift();
-      this.#virtualNow = head.atMs;
-      head.resolve();
-      head = this.#pending[0];
-    }
-    this.#virtualNow = atMs;
-  }
-
-  /** Resolve all remaining pending entries in order. */
-  runAll(): void {
-    while (this.#pending.length > 0) {
-      const head = this.#pending[0];
-      if (head === undefined) break;
-      this.runUntil(head.atMs);
-    }
-  }
-
-  /** Number of active pending entries. Useful in tests. */
-  get pendingCount(): number {
-    return this.#pending.length;
-  }
-
-  #insert(entry: PendingType): void {
-    let index = 0;
-    while (index < this.#pending.length) {
-      const current = this.#pending[index];
-      if (current === undefined || current.atMs > entry.atMs) break;
-      index++;
-    }
-    this.#pending.splice(index, 0, entry);
-  }
-
-  #remove(entry: PendingType): void {
-    const index = this.#pending.indexOf(entry);
-    if (index !== -1) this.#pending.splice(index, 1);
+    this.#pending.clear();
   }
 }
