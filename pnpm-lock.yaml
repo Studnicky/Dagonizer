@@ -204,9 +204,6 @@ importers:
       '@studnicky/concurrency':
         specifier: ^4.0.0
         version: 4.0.0
-      '@studnicky/context':
-        specifier: ^4.0.0
-        version: 4.0.0
       '@studnicky/errors':
         specifier: ^4.0.0
         version: 4.0.0
@@ -1788,10 +1785,6 @@ packages:
 
   '@studnicky/config@4.0.0':
     resolution: {integrity: sha512-jvq+TM+4EHM/celRJI/QiAHXqgnKxF092mrv8hcFyJEWUnkg4ppvjAJQHoDNFNKpsknYcpC9udxURcfzMFERkA==, tarball: https://npm.pkg.github.com/download/@studnicky/config/4.0.0/c0e0244df67c7a2fcfb3527fda1ecc57d6c9da34}
-    engines: {node: '>=24.0.0', npm: '>=11.0.0'}
-
-  '@studnicky/context@4.0.0':
-    resolution: {integrity: sha512-d74yDUd6Bu2espmeWz07fz8OaJvLTfBl1x6EAy9aHvtGSjzRTQ/GAB4ceNLZouEqgsrsCFF0dOPr+dZTMMiH6Q==, tarball: https://npm.pkg.github.com/download/@studnicky/context/4.0.0/2dabe2a9cbc2815f21c6cff542cea25633b691f3}
     engines: {node: '>=24.0.0', npm: '>=11.0.0'}
 
   '@studnicky/errors@4.0.0':
@@ -5106,12 +5099,6 @@ snapshots:
   '@studnicky/config@4.0.0':
     dependencies:
       '@studnicky/errors': 4.0.0
-      '@studnicky/types': 4.0.0
-
-  '@studnicky/context@4.0.0':
-    dependencies:
-      '@studnicky/errors': 4.0.0
-      '@studnicky/json': 4.0.0
       '@studnicky/types': 4.0.0
 
   '@studnicky/errors@4.0.0':
