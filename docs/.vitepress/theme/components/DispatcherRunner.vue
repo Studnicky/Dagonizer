@@ -41,6 +41,7 @@ import { DispatcherBundleFactory } from '../../../../examples/the-dispatcher/dag
 import type { DispatcherServices } from '../../../../examples/the-dispatcher/services.ts';
 import { DispatcherLlmClient } from '../../../../examples/the-dispatcher/providers/DispatcherLlmClient.ts';
 import { DispatcherIntentClassifier } from '../../../../examples/the-dispatcher/providers/DispatcherIntentClassifier.ts';
+import { UserLanguage } from '../../../../examples/the-dispatcher/language/UserLanguage.ts';
 
 import { ApiKeyStore, BackendMatrix, BaseLlmClient, EmbedderProvisioner, MobileDetection, OllamaModels, ProviderInstantiator } from '../../../../examples/the-archivist/providers/index.ts';
 import type { BackendAvailability, EmbedderProvisionOptionsType, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
@@ -76,6 +77,12 @@ const resolvedModel = computed<string>(() => {
   const entry = backends.value.find((b) => b.id === activeBackend.value);
   return entry?.resolvedModel ?? '';
 });
+
+// ── Language ─────────────────────────────────────────────────────────────────
+// Visitor's device language (navigator.language in-browser), threaded into
+// DispatcherLlmClient so composed replies come back in the visitor's own
+// language rather than always English.
+const visitorLanguage = UserLanguage.detect();
 
 // ── State ────────────────────────────────────────────────────────────────────
 const customerQuery    = ref('');
@@ -374,7 +381,7 @@ function buildServices(): DispatcherServices {
   // ProviderInstantiator returns BaseLlmClient instances; access the underlying
   // adapter so DispatcherLlmClient can drive the chat calls directly.
   if (!(client instanceof BaseLlmClient)) throw new Error('unexpected client type');
-  return { 'llm': new DispatcherLlmClient(client.adapter), 'intent': dispatcherIntent.value };
+  return { 'llm': new DispatcherLlmClient(client.adapter, { 'language': visitorLanguage }), 'intent': dispatcherIntent.value };
 }
 
 /**
@@ -396,7 +403,7 @@ async function warmActiveBackend(): Promise<void> {
       warmState.value = 'unavailable';
       return;
     }
-    await new DispatcherLlmClient(client.adapter).warm();
+    await new DispatcherLlmClient(client.adapter, { 'language': visitorLanguage }).warm();
     warmState.value = 'ready';
   } catch (err) {
     warmState.value = 'unavailable';
@@ -432,6 +439,7 @@ async function ask(): Promise<void> {
   state.message           = queryText;
   state.humanMode         = humanMode.value;
   state.classificationMode = classificationMode.value;
+  state.language          = visitorLanguage;
 
   const dispatcher = new DispatcherBrowserObserver(logger, services);
   dispatcher.registerBundle(bundle);

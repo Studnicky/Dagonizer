@@ -148,6 +148,8 @@ export interface InstantiateInputs {
   readonly model?: string;
   readonly onWebLlmProgress?: (report: WebLlmInitReportType) => void;
   readonly intentClassifier?: IntentClassifier;
+  /** Visitor device language (ISO 639-1); threaded into the instantiated client's prompts. */
+  readonly language?: string;
 }
 
 /**
@@ -488,10 +490,11 @@ export class ProviderInstantiator {
 
     const modelOpt = model.length > 0 ? { 'model': model } : {};
 
-    // Thread the vector intent classifier into every client when one is supplied.
-    const clientOptions: BaseLlmClientOptions = inputs.intentClassifier !== undefined
-      ? { 'intentClassifier': inputs.intentClassifier }
-      : {};
+    // Thread the vector intent classifier and visitor language into every client.
+    const clientOptions: BaseLlmClientOptions = {
+      ...(inputs.intentClassifier !== undefined ? { 'intentClassifier': inputs.intentClassifier } : {}),
+      ...(inputs.language !== undefined ? { 'language': inputs.language } : {}),
+    };
 
     const providerDispatch: Record<ProviderId, () => LlmClientInterface> = {
       // gemini-nano has a single on-device model; no model option accepted.

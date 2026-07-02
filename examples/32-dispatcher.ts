@@ -41,6 +41,7 @@ import { DispatcherState }         from './the-dispatcher/DispatcherState.js';
 import { DispatcherBundleFactory } from './the-dispatcher/dag.js';
 import { DispatcherLlmClient }     from './the-dispatcher/providers/DispatcherLlmClient.js';
 import type { DispatcherServices } from './the-dispatcher/services.js';
+import { UserLanguage }            from './the-dispatcher/language/UserLanguage.js';
 
 // ---------------------------------------------------------------------------
 // Env helpers
@@ -89,7 +90,15 @@ process.stdout.write(`\nLLM backend: ${adapter.id} (${adapter.displayName})\n`);
 // a DispatcherIntentClassifier here instead.
 // ---------------------------------------------------------------------------
 
-const services: DispatcherServices = { 'llm': new DispatcherLlmClient(adapter), 'intent': null };
+// Detect the operator's language (process.env.LANG in this CLI context) so
+// composed replies come back in that language rather than always English.
+const dispatcherLanguage = UserLanguage.detect();
+process.stdout.write(`language: ${dispatcherLanguage} (${UserLanguage.displayName(dispatcherLanguage)})\n`);
+
+const services: DispatcherServices = {
+  'llm':    new DispatcherLlmClient(adapter, { 'language': dispatcherLanguage }),
+  'intent': null,
+};
 
 // ---------------------------------------------------------------------------
 // Setup: one dispatcher instance, shared across all three scenarios.
@@ -107,6 +116,7 @@ process.stdout.write('--- Scenario 1: Routine query (AI handles) ---\n');
 
 const routineState = new DispatcherState();
 routineState.message = 'What are your store hours?';
+routineState.language = dispatcherLanguage;
 
 const routineResult = await dispatcher.execute('support-dispatcher', routineState);
 
@@ -125,6 +135,7 @@ process.stdout.write('\n--- Scenario 2: Escalation → park → operator reply �
 
 const escalatedState = new DispatcherState();
 escalatedState.message = 'I need a refund for my last order';
+escalatedState.language = dispatcherLanguage;
 
 // Step 2a: Initial execute — should park (escalation triggered)
 const parkedResult = await dispatcher.execute('support-dispatcher', escalatedState);
@@ -182,6 +193,7 @@ process.stdout.write('\n--- Scenario 3: Trolley switch (humanMode = true) ---\n'
 const trolleyState = new DispatcherState();
 trolleyState.message = 'What are your store hours?';
 trolleyState.humanMode = true;
+trolleyState.language = dispatcherLanguage;
 
 const trolleyParked = await dispatcher.execute('support-dispatcher', trolleyState);
 

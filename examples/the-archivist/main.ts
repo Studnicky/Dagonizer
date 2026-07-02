@@ -233,6 +233,7 @@ logger.note(`backend: ${adapter.id} (${adapter.displayName})`);
 
 const session = new DomArchivistSession(store, logger, {
   'llm': llm,
+  'visitorLanguage': userLanguage,
   'dom': { button, input, logEl, conversationEl, hitlBanner, hitlInput, hitlResumeButton },
   'stores': { kvStore, ckptStore },
 });

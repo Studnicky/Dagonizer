@@ -70,6 +70,7 @@ import { MobileDetection } from './providers/MobileDetection.ts';
 import { RdfProvObserver } from './provenance/RdfProvObserver.ts';
 import type { ArchivistServices, LlmClientInterface } from './services.ts';
 import { StateProjection } from './state/StateProjection.ts';
+import { UserLanguage } from './language/UserLanguage.ts';
 
 // ── Static fallback pools ────────────────────────────────────────────────────
 // Single source of truth: previously duplicated in ArchivistRunner.vue.
@@ -182,6 +183,14 @@ export interface ArchivistSessionOptions {
   readonly timeoutSettings?: Partial<SessionTimeoutSettings>;
   /** Pre-built LlmClientInterface; bypasses BackendMatrix when set. */
   readonly llm?: LlmClientInterface;
+  /**
+   * Visitor's device language (ISO 639-1), threaded into the LLM client's
+   * prompts and into `ArchivistState.userLanguage` (tool-arg language
+   * restriction, candidate language filtering). Defaults to
+   * `UserLanguage.detect()` (browser `navigator.language`, Node
+   * `process.env.LANG`, else `'en'`) when not supplied.
+   */
+  readonly visitorLanguage?: string;
 }
 
 // ── Node-trace dispatch map ──────────────────────────────────────────────────
@@ -346,6 +355,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   // ── Session config (mutable via set* methods) ─────────────────────────────
   protected conversationContextWindow: number;
   protected timeoutSettings: SessionTimeoutSettings;
+  protected visitorLanguage: string;
 
   // ── Backend state ─────────────────────────────────────────────────────────
   protected activeBackend: ProviderId | null;
@@ -368,6 +378,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     this.store                   = store;
     this.logger                  = logger;
     this.conversationContextWindow = options.conversationContextWindow ?? 6;
+    this.visitorLanguage         = options.visitorLanguage ?? UserLanguage.detect();
     this.timeoutSettings         = {
       composeMs:   options.timeoutSettings?.composeMs   ?? DEFAULT_TIMEOUT_SETTINGS.composeMs,
       webSearchMs: options.timeoutSettings?.webSearchMs ?? DEFAULT_TIMEOUT_SETTINGS.webSearchMs,
@@ -662,6 +673,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     const visitor = new ArchivistState();
     visitor.query    = query;
     visitor.runId    = runId;
+    visitor.userLanguage = this.visitorLanguage;
     visitor.conversation = this.conversation
       .slice(-this.conversationContextWindow)
       .map((t) => ({ 'role': t.role, 'text': t.text, 'ts': t.ts }));
@@ -1057,8 +1069,9 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       ? this.ollamaModel
       : (this.backends.find((b) => b.id === this.activeBackend)?.resolvedModel ?? '');
     return ProviderInstantiator.instantiate(this.activeBackend, {
-      'apiKeys': this.apiKeys,
-      'model':   model,
+      'apiKeys':  this.apiKeys,
+      'model':    model,
+      'language': this.visitorLanguage,
       ...(this.intentClassifier !== null ? { 'intentClassifier': this.intentClassifier } : {}),
     });
   }
