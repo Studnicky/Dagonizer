@@ -26,10 +26,14 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@studnicky'
           cache: pnpm
       - name: Install librsvg (for og-image / version-badge rasterization)
         run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
       - run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: pnpm run build
       - run: pnpm run check:docs
       - run: pnpm run docs:build

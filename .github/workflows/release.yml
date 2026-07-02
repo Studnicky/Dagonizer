@@ -46,10 +46,13 @@ jobs:
         with:
           node-version: '24'
           registry-url: 'https://npm.pkg.github.com'
+          scope: '@studnicky'
           cache: 'pnpm'
 
       - name: Install
         run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Build
         run: pnpm run build
@@ -67,7 +70,7 @@ jobs:
           title: "chore(release): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # Post-publish gate. `changeset publish` reporting "success" and pushing
       # tags does NOT prove a package reached consumers: a brand-new package can
