@@ -374,8 +374,9 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     nodeName: string,
     state: CartographerState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onNodeStart(nodeName, state, placementPath);
+    super.onNodeStart(nodeName, state, placementPath, signal);
     const fullId = [...placementPath, nodeName].join('/');
     frameActiveNodes.add(fullId);
     // Trace records top-level node events only; inner per-clone activity is
@@ -391,8 +392,9 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     output: string | null,
     state: CartographerState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onNodeEnd(nodeName, output, state, placementPath);
+    super.onNodeEnd(nodeName, output, state, placementPath, signal);
     const fullId = [...placementPath, nodeName].join('/');
     latestRunState = state;
     frameActiveNodes.delete(fullId);
@@ -409,8 +411,9 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     error: Error,
     state: CartographerState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onError(nodeName, error, state, placementPath);
+    super.onError(nodeName, error, state, placementPath, signal);
     const fullId = [...placementPath, nodeName].join('/');
     frameErroredNode = fullId;
     traceBuffer.push({ 'variant': 'error', 'node': fullId, 'ts': Date.now(), 'message': error.message !== '' ? error.message : String(error) });
@@ -421,8 +424,9 @@ class CartographerBrowserObserver extends ObservedDag<CartographerState> {
     dagName: string,
     state: CartographerState,
     result: import('@studnicky/dagonizer').ExecutionResultType<CartographerState>,
+    signal: AbortSignal,
   ): void {
-    super.onFlowEnd(dagName, state, result);
+    super.onFlowEnd(dagName, state, result, signal);
     // Final synchronous flush — capture the terminal state exactly.
     latestRunState = state;
     records.value = [...state.sampleRecords];

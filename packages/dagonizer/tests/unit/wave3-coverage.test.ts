@@ -35,11 +35,7 @@ import { DAGError } from '../../src/errors/DAGError.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
-
-/** `assert.throws` predicate: a `DAGError` coded `VALIDATION_ERROR`. */
-function isValidationError(err: unknown): boolean {
-  return err instanceof DAGError && err.code === 'VALIDATION_ERROR';
-}
+import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
 
 // ---------------------------------------------------------------------------
 // TST-W3-1: BridgeMessageType inline shape structural identity
@@ -337,7 +333,7 @@ void describe('TST-W3-2: Validator.gatherConfig', () => {
   void it('validate() throws DAGError (code VALIDATION_ERROR) for invalid input', () => {
     assert.throws(
       () => Validator.gatherConfig.validate({}),
-      isValidationError,
+      DAGErrorPredicate.isValidationError,
       'validate() must throw DAGError (code VALIDATION_ERROR) for missing strategy',
     );
   });
@@ -410,7 +406,7 @@ void describe('TST-W3-3: Validator.interruptionInfo', () => {
   void it('validate() throws DAGError (code VALIDATION_ERROR) for invalid input', () => {
     assert.throws(
       () => Validator.interruptionInfo.validate({ 'nodeName': 'step1', 'reason': 'invalid-reason' }),
-      isValidationError,
+      DAGErrorPredicate.isValidationError,
       'validate() must throw DAGError (code VALIDATION_ERROR) for unknown reason',
     );
   });
@@ -471,7 +467,7 @@ void describe('TST-W3-4: Validator.openAiResponseBody', () => {
   void it('validate() throws DAGError (code VALIDATION_ERROR) for a non-object body', () => {
     assert.throws(
       () => Validator.openAiResponseBody.validate(42),
-      isValidationError,
+      DAGErrorPredicate.isValidationError,
       'validate() must throw DAGError (code VALIDATION_ERROR) for non-object input',
     );
   });

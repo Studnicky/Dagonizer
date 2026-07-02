@@ -25,10 +25,11 @@
  *   onPhaseExit  – trace phase exit (pre/post)
  *
  * Every log entry carries the run's correlation id, read from
- * `DagExecutionContext` (seeded by `Dagonizer.execute()`/`resume()`, see
- * `runtime/DagExecutionContext.ts`). `onNodeStart`/`onNodeEnd`/`onError` also
- * carry `dagName` from the same context, since — unlike the flow/phase hooks
- * — the dispatcher does not pass `dagName` as a hook argument at that level.
+ * `DagExecutionContext` via the `signal` each hook fires with (seeded by
+ * `Dagonizer.execute()`/`resume()`, see `runtime/DagExecutionContext.ts`).
+ * `onNodeStart`/`onNodeEnd`/`onError` also carry `dagName` from the same
+ * context, since — unlike the flow/phase hooks — the dispatcher does not
+ * pass `dagName` as a hook argument at that level.
  */
 
 import { LogBody, LogFault } from '@studnicky/logger';
@@ -38,7 +39,7 @@ import type { DagonizerOptionsType } from './Dagonizer.js';
 import { Dagonizer } from './Dagonizer.js';
 import type { ExecutionResultType } from './entities/execution/ExecutionResult.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
-import { DagExecutionContext, DagExecutionContextKeys } from './runtime/DagExecutionContext.js';
+import { DagExecutionContext } from './runtime/DagExecutionContext.js';
 
 /** Correlation id used in log context when no `DagExecutionContext` scope is active. */
 const NO_CORRELATION_ID = 'none';
@@ -70,22 +71,25 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
   get logger(): DagLoggerInterface { return this.#logger; }
 
   /**
-   * Correlation id of the run currently executing, read from
-   * `DagExecutionContext`. Falls back to `NO_CORRELATION_ID` when no scope is
-   * active (e.g. a node invoked directly, outside `Dagonizer.execute()`).
+   * Correlation id of the run currently executing, read via
+   * `DagExecutionContext.correlationIdOf(signal)` — the same anchor
+   * `Dagonizer` seeded the run's scope with. Falls back to
+   * `NO_CORRELATION_ID` when `signal` has no registered scope (e.g. a node
+   * invoked directly, outside `Dagonizer.execute()`).
    */
-  #correlationId(): string {
-    return DagExecutionContext.tryGet<string>(DagExecutionContextKeys.CORRELATION_ID) ?? NO_CORRELATION_ID;
+  #correlationId(signal: AbortSignal): string {
+    return DagExecutionContext.correlationIdOf(signal) ?? NO_CORRELATION_ID;
   }
 
-  protected override onFlowStart(dagName: string): void {
+  protected override onFlowStart(dagName: string, state: TState, signal: AbortSignal): void {
+    void state;
     this.#logger.info(
       LogBody.create()
         .component('dag')
         .operation('flow')
         .status('in_progress')
         .message(`start dag=${dagName}`)
-        .context({ dagName, 'correlationId': this.#correlationId() })
+        .context({ dagName, 'correlationId': this.#correlationId(signal) })
         .build(),
     );
   }
@@ -94,6 +98,7 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
     dagName: string,
     state: TState,
     result: ExecutionResultType<TState>,
+    signal: AbortSignal,
   ): void {
     void state;
     const outcome = result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none';
@@ -103,7 +108,7 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
         .operation('flow')
         .status('complete')
         .message(`end dag=${dagName} outcome=${outcome}`)
-        .context({ dagName, outcome, 'correlationId': this.#correlationId() })
+        .context({ dagName, outcome, 'correlationId': this.#correlationId(signal) })
         .build(),
     );
   }
@@ -112,17 +117,18 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
     nodeName: string,
     state: TState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
     void state;
     const path = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
-    const dagName = DagExecutionContext.tryGet<string>(DagExecutionContextKeys.DAG_NAME);
+    const dagName = DagExecutionContext.dagNameOf(signal);
     this.#logger.debug(
       LogBody.create()
         .component('dag')
         .operation('node')
         .status('in_progress')
         .message(`start ${path}${nodeName}`)
-        .context({ nodeName, placementPath, dagName, 'correlationId': this.#correlationId() })
+        .context({ nodeName, placementPath, dagName, 'correlationId': this.#correlationId(signal) })
         .build(),
     );
   }
@@ -132,18 +138,19 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
     output: string | null,
     state: TState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
     void state;
     const path   = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
     const outTag = output ?? '(terminal)';
-    const dagName = DagExecutionContext.tryGet<string>(DagExecutionContextKeys.DAG_NAME);
+    const dagName = DagExecutionContext.dagNameOf(signal);
     this.#logger.debug(
       LogBody.create()
         .component('dag')
         .operation('node')
         .status('complete')
         .message(`end ${path}${nodeName} → ${outTag}`)
-        .context({ nodeName, placementPath, 'output': outTag, dagName, 'correlationId': this.#correlationId() })
+        .context({ nodeName, placementPath, 'output': outTag, dagName, 'correlationId': this.#correlationId(signal) })
         .build(),
     );
   }
@@ -153,10 +160,11 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
     error: Error,
     state: TState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
     void state;
     const path = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
-    const dagName = DagExecutionContext.tryGet<string>(DagExecutionContextKeys.DAG_NAME);
+    const dagName = DagExecutionContext.dagNameOf(signal);
     this.#logger.error(
       LogFault.create()
         .component('dag')
@@ -164,31 +172,35 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
         .status('failed')
         .name(error.constructor.name)
         .message(`${path}${nodeName} threw ${error.message}`)
-        .context({ nodeName, placementPath, dagName, 'correlationId': this.#correlationId() })
+        .context({ nodeName, placementPath, dagName, 'correlationId': this.#correlationId(signal) })
         .build(),
     );
   }
 
-  protected override onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string): void {
+  protected override onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[], signal: AbortSignal): void {
+    void state;
+    void placementPath;
     this.#logger.trace(
       LogBody.create()
         .component('dag')
         .operation('phase')
         .status('in_progress')
         .message(`enter dag=${dagName} phase=${phase} placement=${placementName}`)
-        .context({ dagName, phase, placementName, 'correlationId': this.#correlationId() })
+        .context({ dagName, phase, placementName, 'correlationId': this.#correlationId(signal) })
         .build(),
     );
   }
 
-  protected override onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string): void {
+  protected override onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[], signal: AbortSignal): void {
+    void state;
+    void placementPath;
     this.#logger.trace(
       LogBody.create()
         .component('dag')
         .operation('phase')
         .status('complete')
         .message(`exit dag=${dagName} phase=${phase} placement=${placementName}`)
-        .context({ dagName, phase, placementName, 'correlationId': this.#correlationId() })
+        .context({ dagName, phase, placementName, 'correlationId': this.#correlationId(signal) })
         .build(),
     );
   }

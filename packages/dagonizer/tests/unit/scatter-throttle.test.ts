@@ -70,8 +70,11 @@ class ThrottleTestDag {
           'body':        { 'node': 'delayed' },
           'source':      'items',
           'itemKey':     'item',
-          'concurrency': itemCount,
-          ...(throttle !== null ? { 'throttle': throttle } : {}),
+          'execution': {
+            'mode': 'item',
+            'concurrency': itemCount,
+            ...(throttle !== null ? { 'throttle': throttle } : {}),
+          },
           'gather':      { 'strategy': 'append', 'target': 'itemResults' },
           'outputs': {
             'all-success': 'end',

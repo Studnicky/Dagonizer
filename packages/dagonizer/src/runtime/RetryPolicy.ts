@@ -88,6 +88,10 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyType, (attempt: number, 
  * via `instanceof`, for a consumer's own error classes) and `DAGError` code
  * strings (matched via `error instanceof DAGError && error.code === ...`,
  * for Dagonizer's own error taxonomy — one class, distinguished by `.code`).
+ * When no `retryOn` filter is configured, a `DAGError` falls back to its own
+ * `error.retryable` field (see `shouldRetry()`), so a `DAGError` that
+ * self-reports `retryable: false` is not retried even with empty filter
+ * lists.
  *
  * @example
  * ```ts
@@ -103,6 +107,25 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyType, (attempt: number, 
  *   () => fetchRemote(url),
  *   { signal: context.signal },
  * );
+ * ```
+ *
+ * @example Guarding an outer retry around `BaseAdapter.chat()`
+ * ```ts
+ * // BaseAdapter.chat() already retries transient failures INSIDE its own
+ * // circuit-breaker/token-bucket guard (see BaseAdapter's class doc). An
+ * // outer RetryPolicy wrapping the whole chat() call is a different
+ * // scenario: an open circuit or exhausted bucket rejects chat()
+ * // immediately with CircuitBreakerOpenError/TokenBucketExhaustedError, and
+ * // a naive outer retry would hammer an already-open circuit. List both in
+ * // abortOn so the outer policy fails fast instead of retrying them —
+ * // this is documented guidance, not an enforced default; a consumer who
+ * // legitimately wants to retry through a half-open circuit configures
+ * // their own policy differently.
+ * const outer = RetryPolicy.from({
+ *   maxAttempts: 3,
+ *   abortOn: [CircuitBreakerOpenError, TokenBucketExhaustedError],
+ * });
+ * const response = await outer.run(() => adapter.chat(request));
  * ```
  */
 export class RetryPolicy extends Retry {
@@ -217,10 +240,21 @@ export class RetryPolicy extends Retry {
   /**
    * Decide whether the given error should be retried at this attempt.
    * Order of checks:
-   *  1. attempt < maxAttempts
-   *  2. error not in abortOn list (if provided)
-   *  3. if retryOn list provided, error must be in it
-   *  4. otherwise retry
+   *  1. `attempt < maxAttempts` — otherwise stop.
+   *  2. `abortOn` — a consumer's explicit abort list is authoritative:
+   *     any match stops retrying, even a `DAGError` that self-reports
+   *     `retryable: true`.
+   *  3. `retryOn` — a consumer's explicit retry list is authoritative:
+   *     a non-empty list means "retry only these"; a miss stops
+   *     retrying, even a `DAGError` that self-reports `retryable: true`.
+   *  4. No explicit `retryOn` filter configured: a `DAGError` falls back
+   *     to its own `error.retryable` classification — the error's own
+   *     "don't retry me" (or "do retry me") wins over the blanket
+   *     no-filter default. A non-`DAGError` error with no filters keeps
+   *     the long-standing default: retry everything.
+   *
+   * Explicit matchers (steps 2–3) are always consumer-authoritative overrides
+   * and are evaluated before the error's own self-classification (step 4).
    */
   shouldRetry(error: Error, attempt: number): boolean {
     if (attempt >= this.maxAttempts) {
@@ -237,7 +271,6 @@ export class RetryPolicy extends Retry {
     }
 
     // retryOn: non-empty list means "retry only matching error types".
-    // Empty list means "retry all error types" (no filter).
     if (this.retryOn.length > 0) {
       for (const matcher of this.retryOn) {
         if (RetryPolicy.matches(error, matcher)) {
@@ -245,6 +278,14 @@ export class RetryPolicy extends Retry {
         }
       }
       return false;
+    }
+
+    // No explicit retryOn filter: a DAGError's own `.retryable` classification
+    // is the fallback signal, overriding the blanket "no filter = retry
+    // everything" default. A non-DAGError error with no filters configured
+    // still retries — the original default for arbitrary error types.
+    if (error instanceof DAGError) {
+      return error.retryable;
     }
 
     return true;

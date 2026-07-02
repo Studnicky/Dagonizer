@@ -29,6 +29,7 @@ import type { WorkSetProgressType } from '../entities/workset/WorkSetProgress.js
 import { DAGError } from '../errors/index.js';
 import { DAGLifecycleMachine } from '../lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import { DagExecutionContext } from '../runtime/DagExecutionContext.js';
 import { RetryPolicy } from '../runtime/RetryPolicy.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
 
@@ -68,19 +69,19 @@ export interface NodeSchedulerSourceInterface {
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
 
   /** Relay a flow-start event into the dispatcher's `onFlowStart` hook. */
-  relayFlowStart(dagName: string, state: NodeStateInterface): void;
+  relayFlowStart(dagName: string, state: NodeStateInterface, signal: AbortSignal): void;
   /** Relay a flow-end event into the dispatcher's `onFlowEnd` hook. */
-  relayFlowEnd(dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>): void;
+  relayFlowEnd(dagName: string, state: NodeStateInterface, result: ExecutionResultType<NodeStateInterface>, signal: AbortSignal): void;
   /** Relay a node-start event into the dispatcher's `onNodeStart` hook. */
-  relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
+  relayNodeStart(nodeName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
   /** Relay a node-end event into the dispatcher's `onNodeEnd` hook. */
-  relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[]): void;
+  relayNodeEnd(nodeName: string, output: string | null, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
   /** Relay an error event into the dispatcher's `onError` hook. */
-  relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[]): void;
+  relayError(nodeName: string, error: Error, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
   /** Relay a phase-enter event into the dispatcher's `onPhaseEnter` hook. */
-  relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
+  relayPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
   /** Relay a phase-exit event into the dispatcher's `onPhaseExit` hook. */
-  relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[]): void;
+  relayPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: NodeStateInterface, placementPath: readonly string[], signal: AbortSignal): void;
 
   /** Dispatch a composite (`ScatterNode` / `EmbeddedDAGNode`) placement for one item. */
   executeDAGNode(
@@ -149,6 +150,15 @@ export class NodeScheduler {
     batch: RunNodesBatchType = {},
   ): AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TReturn>, void> {
     const { inputBatch, terminalByItemId } = batch;
+    // Composed once, up front: every relay call in this method (including the
+    // unknown-DAG/unknown-node error paths below, before `dag` even resolves)
+    // fires with this same signal, so `DagExecutionContext.tryGet(signal, ...)`
+    // resolves from any of them. When `options.signal` is already the run's
+    // fully-composed root signal (the caller stripped `deadlineMs` — see
+    // `Dagonizer.execute()`), `Signal.compose` short-circuits to that identical
+    // object rather than re-wrapping it, so identity survives recursive
+    // (embedded/scatter) re-entry into this method.
+    const signal = Signal.compose(options);
     // Expand the bare dagName to its IRI key for all registry map lookups.
     // The original dagName string is retained for human-readable error messages,
     // lifecycle hooks, and hand-off envelopes.
@@ -160,7 +170,7 @@ export class NodeScheduler {
       // lifecycle. `state` may not have been touched yet, so don't mark
       // running. The cursor is null because there is no DAG to resume.
       const error = new DAGError(`Unknown DAG: ${dagName}`);
-      this.#source.relayError('<unknown>', error, state, placementPath);
+      this.#source.relayError('<unknown>', error, state, placementPath, signal);
       if (!runOptions.embedded) {
         try { state.markFailed(error); } catch { /* state may already be terminal */ }
       }
@@ -169,15 +179,13 @@ export class NodeScheduler {
         'interruptedAt': null, 'parked': null,
       };
       if (!runOptions.embedded) {
-        this.#source.relayFlowEnd(dagName, state, result);
+        this.#source.relayFlowEnd(dagName, state, result, signal);
       }
       return result;
     }
 
     // Extract the DAG's @context prefix map for node-name IRI expansion during execution.
     const dagContext: Record<string, unknown> = ContextResolver.contextOf(dag['@context']);
-
-    const signal = Signal.compose(options);
 
     if (!runOptions.embedded) {
       // When resuming after a crash (fromStage !== null), the prior run may
@@ -190,7 +198,7 @@ export class NodeScheduler {
         state.resetLifecycle();
       }
       state.markRunning();
-      this.#source.relayFlowStart(dagName, state);
+      this.#source.relayFlowStart(dagName, state, signal);
     }
 
     const executedNodes: string[] = [];
@@ -207,20 +215,20 @@ export class NodeScheduler {
           n['@type'] === 'PhaseNode' && n.phase === 'pre',
       );
       for (const phase of prePhases) {
-        this.#source.relayPhaseEnter(dagName, 'pre', phase.name, state, placementPath);
+        this.#source.relayPhaseEnter(dagName, 'pre', phase.name, state, placementPath, signal);
         try {
           await this.#executePhasePlacement(phase, state, dagName, signal, dagContext);
           executedNodes.push(phase.name);
         } catch (err) {
           const error = err instanceof Error ? err : new DAGError(String(err), { 'code': 'EXECUTION_ERROR' });
-          this.#source.relayError(phase.name, error, state, placementPath);
+          this.#source.relayError(phase.name, error, state, placementPath, signal);
           try { state.markFailed(error); } catch { /* already terminal */ }
-          this.#source.relayPhaseExit(dagName, 'pre', phase.name, state, placementPath);
+          this.#source.relayPhaseExit(dagName, 'pre', phase.name, state, placementPath, signal);
           const result = this.#composeResult(null, executedNodes, skippedNodes, null, null, state);
-          await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+          await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);
           return result;
         }
-        this.#source.relayPhaseExit(dagName, 'pre', phase.name, state, placementPath);
+        this.#source.relayPhaseExit(dagName, 'pre', phase.name, state, placementPath, signal);
       }
     }
 
@@ -318,7 +326,7 @@ export class NodeScheduler {
         // Abort check: fires before each placement.
         if (signal.aborted) {
           const abortInfo = this.#handleAbort(state, signal);
-          this.#source.relayError(currentPlacementName, abortInfo.error, state, placementPath);
+          this.#source.relayError(currentPlacementName, abortInfo.error, state, placementPath, signal);
           const interruptedAt: InterruptionInfoType = {
             'nodeName': currentPlacementName,
             'reason':   abortInfo.reason,
@@ -361,7 +369,7 @@ export class NodeScheduler {
           }
 
           const result = this.#composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-          await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+          await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);
           return result;
         }
 
@@ -373,12 +381,12 @@ export class NodeScheduler {
 
         if (!node) {
           const error = new DAGError(`Unknown node: ${currentPlacementName} in DAG ${dagName}`);
-          this.#source.relayError(currentPlacementName, error, state, placementPath);
+          this.#source.relayError(currentPlacementName, error, state, placementPath, signal);
           if (!runOptions.embedded) {
             try { state.markFailed(error); } catch { /* already terminal */ }
           }
           const result = this.#composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
-          await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+          await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);
           return result;
         }
 
@@ -386,7 +394,7 @@ export class NodeScheduler {
         // this is identical to the single cursor state — byte-identical to today.
         const repState = batch.row(0).state;
 
-        this.#source.relayNodeStart(node.name, repState, placementPath);
+        this.#source.relayNodeStart(node.name, repState, placementPath, signal);
 
         // TerminalNode: no-op execution — capture outcome, synthesize result,
         // fire onNodeEnd, and continue the work-set loop so remaining items
@@ -420,7 +428,7 @@ export class NodeScheduler {
             'state': repState,
             'intermediateResults': [],
           };
-          this.#source.relayNodeEnd(terminal.name, terminal.outcome, repState, placementPath);
+          this.#source.relayNodeEnd(terminal.name, terminal.outcome, repState, placementPath, signal);
           yield terminalResult;
           continue scheduleLoop;
         }
@@ -458,17 +466,17 @@ export class NodeScheduler {
                 'cursor': currentPlacementName,
                 'dagName': dagName,
               };
-              this.#source.relayNodeEnd(node.name, 'parked', repState, placementPath);
+              this.#source.relayNodeEnd(node.name, 'parked', repState, placementPath, signal);
               const parkResult = this.#composeResult(currentPlacementName, executedNodes, skippedNodes, null, null, state, parkedEntity);
-              await this.#runPostPhasesAndFinalize(dag, dagName, state, parkResult, runOptions, terminalNodeName, placementPath);
+              await this.#runPostPhasesAndFinalize(dag, dagName, state, parkResult, runOptions, terminalNodeName, signal, placementPath);
               return parkResult;
             }
 
             const validated = this.#validateOutputContract(fired.dagNode, fired.routed);
             nodeResult = this.#routeToPending(node, fired.dagNode, validated, batch, pending);
           } catch (caughtError) {
-            const error = caughtError instanceof Error ? caughtError : new DAGError(String(caughtError), { 'code': 'EXECUTION_ERROR' });
-            this.#source.relayError(currentPlacementName, error, repState, placementPath);
+            const error = this.#enrichError(caughtError, dagName, placementPath, signal);
+            this.#source.relayError(currentPlacementName, error, repState, placementPath, signal);
             let interruptedAt: InterruptionInfoType | null = null;
             if (signal.aborted) {
               if (!runOptions.embedded) {
@@ -487,12 +495,12 @@ export class NodeScheduler {
               try { state.markFailed(error); } catch { /* already terminal */ }
             }
             const result = this.#composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-            await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+            await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);
             return result;
           }
 
           executedNodes.push(nodeResult.nodeName);
-          this.#source.relayNodeEnd(node.name, nodeResult.output, repState, placementPath);
+          this.#source.relayNodeEnd(node.name, nodeResult.output, repState, placementPath, signal);
           yield nodeResult;
           continue scheduleLoop;
         }
@@ -635,7 +643,7 @@ export class NodeScheduler {
           }
 
           executedNodes.push(node.name);
-          this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath);
+          this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath, signal);
           yield {
             'output': repOutput,
             'skipped': false,
@@ -666,8 +674,8 @@ export class NodeScheduler {
             // A thrown firing fails the whole fired batch (RFC 0003 §10.2). Same
             // classification + lifecycle handling as the single-item path; the
             // representative state for telemetry is the batch's first item.
-            const error = caughtError instanceof Error ? caughtError : new DAGError(String(caughtError), { 'code': 'EXECUTION_ERROR' });
-            this.#source.relayError(currentPlacementName, error, repState, placementPath);
+            const error = this.#enrichError(caughtError, dagName, placementPath, signal);
+            this.#source.relayError(currentPlacementName, error, repState, placementPath, signal);
             let interruptedAt: InterruptionInfoType | null = null;
             if (signal.aborted) {
               if (!runOptions.embedded) {
@@ -686,7 +694,7 @@ export class NodeScheduler {
               try { state.markFailed(error); } catch { /* already terminal */ }
             }
             const result = this.#composeResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-            await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+            await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);
             return result;
           }
         }
@@ -720,7 +728,7 @@ export class NodeScheduler {
           } else {
             executedNodes.push(soleResult.nodeName);
           }
-          this.#source.relayNodeEnd(node.name, soleResult.output, repState, placementPath);
+          this.#source.relayNodeEnd(node.name, soleResult.output, repState, placementPath, signal);
           yield {
             'output': soleResult.output,
             'skipped': soleResult.skipped,
@@ -734,7 +742,7 @@ export class NodeScheduler {
           for (const entry of composite) {
             if (entry.result.output !== repOutput) { repOutput = null; break; }
           }
-          this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath);
+          this.#source.relayNodeEnd(node.name, repOutput, repState, placementPath, signal);
           yield {
             'output': repOutput,
             'skipped': false,
@@ -788,7 +796,7 @@ export class NodeScheduler {
       WorkSetCheckpoint.clear(state);
     }
     const result = this.#composeResult(null, executedNodes, skippedNodes, terminalOutcome, null, state);
-    await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+    await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);
     return result;
   }
 
@@ -835,6 +843,7 @@ export class NodeScheduler {
     result: ExecutionResultType<NodeStateInterface>,
     runOptions: RunOptionsType,
     terminalNodeName: string | null,
+    signal: AbortSignal,
     placementPath: readonly string[] = [],
   ): Promise<void> {
     if (runOptions.embedded) {
@@ -848,7 +857,7 @@ export class NodeScheduler {
         n['@type'] === 'PhaseNode' && n.phase === 'post',
     );
     for (const phase of postPhases) {
-      this.#source.relayPhaseEnter(dagName, 'post', phase.name, state, placementPath);
+      this.#source.relayPhaseEnter(dagName, 'post', phase.name, state, placementPath, signal);
       try {
         await this.#executePhasePlacement(phase, state, dagName, Signal.never(), postDagContext);
         result.executedNodes.push(phase.name);
@@ -857,7 +866,7 @@ export class NodeScheduler {
         // Post-phase intentionally runs without the parent abort signal —
         // `Signal.never()` models "deliberately unguarded" here, since
         // lifecycle has already been set; collect as warning, not re-throw.
-        this.#source.relayError(phase.name, error, state, placementPath);
+        this.#source.relayError(phase.name, error, state, placementPath, signal);
         state.collectWarning({
           'code':      'POST_PHASE_FAILED',
           'message':   `post-phase '${phase.name}' threw: ${error.message}`,
@@ -865,9 +874,9 @@ export class NodeScheduler {
           'timestamp': new Date().toISOString(),
         });
       }
-      this.#source.relayPhaseExit(dagName, 'post', phase.name, state, placementPath);
+      this.#source.relayPhaseExit(dagName, 'post', phase.name, state, placementPath, signal);
     }
-    this.#source.relayFlowEnd(dagName, state, result);
+    this.#source.relayFlowEnd(dagName, state, result, signal);
 
     // Hand-off channel publish: only for non-embedded top-level runs that
     // completed at a bound terminal. The in-process (no-channels) path is
@@ -897,7 +906,7 @@ export class NodeScheduler {
             'recoverable': false,
             'timestamp': new Date().toISOString(),
           });
-          this.#source.relayError(terminalNodeName, error, state, placementPath);
+          this.#source.relayError(terminalNodeName, error, state, placementPath, signal);
         }
       }
     }
@@ -1081,6 +1090,37 @@ export class NodeScheduler {
     const expandedDagIri = ContextResolver.expand(dagName, {});
     const entry = this.#source.nodeIndex.get(`${expandedDagIri}:${name}`);
     return entry?.['@type'] === 'PhaseNode';
+  }
+
+  /**
+   * Normalise a caught node-firing error into a `DAGError` whose `context`
+   * carries `dagName`, `placementPath`, and (when available) the run's
+   * correlation id — read via `DagExecutionContext.correlationIdOf(signal)`.
+   *
+   * `DAGError.context` is set once at construction and is not writable after
+   * (`readonly context`), so enrichment always constructs a NEW `DAGError`
+   * rather than mutating the coerced error's own context in place. The
+   * coerced error is attached as `cause`, preserving the original stack and
+   * message via the cause chain; `code`/`retryable` are carried forward from
+   * the coerced error when it is already a `DAGError` (e.g. `NODE_TIMEOUT`),
+   * and any context it already carried is merged underneath the enrichment.
+   */
+  #enrichError(caughtError: unknown, dagName: string, placementPath: readonly string[], signal: AbortSignal): DAGError {
+    const coerced = DAGError.coerce(caughtError);
+    const baseContext = coerced instanceof DAGError ? coerced.context : {};
+    const correlationId = DagExecutionContext.correlationIdOf(signal);
+    const context: Record<string, unknown> = {
+      ...baseContext,
+      dagName,
+      'placementPath': [...placementPath],
+    };
+    if (correlationId !== undefined) context['correlationId'] = correlationId;
+    return new DAGError(coerced.message, {
+      'code':      coerced instanceof DAGError ? coerced.code : 'EXECUTION_ERROR',
+      context,
+      'cause':     coerced,
+      'retryable': coerced instanceof DAGError ? coerced.retryable : false,
+    });
   }
 
   /**

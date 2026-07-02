@@ -41,7 +41,7 @@ export { GatherConfigSchema } from './dag/GatherConfig.js';
 export type { GatherConfigType } from './dag/GatherConfig.js';
 
 export { ScatterNodeSchema, ScatterNodeDefaults } from './dag/ScatterNode.js';
-export type { ScatterNodeType, ScatterThrottleOptionsType } from './dag/ScatterNode.js';
+export type { ScatterNodeType, ScatterThrottleOptionsType, ScatterExecutionOptionsType, ScatterExecutionPolicyType } from './dag/ScatterNode.js';
 
 export { EmbeddedDAGNodeSchema, EmbeddedDAGNodeDefaults } from './dag/EmbeddedDAGNode.js';
 export type { EmbeddedDAGNodeType } from './dag/EmbeddedDAGNode.js';

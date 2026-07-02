@@ -239,8 +239,8 @@ class SessionObserver extends ObservedDag<ArchivistState> {
     this.#shownErrorCount = 0;
   }
 
-  protected override onFlowStart(dagName: string): void {
-    super.onFlowStart(dagName);
+  protected override onFlowStart(dagName: string, state: ArchivistState, signal: AbortSignal): void {
+    super.onFlowStart(dagName, state, signal);
     this.#prov.recordFlowStart(dagName);
     this.#sink.pumpFlowStart(dagName);
   }
@@ -249,8 +249,9 @@ class SessionObserver extends ObservedDag<ArchivistState> {
     nodeName: string,
     state: ArchivistState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onNodeStart(nodeName, state, placementPath);
+    super.onNodeStart(nodeName, state, placementPath, signal);
     this.#prov.recordNodeStart(nodeName);
     this.#sink.pumpNodeStart(nodeName, placementPath);
   }
@@ -260,8 +261,9 @@ class SessionObserver extends ObservedDag<ArchivistState> {
     output: string | null,
     state: ArchivistState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onNodeEnd(nodeName, output, state, placementPath);
+    super.onNodeEnd(nodeName, output, state, placementPath, signal);
 
     // Surface routed-to-'error' failures collected on top-level state.
     // Tolerated tool-clone failures (toolExecutionFailed) are filtered: they
@@ -289,8 +291,9 @@ class SessionObserver extends ObservedDag<ArchivistState> {
     error: Error,
     state: ArchivistState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onError(nodeName, error, state, placementPath);
+    super.onError(nodeName, error, state, placementPath, signal);
     this.#prov.recordError(nodeName, error);
     this.#sink.pumpError(nodeName, error, placementPath);
   }
@@ -309,8 +312,9 @@ class SessionObserver extends ObservedDag<ArchivistState> {
     dagName: string,
     state: ArchivistState,
     result: ExecutionResultType<ArchivistState>,
+    signal: AbortSignal,
   ): void {
-    super.onFlowEnd(dagName, state, result);
+    super.onFlowEnd(dagName, state, result, signal);
     this.#prov.recordFlowEnd(state.lifecycle.variant);
     this.#sink.pumpFlowEnd(dagName, state, result);
   }

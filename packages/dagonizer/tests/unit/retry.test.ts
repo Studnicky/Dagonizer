@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { BackoffStrategyNames } from '../../src/entities/runtime/BackoffStrategy.js';
+import { DAGError } from '../../src/errors/DAGError.js';
 import { RetryPolicy } from '../../src/runtime/RetryPolicy.js';
 
 class TransientError extends Error { constructor() { super('transient'); } }
@@ -56,6 +57,43 @@ void describe('RetryPolicy.shouldRetry filtering', () => {
     const p = RetryPolicy.from({ "maxAttempts": 5, "retryOn": [TransientError] });
     assert.equal(p.shouldRetry(new TransientError(), 1), true);
     assert.equal(p.shouldRetry(new FatalError(), 1), false);
+  });
+});
+
+void describe('RetryPolicy.shouldRetry DAGError.retryable fallback precedence', () => {
+  void it('with no retryOn/abortOn filters, falls back to DAGError.retryable: false to stop retrying', () => {
+    const p = RetryPolicy.from({ "maxAttempts": 5 });
+    const notRetryable = new DAGError('nope', { "code": 'VALIDATION_ERROR', "retryable": false });
+    assert.equal(p.shouldRetry(notRetryable, 1), false);
+  });
+
+  void it('with no retryOn/abortOn filters, falls back to DAGError.retryable: true to keep retrying', () => {
+    const p = RetryPolicy.from({ "maxAttempts": 5 });
+    const retryable = new DAGError('later', { "code": 'EXECUTION_ERROR', "retryable": true });
+    assert.equal(p.shouldRetry(retryable, 1), true);
+  });
+
+  void it('with no filters, a non-DAGError error keeps the default "retry everything" behavior', () => {
+    const p = RetryPolicy.from({ "maxAttempts": 5 });
+    assert.equal(p.shouldRetry(new TransientError(), 1), true);
+  });
+
+  void it('an explicit abortOn match wins over DAGError.retryable: true', () => {
+    const p = RetryPolicy.from({ "maxAttempts": 5, "abortOn": ['EXECUTION_ERROR'] });
+    const retryable = new DAGError('but aborted', { "code": 'EXECUTION_ERROR', "retryable": true });
+    assert.equal(p.shouldRetry(retryable, 1), false);
+  });
+
+  void it('an explicit retryOn match wins over DAGError.retryable: false', () => {
+    const p = RetryPolicy.from({ "maxAttempts": 5, "retryOn": ['VALIDATION_ERROR'] });
+    const notRetryable = new DAGError('but listed', { "code": 'VALIDATION_ERROR', "retryable": false });
+    assert.equal(p.shouldRetry(notRetryable, 1), true);
+  });
+
+  void it('a non-empty retryOn miss stops retrying regardless of DAGError.retryable: true', () => {
+    const p = RetryPolicy.from({ "maxAttempts": 5, "retryOn": ['OTHER_CODE'] });
+    const retryable = new DAGError('unmatched', { "code": 'EXECUTION_ERROR', "retryable": true });
+    assert.equal(p.shouldRetry(retryable, 1), false);
   });
 });
 

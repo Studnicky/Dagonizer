@@ -25,9 +25,12 @@ seeAlso:
   - text: 'DAGBuilder'
     link: './guide/builder'
     description: 'fluent authoring API'
+  - text: 'Example 02: DAGBuilder'
+    link: './examples/02-builder'
+    description: 'the source file used below'
   - text: 'Example 01: Linear DAG'
     link: './examples/01-linear'
-    description: 'the source file used below'
+    description: 'the same DAG, hand-written JSON-LD'
 ---
 
 # Getting Started
@@ -48,43 +51,7 @@ Requires Node.js 24 or later and TypeScript 5.6 or later with `strict: true`.
 
 ## Smallest DAG that runs
 
-A two-node chain that picks a route at the first node and ends at the second. The source ships in the repo as `examples/01-linear.ts`.
-
-State and nodes:
-
-<<< @/../examples/dags/01-linear.ts#state
-
-<<< @/../examples/dags/01-linear.ts#node
-
-The DAG definition (JSON-LD canonical form):
-
-<<< @/../examples/dags/01-linear.ts#dag
-
-Register, then execute:
-
-<<< @/../examples/01-linear.ts#run
-
-Run it directly:
-
-```bash
-npx tsx examples/01-linear.ts
-```
-
-## What `execute` returns
-
-`dispatcher.execute()` returns an `Execution<TState>` that is both awaitable and async-iterable.
-
-Awaitable form:
-
-<<< @/../examples/01-linear.ts#execute-await
-
-Async-iterable form, one event per node:
-
-<<< @/../examples/01-linear.ts#execute-iterable
-
-## Fluent authoring with DAGBuilder
-
-The example above uses the raw JSON-LD DAG definition directly, which is the canonical wire format. For day-to-day authoring, `DAGBuilder` (from `@studnicky/dagonizer/builder`) is the recommended path: it is a compile-checked fluent API that builds the same JSON-LD definition from typed method calls, catching unwired outputs and invalid routing at compile time before any schema validation runs.
+A two-node chain that picks a route at the first node and ends at the second. `DAGBuilder` (from `@studnicky/dagonizer/builder`) is the recommended way to author it: a compile-checked fluent API that catches unwired outputs and invalid routing at compile time, before any schema validation runs. At a glance:
 
 ```ts twoslash
 import { DAGBuilder, NodeStateBase, ScalarNode, NodeOutputBuilder } from '@studnicky/dagonizer';
@@ -107,7 +74,51 @@ const dag = new DAGBuilder('my-flow', '1')
   .build();
 ```
 
+The full walkthrough: the source ships in the repo as `examples/dags/02-builder.topology.ts` and `examples/02-builder.ts`.
+
+State and nodes:
+
+<<< @/../examples/dags/02-builder.topology.ts#imports
+
+<<< @/../examples/dags/02-builder.topology.ts#nodes
+
+The DAG definition, built via `DAGBuilder`:
+
+<<< @/../examples/dags/02-builder.topology.ts#builder
+
+Register, then execute:
+
+<<< @/../examples/02-builder.ts#run
+
+Run it directly:
+
+```bash
+npx tsx examples/02-builder.ts
+```
+
 See the [DAGBuilder guide](/guide/builder) for the full API including scatter, embedded DAG, and phase placements.
+
+## What this compiles to: JSON-LD
+
+`DAGBuilder.build()` returns a plain JSON-LD document — the canonical wire format `dispatcher.registerDAG(dag)` accepts. The DAG built above is identical, field for field, to this hand-written literal (from `examples/dags/01-linear.ts`, the same two-node classify/respond chain):
+
+<<< @/../examples/dags/01-linear.ts#dag
+
+Author the wire format directly for advanced use: hand-authored fixtures, interop with non-TypeScript tooling that emits or consumes JSON-LD, or understanding exactly what ships over the wire. Both forms register and execute identically:
+
+<<< @/../examples/01-linear.ts#run
+
+## What `execute` returns
+
+`dispatcher.execute()` returns an `Execution<TState>` that is both awaitable and async-iterable.
+
+Awaitable form:
+
+<<< @/../examples/01-linear.ts#execute-await
+
+Async-iterable form, one event per node:
+
+<<< @/../examples/01-linear.ts#execute-iterable
 
 ## Next destination
 

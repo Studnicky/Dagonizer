@@ -68,7 +68,7 @@ import type { SingleNodeType } from '@studnicky/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/ScatterNode`
 
-Scatter placement: fork a source array (one clone per item), run a body (node or sub-DAG) in each clone, fold clone state back through a required `gather`, and route on the aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `source`, `gather`, `outputs`. Optional: `itemKey` (default `currentItem`), `concurrency`, `stateMapping.input`, `reducer`.
+Scatter placement: fork a source array (one clone per item), run a body (node or sub-DAG) in each clone, fold clone state back through a required `gather`, and route on the aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `source`, `gather`, `outputs`. Optional: `itemKey` (default `currentItem`), `execution` (unified concurrency-limiting policy — `{ mode: 'item', concurrency?, throttle? } | { mode: 'reservoir', concurrency?, reservoir }`, default `{ mode: 'item', concurrency: 1 }`; see [`ScatterNode`](/reference/nodes#scatternode) for the full `item` vs `reservoir` semantics), `stateMapping.input`, `reducer`.
 
 ```ts twoslash
 import { ScatterNodeSchema } from '@studnicky/dagonizer/entities';

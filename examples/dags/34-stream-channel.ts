@@ -83,7 +83,7 @@ export const dag: DAGType = {
       'body':        { 'node': 'process' },
       'source':      'source',
       'itemKey':     'stream-item',
-      'concurrency': 3,
+      'execution': { 'mode': 'item', 'concurrency': 3 },
       'gather': {
         'strategy': 'map',
         'mapping':  { 'item': 'results' },

@@ -18,16 +18,18 @@
  * `lifecycle.variant` records what happened.
  *
  * Correlation context: `Dagonizer.execute()`/`resume()` seeds a
- * `DagExecutionContext` `ContextScope` with a correlation id and the DAG
- * name, and passes it here. Every `gen.next()` call is driven through
- * `scope.execute()` rather than awaited directly — an `AsyncLocalStorage`
- * scope only propagates through the async chain initiated *inside* the
- * `execute()` call, and an async generator does not begin (or resume)
- * running its body until `next()` is called, so each turn must be
- * individually wrapped for the seeded values to reach the node bodies and
- * lifecycle hooks that run during that turn, however deeply nested (embedded
- * DAG bodies and scatter items are driven by nested generators within the
- * same turn). The scope is terminated once the flow body completes.
+ * `DagExecutionContext` `DagExecutionScope` anchored to the run's own
+ * `AbortSignal` and passes it here. Unlike an ambient "current scope"
+ * pointer, an identity-keyed anchor needs no per-turn swap/restore around
+ * `gen.next()`: every node body and lifecycle hook that runs during the
+ * flow already carries that same `AbortSignal` (via `NodeContextType.signal`
+ * or as a hook parameter) and reads context through it directly, correct
+ * regardless of how many internal `await`s ran first. `Execution` only owns
+ * the scope's lifetime — draining `gen.next()` calls plainly and terminating
+ * the scope in a `finally` block, so its bindings are released whether the
+ * flow body runs to completion or the caller abandons iteration early (e.g.
+ * `break`ing out of a `for await` loop mid-stream, which drives the
+ * async-iterator protocol's implicit `.return()` into this generator).
  *
  * @example
  * ```ts
@@ -43,21 +45,20 @@
  * ```
  */
 
-import type { ContextScope } from '@studnicky/context';
-
 import type { ExecutionResultType } from './entities/execution/ExecutionResult.js';
 import type { NodeResultType } from './entities/node/NodeResult.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
+import type { DagExecutionScope } from './runtime/DagExecutionContext.js';
 
 export class Execution<TState extends NodeStateInterface>
 implements AsyncIterable<NodeResultType<NodeStateInterface>>, PromiseLike<ExecutionResultType<TState>> {
   readonly #generator: AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void>;
-  readonly #scope: ContextScope;
+  readonly #scope: DagExecutionScope;
   #drained: Promise<ExecutionResultType<TState>> | null = null;
   #cachedResult: ExecutionResultType<TState> | null = null;
 
   /**
-   * Wrap an already-created flow generator with the `ContextScope` that
+   * Wrap an already-created flow generator with the `DagExecutionScope` that
    * carries this run's correlation context.
    *
    * The dispatcher passes `this.runNodes(...)` directly: an async generator
@@ -68,7 +69,7 @@ implements AsyncIterable<NodeResultType<NodeStateInterface>>, PromiseLike<Execut
    */
   constructor(
     generator: AsyncGenerator<NodeResultType<NodeStateInterface>, ExecutionResultType<TState>, void>,
-    scope: ContextScope,
+    scope: DagExecutionScope,
   ) {
     this.#generator = generator;
     this.#scope = scope;
@@ -99,17 +100,21 @@ implements AsyncIterable<NodeResultType<NodeStateInterface>>, PromiseLike<Execut
     }
     const gen = this.#generator;
     const scope = this.#scope;
-    while (true) {
-      // Each turn is driven through `scope.execute()` (not awaited directly)
-      // so the seeded correlation context is active for every node/hook that
-      // runs during this turn — see the class-level doc comment.
-      const next = await scope.execute(() => gen.next());
-      if (next.done === true) {
-        this.#cachedResult = next.value;
-        scope.terminate();
-        return next.value;
+    try {
+      while (true) {
+        const next = await gen.next();
+        if (next.done === true) {
+          this.#cachedResult = next.value;
+          return next.value;
+        }
+        yield next.value;
       }
-      yield next.value;
+    } finally {
+      // Runs on normal completion AND on early abandonment (a `for await`
+      // consumer `break`ing mid-stream drives the async-generator protocol's
+      // implicit `.return()` here) — the scope's bindings are released either
+      // way. `terminate()` is safe to call more than once.
+      scope.terminate();
     }
   }
 

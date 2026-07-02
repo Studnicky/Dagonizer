@@ -106,7 +106,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:fan/node/scatter', '@type': 'ScatterNode',
           'name': 'scatter', 'body': { 'node': 'double' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 2,
+          'source': 'items', 'itemKey': 'item', 'execution': { 'mode': 'item', 'concurrency': 2 },
           'gather': { 'strategy': 'append', 'target': 'doubled' },
           'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
         { '@id': 'urn:noocodex:dag:fan/node/end', '@type': 'TerminalNode',

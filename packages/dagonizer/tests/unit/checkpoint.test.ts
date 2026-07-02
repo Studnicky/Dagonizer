@@ -23,12 +23,8 @@ import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
+import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
 import { TestNode } from '../_support/TestNode.js';
-
-/** `assert.throws`/`assert.rejects` predicate: a `DAGError` coded `VALIDATION_ERROR`. */
-function isValidationError(err: unknown): boolean {
-  return err instanceof DAGError && err.code === 'VALIDATION_ERROR';
-}
 
 // ── State fixtures ───────────────────────────────────────────────────────────
 
@@ -357,7 +353,7 @@ void describe('Checkpoint round-trip', () => {
   });
 
   void it('load rejects malformed CheckpointData', () => {
-    assert.throws(() => Checkpoint.load({ 'version': '1' }), isValidationError);
+    assert.throws(() => Checkpoint.load({ 'version': '1' }), DAGErrorPredicate.isValidationError);
   });
 
   void it('load rejects a checkpoint missing the stores field (no silent acceptance of stale checkpoints)', () => {
@@ -382,7 +378,7 @@ void describe('Checkpoint round-trip', () => {
       'state': {}, 'executedNodes': ['a', 'b'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
-    assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapter.wrap((snap) => NodeStateBase.restore(snap))), isValidationError);
+    assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapter.wrap((snap) => NodeStateBase.restore(snap))), DAGErrorPredicate.isValidationError);
   });
 
   void it('CheckpointRestoreAdapter.wrap wraps a restore function in the adapter contract', () => {
@@ -494,7 +490,7 @@ void describe('ckpt.persist + Checkpoint.recall', () => {
     await cpStore.save('bad', '{not json');
     await assert.rejects(
       Checkpoint.recall(cpStore, 'bad'),
-      isValidationError,
+      DAGErrorPredicate.isValidationError,
     );
   });
 });

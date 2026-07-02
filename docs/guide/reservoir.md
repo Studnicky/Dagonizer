@@ -6,7 +6,17 @@ scatter buffers source items by a key and releases a `Batch<N>` per key — so t
 body node runs once over N items, the gather folds the whole batch in a single
 `reduce`, and throughput amortizes over the batch.
 
-The reservoir is **not** a new placement: it is configuration on a `ScatterNode`.
+The reservoir is **not** a new placement: it is `execution.reservoir` — one of
+the two `execution.mode` variants on a `ScatterNode` (the other is `'item'`,
+the non-reservoir default). `execution.concurrency`, when set alongside
+`mode: 'reservoir'`, gates concurrently in-flight **batches** — the same
+`Semaphore` concept `mode: 'item'` uses for concurrently in-flight items,
+applied at batch instead of item granularity. There is no `throttle` field in
+reservoir mode: a per-item `Throttle` does not compose with a batch dispatch
+unit whose size varies with capacity/idle/flush triggers; the schema
+structurally forbids the combination. See
+[`ScatterNode` execution policy](/reference/nodes#execution-policy) for the
+full field reference.
 
 ## Configuration
 

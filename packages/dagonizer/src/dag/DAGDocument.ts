@@ -56,7 +56,7 @@ export class DAGDocument {
     try {
       parsed = JSON.parse(json);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = DAGError.messageOf(error);
       throw new DAGError(`Invalid JSON: ${message}`, { 'code': 'VALIDATION_ERROR' });
     }
     if (options.overrides !== undefined) {

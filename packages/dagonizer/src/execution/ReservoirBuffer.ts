@@ -27,6 +27,7 @@ import { Semaphore } from '@studnicky/concurrency/semaphore';
 import type { ReservoirDriverInterface } from '../contracts/ReservoirDriver.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
+import { Timeout } from '../entities/Timeout.js';
 import { DAGError } from '../errors/index.js';
 import { Scheduler } from '../runtime/Scheduler.js';
 
@@ -46,7 +47,7 @@ export type ReservoirBufferOptionsType = {
   freshIter: AsyncIterator<unknown>;
   nextIndex: number;
   signal: AbortSignal | null;
-  reservoir: { keyField: string; capacity: number; idleMs?: number };
+  reservoir: { keyField: string; capacity: number; idleMs: number | null };
   accessor: StateAccessorInterface;
 };
 
@@ -65,7 +66,8 @@ export class ReservoirBuffer {
   readonly #inbox: ScatterInboxItemType[];
   readonly #freshIter: AsyncIterator<unknown>;
   readonly #signal: AbortSignal | null;
-  readonly #reservoir: { keyField: string; capacity: number; idleMs?: number };
+  readonly #reservoir: { keyField: string; capacity: number; idleMs: number | null };
+  readonly #idleTimeout: Timeout;
   readonly #accessor: StateAccessorInterface;
   readonly #activeBuffers: Map<string, BufferedItem[]>;
   readonly #poolErrors: unknown[];
@@ -82,11 +84,16 @@ export class ReservoirBuffer {
     this.#freshIter = options.freshIter;
     this.#signal = options.signal;
     this.#reservoir = options.reservoir;
+    // Narrow the wire-shaped `idleMs?: number` option to `Timeout` once, at
+    // construction — the same "narrow at the ingest boundary" idiom `Dagonizer.load`
+    // applies to raw JSON. Every internal idle-timer code path reads `#idleTimeout`,
+    // never `#reservoir.idleMs` directly.
+    this.#idleTimeout = Timeout.ofWire(options.reservoir.idleMs);
     this.#accessor = options.accessor;
     this.#activeBuffers = new Map<string, BufferedItem[]>();
     this.#poolErrors = [];
     this.#keyGeneration = new Map<string, number>();
-    this.#idleAbort = options.reservoir.idleMs !== undefined ? new AbortController() : null;
+    this.#idleAbort = this.#idleTimeout.isNone ? null : new AbortController();
     this.#workerPromises = [];
     this.#nextIndex = options.nextIndex;
     this.#freshDone = false;
@@ -143,12 +150,13 @@ export class ReservoirBuffer {
   /**
    * Bump the generation for a key and arm a fresh idle timer for the new
    * generation. If the timer fires and the generation is still current, release
-   * the key's partial buffer. Called only when `idleMs` is set.
+   * the key's partial buffer. Called only when the idle timeout budget is set
+   * (`#idleTimeout` is not `Timeout.none()`).
    */
   #armIdleTimer(key: string): void {
-    const idleMs = this.#reservoir.idleMs;
-    // Guard: only arm when idleMs is configured and idleAbort is live.
-    if (idleMs === undefined || this.#idleAbort === null) return;
+    const idleMs = this.#idleTimeout.ms;
+    // Guard: only arm when an idle budget is configured and idleAbort is live.
+    if (idleMs === null || this.#idleAbort === null) return;
 
     const gen = (this.#keyGeneration.get(key) ?? 0) + 1;
     this.#keyGeneration.set(key, gen);

@@ -127,7 +127,7 @@ export const scatterDiscardDag = new DAGBuilder('notify', '1')
     { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
     {
       gather:      { strategy: 'discard' },
-      concurrency: 10,
+      execution: { mode: 'item', concurrency: 10 },
     },
   )
   .terminal('end')
@@ -169,7 +169,7 @@ export const scatterHeterogeneousDag = new DAGBuilder('search', '1')
     {
       gather:      { strategy: 'collect', target: 'scoutResults' },
       reducer:     'any-success',
-      concurrency: 3,
+      execution: { mode: 'item', concurrency: 3 },
     },
   )
   .node('merge', new MergeNode(), { success: 'end' })
@@ -211,7 +211,7 @@ export const scatterMapDag = new DAGBuilder('batch', '1')
     { 'all-success': 'select', 'partial': 'select', 'all-error': 'end', 'empty': 'end' },
     {
       gather:      { strategy: 'map', mapping: { 'candidate': 'candidates' } },
-      concurrency: 4,
+      execution: { mode: 'item', concurrency: 4 },
     },
   )
   .node('select', new SelectNode(), { success: 'end' })
@@ -243,7 +243,7 @@ export const scatterPartitionDag = new DAGBuilder('batch', '1')
     { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
     {
       gather:      { strategy: 'partition', partitions: { success: 'processed', error: 'failed' } },
-      concurrency: 4,
+      execution: { mode: 'item', concurrency: 4 },
     },
   )
   .terminal('end')

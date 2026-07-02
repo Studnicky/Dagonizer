@@ -103,7 +103,7 @@ export const dag: DAGType = {
       "body":         { "node": 'provider' },         // run provider once per clone
       "source":       'providers',                     // one clone per provider
       "itemKey":      'provider',                      // current provider bound under this key
-      "concurrency":  3,                               // up to 3 providers in-flight
+      "execution": { "mode": "item", "concurrency": 3 },                               // up to 3 providers in-flight
       // map gather: read each clone's `candidate` metadata, append into
       // parent.candidates in source-index order. Because `source` is set, a
       // map gather appends (N clones ⇒ array); produced data survives.

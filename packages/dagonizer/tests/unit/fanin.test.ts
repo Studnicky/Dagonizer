@@ -193,7 +193,7 @@ void describe('Dagonizer scatter gather strategies', () => {
         slow,
         { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
-          'concurrency': 2,
+          'execution': { 'mode': 'item', 'concurrency': 2 },
           'gather':      { 'strategy': 'append', 'target': 'out' },
         },
       )

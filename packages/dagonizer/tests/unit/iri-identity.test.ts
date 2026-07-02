@@ -42,9 +42,9 @@ void describe('IRI identity — prefix-isolated node coexistence', () => {
     const iriB = ContextResolver.expand('pluginB:fanout', contextB);
 
     assert.notStrictEqual(iriA, iriB, 'prefix-expanded IRIs must differ');
-    assert.strictEqual(dispatcher.nodes.get(iriA), fanoutAP, 'pluginA:fanout resolves to fanoutAP');
-    assert.strictEqual(dispatcher.nodes.get(iriB), fanoutBP, 'pluginB:fanout resolves to fanoutBP');
-    assert.strictEqual(dispatcher.nodes.size, 2, 'registry must hold both nodes without collision');
+    assert.strictEqual(dispatcher.getNode(iriA), fanoutAP, 'pluginA:fanout resolves to fanoutAP');
+    assert.strictEqual(dispatcher.getNode(iriB), fanoutBP, 'pluginB:fanout resolves to fanoutBP');
+    assert.strictEqual(dispatcher.nodeNames().length, 2, 'registry must hold both nodes without collision');
   });
 
   void it('two bare-name nodes differ in IRI from two prefixed nodes with the same local part', () => {
@@ -67,7 +67,7 @@ void describe('IRI identity — prefix-isolated node coexistence', () => {
     dispatcher.registerNode(nodeA);
     dispatcher.registerNode(nodeA);
 
-    assert.strictEqual(dispatcher.nodes.size, 1, 'same node registered twice stays as one entry');
+    assert.strictEqual(dispatcher.nodeNames().length, 1, 'same node registered twice stays as one entry');
   });
 
   void it('duplicate bare-name registration of DIFFERENT nodes throws', () => {
@@ -135,7 +135,7 @@ void describe('IRI identity — duplicate prefix rejection', () => {
       ],
     };
 
-    const dagsBefore = dispatcher.dags.size;
+    const dagsBefore = dispatcher.dagNames().length;
     assert.throws(
       () => dispatcher.registerDAG(collidingDag),
       (err: unknown) => {
@@ -143,7 +143,7 @@ void describe('IRI identity — duplicate prefix rejection', () => {
         return true;
       },
     );
-    assert.strictEqual(dispatcher.dags.size, dagsBefore, 'dags registry must not be mutated on rejection');
+    assert.strictEqual(dispatcher.dagNames().length, dagsBefore, 'dags registry must not be mutated on rejection');
   });
 
   void it('ContextResolver.validate accepts a context with distinct namespace IRIs', () => {

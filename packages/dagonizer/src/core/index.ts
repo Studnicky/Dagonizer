@@ -1,12 +1,15 @@
 /**
  * `@studnicky/dagonizer/core`: pluggable execution primitives.
  *
+ *   - `Registry` generic named-entry registry base
  *   - `GatherStrategies` registry + `GatherStrategy` extension point
  *   - `OutcomeReducers` registry + `OutcomeReducer` extension point
  *
- * Defaults register at module load; consumers extend the abstract
+ * Defaults register at construction; consumers extend the abstract
  * classes and add via `Registry.register(new MyClass())`.
  */
+
+export { Registry } from './Registry.js';
 
 export {
   GatherStrategies,

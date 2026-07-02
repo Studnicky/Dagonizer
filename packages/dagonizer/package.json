@@ -253,7 +253,6 @@
     "@studnicky/cache": "^4.0.0",
     "@studnicky/clock": "^4.0.0",
     "@studnicky/concurrency": "^4.0.0",
-    "@studnicky/context": "^4.0.0",
     "@studnicky/errors": "^4.0.0",
     "@studnicky/event-bus": "^4.0.0",
     "@studnicky/fsm": "^4.0.0",

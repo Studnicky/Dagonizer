@@ -1,5 +1,5 @@
 export { Clock } from './Clock.js';
-export { DagExecutionContext, DagExecutionContextKeys } from './DagExecutionContext.js';
+export { DagExecutionContext, DagExecutionContextKeys, DagExecutionScope } from './DagExecutionContext.js';
 export { DottedPathAccessor } from './DottedPathAccessor.js';
 export { RealTimeScheduler } from './RealTimeScheduler.js';
 export { Scheduler } from './Scheduler.js';

@@ -103,8 +103,43 @@ export interface LanguageModelStaticInterface extends LanguageModelStaticBaseTyp
   availability(): Promise<GeminiNanoAvailabilityType>;
   create(options?: {
     initialPrompts?: ReadonlyArray<{ role: 'system' | 'user'; content: string }>;
+    /**
+     * BCP-47 output-language code attested at session creation (`de`, `en`,
+     * `es`, `fr`, or `ja`, per Chrome's Prompt API). Chrome logs a console
+     * warning on every `create()` call that omits it.
+     */
+    outputLanguage?: string;
     signal?: AbortSignal;
   }): Promise<LanguageModelSessionInterface>;
+}
+
+/**
+ * Entity-narrowing type for the browser's `navigator` global, narrowed to
+ * the single member this package reads: the BCP-47 UI-language tag used to
+ * derive a default Prompt API `outputLanguage`.
+ */
+export type NavigatorLanguageType = {
+  readonly language: string;
+};
+
+/**
+ * Structural type-guard for `globalThis.navigator`.
+ *
+ * `NavigatorLanguageHost.is(x)` narrows `unknown → NavigatorLanguageType`.
+ * Node test environments carry no `navigator` global at all; browsers carry
+ * one with a `language: string` member. The guard is cast-free — the same
+ * `typeof`/`in` narrowing idiom as `LanguageModelHost.is` and the engine's
+ * `BroadcastChannelGlobal.is` — so this package stays DOM-lib-independent.
+ */
+export class NavigatorLanguageHost {
+  private constructor() { /* static class */ }
+
+  /** Narrows `unknown → NavigatorLanguageType`. Never throws. */
+  static is(x: unknown): x is NavigatorLanguageType {
+    if (typeof x !== 'object' || x === null) return false;
+    if (!('language' in x)) return false;
+    return typeof x.language === 'string';
+  }
 }
 
 /**

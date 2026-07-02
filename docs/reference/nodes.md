@@ -85,7 +85,7 @@ Generate-collect pattern (one clone per source-array item):
   "body":        { "node": "generate-worker" },
   "source":      "providers",
   "itemKey":     "currentItem",
-  "concurrency": 4,
+  "execution":   { "mode": "item", "concurrency": 4 },
   "gather":      { "strategy": "map", "mapping": { "candidate": "candidates" } },
   "outputs":     { "all-success": "select", "partial": "select", "all-error": null, "empty": null }
 }
@@ -100,13 +100,36 @@ Generate-collect pattern (one clone per source-array item):
 | `outputs` | `Record<string, string \| null>` | yes | Routes for the reduced outcome |
 | `source` | `string` | yes | Dotted state-array path. One clone runs per item. |
 | `itemKey` | `string` | no | Metadata key bound to the current item per clone (default `'currentItem'`). |
-| `concurrency` | `number` | no | Batch size for `Promise.all` (default: source length). |
+| `execution` | `{ mode: 'item', concurrency?, throttle? } \| { mode: 'reservoir', concurrency?, reservoir }` | no | Unified concurrency-limiting policy — ONE discriminated `mode` structure instead of separate `concurrency`/`throttle`/`reservoir` knobs. Defaults to `{ mode: 'item', concurrency: 1 }` when absent. See [Execution policy](#execution-policy) below. |
 | `stateMapping` | `{ input?: Record<childKey, parentPath> }` | no | Seeds each clone: `input` copies parent fields into the clone before the body runs. Authored via the `inputs` builder option. |
 | `gather` | `GatherConfig` | **yes** | How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
 | `reducer` | `string` | no | Outcome reducer name. Defaults to `'aggregate'`. Built-in: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
 | `container` | `string` | no | Logical container role name for `{ dag }` bodies only. Bound at construction via `DagonizerOptionsType.containers`. On a dispatcher with a non-empty `containers` registry, a role this placement declares but does not bind throws `DAGError` at `registerDAG` time. A pure in-process dispatcher (empty `containers`) treats the role as inert and runs the body in-process. Setting `container` on a `{ node }` body is a validation error. |
 
 `GatherConfig` is documented under [Gather configuration](#gather-configuration) below.
+
+### Execution policy
+
+`execution` groups scatter concurrency-limiting into ONE discriminated `mode`
+structure instead of three uncoordinated sibling fields:
+
+- **`{ mode: 'item', concurrency?, throttle? }`** (the default: `{ mode: 'item', concurrency: 1 }`
+  when `execution` is absent). `concurrency` is an item-level `Semaphore`
+  permit count — the maximum number of clone bodies executing at once.
+  `throttle`, when present (`{ concurrencyLimit: number }`), wraps dispatch
+  through a second, independent `Throttle` concurrency window on top of the
+  semaphore: the semaphore still caps how far the pull loop runs ahead of
+  dispatch capacity, while `throttle.concurrencyLimit` further paces the
+  actual item-execution calls.
+- **`{ mode: 'reservoir', concurrency?, reservoir }`**: items are buffered by
+  `reservoir.keyField` and released as a batch per key when
+  `reservoir.capacity` is reached, `reservoir.idleMs` elapses, or the source
+  drains. `concurrency` still applies here — the SAME semaphore concept, but
+  at batch granularity: the maximum number of released batches dispatched
+  concurrently, not the maximum number of items. There is no `throttle` field
+  in this mode; the schema structurally forbids combining `throttle` with
+  `reservoir` because a per-item `Throttle` does not compose with
+  variable-size batch dispatch.
 
 Per-item resume bookkeeping is persisted under the reserved metadata key `SCATTER_PROGRESS_KEY` so a checkpoint-resume cycle skips clones completed in the prior run.
 

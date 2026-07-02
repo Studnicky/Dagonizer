@@ -184,7 +184,7 @@ export const dag: DAGType = {
       "body":         { "dag": 'square-item-mb' },
       "source":       'tasks',
       "itemKey":      'task',
-      "concurrency":  2,
+      "execution": { "mode": "item", "concurrency": 2 },
       "container":    'cpu',                  // routes per-item body to the WorkerThreadContainer
       "gather": {
         "strategy":   GatherStrategyNames.APPEND,

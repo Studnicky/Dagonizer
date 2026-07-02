@@ -17,7 +17,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { CircuitBreaker, TokenBucket } from '@studnicky/resilience';
+import { CircuitBreaker, CircuitBreakerOpenError, TokenBucket, TokenBucketExhaustedError } from '@studnicky/resilience';
 
 import {
   BaseAdapter,
@@ -31,6 +31,7 @@ import type {
   ChatRequestType,
   ChatResponseType,
 } from '../../src/adapter/index.js';
+import { RetryPolicy } from '../../src/runtime/RetryPolicy.js';
 
 const CAPS: AdapterCapabilitiesType = { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false };
 
@@ -118,5 +119,89 @@ void describe('BaseAdapter opt-in circuit breaker / token bucket', () => {
     });
     assert.equal(adapter.callCount, 0);
     assert.equal(tokenBucket.available, 1, 'token bucket must be untouched when the circuit rejects first');
+  });
+});
+
+void describe('outer RetryPolicy wrapping adapter.chat(): abortOn CircuitBreakerOpenError/TokenBucketExhaustedError', () => {
+  void it('without abortOn, a naive outer RetryPolicy keeps hammering an open circuit', async () => {
+    const circuitBreaker = CircuitBreaker.create({ 'failureThreshold': 1, 'resetTimeoutMs': 60_000 });
+    circuitBreaker.forceOpen();
+    const adapter = new ResilienceTestAdapter(
+      () => Promise.resolve(RESPONSE),
+      { 'circuitBreaker': circuitBreaker },
+    );
+    const outer = RetryPolicy.from({ 'maxAttempts': 3, 'baseDelay': 0, 'jitterFactor': 0 });
+
+    let attempts = 0;
+    await assert.rejects(
+      outer.run(() => {
+        attempts++;
+        return adapter.chat(request());
+      }),
+      (err: unknown) => {
+        assert.equal((err as Error).name, 'CircuitBreakerOpenError');
+        return true;
+      },
+    );
+    // No abortOn configured: the outer policy naively retried the open-circuit
+    // rejection up to maxAttempts, hammering the circuit each time.
+    assert.equal(attempts, 3);
+    assert.equal(adapter.callCount, 0, 'the circuit rejects before performChat ever runs');
+  });
+
+  void it('abortOn: [CircuitBreakerOpenError] stops the outer RetryPolicy after one attempt', async () => {
+    const circuitBreaker = CircuitBreaker.create({ 'failureThreshold': 1, 'resetTimeoutMs': 60_000 });
+    circuitBreaker.forceOpen();
+    const adapter = new ResilienceTestAdapter(
+      () => Promise.resolve(RESPONSE),
+      { 'circuitBreaker': circuitBreaker },
+    );
+    const outer = RetryPolicy.from({
+      'maxAttempts': 3,
+      'baseDelay': 0,
+      'jitterFactor': 0,
+      'abortOn': [CircuitBreakerOpenError],
+    });
+
+    let attempts = 0;
+    await assert.rejects(
+      outer.run(() => {
+        attempts++;
+        return adapter.chat(request());
+      }),
+      (err: unknown) => {
+        assert.equal((err as Error).name, 'CircuitBreakerOpenError');
+        return true;
+      },
+    );
+    assert.equal(attempts, 1, 'abortOn stops the outer policy on the first CircuitBreakerOpenError');
+  });
+
+  void it('abortOn: [TokenBucketExhaustedError] stops the outer RetryPolicy after one attempt', async () => {
+    const tokenBucket = TokenBucket.create({ 'requestsPerSecond': 1, 'burstSize': 1 });
+    tokenBucket.consume();
+    const adapter = new ResilienceTestAdapter(
+      () => Promise.resolve(RESPONSE),
+      { 'tokenBucket': tokenBucket },
+    );
+    const outer = RetryPolicy.from({
+      'maxAttempts': 3,
+      'baseDelay': 0,
+      'jitterFactor': 0,
+      'abortOn': [TokenBucketExhaustedError],
+    });
+
+    let attempts = 0;
+    await assert.rejects(
+      outer.run(() => {
+        attempts++;
+        return adapter.chat(request());
+      }),
+      (err: unknown) => {
+        assert.equal((err as Error).name, 'TokenBucketExhaustedError');
+        return true;
+      },
+    );
+    assert.equal(attempts, 1, 'abortOn stops the outer policy on the first TokenBucketExhaustedError');
   });
 });

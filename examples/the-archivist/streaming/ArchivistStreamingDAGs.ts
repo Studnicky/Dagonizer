@@ -65,7 +65,7 @@ export const fanInCandidatesDag: DAGType = {
       'body':        { 'node': 'collect-candidate' },
       'source':      'source',
       'itemKey':     'candidate-item',
-      'concurrency': 2,
+      'execution': { 'mode': 'item', 'concurrency': 2 },
       'gather': {
         'strategy': 'append',
         'target':   'collectedCandidates',
@@ -105,7 +105,7 @@ export const streamProducerCandidatesDag: DAGType = {
       'body':        { 'node': 'collect-candidate' },
       'source':      'source',
       'itemKey':     'candidate-item',
-      'concurrency': 2,
+      'execution': { 'mode': 'item', 'concurrency': 2 },
       'gather': {
         'strategy': 'append',
         'target':   'collectedCandidates',

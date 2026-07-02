@@ -188,32 +188,29 @@ export class DAGValidator {
       }
     }
 
-    if (scatter.reservoir !== undefined) {
-      DAGValidator.validateReservoir(scatter, errors);
+    if (scatter.execution !== undefined && scatter.execution.mode === 'reservoir') {
+      DAGValidator.validateReservoir(scatter, scatter.execution.reservoir, errors);
     }
   }
 
   private static validateReservoir(
     scatter: ScatterNodeType,
+    reservoir: { keyField: string; capacity: number; idleMs?: number },
     errors: string[],
   ): void {
-    // reservoir is already narrowed to defined by the caller; assert shape exists.
-    const reservoir = scatter.reservoir;
-    if (reservoir === undefined) return;
-
     // keyField: schema enforces minLength:1 but surface a clear semantic message.
     if (reservoir.keyField.trim().length === 0) {
-      errors.push(`ScatterNode '${scatter.name}' reservoir.keyField must be a non-empty accessor path`);
+      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.keyField must be a non-empty accessor path`);
     }
 
     // capacity: schema enforces minimum:1 but surface a clear semantic message.
     if (reservoir.capacity < 1) {
-      errors.push(`ScatterNode '${scatter.name}' reservoir.capacity must be >= 1 (got ${reservoir.capacity})`);
+      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.capacity must be >= 1 (got ${reservoir.capacity})`);
     }
 
     // idleMs: schema enforces minimum:1 but surface a clear semantic message.
     if (reservoir.idleMs !== undefined && reservoir.idleMs < 1) {
-      errors.push(`ScatterNode '${scatter.name}' reservoir.idleMs must be > 0 when present (got ${reservoir.idleMs})`);
+      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.idleMs must be > 0 when present (got ${reservoir.idleMs})`);
     }
 
   }

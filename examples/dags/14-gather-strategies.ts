@@ -109,7 +109,7 @@ export const collectDag: DAGType = {
       "body":      { "node": 'tag' },
       "source":    'items',
       "itemKey":   'item',
-      "concurrency": 2,
+      "execution": { "mode": "item", "concurrency": 2 },
       "gather": {
         "strategy": GatherStrategyNames.COLLECT,
         "target":   'tokens',           // collect each clone's output token here
@@ -166,7 +166,7 @@ export const discardDag: DAGType = {
       "body":      { "node": 'tag' },
       "source":    'items',
       "itemKey":   'item',
-      "concurrency": 2,
+      "execution": { "mode": "item", "concurrency": 2 },
       "gather": {
         "strategy": GatherStrategyNames.DISCARD,   // explicit no-op merge
       },

@@ -36,11 +36,52 @@ import type {
 } from './LanguageModelHost.js';
 import {
   LanguageModelHost,
+  NavigatorLanguageHost,
   languageModelSessionValidator,
 } from './LanguageModelHost.js';
 
 /** Stable model identifier for the browser's built-in on-device model. */
 const GEMINI_NANO_MODEL_ID = 'gemini-nano';
+
+/**
+ * Output-language codes Chrome's Prompt API accepts for `outputLanguage`.
+ * A `LanguageModel.create()` call carrying any other code is rejected;
+ * `OutputLanguage.narrow` folds every unsupported code down to `en`.
+ */
+const SUPPORTED_OUTPUT_LANGUAGES: ReadonlySet<string> = new Set(['de', 'en', 'es', 'fr', 'ja']);
+
+/** Fallback output language when no adapter option or browser locale resolves to a supported code. */
+const DEFAULT_OUTPUT_LANGUAGE = 'en';
+
+/**
+ * Resolves the BCP-47 output-language code passed to `LanguageModel.create()`.
+ * Precedence: an explicit `GeminiNanoAdapterOptionsType.outputLanguage` wins;
+ * otherwise the browser's `navigator.language` is read and narrowed; otherwise
+ * `DEFAULT_OUTPUT_LANGUAGE`. Resolution happens once, at construction time —
+ * `navigator.language` does not change over an adapter instance's lifetime.
+ */
+class OutputLanguage {
+  private constructor() { /* static class */ }
+
+  /** Resolve the output language for a newly constructed adapter. */
+  static resolve(explicit: string | undefined): string {
+    if (explicit !== undefined && explicit !== '') return OutputLanguage.narrow(explicit);
+    return OutputLanguage.narrow(OutputLanguage.detect());
+  }
+
+  /** Read `navigator.language` through the structural host guard, or the default. */
+  private static detect(): string {
+    const navigator: unknown = Reflect.get(globalThis, 'navigator');
+    if (!NavigatorLanguageHost.is(navigator)) return DEFAULT_OUTPUT_LANGUAGE;
+    return navigator.language;
+  }
+
+  /** Fold a BCP-47 tag (e.g. `en-US`) down to a Chrome-supported 2-letter code, or the default. */
+  private static narrow(tag: string): string {
+    const prefix = tag.slice(0, 2).toLowerCase();
+    return SUPPORTED_OUTPUT_LANGUAGES.has(prefix) ? prefix : DEFAULT_OUTPUT_LANGUAGE;
+  }
+}
 
 export type GeminiNanoAdapterOptionsType = {
   readonly maxAttempts?: number;
@@ -56,9 +97,18 @@ export type GeminiNanoAdapterOptionsType = {
    * a longer generation.
    */
   readonly timeoutMs?: number;
+  /**
+   * BCP-47 output-language code attested to `LanguageModel.create()` (`de`,
+   * `en`, `es`, `fr`, or `ja`). Omitted values fall back to the browser's
+   * `navigator.language`, narrowed to a supported code, then to `en`.
+   */
+  readonly outputLanguage?: string;
 };
 
 export class GeminiNanoAdapter extends BaseAdapter {
+  /** Resolved BCP-47 output-language code passed to every `LanguageModel.create()` call. */
+  readonly #outputLanguage: string;
+
   /**
    * Read `globalThis.LanguageModel` as `unknown` and narrow it through the
    * structural `LanguageModelHost.is` guard at the host boundary. Returns the
@@ -100,6 +150,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
         ...(options.timeoutMs !== undefined ? { 'timeoutMs': options.timeoutMs } : {}),
       },
     );
+    this.#outputLanguage = OutputLanguage.resolve(options.outputLanguage);
   }
 
   /**
@@ -141,8 +192,8 @@ export class GeminiNanoAdapter extends BaseAdapter {
     // forwarding it to both `lm.create()` and `session.prompt()` is sufficient
     // for abort and timeout enforcement.
     const createOptions = systemPrompt === ''
-      ? { 'signal': request.signal }
-      : { 'initialPrompts': [{ 'role': 'system' as const, 'content': systemPrompt }], 'signal': request.signal };
+      ? { 'outputLanguage': this.#outputLanguage, 'signal': request.signal }
+      : { 'initialPrompts': [{ 'role': 'system' as const, 'content': systemPrompt }], 'outputLanguage': this.#outputLanguage, 'signal': request.signal };
 
     let rawSession: unknown;
     try {
@@ -196,8 +247,8 @@ export class GeminiNanoAdapter extends BaseAdapter {
     const userPrompt = this.#collapseUserMessages(request);
 
     const createOptions = systemPrompt === ''
-      ? { 'signal': request.signal }
-      : { 'initialPrompts': [{ 'role': 'system' as const, 'content': systemPrompt }], 'signal': request.signal };
+      ? { 'outputLanguage': this.#outputLanguage, 'signal': request.signal }
+      : { 'initialPrompts': [{ 'role': 'system' as const, 'content': systemPrompt }], 'outputLanguage': this.#outputLanguage, 'signal': request.signal };
 
     let rawSession: unknown;
     try {

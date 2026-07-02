@@ -208,7 +208,7 @@ export class Checkpoint {
     try {
       parsed = JSON.parse(json);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = DAGError.messageOf(error);
       throw new DAGError(`Checkpoint '${key}' contains invalid JSON: ${message}`, { 'code': 'VALIDATION_ERROR' });
     }
     return Checkpoint.load(parsed);

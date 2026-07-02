@@ -19,42 +19,44 @@ import { ScoreSignalsNode } from '../../nodes/geo/scoreSignals.ts';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
-/** Build a CartographerState with a position-ping canonical event. */
-function stateWith(bodyOverride: Partial<{
-  latitude:    number;
-  longitude:   number;
-  ipAddress:   string;
-  localeTag:   string;
-  countryCode: string;
-  address:     string;
-  phone:       string;
-}>): CartographerState {
-  const state = new CartographerState();
-  // CanonicalEventVariantBuilder.from merges partial over the full default body,
-  // so passing the geo-signal fields here is sufficient; all other body fields
-  // keep their zero-value defaults.
-  state.canonical = CanonicalEventVariantBuilder.from({
-    'body': {
-      'scanSeq':      0,
-      'latitude':     bodyOverride.latitude    ?? 0,
-      'longitude':    bodyOverride.longitude   ?? 0,
-      'ipAddress':    bodyOverride.ipAddress   ?? '',
-      'localeTag':    bodyOverride.localeTag   ?? '',
-      'countryCode':  bodyOverride.countryCode ?? '',
-      'legFromLat':   0,
-      'legFromLng':   0,
-      'originLat':    0,
-      'originLng':    0,
-      'destLat':      0,
-      'destLng':      0,
-      'carrier':      '',
-      'status':       '',
-      'rawTimestamp': '',
-      'address':      bodyOverride.address ?? '',
-      'phone':        bodyOverride.phone   ?? '',
-    },
-  });
-  return state;
+/** Builds a CartographerState with a position-ping canonical event. */
+class CartographerStateFixture {
+  static with(bodyOverride: Partial<{
+    latitude:    number;
+    longitude:   number;
+    ipAddress:   string;
+    localeTag:   string;
+    countryCode: string;
+    address:     string;
+    phone:       string;
+  }>): CartographerState {
+    const state = new CartographerState();
+    // CanonicalEventVariantBuilder.from merges partial over the full default body,
+    // so passing the geo-signal fields here is sufficient; all other body fields
+    // keep their zero-value defaults.
+    state.canonical = CanonicalEventVariantBuilder.from({
+      'body': {
+        'scanSeq':      0,
+        'latitude':     bodyOverride.latitude    ?? 0,
+        'longitude':    bodyOverride.longitude   ?? 0,
+        'ipAddress':    bodyOverride.ipAddress   ?? '',
+        'localeTag':    bodyOverride.localeTag   ?? '',
+        'countryCode':  bodyOverride.countryCode ?? '',
+        'legFromLat':   0,
+        'legFromLng':   0,
+        'originLat':    0,
+        'originLng':    0,
+        'destLat':      0,
+        'destLng':      0,
+        'carrier':      '',
+        'status':       '',
+        'rawTimestamp': '',
+        'address':      bodyOverride.address ?? '',
+        'phone':        bodyOverride.phone   ?? '',
+      },
+    });
+    return state;
+  }
 }
 
 // ── SignalWeight.for ───────────────────────────────────────────────────────────
@@ -109,7 +111,7 @@ describe('ScoreSignalsNode', () => {
     let state: CartographerState;
 
     before(async () => {
-      state = stateWith({
+      state = CartographerStateFixture.with({
         'latitude':  51.5074,
         'longitude': -0.1278,
         'ipAddress': '203.0.113.42',
@@ -150,7 +152,7 @@ describe('ScoreSignalsNode', () => {
     let state: CartographerState;
 
     before(async () => {
-      state = stateWith({ 'latitude': 0, 'longitude': 0 });
+      state = CartographerStateFixture.with({ 'latitude': 0, 'longitude': 0 });
       await node['executeOne'](state, ctx);
     });
 
@@ -164,7 +166,7 @@ describe('ScoreSignalsNode', () => {
     let state: CartographerState;
 
     before(async () => {
-      state = stateWith({ 'latitude': 200, 'longitude': 45 });
+      state = CartographerStateFixture.with({ 'latitude': 200, 'longitude': 45 });
       await node['executeOne'](state, ctx);
     });
 
@@ -179,7 +181,7 @@ describe('ScoreSignalsNode', () => {
 
     before(async () => {
       // 999 is not in the CallingCode table
-      state = stateWith({ 'phone': '+999-555-0100' });
+      state = CartographerStateFixture.with({ 'phone': '+999-555-0100' });
       await node['executeOne'](state, ctx);
     });
 
@@ -194,7 +196,7 @@ describe('ScoreSignalsNode', () => {
 
     before(async () => {
       // +1 maps to US in CallingCode
-      state = stateWith({ 'phone': '+12025550142' });
+      state = CartographerStateFixture.with({ 'phone': '+12025550142' });
       await node['executeOne'](state, ctx);
     });
 
@@ -214,7 +216,7 @@ describe('ScoreSignalsNode', () => {
     let state: CartographerState;
 
     before(async () => {
-      state = stateWith({});
+      state = CartographerStateFixture.with({});
       await node['executeOne'](state, ctx);
     });
 
@@ -227,7 +229,7 @@ describe('ScoreSignalsNode', () => {
     let state: CartographerState;
 
     before(async () => {
-      state = stateWith({
+      state = CartographerStateFixture.with({
         'latitude':    48.8566,
         'longitude':   2.3522,
         'address':     '1 Rue de la Paix, Paris',

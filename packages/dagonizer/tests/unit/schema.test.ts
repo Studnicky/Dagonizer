@@ -8,12 +8,8 @@ import type { DAGType } from '../../src/entities/dag/DAG.js';
 import { DAGError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
 import { TestNode } from '../_support/TestNode.js';
-
-/** `assert.throws` predicate: a `DAGError` coded `VALIDATION_ERROR`. */
-function isValidationError(err: unknown): boolean {
-  return err instanceof DAGError && err.code === 'VALIDATION_ERROR';
-}
 
 // validDAG: a minimal well-formed DAG — SingleNode routes to an explicit TerminalNode.
 const validDAG: DAGType = {
@@ -41,7 +37,7 @@ void describe('Validator.dag', () => {
     const bad = { ...validDAG };
     Reflect.deleteProperty(bad, 'entrypoint');
     assert.equal(Validator.dag.is(bad), false);
-    assert.throws(() => Validator.dag.validate(bad), isValidationError);
+    assert.throws(() => Validator.dag.validate(bad), DAGErrorPredicate.isValidationError);
   });
 
   void it('rejects a flat DAG missing @context, @id, @type', () => {
@@ -50,7 +46,7 @@ void describe('Validator.dag', () => {
       'name': 'x', 'version': '1', 'entrypoint': 's',
       'nodes': [{ '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': {} }],
     };
-    assert.throws(() => Validator.dag.validate(flat), isValidationError);
+    assert.throws(() => Validator.dag.validate(flat), DAGErrorPredicate.isValidationError);
   });
 
   void it('rejects unknown @type on a node placement', () => {
@@ -61,7 +57,7 @@ void describe('Validator.dag', () => {
       'name': 'x', 'version': '1', 'entrypoint': 's',
       'nodes': [{ '@id': 'urn:x', '@type': 'NotANodeType', 'name': 's', 'node': 'op', 'outputs': {} }],
     };
-    assert.throws(() => Validator.dag.validate(bad), isValidationError);
+    assert.throws(() => Validator.dag.validate(bad), DAGErrorPredicate.isValidationError);
   });
 
   void it('rejects a SingleNode whose output value is null', () => {
@@ -76,7 +72,7 @@ void describe('Validator.dag', () => {
       }],
     };
     assert.equal(Validator.dag.is(bad), false, 'null route must fail schema validation');
-    assert.throws(() => Validator.dag.validate(bad), isValidationError);
+    assert.throws(() => Validator.dag.validate(bad), DAGErrorPredicate.isValidationError);
 
     // A single null route and multiple null routes both fail schema validation:
     // null is never a valid output target, regardless of how many appear.
@@ -155,11 +151,11 @@ void describe('DAGDocument.load', () => {
   });
 
   void it('rejects malformed JSON', () => {
-    assert.throws(() => DAGDocument.load('{not json'), isValidationError);
+    assert.throws(() => DAGDocument.load('{not json'), DAGErrorPredicate.isValidationError);
   });
 
   void it('rejects schema-noncompliant JSON', () => {
-    assert.throws(() => DAGDocument.load('{"name": "x"}'), isValidationError);
+    assert.throws(() => DAGDocument.load('{"name": "x"}'), DAGErrorPredicate.isValidationError);
   });
 });
 
@@ -183,7 +179,7 @@ void describe('DAGDocument.ofValue', () => {
   });
 
   void it('rejects schema-noncompliant value', () => {
-    assert.throws(() => DAGDocument.ofValue({ 'name': 'x' }), isValidationError);
+    assert.throws(() => DAGDocument.ofValue({ 'name': 'x' }), DAGErrorPredicate.isValidationError);
   });
 });
 
@@ -209,7 +205,7 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
       ],
     };
 
-    assert.throws(() => dispatcher.registerDAG(bad), isValidationError);
+    assert.throws(() => dispatcher.registerDAG(bad), DAGErrorPredicate.isValidationError);
   });
 
   void it('semantic errors surface as DAGError with the default DAG_ERROR code, not VALIDATION_ERROR', () => {

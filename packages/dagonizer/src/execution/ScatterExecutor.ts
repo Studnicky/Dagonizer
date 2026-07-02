@@ -21,9 +21,6 @@ import type {
 import { ScatterSource } from './ScatterSource.js';
 import { ScatterWorkerPool } from './ScatterWorkerPool.js';
 
-/** Default scatter concurrency when `scatter.concurrency` is not specified. */
-const DEFAULT_SCATTER_CONCURRENCY = 1;
-
 /**
  * `ScatterNode` placement executor.
  *
@@ -60,10 +57,11 @@ export class ScatterExecutor {
     // the outcome-reducer step — no repeated `?? default` at each site.
     const reducerName = scatter.reducer ?? 'aggregate';
     const itemKey = scatter.itemKey ?? 'currentItem';
-    const concurrencyLimit = scatter.concurrency ?? DEFAULT_SCATTER_CONCURRENCY;
-    // Second, opt-in concurrency gate for the non-reservoir path only (see
-    // step 6): `null` means no throttle, matching the pre-throttle behavior.
-    const throttleOptions = ScatterNodeDefaults.throttle(scatter);
+    // Unified concurrency-limiting policy: one discriminated `mode` structure
+    // instead of three uncoordinated sibling knobs (see ScatterNode.ts doc
+    // comment). `concurrency` gates item dispatch in 'item' mode and batch
+    // dispatch in 'reservoir' mode; `throttle` is only meaningful in 'item' mode.
+    const executionPolicy = ScatterNodeDefaults.executionPolicy(scatter);
 
     const raw = this.#scatterSource.accessor.get(state, scatter.source);
 
@@ -201,35 +199,33 @@ export class ScatterExecutor {
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
     const driver = new ScatterPoolDriver(scatterAdapter, scatterCtx, this.#bodyExecutor);
 
-    if (scatter.reservoir !== undefined) {
-      // Reservoir path: buffer-then-release loop keyed by item field.
-      // `throttle` is not wired here: a Throttle's value is pacing individual
-      // dispatch calls, but the reservoir path dispatches whole batches whose
-      // size varies with capacity/idle/flush triggers — per-batch throttling
-      // would gate a variable-size unit rather than the discrete per-item work
-      // `throttle` targets on the non-reservoir path. `scatter.throttle` is
-      // reservoir-incompatible; only `scatter.concurrency` (the semaphore)
-      // gates batch dispatch here.
+    if (executionPolicy.mode === 'reservoir') {
+      // Reservoir mode: buffer-then-release loop keyed by item field.
+      // `concurrency` gates batch dispatch here (same Semaphore concept as
+      // item mode, at batch instead of item granularity) — there is no
+      // `throttle` field in this mode; the schema structurally prevents it
+      // (see ScatterNode.ts doc comment for why a per-item Throttle does not
+      // compose with variable-size batch dispatch).
       const reservoirBuf = new ReservoirBuffer(driver, {
-        'concurrencyLimit': concurrencyLimit,
+        'concurrencyLimit': executionPolicy.concurrency,
         'inbox': inbox,
         'freshIter': freshIter,
         'nextIndex': nextIndex,
         'signal': signal,
-        'reservoir': scatter.reservoir,
+        'reservoir': executionPolicy.reservoir,
         'accessor': this.#scatterSource.accessor,
       });
       // drain() throws on abort or batch error; checkpoint is preserved on throw.
       await reservoirBuf.drain();
     } else {
-      // Non-reservoir path: per-item worker pool, optionally throttled.
+      // Item mode: per-item worker pool, optionally throttled.
       const pool = new ScatterWorkerPool(driver, {
-        'concurrencyLimit': concurrencyLimit,
+        'concurrencyLimit': executionPolicy.concurrency,
         'inbox': inbox,
         'freshIter': freshIter,
         'nextIndex': nextIndex,
         'signal': signal,
-        'throttle': throttleOptions,
+        'throttle': executionPolicy.throttle,
       });
       // drain() throws on abort or worker error; checkpoint is preserved on throw.
       await pool.drain();

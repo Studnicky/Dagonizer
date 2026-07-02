@@ -44,11 +44,7 @@ import { JsonValue } from '../../src/entities/JsonValue.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-
-/** `assert.throws` predicate: a `DAGError` coded `VALIDATION_ERROR`. */
-function isValidationError(err: unknown): boolean {
-  return err instanceof DAGError && err.code === 'VALIDATION_ERROR';
-}
+import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -508,7 +504,7 @@ void describe('Container validation — node-body scatter', () => {
 
     assert.throws(
       () => dispatcher.registerDAG(invalidScatterDAG),
-      isValidationError,
+      DAGErrorPredicate.isValidationError,
       'Expected a DAGError (code VALIDATION_ERROR) for node-body scatter with container',
     );
   });

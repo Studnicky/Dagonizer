@@ -69,4 +69,29 @@ export class DAGError extends ModuleError {
     if (reason instanceof Error) return reason;
     return new DAGError(typeof reason === 'string' ? reason : 'aborted', { 'code': 'EXECUTION_ERROR' });
   }
+
+  /**
+   * Normalise an unknown catch-clause value into an `Error`, wrapping
+   * non-Error causes in `DAGError` (code `EXECUTION_ERROR`).
+   */
+  static coerce(cause: unknown): Error {
+    if (cause instanceof Error) return cause;
+    return new DAGError(String(cause), { 'code': 'EXECUTION_ERROR' });
+  }
+
+  /**
+   * Extract a message string from an unknown catch-clause value: the
+   * `Error`'s own message, or the value's string coercion.
+   */
+  static messageOf(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  /**
+   * True when `reason` is an `Error` named `TimeoutError` — the shape
+   * produced by `AbortSignal.timeout()` rejections.
+   */
+  static isTimeout(reason: unknown): boolean {
+    return reason instanceof Error && reason.name === 'TimeoutError';
+  }
 }

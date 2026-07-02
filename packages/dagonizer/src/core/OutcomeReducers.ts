@@ -27,7 +27,8 @@
  */
 
 import type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
-import { DAGError } from '../errors/DAGError.js';
+
+import { Registry } from './Registry.js';
 
 export type { OutcomeRecordType };
 
@@ -122,74 +123,15 @@ const BUILTIN_REDUCERS: ReadonlyArray<OutcomeReducer> = [
 ];
 
 /**
- * Static registry of `OutcomeReducer` instances. Defaults register at
- * module load. Consumers add more via `OutcomeReducers.register`.
+ * Registry of `OutcomeReducer` instances, extending the shared `Registry`
+ * base. Defaults register at construction. Consumers add more via
+ * `OutcomeReducers.register`.
  */
-export class OutcomeReducers {
-  private constructor() { /* static class */ }
-
-  private static readonly registry = new Map<string, OutcomeReducer>(
-    BUILTIN_REDUCERS.map((r) => [r.name, r]),
-  );
-
-  /**
-   * Register a reducer. Throws `DAGError` when a reducer with the same
-   * `name` is already registered — protects against silent overwrite of
-   * built-ins or consumer-registered reducers. Use `replace()` for
-   * intentional overrides (e.g. test-time substitution).
-   */
-  static register(reducer: OutcomeReducer): void {
-    if (OutcomeReducers.registry.has(reducer.name)) {
-      throw new DAGError(`OutcomeReducer '${reducer.name}' is already registered; use OutcomeReducers.replace() to intentionally override`);
-    }
-    OutcomeReducers.registry.set(reducer.name, reducer);
-  }
-
-  /**
-   * Explicitly replace an existing registration. Does not throw when the
-   * name is already present. Use this for intentional test-time or
-   * plugin-override substitution where overwriting an existing entry is
-   * the deliberate goal.
-   */
-  static replace(reducer: OutcomeReducer): void {
-    OutcomeReducers.registry.set(reducer.name, reducer);
-  }
-
-  /**
-   * Remove a previously registered reducer by name. No-op if the name is
-   * not present. Used in test `afterEach` to undo `register` calls and
-   * prevent cross-test pollution of the global registry.
-   */
-  static unregister(name: string): void {
-    OutcomeReducers.registry.delete(name);
-  }
-
-  /**
-   * Reset the registry to the four built-in reducers, discarding any
-   * consumer-registered entries. Used in test `afterEach` to restore a clean
-   * baseline.
-   */
-  static reset(): void {
-    OutcomeReducers.registry.clear();
-    for (const r of BUILTIN_REDUCERS) {
-      OutcomeReducers.registry.set(r.name, r);
-    }
-  }
-
-  /**
-   * Resolve a reducer by name. Throws `DAGError` when no reducer is
-   * registered under `name`.
-   */
-  static resolve(name: string): OutcomeReducer {
-    const reducer = OutcomeReducers.registry.get(name);
-    if (reducer === undefined) {
-      throw new DAGError(`Unknown outcome reducer: ${name}`);
-    }
-    return reducer;
-  }
-
-  /** Names of every registered reducer, in registration order. */
-  static list(): readonly string[] {
-    return [...OutcomeReducers.registry.keys()];
+class OutcomeReducerRegistry extends Registry<OutcomeReducer> {
+  constructor() {
+    super(BUILTIN_REDUCERS, 'OutcomeReducer', 'OutcomeReducers', 'outcome reducer');
   }
 }
+
+/** Singleton registry instance; the public surface consumers call into. */
+export const OutcomeReducers = new OutcomeReducerRegistry();

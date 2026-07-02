@@ -158,7 +158,7 @@ class TestScatterDag {
           'body':        { 'dag': BODY_DAG_NAME },
           'source':      'items',
           'itemKey':     'item',
-          'concurrency': concurrency,
+          'execution': { 'mode': 'item', 'concurrency': concurrency },
           'gather':      { 'strategy': 'bound-memory-gather' },
           'outputs': {
             'all-success': 'end',

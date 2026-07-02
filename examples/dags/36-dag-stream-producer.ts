@@ -154,7 +154,7 @@ export const outerDag: DAGType = {
       'body':        { 'node': 'record' },
       'source':      'source',
       'itemKey':     'label-item',
-      'concurrency': 2,
+      'execution': { 'mode': 'item', 'concurrency': 2 },
       'gather': {
         'strategy': 'append',
         'target':   'labels',

@@ -32,15 +32,17 @@ describe('RecordedAddressGeocoder', () => {
 
 type FetchFn = typeof globalThis.fetch;
 
-function makeMockFetch(status: number, body: unknown): FetchFn {
-  return async (_input: Parameters<FetchFn>[0], _init?: Parameters<FetchFn>[1]) => {
-    return {
-      ok:         status >= 200 && status < 300,
-      status:     status,
-      statusText: status === 200 ? 'OK' : 'Not Found',
-      json:       async () => body,
-    } as Response;
-  };
+class MockFetch {
+  static of(status: number, body: unknown): FetchFn {
+    return async (_input: Parameters<FetchFn>[0], _init?: Parameters<FetchFn>[1]) => {
+      return {
+        ok:         status >= 200 && status < 300,
+        status:     status,
+        statusText: status === 200 ? 'OK' : 'Not Found',
+        json:       async () => body,
+      } as Response;
+    };
+  }
 }
 
 // A minimal Nominatim-shaped array response for a successful geocode.
@@ -79,7 +81,7 @@ describe('LiveAddressGeocoder', () => {
       fetchCallCount = 0;
       globalThis.fetch = async (input: Parameters<FetchFn>[0], init?: Parameters<FetchFn>[1]) => {
         fetchCallCount++;
-        return makeMockFetch(200, NOMINATIM_SUCCESS_BODY)(input, init);
+        return MockFetch.of(200, NOMINATIM_SUCCESS_BODY)(input, init);
       };
     });
 
@@ -106,7 +108,7 @@ describe('LiveAddressGeocoder', () => {
 
   describe('geocode — mocked non-2xx response', () => {
     beforeEach(() => {
-      globalThis.fetch = makeMockFetch(503, []);
+      globalThis.fetch = MockFetch.of(503, []);
     });
 
     afterEach(() => {
@@ -132,7 +134,7 @@ describe('LiveAddressGeocoder', () => {
       fetchInvoked = false;
       globalThis.fetch = async (_input: Parameters<FetchFn>[0], _init?: Parameters<FetchFn>[1]) => {
         fetchInvoked = true;
-        return makeMockFetch(200, NOMINATIM_SUCCESS_BODY)(_input, _init);
+        return MockFetch.of(200, NOMINATIM_SUCCESS_BODY)(_input, _init);
       };
     });
 

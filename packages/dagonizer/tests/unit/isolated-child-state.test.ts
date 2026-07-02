@@ -248,18 +248,18 @@ void describe('Isolated child state: embedded DAG', () => {
     // Explicit isolation factory.
     dispatcher.registerDAG(outerDag, embedChildFactory);
 
-    assert.ok(dispatcher.stateFactories.has('iso-factories-child'),
+    assert.ok(dispatcher.getChildStateFactory('iso-factories-child') !== undefined,
       'child DAG must have a factory entry (DEFAULT materialised at register time)');
-    assert.ok(dispatcher.stateFactories.has('iso-factories-outer'),
+    assert.ok(dispatcher.getChildStateFactory('iso-factories-outer') !== undefined,
       'outer DAG must have a factory entry');
 
     // The child DAG was registered without explicit factory — should be DEFAULT.
-    const childFactory = dispatcher.stateFactories.get('iso-factories-child');
+    const childFactory = dispatcher.getChildStateFactory('iso-factories-child');
     assert.strictEqual(childFactory, ChildStateFactory.cloneParent,
       'child DAG must use ChildStateFactory.cloneParent when no override is supplied');
 
     // The outer DAG was registered with embedChildFactory.
-    const outerFactory = dispatcher.stateFactories.get('iso-factories-outer');
+    const outerFactory = dispatcher.getChildStateFactory('iso-factories-outer');
     assert.strictEqual(outerFactory, embedChildFactory,
       'outer DAG must use the explicitly registered embedChildFactory');
   });
@@ -371,7 +371,7 @@ class ScatterDag {
           'body':        { 'dag': bodyDagName },
           'source':      'items',
           'itemKey':     'item',
-          'concurrency': 4,
+          'execution': { 'mode': 'item', 'concurrency': 4 },
           'gather':      { 'strategy': 'item-result-gather', 'target': 'results' },
           'outputs': {
             'all-success': 'end',

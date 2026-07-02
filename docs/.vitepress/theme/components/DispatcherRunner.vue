@@ -33,6 +33,7 @@ import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/check
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
+import { LogFault } from '@studnicky/logger';
 
 import { DispatcherState } from '../../../../examples/the-dispatcher/DispatcherState.ts';
 import type { ConversationTurnType } from '../../../../examples/the-dispatcher/DispatcherState.ts';
@@ -134,18 +135,18 @@ const DISPATCHER_NODE_VARIANTS: Readonly<Record<string, string>> = {
 const DISPATCHER_NODE_TRACE: Readonly<Record<string, (state: DispatcherState, output: string | null) => void>> = {
   'classify-message': (state, output) => {
     if (output === 'escalate') {
-      logger.info(`classify: escalate — ${state.escalationReason}`);
+      logger.note(`classify: escalate — ${state.escalationReason}`);
     } else if (output === 'off-topic') {
-      logger.info('classify: off-topic — declining (unrelated to the bookstore)');
+      logger.note('classify: off-topic — declining (unrelated to the bookstore)');
     } else {
-      logger.info('classify: routine — AI will compose response');
+      logger.note('classify: routine — AI will compose response');
     }
   },
   'park-for-operator': (state) => {
     if (state.response.length > 0) {
-      logger.info('park-for-operator: response received — routing ready');
+      logger.note('park-for-operator: response received — routing ready');
     } else {
-      logger.info('park-for-operator: parked — awaiting operator input');
+      logger.note('park-for-operator: parked — awaiting operator input');
     }
   },
 };
@@ -163,8 +164,8 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
     this.#services = services;
   }
 
-  protected override onFlowStart(dagName: string): void {
-    super.onFlowStart(dagName);
+  protected override onFlowStart(dagName: string, state: DispatcherState, signal: AbortSignal): void {
+    super.onFlowStart(dagName, state, signal);
     void this.#services.llm.warm().catch(() => { /* best-effort: never block or fail a flow start */ });
   }
 
@@ -172,8 +173,9 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
     nodeName: string,
     state: DispatcherState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onNodeStart(nodeName, state, placementPath);
+    super.onNodeStart(nodeName, state, placementPath, signal);
     const fullId = [...placementPath, nodeName].join('/');
     trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'variant': 'start' }];
     dagGraph.value?.setActive(fullId);
@@ -184,8 +186,9 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
     output: string | null,
     state: DispatcherState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onNodeEnd(nodeName, output, state, placementPath);
+    super.onNodeEnd(nodeName, output, state, placementPath, signal);
     const fullId = [...placementPath, nodeName].join('/');
     trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'variant': 'end' }];
     dagGraph.value?.setCompleted(fullId);
@@ -198,8 +201,9 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
     error: Error,
     state: DispatcherState,
     placementPath: readonly string[],
+    signal: AbortSignal,
   ): void {
-    super.onError(nodeName, error, state, placementPath);
+    super.onError(nodeName, error, state, placementPath, signal);
     const fullId = [...placementPath, nodeName].join('/');
     trace.value = [...trace.value, {
       'node': fullId,
@@ -214,8 +218,9 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
     dagName: string,
     state: DispatcherState,
     result: ExecutionResultType<DispatcherState>,
+    signal: AbortSignal,
   ): void {
-    super.onFlowEnd(dagName, state, result);
+    super.onFlowEnd(dagName, state, result, signal);
 
     const lifecycleVariant = state.lifecycle.variant;
 
@@ -239,7 +244,7 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
       parked.value = { 'dagName': dagName, 'cursor': result.parked.cursor };
       // Auto-switch left pane to Operator tab.
       leftActiveKey.value = 'operator';
-      logger.info(`parked at cursor: ${result.parked.cursor} · key: ${result.parked.correlationKey}`);
+      logger.note(`parked at cursor: ${result.parked.cursor} · key: ${result.parked.correlationKey}`);
     } else {
       parkedExecution = null;
       parked.value = null;
@@ -317,7 +322,7 @@ onMounted(async () => {
     if (result.embedder !== null) {
       embedder.value = result.embedder;
       dispatcherIntent.value = await DispatcherIntentClassifier.create(result.embedder);
-      logger.info(`embedder provisioned: ${result.embedder.displayName}`);
+      logger.note(`embedder provisioned: ${result.embedder.displayName}`);
     } else {
       logger.warn('no embedder available; classification will use the LLM path');
     }
@@ -343,12 +348,12 @@ onMounted(async () => {
     ? backends.value.find((b) => b.id === savedBackend) ?? null
     : null;
   if (savedEntry !== null && savedEntry.runnable) {
-    logger.info(`backend from saved preference: ${savedBackend}`);
+    logger.note(`backend from saved preference: ${savedBackend}`);
   } else {
     const picked = BackendMatrix.pickBest(backends.value, { 'isMobile': isMobile.value });
     if (picked !== null) {
       activeBackend.value = picked.id;
-      logger.info(
+      logger.note(
         savedBackend === null
           ? `backend auto-selected: ${picked.displayName}`
           : `saved preference "${savedBackend}" unavailable; defaulting to ${picked.displayName}`,
@@ -415,7 +420,7 @@ async function ask(): Promise<void> {
   // appends), so without this the pane would surface a prior run's stale turn.
   conversation.value = [{ 'role': 'customer', 'text': queryText, 'ts': Date.now() }];
   logger.clear();
-  logger.info(`run start — message: "${queryText}" · humanMode: ${String(humanMode.value)}`);
+  logger.note(`run start — message: "${queryText}" · humanMode: ${String(humanMode.value)}`);
 
   await dagGraph.value?.reset();
 
@@ -435,7 +440,16 @@ async function ask(): Promise<void> {
   try {
     await dispatcher.execute('support-dispatcher', state, { 'signal': activeAbortController.signal });
   } catch (error) {
-    logger.error(`execute error: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      LogFault.create()
+        .component('dispatcher-runner')
+        .operation('execute')
+        .status('failed')
+        .name(error instanceof Error ? error.constructor.name : 'Error')
+        .message(`execute error: ${error instanceof Error ? error.message : String(error)}`)
+        .context({})
+        .build(),
+    );
   } finally {
     await dispatcher.destroy();
     activeAbortController = null;
@@ -457,7 +471,7 @@ async function sendOperatorResponse(): Promise<void> {
     'ts': Date.now(),
     'variant': 'start',
   }];
-  logger.info(`operator response captured — resuming from cursor: ${pe.cursor}`);
+  logger.note(`operator response captured — resuming from cursor: ${pe.cursor}`);
 
   // Re-build the bundle for the resume run (fresh node instances).
   const services = buildServices();
@@ -472,7 +486,16 @@ async function sendOperatorResponse(): Promise<void> {
       CheckpointRestoreAdapter.wrap((snap) => DispatcherState.restore(snap)),
     );
   } catch (err) {
-    logger.error(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`);
+    logger.error(
+      LogFault.create()
+        .component('dispatcher-runner')
+        .operation('checkpoint-restore')
+        .status('failed')
+        .name(err instanceof Error ? err.constructor.name : 'Error')
+        .message(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`)
+        .context({})
+        .build(),
+    );
     isRunning.value = false;
     return;
   }
@@ -488,7 +511,16 @@ async function sendOperatorResponse(): Promise<void> {
       'signal': activeAbortController.signal,
     });
   } catch (error) {
-    logger.error(`resume error: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      LogFault.create()
+        .component('dispatcher-runner')
+        .operation('resume')
+        .status('failed')
+        .name(error instanceof Error ? error.constructor.name : 'Error')
+        .message(`resume error: ${error instanceof Error ? error.message : String(error)}`)
+        .context({})
+        .build(),
+    );
   } finally {
     await dispatcher.destroy();
     activeAbortController = null;
