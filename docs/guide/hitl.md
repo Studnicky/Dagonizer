@@ -34,17 +34,35 @@ The engine intercepts the `'parked'` output before the placement-level routing
 map is consulted, so the DAG does **not** need a `'parked' → nextNode` entry.
 
 ```ts
-class ApproveNode extends ScalarNode<MyState, 'parked' | 'approved' | 'rejected'> {
+class ApproveNode extends MonadicNode<MyState, 'parked' | 'approved' | 'rejected'> {
   readonly name = 'approve';
-  readonly outputs = ['parked', 'approved', 'rejected'] as const;
+  readonly outputs: readonly ('parked' | 'approved' | 'rejected')[] = ['parked', 'approved', 'rejected'];
 
-  protected override async executeOne(state: MyState) {
-    if (state.decision === 'approved') return NodeOutputBuilder.of('approved');
-    if (state.decision === 'rejected') return NodeOutputBuilder.of('rejected');
+  override get outputSchema(): Record<'parked' | 'approved' | 'rejected', SchemaObjectType> {
+    return MonadicNode.permissiveSchema(this.outputs);
+  }
 
-    // Park: write the correlationKey so the caller can correlate the resume.
-    state.setMetadata('correlationKey', `approval:${state.requestId}`);
-    return NodeOutputBuilder.of('parked');
+  async execute(batch: Batch<MyState>) {
+    const parked: ItemType<MyState>[] = [];
+    const approved: ItemType<MyState>[] = [];
+    const rejected: ItemType<MyState>[] = [];
+
+    for (const item of batch) {
+      if (item.state.decision === 'approved') {
+        approved.push(item);
+      } else if (item.state.decision === 'rejected') {
+        rejected.push(item);
+      } else {
+        item.state.setMetadata('correlationKey', `approval:${item.state.requestId}`);
+        parked.push(item);
+      }
+    }
+
+    return RoutedBatchBuilder.from([
+      ['parked', Batch.from(parked)],
+      ['approved', Batch.from(approved)],
+      ['rejected', Batch.from(rejected)],
+    ]);
   }
 }
 ```
@@ -122,7 +140,7 @@ all other variants.
 
 ```ts
 // Transition to awaiting-input and store the correlationKey in metadata.
-// Equivalent to what ApproveNode.executeOne above does by hand.
+// Equivalent to what ApproveNode.execute above does by hand.
 state.park('approval:req-001');
 
 // True iff lifecycle.variant === 'awaiting-input'

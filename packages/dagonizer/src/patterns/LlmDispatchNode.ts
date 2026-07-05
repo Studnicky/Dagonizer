@@ -19,15 +19,15 @@
 
 import type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
 
-import { ScalarNode } from '@studnicky/dagonizer';
+import { MonadicNode } from '@studnicky/dagonizer';
 import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 import type { ChatRequestType, ChatResponseType, PartialChatRequestType } from '@studnicky/dagonizer/adapter';
-import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeContextType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 export abstract class LlmDispatchNode<
   TState extends NodeStateInterface,
   TOutput extends string,
-> extends ScalarNode<TState, TOutput> {
+> extends MonadicNode<TState, TOutput> {
   constructor(protected readonly llm: LlmClientInterface) {
     super();
   }
@@ -66,10 +66,4 @@ export abstract class LlmDispatchNode<
   protected extractContent(response: ChatResponseType): string {
     return response.message.variant === 'tools' ? '' : response.message.content;
   }
-
-  /** Leaves provide their own executeOne(); the dispatch loop is shared. */
-  protected abstract override executeOne(
-    state: TState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<TOutput>>;
 }

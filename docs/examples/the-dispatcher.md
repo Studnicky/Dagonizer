@@ -78,9 +78,10 @@ toggle in the Config tab sets it before `execute()` fires).
 The classifier checks the switch first:
 
 ```ts
-if (state.humanMode) {
-  state.escalationReason = 'Human mode active — routed to operator';
-  return NodeOutputBuilder.of('escalate');
+if (item.state.humanMode) {
+  item.state.escalationReason = 'Human mode active — routed to operator';
+  escalated.push(item);
+  continue;
 }
 ```
 

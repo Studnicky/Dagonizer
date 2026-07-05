@@ -23,8 +23,8 @@
  *   SPARQL ASK gate can rely on the store as ground truth.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
 import { PROV, ProvIris } from '../provenance/PROV.ts';
@@ -49,7 +49,7 @@ const dagQueryEmbedding    = MemoryStore.dagIri('queryEmbedding');
 // asserted as type prov:SoftwareAgent.
 const ARCHIVIST_AGENT      = ProvIris.agent('archivist-software');
 
-export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded'> {
+export class RecordFindingsNode extends MonadicNode<ArchivistState, 'recorded'> {
   private readonly services: ArchivistServices;
   readonly name = 'record-findings';
   readonly outputs = ['recorded'] as const;
@@ -64,21 +64,22 @@ export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded'> {
     this.services = services;
   }
 
-  protected override async executeOne(state: ArchivistState) {
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
     const memory = this.services.memory;
     const embedder = this.services.embedder;
-    const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.identity.isbn));
-    for (const candidate of state.candidates) {
-      const book = MemoryStore.bookIri(candidate.book.identity.isbn);
-      // rdf:type links this ABox instance to the TBox dag:Book class;
-      // this is the triple that connects memory nodes to ontology class nodes
-      // in the MemoryGraph cosmos.gl view.
-      memory.assert(book, rdfType,        dagBook,                                                     GRAPH_MEMORY);
-      memory.assert(book, dagTitle,       MemoryStore.lit.str(candidate.book.identity.title),          GRAPH_MEMORY);
-      memory.assert(book, dagSource,      MemoryStore.lit.str(candidate.source),                       GRAPH_MEMORY);
-      memory.assert(book, dagScore,       MemoryStore.lit.num(candidate.score),                        GRAPH_MEMORY);
-      memory.assert(book, dagInShortlist, MemoryStore.lit.bool(shortlistIsbns.has(candidate.book.identity.isbn)), GRAPH_MEMORY);
-    }
+    for (const { state } of batch) {
+      const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.identity.isbn));
+      for (const candidate of state.candidates) {
+        const book = MemoryStore.bookIri(candidate.book.identity.isbn);
+        // rdf:type links this ABox instance to the TBox dag:Book class;
+        // this is the triple that connects memory nodes to ontology class nodes
+        // in the MemoryGraph cosmos.gl view.
+        memory.assert(book, rdfType,        dagBook,                                                     GRAPH_MEMORY);
+        memory.assert(book, dagTitle,       MemoryStore.lit.str(candidate.book.identity.title),          GRAPH_MEMORY);
+        memory.assert(book, dagSource,      MemoryStore.lit.str(candidate.source),                       GRAPH_MEMORY);
+        memory.assert(book, dagScore,       MemoryStore.lit.num(candidate.score),                        GRAPH_MEMORY);
+        memory.assert(book, dagInShortlist, MemoryStore.lit.bool(shortlistIsbns.has(candidate.book.identity.isbn)), GRAPH_MEMORY);
+      }
 
     // Per-run state-graph mirror: the persistent GRAPH_MEMORY writes above
     // accumulate across runs, so the deterministic has-citations-gate reads
@@ -164,7 +165,8 @@ export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded'> {
       }
     }
 
-    return NodeOutputBuilder.of('recorded');
+    }
+
+    return RoutedBatchBuilder.of('recorded', batch);
   }
 }
-

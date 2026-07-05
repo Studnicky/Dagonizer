@@ -5,10 +5,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { StreamProducerInterface, StreamSinkInterface } from '@studnicky/dagonizer';
@@ -27,7 +29,7 @@ export class ChannelState extends NodeStateBase {
 // Worker node
 // ---------------------------------------------------------------------------
 
-export class ProcessNode extends ScalarNode<ChannelState, 'done'> {
+export class ProcessNode extends MonadicNode<ChannelState, 'done'> {
   readonly name    = 'process';
   readonly outputs = ['done'] as const;
 
@@ -35,10 +37,12 @@ export class ProcessNode extends ScalarNode<ChannelState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ChannelState) {
-    const raw  = state.getter.number('stream-item', 0);
-    state.item = raw * 2;
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ChannelState>) {
+    for (const item of batch) {
+      const raw  = item.state.getter.number('stream-item', 0);
+      item.state.item = raw * 2;
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 

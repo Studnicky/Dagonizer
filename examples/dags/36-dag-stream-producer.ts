@@ -8,9 +8,11 @@ import {
   DAG_CONTEXT,
   DagStreamProducer,
   Dagonizer,
+  Batch,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, NodeResultType, NodeStateInterface, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -23,7 +25,7 @@ export class InnerState extends NodeStateBase {
   label: string = '';
 }
 
-export class GenerateNode extends ScalarNode<InnerState, 'done'> {
+export class GenerateNode extends MonadicNode<InnerState, 'done'> {
   readonly name    = 'generate';
   readonly outputs = ['done'] as const;
 
@@ -31,9 +33,11 @@ export class GenerateNode extends ScalarNode<InnerState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: InnerState) {
-    state.label = 'item-' + String(state.value);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<InnerState>) {
+    for (const item of batch) {
+      item.state.label = 'item-' + String(item.state.value);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 
@@ -47,7 +51,7 @@ export class OuterState extends NodeStateBase {
   labels: string[]                     = [];
 }
 
-export class RecordNode extends ScalarNode<OuterState, 'done'> {
+export class RecordNode extends MonadicNode<OuterState, 'done'> {
   readonly name    = 'record';
   readonly outputs = ['done'] as const;
 
@@ -55,9 +59,11 @@ export class RecordNode extends ScalarNode<OuterState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: OuterState) {
-    state.item = state.getter.string('label-item', '');
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<OuterState>) {
+    for (const item of batch) {
+      item.state.item = item.state.getter.string('label-item', '');
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 

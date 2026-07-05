@@ -16,7 +16,7 @@
  *   pick argmax above confidence floor; else return null
  *
  * When the top score is below the floor we return `null`; the caller
- * (`ClassifyMessageNode.executeOne`) then falls back to the LLM path,
+ * (`ClassifyMessageNode.execute`) then falls back to the LLM path,
  * preserving today's classify → escalate-on-error behavior for the
  * messages the embedder isn't confident about.
  */

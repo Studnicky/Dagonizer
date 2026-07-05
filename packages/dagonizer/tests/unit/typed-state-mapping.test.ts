@@ -19,12 +19,12 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { TypedEmbeddedDAGOptionsType } from '../../src/builder/DAGBuilder.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { EmbeddedDAGNodeType } from '../../src/entities/dag/EmbeddedDAGNode.js';
 import { Placement } from '../../src/entities/index.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -192,16 +192,17 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
     }
 
     // Child node reads state.payload and writes state.result.
-    class WorkChildNode extends ScalarNode<WorkState, 'success'> {
+    class WorkChildNode extends MonadicNode<WorkState, 'success'> {
       readonly name = 'child-node';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> {
         return { 'success': { 'type': 'object' } };
       }
-      protected async executeOne(state: WorkState): Promise<NodeOutputType<'success'>> {
-        // result = length of payload (deterministic, easy to assert)
-        state.result = state.payload.length;
-        return { 'errors': [], 'output': 'success' as const };
+      override async execute(batch: Batch<WorkState>): Promise<Map<'success', Batch<WorkState>>> {
+        for (const item of batch) {
+          item.state.result = item.state.payload.length;
+        }
+        return new Map([['success', batch]]);
       }
     }
     const childNode = new WorkChildNode();

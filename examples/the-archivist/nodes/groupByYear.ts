@@ -12,13 +12,13 @@
  * promise true at the data level.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 
-export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered'> {
+export class GroupByYearNode extends MonadicNode<ArchivistState, 'ordered'> {
   readonly name = 'group-by-year';
   readonly outputs = ['ordered'] as const;
   override get outputSchema(): Record<'ordered', SchemaObjectType> {
@@ -27,25 +27,25 @@ export class GroupByYearNode extends ScalarNode<ArchivistState, 'ordered'> {
     };
   }
 
-  protected override async executeOne(state: ArchivistState) {
-    if (state.candidates.length === 0) {
-      return NodeOutputBuilder.of('ordered');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      if (state.candidates.length === 0) continue;
+      const indexed = state.candidates.map((candidate, position) => ({ candidate, position }));
+      indexed.sort((a, b) => {
+        const ya = a.candidate.book.publication.firstPublishYear;
+        const yb = b.candidate.book.publication.firstPublishYear;
+        // Unknown publication year (null) sorts last; ties keep original position.
+        if (ya === null && yb === null) return a.position - b.position;
+        if (ya === null) return 1;
+        if (yb === null) return -1;
+        if (ya !== yb) return ya - yb;
+        return a.position - b.position;
+      });
+      const ordered: CandidateType[] = indexed.map((entry) => entry.candidate);
+      state.candidates = ordered;
+      state.shortlist  = ordered;
     }
-    const indexed = state.candidates.map((candidate, position) => ({ candidate, position }));
-    indexed.sort((a, b) => {
-      const ya = a.candidate.book.publication.firstPublishYear;
-      const yb = b.candidate.book.publication.firstPublishYear;
-      // Unknown publication year (null) sorts last; ties keep original position.
-      if (ya === null && yb === null) return a.position - b.position;
-      if (ya === null) return 1;
-      if (yb === null) return -1;
-      if (ya !== yb) return ya - yb;
-      return a.position - b.position;
-    });
-    const ordered: CandidateType[] = indexed.map((entry) => entry.candidate);
-    state.candidates = ordered;
-    state.shortlist  = ordered;
-    return NodeOutputBuilder.of('ordered');
+    return RoutedBatchBuilder.of('ordered', batch);
   }
 }
 

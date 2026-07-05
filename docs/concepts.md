@@ -32,14 +32,37 @@ The fundamental unit of work is a **batch**. A **node** consumes a `Batch<TState
 
 A single item is a batch of one; the engine never processes a scalar specially. **Routing is partitioning**: a node distributing items across `needs-gdpr` / `geo-only` ports, micro-batching, and the reservoir are all the same mechanism — `Map<output, Batch>`.
 
-You almost never write `execute` by hand. Nodes descend from the **taxonomy**:
+Every concrete node uses the same base:
 
-- **`MonadicNode<TState, TOutput>`** — the root node base (the *monad*). Implements `NodeInterface` and supplies `name` / `outputs` / `contract` / `timeout` / `validate` / `destroy`, leaving `execute(batch)` abstract. Extend it directly to author a **batch-native** node — the hot path where one call processes the whole batch and hits shared caches across it.
-- **`ScalarNode<TState, TOutput>`** — extends `MonadicNode` and is the **per-item** specialization. You implement `protected executeOne(state, context): Promise<NodeOutputType<TOutput>>`; the base loops it over the batch and groups items by the returned port. This is the common case.
+- **`MonadicNode<TState, TOutput>`** — the node base. It implements `NodeInterface` and supplies `timeout` / `validate` / `destroy` defaults, leaving `name`, `outputs`, `outputSchema`, and `execute(batch, context)` abstract. Extend it for every node. Batch-native nodes process the whole batch directly; per-item nodes still implement `execute(batch, context)` and keep their item loop inside the node.
 
-The classify-intent node in the Archivist is a typical `ScalarNode`: its `executeOne` reads the user query, writes a classification to state, and returns one of `'discover' | 'identify' | 'recall' | 'rejected'`.
+The classify-intent node in the Archivist is a typical per-item `MonadicNode`: its `execute` iterates the batch, reads each user query, writes a classification to that item's state, and returns sub-batches routed to `'discover' | 'identify' | 'recall' | 'rejected'`.
 
-<<< @/../examples/dags/plural-native.ts#node-taxonomy
+```ts
+class ClassifyIntentNode extends MonadicNode<ArchivistState, 'discover' | 'identify' | 'recall' | 'rejected'> {
+  readonly name = 'classify-intent';
+  readonly outputs: readonly ('discover' | 'identify' | 'recall' | 'rejected')[] = [
+    'discover',
+    'identify',
+    'recall',
+    'rejected',
+  ];
+
+  override get outputSchema(): Record<'discover' | 'identify' | 'recall' | 'rejected', SchemaObjectType> {
+    return MonadicNode.permissiveSchema(this.outputs);
+  }
+
+  async execute(batch: Batch<ArchivistState>, context: NodeContextType): Promise<RoutedBatchType<'discover' | 'identify' | 'recall' | 'rejected', ArchivistState>> {
+    const routed: Array<readonly ['discover' | 'identify' | 'recall' | 'rejected', Batch<ArchivistState>]> = [];
+    for (const item of batch) {
+      const output = await classifyIntent(item.state.query, context.signal);
+      item.state.intent = output;
+      routed.push([output, Batch.from([item])]);
+    }
+    return RoutedBatchBuilder.from(routed);
+  }
+}
+```
 
 Nodes are registered with the dispatcher under a string name; the same registered node can appear in many DAGs and placements. A node never throws — a per-item error routes to the item's `error` port (its own sub-batch). The dispatcher guards the boundary, but a throwing node is a bug.
 

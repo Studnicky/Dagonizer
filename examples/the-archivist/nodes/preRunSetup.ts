@@ -20,12 +20,12 @@
  */
 
 // #region pre-phase-setup
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { RoutedBatchBuilder, MonadicNode } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 
-export class PreRunSetupNode extends ScalarNode<ArchivistState, 'ready'> {
+export class PreRunSetupNode extends MonadicNode<ArchivistState, 'ready'> {
   readonly name = 'pre-run-setup';
   readonly outputs = ['ready'] as const;
   override get outputSchema(): Record<'ready', SchemaObjectType> {
@@ -34,20 +34,22 @@ export class PreRunSetupNode extends ScalarNode<ArchivistState, 'ready'> {
     };
   }
 
-  protected override executeOne(state: ArchivistState) {
-    // Stamp a per-run identifier that downstream memory-write nodes key their
-    // named graph on.  Format: ISO timestamp with milliseconds, URL-safe.
-    // crypto.randomUUID() would be stronger but wall-clock is deterministic
-    // across replays (same input → same id), which matters for snapshot tests.
-    const runId = new Date().toISOString().replace(/[:.]/g, '-');
-    state.runId = runId;
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      // Stamp a per-run identifier that downstream memory-write nodes key their
+      // named graph on.  Format: ISO timestamp with milliseconds, URL-safe.
+      // crypto.randomUUID() would be stronger but wall-clock is deterministic
+      // across replays (same input → same id), which matters for snapshot tests.
+      const runId = new Date().toISOString().replace(/[:.]/g, '-');
+      state.runId = runId;
 
-    // Clear any draft from a prior interrupted execution so a resumed run
-    // does not accidentally serve stale content.
-    state.draft = '';
-    state.approvalState = 'pending';
+      // Clear any draft from a prior interrupted execution so a resumed run
+      // does not accidentally serve stale content.
+      state.draft = '';
+      state.approvalState = 'pending';
+    }
 
-    return Promise.resolve(NodeOutputBuilder.of('ready'));
+    return RoutedBatchBuilder.of('ready', batch);
   }
 }
 // #endregion pre-phase-setup

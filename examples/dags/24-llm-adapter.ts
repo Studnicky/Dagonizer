@@ -10,8 +10,8 @@
  * the response variant.
  */
 
-import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
-  ScalarNode,
+import { Batch, DAG_CONTEXT, MonadicNode, NodeOutputBuilder, NodeStateBase,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
@@ -32,57 +32,67 @@ export class ChatAdapterState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-export class ChatNode extends ScalarNode<ChatAdapterState, 'text' | 'tools'> {
+export class ChatNode extends MonadicNode<ChatAdapterState, 'text' | 'tools'> {
   readonly name = 'chat';
   readonly outputs = ['text', 'tools'] as const;
   override get outputSchema(): Record<'text' | 'tools', SchemaObjectType> {
     return { 'text': { 'type': 'object' }, 'tools': { 'type': 'object' } };
   }
-  protected override async executeOne(state: ChatAdapterState) {
-    if (state.adapter === null) throw new Error('chat: adapter not set');
-    const request = ChatRequestBuilder.from({
-      'messages': [
-        { 'role': 'system', 'content': 'You are a helpful assistant.' },
-        { 'role': 'user',   'content': state.prompt },
-      ],
-    });
-    const response = await state.adapter.chat(request);
-    state.finishReason = response.finishReason;
-    if (response.message.variant === 'text') {
-      state.response = response.message.content;
-      return NodeOutputBuilder.of('text');
+  override async execute(batch: Batch<ChatAdapterState>) {
+    const entries: Array<readonly ['text' | 'tools', Batch<ChatAdapterState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      if (state.adapter === null) throw new Error('chat: adapter not set');
+      const request = ChatRequestBuilder.from({
+        'messages': [
+          { 'role': 'system', 'content': 'You are a helpful assistant.' },
+          { 'role': 'user',   'content': state.prompt },
+        ],
+      });
+      const response = await state.adapter.chat(request);
+      state.finishReason = response.finishReason;
+      if (response.message.variant === 'text') {
+        state.response = response.message.content;
+        entries.push([NodeOutputBuilder.of('text').output, Batch.from([item])]);
+        continue;
+      }
+      // tools or mixed: surface the first tool call name as the response text
+      const calls = response.message.variant === 'mixed'
+        ? response.message.toolCalls
+        : response.message.toolCalls;
+      state.response = `tool_call:${calls[0]?.name ?? 'unknown'}`;
+      entries.push([NodeOutputBuilder.of('tools').output, Batch.from([item])]);
     }
-    // tools or mixed: surface the first tool call name as the response text
-    const calls = response.message.variant === 'mixed'
-      ? response.message.toolCalls
-      : response.message.toolCalls;
-    state.response = `tool_call:${calls[0]?.name ?? 'unknown'}`;
-    return NodeOutputBuilder.of('tools');
+    return RoutedBatchBuilder.from(entries);
   }
 }
 
-export class HandleTextNode extends ScalarNode<ChatAdapterState, 'done'> {
+export class HandleTextNode extends MonadicNode<ChatAdapterState, 'done'> {
   readonly name = 'handleText';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: ChatAdapterState) {
-    // Slot for downstream text-processing logic; identity pass-through here
-    process.stdout.write(`  [handleText] response="${state.response}"\n`);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ChatAdapterState>) {
+    for (const item of batch) {
+      // Slot for downstream text-processing logic; identity pass-through here
+      process.stdout.write(`  [handleText] response="${item.state.response}"\n`);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 
-export class HandleToolsNode extends ScalarNode<ChatAdapterState, 'done'> {
+export class HandleToolsNode extends MonadicNode<ChatAdapterState, 'done'> {
   readonly name = 'handleTools';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: ChatAdapterState) {
-    process.stdout.write(`  [handleTools] tool dispatched: ${state.response}\n`);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ChatAdapterState>) {
+    for (const item of batch) {
+      process.stdout.write(`  [handleTools] tool dispatched: ${item.state.response}\n`);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 

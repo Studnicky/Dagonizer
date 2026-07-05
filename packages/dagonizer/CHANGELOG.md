@@ -121,7 +121,7 @@
 - New `AgentTraceProducer`, a `DagStreamProducer<ReasoningTraceItemType>` subclass, streams a running agent loop's node results as ordinal-tagged `ReasoningTraceItemType` items via a fixed node-name → reasoning-kind dispatch map. The ordinal increments only for emitted items, so the sequence stays contiguous. Consumers extend it and implement `describe(stage)` to supply each step's text.
 - `CallModelNode` streams its model call via `chatStream`, taking an optional `sink` in its constructor options (`StreamSinkInterface<ChatStreamChunkType>`) that defaults to a no-op `NullStreamSink` when omitted.
 - New `SseLineParser`, a shared isomorphic Server-Sent-Events framer: decodes a `ReadableStream<Uint8Array>` into `SseFrameType` frames (`event:`/`data:` accumulation, blank-line flush, `:`-comment skip, multi-`data:` join) over Web Streams + `TextDecoder` only, so it runs unchanged in Node and the browser. `OpenAiCompatibleAdapter` overrides `performChatStream` to POST with `stream: true` and drain the response body through `SseLineParser`, pushing one `ChatStreamChunkType` per non-empty delta; a request carrying tools still falls back to the buffered default.
-- New `RoutedChatStreamChunk` entity (`RoutedChatStreamChunkSchema` + `RoutedChatStreamChunkType` + `RoutedChatStreamChunkBuilder.of`) tags one streamed text delta with a `routeKey` and its originating `{dagName, nodeName}` source. New `RoutingStreamSink` decorates the per-execution sink handed to `adapter.chatStream`, forwarding each plain `ChatStreamChunkType` push to a shared downstream sink as a stamped `RoutedChatStreamChunkType`. `CallModelNode` gains an overridable `routeKey(state)` seam (default `''`) and constructs a fresh `RoutingStreamSink` per execution in `executeOne`, so ONE shared sink — for example a `StreamChannel<RoutedChatStreamChunkType>` feeding a routing DAG that scatters by `routeKey` — correctly demultiplexes many concurrent runs sharing a single node instance.
+- New `RoutedChatStreamChunk` entity (`RoutedChatStreamChunkSchema` + `RoutedChatStreamChunkType` + `RoutedChatStreamChunkBuilder.of`) tags one streamed text delta with a `routeKey` and its originating `{dagName, nodeName}` source. New `RoutingStreamSink` decorates the per-execution sink handed to `adapter.chatStream`, forwarding each plain `ChatStreamChunkType` push to a shared downstream sink as a stamped `RoutedChatStreamChunkType`. `CallModelNode` gains an overridable `routeKey(state)` seam (default `''`) and constructs a fresh `RoutingStreamSink` for each item it executes, so ONE shared sink — for example a `StreamChannel<RoutedChatStreamChunkType>` feeding a routing DAG that scatters by `routeKey` — correctly demultiplexes many concurrent runs sharing a single node instance.
 - `MemoryCheckpointStore` now backs its entries with `@studnicky/cache`'s `LruCache<string, string>` instead of a bare `Map`, so a long-running process that never explicitly deletes checkpoints stops growing this in-process store without bound. Capacity defaults to `DEFAULT_CHECKPOINT_CAPACITY` (500 distinct checkpoint keys) and is configurable via `new MemoryCheckpointStore({ capacity })`; `MemoryCheckpointStore.defaultOptions` exposes the resolved default. `save`/`load`/`delete` keep their existing async signatures. `MEMORY_CHECKPOINT_STORE_DEFAULTS` and `MemoryCheckpointStoreOptionsType` are new exports from `@studnicky/dagonizer/checkpoint`.
 
   `package.json` gains `@studnicky/cache` as a dependency.
@@ -136,7 +136,7 @@
 
   `package.json` gains `@studnicky/throttle` as a dependency.
 
-- `ScalarNode.permissiveSchema(outputs)` builds a `{ type: 'object' }` `outputSchema` entry for every listed output name, so nodes that don't need per-port validation write `override get outputSchema() { return ScalarNode.permissiveSchema(this.outputs); }` instead of hand-writing the boilerplate record literal.
+- `MonadicNode.permissiveSchema(outputs)` builds a `{ type: 'object' }` `outputSchema` entry for every listed output name, so nodes that don't need per-port validation write `override get outputSchema() { return MonadicNode.permissiveSchema(this.outputs); }` instead of hand-writing the boilerplate record literal.
 
 - `DAGBuilder.scatter`'s `gather` option is now optional on `ScatterOptionsType`, defaulting to `{ strategy: 'discard' }` (side-effect-only fan-out) when omitted. The default is materialised in `ScatterOptions.resolve` alongside the existing `itemKey`/`reducer` defaults and exported as `SCATTER_GATHER_DEFAULT` from `@studnicky/dagonizer/builder`.
 
@@ -244,7 +244,7 @@
 
 - 54252c9: DAGBuilder.placeholder(name, outputs, routes) adds a PlaceholderNode stub in one call.
   PlaceholderNode routes unconditionally to its first output; replace with a concrete
-  ScalarNode subclass when ready.
+  MonadicNode subclass when ready.
 - 54252c9: DAGDocument.load() and DAGDocument.ofValue() accept an optional overrides object merged
   before validation — enables config-driven topology parameterization without mutating the
   source document. registerDAG no longer runs a redundant schema validation pass; the
@@ -408,10 +408,9 @@
     loop (including the tool-scatter sub-graph and the loop-back edge) into a
     runnable `DAGType` from one call, replacing the hand-wired `DAGBuilder` chain
     every agent consumer re-derived.
-  - **`LoggedScalarNode`** (`./core`) — a `ScalarNode` base that owns the
-    try/route discipline so subclasses cannot throw past the node boundary;
-    an escaped throw is caught, routed to `error`, and surfaced as a named
-    node-contract violation in dev mode.
+  - **`MonadicNode`** (`./core`) — the batch-native node base that owns the
+    single execution contract: subclasses consume a `Batch` and return routed
+    batches for their declared output ports.
   - **`./progress`** — `EventBus` (typed topic publish/subscribe) and `SseStream`
     (a bus topic → Server-Sent-Events stream with heartbeat and teardown), an
     isomorphic, dependency-free progress substrate.
@@ -429,7 +428,7 @@
     through its own constructor and holds it as an instance field, and is registered
     with that dependency (`dispatcher.registerNode(new FetchNode(db))`). `Dagonizer`
     is now `Dagonizer<TState>` (one type parameter); `NodeInterface<TState, TOutput>`,
-    `ScalarNode`, `MonadicNode`, and `NodeContextType` are non-generic over services;
+    `MonadicNode`, and `NodeContextType` are non-generic over services;
     `NodeContextType` carries only `signal`, `dagName`, `nodeName`, `validateOutputs`,
     and `outputSchemaValidator`. The pattern packages follow suit: `GraphNode(memory)`,
     `LlmDispatchNode(llm)`, `ScoutNode(tool)`, `CallModelNode(llm)`. **Migration:** drop

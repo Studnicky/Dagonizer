@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -203,11 +203,11 @@ void describe('Dagonizer extension hooks', () => {
     }
 
     const dispatcher = new ErrTraced();
-    class BoomNode extends ScalarNode<NodeStateBase, 'success'> {
+    class BoomNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'boom';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { throw new Error('kaboom'); }
+      override async execute(_batch: Batch<NodeStateBase>): Promise<Map<'success', Batch<NodeStateBase>>> { throw new Error('kaboom'); }
     }
     dispatcher.registerNode(new BoomNode());
     dispatcher.registerDAG({

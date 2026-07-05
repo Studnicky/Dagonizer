@@ -34,8 +34,8 @@
  * output: 'recalled': always routes forward, even on empty recall.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { RecalledContext } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -69,7 +69,7 @@ interface ReasoningCandidate {
   readonly startedAt: string;
 }
 
-export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled'> {
+export class RecallContextNode extends MonadicNode<ArchivistState, 'recalled'> {
   private readonly services: ArchivistServices;
   readonly name = 'recall-context';
   readonly outputs = ['recalled'] as const;
@@ -106,10 +106,11 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled'> {
     if (list.length > max) list.length = max;
   }
 
-  protected override async executeOne(state: ArchivistState) {
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
     const memory = this.services.memory;
-    const currentGraphIri = MemoryStore.stateGraphIri(state.runId).value;
-    const currentTokens   = TextSimilarity.tokenise(state.query);
+    for (const { state } of batch) {
+      const currentGraphIri = MemoryStore.stateGraphIri(state.runId).value;
+      const currentTokens   = TextSimilarity.tokenise(state.query);
 
     // ── Collect every state graph IRI except the current run ──────────────
     // We iterate over all quads, collect unique graph IRIs that start with
@@ -352,7 +353,7 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled'> {
       .filter((p) => p.jaccard >= JACCARD_THRESHOLD_CONTEXT)
       .map((p) => p.graphIri);
 
-    const priorCandidatesFromContext: import('../entities/Book.ts').CandidateType[] = [];
+    const priorCandidatesFromContext: CandidateType[] = [];
     const seenContextIsbns = new Set<string>();
 
     const dagShortlisted = MemoryStore.dagIri('shortlisted');
@@ -406,11 +407,8 @@ export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled'> {
       state.priorCandidates = priorCandidatesFromContext;
     }
 
-    if (summary.length > 0) {
-    } else {
     }
 
-    return NodeOutputBuilder.of('recalled');
+    return RoutedBatchBuilder.of('recalled', batch);
   }
 }
-

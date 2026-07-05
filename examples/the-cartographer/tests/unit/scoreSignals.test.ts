@@ -12,6 +12,8 @@
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { Batch } from '@studnicky/dagonizer';
+import type { MonadicNode, NodeContextType } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
 import { SignalWeight } from '../../entities/SignalWeight.ts';
@@ -59,6 +61,25 @@ class CartographerStateFixture {
   }
 }
 
+const CTX: NodeContextType = {
+  'dagName': 'test',
+  'nodeName': 'score-signals',
+  'signal': new AbortController().signal,
+  'validateOutputs': false,
+  'outputSchemaValidator': null,
+};
+
+async function executeSingle<TOutput extends string>(
+  node: MonadicNode<CartographerState, TOutput>,
+  state: CartographerState,
+): Promise<TOutput> {
+  const routed = await node.execute(Batch.of(state), CTX);
+  for (const [output, batch] of routed) {
+    if (batch.size > 0) return output;
+  }
+  throw new Error(`Node ${node.name} did not route the test item`);
+}
+
 // ── SignalWeight.for ───────────────────────────────────────────────────────────
 
 describe('SignalWeight.for', () => {
@@ -104,9 +125,6 @@ describe('SignalWeight.for', () => {
 describe('ScoreSignalsNode', () => {
   const node = new ScoreSignalsNode();
 
-  // Stub NodeContextType — executeOne only uses state, never context
-  const ctx = {} as Parameters<typeof node['executeOne']>[1];
-
   describe('valid coords + ip + locale body', () => {
     let state: CartographerState;
 
@@ -117,7 +135,7 @@ describe('ScoreSignalsNode', () => {
         'ipAddress': '203.0.113.42',
         'localeTag': 'en-GB',
       });
-      await node['executeOne'](state, ctx);
+      await executeSingle(node, state);
     });
 
     it('emits 3 descriptors', () => {
@@ -153,7 +171,7 @@ describe('ScoreSignalsNode', () => {
 
     before(async () => {
       state = CartographerStateFixture.with({ 'latitude': 0, 'longitude': 0 });
-      await node['executeOne'](state, ctx);
+      await executeSingle(node, state);
     });
 
     it('emits no coords descriptor for (0, 0)', () => {
@@ -167,7 +185,7 @@ describe('ScoreSignalsNode', () => {
 
     before(async () => {
       state = CartographerStateFixture.with({ 'latitude': 200, 'longitude': 45 });
-      await node['executeOne'](state, ctx);
+      await executeSingle(node, state);
     });
 
     it('emits no coords descriptor when lat > 90', () => {
@@ -182,7 +200,7 @@ describe('ScoreSignalsNode', () => {
     before(async () => {
       // 999 is not in the CallingCode table
       state = CartographerStateFixture.with({ 'phone': '+999-555-0100' });
-      await node['executeOne'](state, ctx);
+      await executeSingle(node, state);
     });
 
     it('emits no phone descriptor for an unrecognised calling code', () => {
@@ -197,7 +215,7 @@ describe('ScoreSignalsNode', () => {
     before(async () => {
       // +1 maps to US in CallingCode
       state = CartographerStateFixture.with({ 'phone': '+12025550142' });
-      await node['executeOne'](state, ctx);
+      await executeSingle(node, state);
     });
 
     it('emits a phone descriptor', () => {
@@ -217,7 +235,7 @@ describe('ScoreSignalsNode', () => {
 
     before(async () => {
       state = CartographerStateFixture.with({});
-      await node['executeOne'](state, ctx);
+      await executeSingle(node, state);
     });
 
     it('geoSignals is an empty array', () => {
@@ -238,7 +256,7 @@ describe('ScoreSignalsNode', () => {
         'phone':       '+33612345678',
         'localeTag':   'fr-FR',
       });
-      await node['executeOne'](state, ctx);
+      await executeSingle(node, state);
     });
 
     it('emits 6 descriptors (one per modality)', () => {

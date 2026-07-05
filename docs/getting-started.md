@@ -54,17 +54,18 @@ Requires Node.js 24 or later and TypeScript 5.6 or later with `strict: true`.
 A two-node chain that picks a route at the first node and ends at the second. `DAGBuilder` (from `@studnicky/dagonizer/builder`) is the recommended way to author it: a compile-checked fluent API that catches unwired outputs and invalid routing at compile time, before any schema validation runs. At a glance:
 
 ```ts twoslash
-import { DAGBuilder, NodeStateBase, ScalarNode, NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, DAGBuilder, MonadicNode, NodeStateBase, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 // ---cut---
-class CheckNode extends ScalarNode<NodeStateBase, 'ok' | 'fail'> {
+class CheckNode extends MonadicNode<NodeStateBase, 'ok' | 'fail'> {
   readonly name = 'check';
-  readonly outputs = ['ok', 'fail'] as const;
+  readonly outputs: readonly ('ok' | 'fail')[] = ['ok', 'fail'];
   override get outputSchema(): Record<'ok' | 'fail', SchemaObjectType> {
     return { ok: { type: 'object' }, fail: { type: 'object' } };
   }
-  protected override async executeOne(_state: NodeStateBase) {
-    return NodeOutputBuilder.of<'ok' | 'fail'>('ok');
+  async execute(batch: Batch<NodeStateBase>, context: NodeContextType) {
+    if (context.signal.aborted) return RoutedBatchBuilder.of('fail', batch);
+    return RoutedBatchBuilder.of('ok', batch);
   }
 }
 

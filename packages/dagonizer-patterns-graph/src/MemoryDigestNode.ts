@@ -6,9 +6,10 @@
  * and `applyDigest` (write it back to state).
  */
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { TripleStoreInterface } from '@studnicky/dagonizer/patterns';
-import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { GraphNode } from './GraphNode.js';
 
@@ -20,11 +21,14 @@ export abstract class MemoryDigestNode<
   protected abstract applyDigest(state: TState, digest: TDigest): void;
 
 
-  protected override async executeOne(
-    state: TState,
-  ): Promise<NodeOutputType<'success'>> {
-    const digest = this.composeDigest(this.memory, state);
-    this.applyDigest(state, digest);
-    return NodeOutputBuilder.of('success');
+  override async execute(
+    batch: Batch<TState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'success', TState>> {
+    for (const item of batch) {
+      const digest = this.composeDigest(this.memory, item.state);
+      this.applyDigest(item.state, digest);
+    }
+    return RoutedBatchBuilder.of('success', batch);
   }
 }

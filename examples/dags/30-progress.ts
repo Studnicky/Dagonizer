@@ -5,10 +5,12 @@
  */
 
 import {
+  Batch,
   DAGBuilder,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -25,7 +27,7 @@ export class ProgressState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-export class FetchNode extends ScalarNode<ProgressState, 'done' | 'empty'> {
+export class FetchNode extends MonadicNode<ProgressState, 'done' | 'empty'> {
   readonly name = 'fetch';
   readonly outputs = ['done', 'empty'] as const;
   override get outputSchema(): Record<'done' | 'empty', SchemaObjectType> {
@@ -35,22 +37,29 @@ export class FetchNode extends ScalarNode<ProgressState, 'done' | 'empty'> {
     };
   }
 
-  protected override async executeOne(state: ProgressState) {
-    state.items = ['alpha', 'beta', 'gamma'];
-    return NodeOutputBuilder.of(state.items.length > 0 ? 'done' : 'empty');
+  override async execute(batch: Batch<ProgressState>) {
+    const entries: Array<readonly ['done' | 'empty', Batch<ProgressState>]> = [];
+    for (const item of batch) {
+      item.state.items = ['alpha', 'beta', 'gamma'];
+      const output = NodeOutputBuilder.of(item.state.items.length > 0 ? 'done' : 'empty');
+      entries.push([output.output, Batch.from([item])]);
+    }
+    return RoutedBatchBuilder.from(entries);
   }
 }
 
-export class EnrichNode extends ScalarNode<ProgressState, 'done'> {
+export class EnrichNode extends MonadicNode<ProgressState, 'done'> {
   readonly name = 'enrich';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ProgressState) {
-    state.enriched = state.items.map((item) => `${item}:enriched`);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ProgressState>) {
+    for (const item of batch) {
+      item.state.enriched = item.state.items.map((value) => `${value}:enriched`);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 

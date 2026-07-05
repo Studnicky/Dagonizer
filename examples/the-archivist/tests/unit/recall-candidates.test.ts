@@ -2,7 +2,7 @@
  * recallCandidates: unit tests for the prior-memory recall node.
  *
  * Seeds a MemoryStore with prior runs that shortlisted books, then exercises
- * recallCandidates.runItem across both recall paths:
+ * recallCandidates.execute(Batch.of(state), context) across both recall paths:
  *   Jaccard path (no embedder / embedder failure):
  *     • high-overlap query (Jaccard >= 0.35)  → state.priorCandidates populated
  *     • unrelated query (Jaccard < 0.35)       → state.priorCandidates stays empty
@@ -28,6 +28,8 @@ import { RecallCandidatesNode } from '../../nodes/recallCandidates.ts';
 import { GRAPH_MEMORY, MemoryStore } from '../../memory/MemoryStore.ts';
 import type { ArchivistServices } from '../../services.ts';
 
+import { Batch } from '@studnicky/dagonizer';
+import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
 // ── Deterministic embedder ───────────────────────────────────────────────────
@@ -116,6 +118,15 @@ class RecallCandidatesFixture {
     return new RecallCandidatesNode(services);
   }
 
+  static context() {
+    return NodeContextBuilder.of('test-dag', 'recall-candidates', new AbortController().signal);
+  }
+
+  static async execute(node: RecallCandidatesNode, state: ArchivistState): Promise<void> {
+    const routed = await node.execute(Batch.of(state), RecallCandidatesFixture.context());
+    assert.equal(routed.get('recalled')?.size, 1, 'state routes to recalled');
+  }
+
   static seedPriorRun(
     memory: MemoryStore,
     runId: string,
@@ -161,7 +172,7 @@ void test('recallCandidates: high-overlap query loads prior shortlisted books', 
   state.terms  = ['existentialism', 'fiction', 'philosophy'];
 
   const node = RecallCandidatesFixture.makeNode(memory);
-  await node.runItem(state);
+  await RecallCandidatesFixture.execute(node, state);
 
   assert.equal(state.priorCandidates.length, 3, 'should load 3 prior books');
   assert.equal(
@@ -190,7 +201,7 @@ void test('recallCandidates: unrelated query yields no prior candidates', async 
   state.terms  = ['romance', 'historical', 'fiction'];
 
   const node = RecallCandidatesFixture.makeNode(memory);
-  await node.runItem(state);
+  await RecallCandidatesFixture.execute(node, state);
 
   // Jaccard("romance historical fiction" vs "existentialism science fiction philosophy"):
   // intersection = {"fiction"} = 1; union = 5; Jaccard = 0.2 < 0.35 → no match.
@@ -211,7 +222,7 @@ void test('recallCandidates: skips the current run', async () => {
   state.terms  = ['existentialism', 'science', 'fiction'];
 
   const node = RecallCandidatesFixture.makeNode(memory);
-  await node.runItem(state);
+  await RecallCandidatesFixture.execute(node, state);
 
   assert.equal(state.priorCandidates.length, 0, 'current run must not self-match');
 });
@@ -234,7 +245,7 @@ void test('recallCandidates: deduplicates books seen in multiple runs', async ()
   state.terms  = ['artificial', 'intelligence', 'robots'];
 
   const node = RecallCandidatesFixture.makeNode(memory);
-  await node.runItem(state);
+  await RecallCandidatesFixture.execute(node, state);
 
   const isbns = state.priorCandidates.map((c) => c.book.identity.isbn);
   const uniqueIsbns = new Set(isbns);
@@ -258,7 +269,7 @@ void test('recallCandidates: salvage path, never throws on corrupted memory entr
 
   // Should not throw.
   const node = RecallCandidatesFixture.makeNode(memory);
-  await assert.doesNotReject(() => node.runItem(state));
+  await assert.doesNotReject(() => RecallCandidatesFixture.execute(node, state));
   // Book still materialises with fallback title (isbn).
   assert.equal(state.priorCandidates.length, 1);
   assert.equal(state.priorCandidates[0]?.book.identity.isbn, '0000000099');
@@ -276,7 +287,7 @@ void test('recallCandidates: embedder=null recalls via the Jaccard path', async 
   state.terms = ['space', 'adventure'];
 
   const node = RecallCandidatesFixture.makeNode(memory, null);
-  await node.runItem(state);
+  await RecallCandidatesFixture.execute(node, state);
 
   // With no embedder, recall runs the Jaccard path: the prior candidate is
   // loaded but carries no `cosineSimilarity` note (the cosine-path marker).
@@ -300,7 +311,7 @@ void test('recallCandidates cosine: similar query (cos >= 0.70) loads prior book
   state.terms = ['philosophy', 'being'];
 
   const node = RecallCandidatesFixture.makeNode(memory, embedder);
-  await node.runItem(state);
+  await RecallCandidatesFixture.execute(node, state);
 
   assert.equal(state.priorCandidates.length, 1, 'should load 1 prior book via cosine');
   const cs = state.priorCandidates[0]?.notes?.['cosineSimilarity'];
@@ -321,7 +332,7 @@ void test('recallCandidates cosine: orthogonal query (cos < 0.70) yields no prio
   state.terms = ['science', 'fiction'];
 
   const node = RecallCandidatesFixture.makeNode(memory, embedder);
-  await node.runItem(state);
+  await RecallCandidatesFixture.execute(node, state);
 
   assert.equal(state.priorCandidates.length, 0, 'orthogonal query must not match');
 });
@@ -339,7 +350,7 @@ void test('recallCandidates cosine: embedder throws → falls back to Jaccard pa
   state.terms = ['existentialism', 'philosophy', 'fiction'];
 
   const node = RecallCandidatesFixture.makeNode(memory, embedder);
-  await node.runItem(state);
+  await RecallCandidatesFixture.execute(node, state);
 
   // Jaccard should populate from the prior run.
   assert.equal(state.priorCandidates.length, 1, 'Jaccard fallback should populate');

@@ -174,8 +174,8 @@ recording, and cross-run recall.
 ## Routing concurrent streams — the sink is a DAG
 
 The `{ sink }` option on `CallModelNode` is bound once, per node INSTANCE —
-not per execution. That is deliberate: `CallModelNode.executeOne` wraps
-`this.sink` in a fresh `RoutingStreamSink` on every call, via
+not per execution. That is deliberate: `CallModelNode.execute` wraps
+`this.sink` in fresh `RoutingStreamSink` instances for the batch items it processes, via
 `RoutingStreamSink.of(this.sink, this.routeKey(state), source)`. Each pushed
 `ChatStreamChunkType` (`{delta}`) becomes a self-describing
 `RoutedChatStreamChunkType` at the downstream sink — `{routeKey, delta,

@@ -20,10 +20,8 @@ import type { CartographerState } from '../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../entities/CanonicalEvent.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-event-type-variant-node
 type VariantRoute = CanonicalEventVariant['eventType'];
@@ -47,7 +45,7 @@ const ROUTING_PATH: Readonly<Record<VariantRoute, RoutingPath>> = {
   'delivery-confirmation': 'order',
 };
 
-export class RouteEventTypeNode extends ScalarNode<CartographerState, VariantRoute> {
+export class RouteEventTypeNode extends MonadicNode<CartographerState, VariantRoute> {
   readonly 'name' = 'route-event-type-variant';
   readonly 'outputs' = ['position-ping', 'sensor-reading', 'customs-event', 'facility-scan', 'delivery-confirmation'] as const;
 
@@ -61,7 +59,33 @@ export class RouteEventTypeNode extends ScalarNode<CartographerState, VariantRou
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<VariantRoute>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<VariantRoute, CartographerState>> {
+    const acc = new Map<VariantRoute, ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<VariantRoute, Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private routeItem(state: CartographerState): NodeOutputType<VariantRoute> {
     const raw = state.getMetadata('canonical-event');
     const t = CanonicalEventVariantBuilder.is(raw) ? raw.eventType : state.canonicalVariant.eventType;
 

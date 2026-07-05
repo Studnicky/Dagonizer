@@ -17,12 +17,14 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
   GatherStrategies,
   GatherStrategy,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { GatherExecutionType } from '@studnicky/dagonizer';
@@ -51,20 +53,23 @@ export class IncrementalState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region worker-node
-export class ShoutNode extends ScalarNode<IncrementalState, 'done'> {
+export class ShoutNode extends MonadicNode<IncrementalState, 'done'> {
   readonly name = 'shout';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: IncrementalState) {
-    const word = state.getter.string('word', '?');
-    // Write a scalar to `processed` on the clone. The map gather reads
-    // `processed` off each clone and appends it to the parent's `results`.
-    // (A map gather appends one entry per clone; keep the source field scalar.)
-    state.processed = word.toUpperCase();
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<IncrementalState>) {
+    for (const item of batch) {
+      const state = item.state;
+      const word = state.getter.string('word', '?');
+      // Write a scalar to `processed` on the clone. The map gather reads
+      // `processed` off each clone and appends it to the parent's `results`.
+      // (A map gather appends one entry per clone; keep the source field scalar.)
+      state.processed = word.toUpperCase();
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 // #endregion worker-node

@@ -20,13 +20,11 @@ import { SourcePayloadGuard } from '../entities/SourcePayload.ts';
 import { CanonicalEventVariantBuilder } from '../entities/CanonicalEvent.ts';
 import { TypedPayloadDecoder } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region decode-payload-node
-export class DecodePayloadNode extends ScalarNode<CartographerState, 'decoded' | 'invalid'> {
+export class DecodePayloadNode extends MonadicNode<CartographerState, 'decoded' | 'invalid'> {
   readonly 'name' = 'decode-payload';
   readonly 'outputs' = ['decoded', 'invalid'] as const;
 
@@ -37,7 +35,33 @@ export class DecodePayloadNode extends ScalarNode<CartographerState, 'decoded' |
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'decoded' | 'invalid'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'decoded' | 'invalid', CartographerState>> {
+    const acc = new Map<'decoded' | 'invalid', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = await this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'decoded' | 'invalid', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private async routeItem(state: CartographerState): Promise<NodeOutputType<'decoded' | 'invalid'>> {
     const raw = state.getMetadata('source-payload');
     if (!SourcePayloadGuard.is(raw)) {
       return NodeOutputBuilder.of('invalid');

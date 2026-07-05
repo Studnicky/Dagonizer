@@ -17,13 +17,11 @@ import type { CartographerState } from '../../CartographerState.ts';
 
 import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region decompress-node
-export class DecompressNode extends ScalarNode<CartographerState, 'route-format' | 'invalid'> {
+export class DecompressNode extends MonadicNode<CartographerState, 'route-format' | 'invalid'> {
   readonly 'name' = 'decompress';
   readonly 'outputs' = ['route-format', 'invalid'] as const;
 
@@ -34,15 +32,41 @@ export class DecompressNode extends ScalarNode<CartographerState, 'route-format'
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'route-format' | 'invalid'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'route-format' | 'invalid', CartographerState>> {
+    const acc = new Map<'route-format' | 'invalid', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = await this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'route-format' | 'invalid', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private async routeItem(state: CartographerState): Promise<NodeOutputType<'route-format' | 'invalid'>> {
     try {
       const binary = atob(state.currentSource.payload);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       const ds = new DecompressionStream('gzip');
       const writer = ds.writable.getWriter();
-      void writer.write(bytes);
-      void writer.close();
+      await writer.write(bytes);
+      await writer.close();
       const chunks: Uint8Array[] = [];
       const reader = ds.readable.getReader();
       for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); }

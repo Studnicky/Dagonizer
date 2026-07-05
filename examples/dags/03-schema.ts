@@ -5,10 +5,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import { DAGDocument } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
@@ -17,16 +19,18 @@ import type { SchemaObjectType } from '@studnicky/dagonizer';
 // Node
 // ---------------------------------------------------------------------------
 
-export class EchoNode extends ScalarNode<NodeStateBase, 'success'> {
+export class EchoNode extends MonadicNode<NodeStateBase, 'success'> {
   readonly name = 'echo';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: NodeStateBase) {
-    state.setMetadata('seen', true);
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<NodeStateBase>) {
+    for (const item of batch) {
+      item.state.setMetadata('seen', true);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
   }
 }
 

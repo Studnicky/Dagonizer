@@ -126,28 +126,39 @@ See [DAGBuilder, `.terminal()`](./builder#terminal-name-outcome) and [Phase 09, 
 
 ## Error-routing contract
 
-Nodes never throw past the node boundary. An error condition is a **flow decision**: the node returns `NodeOutputBuilder.of('error', { errors: [...] })` and the DAG routes the `'error'` output to a recovery node or an error terminal. The engine does not intercept throws and reroute them.
+Nodes never throw past the node boundary. An error condition is a **flow decision**: the node returns the failed items on an `'error'` routed sub-batch and the DAG routes that output to a recovery node or an error terminal. The engine does not intercept throws and reroute them.
 
 This means every node that can fail must:
 1. Declare `'error'` (or a domain-specific name like `'salvage'`) as one of its output ports.
-2. Return `NodeOutputBuilder.of('error', ...)` when the failure condition is met.
+2. Return a routed sub-batch on `'error'` when the failure condition is met.
 3. Have that output wired to a downstream placement in the DAG.
 
 ```ts
 // Correct: declare the error port, return it on failure
-class FetchNode extends ScalarNode<MyState, 'success' | 'error'> {
+class FetchNode extends MonadicNode<MyState, 'success' | 'error'> {
   readonly name = 'fetch';
-  readonly outputs = ['success', 'error'] as const;
+  readonly outputs: readonly ('success' | 'error')[] = ['success', 'error'];
 
-  protected async executeOne(state: MyState, context: NodeContextType): Promise<NodeOutputType<'success' | 'error'>> {
-    try {
-      state.result = await fetchData(context.signal);
-      return NodeOutputBuilder.of('success');
-    } catch (err) {
-      return NodeOutputBuilder.of('error', {
-        errors: [NodeErrorBuilder.from('fetchFailed', String(err), 'fetch', false, new Date().toISOString())],
-      });
+  override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
+    return MonadicNode.permissiveSchema(this.outputs);
+  }
+
+  async execute(batch: Batch<MyState>, context: NodeContextType): Promise<RoutedBatchType<'success' | 'error', MyState>> {
+    const succeeded: ItemType<MyState>[] = [];
+    const failed: ItemType<MyState>[] = [];
+    for (const item of batch) {
+      try {
+        item.state.result = await fetchData(context.signal);
+        succeeded.push(item);
+      } catch (err) {
+        item.state.collectError(NodeErrorBuilder.from('fetchFailed', String(err), 'fetch', false, new Date().toISOString()));
+        failed.push(item);
+      }
     }
+    return RoutedBatchBuilder.from([
+      ['success', Batch.from(succeeded)],
+      ['error', Batch.from(failed)],
+    ]);
   }
 }
 

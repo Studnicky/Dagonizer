@@ -6,10 +6,15 @@
  * extract a field, respond. No LLM, no triple store, no HTTP.
  */
 
-import { ScalarNode } from '@studnicky/dagonizer';
+import { MonadicNode } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 export abstract class FlowNode<
   TState extends NodeStateInterface,
   TOutput extends string = string,
-> extends ScalarNode<TState, TOutput> {}
+> extends MonadicNode<TState, TOutput> {
+  override get outputSchema(): Record<TOutput, SchemaObjectType> {
+    return MonadicNode.permissiveSchema(this.outputs);
+  }
+}

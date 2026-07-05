@@ -156,7 +156,7 @@ bridges that gap:
 
 - `CallModelNode`'s constructor accepts `options: { sink?: StreamSinkInterface<RoutedChatStreamChunkType> }`,
   bound once per node instance.
-- On every `executeOne`, the node wraps `this.sink` in a fresh `RoutingStreamSink`
+- During each `execute(batch, context)` call, the node wraps `this.sink` in a fresh `RoutingStreamSink`
   (`RoutingStreamSink.of(downstream, routeKey, source)`) and hands that wrapper
   to `adapter.chatStream(request, wrapper)`.
 - `routeKey` comes from `CallModelNode.routeKey(state)` — `''` by default (a

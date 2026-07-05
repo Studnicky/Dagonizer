@@ -28,13 +28,13 @@
  *   customers in the flow.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
 import type { DispatcherServices } from '../services.ts';
 
-export class ClassifyMessageNode extends ScalarNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'> {
+export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'> {
   readonly name = 'classify-message';
   readonly outputs = ['routine', 'escalate', 'off-topic'] as const;
 
@@ -53,7 +53,36 @@ export class ClassifyMessageNode extends ScalarNode<DispatcherState, 'routine' |
     };
   }
 
-  protected override async executeOne(state: DispatcherState, context: NodeContextType) {
+  override async execute(
+    batch: Batch<DispatcherState>,
+    context: NodeContextType,
+  ): Promise<RoutedBatchType<'routine' | 'escalate' | 'off-topic', DispatcherState>> {
+    const acc = new Map<'routine' | 'escalate' | 'off-topic', ItemType<DispatcherState>[]>();
+
+    for (const item of batch) {
+      const result = await this.routeItem(item.state, context);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'routine' | 'escalate' | 'off-topic', Batch<DispatcherState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private async routeItem(
+    state: DispatcherState,
+    context: NodeContextType,
+  ): Promise<NodeOutputType<'routine' | 'escalate' | 'off-topic'>> {
     // Trolley switch: force human routing regardless of content.
     if (state.humanMode) {
       state.escalationReason = 'Human mode active — all messages routed to operator';
@@ -80,7 +109,10 @@ export class ClassifyMessageNode extends ScalarNode<DispatcherState, 'routine' |
   }
 
   /** LLM classification with conservative escalation on error. */
-  private async classifyViaLlm(state: DispatcherState, context: NodeContextType) {
+  private async classifyViaLlm(
+    state: DispatcherState,
+    context: NodeContextType,
+  ): Promise<NodeOutputType<'routine' | 'escalate' | 'off-topic'>> {
     let intent: 'routine' | 'escalate' | 'off-topic';
     try {
       intent = await this.#services.llm.classify(state.message, state.conversation, context.signal);
@@ -92,7 +124,10 @@ export class ClassifyMessageNode extends ScalarNode<DispatcherState, 'routine' |
   }
 
   /** Shared routing for both the embedder and LLM classification paths. */
-  private route(state: DispatcherState, intent: 'routine' | 'escalate' | 'off-topic') {
+  private route(
+    state: DispatcherState,
+    intent: 'routine' | 'escalate' | 'off-topic',
+  ): NodeOutputType<'routine' | 'escalate' | 'off-topic'> {
     if (intent === 'escalate') {
       state.escalationReason = 'Agent determined this message requires human review.';
       return NodeOutputBuilder.of('escalate');

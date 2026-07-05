@@ -6,11 +6,13 @@
 
 import {
   BackoffStrategyNames,
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
   RetryPolicy,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, NodeContextType, RetryPolicyOptionsType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -47,14 +49,14 @@ export class FetchState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region retry-node
-export class FetchNode extends ScalarNode<FetchState, 'success' | 'error'> {
+export class FetchNode extends MonadicNode<FetchState, 'success' | 'error'> {
   readonly name = 'fetch';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: FetchState, context: NodeContextType) {
+  override async execute(batch: Batch<FetchState>, context: NodeContextType) {
     // #region policy-config
     const policy = RetryPolicy.from({
       'maxAttempts':  5,
@@ -64,16 +66,23 @@ export class FetchNode extends ScalarNode<FetchState, 'success' | 'error'> {
       'retryOn':      [TransientError],             // only retry on this error class
     });
     // #endregion policy-config
-    const downstream = new FlakyDownstream();
-    try {
-      // policy.run() re-invokes downstream.call() until it succeeds or
-      // maxAttempts is reached. The options object passes context.signal so
-      // an abort cancels the wait between retries immediately.
-      state.result = await policy.run(() => downstream.call(), { signal: context.signal });
-      return NodeOutputBuilder.of('success');
-    } catch {
-      return NodeOutputBuilder.of('error');
+    const entries: Array<readonly ['success' | 'error', Batch<FetchState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      const downstream = new FlakyDownstream();
+      try {
+        // policy.run() re-invokes downstream.call() until it succeeds or
+        // maxAttempts is reached. The options object passes context.signal so
+        // an abort cancels the wait between retries immediately.
+        state.result = await policy.run(() => downstream.call(), { signal: context.signal });
+        const output = NodeOutputBuilder.of('success');
+        entries.push([output.output, Batch.from([item])]);
+      } catch {
+        const output = NodeOutputBuilder.of('error');
+        entries.push([output.output, Batch.from([item])]);
+      }
     }
+    return RoutedBatchBuilder.from(entries);
   }
 }
 // #endregion retry-node

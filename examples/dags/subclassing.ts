@@ -5,9 +5,11 @@
  */
 
 import {
+  Batch,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType, JsonValueType } from '@studnicky/dagonizer/entities';
@@ -81,7 +83,9 @@ export class RestoredState extends NodeStateBase {
     const snap = state.snapshot();
     const restored = RestoredState.restore(snap);
     // restored is RestoredState (not NodeStateBase)
-    void restored;
+    if (!(restored instanceof RestoredState)) {
+      throw new Error('restore did not return RestoredState');
+    }
   }
 }
 // #endregion static-restore
@@ -103,23 +107,29 @@ export class ApiState extends NodeStateBase {
   }
 }
 
-export class ApiNode extends ScalarNode<ApiState, 'success' | 'retry' | 'salvage'> {
+export class ApiNode extends MonadicNode<ApiState, 'success' | 'retry' | 'salvage'> {
   readonly name    = 'api';
   readonly outputs = ['success', 'retry', 'salvage'] as const;
   override get outputSchema(): Record<'success' | 'retry' | 'salvage', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'retry': { 'type': 'object' }, 'salvage': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ApiState, context: NodeContextType) {
-    try {
-      // Stub: production code would call an external service here.
-      state.data = { ok: true };
-      state.clearAttempts(context.nodeName);
-      return NodeOutputBuilder.of('success');
-    } catch {
-      const canRetry = state.withinRetryBudget(context.nodeName, 3);
-      return NodeOutputBuilder.of(canRetry ? 'retry' : 'salvage');
+  override async execute(batch: Batch<ApiState>, context: NodeContextType) {
+    const entries: Array<readonly ['success' | 'retry' | 'salvage', Batch<ApiState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      try {
+        // Stub: production code would call an external service here.
+        state.data = { ok: true };
+        state.clearAttempts(context.nodeName);
+        entries.push([NodeOutputBuilder.of('success').output, Batch.from([item])]);
+      } catch {
+        const canRetry = state.withinRetryBudget(context.nodeName, 3);
+        const output = NodeOutputBuilder.of(canRetry ? 'retry' : 'salvage');
+        entries.push([output.output, Batch.from([item])]);
+      }
     }
+    return RoutedBatchBuilder.from(entries);
   }
 }
 // #endregion retry-budget-node

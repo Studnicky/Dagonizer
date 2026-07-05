@@ -6,10 +6,12 @@
 
 // #region imports
 import {
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
@@ -23,35 +25,45 @@ export class ChatState extends NodeStateBase {
 // #endregion state
 
 // #region node
-export class ClassifyNode extends ScalarNode<ChatState, 'on_topic' | 'off_topic'> {
+export class ClassifyNode extends MonadicNode<ChatState, 'on_topic' | 'off_topic'> {
   readonly name = 'classify';
   readonly outputs = ['on_topic', 'off_topic'] as const;
   override get outputSchema(): Record<'on_topic' | 'off_topic', SchemaObjectType> {
     return { 'on_topic': { 'type': 'object' }, 'off_topic': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ChatState) {
-    // Pick an output key based on input content; the DAG placement
-    // routes that key to the next node name.
-    state.topic = state.input.toLowerCase().includes('weather')
-      ? 'off_topic'
-      : 'on_topic';
-    return NodeOutputBuilder.of(state.topic);
+  override async execute(batch: Batch<ChatState>) {
+    const entries: Array<readonly ['on_topic' | 'off_topic', Batch<ChatState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      // Pick an output key based on input content; the DAG placement routes
+      // matching batch items to the next node name.
+      state.topic = state.input.toLowerCase().includes('weather')
+        ? 'off_topic'
+        : 'on_topic';
+      const output = NodeOutputBuilder.of(state.topic);
+      for (const error of output.errors) state.collectError(error);
+      entries.push([output.output, Batch.from([item])]);
+    }
+    return RoutedBatchBuilder.from(entries);
   }
 }
 
-export class RespondNode extends ScalarNode<ChatState, 'success'> {
+export class RespondNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'respond';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ChatState) {
-    state.reply = state.topic === 'on_topic'
-      ? `Echo: ${state.input}`
-      : `I only talk about coding, not the weather.`;
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<ChatState>) {
+    for (const item of batch) {
+      const state = item.state;
+      state.reply = state.topic === 'on_topic'
+        ? `Echo: ${state.input}`
+        : `I only talk about coding, not the weather.`;
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
   }
 }
 // #endregion node

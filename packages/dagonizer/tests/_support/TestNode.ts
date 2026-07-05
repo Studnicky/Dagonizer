@@ -8,9 +8,11 @@
  */
 
 import type { NodeInterface, SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
+import type { ItemType } from '../../src/entities/batch/Item.js';
+import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 
@@ -37,7 +39,7 @@ export class TestNode {
     const first = outputs[0];
     const defaultOutput = first !== undefined ? first : '';
 
-    class MakeNode extends ScalarNode<TState, string> {
+    class MakeNode extends MonadicNode<TState, string> {
       override readonly name = name;
       override readonly outputs = outputs;
 
@@ -47,12 +49,28 @@ export class TestNode {
         return schema;
       }
 
-      override async executeOne(
-        state: TState,
+      override async execute(
+        batch: Batch<TState>,
         context: NodeContextType,
-      ): Promise<NodeOutputType<string>> {
-        const output = exec !== undefined ? await exec(state, context) : defaultOutput;
-        return NodeOutputBuilder.of(output);
+      ): Promise<RoutedBatchType<string, TState>> {
+        const routedItems = new Map<string, ItemType<TState>[]>();
+        for (const item of batch) {
+          const output = exec !== undefined ? await exec(item.state, context) : defaultOutput;
+          const result = NodeOutputBuilder.of(output);
+          for (const error of result.errors) item.state.collectError(error);
+          const bucket = routedItems.get(result.output);
+          if (bucket !== undefined) {
+            bucket.push(item);
+          } else {
+            routedItems.set(result.output, [item]);
+          }
+        }
+
+        const routed = new Map<string, Batch<TState>>();
+        for (const [output, items] of routedItems) {
+          routed.set(output, Batch.from(items));
+        }
+        return routed;
       }
     }
 

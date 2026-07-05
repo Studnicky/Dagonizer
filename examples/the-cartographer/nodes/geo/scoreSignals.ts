@@ -31,15 +31,16 @@ import { SignalWeight } from '../../entities/SignalWeight.ts';
 import { CallingCode } from '../../geo/CallingCode.ts';
 
 import {
-  NodeOutputBuilder,
-  ScalarNode,
+  MonadicNode,
+  RoutedBatchBuilder,
+  type Batch,
   type NodeContextType,
-  type NodeOutputType,
+  type RoutedBatchType,
   type SchemaObjectType,
 } from '@studnicky/dagonizer';
 
 // #region score-signals-node
-export class ScoreSignalsNode extends ScalarNode<CartographerState, 'scored'> {
+export class ScoreSignalsNode extends MonadicNode<CartographerState, 'scored'> {
   readonly 'name' = 'score-signals';
   readonly 'outputs' = ['scored'] as const;
 
@@ -49,11 +50,12 @@ export class ScoreSignalsNode extends ScalarNode<CartographerState, 'scored'> {
     };
   }
 
-  protected override async executeOne(
-    state: CartographerState,
+  override async execute(
+    batch: Batch<CartographerState>,
     _context: NodeContextType,
-  ): Promise<NodeOutputType<'scored'>> {
-    const body = state.canonical.body;
+  ): Promise<RoutedBatchType<'scored', CartographerState>> {
+    for (const item of batch) {
+      const body = item.state.canonical.body;
 
     const lat = body.latitude;
     const lng = body.longitude;
@@ -126,9 +128,10 @@ export class ScoreSignalsNode extends ScalarNode<CartographerState, 'scored'> {
       }));
     }
 
-    state.geoSignals = descriptors;
+      item.state.geoSignals = descriptors;
+    }
 
-    return NodeOutputBuilder.of('scored');
+    return RoutedBatchBuilder.of('scored', batch);
   }
 }
 

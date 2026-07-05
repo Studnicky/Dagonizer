@@ -8,8 +8,8 @@
  * their vectors.
  */
 
-import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
-  ScalarNode,
+import { Batch, DAG_CONTEXT, MonadicNode, NodeOutputBuilder, NodeStateBase,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { EmbedderInterface } from '@studnicky/dagonizer/adapter';
@@ -53,34 +53,40 @@ export class VectorSimilarity {
 // Nodes
 // ---------------------------------------------------------------------------
 
-export class EmbedNode extends ScalarNode<EmbedderState, 'done'> {
+export class EmbedNode extends MonadicNode<EmbedderState, 'done'> {
   readonly name = 'embed';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: EmbedderState) {
-    if (state.embedder === null) throw new Error('embed: embedder not set');
-    const [vecA, vecB] = await Promise.all([
-      state.embedder.embed(state.textA),
-      state.embedder.embed(state.textB),
-    ]);
-    state.vectorA = vecA;
-    state.vectorB = vecB;
-    state.similarity = VectorSimilarity.cosine(vecA, vecB);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<EmbedderState>) {
+    await Promise.all(batch.items().map(async (item) => {
+      const state = item.state;
+      if (state.embedder === null) throw new Error('embed: embedder not set');
+      const [vecA, vecB] = await Promise.all([
+        state.embedder.embed(state.textA),
+        state.embedder.embed(state.textB),
+      ]);
+      state.vectorA = vecA;
+      state.vectorB = vecB;
+      state.similarity = VectorSimilarity.cosine(vecA, vecB);
+    }));
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 
-export class ReportNode extends ScalarNode<EmbedderState, 'done'> {
+export class ReportNode extends MonadicNode<EmbedderState, 'done'> {
   readonly name = 'report';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: EmbedderState) {
-    process.stdout.write(`  similarity("${state.textA}", "${state.textB}") = ${state.similarity.toFixed(4)}\n`);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<EmbedderState>) {
+    for (const item of batch) {
+      const state = item.state;
+      process.stdout.write(`  similarity("${state.textA}", "${state.textB}") = ${state.similarity.toFixed(4)}\n`);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 

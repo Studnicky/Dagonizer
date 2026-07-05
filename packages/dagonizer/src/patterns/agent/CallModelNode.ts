@@ -19,10 +19,13 @@ import type { LlmAdapterInterface } from '../../contracts/LlmAdapterInterface.js
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { NullStreamSink } from '../../contracts/NullStreamSink.js';
 import type { StreamSinkInterface } from '../../contracts/StreamSinkInterface.js';
-import { ScalarNode } from '../../core/ScalarNode.js';
+import { MonadicNode } from '../../core/MonadicNode.js';
 import type { ChatRequestType } from '../../entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../../entities/adapter/ChatResponse.js';
 import type { RoutedChatStreamChunkType } from '../../entities/adapter/RoutedChatStreamChunk.js';
+import { Batch } from '../../entities/batch/Batch.js';
+import type { ItemType } from '../../entities/batch/Item.js';
+import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
 import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
@@ -32,13 +35,13 @@ import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class CallModelNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'text' | 'tools' | 'mixed' | 'error'> {
+> extends MonadicNode<TState, 'text' | 'tools' | 'mixed' | 'error'> {
   readonly outputs = ['text', 'tools', 'mixed', 'error'] as const;
 
   /**
    * Bound per node INSTANCE, but every chunk that reaches it is
-   * self-describing: `executeOne` wraps `this.sink` in a fresh
-   * `RoutingStreamSink` per execution, stamping each chunk with
+   * self-describing: `execute` wraps `this.sink` in a fresh
+   * `RoutingStreamSink` for each item execution, stamping each chunk with
    * `routeKey(state)` and the `{dagName, nodeName}` source. One shared sink
    * — for example a `StreamChannel` feeding a routing DAG that scatters by
    * `routeKey` — correctly demultiplexes concurrent runs on a single node
@@ -99,32 +102,55 @@ export abstract class CallModelNode<
     context: NodeContextType,
   ): void;
 
-  protected override async executeOne(
-    state: TState,
+  override async execute(
+    batch: Batch<TState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<'text' | 'tools' | 'mixed' | 'error'>> {
-    try {
-      const adapter = this.resolveAdapter(state, context);
-      const request = this.getRequest(state, context);
-      const source = { 'dagName': context.dagName, 'nodeName': context.nodeName };
-      const routed = RoutingStreamSink.of(this.sink, this.routeKey(state), source);
-      const response = await adapter.chatStream(request, routed);
-      this.storeResponse(state, response, context);
-      return NodeOutputBuilder.of(response.message.variant);
-    } catch (cause) {
-      const error = DAGError.coerce(cause);
-      const recoverable = cause instanceof LlmError ? cause.classification.retryable : true;
-      return NodeOutputBuilder.of('error', {
-        'errors': [
-          NodeErrorBuilder.from(
-            'modelCallFailed',
-            error.message,
-            'CallModelNode.executeOne',
-            recoverable,
-            new Date().toISOString(),
-          ),
-        ],
-      });
+  ): Promise<RoutedBatchType<'text' | 'tools' | 'mixed' | 'error', TState>> {
+    const acc = new Map<'text' | 'tools' | 'mixed' | 'error', ItemType<TState>[]>();
+
+    for (const item of batch) {
+      const state = item.state;
+      let output: NodeOutputType<'text' | 'tools' | 'mixed' | 'error'>;
+
+      try {
+        const adapter = this.resolveAdapter(state, context);
+        const request = this.getRequest(state, context);
+        const source = { 'dagName': context.dagName, 'nodeName': context.nodeName };
+        const routed = RoutingStreamSink.of(this.sink, this.routeKey(state), source);
+        const response = await adapter.chatStream(request, routed);
+        this.storeResponse(state, response, context);
+        output = NodeOutputBuilder.of(response.message.variant);
+      } catch (cause) {
+        const error = DAGError.coerce(cause);
+        const recoverable = cause instanceof LlmError ? cause.classification.retryable : true;
+        output = NodeOutputBuilder.of('error', {
+          'errors': [
+            NodeErrorBuilder.from(
+              'modelCallFailed',
+              error.message,
+              'CallModelNode.execute',
+              recoverable,
+              new Date().toISOString(),
+            ),
+          ],
+        });
+      }
+
+      for (const error of output.errors) {
+        state.collectError(error);
+      }
+      const bucket = acc.get(output.output);
+      if (bucket !== undefined) {
+        bucket.push(item);
+      } else {
+        acc.set(output.output, [item]);
+      }
     }
+
+    const routed = new Map<'text' | 'tools' | 'mixed' | 'error', Batch<TState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
   }
 }

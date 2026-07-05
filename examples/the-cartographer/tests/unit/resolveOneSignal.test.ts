@@ -1,15 +1,16 @@
 /**
  * Unit tests for the per-concept geo resolver nodes.
  *
- * Each node is tested via a thin public-proxy subclass (widening the protected
- * executeOne to public), with fake DI transports that return canned outcomes
- * for ip/address nodes. No DAG engine or real network calls are involved.
+ * Each node is tested through the public batch execution contract, with fake DI
+ * transports that return canned outcomes for ip/address nodes. No DAG engine or
+ * real network calls are involved.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer/types';
+import { Batch } from '@studnicky/dagonizer';
+import type { MonadicNode, NodeContextType } from '@studnicky/dagonizer';
 import type { GeoLookupOutcomeType } from '../../errors/GeoLookupOutcome.ts';
 import type { GeoCandidate } from '../../entities/GeoCandidate.ts';
 import type { IpGeolocator } from '../../contracts/IpGeolocator.ts';
@@ -92,73 +93,6 @@ class FakeAddressGeocoder implements AddressGeocoder {
 }
 
 // ---------------------------------------------------------------------------
-// Public proxy subclasses (widening protected executeOne)
-// ---------------------------------------------------------------------------
-
-class PublicResolveCoordsNode extends ResolveCoordsNode {
-  public override executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'resolved'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicResolveLocaleNode extends ResolveLocaleNode {
-  public override executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'resolved'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicResolveCodeNode extends ResolveCodeNode {
-  public override executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'resolved'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicResolvePhoneNode extends ResolvePhoneNode {
-  public override executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'resolved'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicResolveNoneNode extends ResolveNoneNode {
-  public override executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'resolved'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicResolveIpNode extends ResolveIpNode {
-  public override executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'resolved'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicResolveAddressNode extends ResolveAddressNode {
-  public override executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'resolved'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Shared test context
 // ---------------------------------------------------------------------------
 
@@ -170,6 +104,17 @@ const CTX: NodeContextType = {
   'outputSchemaValidator': null,
 };
 
+async function executeSingle<TOutput extends string>(
+  node: MonadicNode<CartographerState, TOutput>,
+  state: CartographerState,
+): Promise<TOutput> {
+  const routed = await node.execute(Batch.of(state), CTX);
+  for (const [output, batch] of routed) {
+    if (batch.size > 0) return output;
+  }
+  throw new Error(`Node ${node.name} did not route the test item`);
+}
+
 // ---------------------------------------------------------------------------
 // Test suites
 // ---------------------------------------------------------------------------
@@ -177,9 +122,9 @@ const CTX: NodeContextType = {
 describe('ResolveNoneNode — fallback resolver', () => {
   it('always yields source:"none" weight:0', async () => {
     const state = new CartographerState();
-    const node = new PublicResolveNoneNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const node = new ResolveNoneNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'none');
     assert.equal(state.candidate.weight, 0);
   });
@@ -188,9 +133,9 @@ describe('ResolveNoneNode — fallback resolver', () => {
 describe('ResolveCoordsNode — non-GeoSignalDescriptor metadata', () => {
   it('yields source:"coords" weight:0 when metadata is missing', async () => {
     const state = new CartographerState();
-    const node = new PublicResolveCoordsNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const node = new ResolveCoordsNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'coords');
     assert.equal(state.candidate.weight, 0);
   });
@@ -198,9 +143,9 @@ describe('ResolveCoordsNode — non-GeoSignalDescriptor metadata', () => {
   it('yields source:"coords" weight:0 when metadata is a plain string', async () => {
     const state = new CartographerState();
     state.setMetadata('geo-signal', 'not-a-descriptor');
-    const node = new PublicResolveCoordsNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const node = new ResolveCoordsNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'coords');
     assert.equal(state.candidate.weight, 0);
   });
@@ -213,9 +158,9 @@ describe('ResolveCodeNode — code kind', () => {
       'kind': 'code', 'weight': 0.8, 'countryCode': 'DE',
     });
     state.setMetadata('geo-signal', descriptor);
-    const node = new PublicResolveCodeNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const node = new ResolveCodeNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'code');
     assert.equal(state.candidate.country, 'DE');
     assert.equal(state.candidate.weight, 0.8);
@@ -228,9 +173,9 @@ describe('ResolveCodeNode — code kind', () => {
       'kind': 'code', 'weight': 0.5, 'countryCode': 'ZZ',
     });
     state.setMetadata('geo-signal', descriptor);
-    const node = new PublicResolveCodeNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const node = new ResolveCodeNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'code');
     assert.equal(state.candidate.weight, 0);
   });
@@ -244,9 +189,9 @@ describe('ResolvePhoneNode — phone kind', () => {
       'kind': 'phone', 'weight': 0.6, 'phone': '+4915123456789',
     });
     state.setMetadata('geo-signal', descriptor);
-    const node = new PublicResolvePhoneNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const node = new ResolvePhoneNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'phone');
     assert.equal(state.candidate.weight, 0.6);
   });
@@ -258,9 +203,9 @@ describe('ResolvePhoneNode — phone kind', () => {
       'kind': 'phone', 'weight': 0.6, 'phone': '',
     });
     state.setMetadata('geo-signal', descriptor);
-    const node = new PublicResolvePhoneNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const node = new ResolvePhoneNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'phone');
     assert.equal(state.candidate.weight, 0);
   });
@@ -273,9 +218,9 @@ describe('ResolveLocaleNode — locale kind', () => {
       'kind': 'locale', 'weight': 0.4, 'localeTag': 'de-DE',
     });
     state.setMetadata('geo-signal', descriptor);
-    const node = new PublicResolveLocaleNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const node = new ResolveLocaleNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'locale');
     assert.equal(state.candidate.weight, 0.4);
     assert.equal(state.candidate.country, 'DE');
@@ -290,11 +235,11 @@ describe('ResolveIpNode — ip kind', () => {
     });
     state.setMetadata('geo-signal', descriptor);
     const fakeOutcome = GeoLookupOutcome.resolved(GeoCandidateFixture.for('US'));
-    const node = new PublicResolveIpNode(
+    const node = new ResolveIpNode(
       new FakeIpGeolocator(fakeOutcome),
     );
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'ip');
     assert.equal(state.candidate.country, 'US');
     assert.equal(state.candidate.weight, 0.9);
@@ -307,11 +252,11 @@ describe('ResolveIpNode — ip kind', () => {
     });
     state.setMetadata('geo-signal', descriptor);
     const fakeOutcome = GeoLookupOutcome.resolved(GeoCandidateFixture.unresolved());
-    const node = new PublicResolveIpNode(
+    const node = new ResolveIpNode(
       new FakeIpGeolocator(fakeOutcome),
     );
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'ip');
     assert.equal(state.candidate.weight, 0);
   });
@@ -324,10 +269,10 @@ describe('ResolveIpNode — ip kind', () => {
     state.setMetadata('geo-signal', descriptor);
     const err = GeoErrorRecord.capture('ip-geolocate', new Error('timeout'), '1.2.3.4');
     const fakeOutcome = GeoLookupOutcome.failed(GeoCandidateFixture.unresolved(), err);
-    const node = new PublicResolveIpNode(
+    const node = new ResolveIpNode(
       new FakeIpGeolocator(fakeOutcome),
     );
-    await node.executeOne(state, CTX);
+    await executeSingle(node, state);
     assert.equal(state.capturedErrors.length, 1);
     assert.equal(state.capturedErrors[0]?.source, 'ip-geolocate');
   });
@@ -343,11 +288,11 @@ describe('ResolveAddressNode — address kind', () => {
     const fakeOutcome = GeoLookupOutcome.resolved(
       GeoCandidateFixture.for('US', { 'modality': 'address' }),
     );
-    const node = new PublicResolveAddressNode(
+    const node = new ResolveAddressNode(
       new FakeAddressGeocoder(fakeOutcome),
     );
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'address');
     assert.equal(state.candidate.country, 'US');
     assert.equal(state.candidate.weight, 0.75);
@@ -364,10 +309,10 @@ describe('ResolveAddressNode — address kind', () => {
       GeoCandidateFixture.for('', { 'resolved': false }),
       err,
     );
-    const node = new PublicResolveAddressNode(
+    const node = new ResolveAddressNode(
       new FakeAddressGeocoder(fakeOutcome),
     );
-    await node.executeOne(state, CTX);
+    await executeSingle(node, state);
     assert.equal(state.capturedErrors.length, 1);
     assert.equal(state.capturedErrors[0]?.source, 'address-geocode');
   });
@@ -381,9 +326,9 @@ describe('ResolveCoordsNode — coords kind', () => {
       'kind': 'coords', 'weight': 1.0, 'lat': 51.5074, 'lng': -0.1278,
     });
     state.setMetadata('geo-signal', descriptor);
-    const node = new PublicResolveCoordsNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'resolved');
+    const node = new ResolveCoordsNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'resolved');
     assert.equal(state.candidate.source, 'coords');
     // Weight is non-zero: the table (or fallback) resolved something
     assert.ok(state.candidate.weight > 0, 'weight should be positive for a resolvable coordinate');

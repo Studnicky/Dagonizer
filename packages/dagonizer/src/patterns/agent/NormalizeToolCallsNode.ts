@@ -15,8 +15,11 @@
  */
 
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
-import { ScalarNode } from '../../core/ScalarNode.js';
+import { MonadicNode } from '../../core/MonadicNode.js';
 import type { ToolCallType } from '../../entities/adapter/ToolCall.js';
+import { Batch } from '../../entities/batch/Batch.js';
+import type { ItemType } from '../../entities/batch/Item.js';
+import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
 import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
@@ -26,7 +29,7 @@ import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class NormalizeToolCallsNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'valid' | 'empty' | 'error'> {
+> extends MonadicNode<TState, 'valid' | 'empty' | 'error'> {
   readonly outputs = ['valid', 'empty', 'error'] as const;
 
   override get outputSchema(): Record<'valid' | 'empty' | 'error', SchemaObjectType> {
@@ -50,52 +53,75 @@ export abstract class NormalizeToolCallsNode<
     context: NodeContextType,
   ): void;
 
-  protected override async executeOne(
-    state: TState,
+  override async execute(
+    batch: Batch<TState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<'valid' | 'empty' | 'error'>> {
-    try {
-      const calls = this.getToolCalls(state, context);
-      if (calls.length === 0) {
-        return NodeOutputBuilder.of('empty');
-      }
+  ): Promise<RoutedBatchType<'valid' | 'empty' | 'error', TState>> {
+    const acc = new Map<'valid' | 'empty' | 'error', ItemType<TState>[]>();
 
-      const valid = calls.filter(
-        (c) =>
-          typeof c.id === 'string' && c.id.length > 0 &&
-          typeof c.name === 'string' && c.name.length > 0 &&
-          typeof c.arguments === 'object' && c.arguments !== null,
-      );
+    for (const item of batch) {
+      const state = item.state;
+      let output: NodeOutputType<'valid' | 'empty' | 'error'>;
 
-      if (valid.length === 0) {
-        return NodeOutputBuilder.of('error', {
+      try {
+        const calls = this.getToolCalls(state, context);
+        if (calls.length === 0) {
+          output = NodeOutputBuilder.of('empty');
+        } else {
+          const valid = calls.filter(
+            (c) =>
+              typeof c.id === 'string' && c.id.length > 0 &&
+              typeof c.name === 'string' && c.name.length > 0 &&
+              typeof c.arguments === 'object' && c.arguments !== null,
+          );
+
+          if (valid.length === 0) {
+            output = NodeOutputBuilder.of('error', {
+              'errors': [
+                NodeErrorBuilder.from(
+                  'normalizeToolCallsAllInvalid',
+                  `All ${String(calls.length)} tool call(s) were missing required fields`,
+                  'NormalizeToolCallsNode.execute',
+                  false,
+                  new Date().toISOString(),
+                ),
+              ],
+            });
+          } else {
+            this.writeNormalized(state, valid, context);
+            output = NodeOutputBuilder.of('valid');
+          }
+        }
+      } catch (cause) {
+        const error = DAGError.coerce(cause);
+        output = NodeOutputBuilder.of('error', {
           'errors': [
             NodeErrorBuilder.from(
-              'normalizeToolCallsAllInvalid',
-              `All ${String(calls.length)} tool call(s) were missing required fields`,
-              'NormalizeToolCallsNode.executeOne',
-              false,
+              'normalizeToolCallsFailed',
+              error.message,
+              'NormalizeToolCallsNode.execute',
+              true,
               new Date().toISOString(),
             ),
           ],
         });
       }
 
-      this.writeNormalized(state, valid, context);
-      return NodeOutputBuilder.of('valid');
-    } catch (cause) {
-      const error = DAGError.coerce(cause);
-      return NodeOutputBuilder.of('error', {
-        'errors': [
-          NodeErrorBuilder.from(
-            'normalizeToolCallsFailed',
-            error.message,
-            'NormalizeToolCallsNode.executeOne',
-            true,
-            new Date().toISOString(),
-          ),
-        ],
-      });
+      for (const error of output.errors) {
+        state.collectError(error);
+      }
+      const bucket = acc.get(output.output);
+      if (bucket !== undefined) {
+        bucket.push(item);
+      } else {
+        acc.set(output.output, [item]);
+      }
     }
+
+    const routed = new Map<'valid' | 'empty' | 'error', Batch<TState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
   }
 }

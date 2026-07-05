@@ -8,8 +8,8 @@
  * ToolInterface and routes on the result.
  */
 
-import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
-  ScalarNode,
+import { Batch, DAG_CONTEXT, MonadicNode, NodeOutputBuilder, NodeStateBase,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { LlmAdapterInterface, ToolCallType, ToolDefinitionType } from '@studnicky/dagonizer/adapter';
@@ -97,116 +97,137 @@ export class ToolUseState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 /** Call the adapter; inspect the response for tool calls. */
-export class CallLlmNode extends ScalarNode<ToolUseState, 'tool_call' | 'text'> {
+export class CallLlmNode extends MonadicNode<ToolUseState, 'tool_call' | 'text'> {
   readonly name = 'callLlm';
   readonly outputs = ['tool_call', 'text'] as const;
   override get outputSchema(): Record<'tool_call' | 'text', SchemaObjectType> {
     return { 'tool_call': { 'type': 'object' }, 'text': { 'type': 'object' } };
   }
-  protected override async executeOne(state: ToolUseState) {
-    if (state.adapter === null) throw new Error('callLlm: adapter not set');
+  override async execute(batch: Batch<ToolUseState>, _context?: unknown) {
+    const entries: Array<readonly ['tool_call' | 'text', Batch<ToolUseState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      if (state.adapter === null) throw new Error('callLlm: adapter not set');
 
-    const tools = state.registry.definitions();
-    const request = ChatRequestBuilder.from({
-      'messages': [
-        { 'role': 'user', 'content': state.question },
-      ],
-      'tools':      [...tools],
-      'toolChoice': { 'type': 'required' },
-    });
+      const tools = state.registry.definitions();
+      const request = ChatRequestBuilder.from({
+        'messages': [
+          { 'role': 'user', 'content': state.question },
+        ],
+        'tools':      [...tools],
+        'toolChoice': { 'type': 'required' },
+      });
 
-    const response = await state.adapter.chat(request);
+      const response = await state.adapter.chat(request);
 
-    if (response.message.variant === 'tools') {
-      // Native tool_calls channel: adapter returned structured ToolCall[]
-      const firstCall = response.message.toolCalls[0];
-      if (firstCall !== undefined) {
-        state.dispatchedTool = firstCall.name;
-        // StoreInterface as serialized text for codec demo path (codec handles prose too)
-        state.toolCallRaw = JSON.stringify({ tool_calls: [{ name: firstCall.name, arguments: firstCall.arguments }] });
-        return NodeOutputBuilder.of('tool_call');
+      if (response.message.variant === 'tools') {
+        // Native tool_calls channel: adapter returned structured ToolCall[]
+        const firstCall = response.message.toolCalls[0];
+        if (firstCall !== undefined) {
+          state.dispatchedTool = firstCall.name;
+          // Store as serialized text for codec demo path (codec handles prose too)
+          state.toolCallRaw = JSON.stringify({ tool_calls: [{ name: firstCall.name, arguments: firstCall.arguments }] });
+          entries.push([NodeOutputBuilder.of('tool_call').output, Batch.from([item])]);
+          continue;
+        }
       }
-    }
 
-    if (response.message.variant === 'text') {
-      // Text-channel fallback: adapter returned prose with embedded tool JSON.
-      // ToolCallCodec.decode extracts { tool_calls: [...] } from arbitrary prose.
-      state.toolCallRaw = response.message.content;
-      const calls: ToolCallType[] = ToolCallCodec.decode(response.message.content, 'demo');
-      if (calls.length > 0 && calls[0] !== undefined) {
-        state.dispatchedTool = calls[0].name;
-        return NodeOutputBuilder.of('tool_call');
+      if (response.message.variant === 'text') {
+        // Text-channel fallback: adapter returned prose with embedded tool JSON.
+        // ToolCallCodec.decode extracts { tool_calls: [...] } from arbitrary prose.
+        state.toolCallRaw = response.message.content;
+        const calls: ToolCallType[] = ToolCallCodec.decode(response.message.content, 'demo');
+        if (calls.length > 0 && calls[0] !== undefined) {
+          state.dispatchedTool = calls[0].name;
+          entries.push([NodeOutputBuilder.of('tool_call').output, Batch.from([item])]);
+          continue;
+        }
       }
-    }
 
-    // No tool call produced — treat as plain text answer
-    state.finalAnswer = response.message.variant === 'text' ? response.message.content : '(no text)';
-    return NodeOutputBuilder.of('text');
+      // No tool call produced — treat as plain text answer
+      state.finalAnswer = response.message.variant === 'text' ? response.message.content : '(no text)';
+      entries.push([NodeOutputBuilder.of('text').output, Batch.from([item])]);
+    }
+    return RoutedBatchBuilder.from(entries);
   }
 }
 
 /** Dispatch the tool call to the registered ToolInterface and collect the result. */
-export class DispatchToolNode extends ScalarNode<ToolUseState, 'done' | 'error'> {
+export class DispatchToolNode extends MonadicNode<ToolUseState, 'done' | 'error'> {
   readonly name = 'dispatchTool';
   readonly outputs = ['done', 'error'] as const;
   override get outputSchema(): Record<'done' | 'error', SchemaObjectType> {
     return { 'done': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
-  protected override async executeOne(state: ToolUseState) {
-    // Decode from raw text (works for both native JSON and prose-wrapped)
-    const calls: ToolCallType[] = ToolCallCodec.decode(state.toolCallRaw, 'dispatch');
+  override async execute(batch: Batch<ToolUseState>, _context?: unknown) {
+    const entries: Array<readonly ['done' | 'error', Batch<ToolUseState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      // Decode from raw text (works for both native JSON and prose-wrapped)
+      const calls: ToolCallType[] = ToolCallCodec.decode(state.toolCallRaw, 'dispatch');
 
-    const [call] = calls;
-    if (call === undefined) {
-      state.finalAnswer = 'Error: could not decode tool call from adapter response.';
-      return NodeOutputBuilder.of('error');
-    }
-    const tool = state.registry.resolve(call.name);
-    if (tool === null) {
-      state.finalAnswer = `Error: unknown tool "${call.name}"`;
-      return NodeOutputBuilder.of('error');
-    }
+      const [call] = calls;
+      if (call === undefined) {
+        state.finalAnswer = 'Error: could not decode tool call from adapter response.';
+        entries.push([NodeOutputBuilder.of('error').output, Batch.from([item])]);
+        continue;
+      }
+      const tool = state.registry.resolve(call.name);
+      if (tool === null) {
+        state.finalAnswer = `Error: unknown tool "${call.name}"`;
+        entries.push([NodeOutputBuilder.of('error').output, Batch.from([item])]);
+        continue;
+      }
 
-    const result = await tool.execute(call.arguments);
-    state.toolResult = result;
-    state.finalAnswer = `ToolInterface "${call.name}" returned: ${JSON.stringify(result)}`;
-    return NodeOutputBuilder.of('done');
+      const result = await tool.execute(call.arguments);
+      state.toolResult = result;
+      state.finalAnswer = `ToolInterface "${call.name}" returned: ${JSON.stringify(result)}`;
+      entries.push([NodeOutputBuilder.of('done').output, Batch.from([item])]);
+    }
+    return RoutedBatchBuilder.from(entries);
   }
 }
 
-export class OnTextNode extends ScalarNode<ToolUseState, 'done'> {
+export class OnTextNode extends MonadicNode<ToolUseState, 'done'> {
   readonly name = 'onText';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: ToolUseState) {
-    process.stdout.write(`  [onText] direct answer: "${state.finalAnswer}"\n`);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ToolUseState>) {
+    for (const item of batch) {
+      process.stdout.write(`  [onText] direct answer: "${item.state.finalAnswer}"\n`);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 
-export class OnToolDoneNode extends ScalarNode<ToolUseState, 'done'> {
+export class OnToolDoneNode extends MonadicNode<ToolUseState, 'done'> {
   readonly name = 'onToolDone';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: ToolUseState) {
-    process.stdout.write(`  [onToolDone] tool="${state.dispatchedTool}" result=${JSON.stringify(state.toolResult)}\n`);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ToolUseState>) {
+    for (const item of batch) {
+      const state = item.state;
+      process.stdout.write(`  [onToolDone] tool="${state.dispatchedTool}" result=${JSON.stringify(state.toolResult)}\n`);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 
-export class OnToolErrorNode extends ScalarNode<ToolUseState, 'done'> {
+export class OnToolErrorNode extends MonadicNode<ToolUseState, 'done'> {
   readonly name = 'onToolError';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: ToolUseState) {
-    process.stdout.write(`  [onToolError] ${state.finalAnswer}\n`);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ToolUseState>) {
+    for (const item of batch) {
+      process.stdout.write(`  [onToolError] ${item.state.finalAnswer}\n`);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 

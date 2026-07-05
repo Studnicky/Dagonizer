@@ -10,7 +10,7 @@
  * Implemented as a MonadicNode for batch-native processing: a single
  * execute call covers the whole batch, amortising carrier rate table
  * lookups across all items in one pass rather than dispatching N
- * separate ScalarNode iterations.
+ * separate per-item base-class iterations.
  *
  * Always routes 'eta-estimated'.
  */

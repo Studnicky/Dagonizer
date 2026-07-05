@@ -9,7 +9,7 @@
  * Implemented as a MonadicNode for batch-native processing: a single
  * execute call covers the whole batch, amortising catalog map lookups
  * and FX rate table access across all items in one pass rather than
- * dispatching N separate ScalarNode iterations.
+ * dispatching N separate per-item base-class iterations.
  *
  * Always routes 'priced' — unknown productIds resolve to a 0-cost entry
  * rather than routing to rejected (the pipeline continues; bad products

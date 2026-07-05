@@ -1,15 +1,16 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import { GeoResolutionBuilder } from '../../entities/GeoResolution.ts';
 import {
-  NodeOutputBuilder,
-  ScalarNode,
+  MonadicNode,
+  RoutedBatchBuilder,
+  type Batch,
   type NodeContextType,
-  type NodeOutputType,
+  type RoutedBatchType,
   type SchemaObjectType,
 } from '@studnicky/dagonizer';
 
 // #region resolve-none-node
-export class ResolveNoneNode extends ScalarNode<CartographerState, 'resolved'> {
+export class ResolveNoneNode extends MonadicNode<CartographerState, 'resolved'> {
   readonly 'name' = 'resolve-none';
   readonly 'outputs' = ['resolved'] as const;
 
@@ -17,12 +18,14 @@ export class ResolveNoneNode extends ScalarNode<CartographerState, 'resolved'> {
     return { 'resolved': { 'type': 'object' } };
   }
 
-  protected override async executeOne(
-    state: CartographerState,
+  override async execute(
+    batch: Batch<CartographerState>,
     _context: NodeContextType,
-  ): Promise<NodeOutputType<'resolved'>> {
-    state.candidate = GeoResolutionBuilder.from({ 'source': 'none', 'weight': 0 });
-    return NodeOutputBuilder.of('resolved');
+  ): Promise<RoutedBatchType<'resolved', CartographerState>> {
+    for (const item of batch) {
+      item.state.candidate = GeoResolutionBuilder.from({ 'source': 'none', 'weight': 0 });
+    }
+    return RoutedBatchBuilder.of('resolved', batch);
   }
 }
 

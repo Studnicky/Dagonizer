@@ -14,8 +14,11 @@
 
 import { ToolCallCodec } from '../../adapter/ToolCallCodec.js';
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
-import { ScalarNode } from '../../core/ScalarNode.js';
+import { MonadicNode } from '../../core/MonadicNode.js';
 import type { ToolCallType } from '../../entities/adapter/ToolCall.js';
+import { Batch } from '../../entities/batch/Batch.js';
+import type { ItemType } from '../../entities/batch/Item.js';
+import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
 import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
@@ -25,7 +28,7 @@ import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class DecodeTextToolCallsNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'decoded' | 'empty' | 'error'> {
+> extends MonadicNode<TState, 'decoded' | 'empty' | 'error'> {
   readonly outputs = ['decoded', 'empty', 'error'] as const;
 
   override get outputSchema(): Record<'decoded' | 'empty' | 'error', SchemaObjectType> {
@@ -57,31 +60,55 @@ export abstract class DecodeTextToolCallsNode<
     context: NodeContextType,
   ): void;
 
-  protected override async executeOne(
-    state: TState,
+  override async execute(
+    batch: Batch<TState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<'decoded' | 'empty' | 'error'>> {
-    try {
-      const text = this.getText(state, context);
-      if (text.trim().length === 0) {
-        return NodeOutputBuilder.of('empty');
+  ): Promise<RoutedBatchType<'decoded' | 'empty' | 'error', TState>> {
+    const acc = new Map<'decoded' | 'empty' | 'error', ItemType<TState>[]>();
+
+    for (const item of batch) {
+      const state = item.state;
+      let output: NodeOutputType<'decoded' | 'empty' | 'error'>;
+
+      try {
+        const text = this.getText(state, context);
+        if (text.trim().length === 0) {
+          output = NodeOutputBuilder.of('empty');
+        } else {
+          const calls = ToolCallCodec.decode(text, this.idPrefix);
+          this.storeToolCalls(state, calls, context);
+          output = NodeOutputBuilder.of(calls.length > 0 ? 'decoded' : 'empty');
+        }
+      } catch (cause) {
+        const error = DAGError.coerce(cause);
+        output = NodeOutputBuilder.of('error', {
+          'errors': [
+            NodeErrorBuilder.from(
+              'decodeTextToolCallsFailed',
+              error.message,
+              'DecodeTextToolCallsNode.execute',
+              true,
+              new Date().toISOString(),
+            ),
+          ],
+        });
       }
-      const calls = ToolCallCodec.decode(text, this.idPrefix);
-      this.storeToolCalls(state, calls, context);
-      return NodeOutputBuilder.of(calls.length > 0 ? 'decoded' : 'empty');
-    } catch (cause) {
-      const error = DAGError.coerce(cause);
-      return NodeOutputBuilder.of('error', {
-        'errors': [
-          NodeErrorBuilder.from(
-            'decodeTextToolCallsFailed',
-            error.message,
-            'DecodeTextToolCallsNode.executeOne',
-            true,
-            new Date().toISOString(),
-          ),
-        ],
-      });
+
+      for (const error of output.errors) {
+        state.collectError(error);
+      }
+      const bucket = acc.get(output.output);
+      if (bucket !== undefined) {
+        bucket.push(item);
+      } else {
+        acc.set(output.output, [item]);
+      }
     }
+
+    const routed = new Map<'decoded' | 'empty' | 'error', Batch<TState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
   }
 }

@@ -2,8 +2,9 @@
  * SelectNode: root for "pick or sort items from a list" patterns.
  */
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -16,13 +17,17 @@ export abstract class SelectNode<
   protected abstract transform(items: readonly TItem[]): readonly TItem[];
 
 
-  protected override async executeOne(
-    state: TState,
-  ): Promise<NodeOutputType<'success' | 'empty'>> {
-    const items = this.readItems(state);
-    const next = this.transform(items);
-    this.writeBack(state, next);
-    return NodeOutputBuilder.of(next.length === 0 ? 'empty' : 'success');
+  override async execute(
+    batch: Batch<TState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'success' | 'empty', TState>> {
+    const routed = batch.partition((state) => {
+      const items = this.readItems(state);
+      const next = this.transform(items);
+      this.writeBack(state, next);
+      return next.length === 0 ? 'empty' : 'success';
+    });
+    return RoutedBatchBuilder.from([...routed]);
   }
 }
 

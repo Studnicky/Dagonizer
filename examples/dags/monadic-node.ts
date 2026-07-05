@@ -1,15 +1,15 @@
 /**
  * monadic-node/dags: demonstrates the node taxonomy from @studnicky/dagonizer.
  *
- * Defines an abstract `LoggingNode` that extends `ScalarNode` and adds
- * structured timing around `executeOne`. A concrete subclass fills in the
- * domain logic by implementing the abstract `run` method. The pattern
- * guarantees every code path returns a declared output port — nothing throws
+ * Defines an abstract `LoggingNode` that extends `MonadicNode` and adds
+ * structured timing around `execute(batch, context)`. A concrete subclass fills
+ * in the domain logic by implementing the abstract `run` method. The pattern
+ * guarantees every code path returns declared output ports — nothing throws
  * past the node boundary.
  *
- * Use `ScalarNode` (the per-item base) for domain nodes that process one state
- * at a time. Extend `MonadicNode` directly only for batch-native nodes that
- * must process the whole batch in one `execute(batch, ctx)` call.
+ * Use `MonadicNode.execute(batch, context)` for every node. Nodes may loop over
+ * independent items locally, partition by output, or process a whole batch at
+ * once when the domain benefits from a shared operation.
  *
  * Pure module: no side effects, no dispatcher, no execute.
  */
@@ -34,7 +34,7 @@ export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
 // #endregion execute-contract
 
 // #region monadic-node
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
+import { NodeOutputBuilder, NodeStateBase } from '@studnicky/dagonizer';
 import type { NodeOutputType } from '@studnicky/dagonizer';
 
 // ── Domain state ──────────────────────────────────────────────────────────────
@@ -44,23 +44,28 @@ export class CatalogueState extends NodeStateBase {
   results: string[] = [];
 }
 
-// ── Abstract base: adds structured logging at every execute ───────────────────
+// ── Abstract base: adds structured logging around every batch execution ──────
 
 abstract class LoggingNode<
   TState extends NodeStateBase,
   TOutput extends string,
-> extends ScalarNode<TState, TOutput> {
-  protected override async executeOne(
-    state: TState,
+> extends MonadicNode<TState, TOutput> {
+  override async execute(
+    batch: Batch<TState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<TOutput>> {
+  ): Promise<RoutedBatchType<TOutput, TState>> {
     const start = Date.now();
-    const result = await this.run(state, context);
-    process.stdout.write(`[${this.name}] output=${result.output} elapsed=${Date.now() - start}ms\n`);
-    return result;
+    const entries: Array<readonly [TOutput, Batch<TState>]> = [];
+    for (const item of batch) {
+      const result = await this.run(item.state, context);
+      for (const error of result.errors) item.state.collectError(error);
+      entries.push([result.output, Batch.from([item])]);
+    }
+    process.stdout.write(`[${this.name}] routed=${entries.length} elapsed=${Date.now() - start}ms\n`);
+    return RoutedBatchBuilder.from(entries);
   }
 
-  /** Subclasses implement domain logic here instead of in execute. */
+  /** Subclasses implement per-state domain logic here. */
   protected abstract run(
     state: TState,
     context: NodeContextType,
@@ -105,19 +110,21 @@ const geoCache = {
   },
 };
 
-// per-item (the common case): ScalarNode processes one EventState at a time.
-export class GeoNode extends ScalarNode<EventState, 'has-geo' | 'needs-geo'> {
+// item-independent routing: loop locally and preserve each item's route.
+export class GeoNode extends MonadicNode<EventState, 'has-geo' | 'needs-geo'> {
   readonly name    = 'geo';
   readonly outputs = ['has-geo', 'needs-geo'] as const;
   override get outputSchema(): Record<'has-geo' | 'needs-geo', SchemaObjectType> {
     return { 'has-geo': { 'type': 'object' }, 'needs-geo': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: EventState) {
-    if (state.coords === null) {
-      return NodeOutputBuilder.of('needs-geo');
+  override async execute(batch: Batch<EventState>) {
+    const entries: Array<readonly ['has-geo' | 'needs-geo', Batch<EventState>]> = [];
+    for (const item of batch) {
+      const output = NodeOutputBuilder.of(item.state.coords === null ? 'needs-geo' : 'has-geo');
+      entries.push([output.output, Batch.from([item])]);
     }
-    return NodeOutputBuilder.of('has-geo');
+    return RoutedBatchBuilder.from(entries);
   }
 }
 

@@ -5,10 +5,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
   Validator,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -19,7 +21,7 @@ import type { StoreInterface } from '@studnicky/dagonizer/contracts';
 // Nodes: each appends its own name to the store's 'entries' key
 // ---------------------------------------------------------------------------
 
-export class StepANode extends ScalarNode<NodeStateBase, 'done'> {
+export class StepANode extends MonadicNode<NodeStateBase, 'done'> {
   private readonly log: StoreInterface;
   readonly name = 'step-a';
   readonly outputs = ['done'] as const;
@@ -32,16 +34,16 @@ export class StepANode extends ScalarNode<NodeStateBase, 'done'> {
     this.log = log;
   }
 
-  protected override async executeOne(_state: NodeStateBase) {
+  override async execute(batch: Batch<NodeStateBase>) {
     await this.log.update('entries', (current) => {
       const existing = (typeof current === 'string' ? current : '').split(',').filter(Boolean);
       return [...existing, 'step-a'].join(',');
     });
-    return NodeOutputBuilder.of('done');
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 
-export class StepBNode extends ScalarNode<NodeStateBase, 'done'> {
+export class StepBNode extends MonadicNode<NodeStateBase, 'done'> {
   private readonly log: StoreInterface;
   readonly name = 'step-b';
   readonly outputs = ['done'] as const;
@@ -54,16 +56,16 @@ export class StepBNode extends ScalarNode<NodeStateBase, 'done'> {
     this.log = log;
   }
 
-  protected override async executeOne(_state: NodeStateBase) {
+  override async execute(batch: Batch<NodeStateBase>) {
     await this.log.update('entries', (current) => {
       const existing = (typeof current === 'string' ? current : '').split(',').filter(Boolean);
       return [...existing, 'step-b'].join(',');
     });
-    return NodeOutputBuilder.of('done');
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 
-export class ChildStepNode extends ScalarNode<NodeStateBase, 'done'> {
+export class ChildStepNode extends MonadicNode<NodeStateBase, 'done'> {
   private readonly log: StoreInterface;
   readonly name = 'child-step';
   readonly outputs = ['done'] as const;
@@ -76,12 +78,12 @@ export class ChildStepNode extends ScalarNode<NodeStateBase, 'done'> {
     this.log = log;
   }
 
-  protected override async executeOne(_state: NodeStateBase) {
+  override async execute(batch: Batch<NodeStateBase>) {
     await this.log.update('entries', (current) => {
       const existing = (typeof current === 'string' ? current : '').split(',').filter(Boolean);
       return [...existing, 'child-step'].join(',');
     });
-    return NodeOutputBuilder.of('done');
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 
@@ -202,7 +204,9 @@ export class StoreDemos {
 
     const raw: StoreInterface = typed.inner;
     await raw.set('someFlag', true);
-    void budget;
+    if (budget !== null) {
+      await typed.set('tokenBudget', budget);
+    }
   }
   // #endregion typed-store
 
@@ -254,7 +258,7 @@ interface AppServices {
   db:     { query(sql: string): Promise<unknown> };
 }
 
-export class DbFetchNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
+export class DbFetchNode extends MonadicNode<NodeStateBase, 'success' | 'error'> {
   private readonly services: AppServices;
   readonly name    = 'db-fetch';
   readonly outputs = ['success', 'error'] as const;
@@ -267,18 +271,18 @@ export class DbFetchNode extends ScalarNode<NodeStateBase, 'success' | 'error'> 
     this.services = services;
   }
 
-  protected override async executeOne(_state: NodeStateBase): Promise<ReturnType<typeof NodeOutputBuilder.of<'success' | 'error'>>> {
+  override async execute(batch: Batch<NodeStateBase>) {
     this.services.logger.info('fetch start');
     const cached = await this.services.cache.get('key');
     if (cached !== null) {
-      return NodeOutputBuilder.of('success');
+      return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
     }
     try {
       await this.services.db.query('SELECT 1');
-      return NodeOutputBuilder.of('success');
+      return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
     } catch (error) {
       this.services.logger.error({ err: error }, 'fetch failed');
-      return NodeOutputBuilder.of('error');
+      return RoutedBatchBuilder.of(NodeOutputBuilder.of('error').output, batch);
     }
   }
 }

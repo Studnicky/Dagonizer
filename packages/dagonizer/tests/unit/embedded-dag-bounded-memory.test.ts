@@ -28,13 +28,13 @@ import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import type { GatherExecutionType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import type { NodeResultType } from '../../src/entities/node/NodeResult.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
@@ -65,7 +65,7 @@ class EmbedMemState extends NodeStateBase {
 
 // ── nodes ─────────────────────────────────────────────────────────────────────
 
-class IncValueNode extends ScalarNode<EmbedMemState, 'done'> {
+class IncValueNode extends MonadicNode<EmbedMemState, 'done'> {
   readonly name: string;
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
@@ -77,20 +77,20 @@ class IncValueNode extends ScalarNode<EmbedMemState, 'done'> {
     this.delta = delta;
   }
 
-  protected async executeOne(state: EmbedMemState): Promise<NodeOutputType<'done'>> {
-    state.value += this.delta;
-    return { 'errors': [], 'output': 'done' };
+  override async execute(batch: Batch<EmbedMemState>): Promise<Map<'done', Batch<EmbedMemState>>> {
+    for (const item of batch) item.state.value += this.delta;
+    return new Map([['done', batch]]);
   }
 }
 
-class IncCounterNode extends ScalarNode<EmbedMemState, 'done'> {
+class IncCounterNode extends MonadicNode<EmbedMemState, 'done'> {
   readonly name = 'inc-counter';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
 
-  protected async executeOne(state: EmbedMemState): Promise<NodeOutputType<'done'>> {
-    state.counter += 1;
-    return { 'errors': [], 'output': 'done' };
+  override async execute(batch: Batch<EmbedMemState>): Promise<Map<'done', Batch<EmbedMemState>>> {
+    for (const item of batch) item.state.counter += 1;
+    return new Map([['done', batch]]);
   }
 }
 

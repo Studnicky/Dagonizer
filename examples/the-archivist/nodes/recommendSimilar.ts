@@ -17,8 +17,8 @@
  *                description of a previous read instead.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutputBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { Term } from 'n3';
 
@@ -35,7 +35,7 @@ const dagRunTimestamp = MemoryStore.dagIri('runTimestamp');
 
 const MAX_TERMS = 6;
 
-export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 'empty'> {
+export class RecommendSimilarNode extends MonadicNode<ArchivistState, 'seeded' | 'empty'> {
   private readonly services: ArchivistServices;
   readonly name = 'recommend-similar';
   readonly outputs = ['seeded', 'empty'] as const;
@@ -51,7 +51,12 @@ export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 
     this.services = services;
   }
 
-  protected override async executeOne(state: ArchivistState) {
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    const seededItems: ItemType<ArchivistState>[] = [];
+    const emptyItems: ItemType<ArchivistState>[] = [];
+
+    for (const item of batch) {
+      const { state } = item;
     const memory = this.services.memory;
     const currentGraph = MemoryStore.stateGraphIri(state.runId).value;
 
@@ -59,7 +64,10 @@ export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 
     const graphs = memory.graphs()
       .filter((g) => g.value.startsWith(STATE_GRAPH_PREFIX) && g.value !== currentGraph);
     if (graphs.length === 0) {
-      return NodeOutputBuilder.of('empty');
+      const result = NodeOutputBuilder.of('empty');
+      for (const error of result.errors) state.collectError(error);
+      emptyItems.push(item);
+      continue;
     }
 
     // Order graphs by their `dag:runTimestamp` literal so we pick the
@@ -144,10 +152,22 @@ export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 
           ...subjects.map((s) => ({ 'variant': 'anchor-subject', 'text': s })),
         ];
       }
-      return NodeOutputBuilder.of('seeded');
+      const result = NodeOutputBuilder.of('seeded');
+      for (const error of result.errors) state.collectError(error);
+      seededItems.push(item);
+      break;
     }
 
-    return NodeOutputBuilder.of('empty');
+    if (!seededItems.includes(item)) {
+      const result = NodeOutputBuilder.of('empty');
+      for (const error of result.errors) state.collectError(error);
+      emptyItems.push(item);
+    }
+    }
+
+    const routes: Array<readonly ['seeded' | 'empty', Batch<ArchivistState>]> = [];
+    if (seededItems.length > 0) routes.push(['seeded', Batch.from(seededItems)]);
+    if (emptyItems.length > 0) routes.push(['empty', Batch.from(emptyItems)]);
+    return RoutedBatchBuilder.from(routes);
   }
 }
-

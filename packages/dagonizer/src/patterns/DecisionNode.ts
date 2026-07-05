@@ -12,7 +12,8 @@
 
 import { LlmDispatchNode } from './LlmDispatchNode.js';
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { ItemType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 
@@ -30,14 +31,34 @@ export abstract class DecisionNode<
   /** Write the choice back to state. */
   protected abstract applyChoice(state: TState, choice: TChoice): void;
 
-  protected override async executeOne(
-    state: TState,
+  override async execute(
+    batch: Batch<TState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<TOutput>> {
-    const response = await this.dispatch(state, context);
-    const content = this.extractContent(response);
-    const choice = this.decodeChoice(content);
-    this.applyChoice(state, choice);
-    return NodeOutputBuilder.of(this.routeFor(choice));
+  ): Promise<RoutedBatchType<TOutput, TState>> {
+    const acc = new Map<TOutput, ItemType<TState>[]>();
+
+    for (const item of batch) {
+      const state = item.state;
+      const response = await this.dispatch(state, context);
+      const content = this.extractContent(response);
+      const choice = this.decodeChoice(content);
+      this.applyChoice(state, choice);
+      const output: NodeOutputType<TOutput> = NodeOutputBuilder.of(this.routeFor(choice));
+      for (const error of output.errors) {
+        state.collectError(error);
+      }
+      const bucket = acc.get(output.output);
+      if (bucket !== undefined) {
+        bucket.push(item);
+      } else {
+        acc.set(output.output, [item]);
+      }
+    }
+
+    const routed = new Map<TOutput, Batch<TState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
   }
 }

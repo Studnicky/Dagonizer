@@ -11,10 +11,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -52,17 +54,19 @@ export class HitlState extends NodeStateBase {
 /**
  * PrepareNode: sets up the item that needs approval and logs the action.
  */
-export class PrepareNode extends ScalarNode<HitlState, 'ready'> {
+export class PrepareNode extends MonadicNode<HitlState, 'ready'> {
   readonly name = 'prepare';
   readonly outputs = ['ready'] as const;
   override get outputSchema(): Record<'ready', SchemaObjectType> {
     return { 'ready': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: HitlState) {
-    state.item = 'Purchase Order #4201 — $4,800';
-    state.log.push(`prepared: ${state.item}`);
-    return NodeOutputBuilder.of('ready');
+  override async execute(batch: Batch<HitlState>) {
+    for (const item of batch) {
+      item.state.item = 'Purchase Order #4201 — $4,800';
+      item.state.log.push(`prepared: ${item.state.item}`);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('ready').output, batch);
   }
 }
 
@@ -73,7 +77,7 @@ export class PrepareNode extends ScalarNode<HitlState, 'ready'> {
  * The engine intercepts the 'parked' output before routing, so the placement
  * does not need a 'parked' → next-node mapping in the DAG.
  */
-export class ApproveNode extends ScalarNode<HitlState, 'parked' | 'approved' | 'rejected'> {
+export class ApproveNode extends MonadicNode<HitlState, 'parked' | 'approved' | 'rejected'> {
   readonly name = 'approve';
   readonly outputs = ['parked', 'approved', 'rejected'] as const;
   override get outputSchema(): Record<'parked' | 'approved' | 'rejected', SchemaObjectType> {
@@ -84,38 +88,45 @@ export class ApproveNode extends ScalarNode<HitlState, 'parked' | 'approved' | '
     };
   }
 
-  protected override async executeOne(state: HitlState) {
-    if (state.decision === 'approved') {
-      state.log.push('decision: approved');
-      return NodeOutputBuilder.of('approved');
-    }
-    if (state.decision === 'rejected') {
-      state.log.push('decision: rejected');
-      return NodeOutputBuilder.of('rejected');
-    }
+  override async execute(batch: Batch<HitlState>) {
+    const entries: Array<readonly ['parked' | 'approved' | 'rejected', Batch<HitlState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      if (state.decision === 'approved') {
+        state.log.push('decision: approved');
+        entries.push([NodeOutputBuilder.of('approved').output, Batch.from([item])]);
+        continue;
+      }
+      if (state.decision === 'rejected') {
+        state.log.push('decision: rejected');
+        entries.push([NodeOutputBuilder.of('rejected').output, Batch.from([item])]);
+        continue;
+      }
 
-    // No decision yet — park and wait for human input.
-    // Write the correlationKey so the caller can correlate the resume.
-    const correlationKey = `approval:${state.item.replace(/[^a-zA-Z0-9]/g, '-')}`;
-    state.setMetadata('correlationKey', correlationKey);
-    state.log.push(`parked: awaiting approval for "${state.item}"`);
-    return NodeOutputBuilder.of('parked');
+      // No decision yet — park and wait for human input.
+      // Write the correlationKey so the caller can correlate the resume.
+      const correlationKey = `approval:${state.item.replace(/[^a-zA-Z0-9]/g, '-')}`;
+      state.setMetadata('correlationKey', correlationKey);
+      state.log.push(`parked: awaiting approval for "${state.item}"`);
+      entries.push([NodeOutputBuilder.of('parked').output, Batch.from([item])]);
+    }
+    return RoutedBatchBuilder.from(entries);
   }
 }
 
 /**
  * ProcessNode: executes after an approved decision.
  */
-export class ProcessNode extends ScalarNode<HitlState, 'done'> {
+export class ProcessNode extends MonadicNode<HitlState, 'done'> {
   readonly name = 'process';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: HitlState) {
-    state.log.push(`processed: ${state.item}`);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<HitlState>) {
+    for (const item of batch) item.state.log.push(`processed: ${item.state.item}`);
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 

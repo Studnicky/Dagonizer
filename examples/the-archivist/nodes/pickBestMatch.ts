@@ -18,8 +18,8 @@
  * Output route is always 'picked'.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -27,7 +27,7 @@ import { TextSimilarity } from './textUtils.ts';
 
 const TOP_K = 3;
 
-export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked'> {
+export class PickBestMatchNode extends MonadicNode<ArchivistState, 'picked'> {
   readonly name = 'pick-best-match';
   readonly outputs = ['picked'] as const;
   override get outputSchema(): Record<'picked', SchemaObjectType> {
@@ -36,32 +36,32 @@ export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked'> {
     };
   }
 
-  protected override executeOne(state: ArchivistState) {
-    if (state.candidates.length === 0) {
-      return Promise.resolve(NodeOutputBuilder.of('picked'));
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      if (state.candidates.length === 0) continue;
+
+      const queryWords = TextSimilarity.tokenise(state.query);
+
+      const scored = state.candidates.map((c) => {
+        const text   = `${c.book.identity.title} ${c.book.identity.authors.join(' ')}`;
+        const sim    = TextSimilarity.jaccard(queryWords, TextSimilarity.tokenise(text));
+        return { "candidate": c, sim };
+      });
+
+      scored.sort((a, b) => b.sim - a.sim);
+
+      const topK   = scored.slice(0, TOP_K);
+      const rest   = scored.slice(TOP_K);
+
+      const picked: CandidateType[] = [
+        ...topK.map(({ candidate, sim }) => ({ ...candidate, 'score': sim })),
+        ...rest.map(({ candidate }) => ({ ...candidate })),
+      ];
+
+      state.candidates = picked;
     }
 
-    const queryWords = TextSimilarity.tokenise(state.query);
-
-    const scored = state.candidates.map((c) => {
-      const text   = `${c.book.identity.title} ${c.book.identity.authors.join(' ')}`;
-      const sim    = TextSimilarity.jaccard(queryWords, TextSimilarity.tokenise(text));
-      return { "candidate": c, sim };
-    });
-
-    scored.sort((a, b) => b.sim - a.sim);
-
-    const topK   = scored.slice(0, TOP_K);
-    const rest   = scored.slice(TOP_K);
-
-    const picked: CandidateType[] = [
-      ...topK.map(({ candidate, sim }) => ({ ...candidate, 'score': sim })),
-      ...rest.map(({ candidate }) => ({ ...candidate })),
-    ];
-
-    state.candidates = picked;
-
-    return Promise.resolve(NodeOutputBuilder.of('picked'));
+    return RoutedBatchBuilder.of('picked', batch);
   }
 }
 

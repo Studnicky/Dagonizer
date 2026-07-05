@@ -26,7 +26,7 @@
  *   5. send-response appends both sides to conversation → end.
  */
 
-import { DAGBuilder, PlaceholderNode, ScalarNode } from '@studnicky/dagonizer';
+import { DAGBuilder, MonadicNode, PlaceholderNode } from '@studnicky/dagonizer';
 import type { DAGType, DispatcherBundleType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from './DispatcherState.ts';
@@ -41,12 +41,12 @@ import { SetupNode }            from './nodes/SetupNode.ts';
 // #region dispatcher-bundle
 
 interface DispatcherNodeBundle {
-  readonly setup:           ScalarNode<DispatcherState, 'ready'>;
-  readonly classifyMessage: ScalarNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'>;
-  readonly aiCompose:       ScalarNode<DispatcherState, 'drafted'>;
-  readonly parkForOperator: ScalarNode<DispatcherState, 'parked' | 'ready'>;
-  readonly sendResponse:    ScalarNode<DispatcherState, 'sent'>;
-  readonly decline:         ScalarNode<DispatcherState, 'declined'>;
+  readonly setup:           MonadicNode<DispatcherState, 'ready'>;
+  readonly classifyMessage: MonadicNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'>;
+  readonly aiCompose:       MonadicNode<DispatcherState, 'drafted'>;
+  readonly parkForOperator: MonadicNode<DispatcherState, 'parked' | 'ready'>;
+  readonly sendResponse:    MonadicNode<DispatcherState, 'sent'>;
+  readonly decline:         MonadicNode<DispatcherState, 'declined'>;
 }
 
 export class DispatcherBundleFactory {

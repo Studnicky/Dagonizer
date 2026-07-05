@@ -16,10 +16,9 @@
  *   3. Total: every item is routed to one of the declared ports; nothing throws
  *      past the node boundary (per-item errors route to an error port).
  *
- * Extend `MonadicNode` directly to author a **batch-native** node — the
- * hot-path case where one `execute` call processes the whole batch and hits
- * shared caches across it. To author a **per-item** node, extend `ScalarNode`
- * (which extends this) and implement `executeOne`; the base owns the batch loop.
+ * Extend `MonadicNode` to author every node. Nodes that operate on one item at
+ * a time still receive a batch and own that routing logic locally; a size-1
+ * batch is an input case, not a separate node shape.
  *
  * Supplies the fields a node needs but that don't vary by domain: `timeout`
  * (defaults to `Timeout.none()`), and `validate`/`destroy` defaults. Subclasses
@@ -39,11 +38,22 @@ import { Timeout } from '../entities/Timeout.js';
 import type { ValidationResultType } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
+const PERMISSIVE_PORT_SCHEMA: SchemaObjectType = { 'type': 'object' };
 
 export abstract class MonadicNode<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = 'success' | 'empty' | 'error',
 > implements NodeInterface<TState, TOutput> {
+  static permissiveSchema<TOutput extends string>(
+    outputs: readonly TOutput[],
+  ): Record<TOutput, SchemaObjectType> {
+    const schema: Record<string, SchemaObjectType> = {};
+    for (const output of outputs) {
+      schema[output] = PERMISSIVE_PORT_SCHEMA;
+    }
+    return schema;
+  }
+
   /** Stable identifier used at registration with the dispatcher. */
   abstract readonly name: string;
 
@@ -70,8 +80,7 @@ export abstract class MonadicNode<
   /**
    * The one node contract: consume a batch and partition its items across the
    * declared output ports. Subclasses implement the whole-batch transform
-   * directly (the monad). `ScalarNode` provides a per-item `executeOne` loop
-   * over this for the common case.
+   * directly, including any local item-level routing the node requires.
    */
   abstract execute(
     batch: Batch<TState>,

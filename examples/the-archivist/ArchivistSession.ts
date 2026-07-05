@@ -291,7 +291,8 @@ class SessionObserver extends ObservedDag<ArchivistState> {
       this.#shownErrorCount = state.errors.length;
     }
 
-    this.#prov.recordNodeEnd(nodeName, output ?? undefined, state.reasoning);
+    const reasoning = state instanceof ArchivistState ? state.reasoning : [];
+    this.#prov.recordNodeEnd(nodeName, output ?? undefined, reasoning);
     this.#sink.pumpNodeEnd(nodeName, output, state, placementPath);
   }
 

@@ -16,14 +16,12 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { Consent, GdprRedactor, GeoCoarsener, Jurisdictions } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutputBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region gdpr-nodes
 
-export class ConsentGateNode extends ScalarNode<CartographerState, 'classify'> {
+export class ConsentGateNode extends MonadicNode<CartographerState, 'classify'> {
   readonly 'name' = 'consent-gate';
   readonly 'outputs' = ['classify'] as const;
 
@@ -33,20 +31,25 @@ export class ConsentGateNode extends ScalarNode<CartographerState, 'classify'> {
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'classify'>> {
-    // Resolve marketing consent (10% of consented treated as lapsed/expired).
-    const consentStatus = Consent.statusFor(state.currentEvent.shipmentId, state.currentEvent.marketingConsent);
-    state.gdprResult = {
-      ...state.gdprResult,
-      'consentStatus': consentStatus,
-      'lawfulBasis':   state.raw.lawfulBasis,
-      'jurisdiction':  state.geoContext.jurisdiction,
-    };
-    return NodeOutputBuilder.of('classify');
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'classify', CartographerState>> {
+    for (const item of batch) {
+      // Resolve marketing consent (10% of consented treated as lapsed/expired).
+      const consentStatus = Consent.statusFor(item.state.currentEvent.shipmentId, item.state.currentEvent.marketingConsent);
+      item.state.gdprResult = {
+        ...item.state.gdprResult,
+        'consentStatus': consentStatus,
+        'lawfulBasis':   item.state.raw.lawfulBasis,
+        'jurisdiction':  item.state.geoContext.jurisdiction,
+      };
+    }
+    return RoutedBatchBuilder.of('classify', batch);
   }
 }
 
-export class ClassifyPiiNode extends ScalarNode<CartographerState, 'redact'> {
+export class ClassifyPiiNode extends MonadicNode<CartographerState, 'redact'> {
   readonly 'name' = 'classify-pii';
   readonly 'outputs' = ['redact'] as const;
 
@@ -56,18 +59,23 @@ export class ClassifyPiiNode extends ScalarNode<CartographerState, 'redact'> {
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'redact'>> {
-    const classification = GdprRedactor.classify(state.currentEvent);
-    state.gdprResult = {
-      ...state.gdprResult,
-      'personalDataFields':  classification.personalDataFields,
-      'sensitiveDataFields': classification.sensitiveDataFields,
-    };
-    return NodeOutputBuilder.of('redact');
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'redact', CartographerState>> {
+    for (const item of batch) {
+      const classification = GdprRedactor.classify(item.state.currentEvent);
+      item.state.gdprResult = {
+        ...item.state.gdprResult,
+        'personalDataFields':  classification.personalDataFields,
+        'sensitiveDataFields': classification.sensitiveDataFields,
+      };
+    }
+    return RoutedBatchBuilder.of('redact', batch);
   }
 }
 
-export class RedactPiiNode extends ScalarNode<CartographerState, 'ok' | 'violation'> {
+export class RedactPiiNode extends MonadicNode<CartographerState, 'ok' | 'violation'> {
   readonly 'name' = 'redact-pii';
   readonly 'outputs' = ['ok', 'violation'] as const;
 
@@ -78,7 +86,33 @@ export class RedactPiiNode extends ScalarNode<CartographerState, 'ok' | 'violati
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'ok' | 'violation'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'ok' | 'violation', CartographerState>> {
+    const acc = new Map<'ok' | 'violation', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = await this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'ok' | 'violation', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private async routeItem(state: CartographerState): Promise<NodeOutputType<'ok' | 'violation'>> {
     // Genuine violation: special-category data with no lawful basis (rare drop).
     if (!GdprRedactor.hasLawfulBasis(state.raw.lawfulBasis, state.raw.specialCategory)) {
       return NodeOutputBuilder.of('violation');

@@ -15,6 +15,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
+import { Batch } from '@studnicky/dagonizer';
 import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
 
 import { ArchivistState } from '../../ArchivistState.ts';
@@ -82,24 +83,32 @@ class ClassifyIntentFixture {
   static context() {
     return NodeContextBuilder.of('test-dag', 'classify-intent', new AbortController().signal);
   }
+
+  static async execute(node: ClassifyIntentNode, state: ArchivistState) {
+    const routed = await node.execute(Batch.of(state), ClassifyIntentFixture.context());
+    for (const [output, batch] of routed) {
+      if (batch.size > 0) return output;
+    }
+    return null;
+  }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 void test('ClassifyIntentNode: raw recommend → recommend-top-rated', async () => {
   const node = new ClassifyIntentNode(ClassifyIntentFixture.services('recommend'));
-  const result = await node.runItem(ClassifyIntentFixture.state(), ClassifyIntentFixture.context());
-  assert.equal(result.output, 'recommend-top-rated', 'recommend routes to the rating-ranked branch');
+  const result = await ClassifyIntentFixture.execute(node, ClassifyIntentFixture.state());
+  assert.equal(result, 'recommend-top-rated', 'recommend routes to the rating-ranked branch');
 });
 
 void test('ClassifyIntentNode: raw search → on-topic', async () => {
   const node = new ClassifyIntentNode(ClassifyIntentFixture.services('search'));
-  const result = await node.runItem(ClassifyIntentFixture.state(), ClassifyIntentFixture.context());
-  assert.equal(result.output, 'on-topic', 'search still routes to the general on-topic pipeline');
+  const result = await ClassifyIntentFixture.execute(node, ClassifyIntentFixture.state());
+  assert.equal(result, 'on-topic', 'search still routes to the general on-topic pipeline');
 });
 
 void test('ClassifyIntentNode: raw describe → on-topic', async () => {
   const node = new ClassifyIntentNode(ClassifyIntentFixture.services('describe'));
-  const result = await node.runItem(ClassifyIntentFixture.state(), ClassifyIntentFixture.context());
-  assert.equal(result.output, 'on-topic', 'describe still routes to the general on-topic pipeline');
+  const result = await ClassifyIntentFixture.execute(node, ClassifyIntentFixture.state());
+  assert.equal(result, 'on-topic', 'describe still routes to the general on-topic pipeline');
 });

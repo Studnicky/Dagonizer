@@ -211,7 +211,7 @@ The dispatcher invokes `onPhaseEnter(dagName, 'pre' | 'post', placementName, sta
 
 ## `.placeholder(name, outputs, routes)`
 
-Register a `PlaceholderNode` stub in one call. The node routes every execution to the first declared output unconditionally. Use during development to stub an unimplemented placement; replace with a concrete `ScalarNode` subclass when ready.
+Register a `PlaceholderNode` stub in one call. The node routes every execution to the first declared output unconditionally. Use during development to stub an unimplemented placement; replace with a concrete `MonadicNode` subclass when ready.
 
 ```ts twoslash
 import { DAGBuilder } from '@studnicky/dagonizer';

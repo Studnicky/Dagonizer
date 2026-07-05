@@ -251,7 +251,6 @@ export { RoutedBatchBuilder } from './entities/batch/RoutedBatchType.js';
 export type { RoutedBatchType } from './entities/batch/RoutedBatchType.js';
 export { MonadicNode } from './core/MonadicNode.js';
 export { PlaceholderNode } from './core/PlaceholderNode.js';
-export { ScalarNode } from './core/ScalarNode.js';
 export { NodeRunner } from './core/NodeRunner.js';
 
 // =============================================================================

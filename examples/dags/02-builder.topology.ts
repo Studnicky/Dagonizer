@@ -10,10 +10,12 @@
 
 // #region imports
 import {
+  Batch,
   DAGBuilder,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
@@ -33,31 +35,41 @@ export class ChatState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region nodes
-export class ClassifyNode extends ScalarNode<ChatState, 'on_topic' | 'off_topic'> {
+export class ClassifyNode extends MonadicNode<ChatState, 'on_topic' | 'off_topic'> {
   readonly name = 'classify';
   readonly outputs = ['on_topic', 'off_topic'] as const;
   override get outputSchema(): Record<'on_topic' | 'off_topic', SchemaObjectType> {
     return { 'on_topic': { 'type': 'object' }, 'off_topic': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ChatState) {
-    state.topic = state.input.toLowerCase().includes('weather') ? 'off_topic' : 'on_topic';
-    return NodeOutputBuilder.of(state.topic);
+  override async execute(batch: Batch<ChatState>) {
+    const entries: Array<readonly ['on_topic' | 'off_topic', Batch<ChatState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      state.topic = state.input.toLowerCase().includes('weather') ? 'off_topic' : 'on_topic';
+      const output = NodeOutputBuilder.of(state.topic);
+      for (const error of output.errors) state.collectError(error);
+      entries.push([output.output, Batch.from([item])]);
+    }
+    return RoutedBatchBuilder.from(entries);
   }
 }
 
-export class RespondNode extends ScalarNode<ChatState, 'success'> {
+export class RespondNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'respond';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ChatState) {
-    state.reply = state.topic === 'on_topic'
-      ? `Echo: ${state.input}`
-      : `I only talk about coding, not the weather.`;
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<ChatState>) {
+    for (const item of batch) {
+      const state = item.state;
+      state.reply = state.topic === 'on_topic'
+        ? `Echo: ${state.input}`
+        : `I only talk about coding, not the weather.`;
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
   }
 }
 // #endregion nodes
@@ -107,13 +119,15 @@ export const typeSafeRoutingDag = new DAGBuilder('type-safe-demo', '1')
 // Scatter: side-effect-only fan-out (strategy: 'discard')
 // ---------------------------------------------------------------------------
 
-class NotifyNode extends ScalarNode<ChatState, 'success' | 'error'> {
+class NotifyNode extends MonadicNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-notify';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+  override async execute(batch: Batch<ChatState>) {
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+  }
 }
 
 // #region scatter-discard
@@ -138,22 +152,26 @@ export const scatterDiscardDag = new DAGBuilder('notify', '1')
 // Scatter: heterogeneous fan-out (dispatch node reads currentItem)
 // ---------------------------------------------------------------------------
 
-class ScoutDispatchNode extends ScalarNode<ChatState, 'success' | 'error'> {
+class ScoutDispatchNode extends MonadicNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-scout-dispatch';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+  override async execute(batch: Batch<ChatState>) {
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+  }
 }
 
-class MergeNode extends ScalarNode<ChatState, 'success'> {
+class MergeNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'builder-merge';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+  override async execute(batch: Batch<ChatState>) {
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+  }
 }
 
 // #region scatter-heterogeneous
@@ -181,22 +199,26 @@ export const scatterHeterogeneousDag = new DAGBuilder('search', '1')
 // Scatter: generate-collect pattern (strategy: 'map')
 // ---------------------------------------------------------------------------
 
-class GenerateNode extends ScalarNode<ChatState, 'success' | 'error'> {
+class GenerateNode extends MonadicNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-generate';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+  override async execute(batch: Batch<ChatState>) {
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+  }
 }
 
-class SelectNode extends ScalarNode<ChatState, 'success'> {
+class SelectNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'builder-select';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+  override async execute(batch: Batch<ChatState>) {
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+  }
 }
 
 // #region scatter-map
@@ -223,13 +245,15 @@ export const scatterMapDag = new DAGBuilder('batch', '1')
 // Scatter: partition strategy (group clones by output token)
 // ---------------------------------------------------------------------------
 
-class ProcessNode extends ScalarNode<ChatState, 'success' | 'error'> {
+class ProcessNode extends MonadicNode<ChatState, 'success' | 'error'> {
   readonly name = 'builder-process';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+  override async execute(batch: Batch<ChatState>) {
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+  }
 }
 
 // #region scatter-partition
@@ -278,22 +302,26 @@ export const scatterInputsDag = new DAGBuilder('chat', '1')
 // .entrypoint() override
 // ---------------------------------------------------------------------------
 
-class SetupNode extends ScalarNode<ChatState, 'success'> {
+class SetupNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'builder-setup';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+  override async execute(batch: Batch<ChatState>) {
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+  }
 }
 
-class MainNode extends ScalarNode<ChatState, 'success'> {
+class MainNode extends MonadicNode<ChatState, 'success'> {
   readonly name = 'builder-main';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+  override async execute(batch: Batch<ChatState>) {
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+  }
 }
 
 // #region entrypoint-override

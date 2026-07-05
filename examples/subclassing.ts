@@ -14,11 +14,13 @@
 
 import {
   Checkpoint,
+  Batch,
   DAG_CONTEXT,
   Dagonizer,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import { CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -41,17 +43,19 @@ class CountState extends NodeStateBase {
   }
 }
 
-class TickNode extends ScalarNode<CountState, 'success'> {
+class TickNode extends MonadicNode<CountState, 'success'> {
   readonly name    = 'tick';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: CountState) {
-    state.count++;
-    state.log.push(`tick:${state.count}`);
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<CountState>) {
+    for (const item of batch) {
+      item.state.count++;
+      item.state.log.push(`tick:${item.state.count}`);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
   }
 }
 

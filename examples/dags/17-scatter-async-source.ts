@@ -30,10 +30,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
@@ -78,18 +80,21 @@ export class AsyncSourceState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region worker-node
-export class ConsumeNode extends ScalarNode<AsyncSourceState, 'done'> {
+export class ConsumeNode extends MonadicNode<AsyncSourceState, 'done'> {
   readonly name = 'consume';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: AsyncSourceState) {
-    const raw = state.getter.string('stream-item', '?');
-    state.item = `[processed:${raw}]`;
-    eventLog.push(`process  ${raw}`);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<AsyncSourceState>) {
+    for (const item of batch) {
+      const state = item.state;
+      const raw = state.getter.string('stream-item', '?');
+      state.item = `[processed:${raw}]`;
+      eventLog.push(`process  ${raw}`);
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 // #endregion worker-node

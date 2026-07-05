@@ -52,9 +52,9 @@ export type NodeContextType = NodeContextWireType & {
   /** Name of the current node. */
   'nodeName': string;
   /**
-   * When `true`, `ScalarNode.execute` validates each item's state against
-   * `this.outputSchema[port]` after `executeOne` returns. On mismatch the
-   * item is re-routed to `'error'` with code `outputContractViolation`.
+   * When `true`, the scheduler validates routed batch item state against
+   * `this.outputSchema[port]` after `execute` returns. On mismatch the item
+   * is re-routed to `'error'` with code `outputContractViolation`.
    * Set from `DagonizerOptionsType.validateOutputs`; default `false`.
    */
   'validateOutputs': boolean;

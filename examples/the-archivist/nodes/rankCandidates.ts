@@ -30,8 +30,8 @@
  * Output route is always 'ranked'. mergeCandidates then takes the top-K.
  */
 
-import { NodeErrorBuilder, NodeOutputBuilder, ReasoningStepBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeErrorBuilder, NodeOutputBuilder, ReasoningStepBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
@@ -184,7 +184,7 @@ interface ScoredEntry {
   readonly semanticEmbedding: readonly number[] | null;
 }
 
-export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'retry' | 'salvage'> {
+export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | 'retry' | 'salvage'> {
   private readonly services: ArchivistServices;
   readonly name = 'rank-candidates';
   readonly outputs = ['ranked', 'retry', 'salvage'] as const;
@@ -201,21 +201,30 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
-    if (state.candidates.length === 0) {
-      state.clearAttempts(context.nodeName);
-      return NodeOutputBuilder.of('ranked');
-    }
+  override async execute(batch: Batch<ArchivistState>, context: NodeContextType) {
+    const rankedItems: ItemType<ArchivistState>[] = [];
+    const retryItems: ItemType<ArchivistState>[] = [];
+    const salvageItems: ItemType<ArchivistState>[] = [];
 
-    const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? RANK_TIMEOUT_MS);
-    const signal = AbortSignal.any([context.signal, controller.signal]);
+    for (const item of batch) {
+      const { state } = item;
+      if (state.candidates.length === 0) {
+        state.clearAttempts(context.nodeName);
+        const result = NodeOutputBuilder.of('ranked');
+        for (const error of result.errors) state.collectError(error);
+        rankedItems.push(item);
+        continue;
+      }
 
-    try {
-      const embedder = this.services.embedder;
-      const queryText = state.terms.length > 0 ? state.terms.join(' ') : state.query;
-      const termTokens = TextSimilarity.tokenise(queryText);
-      const currentYear = new Date().getFullYear();
+      const controller = new AbortController();
+      const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? RANK_TIMEOUT_MS);
+      const signal = AbortSignal.any([context.signal, controller.signal]);
+
+      try {
+        const embedder = this.services.embedder;
+        const queryText = state.terms.length > 0 ? state.terms.join(' ') : state.query;
+        const termTokens = TextSimilarity.tokenise(queryText);
+        const currentYear = new Date().getFullYear();
 
       // ── Step 1: Embed query + candidate semantic texts (best-effort) ────
       let queryVec: readonly number[] | null = null;
@@ -298,30 +307,43 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
           : ReasoningStepBuilder.thought('ranked candidates by deterministic composite score (no LLM tiebreak needed)'),
       ];
 
-      state.clearAttempts(context.nodeName);
-      return NodeOutputBuilder.of('ranked');
-    } catch (err) {
-      // External cancellation / run deadline propagates unchanged.
-      if (context.signal.aborted) throw err;
-      // Node-local timeout or unexpected failure → retry budget decides the
-      // flow. Emitting the candidates as "ranked" when ranking never completed
-      // would be a fabricated result; rank-candidates-salvage owns the
-      // deterministic-passthrough recovery.
-      state.collectError(NodeErrorBuilder.from(
-        'RANK_FAILED',
-        err instanceof Error ? err.message : String(err),
-        'rank-candidates',
-        true,
-        new Date().toISOString(),
-      ));
-      if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        return NodeOutputBuilder.of('retry');
+        state.clearAttempts(context.nodeName);
+        const result = NodeOutputBuilder.of('ranked');
+        for (const error of result.errors) state.collectError(error);
+        rankedItems.push(item);
+      } catch (err) {
+        // External cancellation / run deadline propagates unchanged.
+        if (context.signal.aborted) throw err;
+        // Node-local timeout or unexpected failure -> retry budget decides the
+        // flow. Emitting the candidates as "ranked" when ranking never completed
+        // would be a fabricated result; rank-candidates-salvage owns the
+        // deterministic-passthrough recovery.
+        state.collectError(NodeErrorBuilder.from(
+          'RANK_FAILED',
+          err instanceof Error ? err.message : String(err),
+          'rank-candidates',
+          true,
+          new Date().toISOString(),
+        ));
+        if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
+          const result = NodeOutputBuilder.of('retry');
+          for (const error of result.errors) state.collectError(error);
+          retryItems.push(item);
+        } else {
+          state.clearAttempts(context.nodeName);
+          const result = NodeOutputBuilder.of('salvage');
+          for (const error of result.errors) state.collectError(error);
+          salvageItems.push(item);
+        }
+      } finally {
+        clearTimeout(handle);
       }
-      state.clearAttempts(context.nodeName);
-      return NodeOutputBuilder.of('salvage');
-    } finally {
-      clearTimeout(handle);
     }
+
+    const routes: Array<readonly ['ranked' | 'retry' | 'salvage', Batch<ArchivistState>]> = [];
+    if (rankedItems.length > 0) routes.push(['ranked', Batch.from(rankedItems)]);
+    if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
+    if (salvageItems.length > 0) routes.push(['salvage', Batch.from(salvageItems)]);
+    return RoutedBatchBuilder.from(routes);
   }
 }
-

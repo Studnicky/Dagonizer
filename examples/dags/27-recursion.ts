@@ -19,10 +19,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -56,7 +58,7 @@ export class CountdownState extends NodeStateBase {
  *   'recurse' — remaining > 0 (more frames to run)
  *   'base'    — remaining === 0 (nothing left; terminate)
  */
-export class AccumulateNode extends ScalarNode<CountdownState, 'recurse' | 'base'> {
+export class AccumulateNode extends MonadicNode<CountdownState, 'recurse' | 'base'> {
   readonly name = 'accumulate';
   readonly outputs = ['recurse', 'base'] as const;
 
@@ -67,10 +69,16 @@ export class AccumulateNode extends ScalarNode<CountdownState, 'recurse' | 'base
     };
   }
 
-  protected override async executeOne(state: CountdownState) {
-    state.total         = state.total + state.remaining;
-    state.nextRemaining = state.remaining - 1;
-    return NodeOutputBuilder.of(state.remaining > 0 ? 'recurse' : 'base');
+  override async execute(batch: Batch<CountdownState>) {
+    const entries: Array<readonly ['recurse' | 'base', Batch<CountdownState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      state.total         = state.total + state.remaining;
+      state.nextRemaining = state.remaining - 1;
+      const output = NodeOutputBuilder.of(state.remaining > 0 ? 'recurse' : 'base');
+      entries.push([output.output, Batch.from([item])]);
+    }
+    return RoutedBatchBuilder.from(entries);
   }
 }
 // #endregion node

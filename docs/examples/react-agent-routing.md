@@ -27,9 +27,9 @@ ONE shared sink.
 
 ## What it demonstrates
 
-- **One node instance, many concurrent runs.** `CallModelNode.executeOne`
-  wraps its constructor-bound `{ sink }` in a fresh `RoutingStreamSink` per
-  execution, stamping every pushed chunk with `routeKey(state)` and
+- **One node instance, many concurrent runs.** `CallModelNode.execute`
+  wraps its constructor-bound `{ sink }` in fresh `RoutingStreamSink` instances
+  for the batch items it processes, stamping every pushed chunk with `routeKey(state)` and
   `{dagName, nodeName}`. A single `RoutingCallModelNode` instance, registered
   once, correctly serves as many concurrent `dispatcher.execute('react-agent',
   state)` calls as are run in parallel — no per-run node instance or

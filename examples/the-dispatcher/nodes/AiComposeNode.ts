@@ -11,13 +11,13 @@
  * Routes 'drafted' on every path.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
 import type { DispatcherServices } from '../services.ts';
 
-export class AiComposeNode extends ScalarNode<DispatcherState, 'drafted'> {
+export class AiComposeNode extends MonadicNode<DispatcherState, 'drafted'> {
   readonly name = 'ai-compose';
   readonly outputs = ['drafted'] as const;
 
@@ -32,12 +32,17 @@ export class AiComposeNode extends ScalarNode<DispatcherState, 'drafted'> {
     return { 'drafted': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: DispatcherState, context: NodeContextType) {
-    try {
-      state.response = await this.#services.llm.compose(state.message, state.conversation, context.signal);
-    } catch {
-      state.response = 'I apologize — I had trouble composing a reply. Please try again or ask for a human agent.';
+  override async execute(
+    batch: Batch<DispatcherState>,
+    context: NodeContextType,
+  ): Promise<RoutedBatchType<'drafted', DispatcherState>> {
+    for (const item of batch) {
+      try {
+        item.state.response = await this.#services.llm.compose(item.state.message, item.state.conversation, context.signal);
+      } catch {
+        item.state.response = 'I apologize — I had trouble composing a reply. Please try again or ask for a human agent.';
+      }
     }
-    return NodeOutputBuilder.of('drafted');
+    return RoutedBatchBuilder.of('drafted', batch);
   }
 }

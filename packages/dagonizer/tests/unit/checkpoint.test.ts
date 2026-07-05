@@ -8,13 +8,13 @@ import {
 } from '../../src/checkpoint/index.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { SnapshottableInterface, StoreSnapshotEntryType, StoreSnapshotType } from '../../src/contracts/SnapshottableInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { CheckpointDataType, DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
@@ -61,7 +61,7 @@ class StoreState extends NodeStateBase {
 // node is suspended, giving a deterministic interruption without any real timer
 // dependencies.
 
-class SlowNode extends ScalarNode<NodeStateBase, 'done'> {
+class SlowNode extends MonadicNode<NodeStateBase, 'done'> {
   readonly name = 'slow';
   readonly outputs = ['done'] as const;
   readonly #onReady: () => void;
@@ -69,14 +69,14 @@ class SlowNode extends ScalarNode<NodeStateBase, 'done'> {
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'done'>> {
+  override async execute(batch: Batch<NodeStateBase>, context: NodeContextType): Promise<Map<'done', Batch<NodeStateBase>>> {
     this.#onReady();
     await new Promise<void>((_resolve, reject) => {
       context.signal.addEventListener('abort', () => {
         reject(context.signal.reason);
       }, { 'once': true });
     });
-    return { 'errors': [], 'output': 'done' };
+    return new Map([['done', batch]]);
   }
 }
 
@@ -230,18 +230,18 @@ void describe('cursor on ExecutionResultType', () => {
     let resolveNodeReady!: () => void;
     const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
 
-    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
+    class OpNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> {
         return { 'success': { 'type': 'object' } };
       }
-      protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
+      override async execute(batch: Batch<NodeStateBase>, context: NodeContextType): Promise<Map<'success', Batch<NodeStateBase>>> {
         resolveNodeReady();
         await new Promise<void>((_resolve, reject) => {
           context.signal.addEventListener('abort', () => { reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'errors': [], 'output': 'success' as const };
+        return new Map([['success', batch]]);
       }
     }
     dispatcher.registerNode(new OpNode());

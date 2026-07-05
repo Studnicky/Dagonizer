@@ -5,14 +5,16 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
   GatherStrategies,
   GatherStrategy,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
-import type { Batch, GatherExecutionType, GatherRecordType, NodeStateInterface, SchemaObjectType } from '@studnicky/dagonizer';
+import type { GatherExecutionType, GatherRecordType, NodeStateInterface, SchemaObjectType } from '@studnicky/dagonizer';
 import type { GatherConfigType } from '@studnicky/dagonizer/entities';
 import type { DAGType } from '@studnicky/dagonizer';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
@@ -27,18 +29,25 @@ export class ScrapeState extends NodeStateBase {
 // #endregion state
 
 // #region worker-node
-export class ProbeNode extends ScalarNode<ScrapeState, 'ok' | 'fail'> {
+export class ProbeNode extends MonadicNode<ScrapeState, 'ok' | 'fail'> {
   readonly name = 'probe';
   readonly outputs = ['ok', 'fail'] as const;
   override get outputSchema(): Record<'ok' | 'fail', SchemaObjectType> {
     return { 'ok': { 'type': 'object' }, 'fail': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ScrapeState) {
-    // Each item is written to state under the itemKey ('url') before execute.
-    const url = state.getter.string('url');
-    // Fake probe: even-length URLs succeed, odd-length fail.
-    return NodeOutputBuilder.of(url.length % 2 === 0 ? 'ok' : 'fail');
+  override async execute(batch: Batch<ScrapeState>) {
+    const entries: Array<readonly ['ok' | 'fail', Batch<ScrapeState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      // Each item is written to state under the itemKey ('url') before execute.
+      const url = state.getter.string('url');
+      // Fake probe: even-length URLs succeed, odd-length fail.
+      const output = NodeOutputBuilder.of(url.length % 2 === 0 ? 'ok' : 'fail');
+      for (const error of output.errors) state.collectError(error);
+      entries.push([output.output, Batch.from([item])]);
+    }
+    return RoutedBatchBuilder.from(entries);
   }
 }
 // #endregion worker-node

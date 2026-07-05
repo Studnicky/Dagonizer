@@ -7,7 +7,7 @@
  * (`fire → validate → route`); the scatter path invokes it again at each per-item
  * emit into the gather. It is the single place output contracts are enforced.
  *
- * Covers Scalar AND Monadic nodes uniformly. Given a node's `RoutedBatchType`,
+ * Covers all Monadic nodes uniformly. Given a node's `RoutedBatchType`,
  * on a per-port violation it re-routes the offending item to `'error'` and
  * collects a `NodeError` (code `outputContractViolation`) on the item's state.
  * When `validateOutputs` is off (validator is null) the call is a no-op — zero

@@ -14,6 +14,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
+import { Batch } from '@studnicky/dagonizer';
 import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
 
 import { ArchivistState } from '../../ArchivistState.ts';
@@ -27,6 +28,14 @@ import { BookBuilder } from '../../entities/Book.ts';
 class MergeFallbackFixture {
   static makeContext() {
     return NodeContextBuilder.of('test-dag', 'merge-candidates', new AbortController().signal);
+  }
+
+  static async execute(state: ArchivistState): Promise<'ranked' | 'empty' | null> {
+    const routed = await mergeCandidates.execute(Batch.of(state), MergeFallbackFixture.makeContext());
+    for (const [output, batch] of routed) {
+      if (batch.size > 0) return output;
+    }
+    return null;
   }
 
   static liveCandidate(isbn: string, score: number): CandidateType {
@@ -60,9 +69,9 @@ void test('mergeCandidates: live=0 + prior=3 → shortlist=3, all fromPriorMemor
     MergeFallbackFixture.priorCandidate('A003'),
   ];
 
-  const result = await mergeCandidates.runItem(state, MergeFallbackFixture.makeContext());
+  const result = await MergeFallbackFixture.execute(state);
 
-  assert.equal(result.output, 'ranked', 'routes ranked when prior candidates present');
+  assert.equal(result, 'ranked', 'routes ranked when prior candidates present');
   assert.equal(state.shortlist.length, 3, 'shortlist length = 3');
   assert.equal(
     state.shortlist.every((c) => c.notes?.['fromPriorMemory'] === true),
@@ -85,9 +94,9 @@ void test('mergeCandidates: live=2 + prior=3 (1 overlap isbn B001) → dedupe �
     MergeFallbackFixture.priorCandidate('B004'),
   ];
 
-  const result = await mergeCandidates.runItem(state, MergeFallbackFixture.makeContext());
+  const result = await MergeFallbackFixture.execute(state);
 
-  assert.equal(result.output, 'ranked', 'routes ranked');
+  assert.equal(result, 'ranked', 'routes ranked');
   // B001 live + B002 live + B003 prior + B004 prior = 4 unique
   assert.equal(state.shortlist.length, 4, '4 unique items after dedupe (capped at 5)');
   // B001 must be the live version (higher score 0.9 beats prior 0.5).
@@ -105,9 +114,9 @@ void test('mergeCandidates: both empty → routes empty', async () => {
   state.candidates     = [];
   state.priorCandidates = [];
 
-  const result = await mergeCandidates.runItem(state, MergeFallbackFixture.makeContext());
+  const result = await MergeFallbackFixture.execute(state);
 
-  assert.equal(result.output, 'empty', 'routes empty when both pools empty');
+  assert.equal(result, 'empty', 'routes empty when both pools empty');
   assert.equal(state.shortlist.length, 0);
 });
 
@@ -122,9 +131,9 @@ void test('mergeCandidates: live=3 + prior=0 → original path, no regression', 
   ];
   state.priorCandidates = [];
 
-  const result = await mergeCandidates.runItem(state, MergeFallbackFixture.makeContext());
+  const result = await MergeFallbackFixture.execute(state);
 
-  assert.equal(result.output, 'ranked');
+  assert.equal(result, 'ranked');
   assert.equal(state.shortlist.length, 3);
 });
 
@@ -149,8 +158,8 @@ void test('mergeCandidates: prior-only fallback sets failureCause when still emp
     notes:  { fromPriorMemory: true },
   }];
 
-  const result = await mergeCandidates.runItem(state, MergeFallbackFixture.makeContext());
+  const result = await MergeFallbackFixture.execute(state);
 
-  assert.equal(result.output, 'empty', 'routes empty when language-filtered prior candidates are empty');
+  assert.equal(result, 'empty', 'routes empty when language-filtered prior candidates are empty');
   assert.notEqual(state.failureCause, '', 'failureCause set on empty after filter');
 });

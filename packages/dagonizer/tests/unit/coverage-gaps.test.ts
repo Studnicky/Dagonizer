@@ -23,16 +23,16 @@ import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoffType } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
@@ -458,26 +458,27 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     const secondReady = new Promise<void>((r) => { resolveSecondReady = r; });
     let callCount = 0;
 
-    class CounterNode extends ScalarNode<ScatterAbortState, 'done'> {
+    class CounterNode extends MonadicNode<ScatterAbortState, 'done'> {
       readonly name = 'counter';
       readonly outputs = ['done'] as const;
       override get outputSchema(): Record<'done', SchemaObjectType> {
         return { 'done': { 'type': 'object' } };
       }
-      protected async executeOne(state: ScatterAbortState, context: NodeContextType): Promise<NodeOutputType<'done'>> {
-        callCount++;
-        const item = state.getter.number('item');
-        state.value = item;
-        if (callCount === 2) {
-          resolveSecondReady();
-          // Block this item — abort will interrupt it.
-          await new Promise<void>((_resolve, reject) => {
-            context.signal.addEventListener('abort', () => {
-              reject(context.signal.reason);
-            }, { 'once': true });
-          });
+      override async execute(batch: Batch<ScatterAbortState>, context: NodeContextType): Promise<Map<'done', Batch<ScatterAbortState>>> {
+        for (const item of batch) {
+          callCount++;
+          const value = item.state.getter.number('item');
+          item.state.value = value;
+          if (callCount === 2) {
+            resolveSecondReady();
+            await new Promise<void>((_resolve, reject) => {
+              context.signal.addEventListener('abort', () => {
+                reject(context.signal.reason);
+              }, { 'once': true });
+            });
+          }
         }
-        return { 'errors': [], 'output': 'done' as const };
+        return new Map([['done', batch]]);
       }
     }
 

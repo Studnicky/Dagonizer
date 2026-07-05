@@ -18,10 +18,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
@@ -57,24 +59,27 @@ export class GatherDemoState extends NodeStateBase {
  * The node unconditionally returns 'done' so the collector receives 'done'
  * for every clone.
  */
-export class TagNode extends ScalarNode<GatherDemoState, 'done'> {
+export class TagNode extends MonadicNode<GatherDemoState, 'done'> {
   readonly name = 'tag';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: GatherDemoState) {
-    const item = state.getter.string('item', '?');
-    // Side-effect: visible even under `discard` gather (clone state is
-    // discarded, but direct writes to *shared* parent state via reference
-    // are the `discard` pattern for signalling execution happened).
-    // Note: scatter clones do NOT share state with the parent — `state`
-    // here is the clone. To demonstrate pure side-effects under `discard`,
-    // we use the output token alone; the `sideEffects` field records it
-    // via the `collect` run where state IS merged back.
-    state.sideEffects = [...state.sideEffects, `tagged:${item}`];
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<GatherDemoState>) {
+    for (const batchItem of batch) {
+      const state = batchItem.state;
+      const item = state.getter.string('item', '?');
+      // Side-effect: visible even under `discard` gather (clone state is
+      // discarded, but direct writes to *shared* parent state via reference
+      // are the `discard` pattern for signalling execution happened).
+      // Note: scatter clones do NOT share state with the parent — `state`
+      // here is the clone. To demonstrate pure side-effects under `discard`,
+      // we use the output token alone; the `sideEffects` field records it
+      // via the `collect` run where state IS merged back.
+      state.sideEffects = [...state.sideEffects, `tagged:${item}`];
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 // #endregion worker-node

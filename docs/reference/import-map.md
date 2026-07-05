@@ -29,7 +29,7 @@ for anything beyond the core `Dagonizer` class and its immediate satellites.
 | `./validation` | `Validator`, `WellFormedValidator` | Ajv-backed validators compiled once at module load against the package's own schemas |
 | `./checkpoint` | `Checkpoint`, `CheckpointRestoreAdapter`, `MemoryCheckpointStore` | Deterministic-resume persistence: capture and recall a run's cursor and state |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler`, `LoopbackChannel`, `DagConformance` | Test-only doubles for the clock/scheduler contracts and a DAG-conformance test harness |
-| `./core` | `ScalarNode`, `MonadicNode`, `LoggedScalarNode`, `PlaceholderNode`, `Batch` | Pluggable execution primitives: the node base classes consumers extend and the batch/item entities they operate on |
+| `./core` | `MonadicNode`, `PlaceholderNode`, `Batch`, `RoutedBatchBuilder` | Pluggable execution primitives: the node base class consumers extend and the batch/item entities they operate on |
 | `./viz` | `MermaidRenderer`, `CytoscapeRenderer`, `MermaidExplorer` | DAG visualization: Mermaid and Cytoscape renderers, plus an interactive explorer widget |
 | `./store` | `BaseStore`, `MemoryStore`, `TypedStore`, `StoreInterface` | Shared key-value store consumers extend for cross-node or cross-run state |
 | `./container` | `DagContainerBase`, `DagHost`, `DagTask`, `DagOutcome` | Embedded-DAG container surface: channel dispatch and worker-container transport contracts |

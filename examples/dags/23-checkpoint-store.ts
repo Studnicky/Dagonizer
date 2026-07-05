@@ -7,10 +7,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -45,45 +47,51 @@ export class PipelineState extends NodeStateBase {
 // Nodes: each stage marks its name, increments tally, and appends to trail
 // ---------------------------------------------------------------------------
 
-export class IngestNode extends ScalarNode<PipelineState, 'success'> {
+export class IngestNode extends MonadicNode<PipelineState, 'success'> {
   readonly name = 'ingest';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
-  protected override async executeOne(state: PipelineState) {
-    state.stage = 'ingest';
-    state.tally++;
-    state.trail.push('ingest');
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) {
+      item.state.stage = 'ingest';
+      item.state.tally++;
+      item.state.trail.push('ingest');
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
   }
 }
 
-export class ProcessNode extends ScalarNode<PipelineState, 'success'> {
+export class ProcessNode extends MonadicNode<PipelineState, 'success'> {
   readonly name = 'process';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
-  protected override async executeOne(state: PipelineState) {
-    state.stage = 'process';
-    state.tally++;
-    state.trail.push('process');
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) {
+      item.state.stage = 'process';
+      item.state.tally++;
+      item.state.trail.push('process');
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
   }
 }
 
-export class ExportNode extends ScalarNode<PipelineState, 'success'> {
+export class ExportNode extends MonadicNode<PipelineState, 'success'> {
   readonly name = 'export';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
-  protected override async executeOne(state: PipelineState) {
-    state.stage = 'export';
-    state.tally++;
-    state.trail.push('export');
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) {
+      item.state.stage = 'export';
+      item.state.tally++;
+      item.state.trail.push('export');
+    }
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
   }
 }
 

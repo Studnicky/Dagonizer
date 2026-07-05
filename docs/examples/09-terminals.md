@@ -15,20 +15,31 @@ seeAlso:
 
 <script setup lang="ts">
 import {
+  Batch,
   DAG_CONTEXT,
   DAGBuilder,
-  NodeOutputBuilder,
+  MonadicNode,
   NodeStateBase,
+  RoutedBatchBuilder,
 } from '@studnicky/dagonizer';
-import type { DAG } from '@studnicky/dagonizer';
-import type { NodeInterface } from '@studnicky/dagonizer/contracts';
+import type { DAG, SchemaObjectType } from '@studnicky/dagonizer';
 
 class S extends NodeStateBase { shouldPass = true; }
 
-class CheckNode implements NodeInterface<S, 'pass' | 'fail'> {
+class CheckNode extends MonadicNode<S, 'pass' | 'fail'> {
   readonly name = 'check';
-  readonly outputs = ['pass', 'fail'] as const;
-  async execute(state: S) { return NodeOutputBuilder.of(state.shouldPass ? 'pass' : 'fail'); }
+  readonly outputs: readonly ('pass' | 'fail')[] = ['pass', 'fail'];
+
+  override get outputSchema(): Record<'pass' | 'fail', SchemaObjectType> {
+    return MonadicNode.permissiveSchema(this.outputs);
+  }
+
+  async execute(batch: Batch<S>) {
+    return RoutedBatchBuilder.from([
+      ['pass', batch.filter((state) => state.shouldPass)],
+      ['fail', batch.filter((state) => !state.shouldPass)],
+    ]);
+  }
 }
 
 const dag2 = new DAGBuilder('demo-explicit-terminals', '1')

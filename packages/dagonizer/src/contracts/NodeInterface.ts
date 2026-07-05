@@ -95,9 +95,9 @@ export interface NodeInterface<
    * this node guarantees when it routes to that port. Every declared output port
    * in `outputs` MUST have an entry here (enforced at `registerNode`). Schemas
    * are partial over state — they validate the fields this node writes; do NOT
-   * set `additionalProperties: false`. `MonadicNode` provides a passthrough
-   * default (`{ type: 'object' }` per port) so unmigrated nodes compile without
-   * change. Concrete nodes override with real schemas.
+   * set `additionalProperties: false`. Concrete nodes declare the schemas they
+   * route with; use `MonadicNode.permissiveSchema(outputs)` only when every port
+   * accepts the generic object shape.
    */
   readonly 'outputSchema': Record<TOutput, SchemaObjectType>;
 

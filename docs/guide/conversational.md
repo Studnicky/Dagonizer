@@ -87,53 +87,68 @@ export class HandoffMachine {
 }
 
 // IntakeNode.ts — the interactive node
-import type { NodeInterface } from '@studnicky/dagonizer';
-import type { NodeOutputType } from '@studnicky/dagonizer/entities';
-import { NodeOutputBuilder } from '@studnicky/dagonizer/entities';
+import { Batch, MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { ItemType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer/entities';
 
-export class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'success'> {
+export class IntakeNode extends MonadicNode<TripState, 'incomplete' | 'success'> {
   readonly name = 'intake';
-  readonly outputs = ['incomplete', 'success'] as const;
+  readonly outputs: readonly ('incomplete' | 'success')[] = ['incomplete', 'success'];
 
-  constructor(private readonly llm: LLMAdapter) {}
+  constructor(private readonly llm: LLMAdapter) {
+    super();
+  }
+
+  override get outputSchema(): Record<'incomplete' | 'success', SchemaObjectType> {
+    return MonadicNode.permissiveSchema(this.outputs);
+  }
 
   async execute(batch: Batch<TripState>, context: NodeContextType): Promise<RoutedBatchType<'incomplete' | 'success', TripState>> {
-    // Nodes implement execute over a Batch; this shows the per-item pattern for clarity.
-    // In practice, extend ScalarNode and implement executeOne instead.
-    const state = batch.items[0].state;
+    // Nodes implement execute over a Batch; this node owns its per-item routing locally.
+    const incomplete: ItemType<TripState>[] = [];
+    const success: ItemType<TripState>[] = [];
 
-    // Read inbound message from orchestrator (typed, cast-free)
-    const userMessage = state.getter.string('userMessage');
+    for (const item of batch) {
+      const state = item.state;
 
-    // Extract preferences with LLM or prompt
-    const { extracted } = await this.llm.extract({
-      message: userMessage,
-      schema: PreferenceSchema,
-      guidance: 'Extract travel preferences: budget, duration, destination.',
-    });
+      // Read inbound message from orchestrator (typed, cast-free)
+      const userMessage = state.getter.string('userMessage');
 
-    // Update state and check conversation state machine
-    state.preferences = { ...state.preferences, ...extracted };
-    state.handoff = HandoffMachine.transition(state.handoff, { type: 'slotsUpdated' }, {
-      extractedPreferences: state.preferences,
-    });
+      // Extract preferences with LLM or prompt
+      const { extracted } = await this.llm.extract({
+        message: userMessage,
+        schema: PreferenceSchema,
+        guidance: 'Extract travel preferences: budget, duration, destination.',
+      });
 
-    // Write outbound message
-    if (state.handoff.variant === 'awaitingSlots') {
+      // Update state and check conversation state machine
+      state.preferences = { ...state.preferences, ...extracted };
+      state.handoff = HandoffMachine.transition(state.handoff, { type: 'slotsUpdated' }, {
+        extractedPreferences: state.preferences,
+      });
+
+      // Write outbound message
+      if (state.handoff.variant === 'awaitingSlots') {
+        state.setMetadata('assistantMessage', {
+          role: 'assistant',
+          content: state.handoff.nextQuestion,
+        });
+        incomplete.push(item);
+        continue;
+      }
+
+      // All slots filled; continue to specialist nodes
       state.setMetadata('assistantMessage', {
         role: 'assistant',
-        content: state.handoff.nextQuestion,
+        content: 'Got it! Finding options for you...',
       });
-      // Return 'incomplete' → route to 'incomplete' terminal → HTTP turn ends
-      return NodeOutputBuilder.of('incomplete');
+      success.push(item);
     }
 
-    // All slots filled; continue to specialist nodes
-    state.setMetadata('assistantMessage', {
-      role: 'assistant',
-      content: 'Got it! Finding options for you...',
-    });
-    return NodeOutputBuilder.of('success');
+    return RoutedBatchBuilder.from([
+      ['incomplete', Batch.from(incomplete)],
+      ['success', Batch.from(success)],
+    ]);
   }
 }
 ```
@@ -288,12 +303,12 @@ export class EventBus {
 }
 
 // EscalateForDecisionNode.ts — the HITL node
-import type { NodeInterface } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 import type { NodeContextType } from '@studnicky/dagonizer/entities';
-import { NodeOutputBuilder } from '@studnicky/dagonizer/entities';
 
 export class EscalateForDecisionNode
-  implements NodeInterface<RefundAgentState, 'queued'>
+  extends MonadicNode<RefundAgentState, 'queued'>
 {
   private readonly escalations: EscalationQueue;
   private readonly eventBus: EventBus;
@@ -304,35 +319,42 @@ export class EscalateForDecisionNode
   }
 
   readonly name = 'escalate-for-decision';
-  readonly outputs = ['queued'] as const;
+  readonly outputs: readonly 'queued'[] = ['queued'];
+
+  override get outputSchema(): Record<'queued', SchemaObjectType> {
+    return { queued: { type: 'object' } };
+  }
 
   async execute(
     batch: Batch<RefundAgentState>,
-    _context: NodeContextType
+    context: NodeContextType
   ): Promise<RoutedBatchType<'queued', RefundAgentState>> {
+    if (context.signal.aborted) return RoutedBatchBuilder.empty();
     const { escalations, eventBus } = this;
-    const state = batch.items[0].state;
+    for (const row of batch) {
+      const state = row.state;
 
-    // Enqueue the decision for a human
-    const item = escalations.enqueue(
-      'review',
-      `Customer requested refund for order ${state.orderId}. Policy allows if < 30 days.`,
-      state.customerId,
-      state.conversationId,
-      { orderDate: state.orderDate }
-    );
+      // Enqueue the decision for a human
+      const item = escalations.enqueue(
+        'review',
+        `Customer requested refund for order ${state.orderId}. Policy allows if < 30 days.`,
+        state.customerId,
+        state.conversationId,
+        { orderDate: state.orderDate }
+      );
 
-    // Publish to admin SSE stream
-    eventBus.publish('escalations', { variant: 'queued', item });
+      // Publish to admin SSE stream
+      eventBus.publish('escalations', { variant: 'queued', item });
 
-    // Also publish to the customer's SSE stream (tell them to wait)
-    eventBus.publish(`conversation:${state.customerId}`, {
-      variant: 'pending',
-      message: 'Your request is under review. You will be notified shortly.',
-    });
+      // Also publish to the customer's SSE stream (tell them to wait)
+      eventBus.publish(`conversation:${state.customerId}`, {
+        variant: 'pending',
+        message: 'Your request is under review. You will be notified shortly.',
+      });
 
-    state.escalation = item;
-    return NodeOutputBuilder.of('queued');
+      state.escalation = item;
+    }
+    return RoutedBatchBuilder.of('queued', batch);
   }
 }
 ```
@@ -462,14 +484,16 @@ export function makeSseStream(eventBus: EventBus, customerId: string) {
 Constructor injection is the dependency injection model. Nodes receive dependencies through their constructors and hold them as private fields.
 
 ```typescript
-class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'success'> {
+class IntakeNode extends MonadicNode<TripState, 'incomplete' | 'success'> {
   private readonly llm: LLMAdapter;
+  readonly name = 'intake';
+  readonly outputs: readonly ('incomplete' | 'success')[] = ['incomplete', 'success'];
 
   constructor(llm: LLMAdapter) {
     super();
     this.llm = llm;
   }
-  // implements execute(batch, context) — uses this.llm
+  // define execute(batch, context) — uses this.llm
 }
 
 const intake = new IntakeNode(this.llm);
@@ -478,7 +502,7 @@ dispatcher.registerNode(intake);
 
 When a dependency varies per execution (for example, a per-request ledger keyed by `customerId`), construct the node with the appropriate instance before registering it, or restructure the dependency to be execution-agnostic (read the `customerId` from state inside the node, and pass a factory or a repository rather than a pre-built per-user object).
 
-Nodes are testable in isolation: instantiate with a stub or fake, call `execute` or `executeOne` directly, and assert on the result without wiring a dispatcher.
+Nodes are testable in isolation: instantiate with a stub or fake, call `execute(Batch.of(state), context)` directly, and assert on the result without wiring a dispatcher.
 
 ---
 

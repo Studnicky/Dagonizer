@@ -9,13 +9,11 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region canonicalize-recipient-node
-export class CanonicalizeRecipientNode extends ScalarNode<CartographerState, 'done'> {
+export class CanonicalizeRecipientNode extends MonadicNode<CartographerState, 'done'> {
   readonly 'name' = 'canonicalize-recipient';
   readonly 'outputs' = ['done'] as const;
 
@@ -25,38 +23,44 @@ export class CanonicalizeRecipientNode extends ScalarNode<CartographerState, 'do
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
-    const raw  = state.raw;
-    const norm = state.normalized;
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'done', CartographerState>> {
+    for (const item of batch) {
+      const state = item.state;
+      const raw  = state.raw;
+      const norm = state.normalized;
 
-    state.normalized = {
-      ...norm,
-      'recipientName':    raw.recipientName,
-      'recipientEmail':   raw.recipientEmail,
-      'recipientPhone':   raw.recipientPhone,
-      'recipientAddress': raw.recipientAddress,
-      'recipientCountry': raw.recipientCountry,
-      'marketingConsent': raw.marketingConsent,
-    };
+      state.normalized = {
+        ...norm,
+        'recipientName':    raw.recipientName,
+        'recipientEmail':   raw.recipientEmail,
+        'recipientPhone':   raw.recipientPhone,
+        'recipientAddress': raw.recipientAddress,
+        'recipientCountry': raw.recipientCountry,
+        'marketingConsent': raw.marketingConsent,
+      };
 
-    state.currentEvent = {
-      'shipmentId':        norm.shipmentId,
-      'timestamp':         norm.isoTimestamp,
-      'eventType':         norm.status,
-      'latitude':          norm.latitude,
-      'longitude':         norm.longitude,
-      'carrier':           norm.carrierName,
-      'facilityId':        norm.facilityId,
-      'recipientName':     raw.recipientName,
-      'recipientEmail':    raw.recipientEmail,
-      'recipientPhone':    raw.recipientPhone,
-      'recipientAddress':  raw.recipientAddress,
-      'recipientCountry':  raw.recipientCountry,
-      'marketingConsent':  raw.marketingConsent,
-      'promisedDeliveryAt': new Date(norm.promisedEpochMs).toISOString(),
-    };
+      state.currentEvent = {
+        'shipmentId':        norm.shipmentId,
+        'timestamp':         norm.isoTimestamp,
+        'eventType':         norm.status,
+        'latitude':          norm.latitude,
+        'longitude':         norm.longitude,
+        'carrier':           norm.carrierName,
+        'facilityId':        norm.facilityId,
+        'recipientName':     raw.recipientName,
+        'recipientEmail':    raw.recipientEmail,
+        'recipientPhone':    raw.recipientPhone,
+        'recipientAddress':  raw.recipientAddress,
+        'recipientCountry':  raw.recipientCountry,
+        'marketingConsent':  raw.marketingConsent,
+        'promisedDeliveryAt': new Date(norm.promisedEpochMs).toISOString(),
+      };
+    }
 
-    return NodeOutputBuilder.of('done');
+    return RoutedBatchBuilder.of('done', batch);
   }
 }
 

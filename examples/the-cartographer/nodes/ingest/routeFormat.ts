@@ -18,10 +18,8 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-format-node
 const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'csv' | 'json' | 'ndjson' | 'yaml'>> = {
@@ -31,7 +29,7 @@ const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'csv' | 'json' | 'n
   'yaml':  'yaml',
 };
 
-export class RouteFormatNode extends ScalarNode<CartographerState, 'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'> {
+export class RouteFormatNode extends MonadicNode<CartographerState, 'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'> {
   readonly 'name' = 'route-format';
   readonly 'outputs' = ['csv', 'json', 'ndjson', 'yaml', 'invalid'] as const;
 
@@ -45,7 +43,33 @@ export class RouteFormatNode extends ScalarNode<CartographerState, 'csv' | 'json
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid', CartographerState>> {
+    const acc = new Map<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private routeItem(state: CartographerState): NodeOutputType<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'> {
     const route = FORMAT_ROUTE[state.currentSource.format];
     if (route === undefined) {
       return NodeOutputBuilder.of('invalid');

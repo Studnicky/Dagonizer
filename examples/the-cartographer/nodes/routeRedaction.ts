@@ -25,13 +25,11 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { Consent } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-redaction-node
-export class RouteRedactionNode extends ScalarNode<CartographerState, 'needs-redaction' | 'skip-redaction'> {
+export class RouteRedactionNode extends MonadicNode<CartographerState, 'needs-redaction' | 'skip-redaction'> {
   readonly 'name' = 'route-redaction';
   readonly 'outputs' = ['needs-redaction', 'skip-redaction'] as const;
 
@@ -42,7 +40,33 @@ export class RouteRedactionNode extends ScalarNode<CartographerState, 'needs-red
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'needs-redaction' | 'skip-redaction'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'needs-redaction' | 'skip-redaction', CartographerState>> {
+    const acc = new Map<'needs-redaction' | 'skip-redaction', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'needs-redaction' | 'skip-redaction', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private routeItem(state: CartographerState): NodeOutputType<'needs-redaction' | 'skip-redaction'> {
     const ev = state.currentEvent;
     const hasPii =
       state.canonical.pii === true ||

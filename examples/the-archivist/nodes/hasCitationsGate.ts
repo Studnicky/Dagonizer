@@ -15,8 +15,8 @@
  * dereferencing typed fields.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutputBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import { MemoryStore } from '../memory/MemoryStore.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -25,7 +25,7 @@ import type { ArchivistServices } from '../services.ts';
 const dagSource      = MemoryStore.dagIri('source');
 const dagInShortlist = MemoryStore.dagIri('inShortlist');
 
-export class HasCitationsGateNode extends ScalarNode<ArchivistState, 'pass' | 'fail'> {
+export class HasCitationsGateNode extends MonadicNode<ArchivistState, 'pass' | 'fail'> {
   private readonly services: ArchivistServices;
   readonly name = 'has-citations-gate';
   readonly outputs = ['pass', 'fail'] as const;
@@ -41,37 +41,60 @@ export class HasCitationsGateNode extends ScalarNode<ArchivistState, 'pass' | 'f
     this.services = services;
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    const passItems: ItemType<ArchivistState>[] = [];
+    const failItems: ItemType<ArchivistState>[] = [];
     const memory = this.services.memory;
-    const graph = MemoryStore.stateGraphIri(state.runId);
-    const shortlisted = memory.select({
-      'subject':   '?book',
-      'predicate': dagInShortlist,
-      'object':    MemoryStore.lit.bool(true),
-      'graph':     graph,
-    });
-    if (shortlisted.length === 0) {
+
+    for (const item of batch) {
+      const { state } = item;
+      const graph = MemoryStore.stateGraphIri(state.runId);
+      const shortlisted = memory.select({
+        'subject':   '?book',
+        'predicate': dagInShortlist,
+        'object':    MemoryStore.lit.bool(true),
+        'graph':     graph,
+      });
+      if (shortlisted.length === 0) {
+        if (state.failureCause.trim().length === 0) {
+          state.failureCause = 'No candidates found after searching all available sources. ';
+        }
+        const result = NodeOutputBuilder.of('fail');
+        for (const error of result.errors) state.collectError(error);
+        failItems.push(item);
+        continue;
+      }
+      let passed = false;
+      for (const row of shortlisted) {
+        const book = row['book'];
+        if (book === undefined) continue;
+        const hasSource = memory.ask({
+          'subject':   book,
+          'predicate': dagSource,
+          'graph':     graph,
+        });
+        if (hasSource) {
+          passed = true;
+          break;
+        }
+      }
+      if (passed) {
+        const result = NodeOutputBuilder.of('pass');
+        for (const error of result.errors) state.collectError(error);
+        passItems.push(item);
+        continue;
+      }
       if (state.failureCause.trim().length === 0) {
         state.failureCause = 'No candidates found after searching all available sources. ';
       }
-      return NodeOutputBuilder.of('fail');
+      const result = NodeOutputBuilder.of('fail');
+      for (const error of result.errors) state.collectError(error);
+      failItems.push(item);
     }
-    for (const row of shortlisted) {
-      const book = row['book'];
-      if (book === undefined) continue;
-      const hasSource = memory.ask({
-        'subject':   book,
-        'predicate': dagSource,
-        'graph':     graph,
-      });
-      if (hasSource) {
-        return NodeOutputBuilder.of('pass');
-      }
-    }
-    if (state.failureCause.trim().length === 0) {
-      state.failureCause = 'No candidates found after searching all available sources. ';
-    }
-    return NodeOutputBuilder.of('fail');
+
+    const routes: Array<readonly ['pass' | 'fail', Batch<ArchivistState>]> = [];
+    if (passItems.length > 0) routes.push(['pass', Batch.from(passItems)]);
+    if (failItems.length > 0) routes.push(['fail', Batch.from(failItems)]);
+    return RoutedBatchBuilder.from(routes);
   }
 }
-

@@ -10,10 +10,8 @@
  *     `dag:Reasoning` entities, and surfaces the first one on
  *     `state.recalledContext.priorReasoning` / `.summary`.
  *
- * `RecallContextNode.executeOne` is protected. Following the established
- * house pattern (`dispatcher-classify-node.test.ts`'s
- * `PublicClassifyMessageNode`), a test-only subclass widens it to public
- * so the test can invoke node logic directly without the DAG engine.
+ * `RecallContextNode` is exercised through `execute(Batch.of(state), context)`
+ * so the test covers the monadic batch contract directly.
  */
 
 import { test } from 'node:test';
@@ -26,7 +24,8 @@ import { RdfProvObserver } from '../../provenance/RdfProvObserver.ts';
 import { DAG_ENT, DAG_PRED, PROV, ProvIris, RDF_TYPE } from '../../provenance/PROV.ts';
 import type { ArchivistServices } from '../../services.ts';
 
-import { ReasoningStepBuilder } from '@studnicky/dagonizer';
+import { Batch, ReasoningStepBuilder } from '@studnicky/dagonizer';
+import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
 
 // ── Stub implementations for never-called ArchivistServices ─────────────────
 
@@ -67,23 +66,11 @@ class NullLlm {
   async explainTool(): Promise<never>        { return Promise.reject(new Error('not called')); }
 }
 
-/**
- * Test-only widening of `RecallContextNode`'s protected `executeOne` to
- * public, mirroring `dispatcher-classify-node.test.ts`'s
- * `PublicClassifyMessageNode` convention already established in this
- * tests directory.
- */
-class PublicRecallContextNode extends RecallContextNode {
-  public override async executeOne(state: ArchivistState) {
-    return super.executeOne(state);
-  }
-}
-
 // ── Fixture ──────────────────────────────────────────────────────────────────
 
 /** Setup helpers for the reasoning-provenance unit tests. */
 class ReasoningProvFixture {
-  static makeRecallNode(memory: MemoryStore): PublicRecallContextNode {
+  static makeRecallNode(memory: MemoryStore): RecallContextNode {
     const services: ArchivistServices = {
       webSearch:        new NullTool(),
       googleBooks:      new NullTool(),
@@ -94,7 +81,11 @@ class ReasoningProvFixture {
       embedder:         null,
       nodeTimeouts:     {},
     };
-    return new PublicRecallContextNode(services);
+    return new RecallContextNode(services);
+  }
+
+  static context() {
+    return NodeContextBuilder.of('test-dag', 'recall-context', new AbortController().signal);
   }
 
   /** Writes one `dag:Reasoning` PROV entity directly, mirroring what `RdfProvObserver.recordReasoning` writes. */
@@ -245,7 +236,8 @@ void test('RecallContextNode: recall surfaces prior-run reasoning', async () => 
   state.query = 'existentialism fiction';
   state.terms = ['existentialism', 'fiction'];
 
-  await node.executeOne(state);
+  const routed = await node.execute(Batch.of(state), ReasoningProvFixture.context());
+  assert.equal(routed.get('recalled')?.size, 1, 'state routes to recalled');
 
   assert.ok(state.recalledContext.priorReasoning.length >= 1, 'at least one prior reasoning step recalled');
   const recalled = state.recalledContext.priorReasoning.find((r) => r.text === 'recalled thought text');

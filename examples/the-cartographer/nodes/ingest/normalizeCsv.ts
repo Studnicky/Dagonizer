@@ -14,13 +14,11 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import { FieldMappings } from '../../services.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region normalize-csv-node
-export class NormalizeCsvNode extends ScalarNode<CartographerState, 'normalized'> {
+export class NormalizeCsvNode extends MonadicNode<CartographerState, 'normalized'> {
   readonly 'name' = 'normalize-csv-map';
   readonly 'outputs' = ['normalized'] as const;
 
@@ -30,17 +28,22 @@ export class NormalizeCsvNode extends ScalarNode<CartographerState, 'normalized'
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'normalized'>> {
-    const map = FieldMappings.forKey(state.currentSource.mappingKey);
-    const mapped: Array<Record<string, unknown>> = state.parsedRecords.map((rec) => {
-      const out: Record<string, unknown> = {};
-      for (const [canonical, sourceKey] of Object.entries(map)) {
-        if (sourceKey in rec) out[canonical] = rec[sourceKey];
-      }
-      return out;
-    });
-    state.mappedRecords = mapped;
-    return NodeOutputBuilder.of('normalized');
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'normalized', CartographerState>> {
+    for (const item of batch) {
+      const map = FieldMappings.forKey(item.state.currentSource.mappingKey);
+      const mapped: Array<Record<string, unknown>> = item.state.parsedRecords.map((rec) => {
+        const out: Record<string, unknown> = {};
+        for (const [canonical, sourceKey] of Object.entries(map)) {
+          if (sourceKey in rec) out[canonical] = rec[sourceKey];
+        }
+        return out;
+      });
+      item.state.mappedRecords = mapped;
+    }
+    return RoutedBatchBuilder.of('normalized', batch);
   }
 }
 

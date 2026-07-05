@@ -7,8 +7,9 @@
  * and removes convention-coupled casts from the base.
  */
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -25,10 +26,13 @@ export abstract class RespondNode<
 
   protected abstract emit(state: TState, draft: string): void;
 
-  protected override async executeOne(
-    state: TState,
-  ): Promise<NodeOutputType<'success'>> {
-    this.emit(state, this.extractDraft(state));
-    return NodeOutputBuilder.of('success');
+  override async execute(
+    batch: Batch<TState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'success', TState>> {
+    for (const item of batch) {
+      this.emit(item.state, this.extractDraft(item.state));
+    }
+    return RoutedBatchBuilder.of('success', batch);
   }
 }

@@ -12,7 +12,7 @@
  *   - `RoutingCallModelNode` — the SAME `call-model` node, subclassed to
  *     override `routeKey(state)` with a per-run id (`state.conversationId`).
  *     One instance of this node, wired to one shared sink, is safe to run
- *     concurrently for many conversations: `CallModelNode.executeOne` wraps
+ *     concurrently for many conversations: `CallModelNode.execute` wraps
  *     the shared sink in a fresh `RoutingStreamSink` per execution, so every
  *     chunk it pushes downstream already carries `routeKey` + `source`.
  *   - `TranscriptStore` — a plain shared bucket (`Map<routeKey, string[]>`),
@@ -40,8 +40,8 @@
  * payload, not just a passive buffer.
  */
 
-import { NodeOutputBuilder, NodeStateBase, ScalarNode, Validator } from '@studnicky/dagonizer';
-import type { DAGType, NodeContextType, EntityValidatorInterface, SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutputBuilder, NodeStateBase, RoutedBatchBuilder, Validator } from '@studnicky/dagonizer';
+import type { DAGType, EntityValidatorInterface, SchemaObjectType } from '@studnicky/dagonizer';
 import { RoutedChatStreamChunkSchema } from '@studnicky/dagonizer/adapter';
 import type { RoutedChatStreamChunkType } from '@studnicky/dagonizer/adapter';
 import { DAG_CONTEXT } from '@studnicky/dagonizer';
@@ -124,7 +124,7 @@ const CHUNK_VALIDATOR: EntityValidatorInterface<RoutedChatStreamChunkType> = Val
  * `TranscriptStore` under `item.routeKey` — the classify-and-route step that
  * demultiplexes concurrent agent runs sharing one sink.
  */
-export class RouteChunkNode extends ScalarNode<RoutingState, 'done'> {
+export class RouteChunkNode extends MonadicNode<RoutingState, 'done'> {
   readonly name = 'route-chunk';
   readonly outputs = ['done'] as const;
 
@@ -139,15 +139,14 @@ export class RouteChunkNode extends ScalarNode<RoutingState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(
-    state: RoutingState,
-    _context: NodeContextType,
-  ): Promise<ReturnType<typeof NodeOutputBuilder.of<'done'>>> {
-    const raw = state.getMetadata(ROUTE_ITEM_KEY);
-    if (CHUNK_VALIDATOR.is(raw)) {
-      this.#transcripts.append(raw.routeKey, raw.delta);
+  override async execute(batch: Batch<RoutingState>) {
+    for (const item of batch) {
+      const raw = item.state.getMetadata(ROUTE_ITEM_KEY);
+      if (CHUNK_VALIDATOR.is(raw)) {
+        this.#transcripts.append(raw.routeKey, raw.delta);
+      }
     }
-    return NodeOutputBuilder.of('done');
+    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
   }
 }
 
