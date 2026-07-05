@@ -16,11 +16,15 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
+import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { ToolInterface } from '../../src/tool/ToolInterface.js';
 import { ToolInvocationState } from '../../src/tool/ToolInvocationState.js';
+import { ToolInvokeNode } from '../../src/tool/ToolInvokeNode.js';
 import { ToolRegistry } from '../../src/tool/ToolRegistry.js';
+import { Validator } from '../../src/validation/Validator.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -231,5 +235,113 @@ void describe('ToolRegistry: a tool is an embeddable DAG (end-to-end)', () => {
 
     // ToolInvokeNode routes to 'error' → 'end-fail' terminal → failed outcome.
     assert.equal(result.terminalOutcome, 'failed');
+  });
+});
+
+void describe('ToolInvokeNode: batch execution', () => {
+  void it('starts independent batch item tool calls concurrently', async () => {
+    let active = 0;
+    let release: (() => void) | null = null;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+
+    class GateTool implements ToolInterface<Record<string, unknown>, { 'ok': boolean }> {
+      readonly definition = {
+        'name': 'gate',
+        'description': 'Waits until two calls are active.',
+        'inputSchema': { '$id': 'GateToolInput', 'type': 'object' as const },
+        'outputSchema': {
+          '$id': 'GateToolOutput',
+          'type': 'object' as const,
+          'required': ['ok'],
+          'properties': { 'ok': { 'type': 'boolean' } },
+        },
+        'strict': true,
+      };
+
+      async execute(_input: Record<string, unknown>): Promise<{ 'ok': boolean }> {
+        active += 1;
+        if (active === 2) release?.();
+        await gate;
+        return { 'ok': true };
+      }
+    }
+
+    const tool = new GateTool();
+    const node = new ToolInvokeNode(
+      'gate',
+      tool,
+      Validator.compile(tool.definition.inputSchema),
+      Validator.compile(tool.definition.outputSchema),
+      { 'execution': { 'concurrency': 2 } },
+    );
+    const left = new ToolInvocationState();
+    left.input = { 'id': 'left' };
+    const right = new ToolInvocationState();
+    right.input = { 'id': 'right' };
+    const batch = Batch.from([
+      { 'id': 'left', 'state': left },
+      { 'id': 'right', 'state': right },
+    ]);
+    const context = NodeContextBuilder.of('tool-test', 'gate', new AbortController().signal);
+
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => reject(new Error('tool batch execution did not start both items concurrently')), 100);
+    });
+    const routed = await Promise.race([node.execute(batch, context), timeoutPromise]);
+    if (timeout !== null) clearTimeout(timeout);
+
+    assert.equal(active, 2);
+    assert.equal(routed.get('done')?.size, 2);
+    assert.deepEqual(left.output, { 'ok': true });
+    assert.deepEqual(right.output, { 'ok': true });
+  });
+
+  void it('honors throttle concurrency as a second execution gate', async () => {
+    let active = 0;
+    let peak = 0;
+
+    class TimedTool implements ToolInterface<Record<string, unknown>, { 'ok': boolean }> {
+      readonly definition = {
+        'name': 'timed',
+        'description': 'Records peak active calls.',
+        'inputSchema': { '$id': 'TimedToolInput', 'type': 'object' as const },
+        'outputSchema': {
+          '$id': 'TimedToolOutput',
+          'type': 'object' as const,
+          'required': ['ok'],
+          'properties': { 'ok': { 'type': 'boolean' } },
+        },
+        'strict': true,
+      };
+
+      async execute(_input: Record<string, unknown>): Promise<{ 'ok': boolean }> {
+        active += 1;
+        peak = Math.max(peak, active);
+        await new Promise<void>((resolve) => { setTimeout(resolve, 10); });
+        active -= 1;
+        return { 'ok': true };
+      }
+    }
+
+    const tool = new TimedTool();
+    const node = new ToolInvokeNode(
+      'timed',
+      tool,
+      Validator.compile(tool.definition.inputSchema),
+      Validator.compile(tool.definition.outputSchema),
+      { 'execution': { 'concurrency': 3, 'throttle': { 'concurrencyLimit': 1 } } },
+    );
+    const states = [new ToolInvocationState(), new ToolInvocationState(), new ToolInvocationState()];
+    const batch = Batch.from(states.map((state, index) => {
+      state.input = { index };
+      return { 'id': `item-${index}`, state };
+    }));
+    const context = NodeContextBuilder.of('tool-test', 'timed', new AbortController().signal);
+
+    const routed = await node.execute(batch, context);
+
+    assert.equal(peak, 1);
+    assert.equal(routed.get('done')?.size, 3);
   });
 });

@@ -24,6 +24,7 @@
 
 export type { DagonizerInterface } from '../Dagonizer.js';
 export type { NodeStateInterface, StateFieldType, StateFieldsType } from '../NodeStateBase.js';
+export type { BatchExecutionOptionsType, BatchExecutionThrottleOptionsType } from './BatchExecutionOptions.js';
 
 // ---------------------------------------------------------------------------
 // Adapter contracts

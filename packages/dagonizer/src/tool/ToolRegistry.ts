@@ -20,6 +20,7 @@ import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
 import type { ToolDefinitionType } from '../entities/adapter/ToolDefinition.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { DAGError } from '../errors/DAGError.js';
+import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.js';
 import type { EntityValidatorInterface } from '../validation/Validator.js';
 import { Validator } from '../validation/Validator.js';
 
@@ -43,13 +44,16 @@ type RegistryEntry = {
   readonly 'dagName': string;
   readonly 'inputValidator': EntityValidatorInterface<unknown>;
   readonly 'outputValidator': EntityValidatorInterface<unknown>;
+  readonly 'execution': BatchExecutionOptionsType;
 };
 
 export class ToolRegistry {
   readonly #entries: Map<string, RegistryEntry>;
+  readonly #execution: BatchExecutionOptionsType;
 
-  constructor() {
+  constructor(options: { readonly execution?: BatchExecutionOptionsType } = {}) {
     this.#entries = new Map<string, RegistryEntry>();
+    this.#execution = options.execution ?? {};
   }
 
   /**
@@ -57,7 +61,7 @@ export class ToolRegistry {
    * placement; two terminals: `end` / `end-fail`). The entry is keyed by
    * `tool.definition.name`; duplicate registration throws `DAGError`.
    */
-  register(tool: ToolInterface<Record<string, unknown>, unknown>): void {
+  register(tool: ToolInterface<Record<string, unknown>, unknown>, options: { readonly execution?: BatchExecutionOptionsType } = {}): void {
     const toolName = tool.definition.name;
 
     if (this.#entries.has(toolName)) {
@@ -78,13 +82,27 @@ export class ToolRegistry {
     // Build the synthesized DAG from a default-typed node (the builder reads its
     // `name`). The registered node instances are constructed per `bundle()` call
     // so the synthesized DAG node is discarded after the DAG is built.
+    const execution = options.execution ?? this.#execution;
     const dag = new DAGBuilder(dagName, '1')
-      .node('invoke', new ToolInvokeNode(nodeName, tool, inputValidator, outputValidator), { 'done': 'end', 'error': 'end-fail' })
+      .node(
+        'invoke',
+        new ToolInvokeNode(nodeName, tool, inputValidator, outputValidator, { execution }),
+        { 'done': 'end', 'error': 'end-fail' },
+      )
       .terminal('end')
       .terminal('end-fail', { 'outcome': 'failed' })
       .build();
 
-    this.#entries.set(toolName, { 'definition': tool.definition, 'tool': tool, 'nodeName': nodeName, 'dag': dag, 'dagName': dagName, 'inputValidator': inputValidator, 'outputValidator': outputValidator });
+    this.#entries.set(toolName, {
+      'definition':      tool.definition,
+      'tool':            tool,
+      'nodeName':        nodeName,
+      dag,
+      dagName,
+      inputValidator,
+      outputValidator,
+      execution,
+    });
   }
 
   /**
@@ -129,7 +147,7 @@ export class ToolRegistry {
     for (const entry of this.#entries.values()) {
       // Construct each node. The node gets its tool via the constructor.
       // Validators compiled once at `register()` time are passed through here; no recompilation.
-      nodes.push(new ToolInvokeNode(entry['nodeName'], entry['tool'], entry['inputValidator'], entry['outputValidator']));
+      nodes.push(new ToolInvokeNode(entry['nodeName'], entry['tool'], entry['inputValidator'], entry['outputValidator'], { 'execution': entry['execution'] }));
       dags.push(entry['dag']);
       stateFactories[entry['dagName']] = () => new ToolInvocationState();
     }

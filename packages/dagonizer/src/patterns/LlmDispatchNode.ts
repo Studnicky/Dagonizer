@@ -18,6 +18,7 @@
  */
 
 import type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
+import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.js';
 
 import { MonadicNode } from '@studnicky/dagonizer';
 import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
@@ -28,8 +29,14 @@ export abstract class LlmDispatchNode<
   TState extends NodeStateInterface,
   TOutput extends string,
 > extends MonadicNode<TState, TOutput> {
-  constructor(protected readonly llm: LlmClientInterface) {
+  protected readonly execution: BatchExecutionOptionsType;
+
+  constructor(
+    protected readonly llm: LlmClientInterface,
+    options: { readonly execution?: BatchExecutionOptionsType } = {},
+  ) {
     super();
+    this.execution = options.execution ?? {};
   }
 
   /** Build the user prompt from state. */

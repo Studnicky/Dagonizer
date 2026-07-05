@@ -11,7 +11,7 @@
  * Routes 'drafted' on every path.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { BatchItemExecutor, MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
@@ -36,13 +36,13 @@ export class AiComposeNode extends MonadicNode<DispatcherState, 'drafted'> {
     batch: Batch<DispatcherState>,
     context: NodeContextType,
   ): Promise<RoutedBatchType<'drafted', DispatcherState>> {
-    for (const item of batch) {
+    await BatchItemExecutor.map(batch.items(), async (item) => {
       try {
         item.state.response = await this.#services.llm.compose(item.state.message, item.state.conversation, context.signal);
       } catch {
         item.state.response = 'I apologize — I had trouble composing a reply. Please try again or ask for a human agent.';
       }
-    }
+    }, this.#services.execution, context.signal);
     return RoutedBatchBuilder.of('drafted', batch);
   }
 }

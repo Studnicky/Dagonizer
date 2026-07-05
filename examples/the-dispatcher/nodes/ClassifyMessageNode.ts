@@ -28,7 +28,7 @@
  *   customers in the flow.
  */
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, BatchItemExecutor, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
@@ -58,17 +58,21 @@ export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' 
     context: NodeContextType,
   ): Promise<RoutedBatchType<'routine' | 'escalate' | 'off-topic', DispatcherState>> {
     const acc = new Map<'routine' | 'escalate' | 'off-topic', ItemType<DispatcherState>[]>();
+    const results = await BatchItemExecutor.map(batch.items(), async (item) => {
+      const output = await this.routeItem(item.state, context);
 
-    for (const item of batch) {
-      const result = await this.routeItem(item.state, context);
-      for (const error of result.errors) {
+      for (const error of output.errors) {
         item.state.collectError(error);
       }
-      const bucket = acc.get(result.output);
+      return { item, output };
+    }, this.#services.execution, context.signal);
+
+    for (const result of results) {
+      const bucket = acc.get(result.output.output);
       if (bucket === undefined) {
-        acc.set(result.output, [item]);
+        acc.set(result.output.output, [result.item]);
       } else {
-        bucket.push(item);
+        bucket.push(result.item);
       }
     }
 

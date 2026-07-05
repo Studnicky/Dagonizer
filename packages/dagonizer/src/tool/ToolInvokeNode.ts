@@ -21,6 +21,8 @@ import type { NodeContextType } from '../entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../entities/node/NodeError.js';
 import { NodeOutputBuilder } from '../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../entities/node/NodeOutput.js';
+import { BatchItemExecutor } from '../execution/BatchItemExecutor.js';
+import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.js';
 import type { EntityValidatorInterface } from '../validation/Validator.js';
 
 import type { ToolInterface } from './ToolInterface.js';
@@ -48,12 +50,14 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
   readonly #tool: ToolInterface<Record<string, unknown>, unknown>;
   readonly #inputValidator: EntityValidatorInterface<unknown>;
   readonly #outputValidator: EntityValidatorInterface<unknown>;
+  readonly #execution: BatchExecutionOptionsType;
 
   constructor(
     name: string,
     tool: ToolInterface<Record<string, unknown>, unknown>,
     inputValidator: EntityValidatorInterface<unknown>,
     outputValidator: EntityValidatorInterface<unknown>,
+    options: { readonly execution?: BatchExecutionOptionsType } = {},
   ) {
     super();
     // Initialise in declaration order — V8 shape stability.
@@ -61,6 +65,7 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
     this.#tool = tool;
     this.#inputValidator = inputValidator;
     this.#outputValidator = outputValidator;
+    this.#execution = options.execution ?? {};
   }
 
   override async execute(
@@ -68,84 +73,21 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
     context: NodeContextType,
   ): Promise<RoutedBatchType<'done' | 'error', ToolInvocationState>> {
     const acc = new Map<'done' | 'error', ItemType<ToolInvocationState>[]>();
-
-    for (const item of batch) {
-      const state = item.state;
-      let output: NodeOutputType<'done' | 'error'>;
-
-      try {
-        // Resolve tool input from `state.input` (embeddedDAG path, seeded via
-        // `inputs` mapping) or from the scatter item stored in metadata
-        // (scatter/dagFrom path: scatter sets metadata[currentItem] = the scatter
-        // item, which carries `arguments`). The embeddedDAG path wins when
-        // `state.input` is non-empty; the scatter path is the fallback. The item
-        // comes out of the `unknown`-typed metadata record and is narrowed through a
-        // type guard — no cast.
-        const inputFromState = state.input;
-        const scatterItem = state.getMetadata(SCATTER_ITEM_KEY_DEFAULT);
-        const itemArgs =
-          ToolInvocationState.isArgumentRecord(scatterItem) && ToolInvocationState.isArgumentRecord(scatterItem['arguments'])
-            ? scatterItem['arguments']
-            : null;
-        const input =
-          Object.keys(inputFromState).length > 0
-            ? inputFromState
-            : (itemArgs ?? inputFromState);
-
-        // Input contract validation: gated by validateOutputs. When off (default),
-        // trusted at compile-time by TypeScript types alone.
-        if (context.validateOutputs && !this.#inputValidator.is(input)) {
-          const violations = this.#inputValidator.errors(input) ?? ['schema mismatch'];
-          const error = NodeErrorBuilder.from(
-            'toolInputContractViolation',
-            `Tool '${this.#tool.definition.name}' received input that violates inputSchema: ${violations.join('; ')}`,
-            'ToolInvokeNode.execute',
-            false,
-            new Date().toISOString(),
-            { 'context': { 'toolName': this.#tool.definition.name, 'violations': violations } },
-          );
-          output = NodeOutputBuilder.of('error', { 'errors': [error] });
-        } else {
-          const result = await this.#tool.execute(input, { 'signal': context.signal });
-
-          // Output contract validation: gated by validateOutputs.
-          if (context.validateOutputs && !this.#outputValidator.is(result)) {
-            const violations = this.#outputValidator.errors(result) ?? ['schema mismatch'];
-            const error = NodeErrorBuilder.from(
-              'toolOutputContractViolation',
-              `Tool '${this.#tool.definition.name}' returned output that violates outputSchema: ${violations.join('; ')}`,
-              'ToolInvokeNode.execute',
-              false,
-              new Date().toISOString(),
-              { 'context': { 'toolName': this.#tool.definition.name, 'violations': violations } },
-            );
-            output = NodeOutputBuilder.of('error', { 'errors': [error] });
-          } else {
-            state.output = result;
-            output = NodeOutputBuilder.of('done');
-          }
-        }
-      } catch (thrown: unknown) {
-        const message = thrown instanceof Error ? thrown.message : String(thrown);
-        const error = NodeErrorBuilder.from(
-          'toolExecutionFailed',
-          message,
-          'ToolInvokeNode.execute',
-          false,
-          new Date().toISOString(),
-          { 'context': { 'toolName': this.#tool.definition.name } },
-        );
-        output = NodeOutputBuilder.of('error', { 'errors': [error] });
-      }
+    const results = await BatchItemExecutor.map(batch.items(), async (item) => {
+      const output = await this.#executeItem(item.state, context);
 
       for (const error of output.errors) {
-        state.collectError(error);
+        item.state.collectError(error);
       }
-      const bucket = acc.get(output.output);
+      return { item, output };
+    }, this.#execution, context.signal);
+
+    for (const result of results) {
+      const bucket = acc.get(result.output.output);
       if (bucket !== undefined) {
-        bucket.push(item);
+        bucket.push(result.item);
       } else {
-        acc.set(output.output, [item]);
+        acc.set(result.output.output, [result.item]);
       }
     }
 
@@ -154,5 +96,75 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
       routed.set(output, Batch.from(items));
     }
     return routed;
+  }
+
+  async #executeItem(
+    state: ToolInvocationState,
+    context: NodeContextType,
+  ): Promise<NodeOutputType<'done' | 'error'>> {
+    try {
+      // Resolve tool input from `state.input` (embeddedDAG path, seeded via
+      // `inputs` mapping) or from the scatter item stored in metadata
+      // (scatter/dagFrom path: scatter sets metadata[currentItem] = the scatter
+      // item, which carries `arguments`). The embeddedDAG path wins when
+      // `state.input` is non-empty; the scatter path is the fallback. The item
+      // comes out of the `unknown`-typed metadata record and is narrowed through a
+      // type guard — no cast.
+      const inputFromState = state.input;
+      const scatterItem = state.getMetadata(SCATTER_ITEM_KEY_DEFAULT);
+      const itemArgs =
+        ToolInvocationState.isArgumentRecord(scatterItem) && ToolInvocationState.isArgumentRecord(scatterItem['arguments'])
+          ? scatterItem['arguments']
+          : null;
+      const input =
+        Object.keys(inputFromState).length > 0
+          ? inputFromState
+          : (itemArgs ?? inputFromState);
+
+      // Input contract validation: gated by validateOutputs. When off (default),
+      // trusted at compile-time by TypeScript types alone.
+      if (context.validateOutputs && !this.#inputValidator.is(input)) {
+        const violations = this.#inputValidator.errors(input) ?? ['schema mismatch'];
+        const error = NodeErrorBuilder.from(
+          'toolInputContractViolation',
+          `Tool '${this.#tool.definition.name}' received input that violates inputSchema: ${violations.join('; ')}`,
+          'ToolInvokeNode.execute',
+          false,
+          new Date().toISOString(),
+          { 'context': { 'toolName': this.#tool.definition.name, 'violations': violations } },
+        );
+        return NodeOutputBuilder.of('error', { 'errors': [error] });
+      }
+
+      const result = await this.#tool.execute(input, { 'signal': context.signal });
+
+      // Output contract validation: gated by validateOutputs.
+      if (context.validateOutputs && !this.#outputValidator.is(result)) {
+        const violations = this.#outputValidator.errors(result) ?? ['schema mismatch'];
+        const error = NodeErrorBuilder.from(
+          'toolOutputContractViolation',
+          `Tool '${this.#tool.definition.name}' returned output that violates outputSchema: ${violations.join('; ')}`,
+          'ToolInvokeNode.execute',
+          false,
+          new Date().toISOString(),
+          { 'context': { 'toolName': this.#tool.definition.name, 'violations': violations } },
+        );
+        return NodeOutputBuilder.of('error', { 'errors': [error] });
+      }
+
+      state.output = result;
+      return NodeOutputBuilder.of('done');
+    } catch (thrown: unknown) {
+      const message = thrown instanceof Error ? thrown.message : String(thrown);
+      const error = NodeErrorBuilder.from(
+        'toolExecutionFailed',
+        message,
+        'ToolInvokeNode.execute',
+        false,
+        new Date().toISOString(),
+        { 'context': { 'toolName': this.#tool.definition.name } },
+      );
+      return NodeOutputBuilder.of('error', { 'errors': [error] });
+    }
   }
 }

@@ -11,8 +11,8 @@
  * that plug in a specific ToolInterface instance.
  */
 
-import { Batch, MonadicNode, NodeErrorBuilder, NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { ItemType, RoutedBatchType } from '@studnicky/dagonizer';
+import { Batch, BatchItemExecutor, MonadicNode, NodeErrorBuilder, NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { BatchExecutionOptionsType, ItemType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { ToolInterface } from '@studnicky/dagonizer/tool';
 import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
@@ -22,8 +22,14 @@ export abstract class ScoutNode<
   TToolOutput,
   TItem,
 > extends MonadicNode<TState, 'success' | 'empty' | 'error'> {
-  constructor(protected readonly tool: ToolInterface<TInput, TToolOutput>) {
+  readonly #execution: BatchExecutionOptionsType;
+
+  constructor(
+    protected readonly tool: ToolInterface<TInput, TToolOutput>,
+    options: { readonly execution?: BatchExecutionOptionsType } = {},
+  ) {
     super();
+    this.#execution = options.execution ?? {};
   }
 
   /** Build the input the tool's `execute()` expects, from state. */
@@ -40,38 +46,21 @@ export abstract class ScoutNode<
     context: NodeContextType,
   ): Promise<RoutedBatchType<'success' | 'empty' | 'error', TState>> {
     const acc = new Map<'success' | 'empty' | 'error', ItemType<TState>[]>();
-
-    for (const item of batch) {
-      const state = item.state;
-      let output: NodeOutputType<'success' | 'empty' | 'error'>;
-
-      try {
-        const input = this.composeInput(state);
-        const raw = await this.tool.execute(input, { 'signal': context.signal });
-        const items = this.normalize(raw);
-        this.writeBack(state, items);
-        output = NodeOutputBuilder.of(items.length === 0 ? 'empty' : 'success');
-      } catch (thrown: unknown) {
-        const message = thrown instanceof Error ? thrown.message : String(thrown);
-        const error = NodeErrorBuilder.from(
-          'scoutExecutionFailed',
-          message,
-          'ScoutNode.execute',
-          false,
-          new Date().toISOString(),
-          { 'context': { 'toolName': this.tool.definition.name } },
-        );
-        output = NodeOutputBuilder.of('error', { 'errors': [error] });
-      }
+    const results = await BatchItemExecutor.map(batch.items(), async (item) => {
+      const output = await this.executeItem(item.state, context);
 
       for (const error of output.errors) {
-        state.collectError(error);
+        item.state.collectError(error);
       }
-      const bucket = acc.get(output.output);
+      return { item, output };
+    }, this.#execution, context.signal);
+
+    for (const result of results) {
+      const bucket = acc.get(result.output.output);
       if (bucket !== undefined) {
-        bucket.push(item);
+        bucket.push(result.item);
       } else {
-        acc.set(output.output, [item]);
+        acc.set(result.output.output, [result.item]);
       }
     }
 
@@ -80,5 +69,29 @@ export abstract class ScoutNode<
       routed.set(output, Batch.from(items));
     }
     return routed;
+  }
+
+  private async executeItem(
+    state: TState,
+    context: NodeContextType,
+  ): Promise<NodeOutputType<'success' | 'empty' | 'error'>> {
+    try {
+      const input = this.composeInput(state);
+      const raw = await this.tool.execute(input, { 'signal': context.signal });
+      const items = this.normalize(raw);
+      this.writeBack(state, items);
+      return NodeOutputBuilder.of(items.length === 0 ? 'empty' : 'success');
+    } catch (thrown: unknown) {
+      const message = thrown instanceof Error ? thrown.message : String(thrown);
+      const error = NodeErrorBuilder.from(
+        'scoutExecutionFailed',
+        message,
+        'ScoutNode.execute',
+        false,
+        new Date().toISOString(),
+        { 'context': { 'toolName': this.tool.definition.name } },
+      );
+      return NodeOutputBuilder.of('error', { 'errors': [error] });
+    }
   }
 }

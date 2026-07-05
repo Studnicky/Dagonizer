@@ -4,6 +4,8 @@
 
 export { NodeStateBase } from './NodeStateBase.js';
 export { MetadataGetter } from './MetadataGetter.js';
+export { BatchItemExecutor } from './execution/BatchItemExecutor.js';
+export type { BatchExecutionOptionsType, BatchExecutionThrottleOptionsType } from './types/BatchExecutionOptions.js';
 
 // =============================================================================
 // LOGGER

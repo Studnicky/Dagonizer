@@ -31,7 +31,9 @@ import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
 import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
 import { DAGError } from '../../errors/DAGError.js';
+import { BatchItemExecutor } from '../../execution/BatchItemExecutor.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
+import type { BatchExecutionOptionsType } from '../../types/BatchExecutionOptions.js';
 
 export abstract class CallModelNode<
   TState extends NodeStateInterface,
@@ -48,6 +50,7 @@ export abstract class CallModelNode<
    * instance; no per-run node instance or dispatcher is needed.
    */
   protected readonly sink: StreamSinkInterface<RoutedChatStreamChunkType>;
+  protected readonly execution: BatchExecutionOptionsType;
 
   constructor(
     protected readonly llm: LlmAdapterInterface,
@@ -56,10 +59,14 @@ export abstract class CallModelNode<
      * forwarded to it are routed (tagged with `routeKey` + `source`), so one
      * shared sink safely demultiplexes concurrent runs.
      */
-    options: { sink?: StreamSinkInterface<RoutedChatStreamChunkType> } = {},
+    options: {
+      sink?: StreamSinkInterface<RoutedChatStreamChunkType>;
+      execution?: BatchExecutionOptionsType;
+    } = {},
   ) {
     super();
     this.sink = options.sink ?? new NullStreamSink<RoutedChatStreamChunkType>();
+    this.execution = options.execution ?? {};
   }
 
   override get outputSchema(): Record<'text' | 'tools' | 'mixed' | 'error', SchemaObjectType> {
@@ -107,43 +114,21 @@ export abstract class CallModelNode<
     context: NodeContextType,
   ): Promise<RoutedBatchType<'text' | 'tools' | 'mixed' | 'error', TState>> {
     const acc = new Map<'text' | 'tools' | 'mixed' | 'error', ItemType<TState>[]>();
-
-    for (const item of batch) {
-      const state = item.state;
-      let output: NodeOutputType<'text' | 'tools' | 'mixed' | 'error'>;
-
-      try {
-        const adapter = this.resolveAdapter(state, context);
-        const request = this.getRequest(state, context);
-        const source = { 'dagName': context.dagName, 'nodeName': context.nodeName };
-        const routed = RoutingStreamSink.of(this.sink, this.routeKey(state), source);
-        const response = await adapter.chatStream(request, routed);
-        this.storeResponse(state, response, context);
-        output = NodeOutputBuilder.of(response.message.variant);
-      } catch (cause) {
-        const error = DAGError.coerce(cause);
-        const recoverable = cause instanceof LlmError ? cause.classification.retryable : true;
-        output = NodeOutputBuilder.of('error', {
-          'errors': [
-            NodeErrorBuilder.from(
-              'modelCallFailed',
-              error.message,
-              'CallModelNode.execute',
-              recoverable,
-              new Date().toISOString(),
-            ),
-          ],
-        });
-      }
+    const results = await BatchItemExecutor.map(batch.items(), async (item) => {
+      const output = await this.#executeItem(item.state, context);
 
       for (const error of output.errors) {
-        state.collectError(error);
+        item.state.collectError(error);
       }
-      const bucket = acc.get(output.output);
+      return { item, output };
+    }, this.execution, context.signal);
+
+    for (const result of results) {
+      const bucket = acc.get(result.output.output);
       if (bucket !== undefined) {
-        bucket.push(item);
+        bucket.push(result.item);
       } else {
-        acc.set(output.output, [item]);
+        acc.set(result.output.output, [result.item]);
       }
     }
 
@@ -152,5 +137,34 @@ export abstract class CallModelNode<
       routed.set(output, Batch.from(items));
     }
     return routed;
+  }
+
+  async #executeItem(
+    state: TState,
+    context: NodeContextType,
+  ): Promise<NodeOutputType<'text' | 'tools' | 'mixed' | 'error'>> {
+    try {
+      const adapter = this.resolveAdapter(state, context);
+      const request = this.getRequest(state, context);
+      const source = { 'dagName': context.dagName, 'nodeName': context.nodeName };
+      const routed = RoutingStreamSink.of(this.sink, this.routeKey(state), source);
+      const response = await adapter.chatStream(request, routed);
+      this.storeResponse(state, response, context);
+      return NodeOutputBuilder.of(response.message.variant);
+    } catch (cause) {
+      const error = DAGError.coerce(cause);
+      const recoverable = cause instanceof LlmError ? cause.classification.retryable : true;
+      return NodeOutputBuilder.of('error', {
+        'errors': [
+          NodeErrorBuilder.from(
+            'modelCallFailed',
+            error.message,
+            'CallModelNode.execute',
+            recoverable,
+            new Date().toISOString(),
+          ),
+        ],
+      });
+    }
   }
 }

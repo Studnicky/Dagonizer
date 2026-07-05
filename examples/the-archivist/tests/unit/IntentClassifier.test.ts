@@ -48,7 +48,11 @@ class DeterministicEmbedder implements EmbedderInterface {
   }
 
   async embedBatch(texts: readonly string[]): Promise<readonly (readonly number[])[]> {
-    return Promise.all(texts.map((t) => this.embed(t)));
+    const vectors: (readonly number[])[] = [];
+    for (const text of texts) {
+      vectors.push(await this.embed(text));
+    }
+    return vectors;
   }
 
   async probe(): Promise<boolean> { return true; }

@@ -11,7 +11,7 @@
 
 import { LlmDispatchNode } from './LlmDispatchNode.js';
 
-import { Batch, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, BatchItemExecutor, NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { ItemType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
@@ -27,21 +27,25 @@ export abstract class ComposeNode<
     context: NodeContextType,
   ): Promise<RoutedBatchType<'success', TState>> {
     const acc = new Map<'success', ItemType<TState>[]>();
-
-    for (const item of batch) {
+    const results = await BatchItemExecutor.map(batch.items(), async (item) => {
       const state = item.state;
       const response = await this.dispatch(state, context);
       const draft = this.extractContent(response);
       this.applyDraft(state, draft);
       const output: NodeOutputType<'success'> = NodeOutputBuilder.of('success');
+
       for (const error of output.errors) {
         state.collectError(error);
       }
-      const bucket = acc.get(output.output);
+      return { item, output };
+    }, this.execution, context.signal);
+
+    for (const result of results) {
+      const bucket = acc.get(result.output.output);
       if (bucket !== undefined) {
-        bucket.push(item);
+        bucket.push(result.item);
       } else {
-        acc.set(output.output, [item]);
+        acc.set(result.output.output, [result.item]);
       }
     }
 
