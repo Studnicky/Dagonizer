@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-book-entities",
-  "version": "0.30.0",
+  "version": "1.0.0",
   "description": "Shared Book/Candidate entity types + CanonicalId dedupe for the book-domain Dagonizer tool packages.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
