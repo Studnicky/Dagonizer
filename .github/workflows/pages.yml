@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
   pages: write
   id-token: write
 
@@ -33,7 +34,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
       - run: pnpm install --frozen-lockfile
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm run build
       - run: pnpm run check:docs
       - run: pnpm run docs:build
