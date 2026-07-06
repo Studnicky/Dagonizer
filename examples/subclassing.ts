@@ -18,9 +18,9 @@ import {
   DAG_CONTEXT,
   Dagonizer,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import { CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -55,7 +55,7 @@ class TickNode extends MonadicNode<CountState, 'success'> {
       item.state.count++;
       item.state.log.push(`tick:${item.state.count}`);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 

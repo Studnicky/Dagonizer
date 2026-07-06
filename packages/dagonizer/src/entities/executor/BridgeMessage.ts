@@ -236,16 +236,13 @@ export const BridgeMessageSchema = {
 export type BridgeMessageType = FromSchema<typeof BridgeMessageSchema>;
 
 // ---------------------------------------------------------------------------
-// BridgeMessageBuilder
+// BridgeMessage
 // ---------------------------------------------------------------------------
 
 /**
- * Static factory for constructing `BridgeMessage` values. The type
- * `BridgeMessage` and this factory are distinct identifiers per the
- * canonical-names rule: `BridgeMessage` is the type; `BridgeMessageBuilder`
- * is the value that builds instances.
+ * Static factory for constructing `BridgeMessage` values.
  */
-export class BridgeMessageBuilder {
+export class BridgeMessage {
   private constructor() { /* static class */ }
 
   /**
@@ -253,12 +250,12 @@ export class BridgeMessageBuilder {
    * Use when no specific request is in flight (e.g. init failures, transport
    * setup errors, invalid message receipts).
    */
-  static invalid(code: string, message: string): BridgeMessageType & { variant: 'error' } {
+  static create(options: { code: string; message: string }): BridgeMessageType & { variant: 'error' } {
     return {
       'variant': 'error',
       'correlationId': null,
-      'code': code,
-      'message': message,
+      'code': options.code,
+      'message': options.message,
       'recoverable': false,
     };
   }

@@ -7,9 +7,9 @@
 import {
   Batch,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType, JsonValueType } from '@studnicky/dagonizer/entities';
@@ -122,14 +122,14 @@ export class ApiNode extends MonadicNode<ApiState, 'success' | 'retry' | 'salvag
         // Stub: production code would call an external service here.
         state.data = { ok: true };
         state.clearAttempts(context.nodeName);
-        entries.push([NodeOutputBuilder.of('success').output, Batch.from([item])]);
+        entries.push([NodeOutput.create('success').output, Batch.from([item])]);
       } catch {
         const canRetry = state.withinRetryBudget(context.nodeName, 3);
-        const output = NodeOutputBuilder.of(canRetry ? 'retry' : 'salvage');
+        const output = NodeOutput.create(canRetry ? 'retry' : 'salvage');
         entries.push([output.output, Batch.from([item])]);
       }
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 // #endregion retry-budget-node

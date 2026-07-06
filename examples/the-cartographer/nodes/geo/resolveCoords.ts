@@ -6,7 +6,7 @@ import { CoordTimezone } from '../../geo/CoordTimezone.ts';
 import { CountryLocale } from '../../geo/CountryLocale.ts';
 import {
   MonadicNode,
-  RoutedBatchBuilder,
+  RoutedBatch,
   type Batch,
   type NodeContextType,
   type RoutedBatchType,
@@ -78,7 +78,7 @@ export class ResolveCoordsNode extends MonadicNode<CartographerState, 'resolved'
         'weight':       fallbackResolved ? raw.weight : 0,
       });
     }
-    return RoutedBatchBuilder.of('resolved', batch);
+    return RoutedBatch.create('resolved', batch);
   }
 }
 

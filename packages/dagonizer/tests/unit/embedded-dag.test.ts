@@ -10,7 +10,7 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../src/entities/node/NodeError.js';
+import { NodeError } from '../../src/entities/node/NodeError.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -384,7 +384,7 @@ class TolerantNode extends MonadicNode<NodeStateBase, 'ok'> {
   readonly outputs = ['ok'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'ok': { 'type': 'object' } }; }
   override async execute(batch: Batch<NodeStateBase>): Promise<Map<'ok', Batch<NodeStateBase>>> {
-    const err = NodeErrorBuilder.from(
+    const err = NodeError.create(
       'TOOL_HTTP_429',
       'tolerated upstream rate limit',
       'execute',

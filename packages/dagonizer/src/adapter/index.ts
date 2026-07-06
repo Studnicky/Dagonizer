@@ -26,8 +26,8 @@ export type {
 
 export {
   ChatMessageSchema,
-  ChatRequestBuilder,
-  ChatResponseMessageBuilder,
+  ChatRequest,
+  ChatResponseMessage,
   ChatResponseMessageSchema,
   ChatResponseSchema,
   DEFAULT_MAX_TOKENS,
@@ -89,14 +89,14 @@ export type { OpenAiStreamChunkType } from '../entities/adapter/OpenAiStreamChun
 // `ChatStreamChunk` is a schema entity (canonical home `entities/adapter/`).
 // Re-exported here so the streamed-chunk wire shape stays reachable through
 // the `./adapter` public subpath alongside the rest of the chat surface.
-export { ChatStreamChunkSchema, ChatStreamChunkBuilder } from '../entities/adapter/ChatStreamChunk.js';
+export { ChatStreamChunkSchema, ChatStreamChunk } from '../entities/adapter/ChatStreamChunk.js';
 export type { ChatStreamChunkType } from '../entities/adapter/ChatStreamChunk.js';
 
 // `RoutedChatStreamChunk` is a schema entity (canonical home `entities/adapter/`).
 // Re-exported here so the routed streamed-chunk wire shape stays reachable
 // through the `./adapter` public subpath alongside `RoutingStreamSink`, the
 // decorator that produces it.
-export { RoutedChatStreamChunkSchema, RoutedChatStreamChunkBuilder } from '../entities/adapter/RoutedChatStreamChunk.js';
+export { RoutedChatStreamChunkSchema, RoutedChatStreamChunk } from '../entities/adapter/RoutedChatStreamChunk.js';
 export type { RoutedChatStreamChunkType } from '../entities/adapter/RoutedChatStreamChunk.js';
 
 export { RoutingStreamSink } from './RoutingStreamSink.js';
@@ -121,8 +121,7 @@ export { BaseCascade } from './BaseCascade.js';
 export type { CascadePreferenceType } from './BaseCascade.js';
 
 export { LlmAdapterCascade } from './LlmAdapterCascade.js';
-export { LlmAdapterCascadeBuilder } from './LlmAdapterCascadeBuilder.js';
-export type { CatalogueEntryType, LlmAdapterCascadeBuilderOptionsType } from './LlmAdapterCascadeBuilder.js';
+export type { CatalogueEntryType, LlmAdapterCascadeOptionsType } from './LlmAdapterCascade.js';
 
 // ── EmbedderInterface surface (parallel to LlmAdapterInterface) ──────────────────────────────
 export type { EmbedderInterface } from '../contracts/EmbedderInterface.js';

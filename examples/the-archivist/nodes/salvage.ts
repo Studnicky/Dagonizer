@@ -13,7 +13,7 @@
  * failed node would have continued to.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -41,7 +41,7 @@ export class ExtractQuerySalvageNode extends MonadicNode<ArchivistState, 'done'>
         .filter((t) => t.length > 2)
         .slice(0, MAX_NAIVE_TERMS);
     }
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -61,7 +61,7 @@ export class DecideToolsSalvageNode extends MonadicNode<ArchivistState, 'done'> 
     for (const { state } of batch) {
       state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
     }
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -81,7 +81,7 @@ export class ClassifyIntentSalvageNode extends MonadicNode<ArchivistState, 'done
     for (const { state } of batch) {
       state.intent = 'search';
     }
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -98,7 +98,7 @@ export class RankCandidatesSalvageNode extends MonadicNode<ArchivistState, 'done
   }
 
   override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -122,7 +122,7 @@ export class ComposeResponseSalvageNode extends MonadicNode<ArchivistState, 'don
     for (const { state } of batch) {
       state.draft = COMPOSE_SALVAGE_DRAFT;
     }
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -146,7 +146,7 @@ export class ComposeEmptyResponseSalvageNode extends MonadicNode<ArchivistState,
     for (const { state } of batch) {
       state.draft = EMPTY_SALVAGE_DRAFT;
     }
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -169,7 +169,7 @@ export class ComposeMemoryResponseSalvageNode extends MonadicNode<ArchivistState
     for (const { state } of batch) {
       state.draft = MEMORY_SALVAGE_DRAFT;
     }
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 

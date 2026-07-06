@@ -10,9 +10,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -59,7 +59,7 @@ export class IngestNode extends MonadicNode<PipelineState, 'success'> {
       item.state.tally++;
       item.state.trail.push('ingest');
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 
@@ -75,7 +75,7 @@ export class ProcessNode extends MonadicNode<PipelineState, 'success'> {
       item.state.tally++;
       item.state.trail.push('process');
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 
@@ -91,7 +91,7 @@ export class ExportNode extends MonadicNode<PipelineState, 'success'> {
       item.state.tally++;
       item.state.trail.push('export');
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 

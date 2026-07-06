@@ -20,7 +20,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../entities/CanonicalEvent.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-event-type-variant-node
@@ -105,7 +105,7 @@ export class RouteEventTypeNode extends MonadicNode<CartographerState, VariantRo
       'customsDwellRun': path === 'customs',
     };
 
-    return NodeOutputBuilder.of(VARIANT_ROUTE[t]);
+    return NodeOutput.create(VARIANT_ROUTE[t]);
   }
 }
 

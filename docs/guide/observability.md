@@ -266,6 +266,22 @@ const dispatcher = new ObservedDag<MyState>(logger, {
 
 The subclass hook fires first, then the observer array fires in order. No changes to either the subclass or `BusObserver` are needed.
 
+### Timing
+
+`ObservedDag` accepts an optional substrate `Timing` sink:
+
+```ts
+import { Timing } from '@studnicky/timing';
+
+const timing = Timing.create({ maxEvents: 100 });
+const dispatcher = new ObservedDag<MyState>(logger, {
+  timing,
+  observers: [new BusObserver(bus, 'pipeline-events')],
+});
+```
+
+The observer records `dag.flow.start`, `dag.flow.complete`, `dag.node.start`, `dag.node.complete`, `dag.node.error`, `dag.phase.start`, and `dag.phase.complete`. Read `timing.getEvents()` when emitting the final request or trace log context.
+
 ## Related reference
 
 - [Reference: Dagonizer](../reference/dagonizer)

@@ -20,8 +20,9 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 /** Per-node timeout: generous for Gemini Nano's constrained-output path (20-60 s typical). */
 const NODE_TIMEOUT_MS = 30_000;
@@ -53,19 +54,20 @@ export class ExtractQueryNode extends MonadicNode<ArchivistState, 'success' | 'r
 
     for (const item of batch) {
       const { state } = item;
-      const controller = new AbortController();
-      const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
-      const signal = AbortSignal.any([context.signal, controller.signal]);
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
       try {
         const terms = await this.services.llm.extractTerms(state.query, signal);
         if (terms.length === 0) {
           if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-            const result = NodeOutputBuilder.of('retry');
+            const result = NodeOutput.create('retry');
             for (const error of result.errors) state.collectError(error);
             retryItems.push(item);
           } else {
             state.clearAttempts(context.nodeName);
-            const result = NodeOutputBuilder.of('salvage');
+            const result = NodeOutput.create('salvage');
             for (const error of result.errors) state.collectError(error);
             salvageItems.push(item);
           }
@@ -73,7 +75,7 @@ export class ExtractQueryNode extends MonadicNode<ArchivistState, 'success' | 'r
         }
         state.terms = terms;
         state.clearAttempts(context.nodeName);
-        const result = NodeOutputBuilder.of('success');
+        const result = NodeOutput.create('success');
         for (const error of result.errors) state.collectError(error);
         successItems.push(item);
       } catch (err) {
@@ -81,17 +83,15 @@ export class ExtractQueryNode extends MonadicNode<ArchivistState, 'success' | 'r
         if (context.signal.aborted) throw err;
         // Node-local timeout or LLM failure -> retry budget decides the flow.
         if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-          const result = NodeOutputBuilder.of('retry');
+          const result = NodeOutput.create('retry');
           for (const error of result.errors) state.collectError(error);
           retryItems.push(item);
         } else {
           state.clearAttempts(context.nodeName);
-          const result = NodeOutputBuilder.of('salvage');
+          const result = NodeOutput.create('salvage');
           for (const error of result.errors) state.collectError(error);
           salvageItems.push(item);
         }
-      } finally {
-        clearTimeout(handle);
       }
     }
 
@@ -99,7 +99,7 @@ export class ExtractQueryNode extends MonadicNode<ArchivistState, 'success' | 'r
     if (successItems.length > 0) routes.push(['success', Batch.from(successItems)]);
     if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
     if (salvageItems.length > 0) routes.push(['salvage', Batch.from(salvageItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }
 // #endregion retry-salvage-node

@@ -15,7 +15,7 @@
  */
 
 // #region execute-contract
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { NodeContextType, NodeStateInterface, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 import { Batch } from '@studnicky/dagonizer';
 
@@ -28,13 +28,13 @@ export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
     return { 'out': { 'type': 'object' } };
   }
   async execute(batch: Batch<NodeStateInterface>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', NodeStateInterface>> {
-    return RoutedBatchBuilder.of('out', batch);
+    return RoutedBatch.create('out', batch);
   }
 }
 // #endregion execute-contract
 
 // #region monadic-node
-import { NodeOutputBuilder, NodeStateBase } from '@studnicky/dagonizer';
+import { NodeOutput, NodeStateBase } from '@studnicky/dagonizer';
 import type { NodeOutputType } from '@studnicky/dagonizer';
 
 // ── Domain state ──────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ abstract class LoggingNode<
       entries.push([result.output, Batch.from([item])]);
     }
     process.stdout.write(`[${this.name}] routed=${entries.length} elapsed=${Date.now() - start}ms\n`);
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 
   /** Subclasses implement per-state domain logic here. */
@@ -83,15 +83,15 @@ export class SearchCatalogueNode extends LoggingNode<CatalogueState, 'success' |
 
   protected async run(state: CatalogueState): Promise<NodeOutputType<'success' | 'empty' | 'error'>> {
     if (state.query.trim() === '') {
-      return NodeOutputBuilder.of('error');
+      return NodeOutput.create('error');
     }
     // Stub: return a synthetic result set.
     state.results = [`${state.query} - Shelf A`, `${state.query} - Shelf B`];
 
     if (state.results.length === 0) {
-      return NodeOutputBuilder.of('empty');
+      return NodeOutput.create('empty');
     }
-    return NodeOutputBuilder.of('success');
+    return NodeOutput.create('success');
   }
 }
 // #endregion monadic-node
@@ -121,10 +121,10 @@ export class GeoNode extends MonadicNode<EventState, 'has-geo' | 'needs-geo'> {
   override async execute(batch: Batch<EventState>) {
     const entries: Array<readonly ['has-geo' | 'needs-geo', Batch<EventState>]> = [];
     for (const item of batch) {
-      const output = NodeOutputBuilder.of(item.state.coords === null ? 'needs-geo' : 'has-geo');
+      const output = NodeOutput.create(item.state.coords === null ? 'needs-geo' : 'has-geo');
       entries.push([output.output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -144,7 +144,7 @@ export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
         state.region = geoCache.lookup(state.coords);
       }
     }
-    return RoutedBatchBuilder.of('enriched', batch);
+    return RoutedBatch.create('enriched', batch);
   }
 }
 // #endregion node-taxonomy

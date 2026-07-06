@@ -24,6 +24,8 @@
 // #region source-payload-entity
 import type { FromSchema } from 'json-schema-to-ts';
 
+import { Validator } from '@studnicky/dagonizer/validation';
+
 export const SourcePayloadSchema = {
   '$id': 'https://noocodex.dev/schemas/cartographer/SourcePayload',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
@@ -45,11 +47,7 @@ export const SourcePayloadSchema = {
 
 export type SourcePayload = FromSchema<typeof SourcePayloadSchema>;
 
-const SOURCE_FORMATS: ReadonlySet<string> = new Set(['csv', 'json', 'ndjson', 'yaml']);
-const SOURCE_COMPRESSIONS: ReadonlySet<string> = new Set(['none', 'gzip']);
-const SOURCE_EVENT_TYPES: ReadonlySet<string> = new Set([
-  'position-ping', 'facility-scan', 'sensor-reading', 'customs-event', 'delivery-confirmation',
-]);
+const sourcePayloadValidator = Validator.compile<SourcePayload>(SourcePayloadSchema);
 
 export class SourcePayloadGuard {
   /**
@@ -57,14 +55,7 @@ export class SourcePayloadGuard {
    * by verifying the required fields and their value sets.
    */
   static is(value: unknown): value is SourcePayload {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-    if (!('sourceId' in value) || typeof value.sourceId !== 'string' || value.sourceId.length === 0) return false;
-    if (!('format' in value) || typeof value.format !== 'string' || !SOURCE_FORMATS.has(value.format)) return false;
-    if (!('compression' in value) || typeof value.compression !== 'string' || !SOURCE_COMPRESSIONS.has(value.compression)) return false;
-    if (!('mappingKey' in value) || typeof value.mappingKey !== 'string' || value.mappingKey.length === 0) return false;
-    if (!('eventType' in value) || typeof value.eventType !== 'string' || !SOURCE_EVENT_TYPES.has(value.eventType)) return false;
-    if (!('payload' in value) || typeof value.payload !== 'string') return false;
-    return true;
+    return sourcePayloadValidator.is(value);
   }
 }
 // #endregion source-payload-entity

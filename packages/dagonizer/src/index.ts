@@ -17,7 +17,7 @@ export type { BatchExecutionOptionsType, BatchExecutionThrottleOptionsType } fro
 // =============================================================================
 
 export { ObservedDag } from './ObservedDag.js';
-export type { DagLoggerInterface } from './ObservedDag.js';
+export type { DagLoggerInterface, ObservedDagOptionsType } from './ObservedDag.js';
 
 // =============================================================================
 // CONSTANTS
@@ -88,8 +88,8 @@ export { DAGDocument } from './dag/index.js';
 export type { DAGDocumentLoadOptionsType } from './dag/index.js';
 export {
   Placement,
-  NodeErrorBuilder,
-  NodeOutputBuilder,
+  NodeError,
+  NodeOutput,
   ScatterNodeSchema,
   EmbeddedDAGNodeSchema,
   GatherConfigSchema,
@@ -121,13 +121,13 @@ export {
   ExecutionResponseSchema,
   DAGHandoffSchema,
   JsonValue,
-  ChatStreamChunkBuilder,
+  ChatStreamChunk,
   ChatStreamChunkSchema,
-  RoutedChatStreamChunkBuilder,
+  RoutedChatStreamChunk,
   RoutedChatStreamChunkSchema,
-  ReasoningStepBuilder,
+  ReasoningStep,
   ReasoningStepSchema,
-  ReasoningTraceItemBuilder,
+  ReasoningTraceItem,
   ReasoningTraceItemSchema,
 } from './entities/index.js';
 export type {
@@ -249,7 +249,7 @@ export {
 export type { OutcomeRecordType } from './contracts/OutcomeRecord.js';
 export { Batch } from './entities/batch/Batch.js';
 export type { ItemType, ItemIdType } from './entities/batch/Item.js';
-export { RoutedBatchBuilder } from './entities/batch/RoutedBatchType.js';
+export { RoutedBatch } from './entities/batch/RoutedBatchType.js';
 export type { RoutedBatchType } from './entities/batch/RoutedBatchType.js';
 export { MonadicNode } from './core/MonadicNode.js';
 export { PlaceholderNode } from './core/PlaceholderNode.js';
@@ -286,7 +286,7 @@ export type {
 // =============================================================================
 
 export { Checkpoint, CheckpointRestoreAdapter, MemoryCheckpointStore } from './checkpoint/index.js';
-export type { CaptureOptionsType, RecalledCheckpointType } from './checkpoint/index.js';
+export type { CaptureOptionsType, RecalledCheckpointType, RestoreStoresOptionsType } from './checkpoint/index.js';
 
 // =============================================================================
 // STORE

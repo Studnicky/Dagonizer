@@ -120,7 +120,7 @@ This pattern replaces the need to write a `ComposedDispatcher` with multiple log
 | `BusEventEnvelopeType<TPayload>` | `@studnicky/dagonizer/progress` | Typed envelope: `topic`, `payload`, `timestamp` |
 | `BusEventEnvelopeWireType` | `@studnicky/dagonizer/progress` | Schema-derived wire type (`payload: unknown`) |
 | `BusEventEnvelopeSchema` | `@studnicky/dagonizer/progress` | JSON Schema 2020-12 for validation |
-| `BusEventEnvelopeBuilder` | `@studnicky/dagonizer/progress` | Static factory: `.of(topic, payload)`, `.withTimestamp(...)` |
+| `BusEventEnvelope` | `@studnicky/dagonizer/progress` | Static factory: `.create(topic, payload, options?)` |
 | `SseStream` | `@studnicky/dagonizer/progress` | Bus topic → SSE `ReadableStream<string>` |
 | `SseStreamOptionsType` | `@studnicky/dagonizer/progress` | Options for `SseStream.of` (heartbeatMs) |
 

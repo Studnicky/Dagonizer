@@ -100,7 +100,7 @@ export interface LlmClientInterface {
    *
    * `signal` is optional and forwarded to the adapter's `ChatRequestType`.
    * When the node's `context.signal` is already aborted the adapter
-   * short-circuits via `AbortSignal.any` before making the network call.
+   * short-circuits through the composed signal before making the network call.
    */
   rankCandidates(query: string, candidates: readonly CandidateType[], signal?: AbortSignal): Promise<readonly ScoredCandidate[]>;
   /**

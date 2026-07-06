@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 
 import { RoutingStreamSink } from '../../src/adapter/RoutingStreamSink.js';
 import type { StreamSinkInterface } from '../../src/contracts/StreamSinkInterface.js';
-import { ChatStreamChunkBuilder } from '../../src/entities/adapter/ChatStreamChunk.js';
+import { ChatStreamChunk } from '../../src/entities/adapter/ChatStreamChunk.js';
 import type { RoutedChatStreamChunkType } from '../../src/entities/adapter/RoutedChatStreamChunk.js';
 
 class CollectingSink implements StreamSinkInterface<RoutedChatStreamChunkType> {
@@ -26,8 +26,8 @@ void describe('RoutingStreamSink: unit', () => {
     const source = { 'dagName': 'chat-dag', 'nodeName': 'call-model' };
     const routing = RoutingStreamSink.of(downstream, 'run-1', source);
 
-    await routing.push(ChatStreamChunkBuilder.of('Hello'));
-    await routing.push(ChatStreamChunkBuilder.of(' world'));
+    await routing.push(ChatStreamChunk.create('Hello'));
+    await routing.push(ChatStreamChunk.create(' world'));
 
     assert.deepEqual(downstream.received, [
       { 'routeKey': 'run-1', 'delta': 'Hello', 'source': { 'dagName': 'chat-dag', 'nodeName': 'call-model' } },
@@ -41,9 +41,9 @@ void describe('RoutingStreamSink: unit', () => {
     const runA = RoutingStreamSink.of(downstream, 'run-a', source);
     const runB = RoutingStreamSink.of(downstream, 'run-b', source);
 
-    await runA.push(ChatStreamChunkBuilder.of('A1'));
-    await runB.push(ChatStreamChunkBuilder.of('B1'));
-    await runA.push(ChatStreamChunkBuilder.of('A2'));
+    await runA.push(ChatStreamChunk.create('A1'));
+    await runB.push(ChatStreamChunk.create('B1'));
+    await runA.push(ChatStreamChunk.create('A2'));
 
     assert.deepEqual(
       downstream.received.map((chunk) => [chunk.routeKey, chunk.delta]),

@@ -9,9 +9,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
@@ -44,7 +44,7 @@ export class TrimNode extends MonadicNode<WordState, 'done'> {
 
   override async execute(batch: Batch<WordState>) {
     for (const item of batch) item.state.text = item.state.text.trim();
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -65,7 +65,7 @@ export class CountNode extends MonadicNode<WordState, 'done'> {
         ? 0
         : item.state.text.split(/\s+/).length;
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion node

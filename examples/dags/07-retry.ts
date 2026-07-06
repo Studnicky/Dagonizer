@@ -9,10 +9,10 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
   RetryPolicy,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, NodeContextType, RetryPolicyOptionsType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -75,14 +75,14 @@ export class FetchNode extends MonadicNode<FetchState, 'success' | 'error'> {
         // maxAttempts is reached. The options object passes context.signal so
         // an abort cancels the wait between retries immediately.
         state.result = await policy.run(() => downstream.call(), { signal: context.signal });
-        const output = NodeOutputBuilder.of('success');
+        const output = NodeOutput.create('success');
         entries.push([output.output, Batch.from([item])]);
       } catch {
-        const output = NodeOutputBuilder.of('error');
+        const output = NodeOutput.create('error');
         entries.push([output.output, Batch.from([item])]);
       }
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 // #endregion retry-node

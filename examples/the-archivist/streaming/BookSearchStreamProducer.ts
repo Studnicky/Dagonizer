@@ -17,7 +17,7 @@ import {
   Dagonizer,
   MonadicNode,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, NodeContextType, NodeResultType, NodeStateInterface, SchemaObjectType } from '@studnicky/dagonizer';
 import type { CandidateType } from '../entities/Book.ts';
@@ -51,7 +51,7 @@ class DiscoverCandidatesNode extends MonadicNode<CandidateDiscoveryState, 'done'
     for (const { state } of batch) {
       state.candidates = [...state.pendingBatch];
     }
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 

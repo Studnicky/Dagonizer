@@ -22,9 +22,9 @@ import {
   GatherStrategies,
   GatherStrategy,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { GatherExecutionType } from '@studnicky/dagonizer';
@@ -69,7 +69,7 @@ export class ShoutNode extends MonadicNode<IncrementalState, 'done'> {
       // (A map gather appends one entry per clone; keep the source field scalar.)
       state.processed = word.toUpperCase();
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion worker-node

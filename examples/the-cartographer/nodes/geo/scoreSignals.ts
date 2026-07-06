@@ -32,7 +32,7 @@ import { CallingCode } from '../../geo/CallingCode.ts';
 
 import {
   MonadicNode,
-  RoutedBatchBuilder,
+  RoutedBatch,
   type Batch,
   type NodeContextType,
   type RoutedBatchType,
@@ -131,7 +131,7 @@ export class ScoreSignalsNode extends MonadicNode<CartographerState, 'scored'> {
       item.state.geoSignals = descriptors;
     }
 
-    return RoutedBatchBuilder.of('scored', batch);
+    return RoutedBatch.create('scored', batch);
   }
 }
 

@@ -20,7 +20,7 @@ import type {
   JourneyScan,
   RegionInsights,
 } from '../CartographerState.ts';
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 type SizeTierKey = 'envelope' | 'small' | 'medium' | 'large' | 'freight';
@@ -50,7 +50,7 @@ export class SummarizeInsightsNode extends MonadicNode<CartographerState, 'succe
     for (const item of batch) {
       this.summarizeItem(item.state);
     }
-    return RoutedBatchBuilder.of('success', batch);
+    return RoutedBatch.create('success', batch);
   }
 
   private summarizeItem(state: CartographerState): void {

@@ -12,7 +12,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { ShippingCalculator } from '../services.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region enrich-leg-node
@@ -41,7 +41,7 @@ export class EnrichLegNode extends MonadicNode<CartographerState, 'leg-measured'
         norm.longitude,
       );
     }
-    return RoutedBatchBuilder.of('leg-measured', batch);
+    return RoutedBatch.create('leg-measured', batch);
   }
 }
 // #endregion enrich-leg-node

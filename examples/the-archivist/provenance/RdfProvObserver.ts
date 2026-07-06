@@ -18,6 +18,7 @@
 
 import type { NamedNode } from 'n3';
 
+import { Clock as SubstrateClock, RealTimeClockProvider } from '@studnicky/clock';
 import type { ReasoningStepType } from '@studnicky/dagonizer';
 
 import { MemoryStore } from '../memory/MemoryStore.ts';
@@ -29,6 +30,7 @@ export interface ProvObserverInputs {
   readonly runId: string;
   /** Agent IRI for the dispatcher itself. */
   readonly dispatcherAgentId: string;
+  readonly clock?: SubstrateClock;
   /**
    * Reasoning steps already persisted to this `runId`'s prov graph before
    * this observer instance was constructed (e.g. every step recorded prior
@@ -45,6 +47,7 @@ export class RdfProvObserver {
   readonly #graph: NamedNode;
   readonly #dispatcher: NamedNode;
   readonly #run: NamedNode;
+  readonly #clock: SubstrateClock;
   #lastActivity: NamedNode | null = null;
   readonly #activeByNode = new Map<string, NamedNode>();
   #persistedReasoningCount = 0;
@@ -56,6 +59,7 @@ export class RdfProvObserver {
     this.#graph = MemoryStore.provGraphIri(this.#runId);
     this.#dispatcher = ProvIris.agent(inputs.dispatcherAgentId);
     this.#run = ProvIris.activity(this.#runId, 'run', 0);
+    this.#clock = inputs.clock ?? SubstrateClock.create(RealTimeClockProvider.create());
     const priorCount = inputs.alreadyPersistedReasoning.length;
     this.#persistedReasoningCount = priorCount;
     this.#lastReasoningEntity = priorCount > 0
@@ -72,13 +76,13 @@ export class RdfProvObserver {
     this.#store.assert(this.#run, MemoryStore.dagIri('dagName'),
       MemoryStore.lit.str(dagName), this.#graph);
     this.#store.assert(this.#run, PROV.startedAtTime,
-      MemoryStore.lit.dateTime(new Date()), this.#graph);
+      MemoryStore.lit.dateTime(this.#nowDate()), this.#graph);
     this.#store.assert(this.#run, PROV.wasAssociatedWith,
       this.#dispatcher, this.#graph);
   }
 
   recordNodeStart(nodeName: string): void {
-    const now = Date.now();
+    const now = this.#clock.now();
     const activity = ProvIris.activity(this.#runId, nodeName, now);
     this.#typed(activity, PROV.Activity);
     this.#typed(activity, DAG_ACT.NodeExecution);
@@ -102,7 +106,7 @@ export class RdfProvObserver {
     const activity = this.#activeByNode.get(nodeName);
     if (activity === undefined) return;
     this.#store.assert(activity, PROV.endedAtTime,
-      MemoryStore.lit.dateTime(new Date()), this.#graph);
+      MemoryStore.lit.dateTime(this.#nowDate()), this.#graph);
     if (output !== undefined) {
       this.#store.assert(activity, MemoryStore.dagIri('output'),
         MemoryStore.lit.str(output), this.#graph);
@@ -121,7 +125,7 @@ export class RdfProvObserver {
     for (let index = this.#persistedReasoningCount; index < steps.length; index += 1) {
       const step = steps[index];
       if (step === undefined) continue;
-      const now = Date.now();
+      const now = this.#clock.now();
       const entity = ProvIris.reasoning(this.#runId, index);
       this.#typed(entity, PROV.Entity);
       this.#typed(entity, DAG_ENT.Reasoning);
@@ -152,13 +156,13 @@ export class RdfProvObserver {
     this.#store.assert(activity, MemoryStore.dagIri('error'),
       MemoryStore.lit.str(error.message), this.#graph);
     this.#store.assert(activity, PROV.endedAtTime,
-      MemoryStore.lit.dateTime(new Date()), this.#graph);
+      MemoryStore.lit.dateTime(this.#nowDate()), this.#graph);
     this.#activeByNode.delete(nodeName);
   }
 
   recordFlowEnd(lifecycle: string): void {
     this.#store.assert(this.#run, PROV.endedAtTime,
-      MemoryStore.lit.dateTime(new Date()), this.#graph);
+      MemoryStore.lit.dateTime(this.#nowDate()), this.#graph);
     this.#store.assert(this.#run, MemoryStore.dagIri('lifecycle'),
       MemoryStore.lit.str(lifecycle), this.#graph);
   }
@@ -173,7 +177,7 @@ export class RdfProvObserver {
    */
   recordToolCall(parentNode: string, toolName: string, args: Record<string, unknown>): NamedNode {
     const parent = this.#activeByNode.get(parentNode) ?? this.#run;
-    const now = Date.now();
+    const now = this.#clock.now();
     const activity = ProvIris.activity(this.#runId, `tool-${toolName}`, now);
     this.#typed(activity, PROV.Activity);
     this.#typed(activity, DAG_ACT.ToolCall);
@@ -192,7 +196,7 @@ export class RdfProvObserver {
 
   recordToolEnd(activity: NamedNode, resultSummary: string): void {
     this.#store.assert(activity, PROV.endedAtTime,
-      MemoryStore.lit.dateTime(new Date()), this.#graph);
+      MemoryStore.lit.dateTime(this.#nowDate()), this.#graph);
     this.#store.assert(activity, MemoryStore.dagIri('result'),
       MemoryStore.lit.str(resultSummary), this.#graph);
   }
@@ -200,7 +204,7 @@ export class RdfProvObserver {
   /** Sub-activity for one LLM round-trip. */
   recordLlmCall(parentNode: string, providerId: string, callVariant: string): NamedNode {
     const parent = this.#activeByNode.get(parentNode) ?? this.#run;
-    const now = Date.now();
+    const now = this.#clock.now();
     const activity = ProvIris.activity(this.#runId, `llm-${callVariant}`, now);
     this.#typed(activity, PROV.Activity);
     this.#typed(activity, DAG_ACT.LlmCall);
@@ -217,7 +221,7 @@ export class RdfProvObserver {
 
   recordLlmEnd(activity: NamedNode, tokensIn: number, tokensOut: number): void {
     this.#store.assert(activity, PROV.endedAtTime,
-      MemoryStore.lit.dateTime(new Date()), this.#graph);
+      MemoryStore.lit.dateTime(this.#nowDate()), this.#graph);
     this.#store.assert(activity, MemoryStore.dagIri('tokensIn'),
       MemoryStore.lit.int(tokensIn), this.#graph);
     this.#store.assert(activity, MemoryStore.dagIri('tokensOut'),
@@ -235,5 +239,9 @@ export class RdfProvObserver {
 
   #typed(subject: NamedNode, type: NamedNode): void {
     this.#store.assert(subject, RDF_TYPE, type, this.#graph);
+  }
+
+  #nowDate(): Date {
+    return new Date(this.#clock.now());
   }
 }

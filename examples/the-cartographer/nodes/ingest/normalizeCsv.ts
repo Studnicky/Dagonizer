@@ -14,7 +14,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import { FieldMappings } from '../../services.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region normalize-csv-node
@@ -43,7 +43,7 @@ export class NormalizeCsvNode extends MonadicNode<CartographerState, 'normalized
       });
       item.state.mappedRecords = mapped;
     }
-    return RoutedBatchBuilder.of('normalized', batch);
+    return RoutedBatch.create('normalized', batch);
   }
 }
 

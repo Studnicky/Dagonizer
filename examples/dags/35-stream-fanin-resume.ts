@@ -8,9 +8,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { NodeContextType } from '@studnicky/dagonizer';
@@ -97,7 +97,7 @@ export class CollectNode extends MonadicNode<FanInState, 'done'> {
     for (const item of batch) {
       item.state.item = item.state.getter.number('fan-item', 0);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -136,7 +136,7 @@ export class AbortingCollectNode extends MonadicNode<FanInState, 'done'> {
       item.state.item = item.state.getter.number('fan-item', 0);
       this.#coordinator.tick();
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

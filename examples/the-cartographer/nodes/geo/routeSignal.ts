@@ -3,7 +3,7 @@ import { GeoSignalDescriptorGuard } from '../../entities/GeoSignalDescriptor.ts'
 import {
   Batch,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   type ItemType,
   type NodeContextType,
   type NodeOutputType,
@@ -59,9 +59,9 @@ export class RouteSignalNode extends MonadicNode<CartographerState, SignalRoute>
   private routeItem(state: CartographerState): NodeOutputType<SignalRoute> {
     const raw = state.getMetadata('geo-signal');
     if (!GeoSignalDescriptorGuard.is(raw)) {
-      return NodeOutputBuilder.of('none');
+      return NodeOutput.create('none');
     }
-    return NodeOutputBuilder.of(raw.kind);
+    return NodeOutput.create(raw.kind);
   }
 }
 

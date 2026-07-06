@@ -31,8 +31,9 @@
  * the same query text so all scouts run.
  */
 
-import { Batch, MonadicNode, NodeOutputBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -250,7 +251,7 @@ export class DecideToolsNode extends MonadicNode<ArchivistState, 'tools' | 'no-t
       if (shortcut !== null) {
         state.toolPlan = shortcut.calls;
         state.clearAttempts(context.nodeName);
-        const result = NodeOutputBuilder.of('tools');
+        const result = NodeOutput.create('tools');
         for (const error of result.errors) state.collectError(error);
         toolsItems.push(item);
         continue;
@@ -261,9 +262,10 @@ export class DecideToolsNode extends MonadicNode<ArchivistState, 'tools' | 'no-t
         ? [this.services.webSearch.definition, this.services.googleBooks.definition, this.services.subjectSearch.definition]
         : [this.services.webSearch.definition, this.services.subjectSearch.definition];
 
-      const controller = new AbortController();
-      const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
-      const signal = AbortSignal.any([context.signal, controller.signal]);
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
 
       try {
         let calls = await this.services.llm.decideTools(state.query, available, signal);
@@ -301,12 +303,12 @@ export class DecideToolsNode extends MonadicNode<ArchivistState, 'tools' | 'no-t
 
         state.toolPlan = calls;
         if (calls.length > 0) {
-          const result = NodeOutputBuilder.of('tools');
+          const result = NodeOutput.create('tools');
           for (const error of result.errors) state.collectError(error);
           toolsItems.push(item);
         } else {
           state.failureCause += 'ToolInterface plan: no tools selected. ';
-          const result = NodeOutputBuilder.of('no-tools');
+          const result = NodeOutput.create('no-tools');
           for (const error of result.errors) state.collectError(error);
           noToolsItems.push(item);
         }
@@ -316,17 +318,15 @@ export class DecideToolsNode extends MonadicNode<ArchivistState, 'tools' | 'no-t
         // Node-local timeout or LLM failure -> retry budget decides the flow. The
         // minimal-plan fallback lives in decide-tools-salvage, not here.
         if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-          const result = NodeOutputBuilder.of('retry');
+          const result = NodeOutput.create('retry');
           for (const error of result.errors) state.collectError(error);
           retryItems.push(item);
         } else {
           state.clearAttempts(context.nodeName);
-          const result = NodeOutputBuilder.of('salvage');
+          const result = NodeOutput.create('salvage');
           for (const error of result.errors) state.collectError(error);
           salvageItems.push(item);
         }
-      } finally {
-        clearTimeout(handle);
       }
     }
 
@@ -335,7 +335,7 @@ export class DecideToolsNode extends MonadicNode<ArchivistState, 'tools' | 'no-t
     if (noToolsItems.length > 0) routes.push(['no-tools', Batch.from(noToolsItems)]);
     if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
     if (salvageItems.length > 0) routes.push(['salvage', Batch.from(salvageItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }
 

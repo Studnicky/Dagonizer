@@ -22,7 +22,7 @@ Nodes receive external dependencies through their constructors and hold them as 
 Declare the dependency as a private field on the node class. Accept it via the constructor. Register the node with an injected instance: `dispatcher.registerNode(new FetchNode(db))`.
 
 ```ts
-import { Batch, MonadicNode, NodeStateBase, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeStateBase, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { StoreInterface } from '@studnicky/dagonizer/contracts';
@@ -42,9 +42,9 @@ class WriteNode extends MonadicNode<NodeStateBase, 'done'> {
   }
 
   async execute(batch: Batch<NodeStateBase>, context: NodeContextType) {
-    if (context.signal.aborted) return RoutedBatchBuilder.empty();
+    if (context.signal.aborted) return RoutedBatch.create();
     await this.store.set('key', 'value');
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 ```
@@ -102,7 +102,7 @@ class GeoEnrichNode extends MonadicNode<CartographerState, 'enriched' | 'error'>
         enriched.push(item);
       }
     }
-    return RoutedBatchBuilder.from([
+    return RoutedBatch.create([
       ['enriched', Batch.from(enriched)],
       ['error', Batch.from(failed)],
     ]);

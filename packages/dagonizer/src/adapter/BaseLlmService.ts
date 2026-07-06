@@ -19,7 +19,7 @@ import type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
 import type { ChatRequestType } from '../entities/adapter/ChatRequest.js';
 import type { ChatResponseMessageType } from '../entities/adapter/ChatResponseMessage.js';
 
-import { ChatRequestBuilder } from './LlmAdapter.js';
+import { ChatRequest } from './LlmAdapter.js';
 
 export abstract class BaseLlmService {
   readonly #adapter: LlmAdapterInterface;
@@ -40,7 +40,7 @@ export abstract class BaseLlmService {
     options: { readonly maxTokens?: number; readonly temperature?: number; readonly signal?: AbortSignal } = {},
   ): Promise<string> {
     const { maxTokens, temperature, signal } = options;
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages': [{ 'role': 'user', 'content': prompt }],
       ...(maxTokens !== undefined ? { 'maxTokens': maxTokens } : {}),
       ...(temperature !== undefined ? { 'temperature': temperature } : {}),

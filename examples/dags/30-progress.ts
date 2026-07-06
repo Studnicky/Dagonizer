@@ -8,9 +8,9 @@ import {
   Batch,
   DAGBuilder,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -41,10 +41,10 @@ export class FetchNode extends MonadicNode<ProgressState, 'done' | 'empty'> {
     const entries: Array<readonly ['done' | 'empty', Batch<ProgressState>]> = [];
     for (const item of batch) {
       item.state.items = ['alpha', 'beta', 'gamma'];
-      const output = NodeOutputBuilder.of(item.state.items.length > 0 ? 'done' : 'empty');
+      const output = NodeOutput.create(item.state.items.length > 0 ? 'done' : 'empty');
       entries.push([output.output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -59,7 +59,7 @@ export class EnrichNode extends MonadicNode<ProgressState, 'done'> {
     for (const item of batch) {
       item.state.enriched = item.state.items.map((value) => `${value}:enriched`);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

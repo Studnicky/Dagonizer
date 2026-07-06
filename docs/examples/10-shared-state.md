@@ -16,7 +16,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { Batch, DAGBuilder, MonadicNode, NodeStateBase, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, DAGBuilder, MonadicNode, NodeStateBase, RoutedBatch } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 class DoneNode extends MonadicNode<NodeStateBase, 'done'> {
@@ -31,7 +31,7 @@ class DoneNode extends MonadicNode<NodeStateBase, 'done'> {
   }
 
   async execute(batch: Batch<NodeStateBase>) {
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -62,7 +62,7 @@ A `MemoryStore` is passed into each node's constructor. Parent and child append 
 
 Each node accepts a `StoreInterface` in its constructor. The same `MemoryStore` instance is passed to all three nodes at registration time; every node accesses it as a private field:
 
-<<< @/../examples/dags/10-shared-state.ts#services
+<<< @/../examples/dags/10-shared-state.ts#services-node
 
 ### Child DAG
 

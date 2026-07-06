@@ -24,7 +24,7 @@ import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
+import { NodeOutput } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { ToolInterface } from '../../src/tool/ToolInterface.js';
@@ -72,7 +72,7 @@ class ViolatingNode extends MonadicNode<ContractState, 'done' | 'error'> {
     const routedItems: ItemType<ContractState>[] = [];
     for (const item of batch) {
       item.state.name = '';
-      const result = NodeOutputBuilder.of('done');
+      const result = NodeOutput.create('done');
       for (const error of result.errors) item.state.collectError(error);
       routedItems.push(item);
     }
@@ -105,7 +105,7 @@ class ConformingNode extends MonadicNode<ContractState, 'done' | 'error'> {
     const routedItems: ItemType<ContractState>[] = [];
     for (const item of batch) {
       item.state.name = 'ok!';
-      const result = NodeOutputBuilder.of('done');
+      const result = NodeOutput.create('done');
       for (const error of result.errors) item.state.collectError(error);
       routedItems.push(item);
     }
@@ -133,7 +133,7 @@ class MissingPortSchemaNode extends MonadicNode<ContractState, 'done' | 'skip' |
     batch: Batch<ContractState>,
     _context: NodeContextType,
   ): Promise<RoutedBatchType<'done' | 'skip' | 'error', ContractState>> {
-    const result = NodeOutputBuilder.of<'done' | 'skip' | 'error'>('done');
+    const result = NodeOutput.create<'done' | 'skip' | 'error'>('done');
     for (const item of batch) {
       for (const error of result.errors) item.state.collectError(error);
     }

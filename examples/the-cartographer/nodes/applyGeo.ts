@@ -12,7 +12,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { GeoLookup } from '../services.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region apply-geo-node
@@ -38,7 +38,7 @@ export class ApplyGeoNode extends MonadicNode<CartographerState, 'normalize'> {
       const region    = geo?.region ?? 'Unmapped';
       item.state.geoContext = GeoLookup.fromResolved(country, continent, region, item.state.raw.latitude, item.state.raw.longitude);
     }
-    return RoutedBatchBuilder.of('normalize', batch);
+    return RoutedBatch.create('normalize', batch);
   }
 }
 // #endregion apply-geo-node

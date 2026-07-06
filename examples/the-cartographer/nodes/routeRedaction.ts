@@ -25,7 +25,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { Consent } from '../services.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-redaction-node
@@ -95,10 +95,10 @@ export class RouteRedactionNode extends MonadicNode<CartographerState, 'needs-re
         'coordsCoarsened':            false,
         'marketingAnalyticsEligible': consentStatus === 'valid',
       };
-      return NodeOutputBuilder.of('skip-redaction');
+      return NodeOutput.create('skip-redaction');
     }
     state.routing = { ...state.routing, 'redactionRun': true, 'redactionSkipped': false };
-    return NodeOutputBuilder.of('needs-redaction');
+    return NodeOutput.create('needs-redaction');
   }
 }
 

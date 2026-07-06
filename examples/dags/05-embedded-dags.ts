@@ -9,9 +9,9 @@ import {
   DAGBuilder,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -42,7 +42,7 @@ export class IncrementNode extends MonadicNode<IncrementState, 'success'> {
     for (const item of batch) {
       item.state.payload = item.state.payload + 1;
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 

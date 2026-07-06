@@ -42,10 +42,9 @@ import { DomConsoleLogger } from './logger/DomConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import { prompts } from './providers/prompts.ts';
-import { ArchivistBundleFactory } from './dag.ts';
-import { BookSearchScatterBundleFactory } from './embedded-dags/BookSearchScatterDAG.ts';
-import { ComposeRetryLoopBundleFactory } from './embedded-dags/ComposeRetryLoopDAG.ts';
-import { ArchivistNodes } from './nodes/ArchivistNodes.ts';
+import { archivistDAG } from './dag.ts';
+import { bookSearchScatterDAG } from './embedded-dags/BookSearchScatterDAG.ts';
+import { composeRetryLoopDAG } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ArchivistGraph } from './viz/ArchivistGraph.ts';
 
 // ── DOM element acquisition ───────────────────────────────────────────────────
@@ -238,32 +237,9 @@ const session = new DomArchivistSession(store, logger, {
   'stores': { kvStore, ckptStore },
 });
 
-// ── DAG visualization: build DAG objects for DagPane ─────────────────────────
-// Build dummy rig just to get the DAG definitions for the viz. The session
-// uses its own rig for actual execution; this read-only path only needs the
-// bundle DAG objects (no HTTP calls, no embedder).
+// ── DAG visualization ────────────────────────────────────────────────────────
 
-{
-  const dummyNodes = ArchivistNodes.build({
-    'webSearch':        { 'definition': { 'name': 'web_search_books', 'description': '', 'inputSchema': { 'type': 'object' as const }, 'outputSchema': { 'type': 'object' as const }, 'strict': false }, async execute() { return []; } },
-    'googleBooks':      { 'definition': { 'name': 'google_books_search', 'description': '', 'inputSchema': { 'type': 'object' as const }, 'outputSchema': { 'type': 'object' as const }, 'strict': false }, async execute() { return []; } },
-    'subjectSearch':    { 'definition': { 'name': 'subject_search', 'description': '', 'inputSchema': { 'type': 'object' as const }, 'outputSchema': { 'type': 'object' as const }, 'strict': false }, async execute() { return []; } },
-    'wikipediaSummary': { 'definition': { 'name': 'wikipedia_summary', 'description': '', 'inputSchema': { 'type': 'object' as const }, 'outputSchema': { 'type': 'object' as const }, 'strict': false }, async execute() { return []; } },
-    'llm':              llm,
-    'memory':           store,
-    'embedder':         null,
-    'nodeTimeouts':     {},
-  });
-  const bookSearchBundle  = BookSearchScatterBundleFactory.create(dummyNodes);
-  const composeBundle     = ComposeRetryLoopBundleFactory.create(dummyNodes);
-  const parentBundle      = ArchivistBundleFactory.create(dummyNodes);
-  const archivistDAG      = parentBundle.dags[0];
-  const bookSearchDAG     = bookSearchBundle.dags[0];
-  const composeDAG        = composeBundle.dags[0];
-  if (archivistDAG !== undefined && bookSearchDAG !== undefined && composeDAG !== undefined) {
-    DagPane.mount(dagContainerEl, archivistDAG, bookSearchDAG, composeDAG);
-  }
-}
+DagPane.mount(dagContainerEl, archivistDAG, bookSearchScatterDAG, composeRetryLoopDAG);
 
 // ── Restore pending HITL state (survives page reload) ────────────────────────
 

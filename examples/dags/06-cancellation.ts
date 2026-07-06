@@ -8,9 +8,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -34,7 +34,7 @@ export class BatchProcessNode extends MonadicNode<NodeStateBase, 'success'> {
         await this.processItem(batchItem.state, item, context.signal); // propagate to every IO call
       }
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 
   /** Simulate per-item IO; propagates the signal so the item-level wait aborts. */
@@ -65,9 +65,9 @@ export class SlowNode extends MonadicNode<NodeStateBase, 'success'> {
     // ignores context.signal, cancellation would not take effect until the
     // current node finishes, even if the signal fires.
     //
-    // When composing multiple signals (e.g. a per-operation timeout plus the
-    // dispatcher's signal), prefer `AbortSignal.any([sigA, sigB])` — it fires
-    // as soon as the first of the two aborts. Do not manually chain listeners.
+    // When composing multiple cancellation concerns (e.g. a per-operation
+    // timeout plus the dispatcher's signal), prefer `Signal.compose(...)`.
+    // Do not manually chain listeners.
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(resolve, 5_000);
       context.signal.addEventListener(
@@ -76,7 +76,7 @@ export class SlowNode extends MonadicNode<NodeStateBase, 'success'> {
         { "once": true },
       );
     });
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 // #endregion node-cancellation-aware

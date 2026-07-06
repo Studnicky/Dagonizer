@@ -9,9 +9,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
@@ -41,11 +41,11 @@ export class ClassifyNode extends MonadicNode<ChatState, 'on_topic' | 'off_topic
       state.topic = state.input.toLowerCase().includes('weather')
         ? 'off_topic'
         : 'on_topic';
-      const output = NodeOutputBuilder.of(state.topic);
+      const output = NodeOutput.create(state.topic);
       for (const error of output.errors) state.collectError(error);
       entries.push([output.output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -63,7 +63,7 @@ export class RespondNode extends MonadicNode<ChatState, 'success'> {
         ? `Echo: ${state.input}`
         : `I only talk about coding, not the weather.`;
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 // #endregion node

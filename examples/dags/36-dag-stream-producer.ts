@@ -10,9 +10,9 @@ import {
   Dagonizer,
   Batch,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, NodeResultType, NodeStateInterface, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -37,7 +37,7 @@ export class GenerateNode extends MonadicNode<InnerState, 'done'> {
     for (const item of batch) {
       item.state.label = 'item-' + String(item.state.value);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -63,7 +63,7 @@ export class RecordNode extends MonadicNode<OuterState, 'done'> {
     for (const item of batch) {
       item.state.item = item.state.getter.string('label-item', '');
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

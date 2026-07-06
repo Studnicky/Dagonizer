@@ -17,7 +17,7 @@
  *                description of a previous read instead.
  */
 
-import { Batch, MonadicNode, NodeOutputBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { Term } from 'n3';
@@ -64,7 +64,7 @@ export class RecommendSimilarNode extends MonadicNode<ArchivistState, 'seeded' |
     const graphs = memory.graphs()
       .filter((g) => g.value.startsWith(STATE_GRAPH_PREFIX) && g.value !== currentGraph);
     if (graphs.length === 0) {
-      const result = NodeOutputBuilder.of('empty');
+      const result = NodeOutput.create('empty');
       for (const error of result.errors) state.collectError(error);
       emptyItems.push(item);
       continue;
@@ -152,14 +152,14 @@ export class RecommendSimilarNode extends MonadicNode<ArchivistState, 'seeded' |
           ...subjects.map((s) => ({ 'variant': 'anchor-subject', 'text': s })),
         ];
       }
-      const result = NodeOutputBuilder.of('seeded');
+      const result = NodeOutput.create('seeded');
       for (const error of result.errors) state.collectError(error);
       seededItems.push(item);
       break;
     }
 
     if (!seededItems.includes(item)) {
-      const result = NodeOutputBuilder.of('empty');
+      const result = NodeOutput.create('empty');
       for (const error of result.errors) state.collectError(error);
       emptyItems.push(item);
     }
@@ -168,6 +168,6 @@ export class RecommendSimilarNode extends MonadicNode<ArchivistState, 'seeded' |
     const routes: Array<readonly ['seeded' | 'empty', Batch<ArchivistState>]> = [];
     if (seededItems.length > 0) routes.push(['seeded', Batch.from(seededItems)]);
     if (emptyItems.length > 0) routes.push(['empty', Batch.from(emptyItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }

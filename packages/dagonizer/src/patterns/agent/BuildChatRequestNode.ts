@@ -15,8 +15,8 @@ import { Batch } from '../../entities/batch/Batch.js';
 import type { ItemType } from '../../entities/batch/Item.js';
 import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
+import { NodeError } from '../../entities/node/NodeError.js';
+import { NodeOutput } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
 import { DAGError } from '../../errors/DAGError.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
@@ -55,12 +55,12 @@ export abstract class BuildChatRequestNode<
 
       try {
         this.buildRequest(state, context);
-        output = NodeOutputBuilder.of('ready');
+        output = NodeOutput.create('ready');
       } catch (cause) {
         const error = DAGError.coerce(cause);
-        output = NodeOutputBuilder.of('error', {
+        output = NodeOutput.create('error', {
           'errors': [
-            NodeErrorBuilder.from(
+            NodeError.create(
               'buildRequestFailed',
               error.message,
               'BuildChatRequestNode.execute',

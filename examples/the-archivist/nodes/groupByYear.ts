@@ -12,7 +12,7 @@
  * promise true at the data level.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
@@ -45,7 +45,7 @@ export class GroupByYearNode extends MonadicNode<ArchivistState, 'ordered'> {
       state.candidates = ordered;
       state.shortlist  = ordered;
     }
-    return RoutedBatchBuilder.of('ordered', batch);
+    return RoutedBatch.create('ordered', batch);
   }
 }
 

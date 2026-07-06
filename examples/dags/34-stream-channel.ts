@@ -8,9 +8,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { StreamProducerInterface, StreamSinkInterface } from '@studnicky/dagonizer';
@@ -42,7 +42,7 @@ export class ProcessNode extends MonadicNode<ChannelState, 'done'> {
       const raw  = item.state.getter.number('stream-item', 0);
       item.state.item = raw * 2;
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

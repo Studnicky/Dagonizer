@@ -15,7 +15,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import { SourcePayloadGuard } from '../../entities/SourcePayload.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region select-source-node
@@ -60,10 +60,10 @@ export class SelectSourceNode extends MonadicNode<CartographerState, 'compressed
   private routeItem(state: CartographerState): NodeOutputType<'compressed' | 'plain' | 'invalid'> {
     const raw = state.getMetadata('source');
     if (!SourcePayloadGuard.is(raw)) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
     state.currentSource = raw;
-    return NodeOutputBuilder.of(raw.compression === 'gzip' ? 'compressed' : 'plain');
+    return NodeOutput.create(raw.compression === 'gzip' ? 'compressed' : 'plain');
   }
 }
 

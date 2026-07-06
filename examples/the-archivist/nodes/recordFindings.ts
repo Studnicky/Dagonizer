@@ -23,7 +23,8 @@
  *   SPARQL ASK gate can rely on the store as ground truth.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Clock as SubstrateClock, RealTimeClockProvider } from '@studnicky/clock';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
@@ -51,6 +52,7 @@ const ARCHIVIST_AGENT      = ProvIris.agent('archivist-software');
 
 export class RecordFindingsNode extends MonadicNode<ArchivistState, 'recorded'> {
   private readonly services: ArchivistServices;
+  readonly #clock = SubstrateClock.create(RealTimeClockProvider.create());
   readonly name = 'record-findings';
   readonly outputs = ['recorded'] as const;
   override get outputSchema(): Record<'recorded', SchemaObjectType> {
@@ -102,7 +104,7 @@ export class RecordFindingsNode extends MonadicNode<ArchivistState, 'recorded'> 
       // rdf:type links this ABox run instance to the TBox dag:Run class.
       memory.assert(run, rdfType,          dagRun,                                    GRAPH_MEMORY);
       memory.assert(run, dagVisitorQuery,  MemoryStore.lit.str(state.query),          GRAPH_MEMORY);
-      memory.assert(run, dagRunTimestamp,  MemoryStore.lit.num(Date.now()),            GRAPH_MEMORY);
+      memory.assert(run, dagRunTimestamp,  MemoryStore.lit.num(this.#clock.now()),     GRAPH_MEMORY);
       for (const candidate of state.shortlist) {
         const book = MemoryStore.bookIri(candidate.book.identity.isbn);
         // dag:shortlisted is the object property (run → book); dag:shortlistedTitle
@@ -167,6 +169,6 @@ export class RecordFindingsNode extends MonadicNode<ArchivistState, 'recorded'> 
 
     }
 
-    return RoutedBatchBuilder.of('recorded', batch);
+    return RoutedBatch.create('recorded', batch);
   }
 }

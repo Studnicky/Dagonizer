@@ -8,9 +8,9 @@ import {
   Batch,
   DAGBuilder,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -45,7 +45,7 @@ export class PreSetupNode extends MonadicNode<PhaseState, 'ready'> {
       item.state.executionLog.push('pre-setup');
       item.state.seedValue = 42;
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('ready').output, batch);
+    return RoutedBatch.create(NodeOutput.create('ready').output, batch);
   }
 }
 // #endregion pre-phase-node
@@ -66,7 +66,7 @@ export class ComputeNode extends MonadicNode<PhaseState, 'done'> {
       item.state.executionLog.push('compute');
       item.state.result = `computed:${String(item.state.seedValue * 2)}`;
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -90,7 +90,7 @@ export class PostAuditNode extends MonadicNode<PhaseState, 'audited'> {
       // State is already finalized; this is the last observer.
       item.state.executionLog.push(`final-result:${item.state.result}`);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('audited').output, batch);
+    return RoutedBatch.create(NodeOutput.create('audited').output, batch);
   }
 }
 // #endregion post-phase-node

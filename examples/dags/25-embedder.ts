@@ -8,8 +8,8 @@
  * their vectors.
  */
 
-import { Batch, BatchItemExecutor, DAG_CONTEXT, MonadicNode, NodeOutputBuilder, NodeStateBase,
-  RoutedBatchBuilder,
+import { Batch, BatchItemExecutor, DAG_CONTEXT, MonadicNode, NodeOutput, NodeStateBase,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { BatchExecutionOptionsType, DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { EmbedderInterface } from '@studnicky/dagonizer/adapter';
@@ -82,7 +82,7 @@ export class EmbedNode extends MonadicNode<EmbedderState, 'done'> {
       state.vectorB = vecB;
       state.similarity = VectorSimilarity.cosine(vecA, vecB);
     }, this.#execution, context.signal);
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -97,7 +97,7 @@ export class ReportNode extends MonadicNode<EmbedderState, 'done'> {
       const state = item.state;
       process.stdout.write(`  similarity("${state.textA}", "${state.textB}") = ${state.similarity.toFixed(4)}\n`);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

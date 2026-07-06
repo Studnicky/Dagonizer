@@ -4,7 +4,7 @@ import { GeoSignalDescriptorGuard } from '../../entities/GeoSignalDescriptor.ts'
 import { CountryCodeResolution } from './CountryCodeResolution.ts';
 import {
   MonadicNode,
-  RoutedBatchBuilder,
+  RoutedBatch,
   type Batch,
   type NodeContextType,
   type RoutedBatchType,
@@ -34,7 +34,7 @@ export class ResolveCodeNode extends MonadicNode<CartographerState, 'resolved'> 
 
       item.state.candidate = CountryCodeResolution.forIso2(raw.countryCode, 'code', raw.weight);
     }
-    return RoutedBatchBuilder.of('resolved', batch);
+    return RoutedBatch.create('resolved', batch);
   }
 }
 

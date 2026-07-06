@@ -19,7 +19,7 @@
 
 import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
 import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
-import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
+import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.js';
 
@@ -48,7 +48,7 @@ export class TestTask {
   ): DagTaskInterface {
     const dagName = 'test-dag';
 
-    const context = NodeContextBuilder.of(dagName, 'test-node', signal);
+    const context = NodeContext.create(dagName, 'test-node', signal);
 
     const task: DagTaskInterface = {
       'dagName':       dagName,

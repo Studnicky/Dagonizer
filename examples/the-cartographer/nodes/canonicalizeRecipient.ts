@@ -9,7 +9,7 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region canonicalize-recipient-node
@@ -60,7 +60,7 @@ export class CanonicalizeRecipientNode extends MonadicNode<CartographerState, 'd
       };
     }
 
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 

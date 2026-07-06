@@ -26,7 +26,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import { Sources } from '../services.ts';
 import { EventStreamSource } from '../services/EventStreamSource.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 import { StreamChannel, StreamCursor } from '@studnicky/dagonizer/channels';
 
@@ -62,7 +62,7 @@ export class SeedEventsNode extends MonadicNode<CartographerState, 'done'> {
         item.state.sources = await Sources.buildTypedFeed(item.state.eventConfig);
       }
     }
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 

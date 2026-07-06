@@ -9,11 +9,11 @@
  * and DAG; `registerBundle` installs every node before every DAG so the
  * validator can resolve node references. Embedded-DAG bundles register before
  * the parent, which references them by name:
- *   1. dispatcher.registerBundle(bookSearchScatterBundle): scouts, extract,
+ *   1. dispatcher.registerBundle({ nodes, dags: [bookSearchScatterDAG] }): scouts, extract,
  *      decide, rank, merge, record, gate, recall + the book-search-scatter DAG
- *   2. dispatcher.registerBundle(composeRetryLoopBundle): compose, validate
+ *   2. dispatcher.registerBundle({ nodes, dags: [composeRetryLoopDAG] }): compose, validate
  *      + the compose-retry-loop DAG
- *   3. dispatcher.registerBundle(archivistBundle): parent-level nodes + the
+ *   3. dispatcher.registerBundle({ nodes, dags: [archivistDAG] }): parent-level nodes + the
  *      `the-archivist` DAG (references the embedded-DAGs by name)
  *
  * LLM resolved via `LlmAdapterCascade` over a registry of providers that
@@ -38,9 +38,9 @@
 
 import { ArchivistState } from './ArchivistState.ts';
 import { ArchivistNodes } from './nodes/ArchivistNodes.ts';
-import { ArchivistBundleFactory } from './dag.ts';
-import { BookSearchScatterBundleFactory } from './embedded-dags/BookSearchScatterDAG.ts';
-import { ComposeRetryLoopBundleFactory } from './embedded-dags/ComposeRetryLoopDAG.ts';
+import { archivistDAG } from './dag.ts';
+import { bookSearchScatterDAG } from './embedded-dags/BookSearchScatterDAG.ts';
+import { composeRetryLoopDAG } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedDag } from './ObservedDag.ts';
@@ -58,11 +58,12 @@ import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
+import { Signal } from '@studnicky/signal';
 
 import {
   EmbedderCascade,
   EmbedderRegistry,
-  LlmAdapterCascadeBuilder,
+  LlmAdapterCascade,
   LlmError,
   type CatalogueEntryType,
 } from '@studnicky/dagonizer/adapter';
@@ -99,8 +100,8 @@ const CAPS_PARTIAL_TOOLS: AdapterCapabilitiesType = { 'toolUse': 'partial', 'str
 // #region adapter-cascade
 // Build a preference-ordered catalogue: probe each provider, discover the best
 // available chat model, and add a catalogue entry only when a model resolves.
-// The async discovery runs BEFORE LlmAdapterCascadeBuilder.build() — the builder
-// call itself is synchronous. Each factory closes over the already-constructed
+// The async discovery runs before `LlmAdapterCascade.create(...)`.
+// Each factory closes over the already-constructed
 // adapter instance; probe() runs lazily when cascade.select() is called.
 const catalogue: CatalogueEntryType[] = [];
 
@@ -180,7 +181,7 @@ if (Env.get('OPENROUTER_API_KEY').length > 0) {
   }
 }
 
-const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+const cascade = LlmAdapterCascade.create(catalogue);
 const adapter = await cascade.select();
 logger.note(`backend: ${adapter.id} (${adapter.displayName})`);
 // #endregion adapter-cascade
@@ -310,7 +311,7 @@ const dispatcher = new ObservedDag<ArchivistState>(logger);
 // ToolRegistry.bundle() returns the synthesized nodes + DAGs so the
 // dispatcher resolves `tool:web_search_books`, `tool:google_books_search`,
 // `tool:subject_search`, and `tool:wikipedia_summary` by name at scatter time.
-// Register BEFORE bookSearchScatterBundle so the embedded-DAG references
+// Register BEFORE bookSearchScatterDAG so the embedded-DAG references
 // from the scatter body are resolvable when the parent DAG is validated.
 const toolRegistry = new ToolRegistry();
 toolRegistry.register(new OpenLibrarySearchTool());
@@ -323,12 +324,12 @@ dispatcher.registerBundle(toolRegistry.bundle());
 // Each bundle packages its nodes + DAG. Embedded-DAG bundles register first
 // so the parent's semantic validator can resolve embedded references by name.
 // Construct every services-injected node exactly once; the shared set is
-// passed to all three factories so duplicate registrations refer to identical
+// passed to all three registrations so duplicate registrations refer to identical
 // instances and the registrar accepts them.
 const nodes = ArchivistNodes.build(services);
-dispatcher.registerBundle(BookSearchScatterBundleFactory.create(nodes));
-dispatcher.registerBundle(ComposeRetryLoopBundleFactory.create(nodes));
-dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
+dispatcher.registerBundle({ 'nodes': nodes.bookSearchScatterNodes, 'dags': [bookSearchScatterDAG] });
+dispatcher.registerBundle({ 'nodes': nodes.composeRetryLoopNodes, 'dags': [composeRetryLoopDAG] });
+dispatcher.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [archivistDAG] });
 
 // ── Demo run via ArchivistRunner + OnceTrigger ────────────────────────────
 // ArchivistRunner encapsulates the canonical register→seed→execute→project
@@ -433,15 +434,13 @@ logger.result(`triples=${String(services.memory.size)} written`);
 
 // #region cancellation-run
 // Caller-driven cancellation: the visitor closes the page.
-const controller = new AbortController();
-// Simulate visitor abandoning 800 ms in.
-setTimeout(() => controller.abort('visitor closed page'), 800);
+const visitorClosedSignal = Signal.timeout(800);
 
 const cancelVisitor = new ArchivistState();
 cancelVisitor.query = "What's a book about a labyrinth?";
 
 const cancelResult = await dispatcher.execute('the-archivist', cancelVisitor, {
-  'signal':     controller.signal,
+  'signal':     visitorClosedSignal,
   'deadlineMs': 5000,              // hard 5s ceiling regardless of signal
 });
 

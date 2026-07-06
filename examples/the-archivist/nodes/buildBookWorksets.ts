@@ -20,7 +20,7 @@
  * required; an empty workset means the scatter body is skipped).
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/types';
@@ -139,7 +139,7 @@ export class BuildBookWorksetsNode extends MonadicNode<ArchivistState, 'ready'> 
 
       state.bookWorksets = worksets;
     }
-    return RoutedBatchBuilder.of('ready', batch);
+    return RoutedBatch.create('ready', batch);
   }
 }
 

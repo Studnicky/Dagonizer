@@ -17,13 +17,13 @@
  * response into a node output.
  */
 
+import { ChatRequest } from '../adapter/LlmAdapter.js';
+import type { ChatRequestType, ChatResponseType, PartialChatRequestType } from '../adapter/LlmAdapter.js';
 import type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
+import { MonadicNode } from '../core/MonadicNode.js';
+import type { NodeContextType } from '../entities/node/NodeContext.js';
+import type { NodeStateInterface } from '../NodeStateBase.js';
 import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.js';
-
-import { MonadicNode } from '@studnicky/dagonizer';
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
-import type { ChatRequestType, ChatResponseType, PartialChatRequestType } from '@studnicky/dagonizer/adapter';
-import type { NodeContextType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 export abstract class LlmDispatchNode<
   TState extends NodeStateInterface,
@@ -61,7 +61,7 @@ export abstract class LlmDispatchNode<
   /** Send the request through the configured LLM. */
   protected async dispatch(state: TState, context: NodeContextType): Promise<ChatResponseType> {
     const prompt = this.composePrompt(state);
-    const request: ChatRequestType = ChatRequestBuilder.from(this.composeRequest(prompt, context.signal));
+    const request: ChatRequestType = ChatRequest.create(this.composeRequest(prompt, context.signal));
     return this.llm.chat(request);
   }
 

@@ -46,7 +46,7 @@ class PerItemNode extends MonadicNode<MyState, 'accepted' | 'rejected'> {
   async execute(batch: Batch<MyState>): Promise<RoutedBatchType<'accepted' | 'rejected', MyState>> {
     const accepted = batch.filter((state) => state.ready);
     const rejected = batch.filter((state) => !state.ready);
-    return RoutedBatchBuilder.from([
+    return RoutedBatch.create([
       ['accepted', accepted],
       ['rejected', rejected],
     ]);

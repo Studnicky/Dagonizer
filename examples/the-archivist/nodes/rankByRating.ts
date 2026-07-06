@@ -17,7 +17,7 @@
  * so the merge node can soft-gate downstream.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
@@ -55,7 +55,7 @@ export class RankByRatingNode extends MonadicNode<ArchivistState, 'ranked'> {
       state.candidates = ranked;
     }
 
-    return RoutedBatchBuilder.of('ranked', batch);
+    return RoutedBatch.create('ranked', batch);
   }
 }
 

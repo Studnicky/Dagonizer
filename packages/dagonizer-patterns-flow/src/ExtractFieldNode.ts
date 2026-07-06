@@ -4,7 +4,7 @@
  * field downstream nodes need at the top level.
  */
 
-import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
@@ -27,6 +27,6 @@ export abstract class ExtractFieldNode<
       const value = this.extract(item.state);
       this.apply(item.state, value);
     }
-    return RoutedBatchBuilder.of('success', batch);
+    return RoutedBatch.create('success', batch);
   }
 }

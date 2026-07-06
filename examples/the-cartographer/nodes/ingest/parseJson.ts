@@ -15,7 +15,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 
 import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-json-node
@@ -71,10 +71,10 @@ export class ParseJsonNode extends MonadicNode<CartographerState, 'normalized' |
       // Capture the parse failure as data rather than swallowing it. The node
       // still routes 'invalid' (graceful); the error rides on state.capturedErrors.
       state.capturedErrors = [...state.capturedErrors, GeoErrorRecord.capture('parse-json', caught, `source=${state.currentSource.sourceId}`)];
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
     if (!Array.isArray(parsed)) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
     const records: Array<Record<string, unknown>> = [];
     for (const row of parsed) {
@@ -83,7 +83,7 @@ export class ParseJsonNode extends MonadicNode<CartographerState, 'normalized' |
       }
     }
     state.parsedRecords = records;
-    return NodeOutputBuilder.of('normalized');
+    return NodeOutput.create('normalized');
   }
 }
 

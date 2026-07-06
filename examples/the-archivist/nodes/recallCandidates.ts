@@ -29,7 +29,7 @@
  * variant: 'deterministic': pure SPARQL pattern-match over a stable store.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
@@ -220,6 +220,6 @@ export class RecallCandidatesNode extends MonadicNode<ArchivistState, 'recalled'
     state.priorCandidates = priorCandidates;
     }
 
-    return RoutedBatchBuilder.of('recalled', batch);
+    return RoutedBatch.create('recalled', batch);
   }
 }

@@ -29,12 +29,16 @@
  */
 
 import type { CircuitBreaker, TokenBucket } from '@studnicky/resilience';
+import { Signal } from '@studnicky/signal';
+import { TIMING_STATUS } from '@studnicky/timing';
+import type { TimingEventDataType, TimingInterface } from '@studnicky/timing/interfaces';
+import type { TimingStatusValueType } from '@studnicky/timing/types';
 
 import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
 import type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
 import type { StreamSinkInterface } from '../contracts/StreamSinkInterface.js';
 import type { ChatMessageType } from '../entities/adapter/ChatMessage.js';
-import { ChatStreamChunkBuilder } from '../entities/adapter/ChatStreamChunk.js';
+import { ChatStreamChunk } from '../entities/adapter/ChatStreamChunk.js';
 import type { ChatStreamChunkType } from '../entities/adapter/ChatStreamChunk.js';
 import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 
@@ -53,7 +57,7 @@ export const DEFAULT_CHAT_TIMEOUT_MS = 60_000;
  * Caller-facing options for every chat adapter. Extends the shared core options
  * with `systemPrompt`: a default system message the base injects as the leading
  * turn of any chat request that carries no system message of its own. The text
- * is consumer-supplied (the engine owns no persona), so adapters stay backend
+ * is consumer-supplied (the engine owns no directive), so adapters stay backend
  * plumbing while a consumer configures role/format/language framing once at
  * construction. Empty string (the default) means no injection.
  */
@@ -80,6 +84,12 @@ export type BaseAdapterOptionsType = BaseAdapterCoreOptionsType & {
    * retry loop. `null` (the default) disables rate limiting.
    */
   readonly tokenBucket?: TokenBucket | null;
+  /**
+   * Optional substrate timing sink for adapter operation timing. A consumer can
+   * pass the same `Timing` instance used by its DAG observer to correlate
+   * adapter call start/complete/error events with the surrounding execution.
+   */
+  readonly timing?: TimingInterface | null;
 };
 
 export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterInterface {
@@ -91,6 +101,8 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
   readonly #circuitBreaker: CircuitBreaker | null;
   /** Token bucket rate limiter guarding `chat()`; `null` when rate limiting is disabled. */
   readonly #tokenBucket: TokenBucket | null;
+  /** Optional consumer-owned timing sink for chat call lifecycle events. */
+  readonly #timing: TimingInterface | null;
 
   /**
    * Format a `tool`-role message as the conversational line every text-only
@@ -118,6 +130,7 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_CHAT_TIMEOUT_MS;
     this.#circuitBreaker = options.circuitBreaker ?? null;
     this.#tokenBucket = options.tokenBucket ?? null;
+    this.#timing = options.timing ?? null;
   }
 
   /**
@@ -213,6 +226,7 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
 
   async chat(request: ChatRequestType): Promise<ChatResponseType> {
     const prepared = this.#withDefaultSystemPrompt(request);
+    this.#time('chat', TIMING_STATUS.START);
     const attempt = async (): Promise<ChatResponseType> => this.retryPolicy.run(async () => {
       try {
         return await this.#guardChat(prepared);
@@ -237,7 +251,20 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
         throw new LlmError(LlmError.messageFrom(rawError), classification, { 'cause': rawError });
       }
     }, { 'signal': prepared.signal });
-    return this.#guardResilience(attempt);
+    try {
+      const result = await this.#guardResilience(attempt);
+      this.#time('chat', TIMING_STATUS.COMPLETE);
+      return result;
+    } catch (error) {
+      this.#time('chat', TIMING_STATUS.ERROR);
+      throw error;
+    }
+  }
+
+  #time(operation: string, status: TimingStatusValueType): void {
+    this.#timing?.event(
+      { 'event': `adapter.${operation}.${status}` } satisfies TimingEventDataType,
+    );
   }
 
   /**
@@ -283,7 +310,15 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     sink: StreamSinkInterface<ChatStreamChunkType>,
   ): Promise<ChatResponseType> {
     const prepared = this.#withDefaultSystemPrompt(request);
-    return this.withDeadline(prepared, (derived) => this.performChatStream(derived, sink));
+    this.#time('chatStream', TIMING_STATUS.START);
+    try {
+      const result = await this.withDeadline(prepared, (derived) => this.performChatStream(derived, sink));
+      this.#time('chatStream', TIMING_STATUS.COMPLETE);
+      return result;
+    } catch (error) {
+      this.#time('chatStream', TIMING_STATUS.ERROR);
+      throw error;
+    }
   }
 
   /**
@@ -307,7 +342,7 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     // guard/timeout/classify + retry envelope unchanged.
     const response = await this.chat(request);
     const fullText = response.message.variant === 'tools' ? '' : response.message.content;
-    await this.pushChunk(sink, ChatStreamChunkBuilder.of(fullText));
+    await this.pushChunk(sink, ChatStreamChunk.create(fullText));
     return response;
   }
 
@@ -337,7 +372,7 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
    * `fetch` aborts naturally). The race rejects the instant that composed
    * signal aborts — even if the underlying operation never settles (a hung
    * socket, a frozen on-device stream) — after giving the subclass one
-   * best-effort `onCancelRequested()` call. The timer is always cleared.
+   * best-effort `onCancelRequested()` call.
    *
    * Shared by `chat()` (via `#guardChat`) and `chatStream()` so every
    * `performChat`/`performChatStream` override — including every concrete
@@ -347,47 +382,57 @@ export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapterI
     request: ChatRequestType,
     run: (derived: ChatRequestType) => Promise<T>,
   ): Promise<T> {
-    const timeoutController = new AbortController();
-    const timer = setTimeout(() => {
-      timeoutController.abort(new LlmError(`${this.id} request timeout`, Classifications['TIMEOUT']));
-    }, this.#timeoutMs);
-    const composed = AbortSignal.any([request.signal, timeoutController.signal]);
+    const composed = Signal.compose({ 'deadlineMs': this.#timeoutMs, 'signal': request.signal });
     const derived: ChatRequestType = { ...request, 'signal': composed };
-    try {
-      return await new Promise<T>((resolve, reject) => {
-        let settled = false;
-        const settleReject = (reason: unknown): void => {
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      let listenerAttached = false;
+      const cleanup = (onAbort: () => void): void => {
+        if (!listenerAttached) return;
+        listenerAttached = false;
+        composed.removeEventListener('abort', onAbort);
+      };
+      const settleReject = (reason: unknown, onAbort: () => void): void => {
+        if (settled) return;
+        settled = true;
+        cleanup(onAbort);
+        reject(reason instanceof Error ? reason : new LlmError(String(reason), Classifications['TIMEOUT']));
+      };
+      const onAbort = (): void => {
+        try {
+          this.onCancelRequested();
+        } catch {
+          // best-effort cooperative cancel; correctness comes from the reject below
+        }
+        settleReject(this.#composedSignalError(composed), onAbort);
+      };
+      if (composed.aborted) {
+        onAbort();
+        return;
+      }
+      composed.addEventListener('abort', onAbort, { 'once': true });
+      listenerAttached = true;
+      Promise.resolve(run(derived)).then(
+        (result) => {
           if (settled) return;
           settled = true;
-          reject(reason instanceof Error ? reason : new LlmError(String(reason), Classifications['TIMEOUT']));
-        };
-        const onAbort = (): void => {
-          try {
-            this.onCancelRequested();
-          } catch {
-            // best-effort cooperative cancel; correctness comes from the reject below
-          }
-          settleReject(composed.reason);
-        };
-        if (composed.aborted) {
-          onAbort();
-          return;
-        }
-        composed.addEventListener('abort', onAbort, { 'once': true });
-        Promise.resolve(run(derived)).then(
-          (result) => {
-            if (settled) return;
-            settled = true;
-            resolve(result);
-          },
-          (error: unknown) => {
-            settleReject(error);
-          },
-        );
-      });
-    } finally {
-      clearTimeout(timer);
+          cleanup(onAbort);
+          resolve(result);
+        },
+        (error: unknown) => {
+          settleReject(error, onAbort);
+        },
+      );
+    });
+  }
+
+  #composedSignalError(signal: AbortSignal): Error {
+    const reason: unknown = signal.reason;
+    if (reason instanceof DOMException && reason.name === 'TimeoutError') {
+      return new LlmError(`${this.id} request timeout`, Classifications['TIMEOUT']);
     }
+    if (reason instanceof Error) return reason;
+    return new LlmError(String(reason), Classifications['TIMEOUT']);
   }
 
   /**

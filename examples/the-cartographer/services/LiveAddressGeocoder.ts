@@ -14,6 +14,10 @@
  * Never throws — a failed lookup resolves to an unresolved candidate.
  */
 
+import { Coalesce } from '@studnicky/concurrency/coalesce';
+import { LruCache } from '@studnicky/cache';
+import { Guard } from '@studnicky/types';
+
 import type { GeoCandidate } from '../entities/GeoCandidate.ts';
 import type { AddressGeocoder } from '../contracts/AddressGeocoder.ts';
 import { GeoErrorRecord } from '../errors/GeoErrorRecord.ts';
@@ -22,17 +26,23 @@ import { GeoLookupOutcome, type GeoLookupOutcomeType } from '../errors/GeoLookup
 // #region live-address-geocoder
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 const ERROR_SOURCE = 'address-geocode';
+const ADDRESS_CACHE_CAPACITY = 1_000;
+const ADDRESS_CACHE_TTL_MS = 30 * 60 * 1_000;
 
 export class LiveAddressGeocoder implements AddressGeocoder {
-  readonly #cache = new Map<string, GeoCandidate>();
+  static readonly #signalIds = new WeakMap<AbortSignal, string>();
+  static #nextSignalId = 0;
 
-  private static str(value: unknown): string {
-    return typeof value === 'string' ? value : '';
-  }
+  readonly #cache = LruCache.create<string, GeoCandidate>({
+    'capacity': ADDRESS_CACHE_CAPACITY,
+    'ttlMs':    ADDRESS_CACHE_TTL_MS,
+  });
+  readonly #lookups = Coalesce.create<GeoLookupOutcomeType>();
 
   private static num(value: unknown): number {
-    const n = typeof value === 'string' ? Number(value) : value;
-    return typeof n === 'number' && isFinite(n) ? n : 0;
+    const text = Guard.asString(value);
+    const numeric = Guard.asNumber(value) ?? (text !== undefined ? Number(text) : undefined);
+    return numeric !== undefined && Number.isFinite(numeric) ? numeric : 0;
   }
 
   /**
@@ -42,33 +52,30 @@ export class LiveAddressGeocoder implements AddressGeocoder {
    */
   private static parseBody(body: unknown): GeoCandidate | null {
     if (!Array.isArray(body) || body.length === 0) return null;
-    const item: unknown = body[0];
-    if (item === null || typeof item !== 'object' || Array.isArray(item)) return null;
+    const item = Guard.asRecord(body[0]);
+    if (item === undefined) return null;
 
-    // item is narrowed to `object` — use Reflect.get for cast-free property access.
-    const addressObj: unknown = Reflect.get(item, 'address');
-    const addr: object | null =
-      addressObj !== null && typeof addressObj === 'object' && !Array.isArray(addressObj)
-        ? addressObj
-        : null;
+    const addr = Guard.asRecord(item['address']);
 
-    const rawCountryCode = addr !== null
-      ? LiveAddressGeocoder.str(Reflect.get(addr, 'country_code'))
+    const rawCountryCode = addr !== undefined
+      ? Guard.asString(addr?.['country_code']) ?? ''
       : '';
     if (rawCountryCode.length === 0) return null;
 
     const country = rawCountryCode.toUpperCase();
-    const countryName = addr !== null
-      ? LiveAddressGeocoder.str(Reflect.get(addr, 'country'))
+    const countryName = addr !== undefined
+      ? Guard.asString(addr?.['country']) ?? ''
       : '';
-    const region = addr !== null
-      ? (LiveAddressGeocoder.str(Reflect.get(addr, 'state')) ||
-         LiveAddressGeocoder.str(Reflect.get(addr, 'region')))
+    const region = addr !== undefined
+      ? (Guard.asString(addr?.['state']) ??
+         Guard.asString(addr?.['region']) ??
+         '')
       : '';
-    const locality = addr !== null
-      ? (LiveAddressGeocoder.str(Reflect.get(addr, 'city')) ||
-         LiveAddressGeocoder.str(Reflect.get(addr, 'town')) ||
-         LiveAddressGeocoder.str(Reflect.get(addr, 'village')))
+    const locality = addr !== undefined
+      ? (Guard.asString(addr?.['city']) ??
+         Guard.asString(addr?.['town']) ??
+         Guard.asString(addr?.['village']) ??
+         '')
       : '';
 
     return {
@@ -79,8 +86,8 @@ export class LiveAddressGeocoder implements AddressGeocoder {
       'continent':   '',
       'region':      region,
       'locality':    locality,
-      'lat':         LiveAddressGeocoder.num(Reflect.get(item, 'lat')),
-      'lng':         LiveAddressGeocoder.num(Reflect.get(item, 'lon')),
+      'lat':         LiveAddressGeocoder.num(item['lat']),
+      'lng':         LiveAddressGeocoder.num(item['lon']),
       'water':       false,
     };
   }
@@ -91,6 +98,14 @@ export class LiveAddressGeocoder implements AddressGeocoder {
       return GeoLookupOutcome.resolved(LiveAddressGeocoder.unresolved());
     }
 
+    const cached = this.#cache.get(address);
+    if (cached !== undefined) return GeoLookupOutcome.resolved(cached);
+
+    const key = `${LiveAddressGeocoder.signalKey(signal)}\u0000${address}`;
+    return this.#lookups.run(key, () => this.#geocodeMiss(address, signal));
+  }
+
+  async #geocodeMiss(address: string, signal: AbortSignal): Promise<GeoLookupOutcomeType> {
     const cached = this.#cache.get(address);
     if (cached !== undefined) return GeoLookupOutcome.resolved(cached);
 
@@ -122,6 +137,15 @@ export class LiveAddressGeocoder implements AddressGeocoder {
 
     this.#cache.set(address, candidate);
     return GeoLookupOutcome.resolved(candidate);
+  }
+
+  private static signalKey(signal: AbortSignal): string {
+    const existing = LiveAddressGeocoder.#signalIds.get(signal);
+    if (existing !== undefined) return existing;
+    const next = `signal:${String(LiveAddressGeocoder.#nextSignalId)}`;
+    LiveAddressGeocoder.#nextSignalId++;
+    LiveAddressGeocoder.#signalIds.set(signal, next);
+    return next;
   }
 
   private static unresolved(): GeoCandidate {

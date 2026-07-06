@@ -11,7 +11,7 @@
  * that plug in a specific ToolInterface instance.
  */
 
-import { Batch, BatchItemExecutor, MonadicNode, NodeErrorBuilder, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, BatchItemExecutor, MonadicNode, NodeError, NodeOutput } from '@studnicky/dagonizer';
 import type { BatchExecutionOptionsType, ItemType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { ToolInterface } from '@studnicky/dagonizer/tool';
 import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
@@ -80,10 +80,10 @@ export abstract class ScoutNode<
       const raw = await this.tool.execute(input, { 'signal': context.signal });
       const items = this.normalize(raw);
       this.writeBack(state, items);
-      return NodeOutputBuilder.of(items.length === 0 ? 'empty' : 'success');
+      return NodeOutput.create(items.length === 0 ? 'empty' : 'success');
     } catch (thrown: unknown) {
       const message = thrown instanceof Error ? thrown.message : String(thrown);
-      const error = NodeErrorBuilder.from(
+      const error = NodeError.create(
         'scoutExecutionFailed',
         message,
         'ScoutNode.execute',
@@ -91,7 +91,7 @@ export abstract class ScoutNode<
         new Date().toISOString(),
         { 'context': { 'toolName': this.tool.definition.name } },
       );
-      return NodeOutputBuilder.of('error', { 'errors': [error] });
+      return NodeOutput.create('error', { 'errors': [error] });
     }
   }
 }

@@ -13,7 +13,7 @@
  * before routing and surfaces `result.parked` with the correlationKey and cursor.
  */
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
@@ -58,12 +58,12 @@ export class ParkForOperatorNode extends MonadicNode<DispatcherState, 'parked' |
   private routeItem(state: DispatcherState): NodeOutputType<'parked' | 'ready'> {
     if (state.response.length > 0) {
       // Operator has filled in the response; resume the flow.
-      return NodeOutputBuilder.of('ready');
+      return NodeOutput.create('ready');
     }
 
     // First call: park and await human input.
     const correlationKey = 'escalation:' + Date.now().toString();
     state.park(correlationKey);
-    return NodeOutputBuilder.of('parked');
+    return NodeOutput.create('parked');
   }
 }

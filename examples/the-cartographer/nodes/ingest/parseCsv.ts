@@ -13,7 +13,7 @@
 
 import type { CartographerState } from '../../CartographerState.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-csv-node
@@ -87,7 +87,7 @@ export class ParseCsvNode extends MonadicNode<CartographerState, 'normalized' | 
     const lines = text.split('\n').filter((l) => l.length > 0);
     const headerLine = lines[0];
     if (headerLine === undefined) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
     const header = ParseCsvNode.splitCsvLine(headerLine);
     const records: Array<Record<string, unknown>> = [];
@@ -100,7 +100,7 @@ export class ParseCsvNode extends MonadicNode<CartographerState, 'normalized' | 
       records.push(record);
     }
     state.parsedRecords = records;
-    return NodeOutputBuilder.of('normalized');
+    return NodeOutput.create('normalized');
   }
 }
 

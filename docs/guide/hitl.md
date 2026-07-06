@@ -58,7 +58,7 @@ class ApproveNode extends MonadicNode<MyState, 'parked' | 'approved' | 'rejected
       }
     }
 
-    return RoutedBatchBuilder.from([
+    return RoutedBatch.create([
       ['parked', Batch.from(parked)],
       ['approved', Batch.from(approved)],
       ['rejected', Batch.from(rejected)],

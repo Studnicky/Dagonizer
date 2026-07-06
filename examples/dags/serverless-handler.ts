@@ -16,7 +16,7 @@
  *     Dagonizer instance — no Dagonizer-specific serverless runtime.
  */
 
-import { Batch, DAG_CONTEXT, Dagonizer, MonadicNode, NodeOutputBuilder, NodeStateBase, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, DAG_CONTEXT, Dagonizer, MonadicNode, NodeOutput, NodeStateBase, RoutedBatch } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
 import { JsonObject } from '@studnicky/dagonizer/entities';
@@ -56,7 +56,7 @@ export class SettleNode extends MonadicNode<OrderState, 'done'> {
   }
   override async execute(batch: Batch<OrderState>) {
     for (const item of batch) item.state.status = 'settled';
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

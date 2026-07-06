@@ -17,6 +17,8 @@
  * All properties initialised in constructor in declaration order (V8 shape).
  */
 
+import { CircularBuffer } from '@studnicky/circular-buffer';
+
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
 import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
@@ -27,6 +29,7 @@ import type { ItemType } from '../entities/batch/Item.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import { Scheduler } from '../runtime/Scheduler.js';
 
 import { ChannelDispatch } from './ChannelDispatch.js';
 import type { InitMessageShapeType } from './ChannelDispatch.js';
@@ -97,7 +100,7 @@ export abstract class DagContainerBase<TWorker = unknown>
   // Promises waiting for a free slot to become available.
   // Each entry carries both a resolve (wake) and reject (abort) so a fired
   // signal can eject a parked waiter without waiting for a free slot.
-  readonly #waiters: Array<{ resolve: () => void; reject: (err: Error) => void }>;
+  readonly #waiters: CircularBuffer<{ active: boolean; resolve: () => void; reject: (err: Error) => void }>;
   #destroyed: boolean;
   readonly #poolSize: number;
   readonly #init: InitMessageShapeType;
@@ -119,7 +122,7 @@ export abstract class DagContainerBase<TWorker = unknown>
     this.#channelToEntry         = new WeakMap<MessageChannelInterface, PoolEntryType<TWorker>>();
     this.#pool                   = [];
     this.#free                   = [];
-    this.#waiters                = [];
+    this.#waiters                = CircularBuffer.create({ 'capacity': options.poolSize, 'overflow': 'grow' });
     this.#destroyed              = false;
     this.#poolSize               = options.poolSize;
     this.#init                   = options.init;
@@ -338,15 +341,13 @@ export abstract class DagContainerBase<TWorker = unknown>
 
     await Promise.allSettled(
       snapshot.map((entry) => {
-        // R9: capture the grace handle so we can cancel it when the worker
-        // exits cleanly — avoids leaking a timer into the next event-loop tick.
-        let graceHandle: ReturnType<typeof setTimeout> | null = null;
-        const gracePromise = new Promise<void>((resolve) => {
-          graceHandle = setTimeout(resolve, this.#shutdownGraceMs);
-        });
+        const graceController = new AbortController();
+        const gracePromise = Scheduler.current()
+          .after(this.#shutdownGraceMs, { 'signal': graceController.signal })
+          .catch(() => { /* worker exited before grace elapsed */ });
         return Promise.race([
           this.awaitWorkerExit(entry.worker).then(() => {
-            if (graceHandle !== null) clearTimeout(graceHandle);
+            graceController.abort(new DAGError('container-shutdown-grace-cleanup', { 'code': 'EXECUTION_ERROR' }));
           }),
           gracePromise,
         ]).then(async () => {
@@ -441,12 +442,11 @@ export abstract class DagContainerBase<TWorker = unknown>
    */
   #waitForSlot(signal: AbortSignal): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const entry = { resolve, reject };
+      const entry = { 'active': true, resolve, reject };
       this.#waiters.push(entry);
 
       const onAbort = (): void => {
-        const idx = this.#waiters.indexOf(entry);
-        if (idx !== -1) this.#waiters.splice(idx, 1);
+        entry.active = false;
         reject(new DAGError('aborted', { 'code': 'DAG_CONTAINER_ERROR' }));
       };
       signal.addEventListener('abort', onAbort, { 'once': true });
@@ -454,6 +454,8 @@ export abstract class DagContainerBase<TWorker = unknown>
       // Wrap resolve so we always clean up the abort listener.
       const originalResolve = entry.resolve;
       entry.resolve = (): void => {
+        if (!entry.active) return;
+        entry.active = false;
         signal.removeEventListener('abort', onAbort);
         originalResolve();
       };
@@ -462,15 +464,21 @@ export abstract class DagContainerBase<TWorker = unknown>
 
   /** Wake the oldest parked acquirer, if any. */
   #wakeWaiter(): void {
-    const waiter = this.#waiters.shift();
-    if (waiter !== undefined) waiter.resolve();
+    let waiter = this.#waiters.shift();
+    while (waiter !== undefined) {
+      if (waiter.active) {
+        waiter.resolve();
+        return;
+      }
+      waiter = this.#waiters.shift();
+    }
   }
 
   /** Wake every parked acquirer. Used by destroy(). */
   #wakeAllWaiters(): void {
     while (this.#waiters.length > 0) {
       const waiter = this.#waiters.shift();
-      if (waiter !== undefined) waiter.resolve();
+      if (waiter !== undefined && waiter.active) waiter.resolve();
     }
   }
 

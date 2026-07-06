@@ -13,7 +13,8 @@
 
 import type { LogBodyDataType, LogFaultDataType } from '@studnicky/logger/interfaces';
 
-import { LogBody } from '@studnicky/logger';
+import { CircularBuffer } from '@studnicky/circular-buffer';
+import { Clock as SubstrateClock, RealTimeClockProvider } from '@studnicky/clock';
 
 const HAS_NODE_STDIO =
   typeof process !== 'undefined'
@@ -39,18 +40,23 @@ export interface LogEvent {
 }
 
 export class ConsoleLogger {
-  readonly #buffer: LogEvent[] = [];
-  readonly #maxBuffer: number;
+  readonly #buffer: CircularBuffer<LogEvent>;
+  readonly #clock: SubstrateClock;
 
-  constructor(options: { readonly maxBuffer?: number } = {}) {
-    this.#maxBuffer = options.maxBuffer ?? 1000;
+  constructor(options: { readonly clock?: SubstrateClock; readonly maxBuffer?: number } = {}) {
+    this.#buffer = CircularBuffer.create<LogEvent>({
+      'capacity': options.maxBuffer ?? 1000,
+      'overflow': 'overwrite',
+    });
+    this.#clock = options.clock ?? SubstrateClock.create(RealTimeClockProvider.create());
   }
 
-  history(): readonly LogEvent[] { return [...this.#buffer]; }
+  history(): readonly LogEvent[] { return this.#snapshot(); }
 
   clear(): void {
-    this.#buffer.length = 0;
-    this.onEmit({ 'level': 'info', 'message': '(log cleared)', 'ts': Date.now() });
+    let event = this.#buffer.shift();
+    while (event !== undefined) event = this.#buffer.shift();
+    this.onEmit({ 'level': 'info', 'message': '(log cleared)', 'ts': this.#clock.now() });
   }
 
   trace(body: LogBodyDataType): void { this.#emit('trace', body.message); }
@@ -66,20 +72,18 @@ export class ConsoleLogger {
    */
   note(message: string): void {
     this.info(
-      LogBody.create()
-        .component('app')
-        .operation('log')
-        .status('complete')
-        .message(message)
-        .context({})
-        .build(),
+      {
+        'context': {},
+        'event': 'app.log',
+        message,
+        'status': 'complete',
+      },
     );
   }
 
   result(message: string): void {
-    const event: LogEvent = { 'level': 'info', message, 'ts': Date.now() };
+    const event: LogEvent = { 'level': 'info', message, 'ts': this.#clock.now() };
     this.#buffer.push(event);
-    if (this.#buffer.length > this.#maxBuffer) this.#buffer.shift();
     this.onEmit(event);
     if (HAS_NODE_STDIO) process.stdout.write(`[dagonizer:result] ${message}\n`);
   }
@@ -87,13 +91,23 @@ export class ConsoleLogger {
   protected onEmit(event: LogEvent): void { void event; }
 
   #emit(level: LogLevel, message: string): void {
-    const event: LogEvent = { level, message, 'ts': Date.now() };
+    const event: LogEvent = { level, message, 'ts': this.#clock.now() };
     this.#buffer.push(event);
-    if (this.#buffer.length > this.#maxBuffer) this.#buffer.shift();
     this.onEmit(event);
     if (HAS_NODE_STDIO) {
       const stream = STDERR_LEVELS.has(level) ? process.stderr : process.stdout;
       stream.write(`${LEVEL_TAGS[level]} ${message}\n`);
     }
+  }
+
+  #snapshot(): readonly LogEvent[] {
+    const events: LogEvent[] = [];
+    let event = this.#buffer.shift();
+    while (event !== undefined) {
+      events.push(event);
+      event = this.#buffer.shift();
+    }
+    for (const retained of events) this.#buffer.push(retained);
+    return events;
   }
 }

@@ -22,9 +22,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -75,10 +75,10 @@ export class AccumulateNode extends MonadicNode<CountdownState, 'recurse' | 'bas
       const state = item.state;
       state.total         = state.total + state.remaining;
       state.nextRemaining = state.remaining - 1;
-      const output = NodeOutputBuilder.of(state.remaining > 0 ? 'recurse' : 'base');
+      const output = NodeOutput.create(state.remaining > 0 ? 'recurse' : 'base');
       entries.push([output.output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 // #endregion node

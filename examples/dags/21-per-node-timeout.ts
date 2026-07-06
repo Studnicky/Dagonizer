@@ -18,9 +18,9 @@ import {
   Batch,
   DAGBuilder,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import { Timeout } from '@studnicky/dagonizer/runtime';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -48,7 +48,7 @@ export class FastTaskNode extends MonadicNode<TaskState, 'done'> {
   }
   override async execute(batch: Batch<TaskState>) {
     for (const item of batch) item.state.output = 'fast-done';
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion fast-node
@@ -80,7 +80,7 @@ export class SlowTaskNode extends MonadicNode<TaskState, 'done'> {
         { "once": true },
       );
     });
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion slow-node

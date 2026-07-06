@@ -5,7 +5,7 @@ import { LocaleTimezone } from '../../geo/LocaleTimezone.ts';
 import { CountryLocale } from '../../geo/CountryLocale.ts';
 import {
   MonadicNode,
-  RoutedBatchBuilder,
+  RoutedBatch,
   type Batch,
   type NodeContextType,
   type RoutedBatchType,
@@ -58,7 +58,7 @@ export class ResolveLocaleNode extends MonadicNode<CartographerState, 'resolved'
         'weight':       raw.weight,
       });
     }
-    return RoutedBatchBuilder.of('resolved', batch);
+    return RoutedBatch.create('resolved', batch);
   }
 }
 

@@ -11,7 +11,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { Customs } from '../services.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region customs-dwell-node
@@ -34,7 +34,7 @@ export class CustomsDwellNode extends MonadicNode<CartographerState, 'dwelled'> 
       const customsStatus = v.eventType === 'customs-event' ? v.body.customsStatus : '';
       item.state.customsDwellHours = Customs.dwellHours(customsStatus);
     }
-    return RoutedBatchBuilder.of('dwelled', batch);
+    return RoutedBatch.create('dwelled', batch);
   }
 }
 // #endregion customs-dwell-node

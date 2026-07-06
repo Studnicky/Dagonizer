@@ -10,7 +10,7 @@
  * Routes 'sent' always.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
@@ -39,6 +39,6 @@ export class SendResponseNode extends MonadicNode<DispatcherState, 'sent'> {
       state.conversation.push({ 'role': responseRole, 'text': state.response, 'ts': now });
     }
 
-    return RoutedBatchBuilder.of('sent', batch);
+    return RoutedBatch.create('sent', batch);
   }
 }

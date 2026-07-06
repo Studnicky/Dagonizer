@@ -23,9 +23,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -74,7 +74,7 @@ export class CollectANode extends MonadicNode<PipelineState, 'done'> {
 
   override async execute(batch: Batch<PipelineState>) {
     for (const item of batch) item.state.items.push('alpha');
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -87,7 +87,7 @@ export class CollectBNode extends MonadicNode<PipelineState, 'done'> {
 
   override async execute(batch: Batch<PipelineState>) {
     for (const item of batch) item.state.items.push('beta');
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -100,7 +100,7 @@ export class CollectCNode extends MonadicNode<PipelineState, 'done'> {
 
   override async execute(batch: Batch<PipelineState>) {
     for (const item of batch) item.state.items.push('gamma');
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion node-collect
@@ -119,7 +119,7 @@ export class SummarizeNode extends MonadicNode<PipelineState, 'done'> {
       const state = item.state;
       state.summary = `processed ${state.items.length} item(s): ${state.items.join(', ')}`;
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion node-summarize

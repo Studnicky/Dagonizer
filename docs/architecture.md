@@ -178,7 +178,7 @@ Timestamps are monotonic milliseconds from `Clock.monotonicMs()`. Use them for d
 `Dagonizer.execute()` wraps an async generator in an `Execution<TState>` instance. The generator:
 
 1. Resolves the DAG from the registry.
-2. Composes `signal` and `deadlineMs` into one `AbortSignal` via `AbortSignal.any()`.
+2. Composes `signal` and `deadlineMs` into one `AbortSignal` via `Signal.compose(...)`.
 3. Marks state `running`.
 4. Iterates the node graph: look up the current node, call `executeDAGNode`, yield the result, follow the routing to the next node name.
 5. For `EmbeddedDAGNode` and `ScatterNode` placements that declare a `container` role, the dispatcher resolves the bound `DagContainerInterface` and delegates the sub-DAG execution to that backend. The child state crosses the boundary as a snapshot; the backend runs the sub-DAG to completion and returns the terminal snapshot; the dispatcher applies it in-place and continues. An unbound role resolves to the in-process recursive path.
@@ -229,7 +229,7 @@ Embedded and contained child DAGs never publish — only the top-level host does
 dispatcher.execute(dag, state, { signal, deadlineMs })
         │
         ▼
-AbortSignal.any([signal, AbortSignal.timeout(deadlineMs)])
+Signal.compose({ signal, deadlineMs })
         │
         ▼
 node.execute(state, { signal: composedSignal, dagName, nodeName })

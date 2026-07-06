@@ -1,7 +1,7 @@
 /**
  * ChatRequestType: a single adapter round-trip call shape.
  *
- * Every field is always present; `ChatRequestBuilder.from(partial)` in
+ * Every field is always present; `ChatRequest.create(partial)` in
  * `src/adapter/LlmAdapter.ts` fills the defaultable fields so callers
  * always get a complete, V8-monomorphic value.
  *
@@ -36,7 +36,7 @@ export type LlmOutputSchemaType =
   | { variant: 'none' }
   | { variant: 'schema'; schema: Record<string, unknown>; id: string };
 
-/** One adapter call; every field always present. Constructed via `ChatRequestBuilder.from(partial)`. */
+/** One adapter call; every field always present. Constructed via `ChatRequest.create(partial)`. */
 export type ChatRequestType = {
   /** Ordered conversation history passed to the model. */
   messages: ChatMessageType[];
@@ -55,8 +55,8 @@ export type ChatRequestType = {
 }
 
 /**
- * Loose-input shape accepted by `ChatRequestBuilder.from`. Only `messages` is required;
- * every other field is defaulted by the builder to produce a complete `ChatRequestType`.
+ * Loose-input shape accepted by `ChatRequest.create`. Only `messages` is required;
+ * every other field is defaulted to produce a complete `ChatRequestType`.
  */
 export type PartialChatRequestType = {
   /** Ordered conversation history. Required. */

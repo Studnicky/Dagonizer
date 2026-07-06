@@ -13,6 +13,8 @@ import type { BookWorksetItemType } from './nodes/buildBookWorksets.ts';
 import { NodeStateBase } from '@studnicky/dagonizer';
 import type { JsonObjectType, StateFieldsType } from '@studnicky/dagonizer/types';
 import type { ReasoningStepType } from '@studnicky/dagonizer';
+import { Validator } from '@studnicky/dagonizer/validation';
+import { CandidateSchema } from '@studnicky/dagonizer-book-entities';
 
 /**
  * A single turn in the visitor–archivist conversation.
@@ -82,6 +84,7 @@ export type ArchivistIntent =
   | 'off-topic';         // visitor wandered: not a book query and not memory-related
 
 export class ArchivistState extends NodeStateBase {
+  private static readonly candidateValidator = Validator.compile<CandidateType>(CandidateSchema);
   /**
    * Declared scalar fields for schema-driven snapshot/restore.
    * Complex fields (arrays with item type-guards, nested objects,
@@ -187,7 +190,7 @@ export class ArchivistState extends NodeStateBase {
   bookWorksets: ReadonlyArray<BookWorksetItemType> = [];
   /**
    * The agent's own reasoning steps, accumulated across the current run via
-   * `ReasoningStepBuilder`. Each step is provenance-linked by
+   * `ReasoningStep.create(...)`. Each step is provenance-linked by
    * `RdfProvObserver.recordReasoning` into the PROV graph. Always
    * initialized; never undefined (V8 shape stability).
    */
@@ -324,7 +327,7 @@ export class ArchivistState extends NodeStateBase {
 
   /**
    * `ReasoningStepType.action.args` is `Record<string, unknown>` at the
-   * builder boundary; serialize only JSON-safe primitives, mirroring
+   * construction boundary; serialize only JSON-safe primitives, mirroring
    * `candidateToJson`'s `notesOut` sanitizer.
    */
   private static reasoningStepToJson(step: ReasoningStepType): JsonObjectType {
@@ -507,22 +510,7 @@ export class ArchivistState extends NodeStateBase {
   }
 
   private static isCandidate(v: unknown): v is CandidateType {
-    if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
-    if (!('book' in v && 'score' in v && 'source' in v)) return false;
-    if (typeof v.score !== 'number' || typeof v.source !== 'string') return false;
-    const book = v.book;
-    if (typeof book !== 'object' || book === null || Array.isArray(book)) return false;
-    if (!('identity' in book && 'publication' in book)) return false;
-    const identity = book.identity;
-    if (typeof identity !== 'object' || identity === null) return false;
-    if (!('isbn' in identity && 'title' in identity && 'authors' in identity)) return false;
-    if (typeof identity.isbn !== 'string'
-      || typeof identity.title !== 'string'
-      || !Array.isArray(identity.authors)) return false;
-    const publication = book.publication;
-    if (typeof publication !== 'object' || publication === null) return false;
-    if (!('languages' in publication)) return false;
-    return Array.isArray(publication.languages);
+    return ArchivistState.candidateValidator.is(v);
   }
 
   private static isPriorIntent(v: unknown): v is RecalledContext['priorIntents'][number] {

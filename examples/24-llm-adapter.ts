@@ -3,7 +3,7 @@
  *
  * Shows how to:
  *   1. Declare a preference-ordered catalogue of CatalogueEntryType entries and
- *      pass it to LlmAdapterCascadeBuilder.build() to get a configured cascade.
+ *      pass it to LlmAdapterCascade.create() to get a configured cascade.
  *   2. Walk the cascade with cascade.select(), which probes each adapter in
  *      order and returns the first available one.
  *   3. Inject the selected LlmAdapterInterface into state and call .chat() inside
@@ -26,7 +26,7 @@
 
 import { Dagonizer } from '@studnicky/dagonizer';
 import {
-  LlmAdapterCascadeBuilder,
+  LlmAdapterCascade,
   type CatalogueEntryType,
 } from '@studnicky/dagonizer/adapter';
 import { OllamaApiAdapter } from '@studnicky/dagonizer-adapter-ollama';
@@ -60,7 +60,7 @@ process.stdout.write(`Discovered Ollama chat model: "${OLLAMA_MODEL}"\n`);
 // ---------------------------------------------------------------------------
 // 1. Catalogue: declare provider entries in preference order.
 //
-//    LlmAdapterCascadeBuilder.build() creates a fresh registry, registers
+//    LlmAdapterCascade.create() creates a fresh registry, registers
 //    every entry, and returns a cascade whose preference list mirrors the
 //    catalogue order. No manual registry or cascade construction needed.
 //
@@ -88,7 +88,7 @@ const catalogue: CatalogueEntryType[] = [
 // 2. Builder: assembles the registry and cascade in one call.
 // ---------------------------------------------------------------------------
 
-const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+const cascade = LlmAdapterCascade.create(catalogue);
 
 const adapter = await cascade.select();
 process.stdout.write(`\nLLM Adapter cascade selected: "${adapter.displayName}" (${adapter.id})\n`);

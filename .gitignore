@@ -9,6 +9,9 @@ docs/.vitepress/cache
 .claude/
 docs/.claude/
 *.tgz
+.codebase-memory/
+.orchestration/
+**/.orchestration/
 
 # Planning artifacts are local working notes, never tracked
 plans/

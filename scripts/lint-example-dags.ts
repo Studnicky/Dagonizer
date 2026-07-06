@@ -22,67 +22,10 @@
 import type { DAGType } from '../packages/dagonizer/src/entities/dag/DAG.js';
 import { WellFormedValidator } from '../packages/dagonizer/src/validation/WellFormedValidator.js';
 
-// ── The Archivist: build DAGs via their factories ─────────────────────────────
-// Services-injected nodes must be constructed before factories can run.
-// Use recorded/offline services so importing stays side-effect-free (no network).
-import { ArchivistNodes }                from '../examples/the-archivist/nodes/ArchivistNodes.js';
-import { ArchivistBundleFactory }        from '../examples/the-archivist/dag.js';
-import { BookSearchScatterBundleFactory } from '../examples/the-archivist/embedded-dags/BookSearchScatterDAG.js';
-import { ComposeRetryLoopBundleFactory } from '../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.js';
-import { MemoryStore }                   from '../examples/the-archivist/memory/MemoryStore.js';
-import { OpenLibrarySearchTool }         from '@studnicky/dagonizer-tool-openlibrary';
-import { SubjectSearchTool }             from '@studnicky/dagonizer-tool-openlibrary';
-import { GoogleBooksTool }               from '@studnicky/dagonizer-tool-googlebooks';
-import { WikipediaSummaryTool }          from '@studnicky/dagonizer-tool-wikipedia';
-import type { ArchivistServices }        from '../examples/the-archivist/services.js';
-import type { LlmClientInterface }       from '../examples/the-archivist/services.js';
-
-// Stub LLM: satisfies LlmClientInterface type for DAG construction only.
-// None of these methods are called during DAG building — they are stored as
-// node field references and executed only when the dispatcher runs.
-class StubLlm implements LlmClientInterface {
-  classifyIntent():    Promise<never> { return Promise.reject(new Error('stub')); }
-  extractTerms():      Promise<never> { return Promise.reject(new Error('stub')); }
-  decideTools():       Promise<never> { return Promise.reject(new Error('stub')); }
-  rankCandidates():    Promise<never> { return Promise.reject(new Error('stub')); }
-  compose():           Promise<never> { return Promise.reject(new Error('stub')); }
-  composeAuthor():     Promise<never> { return Promise.reject(new Error('stub')); }
-  composeReviews():    Promise<never> { return Promise.reject(new Error('stub')); }
-  describeBook():      Promise<never> { return Promise.reject(new Error('stub')); }
-  composeSimilar():    Promise<never> { return Promise.reject(new Error('stub')); }
-  validate():          Promise<never> { return Promise.reject(new Error('stub')); }
-  composeMemoryRecall(): Promise<never> { return Promise.reject(new Error('stub')); }
-  composeEmptyResponse(): Promise<never> { return Promise.reject(new Error('stub')); }
-  suggestStarterQuery(): Promise<never> { return Promise.reject(new Error('stub')); }
-  suggestGreeting():   Promise<never> { return Promise.reject(new Error('stub')); }
-  suggestVisitorReplyTo(): Promise<never> { return Promise.reject(new Error('stub')); }
-  explainTool():       Promise<never> { return Promise.reject(new Error('stub')); }
-}
-
-const archivistServices: ArchivistServices = {
-  webSearch:        new OpenLibrarySearchTool(),
-  googleBooks:      new GoogleBooksTool(),
-  subjectSearch:    new SubjectSearchTool(),
-  wikipediaSummary: new WikipediaSummaryTool(),
-  memory:           new MemoryStore(),
-  llm:              new StubLlm(),
-  embedder:         null,
-  nodeTimeouts:     {},
-};
-
-const archivistNodes = ArchivistNodes.build(archivistServices);
-const bookSearchBundle   = BookSearchScatterBundleFactory.create(archivistNodes);
-const composeLoopBundle  = ComposeRetryLoopBundleFactory.create(archivistNodes);
-const parentBundle       = ArchivistBundleFactory.create(archivistNodes);
-
-const archivistDAG        = parentBundle.dags[0];
-const bookSearchScatterDAG = bookSearchBundle.dags[0];
-const composeRetryLoopDAG  = composeLoopBundle.dags[0];
-
-if (archivistDAG === undefined || bookSearchScatterDAG === undefined || composeRetryLoopDAG === undefined) {
-  process.stdout.write('lint-example-dags: archivist factory returned no DAGs.\n');
-  process.exit(1);
-}
+// ── The Archivist: canonical JSON-LD DAG constants ───────────────────────────
+import { archivistDAG } from '../examples/the-archivist/dag.js';
+import { bookSearchScatterDAG } from '../examples/the-archivist/embedded-dags/BookSearchScatterDAG.js';
+import { composeRetryLoopDAG } from '../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.js';
 
 // ── The Cartographer: build geo-source-resolve DAG via GeoSourceResolveDAG.build() ──
 import { GeoSourceResolveDAG } from '../examples/the-cartographer/embedded-dags/GeoSourceResolveDAG.js';

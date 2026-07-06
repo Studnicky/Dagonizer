@@ -15,6 +15,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { CircuitBreaker, TokenBucket } from '@studnicky/resilience';
+
 import { HttpTransport } from '../../src/tool/HttpTransport.js';
 import { ToolError } from '../../src/tool/ToolError.js';
 import type { EntityValidatorInterface } from '../../src/validation/Validator.js';
@@ -55,6 +57,22 @@ class KeyValidatorFixture {
         return matches(value) ? null : [`<root>: missing one of ${keys.join(', ')}`];
       },
     };
+  }
+}
+
+class CountingTokenBucket extends TokenBucket {
+  acquisitions = 0;
+
+  private constructor() {
+    super({ 'requestsPerSecond': 1_000, 'burstSize': 10 });
+  }
+
+  static of(): CountingTokenBucket {
+    return new CountingTokenBucket();
+  }
+
+  protected override onTokenAcquired(): void {
+    this.acquisitions++;
   }
 }
 
@@ -204,5 +222,51 @@ void describe('HttpTransport — schema-backed shape validation', () => {
     );
 
     assert.equal(result.arbitrary, 'data');
+  });
+});
+
+void describe('HttpTransport — substrate resilience knobs', () => {
+  void it('token bucket is acquired once per logical request, not once per retry attempt', async () => {
+    let callCount = 0;
+    const tokenBucket = CountingTokenBucket.of();
+
+    const result = await FetchPatch.with(
+      async () => {
+        callCount++;
+        if (callCount === 1) return new Response('transient', { 'status': 503 });
+        return new Response(JSON.stringify({ 'ok': true }), { 'status': 200, 'headers': { 'content-type': 'application/json' } });
+      },
+      () => HttpTransport.getJson<{ ok: boolean }>(
+        'https://example.test/api',
+        KeyValidatorFixture.of<{ ok: boolean }>(['ok']),
+        { 'maxRetries': 1, 'baseBackoffMs': 1, 'maxBackoffMs': 1, tokenBucket },
+      ),
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(callCount, 2);
+    assert.equal(tokenBucket.acquisitions, 1);
+  });
+
+  void it('open circuit breaker rejects without invoking fetch', async () => {
+    let callCount = 0;
+    const circuitBreaker = CircuitBreaker.create({ 'failureThreshold': 1, 'resetTimeoutMs': 60_000 });
+    circuitBreaker.forceOpen();
+
+    await assert.rejects(
+      () => FetchPatch.with(
+        async () => {
+          callCount++;
+          return new Response(JSON.stringify({ 'ok': true }), { 'status': 200 });
+        },
+        () => HttpTransport.request('https://example.test/api', {}, { circuitBreaker }),
+      ),
+      (err: unknown): boolean => {
+        assert.equal((err as Error).name, 'CircuitBreakerOpenError');
+        return true;
+      },
+    );
+
+    assert.equal(callCount, 0);
   });
 });

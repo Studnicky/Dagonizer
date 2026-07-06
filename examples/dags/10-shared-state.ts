@@ -8,9 +8,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
   Validator,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -39,7 +39,7 @@ export class StepANode extends MonadicNode<NodeStateBase, 'done'> {
       const existing = (typeof current === 'string' ? current : '').split(',').filter(Boolean);
       return [...existing, 'step-a'].join(',');
     });
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -61,7 +61,7 @@ export class StepBNode extends MonadicNode<NodeStateBase, 'done'> {
       const existing = (typeof current === 'string' ? current : '').split(',').filter(Boolean);
       return [...existing, 'step-b'].join(',');
     });
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -83,7 +83,7 @@ export class ChildStepNode extends MonadicNode<NodeStateBase, 'done'> {
       const existing = (typeof current === 'string' ? current : '').split(',').filter(Boolean);
       return [...existing, 'child-step'].join(',');
     });
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -275,14 +275,14 @@ export class DbFetchNode extends MonadicNode<NodeStateBase, 'success' | 'error'>
     this.services.logger.info('fetch start');
     const cached = await this.services.cache.get('key');
     if (cached !== null) {
-      return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+      return RoutedBatch.create(NodeOutput.create('success').output, batch);
     }
     try {
       await this.services.db.query('SELECT 1');
-      return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+      return RoutedBatch.create(NodeOutput.create('success').output, batch);
     } catch (error) {
       this.services.logger.error({ err: error }, 'fetch failed');
-      return RoutedBatchBuilder.of(NodeOutputBuilder.of('error').output, batch);
+      return RoutedBatch.create(NodeOutput.create('error').output, batch);
     }
   }
 }

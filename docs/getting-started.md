@@ -54,7 +54,7 @@ Requires Node.js 24 or later and TypeScript 5.6 or later with `strict: true`.
 A two-node chain that picks a route at the first node and ends at the second. `DAGBuilder` (from `@studnicky/dagonizer/builder`) is the recommended way to author it: a compile-checked fluent API that catches unwired outputs and invalid routing at compile time, before any schema validation runs. At a glance:
 
 ```ts twoslash
-import { Batch, DAGBuilder, MonadicNode, NodeStateBase, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, DAGBuilder, MonadicNode, NodeStateBase, RoutedBatch } from '@studnicky/dagonizer';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 // ---cut---
 class CheckNode extends MonadicNode<NodeStateBase, 'ok' | 'fail'> {
@@ -64,8 +64,8 @@ class CheckNode extends MonadicNode<NodeStateBase, 'ok' | 'fail'> {
     return { ok: { type: 'object' }, fail: { type: 'object' } };
   }
   async execute(batch: Batch<NodeStateBase>, context: NodeContextType) {
-    if (context.signal.aborted) return RoutedBatchBuilder.of('fail', batch);
-    return RoutedBatchBuilder.of('ok', batch);
+    if (context.signal.aborted) return RoutedBatch.create('fail', batch);
+    return RoutedBatch.create('ok', batch);
   }
 }
 

@@ -26,7 +26,6 @@
 export { MonadicNode } from '../core/MonadicNode.js';
 
 export {
-  AgentBuilder,
   AgentTraceProducer,
   AppendAssistantNode,
   BuildChatRequestNode,
@@ -38,7 +37,7 @@ export {
   NormalizeToolCallsNode,
 } from './agent/index.js';
 
-export type { AgentBuilderInterface, AgentLoopNodesType, AgentLoopOptionsType, ToolCallScatterItemType } from './agent/index.js';
+export type { ToolCallScatterItemType } from './agent/index.js';
 
 export type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
 

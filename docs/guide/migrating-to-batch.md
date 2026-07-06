@@ -25,7 +25,7 @@ class ClassifyNode extends MonadicNode<MyState, 'match' | 'skip'> {
       const output = await classify(item.state, context.signal);
       routed.push([output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(routed);
+    return RoutedBatch.create(routed);
   }
 }
 ```

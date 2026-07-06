@@ -25,7 +25,7 @@ import {
   TimeZoneResolver,
 } from '../services.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region canonicalize-core-node
@@ -71,7 +71,7 @@ export class CanonicalizeCoreNode extends MonadicNode<CartographerState, 'normal
 
     const epochMs = TimeNormalizer.toEpochMs(raw.rawTimestamp);
     if (!isFinite(epochMs) || epochMs <= 0) {
-      return NodeOutputBuilder.of('rejected');
+      return NodeOutput.create('rejected');
     }
 
     const dispatchEpochMs = TimeNormalizer.toEpochMs(raw.rawDispatchAt);
@@ -128,7 +128,7 @@ export class CanonicalizeCoreNode extends MonadicNode<CartographerState, 'normal
       'disruptionReason': raw.disruptionReason,
     };
 
-    return NodeOutputBuilder.of('normalized');
+    return NodeOutput.create('normalized');
   }
 }
 

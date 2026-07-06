@@ -20,7 +20,7 @@
  */
 
 // #region pre-phase-setup
-import { RoutedBatchBuilder, MonadicNode } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -49,7 +49,7 @@ export class PreRunSetupNode extends MonadicNode<ArchivistState, 'ready'> {
       state.approvalState = 'pending';
     }
 
-    return RoutedBatchBuilder.of('ready', batch);
+    return RoutedBatch.create('ready', batch);
   }
 }
 // #endregion pre-phase-setup

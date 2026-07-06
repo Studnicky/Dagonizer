@@ -40,7 +40,7 @@
  * payload, not just a passive buffer.
  */
 
-import { Batch, MonadicNode, NodeOutputBuilder, NodeStateBase, RoutedBatchBuilder, Validator } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, NodeStateBase, RoutedBatch, Validator } from '@studnicky/dagonizer';
 import type { DAGType, EntityValidatorInterface, SchemaObjectType } from '@studnicky/dagonizer';
 import { RoutedChatStreamChunkSchema } from '@studnicky/dagonizer/adapter';
 import type { RoutedChatStreamChunkType } from '@studnicky/dagonizer/adapter';
@@ -146,7 +146,7 @@ export class RouteChunkNode extends MonadicNode<RoutingState, 'done'> {
         this.#transcripts.append(raw.routeKey, raw.delta);
       }
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

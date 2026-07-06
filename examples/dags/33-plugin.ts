@@ -9,9 +9,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, DispatcherBundleType, NodeStateInterface, PluginInterface, PluginReceiverType, SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
@@ -49,7 +49,7 @@ export class NormalizeNode extends MonadicNode<PipelineState, 'done'> {
     for (const item of batch) {
       item.state.normalized = item.state.phrase.trim().toLowerCase();
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -68,7 +68,7 @@ export class SummarizeNode extends MonadicNode<PipelineState, 'done'> {
     for (const item of batch) {
       item.state.status = item.state.normalized.length > 20 ? 'long' : 'short';
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion plugin-nodes

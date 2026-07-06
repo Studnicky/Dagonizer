@@ -29,6 +29,7 @@ import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
+import { Signal } from '@studnicky/signal';
 
 import { MistralEmbedResponseValidator } from './MistralEmbedResponse.js';
 
@@ -132,18 +133,17 @@ export class MistralEmbedder extends CloudEmbedder {
     if (this.#apiKey.length === 0) {
       return [];
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
-    if (options?.signal !== undefined) {
-      options.signal.addEventListener('abort', () => { controller.abort(); }, { 'once': true });
-    }
+    const signal = Signal.compose({
+      'deadlineMs': DISCOVERY_TIMEOUT_MS,
+      ...(options?.signal !== undefined ? { 'signal': options.signal } : {}),
+    });
     try {
       const res = await fetch(MODELS_ENDPOINT, {
         'method': 'GET',
         'headers': {
           'Authorization': `Bearer ${this.#apiKey}`,
         },
-        'signal': controller.signal,
+        signal,
       });
       if (!res.ok) {
         return [];
@@ -164,8 +164,6 @@ export class MistralEmbedder extends CloudEmbedder {
       });
     } catch {
       return [];
-    } finally {
-      clearTimeout(timer);
     }
   }
 }

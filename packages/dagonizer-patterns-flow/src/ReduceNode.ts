@@ -3,7 +3,7 @@
  * Leaves: DedupeByKeyNode, GroupByFieldNode, MergeReducerNode.
  */
 
-import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
@@ -28,7 +28,7 @@ export abstract class ReduceNode<
       const result = this.reduce(items);
       this.writeBack(item.state, result);
     }
-    return RoutedBatchBuilder.of('success', batch);
+    return RoutedBatch.create('success', batch);
   }
 }
 

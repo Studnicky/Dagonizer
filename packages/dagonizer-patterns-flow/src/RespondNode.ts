@@ -7,7 +7,7 @@
  * and removes convention-coupled casts from the base.
  */
 
-import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
@@ -33,6 +33,6 @@ export abstract class RespondNode<
     for (const item of batch) {
       this.emit(item.state, this.extractDraft(item.state));
     }
-    return RoutedBatchBuilder.of('success', batch);
+    return RoutedBatch.create('success', batch);
   }
 }

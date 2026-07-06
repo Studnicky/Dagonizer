@@ -10,7 +10,7 @@
  * so we never echo back the question the visitor just asked.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
@@ -97,6 +97,6 @@ export class RecallPastVisitsNode extends MonadicNode<ArchivistState, 'recalled'
       state.priorContext = priorContext;
     }
 
-    return RoutedBatchBuilder.of('recalled', batch);
+    return RoutedBatch.create('recalled', batch);
   }
 }

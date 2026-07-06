@@ -5,7 +5,7 @@ import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import { PlaceholderNode } from '../../src/core/PlaceholderNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
-import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
+import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 void describe('PlaceholderNode', () => {
@@ -17,7 +17,7 @@ void describe('PlaceholderNode', () => {
 
     const state = new NodeStateBase();
     const batch = Batch.of(state);
-    const context = NodeContextBuilder.of('test-dag', 'stub', new AbortController().signal);
+    const context = NodeContext.create('test-dag', 'stub', new AbortController().signal);
 
     const routed = await node.execute(batch, context);
 

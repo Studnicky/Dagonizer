@@ -21,8 +21,8 @@ import { Batch } from '../../entities/batch/Batch.js';
 import type { ItemType } from '../../entities/batch/Item.js';
 import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
+import { NodeError } from '../../entities/node/NodeError.js';
+import { NodeOutput } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
 import { DAGError } from '../../errors/DAGError.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
@@ -66,7 +66,7 @@ export abstract class NormalizeToolCallsNode<
       try {
         const calls = this.getToolCalls(state, context);
         if (calls.length === 0) {
-          output = NodeOutputBuilder.of('empty');
+          output = NodeOutput.create('empty');
         } else {
           const valid = calls.filter(
             (c) =>
@@ -76,9 +76,9 @@ export abstract class NormalizeToolCallsNode<
           );
 
           if (valid.length === 0) {
-            output = NodeOutputBuilder.of('error', {
+            output = NodeOutput.create('error', {
               'errors': [
-                NodeErrorBuilder.from(
+                NodeError.create(
                   'normalizeToolCallsAllInvalid',
                   `All ${String(calls.length)} tool call(s) were missing required fields`,
                   'NormalizeToolCallsNode.execute',
@@ -89,14 +89,14 @@ export abstract class NormalizeToolCallsNode<
             });
           } else {
             this.writeNormalized(state, valid, context);
-            output = NodeOutputBuilder.of('valid');
+            output = NodeOutput.create('valid');
           }
         }
       } catch (cause) {
         const error = DAGError.coerce(cause);
-        output = NodeOutputBuilder.of('error', {
+        output = NodeOutput.create('error', {
           'errors': [
-            NodeErrorBuilder.from(
+            NodeError.create(
               'normalizeToolCallsFailed',
               error.message,
               'NormalizeToolCallsNode.execute',

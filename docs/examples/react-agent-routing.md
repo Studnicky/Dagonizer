@@ -11,9 +11,9 @@ seeAlso:
   - text: 'Example: ReAct agent memory'
     link: './react-agent-memory'
     description: 'the agent loop, ScriptedAdapter, and node classes this example reuses unchanged'
-  - text: 'Example 29: AgentBuilder'
-    link: './29-agent-builder'
-    description: 'the 8-node agent loop this example wraps'
+  - text: 'Example 29: Agent DAG'
+    link: './29-agent-dag'
+    description: 'the 8-node JSON-LD agent loop this example runs'
 ---
 
 # Example: ReAct agent routing

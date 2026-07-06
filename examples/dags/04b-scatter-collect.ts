@@ -8,9 +8,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
@@ -64,7 +64,7 @@ export class ProviderNode extends MonadicNode<GenerateState, 'success'> {
         score,
       };
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 // #endregion provider-node
@@ -83,12 +83,12 @@ export class SelectNode extends MonadicNode<GenerateState, 'selected' | 'none'> 
     for (const item of batch) {
       const state = item.state;
       if (state.candidates.length === 0) {
-        entries.push([NodeOutputBuilder.of('none').output, Batch.from([item])]);
+        entries.push([NodeOutput.create('none').output, Batch.from([item])]);
         continue;
       }
       const first = state.candidates[0];
       if (first === undefined) {
-        entries.push([NodeOutputBuilder.of('none').output, Batch.from([item])]);
+        entries.push([NodeOutput.create('none').output, Batch.from([item])]);
         continue;
       }
       let best = first;
@@ -96,9 +96,9 @@ export class SelectNode extends MonadicNode<GenerateState, 'selected' | 'none'> 
         if (candidate.score > best.score) best = candidate;
       }
       state.chosen = best;
-      entries.push([NodeOutputBuilder.of('selected').output, Batch.from([item])]);
+      entries.push([NodeOutput.create('selected').output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 // #endregion select-node

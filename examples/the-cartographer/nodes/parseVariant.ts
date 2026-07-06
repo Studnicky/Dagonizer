@@ -11,7 +11,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { CanonicalEventVariantBuilder, type CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-variant-node
@@ -66,7 +66,7 @@ export class ParseVariantNode extends MonadicNode<CartographerState, 'parsed' | 
   private routeItem(state: CartographerState): NodeOutputType<'parsed' | 'invalid'> {
     const raw = state.getMetadata('canonical-event');
     if (!CanonicalEventVariantBuilder.is(raw)) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
     const variant = raw;
     state.canonicalVariant = variant;
@@ -160,7 +160,7 @@ export class ParseVariantNode extends MonadicNode<CartographerState, 'parsed' | 
       'disruptionReason':      disruptionReason,
     };
 
-    return NodeOutputBuilder.of('parsed');
+    return NodeOutput.create('parsed');
   }
 }
 

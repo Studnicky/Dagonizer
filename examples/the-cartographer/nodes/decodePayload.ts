@@ -20,7 +20,7 @@ import { SourcePayloadGuard } from '../entities/SourcePayload.ts';
 import { CanonicalEventVariantBuilder } from '../entities/CanonicalEvent.ts';
 import { TypedPayloadDecoder } from '../services.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region decode-payload-node
@@ -64,14 +64,14 @@ export class DecodePayloadNode extends MonadicNode<CartographerState, 'decoded' 
   private async routeItem(state: CartographerState): Promise<NodeOutputType<'decoded' | 'invalid'>> {
     const raw = state.getMetadata('source-payload');
     if (!SourcePayloadGuard.is(raw)) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
 
     const decoded = await TypedPayloadDecoder.decode(raw);
     const variant = CanonicalEventVariantBuilder.fromSourcePayload(raw, decoded);
 
     if (!variant.shipmentId) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
 
     state.canonicalVariant = variant;
@@ -79,7 +79,7 @@ export class DecodePayloadNode extends MonadicNode<CartographerState, 'decoded' 
     // their parse-variant entry node reads ('canonical-event').
     state.setMetadata('canonical-event', variant);
 
-    return NodeOutputBuilder.of('decoded');
+    return NodeOutput.create('decoded');
   }
 }
 

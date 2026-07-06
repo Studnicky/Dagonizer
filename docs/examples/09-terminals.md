@@ -20,7 +20,7 @@ import {
   DAGBuilder,
   MonadicNode,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAG, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -35,7 +35,7 @@ class CheckNode extends MonadicNode<S, 'pass' | 'fail'> {
   }
 
   async execute(batch: Batch<S>) {
-    return RoutedBatchBuilder.from([
+    return RoutedBatch.create([
       ['pass', batch.filter((state) => state.shouldPass)],
       ['fail', batch.filter((state) => !state.shouldPass)],
     ]);

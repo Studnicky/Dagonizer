@@ -18,7 +18,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-format-node
@@ -72,9 +72,9 @@ export class RouteFormatNode extends MonadicNode<CartographerState, 'csv' | 'jso
   private routeItem(state: CartographerState): NodeOutputType<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'> {
     const route = FORMAT_ROUTE[state.currentSource.format];
     if (route === undefined) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
-    return NodeOutputBuilder.of(route);
+    return NodeOutput.create(route);
   }
 }
 

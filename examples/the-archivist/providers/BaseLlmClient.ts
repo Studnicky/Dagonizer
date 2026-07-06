@@ -7,7 +7,7 @@
  * EVERY prompt and schema is imported from `./prompts.ts`. This file
  * never assembles natural-language directives itself; the prompts
  * module is the single source of truth, composed from small directive
- * primitives so the persona stays consistent across calls.
+ * primitives so the standing directives stay consistent across calls.
  */
 
 import type { ConversationTurn, MemoryDigest } from '../ArchivistState.ts';
@@ -15,7 +15,7 @@ import type { CandidateType } from '../entities/Book.ts';
 import type { ClassifiedIntent, LlmClientInterface, ScoredCandidate } from '../services.ts';
 
 import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequest } from '@studnicky/dagonizer/adapter';
 import type { ChatResponseMessageType } from '@studnicky/dagonizer/adapter';
 import type { IntentClassifier } from './IntentClassifier.ts';
 import { prompts, schemas } from './prompts.ts';
@@ -101,7 +101,7 @@ export class BaseLlmClient implements LlmClientInterface {
     if (available.length === 0) return [];
     // Index-pointer schema: the LLM emits `{tools: [1, 3, ...]}` only.
     // Token-economy win for slow constrained-output backends (Nano, WebLLM).
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages':     [{ 'role': 'user', 'content': prompts.decideTools(this.language, query, available) }],
       'outputSchema': { 'variant': 'schema', 'schema': schemas.decideTools, 'id': 'archivist-decide-tools-v1' },
       'temperature':  0.1,
@@ -136,7 +136,7 @@ export class BaseLlmClient implements LlmClientInterface {
 
   async rankCandidates(query: string, candidates: readonly CandidateType[], signal?: AbortSignal): Promise<readonly ScoredCandidate[]> {
     if (candidates.length === 0) return [];
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(this.language, query, candidates) }],
       'outputSchema': { 'variant': 'schema', 'schema': schemas.rankCandidates, 'id': 'archivist-rank-v1' },
       'temperature':  0.1,
@@ -274,7 +274,7 @@ export class BaseLlmClient implements LlmClientInterface {
   }
 
   async #text(prompt: string, signal?: AbortSignal): Promise<string> {
-    const response = await this.adapter.chat(ChatRequestBuilder.from({
+    const response = await this.adapter.chat(ChatRequest.create({
       'messages':    [{ 'role': 'user', 'content': prompt }],
       'temperature': 0.2,
       'maxTokens':   512,
@@ -284,14 +284,14 @@ export class BaseLlmClient implements LlmClientInterface {
   }
 
   /**
-   * Generate text under the visitor persona rather than the adapter's baked-in
-   * Archivist persona. A leading `role: 'system'` message causes
-   * `BaseAdapter.#withDefaultSystemPrompt` to skip its Archivist-persona
+   * Generate text under the visitor persona rather than the adapter's default
+   * Archivist directive. A leading `role: 'system'` message causes
+   * `BaseAdapter.#withDefaultSystemPrompt` to skip its default Archivist directive
    * injection, so weak models produce a visitor question rather than a
    * librarian greeting. Used by the bootstrap suggestion calls.
    */
   async #textAsVisitor(prompt: string): Promise<string> {
-    const response = await this.adapter.chat(ChatRequestBuilder.from({
+    const response = await this.adapter.chat(ChatRequest.create({
       'messages': [
         { 'role': 'system', 'content': prompts.visitorPersona() },
         { 'role': 'user',   'content': prompt },

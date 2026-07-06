@@ -16,7 +16,7 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region aggregate-event-node
@@ -92,7 +92,7 @@ export class AggregateEventNode extends MonadicNode<CartographerState, 'done'> {
       };
     }
 
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 // #endregion aggregate-event-node

@@ -59,7 +59,7 @@ class ClassifyIntentNode extends MonadicNode<ArchivistState, 'discover' | 'ident
       item.state.intent = output;
       routed.push([output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(routed);
+    return RoutedBatch.create(routed);
   }
 }
 ```

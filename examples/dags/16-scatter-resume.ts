@@ -23,9 +23,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
   SCATTER_PROGRESS_KEY,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -132,7 +132,7 @@ export class ProcessJobNode extends MonadicNode<ResumeState, 'done'> {
         ctl.abort(new Error(`abort after ${observable.abortAfter} items`));
       }
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion worker-node

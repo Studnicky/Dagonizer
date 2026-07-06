@@ -9,10 +9,10 @@ import {
   DAG_CONTEXT,
   DAGBuilder,
   MonadicNode,
-  NodeErrorBuilder,
-  NodeOutputBuilder,
+  NodeError,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -36,7 +36,7 @@ export class StepANode extends MonadicNode<GateState, 'ok'> {
   }
 
   override async execute(batch: Batch<GateState>) {
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('ok').output, batch);
+    return RoutedBatch.create(NodeOutput.create('ok').output, batch);
   }
 }
 
@@ -50,10 +50,10 @@ export class CheckNode extends MonadicNode<GateState, 'pass' | 'fail'> {
   override async execute(batch: Batch<GateState>) {
     const entries: Array<readonly ['pass' | 'fail', Batch<GateState>]> = [];
     for (const item of batch) {
-      const output = NodeOutputBuilder.of(item.state.shouldPass ? 'pass' : 'fail');
+      const output = NodeOutput.create(item.state.shouldPass ? 'pass' : 'fail');
       entries.push([output.output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -71,7 +71,7 @@ export class ChildWorkNode extends MonadicNode<GateState, 'done'> {
   override async execute(batch: Batch<GateState>) {
     for (const item of batch) {
       if (!item.state.shouldPass) {
-        item.state.collectError(NodeErrorBuilder.from(
+        item.state.collectError(NodeError.create(
           'CHILD_ERR',
           'child-work failed deliberately',
           'child-work',
@@ -80,7 +80,7 @@ export class ChildWorkNode extends MonadicNode<GateState, 'done'> {
         ));
       }
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

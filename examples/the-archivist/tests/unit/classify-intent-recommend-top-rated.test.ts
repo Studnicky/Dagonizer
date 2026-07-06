@@ -16,7 +16,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
 import { Batch } from '@studnicky/dagonizer';
-import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
+import { NodeContext } from '@studnicky/dagonizer/entities';
 
 import { ArchivistState } from '../../ArchivistState.ts';
 import { ClassifyIntentNode } from '../../nodes/classifyIntent.ts';
@@ -81,7 +81,7 @@ class ClassifyIntentFixture {
   }
 
   static context() {
-    return NodeContextBuilder.of('test-dag', 'classify-intent', new AbortController().signal);
+    return NodeContext.create('test-dag', 'classify-intent', new AbortController().signal);
   }
 
   static async execute(node: ClassifyIntentNode, state: ArchivistState) {

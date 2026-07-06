@@ -18,11 +18,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { CircuitBreaker, CircuitBreakerOpenError, TokenBucket, TokenBucketExhaustedError } from '@studnicky/resilience';
+import { Timing } from '@studnicky/timing';
 
 import {
   BaseAdapter,
-  ChatRequestBuilder,
-  ChatResponseMessageBuilder,
+  ChatRequest,
+  ChatResponseMessage,
   ZERO_TOKEN_USAGE,
 } from '../../src/adapter/index.js';
 import type {
@@ -36,7 +37,7 @@ import { RetryPolicy } from '../../src/runtime/RetryPolicy.js';
 const CAPS: AdapterCapabilitiesType = { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false };
 
 const RESPONSE: ChatResponseType = {
-  'message':      ChatResponseMessageBuilder.from('ok', []),
+  'message':      ChatResponseMessage.create('ok', []),
   'finishReason': 'stop',
   'usage':        ZERO_TOKEN_USAGE,
 };
@@ -58,7 +59,7 @@ class ResilienceTestAdapter extends BaseAdapter {
 }
 
 function request(): ChatRequestType {
-  return ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'hello' }] });
+  return ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'hello' }] });
 }
 
 void describe('BaseAdapter opt-in circuit breaker / token bucket', () => {
@@ -68,6 +69,36 @@ void describe('BaseAdapter opt-in circuit breaker / token bucket', () => {
     assert.deepEqual(result.message, RESPONSE.message);
     assert.equal(adapter.callCount, 1);
   });
+
+  void it('records adapter chat timing events when a Timing sink is supplied', async () => {
+    const timing = Timing.create();
+    const adapter = new ResilienceTestAdapter(
+      () => Promise.resolve(RESPONSE),
+      { timing },
+    );
+
+    await adapter.chat(request());
+
+    const events = timing.getEvents();
+    assert.equal(typeof events['adapter.chat.start'], 'number');
+    assert.equal(typeof events['adapter.chat.complete'], 'number');
+  });
+
+  void it('records adapter chatStream timing events when a Timing sink is supplied', async () => {
+    const timing = Timing.create();
+    const adapter = new ResilienceTestAdapter(
+      () => Promise.resolve(RESPONSE),
+      { timing },
+    );
+    const sink = { async push(): Promise<void> { /* test sink */ } };
+
+    await adapter.chatStream(request(), sink);
+
+    const events = timing.getEvents();
+    assert.equal(typeof events['adapter.chatStream.start'], 'number');
+    assert.equal(typeof events['adapter.chatStream.complete'], 'number');
+  });
+
 
   void it('open circuit rejects with CircuitBreakerOpenError without another performChat call', async () => {
     const circuitBreaker = CircuitBreaker.create({ 'failureThreshold': 1, 'resetTimeoutMs': 60_000 });

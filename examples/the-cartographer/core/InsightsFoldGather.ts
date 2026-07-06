@@ -26,6 +26,7 @@ import type { GatherExecutionType, GatherRecordType } from '@studnicky/dagonizer
 import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
 import type { GatherConfigType, NodeStateInterface } from '@studnicky/dagonizer/types';
 import type { StateAccessorInterface } from '@studnicky/dagonizer/contracts';
+import { CircularBuffer } from '@studnicky/circular-buffer';
 
 import { EnrichedShipmentGuard, type EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { JourneyInsights, JourneyScan, RegionInsights } from '../CartographerState.ts';
@@ -389,15 +390,23 @@ export class InsightsFoldGather extends GatherStrategy {
     accessor: StateAccessorInterface,
   ): void {
     const rawSample = accessor.get(state, 'sampleRecords');
-    const sampleRing: EnrichedShipment[] = [];
+    const sampleRing = CircularBuffer.create<EnrichedShipment>({
+      'capacity': MAX_SAMPLE_RECORDS,
+      'overflow': 'overwrite',
+    });
     if (Array.isArray(rawSample)) {
       for (const s of rawSample) {
         if (EnrichedShipmentGuard.is(s)) sampleRing.push(s);
       }
     }
     sampleRing.push(enriched);
-    if (sampleRing.length > MAX_SAMPLE_RECORDS) sampleRing.shift();
-    accessor.set(state, 'sampleRecords', sampleRing);
+    const sampleRecords: EnrichedShipment[] = [];
+    let record = sampleRing.shift();
+    while (record !== undefined) {
+      sampleRecords.push(record);
+      record = sampleRing.shift();
+    }
+    accessor.set(state, 'sampleRecords', sampleRecords);
   }
 }
 

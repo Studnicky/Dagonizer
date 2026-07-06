@@ -20,8 +20,9 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices, ClassifiedIntent } from '../services.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder, ReasoningStepBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, ReasoningStep, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 type IntentOutput =
   | 'lookup-author'
@@ -75,9 +76,10 @@ export class ClassifyIntentNode extends MonadicNode<ArchivistState, IntentOutput
         : undefined;
       const conversation = state.conversation.length > 0 ? state.conversation : undefined;
 
-      const controller = new AbortController();
-      const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
-      const signal = AbortSignal.any([context.signal, controller.signal]);
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
 
       try {
         const intent = await this.services.llm.classifyIntent(state.query, summary, conversation, signal);
@@ -85,19 +87,19 @@ export class ClassifyIntentNode extends MonadicNode<ArchivistState, IntentOutput
         // retry/salvage flow decides the path.
         if (intent.length === 0) {
           if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-            const result = NodeOutputBuilder.of('retry');
+            const result = NodeOutput.create('retry');
             for (const error of result.errors) state.collectError(error);
             buckets.get(result.output)?.push(item);
           } else {
             state.clearAttempts(context.nodeName);
-            const result = NodeOutputBuilder.of('salvage');
+            const result = NodeOutput.create('salvage');
             for (const error of result.errors) state.collectError(error);
             buckets.get(result.output)?.push(item);
           }
           continue;
         }
         state.intent = intent;
-        state.reasoning = [...state.reasoning, ReasoningStepBuilder.thought(`classified intent as '${intent}'`)];
+        state.reasoning = [...state.reasoning, ReasoningStep.create({ 'kind': 'thought', 'text': `classified intent as '${intent}'` })];
         state.clearAttempts(context.nodeName);
         // Map every ClassifiedIntent variant to its node output port.
         // 'search', 'describe' are general on-topic intents that route through
@@ -115,7 +117,7 @@ export class ClassifyIntentNode extends MonadicNode<ArchivistState, IntentOutput
           'describe':          'on-topic',
           'recommend':         'recommend-top-rated',
         };
-        const result = NodeOutputBuilder.of(intentDispatch[intent]);
+        const result = NodeOutput.create(intentDispatch[intent]);
         for (const error of result.errors) state.collectError(error);
         buckets.get(result.output)?.push(item);
       } catch (err) {
@@ -124,17 +126,15 @@ export class ClassifyIntentNode extends MonadicNode<ArchivistState, IntentOutput
         // Node-local timeout or LLM failure -> retry budget decides the flow. The
         // classifier never fabricates an intent it didn't receive.
         if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-          const result = NodeOutputBuilder.of('retry');
+          const result = NodeOutput.create('retry');
           for (const error of result.errors) state.collectError(error);
           buckets.get(result.output)?.push(item);
         } else {
           state.clearAttempts(context.nodeName);
-          const result = NodeOutputBuilder.of('salvage');
+          const result = NodeOutput.create('salvage');
           for (const error of result.errors) state.collectError(error);
           buckets.get(result.output)?.push(item);
         }
-      } finally {
-        clearTimeout(handle);
       }
     }
 
@@ -143,7 +143,7 @@ export class ClassifyIntentNode extends MonadicNode<ArchivistState, IntentOutput
       const items = buckets.get(output) ?? [];
       if (items.length > 0) routes.push([output, Batch.from(items)]);
     }
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }
 // #endregion node-class

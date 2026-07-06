@@ -22,9 +22,9 @@ import {
   DAGBuilder,
   Dagonizer,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import { DAGDocument } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
@@ -44,7 +44,7 @@ class TransformNode extends MonadicNode<NodeStateBase, 'success'> {
     for (const item of batch) {
       item.state.setMetadata('transformed', true);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 

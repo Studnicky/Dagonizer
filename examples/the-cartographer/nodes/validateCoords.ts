@@ -7,7 +7,7 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region validate-coords-node
@@ -51,7 +51,7 @@ export class ValidateCoordsNode extends MonadicNode<CartographerState, 'valid' |
   private routeItem(state: CartographerState): NodeOutputType<'valid' | 'rejected'> {
     const { latitude, longitude } = state.raw;
     const isValid = latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
-    return NodeOutputBuilder.of(isValid ? 'valid' : 'rejected');
+    return NodeOutput.create(isValid ? 'valid' : 'rejected');
   }
 }
 

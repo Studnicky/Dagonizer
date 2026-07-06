@@ -8,9 +8,9 @@ seeAlso:
   - text: 'Streaming producers guide'
     link: '../guide/streaming-producers'
     description: 'DagStreamProducer, StreamChannel.driven, and the scatter-source idiom this example reuses'
-  - text: 'Example 29: AgentBuilder'
-    link: './29-agent-builder'
-    description: 'the 8-node agent loop this example wraps with a trace stream'
+  - text: 'Example 29: Agent DAG'
+    link: './29-agent-dag'
+    description: 'the 8-node JSON-LD agent loop whose trace this example streams'
   - text: 'The Archivist (in-browser demo)'
     link: './the-archivist'
     description: 'production use of the same reasoning-provenance + recall pattern'
@@ -18,15 +18,15 @@ seeAlso:
 
 # Example: ReAct agent memory
 
-Wraps the canonical 8-node [`AgentBuilder.loop`](./29-agent-builder) with a
-second, outer DAG that streams the agent's ReAct reasoning trace, records each
-step into a shared `RdfStore` with provenance, and recalls a prior run's
+Runs the canonical 8-node [agent DAG](./29-agent-dag) and streams the
+agent's ReAct reasoning trace through a second, outer DAG. The outer DAG records
+each step into a shared `RdfStore` with provenance and recalls a prior run's
 reasoning via graph traversal to inform the next.
 
 ## What it demonstrates
 
 - **Organizing a reasoning trace as a stream.** `ReActTraceProducer` (a
-  subclass of `AgentTraceProducer`) wraps the agent loop's `Execution` — the
+  subclass of `AgentTraceProducer`) consumes the agent loop's `Execution` — the
   `AsyncIterable<NodeResultType>` returned by `dispatcher.execute(...)` — and
   maps each relevant node result (`call-model`, `decode-tools`,
   `collect-results`, `append-assistant`) to a `ReasoningStepType`

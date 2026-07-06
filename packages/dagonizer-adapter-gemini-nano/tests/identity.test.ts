@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import type { ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
-import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import { ChatRequest, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 
 import { GeminiNanoAdapter } from '../src/index.js';
 
@@ -124,7 +124,7 @@ void test('performChat collapses multiple system turns into one leading system p
   });
   const a = new GeminiNanoAdapter();
   try {
-    await a.chat(ChatRequestBuilder.from({
+    await a.chat(ChatRequest.create({
       'messages': [
         { 'role': 'system', 'content': 'You are the Archivist.' },
         { 'role': 'system', 'content': 'Answer in English.' },
@@ -154,7 +154,7 @@ void test('performChat omits initialPrompts for a user-only request', async () =
   });
   const a = new GeminiNanoAdapter();
   try {
-    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
+    await a.chat(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
   } finally {
     LanguageModelStub.remove();
   }
@@ -173,7 +173,7 @@ void test('performChat classifies a create() failure instead of leaking it raw',
   const a = new GeminiNanoAdapter({ 'maxAttempts': 1 });
   try {
     await assert.rejects(
-      a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] })),
+      a.chat(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] })),
       (err: unknown) => err instanceof Error && /system prompt must be first/u.test(err.message),
     );
   } finally {
@@ -182,7 +182,7 @@ void test('performChat classifies a create() failure instead of leaking it raw',
 });
 
 void test('a configured systemPrompt is injected as the leading system turn when the request has none', async () => {
-  // The BaseAdapter `systemPrompt` seam supplies a default persona; the Nano
+  // The BaseAdapter `systemPrompt` seam supplies a default directive; the Nano
   // adapter then collapses it into the leading `initialPrompts` entry.
   let createOptions: Record<string, unknown> | undefined;
   LanguageModelStub.install({
@@ -197,7 +197,7 @@ void test('a configured systemPrompt is injected as the leading system turn when
   });
   const a = new GeminiNanoAdapter({ 'systemPrompt': 'You are the Archivist.' });
   try {
-    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
+    await a.chat(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
   } finally {
     LanguageModelStub.remove();
   }
@@ -218,9 +218,9 @@ void test('a configured systemPrompt never overrides a caller-supplied system tu
       });
     },
   });
-  const a = new GeminiNanoAdapter({ 'systemPrompt': 'Default persona.' });
+  const a = new GeminiNanoAdapter({ 'systemPrompt': 'Default directive.' });
   try {
-    await a.chat(ChatRequestBuilder.from({
+    await a.chat(ChatRequest.create({
       'messages': [
         { 'role': 'system', 'content': 'Caller persona.' },
         { 'role': 'user',   'content': 'Hello.' },
@@ -290,7 +290,7 @@ void test('performChat surfaces a TIMEOUT classification when timeoutMs elapses'
   const a = new GeminiNanoAdapter({ 'maxAttempts': 1, 'timeoutMs': 1 });
   try {
     await assert.rejects(
-      a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] })),
+      a.chat(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] })),
       (err: unknown) => {
         assert.ok(err instanceof LlmError, `expected LlmError, got ${String(err)}`);
         assert.equal(err.classification, Classifications['TIMEOUT']);
@@ -326,7 +326,7 @@ void test('performChat does not forward maxTokens to the Prompt API', async () =
   });
   const a = new GeminiNanoAdapter();
   try {
-    await a.chat(ChatRequestBuilder.from({
+    await a.chat(ChatRequest.create({
       'messages':  [{ 'role': 'user', 'content': 'Hi.' }],
       'maxTokens': 256,
     }));
@@ -363,7 +363,7 @@ void test('performChatStream emits per-chunk deltas from a cumulative promptStre
   const a = new GeminiNanoAdapter();
   const sink = new TestSink();
   try {
-    const res = await a.chatStream(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
+    const res = await a.chatStream(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
     assert.deepEqual(sink.pushed, ['He', 'llo', ' world']);
     assert.equal(res.finishReason, 'stop');
     assert.equal(res.message.variant === 'tools' ? '' : res.message.content, 'Hello world');
@@ -391,7 +391,7 @@ void test('performChatStream emits per-chunk deltas from an incremental promptSt
   const a = new GeminiNanoAdapter();
   const sink = new TestSink();
   try {
-    const res = await a.chatStream(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
+    const res = await a.chatStream(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
     assert.deepEqual(sink.pushed, ['He', 'llo', ' world']);
     assert.equal(res.finishReason, 'stop');
     assert.equal(res.message.variant === 'tools' ? '' : res.message.content, 'Hello world');
@@ -426,7 +426,7 @@ void test('performChatStream locks cumulative mode from the second chunk and doe
   const a = new GeminiNanoAdapter();
   const sink = new TestSink();
   try {
-    const res = await a.chatStream(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
+    const res = await a.chatStream(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
     // The mode-locked cumulative handling keeps the FINAL accumulated text
     // exactly the last chunk's cumulative value — no runaway duplication of
     // the kind the old per-chunk heuristic produced (which would have folded
@@ -457,7 +457,7 @@ void test('performChatStream emits the single chunk of a one-chunk promptStreami
   const a = new GeminiNanoAdapter();
   const sink = new TestSink();
   try {
-    const res = await a.chatStream(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
+    const res = await a.chatStream(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
     assert.deepEqual(sink.pushed, ['Hi']);
     assert.equal(res.finishReason, 'stop');
     assert.equal(res.message.variant === 'tools' ? '' : res.message.content, 'Hi');
@@ -485,7 +485,7 @@ void test('performChat resolves outputLanguage to "en" when no option is set and
   });
   const a = new GeminiNanoAdapter();
   try {
-    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
+    await a.chat(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
   } finally {
     LanguageModelStub.remove();
     if (originalNavigatorDescriptor !== undefined) {
@@ -507,7 +507,7 @@ void test('performChat forwards an explicitly configured outputLanguage to Langu
   });
   const a = new GeminiNanoAdapter({ 'outputLanguage': 'fr' });
   try {
-    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Bonjour.' }] }));
+    await a.chat(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Bonjour.' }] }));
   } finally {
     LanguageModelStub.remove();
   }
@@ -527,7 +527,7 @@ void test('performChat narrows an unsupported explicit outputLanguage down to "e
   // 'zh' is not in Chrome's supported output-language set (de/en/es/fr/ja).
   const a = new GeminiNanoAdapter({ 'outputLanguage': 'zh' });
   try {
-    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
+    await a.chat(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
   } finally {
     LanguageModelStub.remove();
   }
@@ -558,7 +558,7 @@ void test('performChat detects and narrows navigator.language when no explicit o
   });
   const a = new GeminiNanoAdapter();
   try {
-    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hola.' }] }));
+    await a.chat(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hola.' }] }));
   } finally {
     LanguageModelStub.remove();
     if (originalNavigatorDescriptor !== undefined) {
@@ -592,7 +592,7 @@ void test('performChatStream forwards the resolved outputLanguage to LanguageMod
   const a = new GeminiNanoAdapter({ 'outputLanguage': 'ja' });
   const sink = new TestSink();
   try {
-    await a.chatStream(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
+    await a.chatStream(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }), sink);
   } finally {
     LanguageModelStub.remove();
   }
@@ -620,7 +620,7 @@ void test('performChatStream falls back to the buffered default for a tool-beari
   const a = new GeminiNanoAdapter();
   const sink = new TestSink();
   try {
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages': [{ 'role': 'user', 'content': 'Search.' }],
       'tools': [{
         'name':        'search',

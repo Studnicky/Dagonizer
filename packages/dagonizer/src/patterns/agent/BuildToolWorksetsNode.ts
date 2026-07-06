@@ -21,8 +21,8 @@ import { Batch } from '../../entities/batch/Batch.js';
 import type { ItemType } from '../../entities/batch/Item.js';
 import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
+import { NodeError } from '../../entities/node/NodeError.js';
+import { NodeOutput } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
 import { DAGError } from '../../errors/DAGError.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
@@ -95,7 +95,7 @@ export abstract class BuildToolWorksetsNode<
       try {
         const calls = this.getToolCalls(state, context);
         if (calls.length === 0) {
-          output = NodeOutputBuilder.of('empty');
+          output = NodeOutput.create('empty');
         } else {
           const safeItems: ToolCallScatterItemType[] = [];
           const exclusiveItems: ToolCallScatterItemType[] = [];
@@ -117,13 +117,13 @@ export abstract class BuildToolWorksetsNode<
 
           this.writeSafeWorkset(state, safeItems, context);
           this.writeExclusiveWorkset(state, exclusiveItems, context);
-          output = NodeOutputBuilder.of('ready');
+          output = NodeOutput.create('ready');
         }
       } catch (cause) {
         const error = DAGError.coerce(cause);
-        output = NodeOutputBuilder.of('error', {
+        output = NodeOutput.create('error', {
           'errors': [
-            NodeErrorBuilder.from(
+            NodeError.create(
               'buildToolWorksetsFailed',
               error.message,
               'BuildToolWorksetsNode.execute',

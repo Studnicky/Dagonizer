@@ -1,12 +1,7 @@
 /**
- * rankCandidates: hybrid (deterministic + LLM tiebreak) ranking node.
+ * rankCandidates: hybrid deterministic ranking with an LLM tiebreak.
  *
- * The previous implementation handed every candidate to the LLM and
- * used its ordering wholesale. That cost one LLM call per turn on Nano
- * (slow, sometimes flaky on structured output) and the LLM had no
- * principled view of source quality, recency, or prior-memory weight.
- *
- * The new pipeline:
+ * Pipeline:
  *
  *   1. Deterministic composite score per candidate
  *        cosineSim(semanticText, query) × 0.50  (when embedder reachable)
@@ -21,17 +16,20 @@
  *      tiebreak: any failure / abort falls through to deterministic order.
  *
  * Embeddings: each candidate is embedded as a rich semantic text string
- * (title + authors + subjects + summary, bounded to 600 chars) and cached
- * on `candidate.notes.semanticEmbedding` so rank → recall → validate can
- * reuse the vector across nodes. Short titles carry too little thematic
+ * (title + authors + subjects + summary, bounded to 600 chars). Completed
+ * vectors live in a bounded node cache and in-flight duplicate embedding
+ * requests coalesce per abort signal. Short titles carry too little thematic
  * signal alone; the enriched text improves cosine alignment with thematic
  * queries. The query embedding is computed once at the top of the node.
  *
  * Output route is always 'ranked'. mergeCandidates then takes the top-K.
  */
 
-import { Batch, MonadicNode, NodeErrorBuilder, NodeOutputBuilder, ReasoningStepBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { LruCache } from '@studnicky/cache';
+import { Coalesce } from '@studnicky/concurrency/coalesce';
+import { Batch, BatchItemExecutor, MonadicNode, NodeError, NodeOutput, ReasoningStep, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
@@ -60,6 +58,9 @@ const MEMORY_BONUS = 0.05;
 
 /** Tie window for LLM tiebreak: top-3 within this score range trigger the LLM. */
 const TIE_WINDOW = 0.10;
+const SEMANTIC_EMBEDDING_CACHE_CAPACITY = 2_048;
+const SEMANTIC_EMBEDDING_CACHE_TTL_MS = 30 * 60 * 1_000;
+const SEMANTIC_EMBEDDING_CONCURRENCY = 4;
 
 /** Source-priority lookup table: higher = stronger catalog signal. */
 const SOURCE_PRIORITY: Readonly<Record<string, number>> = {
@@ -112,32 +113,6 @@ export class CandidateScorer {
   }
 
   /**
-   * Embed every candidate via a rich semantic text (title + authors +
-   * subjects + summary) using the embedder, returning a parallel array of
-   * vectors. Reuses `candidate.notes.semanticEmbedding` when present so
-   * re-ranks across nodes don't re-embed.
-   *
-   * Any throw bubbles up and is caught by the caller; the deterministic
-   * ranker continues with semantic embeddings as null (Jaccard takes the
-   * whole weight via the redistribution branch above).
-   */
-  static async embedSemantic(
-    embedder: EmbedderInterface,
-    candidates: readonly CandidateType[],
-  ): Promise<readonly (readonly number[] | null)[]> {
-    const out: (readonly number[] | null)[] = [];
-    for (const c of candidates) {
-      const cached = c.notes?.['semanticEmbedding'];
-      if (CandidateScorer.isFiniteNumberArray(cached)) {
-        out.push(cached);
-        continue;
-      }
-      out.push(await embedder.embed(CandidateScorer.semanticText(c)));
-    }
-    return out;
-  }
-
-  /**
    * Hybrid composite scorer. Pure function: given the inputs, the output
    * is deterministic and unit-testable.
    */
@@ -185,7 +160,16 @@ interface ScoredEntry {
 }
 
 export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | 'retry' | 'salvage'> {
+  static readonly #signalIds = new WeakMap<AbortSignal, string>();
+  static #nextSignalId = 0;
+
   private readonly services: ArchivistServices;
+  readonly #semanticEmbeddings = LruCache.create<string, readonly number[]>({
+    'capacity': SEMANTIC_EMBEDDING_CACHE_CAPACITY,
+    'ttlMs':    SEMANTIC_EMBEDDING_CACHE_TTL_MS,
+  });
+  readonly #embeddingRequests = Coalesce.create<readonly number[]>();
+
   readonly name = 'rank-candidates';
   readonly outputs = ['ranked', 'retry', 'salvage'] as const;
 
@@ -201,6 +185,48 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
     };
   }
 
+  private async embedSemantic(
+    embedder: EmbedderInterface,
+    candidates: readonly CandidateType[],
+    signal: AbortSignal,
+  ): Promise<readonly (readonly number[] | null)[]> {
+    return BatchItemExecutor.map(
+      candidates,
+      (candidate) => this.embedSemanticText(embedder, CandidateScorer.semanticText(candidate), signal),
+      { 'concurrency': Math.min(SEMANTIC_EMBEDDING_CONCURRENCY, Math.max(candidates.length, 1)) },
+      signal,
+    );
+  }
+
+  private async embedSemanticText(embedder: EmbedderInterface, text: string, signal: AbortSignal): Promise<readonly number[]> {
+    const cacheKey = RankCandidatesNode.semanticEmbeddingCacheKey(embedder, text);
+    const cached = this.#semanticEmbeddings.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const requestKey = `${RankCandidatesNode.signalKey(signal)}\u0000${cacheKey}`;
+    return this.#embeddingRequests.run(requestKey, async () => {
+      const cachedAfterCoalesce = this.#semanticEmbeddings.get(cacheKey);
+      if (cachedAfterCoalesce !== undefined) return cachedAfterCoalesce;
+
+      const vector = await embedder.embed(text, { signal });
+      this.#semanticEmbeddings.set(cacheKey, vector);
+      return vector;
+    });
+  }
+
+  private static semanticEmbeddingCacheKey(embedder: EmbedderInterface, text: string): string {
+    return `${embedder.id}\u0000${embedder.dimensions.toString()}\u0000${text}`;
+  }
+
+  private static signalKey(signal: AbortSignal): string {
+    const existing = RankCandidatesNode.#signalIds.get(signal);
+    if (existing !== undefined) return existing;
+    const next = `signal:${RankCandidatesNode.#nextSignalId.toString()}`;
+    RankCandidatesNode.#nextSignalId++;
+    RankCandidatesNode.#signalIds.set(signal, next);
+    return next;
+  }
+
   override async execute(batch: Batch<ArchivistState>, context: NodeContextType) {
     const rankedItems: ItemType<ArchivistState>[] = [];
     const retryItems: ItemType<ArchivistState>[] = [];
@@ -210,15 +236,16 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
       const { state } = item;
       if (state.candidates.length === 0) {
         state.clearAttempts(context.nodeName);
-        const result = NodeOutputBuilder.of('ranked');
+        const result = NodeOutput.create('ranked');
         for (const error of result.errors) state.collectError(error);
         rankedItems.push(item);
         continue;
       }
 
-      const controller = new AbortController();
-      const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? RANK_TIMEOUT_MS);
-      const signal = AbortSignal.any([context.signal, controller.signal]);
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? RANK_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
 
       try {
         const embedder = this.services.embedder;
@@ -231,8 +258,8 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
       let semanticVecs: readonly (readonly number[] | null)[] = state.candidates.map(() => null);
       if (embedder !== null) {
         try {
-          queryVec     = await embedder.embed(queryText);
-          semanticVecs = await CandidateScorer.embedSemantic(embedder, state.candidates);
+          queryVec     = await embedder.embed(queryText, { signal });
+          semanticVecs = await this.embedSemantic(embedder, state.candidates, signal);
         } catch {
           // Embedder threw: drop the cosine term and fall back to the
           // deterministic composite score for every candidate.
@@ -283,14 +310,11 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
         }
       }
 
-      // ── Emit ranked candidates with composite scores + cached embeddings ─
+      // ── Emit ranked candidates with composite scores ────────────────────
       const ranked: CandidateType[] = scored.map((entry) => {
         const baseNotes: Record<string, unknown> = entry.candidate.notes !== undefined
           ? { ...entry.candidate.notes }
           : {};
-        if (entry.semanticEmbedding !== null) {
-          baseNotes['semanticEmbedding'] = entry.semanticEmbedding;
-        }
         baseNotes['compositeScore'] = entry.score;
         return {
           ...entry.candidate,
@@ -303,12 +327,12 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
       state.reasoning = [
         ...state.reasoning,
         llmTiebreakApplied
-          ? ReasoningStepBuilder.action('rankCandidates.llmTiebreak', { candidateCount: top3.length })
-          : ReasoningStepBuilder.thought('ranked candidates by deterministic composite score (no LLM tiebreak needed)'),
+          ? ReasoningStep.create({ 'kind': 'action', 'tool': 'rankCandidates.llmTiebreak', 'args': { 'candidateCount': top3.length } })
+          : ReasoningStep.create({ 'kind': 'thought', 'text': 'ranked candidates by deterministic composite score (no LLM tiebreak needed)' }),
       ];
 
         state.clearAttempts(context.nodeName);
-        const result = NodeOutputBuilder.of('ranked');
+        const result = NodeOutput.create('ranked');
         for (const error of result.errors) state.collectError(error);
         rankedItems.push(item);
       } catch (err) {
@@ -318,7 +342,7 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
         // flow. Emitting the candidates as "ranked" when ranking never completed
         // would be a fabricated result; rank-candidates-salvage owns the
         // deterministic-passthrough recovery.
-        state.collectError(NodeErrorBuilder.from(
+        state.collectError(NodeError.create(
           'RANK_FAILED',
           err instanceof Error ? err.message : String(err),
           'rank-candidates',
@@ -326,17 +350,15 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
           new Date().toISOString(),
         ));
         if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-          const result = NodeOutputBuilder.of('retry');
+          const result = NodeOutput.create('retry');
           for (const error of result.errors) state.collectError(error);
           retryItems.push(item);
         } else {
           state.clearAttempts(context.nodeName);
-          const result = NodeOutputBuilder.of('salvage');
+          const result = NodeOutput.create('salvage');
           for (const error of result.errors) state.collectError(error);
           salvageItems.push(item);
         }
-      } finally {
-        clearTimeout(handle);
       }
     }
 
@@ -344,6 +366,6 @@ export class RankCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | '
     if (rankedItems.length > 0) routes.push(['ranked', Batch.from(rankedItems)]);
     if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
     if (salvageItems.length > 0) routes.push(['salvage', Batch.from(salvageItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }

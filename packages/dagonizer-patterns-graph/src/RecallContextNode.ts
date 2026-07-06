@@ -7,7 +7,7 @@
  * (write the recalled context back to state).
  */
 
-import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { BindingType, SlotPatternType } from '@studnicky/dagonizer/patterns';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
@@ -34,6 +34,6 @@ export abstract class RecallContextNode<
       this.applyRecall(state, bindings);
       return bindings.length === 0 ? 'empty' : 'success';
     });
-    return RoutedBatchBuilder.from([...routed]);
+    return RoutedBatch.create([...routed]);
   }
 }

@@ -34,7 +34,7 @@
  * output: 'recalled': always routes forward, even on empty recall.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { RecalledContext } from '../ArchivistState.ts';
@@ -409,6 +409,6 @@ export class RecallContextNode extends MonadicNode<ArchivistState, 'recalled'> {
 
     }
 
-    return RoutedBatchBuilder.of('recalled', batch);
+    return RoutedBatch.create('recalled', batch);
   }
 }

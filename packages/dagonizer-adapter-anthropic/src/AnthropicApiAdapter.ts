@@ -81,8 +81,8 @@ import type {
 } from '@studnicky/dagonizer/adapter';
 import {
   BaseAdapter,
-  ChatResponseMessageBuilder,
-  ChatStreamChunkBuilder,
+  ChatResponseMessage,
+  ChatStreamChunk,
   Classifications,
   LlmError,
   ModelCost,
@@ -90,6 +90,8 @@ import {
   ZERO_TOKEN_USAGE,
 } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
+import { Signal } from '@studnicky/signal';
+import { Guard } from '@studnicky/types';
 
 import { AnthropicModelsResponseValidator } from './AnthropicModelsResponse.js';
 
@@ -258,8 +260,9 @@ export type AnthropicApiAdapterOptionsType = {
   readonly timeoutMs?: number;
   /**
    * Default system prompt the base injects as the leading turn of any request
-   * that carries no system message of its own. Consumer-supplied persona/format
-   * framing; empty (the default) means no injection.
+   * that carries no system message of its own. The directive can include
+   * persona, format, or language framing; empty (the default) means no
+   * injection.
    */
   readonly systemPrompt?: string;
 };
@@ -276,7 +279,7 @@ export type AnthropicApiAdapterOptionsType = {
  *
  * ```ts
  * const llm = new AnthropicApiAdapter('sk-ant-…');
- * const response = await llm.chat(ChatRequestBuilder.from({
+ * const response = await llm.chat(ChatRequest.create({
  *   messages: [{ role: 'user', content: 'Hello' }],
  * }));
  * ```
@@ -325,11 +328,10 @@ export class AnthropicApiAdapter extends BaseAdapter {
    * `options.signal` with an internal discovery timeout.
    */
   override async listModels(options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
-    const signals: AbortSignal[] = [controller.signal];
-    if (options?.signal !== undefined) signals.push(options.signal);
-    const signal = AbortSignal.any(signals);
+    const signal = Signal.compose({
+      'deadlineMs': DISCOVERY_TIMEOUT_MS,
+      ...(options?.signal !== undefined ? { 'signal': options.signal } : {}),
+    });
 
     try {
       const res = await fetch(`${this.#baseUrl}/v1/models`, {
@@ -349,8 +351,6 @@ export class AnthropicApiAdapter extends BaseAdapter {
         .map((entry) => ({ 'name': entry.id, 'variant': 'chat' as const, 'cloud': true, 'costRank': ModelCost.rankFromName(entry.id) }));
     } catch {
       return [];
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
@@ -558,7 +558,7 @@ export class AnthropicApiAdapter extends BaseAdapter {
     const usage = rawBody.usage;
 
     return {
-      'message':      ChatResponseMessageBuilder.from(text, toolCalls),
+      'message':      ChatResponseMessage.create(text, toolCalls),
       'finishReason': finishReason,
       'usage':        usage !== undefined
         ? {
@@ -615,7 +615,7 @@ export class AnthropicApiAdapter extends BaseAdapter {
           const delta = parsedEvent.delta;
           if (AnthropicApiAdapter.#isTextDelta(delta)) {
             text += delta.text;
-            await this.pushChunk(sink, ChatStreamChunkBuilder.of(delta.text));
+            await this.pushChunk(sink, ChatStreamChunk.create(delta.text));
           }
         } else if (AnthropicApiAdapter.#isMessageDeltaEvent(parsedEvent)) {
           finishReason = AnthropicApiAdapter.#finishReasonFrom(parsedEvent.delta.stop_reason, false);
@@ -643,7 +643,7 @@ export class AnthropicApiAdapter extends BaseAdapter {
     }
 
     return {
-      'message':      ChatResponseMessageBuilder.from(text, []),
+      'message':      ChatResponseMessage.create(text, []),
       'finishReason': finishReason,
       'usage':        usageSeen ? { 'promptTokens': promptTokens, 'completionTokens': completionTokens } : ZERO_TOKEN_USAGE,
     };
@@ -673,15 +673,11 @@ export class AnthropicApiAdapter extends BaseAdapter {
   // ── Type guards ──────────────────────────────────────────────────────────
 
   static #isResponseBody(value: unknown): value is AnthropicResponseBody {
-    return (
-      typeof value === 'object'
-      && value !== null
-      && !Array.isArray(value)
-    );
+    return Guard.isRecord(value);
   }
 
   static #isJsonObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
+    return Guard.isRecord(value);
   }
 
   static #isAnthropicStreamEvent(value: unknown): value is AnthropicStreamEvent {

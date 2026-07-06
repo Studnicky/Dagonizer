@@ -215,7 +215,7 @@ full conversation history after each run.
 | File | Role |
 |------|------|
 | `examples/the-dispatcher/DispatcherState.ts` | State class: `message`, `response`, `escalationReason`, `humanMode`, `conversation` |
-| `examples/the-dispatcher/dag.ts` | `DispatcherBundleFactory.create()` — DAG + six node instances |
+| `examples/the-dispatcher/dag.ts` | `supportDispatcherDAG` - canonical JSON-LD DAG |
 | `examples/the-dispatcher/nodes/ClassifyMessageNode.ts` | Keyword scan + trolley switch routing |
 | `examples/the-dispatcher/nodes/AiComposeNode.ts` | Canned AI reply (no LLM in the demo) |
 | `examples/the-dispatcher/nodes/ParkForOperatorNode.ts` | HITL suspension — `state.park()` on first enter, `'ready'` on resume |

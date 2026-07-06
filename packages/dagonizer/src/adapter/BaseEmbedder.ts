@@ -19,6 +19,7 @@
  * the error taxonomy stay shared across the two surfaces.
  */
 
+import { Coalesce } from '@studnicky/concurrency/coalesce';
 import { Signal } from '@studnicky/signal';
 
 import type { AbortableOptionsType } from '../contracts/AbortableOptionsType.js';
@@ -46,7 +47,14 @@ export type BaseEmbedderOptionsType = BaseAdapterCoreOptionsType & {
   readonly dimensions?: number;
 }
 
+const MAX_COALESCED_TEXT_KEY_CHARS = 8_192;
+
 export abstract class BaseEmbedder extends BaseAdapterCore implements EmbedderInterface {
+  static readonly #signalIds = new WeakMap<AbortSignal, string>();
+  static #nextSignalId = 0;
+
+  readonly #embeddings = Coalesce.create<readonly number[]>();
+
   readonly dimensions: number;
 
   protected constructor(
@@ -103,26 +111,11 @@ export abstract class BaseEmbedder extends BaseAdapterCore implements EmbedderIn
 
   async embed(text: string, options?: AbortableOptionsType): Promise<readonly number[]> {
     const signal = options?.signal ?? Signal.never();
-    return this.retryPolicy.run(async () => {
-      try {
-        return await this.performEmbed(text, signal);
-      } catch (rawError) {
-        // Already classified by performEmbed; don't double-wrap. Apply the
-        // quota cap, then rethrow as-is.
-        if (rawError instanceof LlmError) {
-          const c = rawError.classification;
-          if (c.reason === 'QUOTA_EXHAUSTED' && c.retryable && c.retryAfterMs !== null && c.retryAfterMs > MAX_QUOTA_WAIT_MS) {
-            throw new LlmError(
-              `quota exhausted; retry-after ${String(c.retryAfterMs)}ms exceeds ${String(MAX_QUOTA_WAIT_MS)}ms cap`,
-              { ...c, 'retryable': false },
-              { 'cause': rawError },
-            );
-          }
-          throw rawError;
-        }
-        throw new LlmError(LlmError.messageFrom(rawError), this.classify(rawError), { 'cause': rawError });
-      }
-    }, { signal });
+    if (text.length > MAX_COALESCED_TEXT_KEY_CHARS) {
+      return this.#runEmbed(text, signal);
+    }
+    const key = this.#embeddingKey(text, signal);
+    return this.#embeddings.run(key, () => this.#runEmbed(text, signal));
   }
 
   /**
@@ -160,6 +153,42 @@ export abstract class BaseEmbedder extends BaseAdapterCore implements EmbedderIn
     }
     const body: unknown = await res.json();
     return body;
+  }
+
+  #embeddingKey(text: string, signal: AbortSignal): string {
+    return `${this.id}\u0000${this.modelOrEmpty}\u0000${String(this.dimensions)}\u0000${BaseEmbedder.signalKey(signal)}\u0000${text}`;
+  }
+
+  #runEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
+    return this.retryPolicy.run(async () => {
+      try {
+        return await this.performEmbed(text, signal);
+      } catch (rawError) {
+        // Already classified by performEmbed; don't double-wrap. Apply the
+        // quota cap, then rethrow as-is.
+        if (rawError instanceof LlmError) {
+          const c = rawError.classification;
+          if (c.reason === 'QUOTA_EXHAUSTED' && c.retryable && c.retryAfterMs !== null && c.retryAfterMs > MAX_QUOTA_WAIT_MS) {
+            throw new LlmError(
+              `quota exhausted; retry-after ${String(c.retryAfterMs)}ms exceeds ${String(MAX_QUOTA_WAIT_MS)}ms cap`,
+              { ...c, 'retryable': false },
+              { 'cause': rawError },
+            );
+          }
+          throw rawError;
+        }
+        throw new LlmError(LlmError.messageFrom(rawError), this.classify(rawError), { 'cause': rawError });
+      }
+    }, { signal });
+  }
+
+  private static signalKey(signal: AbortSignal): string {
+    const existing = BaseEmbedder.#signalIds.get(signal);
+    if (existing !== undefined) return existing;
+    const next = `signal:${String(BaseEmbedder.#nextSignalId)}`;
+    BaseEmbedder.#nextSignalId++;
+    BaseEmbedder.#signalIds.set(signal, next);
+    return next;
   }
 
   /** Concrete embedder: perform the actual API call. `signal` is always a valid AbortSignal. */

@@ -29,7 +29,7 @@ import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
 
 ### SubjectSearchTool: input schema
 
-The `#tool-schema` region covers the `definition` constant, the tool name, description, and `inputSchema`. The `examples` fields are intentionally generic placeholders, not real titles or ISBNs. Some models quote schema examples verbatim into responses; shape-only examples prevent that:
+The `#tool-schema` region covers the `definition` property, the tool name, description, and `inputSchema`. The `examples` fields are intentionally generic placeholders, not real titles or ISBNs. Some models quote schema examples verbatim into responses; shape-only examples prevent that:
 
 <<< @/../packages/dagonizer-tool-openlibrary/src/SubjectSearchTool.ts#tool-schema
 

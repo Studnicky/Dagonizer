@@ -13,7 +13,7 @@ import {
   Timeout,
 } from '@studnicky/dagonizer';
 import type { DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
-import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
 
 export { Scheduler } from '@studnicky/dagonizer/runtime';
 export { VirtualScheduler } from '@studnicky/dagonizer/testing';
@@ -45,7 +45,7 @@ export class SlowNode extends MonadicNode<SlowState, 'success'> {
     await new Promise<never>((_resolve, reject) => {
       context.signal.addEventListener('abort', () => { reject(context.signal.reason); }, { 'once': true });
     });
-    return RoutedBatchBuilder.of('success', batch);
+    return RoutedBatch.create('success', batch);
   }
 }
 // #endregion slow-node

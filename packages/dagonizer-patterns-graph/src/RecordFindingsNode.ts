@@ -6,7 +6,7 @@
  * record) and `toQuads` (turn one entity into a list of quads).
  */
 
-import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { QuadType } from '@studnicky/dagonizer/patterns';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
@@ -33,6 +33,6 @@ export abstract class RecordFindingsNode<
         }
       }
     }
-    return RoutedBatchBuilder.of('success', batch);
+    return RoutedBatch.create('success', batch);
   }
 }

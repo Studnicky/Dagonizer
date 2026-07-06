@@ -24,6 +24,8 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Quad } from 'n3';
+import { RealTimeScheduler } from '@studnicky/scheduler';
+import type { SchedulerProviderType } from '@studnicky/scheduler';
 
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import DiagramFrame from './DiagramFrame.vue';
@@ -121,6 +123,7 @@ interface PointMeta {
 let labelMeta: PointMeta[] = [];
 let labelRaf: number | null = null;
 let resizeObserver: ResizeObserver | null = null;
+const fitScheduler: SchedulerProviderType = RealTimeScheduler.create();
 
 type CosmosCtor = new (div: HTMLDivElement, config: Record<string, unknown>) => GraphHandle;
 let GraphCtor: CosmosCtor | null = null;
@@ -328,14 +331,15 @@ function mgExpand(): void {
 
 function mgFit(): void {
   try {
+    fitScheduler.cancelAll();
     graph.value?.fitView(300);
     // Capture the fit zoom after the animation settles so the floor stays current.
-    setTimeout(() => {
+    fitScheduler.scheduleAt(Date.now() + 350, () => {
       try {
         const level = graph.value?.getZoomLevel() ?? null;
         if (level !== null) fitZoomLevel.value = level;
       } catch { /* ignore */ }
-    }, 350);
+    });
   } catch { /* ignore */ }
 }
 
@@ -373,6 +377,7 @@ function mgPanRight(): void { mgPanBy(-PAN_STEP, 0); }
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   resizeObserver = null;
+  fitScheduler.cancelAll();
   if (labelRaf !== null) cancelAnimationFrame(labelRaf);
   graph.value?.destroy();
   graph.value = null;
@@ -403,17 +408,18 @@ function paint(): void {
   handle.start(0.9);
   // Wait long enough for the simulation to spread points before fitting.
   // Pokemontology uses 400ms + secondary at 900ms; we mirror that.
-  setTimeout(() => handle.fitView(400), 400);
-  setTimeout(() => {
+  fitScheduler.cancelAll();
+  fitScheduler.scheduleAt(Date.now() + 400, () => { handle.fitView(400); });
+  fitScheduler.scheduleAt(Date.now() + 900, () => {
     handle.fitView(500);
     // Capture fit zoom after the final fit settles; this becomes the zoom-out floor.
-    setTimeout(() => {
+    fitScheduler.scheduleAt(Date.now() + 550, () => {
       try {
         const level = graph.value?.getZoomLevel() ?? null;
         if (level !== null) fitZoomLevel.value = level;
       } catch { /* ignore */ }
-    }, 550);
-  }, 900);
+    });
+  });
   scheduleLabelPaint();
 }
 

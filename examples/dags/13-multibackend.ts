@@ -26,9 +26,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -89,7 +89,7 @@ export class SquareNode extends MonadicNode<MultiBackendState, 'done'> {
       const task = item.state.getter.number('task');
       item.state.lastResult = task * task;
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -105,7 +105,7 @@ export class SumNode extends MonadicNode<MultiBackendState, 'done'> {
     for (const item of batch) {
       item.state.total = item.state.results.reduce((acc, n) => acc + n, 0);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion nodes

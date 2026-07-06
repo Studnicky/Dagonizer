@@ -13,9 +13,9 @@ import {
   Batch,
   DAGBuilder,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
@@ -47,11 +47,11 @@ export class ClassifyNode extends MonadicNode<ChatState, 'on_topic' | 'off_topic
     for (const item of batch) {
       const state = item.state;
       state.topic = state.input.toLowerCase().includes('weather') ? 'off_topic' : 'on_topic';
-      const output = NodeOutputBuilder.of(state.topic);
+      const output = NodeOutput.create(state.topic);
       for (const error of output.errors) state.collectError(error);
       entries.push([output.output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -69,7 +69,7 @@ export class RespondNode extends MonadicNode<ChatState, 'success'> {
         ? `Echo: ${state.input}`
         : `I only talk about coding, not the weather.`;
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 // #endregion nodes
@@ -126,7 +126,7 @@ class NotifyNode extends MonadicNode<ChatState, 'success' | 'error'> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
   override async execute(batch: Batch<ChatState>) {
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 
@@ -159,7 +159,7 @@ class ScoutDispatchNode extends MonadicNode<ChatState, 'success' | 'error'> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
   override async execute(batch: Batch<ChatState>) {
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 
@@ -170,7 +170,7 @@ class MergeNode extends MonadicNode<ChatState, 'success'> {
     return { 'success': { 'type': 'object' } };
   }
   override async execute(batch: Batch<ChatState>) {
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 
@@ -206,7 +206,7 @@ class GenerateNode extends MonadicNode<ChatState, 'success' | 'error'> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
   override async execute(batch: Batch<ChatState>) {
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 
@@ -217,7 +217,7 @@ class SelectNode extends MonadicNode<ChatState, 'success'> {
     return { 'success': { 'type': 'object' } };
   }
   override async execute(batch: Batch<ChatState>) {
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 
@@ -252,7 +252,7 @@ class ProcessNode extends MonadicNode<ChatState, 'success' | 'error'> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
   override async execute(batch: Batch<ChatState>) {
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 
@@ -309,7 +309,7 @@ class SetupNode extends MonadicNode<ChatState, 'success'> {
     return { 'success': { 'type': 'object' } };
   }
   override async execute(batch: Batch<ChatState>) {
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 
@@ -320,7 +320,7 @@ class MainNode extends MonadicNode<ChatState, 'success'> {
     return { 'success': { 'type': 'object' } };
   }
   override async execute(batch: Batch<ChatState>) {
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 

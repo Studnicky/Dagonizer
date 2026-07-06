@@ -16,14 +16,14 @@
  * methods to write to the same reactive refs the template binds.
  */
 
-import { type Ref, computed, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer/checkpoint';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { ObservedDag } from '@studnicky/dagonizer';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
-import { ArchivistBundleFactory } from '../../../../examples/the-archivist/dag.ts';
+import { archivistDAG as canonicalArchivistDAG } from '../../../../examples/the-archivist/dag.ts';
 import { DomConsoleLogger } from '../../../../examples/the-archivist/logger/DomConsoleLogger.ts';
 import type { LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
@@ -53,8 +53,8 @@ import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
-import { BookSearchScatterBundleFactory } from '../../../../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts';
-import { ComposeRetryLoopBundleFactory } from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
+import { bookSearchScatterDAG } from '../../../../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts';
+import { composeRetryLoopDAG } from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 import type { DAGType } from '@studnicky/dagonizer';
 
 import {
@@ -322,13 +322,13 @@ const rightTabs = computed(() => {
 });
 
 // Top-level archivist DAG reference for DagGraph display.
-// Populated at mount (stub topology) and reused throughout — the topology
-// is structurally identical between stub and real nodes.
-const archivistDag = ref<DAGType | null>(null);
+const archivistDag = ref<DAGType | null>(canonicalArchivistDAG);
 
-// Embedded-DAG registry. Keys match the embeddedDAG placement names in the
-// parent DAG. Populated at mount (stub topology).
-const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map());
+// Embedded-DAG registry. Keys match the embeddedDAG placement names in the parent DAG.
+const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map([
+  ['book-search-scatter', bookSearchScatterDAG],
+  ['compose-retry-loop',  composeRetryLoopDAG],
+]));
 
 // Stable tool instances for the checkpoint resume path and archivistToolRegistry.
 // One instance each: the HTTP tools are stateless.
@@ -339,7 +339,7 @@ const wikipediaSummaryTool = new WikipediaSummaryTool();
 
 // Tool registry: each tool becomes an embeddable `tool:<name>` DAG that the
 // book-search scatter resolves at runtime via `{ dagFrom: 'dagName' }`. Must be
-// registered before bookSearchScatterBundle or every scatter item fails to
+// registered before bookSearchScatterDAG or every scatter item fails to
 // resolve its body DAG and routes to 'error'.
 const archivistToolRegistry = new ToolRegistry();
 archivistToolRegistry.register(webSearchTool);
@@ -361,90 +361,6 @@ function buildServices(): ArchivistServices {
     'embedder':          embedder.value,
     'nodeTimeouts':      {},
   };
-}
-
-// ── DAG topology ──────────────────────────────────────────────────────────
-// Stub implementations used for topology-only DAG construction at mount time.
-// No real LLM or HTTP calls are made on these instances; they exist solely so
-// ArchivistNodes.build can derive the node/edge graph before a backend is chosen.
-const STUB_TOOL_DEFINITION = {
-  'name': 'stub', 'description': '',
-  'inputSchema':  { 'type': 'object' as const },
-  'outputSchema': { 'type': 'object' as const },
-  'strict': false,
-} satisfies ArchivistServices['webSearch']['definition'];
-
-class StubTool {
-  readonly definition = STUB_TOOL_DEFINITION;
-  async execute(): Promise<never> { return Promise.reject(new Error('stub')); }
-}
-
-class StubLlm {
-  async classifyIntent(): Promise<never>        { return Promise.reject(new Error('stub')); }
-  async extractTerms(): Promise<never>          { return Promise.reject(new Error('stub')); }
-  async decideTools(): Promise<never>           { return Promise.reject(new Error('stub')); }
-  async rankCandidates(): Promise<never>        { return Promise.reject(new Error('stub')); }
-  async compose(): Promise<never>               { return Promise.reject(new Error('stub')); }
-  async composeAuthor(): Promise<never>         { return Promise.reject(new Error('stub')); }
-  async composeReviews(): Promise<never>        { return Promise.reject(new Error('stub')); }
-  async describeBook(): Promise<never>          { return Promise.reject(new Error('stub')); }
-  async composeSimilar(): Promise<never>        { return Promise.reject(new Error('stub')); }
-  async validate(): Promise<never>              { return Promise.reject(new Error('stub')); }
-  async composeMemoryRecall(): Promise<never>   { return Promise.reject(new Error('stub')); }
-  async composeEmptyResponse(): Promise<never>  { return Promise.reject(new Error('stub')); }
-  async suggestStarterQuery(): Promise<never>   { return Promise.reject(new Error('stub')); }
-  async suggestGreeting(): Promise<never>       { return Promise.reject(new Error('stub')); }
-  async suggestVisitorReplyTo(): Promise<never> { return Promise.reject(new Error('stub')); }
-  async explainTool(): Promise<never>           { return Promise.reject(new Error('stub')); }
-}
-
-/**
- * ArchivistDagAssembly: single source of truth for bundle construction and
- * ref assignment.
- *
- * `populate` builds the three bundles from a node set, assigns the dag refs,
- * and returns the bundles so the caller can register them on a dispatcher.
- * `stubNodes` builds an ArchivistNodes instance from stub services, giving
- * the caller a node set whose topology mirrors production without any LLM
- * or HTTP dependencies.
- */
-class ArchivistDagAssembly {
-  static stubNodes(): ArchivistNodes {
-    const services: ArchivistServices = {
-      'webSearch':        new StubTool(),
-      'googleBooks':      new StubTool(),
-      'subjectSearch':    new StubTool(),
-      'wikipediaSummary': new StubTool(),
-      'llm':              new StubLlm(),
-      'memory':           memoryStore,
-      'embedder':         null,
-      'nodeTimeouts':     {},
-    };
-    return ArchivistNodes.build(services);
-  }
-
-  static populate(
-    nodes: ArchivistNodes,
-    dagRef: Ref<DAGType | null>,
-    registryRef: Ref<Map<string, DAGType>>,
-  ) {
-    const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
-    const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
-    const parentBundle     = ArchivistBundleFactory.create(nodes);
-
-    const parentDag = parentBundle.dags[0];
-    if (parentDag !== undefined) dagRef.value = parentDag;
-    const bookSearchDag   = bookSearchBundle.dags[0];
-    const composeRetryDag = composeBundle.dags[0];
-    if (bookSearchDag !== undefined && composeRetryDag !== undefined) {
-      registryRef.value = new Map([
-        ['book-search-scatter', bookSearchDag],
-        ['compose-retry-loop',  composeRetryDag],
-      ]);
-    }
-
-    return { bookSearchBundle, composeBundle, parentBundle };
-  }
 }
 
 // ── VueArchivistSession ───────────────────────────────────────────────────
@@ -738,10 +654,6 @@ function onTreatAsDesktop(): void {
 
 // ── Boot ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  // Populate DAG topology from stub nodes: structurally identical to a real
-  // run but without LLM or HTTP dependencies so the graph renders immediately.
-  ArchivistDagAssembly.populate(ArchivistDagAssembly.stubNodes(), archivistDag, embeddedDagRegistry);
-
   // Seed the memory store before the session boots so the memory graph shows
   // the ontology structure and sample books before any run.
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
@@ -883,15 +795,13 @@ async function resumeFromCheckpoint(): Promise<void> {
   try {
     const services = buildServices();
     const nodes = ArchivistNodes.build(services);
-    const { bookSearchBundle, composeBundle, parentBundle } =
-      ArchivistDagAssembly.populate(nodes, archivistDag, embeddedDagRegistry);
 
     observer = new VueResumeObserver(logger, session, prov, restored.cursor);
 
     observer.registerBundle(archivistToolRegistry.bundle());
-    observer.registerBundle(bookSearchBundle);
-    observer.registerBundle(composeBundle);
-    observer.registerBundle(parentBundle);
+    observer.registerBundle({ 'nodes': nodes.bookSearchScatterNodes, 'dags': [bookSearchScatterDAG] });
+    observer.registerBundle({ 'nodes': nodes.composeRetryLoopNodes, 'dags': [composeRetryLoopDAG] });
+    observer.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [canonicalArchivistDAG] });
 
     activeAbortController = new AbortController();
     const deadlineMs = overallDeadlineMs();

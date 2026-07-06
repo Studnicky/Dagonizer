@@ -17,7 +17,7 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
-import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
+import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { ToolInterface } from '../../src/tool/ToolInterface.js';
@@ -282,7 +282,7 @@ void describe('ToolInvokeNode: batch execution', () => {
       { 'id': 'left', 'state': left },
       { 'id': 'right', 'state': right },
     ]);
-    const context = NodeContextBuilder.of('tool-test', 'gate', new AbortController().signal);
+    const context = NodeContext.create('tool-test', 'gate', new AbortController().signal);
 
     let timeout: ReturnType<typeof setTimeout> | null = null;
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
@@ -337,7 +337,7 @@ void describe('ToolInvokeNode: batch execution', () => {
       state.input = { index };
       return { 'id': `item-${index}`, state };
     }));
-    const context = NodeContextBuilder.of('tool-test', 'timed', new AbortController().signal);
+    const context = NodeContext.create('tool-test', 'timed', new AbortController().signal);
 
     const routed = await node.execute(batch, context);
 

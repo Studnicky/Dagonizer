@@ -6,7 +6,7 @@
  * and `applyDigest` (write it back to state).
  */
 
-import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { TripleStoreInterface } from '@studnicky/dagonizer/patterns';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
@@ -29,6 +29,6 @@ export abstract class MemoryDigestNode<
       const digest = this.composeDigest(this.memory, item.state);
       this.applyDigest(item.state, digest);
     }
-    return RoutedBatchBuilder.of('success', batch);
+    return RoutedBatch.create('success', batch);
   }
 }

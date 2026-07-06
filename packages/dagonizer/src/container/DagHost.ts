@@ -36,9 +36,10 @@ import type { ExecutionResponseType } from '../entities/executor/ExecutionRespon
 import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
 import { JsonObject } from '../entities/json.js';
 import type { JsonObjectType } from '../entities/json.js';
-import { NodeErrorBuilder } from '../entities/node/NodeError.js';
+import { NodeError } from '../entities/node/NodeError.js';
 import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import { Scheduler } from '../runtime/Scheduler.js';
 import { Validator } from '../validation/Validator.js';
 
 import { WorkerObserver } from './WorkerObserver.js';
@@ -314,11 +315,21 @@ export class DagHost {
     }));
 
     // Set up timeout abort if specified.
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const timeoutAbortController = request.timeoutMs === null ? null : new AbortController();
+    const timeoutPromise = request.timeoutMs === null || timeoutAbortController === null
+      ? null
+      : Scheduler.current()
+        .after(request.timeoutMs, { 'signal': timeoutAbortController.signal })
+        .then(() => {
+          const err = new Error(`dag timeout after ${request.timeoutMs}ms`);
+          err.name = 'TimeoutError';
+          controller.abort(err);
+        })
+        .catch(() => { /* timeout cancelled by normal completion or caller abort */ });
     if (request.timeoutMs !== null) {
-      timeoutHandle = setTimeout(() => {
-        controller.abort(new Error(`dag timeout after ${request.timeoutMs}ms`));
-      }, request.timeoutMs);
+      controller.signal.addEventListener('abort', () => {
+        timeoutAbortController?.abort(controller.signal.reason);
+      }, { 'once': true });
     }
 
     // WorkerObserver is constructed per-execute to route hook events with the
@@ -384,7 +395,7 @@ export class DagHost {
         const collectedErrors = [
           ...item.state.errors,
           ...(terminalOutcome === null && lifecycle.variant !== 'completed'
-            ? [NodeErrorBuilder.from(
+            ? [NodeError.create(
               'DAG_EXECUTION_FAILED',
               `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.variant})`,
               request.dagName,
@@ -480,7 +491,7 @@ export class DagHost {
       const response: ExecutionResponseType = {
         'correlationId': correlationId,
         'items': failedItems,
-        'errors': [NodeErrorBuilder.from(
+        'errors': [NodeError.create(
           'DAG_EXECUTION_FAILED',
           message,
           request.dagName,
@@ -492,8 +503,11 @@ export class DagHost {
 
       this.#channel.send({ 'variant': 'result', 'response': response });
     } finally {
-      if (timeoutHandle !== null) {
-        clearTimeout(timeoutHandle);
+      if (timeoutAbortController !== null) {
+        timeoutAbortController.abort(new DAGError('dag-host-timeout-cleanup', { 'code': 'EXECUTION_ERROR' }));
+      }
+      if (timeoutPromise !== null) {
+        await timeoutPromise;
       }
     }
   }

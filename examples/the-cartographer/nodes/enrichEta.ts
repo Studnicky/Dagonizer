@@ -19,7 +19,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import { EtaEstimator } from '../services.ts';
 
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 
 // #region enrich-eta-node
@@ -48,7 +48,7 @@ export class EnrichEtaNode extends MonadicNode<CartographerState, 'eta-estimated
         norm.disruptionHours,
       );
     }
-    return RoutedBatchBuilder.of('eta-estimated', batch);
+    return RoutedBatch.create('eta-estimated', batch);
   }
 }
 // #endregion enrich-eta-node

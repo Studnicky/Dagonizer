@@ -76,12 +76,18 @@ export class DispatcherIntentClassifier {
    * LLM-only).
    */
   static async create(embedder: EmbedderInterface): Promise<DispatcherIntentClassifier> {
-    const vectors = await Promise.all(
-      DISPATCHER_INTENT_LABELS.map<Promise<IntentVector>>(async (intent) => ({
-        intent,
-        'vector': await embedder.embed(DISPATCHER_INTENT_DESCRIPTIONS[intent]),
-      })),
-    );
+    const descriptions = DISPATCHER_INTENT_LABELS.map((intent) => DISPATCHER_INTENT_DESCRIPTIONS[intent]);
+    const embeddings = await embedder.embedBatch(descriptions);
+    if (embeddings.length !== DISPATCHER_INTENT_LABELS.length) {
+      throw new Error(`DispatcherIntentClassifier expected ${String(DISPATCHER_INTENT_LABELS.length)} embeddings, received ${String(embeddings.length)}`);
+    }
+    const vectors = DISPATCHER_INTENT_LABELS.map<IntentVector>((intent, index) => {
+      const vector = embeddings[index];
+      if (vector === undefined) {
+        throw new Error(`DispatcherIntentClassifier missing embedding at index ${String(index)}`);
+      }
+      return { intent, vector };
+    });
     return new DispatcherIntentClassifier(embedder, vectors);
   }
 

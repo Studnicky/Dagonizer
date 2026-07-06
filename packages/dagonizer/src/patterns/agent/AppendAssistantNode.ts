@@ -16,8 +16,8 @@ import { Batch } from '../../entities/batch/Batch.js';
 import type { ItemType } from '../../entities/batch/Item.js';
 import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
+import { NodeError } from '../../entities/node/NodeError.js';
+import { NodeOutput } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
 import { DAGError } from '../../errors/DAGError.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
@@ -63,9 +63,9 @@ export abstract class AppendAssistantNode<
       try {
         const response = this.getResponse(state, context);
         if (response === null) {
-          output = NodeOutputBuilder.of('error', {
+          output = NodeOutput.create('error', {
             'errors': [
-              NodeErrorBuilder.from(
+              NodeError.create(
                 'appendAssistantNoResponse',
                 'No response available to append',
                 'AppendAssistantNode.execute',
@@ -76,13 +76,13 @@ export abstract class AppendAssistantNode<
           });
         } else {
           this.append(state, response, context);
-          output = NodeOutputBuilder.of('done');
+          output = NodeOutput.create('done');
         }
       } catch (cause) {
         const error = DAGError.coerce(cause);
-        output = NodeOutputBuilder.of('error', {
+        output = NodeOutput.create('error', {
           'errors': [
-            NodeErrorBuilder.from(
+            NodeError.create(
               'appendAssistantFailed',
               error.message,
               'AppendAssistantNode.execute',

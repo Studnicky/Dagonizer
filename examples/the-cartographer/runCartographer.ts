@@ -49,6 +49,7 @@ import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
 
 import { DAGError } from '@studnicky/dagonizer/errors';
 import { StreamChannel, StreamCursor } from '@studnicky/dagonizer/channels';
+import { Signal } from '@studnicky/signal';
 import { EventStreamSource } from './services/EventStreamSource.ts';
 
 // ── Parse CLI args ────────────────────────────────────────────────────────────
@@ -341,13 +342,11 @@ class CartographerResumableScenario {
 class CartographerCli {
   static async networkReachable(): Promise<boolean> {
     try {
-      const probe = new AbortController();
-      const timer = setTimeout(() => probe.abort(), 4000);
+      const signal = Signal.timeout(4000);
       const res = await fetch('https://freeipapi.com/api/json/8.8.8.8', {
-        'signal':  probe.signal,
+        signal,
         'headers': { 'accept': 'application/json' },
       });
-      clearTimeout(timer);
       return res.ok;
     } catch {
       return false;

@@ -9,7 +9,7 @@
  * Routes 'ready' always.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
@@ -30,6 +30,6 @@ export class SetupNode extends MonadicNode<DispatcherState, 'ready'> {
       const runId = new Date().toISOString().replace(/[:.]/g, '-');
       item.state.setMetadata('runId', runId);
     }
-    return RoutedBatchBuilder.of('ready', batch);
+    return RoutedBatch.create('ready', batch);
   }
 }

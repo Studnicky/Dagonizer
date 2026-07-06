@@ -159,6 +159,45 @@ class FactLog implements SnapshottableInterface {
   }
 }
 
+class ConcurrencyProbeStore implements SnapshottableInterface {
+  readonly #name: string;
+  readonly #stats: { active: number; max: number };
+
+  constructor(name: string, stats: { active: number; max: number }) {
+    this.#name = name;
+    this.#stats = stats;
+  }
+
+  async snapshot(): Promise<StoreSnapshotType> {
+    this.#stats.active += 1;
+    this.#stats.max = Math.max(this.#stats.max, this.#stats.active);
+    await Scheduler.current().after(1);
+    this.#stats.active -= 1;
+    return {
+      'version': 1,
+      'type':    'concurrency-probe',
+      'entries': [{ 'key': this.#name, 'value': this.#name }],
+    };
+  }
+
+  async restore(_snapshot: StoreSnapshotType): Promise<void> {
+    this.#stats.active += 1;
+    this.#stats.max = Math.max(this.#stats.max, this.#stats.active);
+    await Scheduler.current().after(1);
+    this.#stats.active -= 1;
+  }
+
+  async *snapshotStream(): AsyncIterable<StoreSnapshotEntryType> {
+    yield { 'key': this.#name, 'value': this.#name };
+  }
+
+  async restoreStream(entries: AsyncIterable<StoreSnapshotEntryType>): Promise<void> {
+    for await (const _entry of entries) {
+      await Promise.resolve();
+    }
+  }
+}
+
 const SAMPLE_CHECKPOINT: CheckpointDataType = {
   'dagName': 'demo',
   'cursor': 'next-node',
@@ -678,5 +717,61 @@ void describe('Checkpoint.capture + restoreStores', () => {
     await recalled.restoreStores({ 'log': freshLog });
 
     assert.deepEqual([...freshLog.facts], ['born', 'crawled']);
+  });
+
+  void it('capture defaults store snapshots to one in-flight operation', async () => {
+    const stats = { 'active': 0, 'max': 0 };
+    const result = await TestCheckpoint.abortedResult();
+
+    await Checkpoint.capture('store-test', result, {
+      'stores': {
+        'a': new ConcurrencyProbeStore('a', stats),
+        'b': new ConcurrencyProbeStore('b', stats),
+        'c': new ConcurrencyProbeStore('c', stats),
+      },
+    });
+
+    assert.equal(stats.max, 1);
+  });
+
+  void it('capture accepts execution concurrency for store snapshots', async () => {
+    const stats = { 'active': 0, 'max': 0 };
+    const result = await TestCheckpoint.abortedResult();
+
+    await Checkpoint.capture('store-test', result, {
+      'execution': { 'concurrency': 2 },
+      'stores': {
+        'a': new ConcurrencyProbeStore('a', stats),
+        'b': new ConcurrencyProbeStore('b', stats),
+        'c': new ConcurrencyProbeStore('c', stats),
+      },
+    });
+
+    assert.equal(stats.max, 2);
+  });
+
+  void it('restoreStores accepts execution concurrency for store restores', async () => {
+    const captureStats = { 'active': 0, 'max': 0 };
+    const restoreStats = { 'active': 0, 'max': 0 };
+    const result = await TestCheckpoint.abortedResult();
+    const ckpt = await Checkpoint.capture('store-test', result, {
+      'execution': { 'concurrency': 3 },
+      'stores': {
+        'a': new ConcurrencyProbeStore('a', captureStats),
+        'b': new ConcurrencyProbeStore('b', captureStats),
+        'c': new ConcurrencyProbeStore('c', captureStats),
+      },
+    });
+
+    await ckpt.restoreStores(
+      {
+        'a': new ConcurrencyProbeStore('a', restoreStats),
+        'b': new ConcurrencyProbeStore('b', restoreStats),
+        'c': new ConcurrencyProbeStore('c', restoreStats),
+      },
+      { 'execution': { 'concurrency': 2 } },
+    );
+
+    assert.equal(restoreStats.max, 2);
   });
 });

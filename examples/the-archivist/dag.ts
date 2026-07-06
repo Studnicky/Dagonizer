@@ -101,11 +101,10 @@
 
 
 import type { ArchivistState } from './ArchivistState.ts';
-import type { ArchivistNodes } from './nodes/ArchivistNodes.ts';
 import './nodes/scouts.ts'; // registers 'tool-candidate-merge' gather strategy
 
-import { DAGBuilder } from '@studnicky/dagonizer';
-import type { DispatcherBundleType } from '@studnicky/dagonizer';
+import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 
 // #region dispatcher-bundle
 //
@@ -124,9 +123,35 @@ import type { DispatcherBundleType } from '@studnicky/dagonizer';
 // — and use prefixed names like 'archivist:recallContext' to prevent collisions
 // with other plugins that might register a node named 'recallContext'.
 // See docs/guide/iri-identity.md for the full expansion rule set.
-export class ArchivistBundleFactory {
-  static create(nodes: ArchivistNodes): DispatcherBundleType<ArchivistState> {
-    const dag = new DAGBuilder('the-archivist', '6.0')
+const nodes = {
+  'preRunSetup': new PlaceholderNode<ArchivistState, 'ready'>('pre-run-setup', ['ready']),
+  'parkForInput': new PlaceholderNode<ArchivistState, 'parked' | 'resumed'>('park-for-input', ['parked', 'resumed']),
+  'recallContext': new PlaceholderNode<ArchivistState, 'recalled'>('recall-context', ['recalled']),
+  'classifyIntent': new PlaceholderNode<ArchivistState, 'lookup-author' | 'find-reviews' | 'describe-book' | 'recommend-similar' | 'recall-memories' | 'on-topic' | 'recommend-top-rated' | 'off-topic' | 'retry' | 'salvage'>('classify-intent', ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'recommend-top-rated', 'off-topic', 'retry', 'salvage']),
+  'classifyIntentSalvage': new PlaceholderNode<ArchivistState, 'done'>('classify-intent-salvage', ['done']),
+  'extractQuery': new PlaceholderNode<ArchivistState, 'success' | 'retry' | 'salvage'>('extract-query', ['success', 'retry', 'salvage']),
+  'extractQuerySalvage': new PlaceholderNode<ArchivistState, 'done'>('extract-query-salvage', ['done']),
+  'decideTools': new PlaceholderNode<ArchivistState, 'tools' | 'no-tools' | 'retry' | 'salvage'>('decide-tools', ['tools', 'no-tools', 'retry', 'salvage']),
+  'decideToolsSalvage': new PlaceholderNode<ArchivistState, 'done'>('decide-tools-salvage', ['done']),
+  'buildBookWorksets': new PlaceholderNode<ArchivistState, 'ready'>('build-book-worksets', ['ready']),
+  'rankByRating': new PlaceholderNode<ArchivistState, 'ranked'>('rank-by-rating', ['ranked']),
+  'pickBestMatch': new PlaceholderNode<ArchivistState, 'picked'>('pick-best-match', ['picked']),
+  'mergeCandidates': new PlaceholderNode<ArchivistState, 'ranked' | 'empty'>('merge-candidates', ['ranked', 'empty']),
+  'recordFindings': new PlaceholderNode<ArchivistState, 'recorded'>('record-findings', ['recorded']),
+  'hasCitationsGate': new PlaceholderNode<ArchivistState, 'pass' | 'fail'>('has-citations-gate', ['pass', 'fail']),
+  'groupByYear': new PlaceholderNode<ArchivistState, 'ordered'>('group-by-year', ['ordered']),
+  'recallPastVisits': new PlaceholderNode<ArchivistState, 'recalled'>('recall-past-visits', ['recalled']),
+  'recommendSimilar': new PlaceholderNode<ArchivistState, 'seeded' | 'empty'>('recommend-similar', ['seeded', 'empty']),
+  'recallMemories': new PlaceholderNode<ArchivistState, 'recalled'>('recall-memories', ['recalled']),
+  'composeMemoryResponse': new PlaceholderNode<ArchivistState, 'drafted' | 'retry' | 'salvage'>('compose-memory-response', ['drafted', 'retry', 'salvage']),
+  'composeMemoryResponseSalvage': new PlaceholderNode<ArchivistState, 'done'>('compose-memory-salvage', ['done']),
+  'respondToVisitor': new PlaceholderNode<ArchivistState, 'success'>('respond-to-visitor', ['success']),
+  'declineOffTopic': new PlaceholderNode<ArchivistState, 'success'>('decline-off-topic', ['success']),
+  'composeEmptyResponse': new PlaceholderNode<ArchivistState, 'drafted' | 'retry' | 'salvage'>('compose-empty', ['drafted', 'retry', 'salvage']),
+  'composeEmptyResponseSalvage': new PlaceholderNode<ArchivistState, 'done'>('compose-empty-salvage', ['done']),
+} as const;
+
+export const archivistDAG: DAGType = new DAGBuilder('the-archivist', '6.0')
 
       // ── pre-phase: setup ─────────────────────────────────────────────────────
       // Stamps state.runId and clears any stale draft before the main loop starts.
@@ -421,22 +446,4 @@ export class ArchivistBundleFactory {
       // #endregion terminal-placements
 
       .build();
-
-    return {
-      'nodes': [
-        nodes.preRunSetup,
-        nodes.parkForInput,
-        nodes.recallContext, nodes.classifyIntent, nodes.extractQuery, nodes.decideTools,
-        nodes.buildBookWorksets,
-        nodes.rankByRating, nodes.pickBestMatch, nodes.mergeCandidates, nodes.recordFindings,
-        nodes.hasCitationsGate, nodes.groupByYear, nodes.recallPastVisits, nodes.recommendSimilar,
-        nodes.recallMemories, nodes.composeMemoryResponse, nodes.respondToVisitor,
-        nodes.declineOffTopic, nodes.composeEmptyResponse,
-        nodes.classifyIntentSalvage, nodes.extractQuerySalvage, nodes.decideToolsSalvage,
-        nodes.composeMemoryResponseSalvage, nodes.composeEmptyResponseSalvage,
-      ],
-      'dags': [dag],
-    };
-  }
-}
 // #endregion dispatcher-bundle

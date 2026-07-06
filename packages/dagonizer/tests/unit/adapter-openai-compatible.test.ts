@@ -19,7 +19,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ChatRequestBuilder, Classifications, LlmError, OpenAiCompatibleAdapter } from '../../src/adapter/index.js';
+import { ChatRequest, Classifications, LlmError, OpenAiCompatibleAdapter } from '../../src/adapter/index.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ class FetchHarness {
 class ChatRequestFixture {
   /** A minimal ChatRequestType with 256 maxTokens and no tools. */
   static base() {
-    return ChatRequestBuilder.from({
+    return ChatRequest.create({
       'messages': [{ 'role': 'user', 'content': 'Hello.' }],
       'maxTokens': 256,
     });
@@ -130,7 +130,7 @@ void describe('OpenAiCompatibleAdapter — systemPrompt seam', () => {
     const cf = new CapturingFetch();
 
     await FetchHarness.with(cf.stub(), () => adapter.chat(
-      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }),
+      ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }),
     ));
 
     assert.ok(cf.capturedBody !== null, 'fetch must have been called');
@@ -146,7 +146,7 @@ void describe('OpenAiCompatibleAdapter — systemPrompt seam', () => {
     const cf = new CapturingFetch();
 
     await FetchHarness.with(cf.stub(), () => adapter.chat(
-      ChatRequestBuilder.from({
+      ChatRequest.create({
         'messages': [
           { 'role': 'system', 'content': 'Caller persona.' },
           { 'role': 'user',   'content': 'Hello.' },

@@ -184,7 +184,7 @@ export type { PluginInterface, PluginReceiverType } from '../contracts/PluginInt
 // Checkpoint
 // ---------------------------------------------------------------------------
 
-export type { CaptureOptionsType } from '../checkpoint/Checkpoint.js';
+export type { CaptureOptionsType, RestoreStoresOptionsType } from '../checkpoint/Checkpoint.js';
 
 // ---------------------------------------------------------------------------
 // Container options

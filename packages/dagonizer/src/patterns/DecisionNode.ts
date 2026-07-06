@@ -10,12 +10,16 @@
  *   - RankCandidatesNode: TChoice = readonly ScoreType[]
  */
 
+import { Batch } from '../entities/batch/Batch.js';
+import type { ItemType } from '../entities/batch/Item.js';
+import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
+import type { NodeContextType } from '../entities/node/NodeContext.js';
+import type { NodeOutputType } from '../entities/node/NodeOutput.js';
+import { NodeOutput } from '../entities/node/NodeOutput.js';
+import { BatchItemExecutor } from '../execution/BatchItemExecutor.js';
+import type { NodeStateInterface } from '../NodeStateBase.js';
+
 import { LlmDispatchNode } from './LlmDispatchNode.js';
-
-import { Batch, BatchItemExecutor, NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { ItemType, RoutedBatchType } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
-
 
 export abstract class DecisionNode<
   TState extends NodeStateInterface,
@@ -42,7 +46,7 @@ export abstract class DecisionNode<
       const content = this.extractContent(response);
       const choice = this.decodeChoice(content);
       this.applyChoice(state, choice);
-      const output: NodeOutputType<TOutput> = NodeOutputBuilder.of(this.routeFor(choice));
+      const output: NodeOutputType<TOutput> = NodeOutput.create(this.routeFor(choice));
 
       for (const error of output.errors) {
         state.collectError(error);

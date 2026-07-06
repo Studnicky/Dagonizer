@@ -52,7 +52,7 @@ declare function capture<TState extends NodeStateInterface & NodeStateBase>(
 ): Promise<Checkpoint>;
 ```
 
-Async factory. Builds a `Checkpoint` instance from a flow name, execution result, and optional named stores. Snapshots all stores in parallel (via `store.snapshot()`). The instance exposes `.data` (the `CheckpointData` record) and instance methods for the resume side.
+Async factory. Builds a `Checkpoint` instance from a flow name, execution result, and optional named stores. Store snapshots run through the shared batch executor; `options.execution` controls snapshot concurrency, throttle, and timing. The instance exposes `.data` (the `CheckpointData` record) and instance methods for the resume side.
 
 Throws `DAGError` when `result.cursor === null` (the DAG completed; nothing to resume).
 
@@ -177,18 +177,21 @@ const _skippedNodes: string[] = recalled.skippedNodes;
 
 ---
 
-### `ckpt.restoreStores(stores)`
+### `ckpt.restoreStores(stores, options?)`
 
 ```ts twoslash
 import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
+import type { RestoreStoresOptionsType } from '@studnicky/dagonizer/checkpoint';
 import type { SnapshottableInterface } from '@studnicky/dagonizer/contracts';
 declare const ckpt: Checkpoint;
 declare const stores: Readonly<Record<string, SnapshottableInterface>>;
+declare const options: RestoreStoresOptionsType;
 // ---cut---
 await ckpt.restoreStores(stores);
+await ckpt.restoreStores(stores, options);
 ```
 
-Populate each named store from the snapshots in this checkpoint. The keys in `stores` must match the names used when calling `Checkpoint.capture`. The parameter type is `Snapshottable`: any object that implements `snapshot()` / `restore()`. `Store extends Snapshottable`, so every `Store` qualifies; non-KV backends (RDF triple stores, vector indices, append-only logs) participate without implementing `get`/`set`/`has`/`delete`/`update`.
+Populate each named store from the snapshots in this checkpoint. The keys in `stores` must match the names used when calling `Checkpoint.capture`. The parameter type is `Snapshottable`: any object that implements `snapshot()` / `restore()`. `Store extends Snapshottable`, so every `Store` qualifies; non-KV backends (RDF triple stores, vector indices, append-only logs) participate without implementing `get`/`set`/`has`/`delete`/`update`. `options.execution` controls restore concurrency, throttle, and timing.
 
 ```ts
 <<< @/../examples/the-archivist/runArchivist.ts#resume-run
@@ -197,7 +200,7 @@ Populate each named store from the snapshots in this checkpoint. The keys in `st
 **Rules:**
 - Name in checkpoint but absent from the map → throws `DAGError` naming the missing stores.
 - Name in the map but absent from the checkpoint → no-op (the store is not restored).
-- Matched pairs → `store.restore(snapshot)` in parallel; `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` on type/version mismatch.
+- Matched pairs → `store.restore(snapshot)` through the shared batch executor; `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` on type/version mismatch.
 
 ---
 
@@ -234,14 +237,33 @@ Contract for restoring a state instance from a JSON snapshot. Wrap a plain funct
 ```ts twoslash
 import type { CaptureOptionsType } from '@studnicky/dagonizer/checkpoint';
 import type { SnapshottableInterface } from '@studnicky/dagonizer/contracts';
+import type { BatchExecutionOptionsType } from '@studnicky/dagonizer/types';
 // ---cut---
 declare const opts: CaptureOptionsType;
 const _stores: Record<string, SnapshottableInterface> | undefined = opts.stores;
+const _execution: BatchExecutionOptionsType | undefined = opts.execution;
 ```
 
 | Field | Description |
 |-------|-------------|
 | `stores` | Named stores to snapshot alongside the state. Any `Snapshottable`: `Store` instances, or any non-KV backing that implements `snapshot()` / `restore()`. Keys become the names in `CheckpointData.stores`; the same keys must be passed to `restoreStores()` on resume. Omit or leave empty for a state-only checkpoint (the `CheckpointData.stores` field is still written as an empty object `{}`). |
+| `execution` | Batch execution policy for `store.snapshot()` calls: `concurrency`, optional `throttle`, and optional `timing`. Omit for the default bounded policy. |
+
+---
+
+## Interface: `RestoreStoresOptionsType`
+
+```ts twoslash
+import type { RestoreStoresOptionsType } from '@studnicky/dagonizer/checkpoint';
+import type { BatchExecutionOptionsType } from '@studnicky/dagonizer/types';
+// ---cut---
+declare const opts: RestoreStoresOptionsType;
+const _execution: BatchExecutionOptionsType | undefined = opts.execution;
+```
+
+| Field | Description |
+|-------|-------------|
+| `execution` | Batch execution policy for `store.restore(snapshot)` calls: `concurrency`, optional `throttle`, and optional `timing`. Omit for the default bounded policy. |
 
 ---
 

@@ -23,7 +23,7 @@
  * named output union narrower than the default `'success'`.
  */
 
-import { Batch, MonadicNode, NodeOutputBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
@@ -57,7 +57,7 @@ export class MergeCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | 
       if (state.failureCause.trim().length === 0) {
         state.failureCause = 'No candidates found after searching all available sources. ';
       }
-      const result = NodeOutputBuilder.of('empty');
+      const result = NodeOutput.create('empty');
       for (const error of result.errors) state.collectError(error);
       emptyItems.push(item);
       continue;
@@ -102,7 +102,7 @@ export class MergeCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | 
     if (ranked.length === 0 && state.failureCause.trim().length === 0) {
       state.failureCause = 'No candidates found after searching all available sources. ';
     }
-      const result = NodeOutputBuilder.of(ranked.length > 0 ? 'ranked' : 'empty');
+      const result = NodeOutput.create(ranked.length > 0 ? 'ranked' : 'empty');
       for (const error of result.errors) state.collectError(error);
       if (result.output === 'ranked') {
         rankedItems.push(item);
@@ -115,7 +115,7 @@ export class MergeCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | 
     const routes: Array<readonly ['ranked' | 'empty', Batch<ArchivistState>]> = [];
     if (rankedItems.length > 0) routes.push(['ranked', Batch.from(rankedItems)]);
     if (emptyItems.length > 0) routes.push(['empty', Batch.from(emptyItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }
 

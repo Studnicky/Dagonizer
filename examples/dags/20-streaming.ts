@@ -8,9 +8,9 @@ import {
   Batch,
   DAGBuilder,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -34,7 +34,7 @@ export class IngestNode extends MonadicNode<PipelineState, 'done'> {
   }
   override async execute(batch: Batch<PipelineState>) {
     for (const item of batch) item.state.items.push('raw-data');
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -46,7 +46,7 @@ export class EnrichNode extends MonadicNode<PipelineState, 'done'> {
   }
   override async execute(batch: Batch<PipelineState>) {
     for (const item of batch) item.state.items.push('enriched-data');
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -58,7 +58,7 @@ export class PersistNode extends MonadicNode<PipelineState, 'done'> {
   }
   override async execute(batch: Batch<PipelineState>) {
     for (const item of batch) item.state.items.push('persisted');
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

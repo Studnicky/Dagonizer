@@ -11,7 +11,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import { FieldMappings } from '../../services.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region normalize-json-node
@@ -40,7 +40,7 @@ export class NormalizeJsonNode extends MonadicNode<CartographerState, 'normalize
       });
       item.state.mappedRecords = mapped;
     }
-    return RoutedBatchBuilder.of('normalized', batch);
+    return RoutedBatch.create('normalized', batch);
   }
 }
 

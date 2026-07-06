@@ -5,7 +5,7 @@ import type { IpGeolocator } from '../../contracts/IpGeolocator.ts';
 import { OutcomeResolution } from './OutcomeResolution.ts';
 import {
   MonadicNode,
-  RoutedBatchBuilder,
+  RoutedBatch,
   type Batch,
   type NodeContextType,
   type RoutedBatchType,
@@ -46,7 +46,7 @@ export class ResolveIpNode extends MonadicNode<CartographerState, 'resolved'> {
       }
       item.state.candidate = OutcomeResolution.of(outcome, 'ip', raw.weight);
     }
-    return RoutedBatchBuilder.of('resolved', batch);
+    return RoutedBatch.create('resolved', batch);
   }
 }
 // #endregion resolve-ip-node

@@ -10,12 +10,12 @@
  * the response variant.
  */
 
-import { Batch, DAG_CONTEXT, MonadicNode, NodeOutputBuilder, NodeStateBase,
-  RoutedBatchBuilder,
+import { Batch, DAG_CONTEXT, MonadicNode, NodeOutput, NodeStateBase,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequest } from '@studnicky/dagonizer/adapter';
 
 // ---------------------------------------------------------------------------
 // State
@@ -43,7 +43,7 @@ export class ChatNode extends MonadicNode<ChatAdapterState, 'text' | 'tools'> {
     for (const item of batch) {
       const state = item.state;
       if (state.adapter === null) throw new Error('chat: adapter not set');
-      const request = ChatRequestBuilder.from({
+      const request = ChatRequest.create({
         'messages': [
           { 'role': 'system', 'content': 'You are a helpful assistant.' },
           { 'role': 'user',   'content': state.prompt },
@@ -53,7 +53,7 @@ export class ChatNode extends MonadicNode<ChatAdapterState, 'text' | 'tools'> {
       state.finishReason = response.finishReason;
       if (response.message.variant === 'text') {
         state.response = response.message.content;
-        entries.push([NodeOutputBuilder.of('text').output, Batch.from([item])]);
+        entries.push([NodeOutput.create('text').output, Batch.from([item])]);
         continue;
       }
       // tools or mixed: surface the first tool call name as the response text
@@ -61,9 +61,9 @@ export class ChatNode extends MonadicNode<ChatAdapterState, 'text' | 'tools'> {
         ? response.message.toolCalls
         : response.message.toolCalls;
       state.response = `tool_call:${calls[0]?.name ?? 'unknown'}`;
-      entries.push([NodeOutputBuilder.of('tools').output, Batch.from([item])]);
+      entries.push([NodeOutput.create('tools').output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -78,7 +78,7 @@ export class HandleTextNode extends MonadicNode<ChatAdapterState, 'done'> {
       // Slot for downstream text-processing logic; identity pass-through here
       process.stdout.write(`  [handleText] response="${item.state.response}"\n`);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -92,7 +92,7 @@ export class HandleToolsNode extends MonadicNode<ChatAdapterState, 'done'> {
     for (const item of batch) {
       process.stdout.write(`  [handleTools] tool dispatched: ${item.state.response}\n`);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

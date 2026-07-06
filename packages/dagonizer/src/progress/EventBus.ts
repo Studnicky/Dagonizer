@@ -3,7 +3,7 @@
  *
  * Extends `@studnicky/event-bus`'s `EventBus`, fixing the topic map so every
  * topic carries a `BusEventEnvelopeType<unknown>` payload. Publish wraps the
- * caller's raw payload in an envelope (topic, payload, `Date.now()`
+ * caller's raw payload in an envelope (topic, payload, epoch-millisecond
  * timestamp) before handing it to the inherited typed async pub/sub.
  *
  * Delivery goes through a per-subscriber `BusQueue`: a bounded FIFO queue
@@ -26,7 +26,7 @@ import { EventBus as SubstrateEventBus } from '@studnicky/event-bus';
 import type { EventHandlerType, UnsubscribeType } from '@studnicky/event-bus';
 
 import type { BusEventEnvelopeType } from './BusEventEnvelope.js';
-import { BusEventEnvelopeBuilder } from './BusEventEnvelope.js';
+import { BusEventEnvelope } from './BusEventEnvelope.js';
 
 /** Topic map for the progress bus: every topic carries a `BusEventEnvelopeType<unknown>` payload. */
 export type BusTopicMapType = Record<string, BusEventEnvelopeType<unknown>>;
@@ -79,11 +79,10 @@ export class EventBus extends SubstrateEventBus<BusTopicMapType> implements Even
   }
 
   /**
-   * Wrap `payload` in a `BusEventEnvelopeType` (topic, payload, `Date.now()`
-   * timestamp) and publish it to every subscriber on `topic`.
+   * Wrap `payload` in a `BusEventEnvelopeType` and publish it to every subscriber on `topic`.
    */
   override async publish(topic: string, payload: unknown): Promise<void> {
-    const envelope = BusEventEnvelopeBuilder.of(topic, payload);
+    const envelope = BusEventEnvelope.create(topic, payload);
     await super.publish(topic, envelope);
   }
 }

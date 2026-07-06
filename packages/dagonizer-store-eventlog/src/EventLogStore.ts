@@ -17,6 +17,7 @@
  * Snapshot version: 1
  */
 
+import { Semaphore } from '@studnicky/concurrency/semaphore';
 import type { JsonValueType } from '@studnicky/dagonizer/entities';
 import { BASE_STORE_DEFAULTS } from '@studnicky/dagonizer/store';
 
@@ -74,12 +75,14 @@ export type EventLogStoreOptionsType = AppendLogStoreOptionsType & {
 export class EventLogStore extends AppendLogStore {
   readonly #filePath: string;
   readonly #syncOnAppend: boolean;
+  readonly #appendLock: Semaphore;
   #handle: FileHandleContractInterface | null;
 
   constructor(options: EventLogStoreOptionsType = BASE_STORE_DEFAULTS) {
     super(options);
     this.#filePath = options.filePath ?? '';
     this.#syncOnAppend = options.syncOnAppend ?? true;
+    this.#appendLock = Semaphore.create({ 'permits': 1 });
     this.#handle = null;
   }
 
@@ -120,10 +123,12 @@ export class EventLogStore extends AppendLogStore {
 
   /** Close the file handle if one was opened. No-op when in-memory. */
   override async disconnect(): Promise<void> {
-    if (this.#handle !== null) {
-      await this.#handle.close();
-      this.#handle = null;
-    }
+    await this.#appendLock.withPermit(async () => {
+      if (this.#handle !== null) {
+        await this.#handle.close();
+        this.#handle = null;
+      }
+    });
   }
 
   // ── Append override ───────────────────────────────────────────────────────
@@ -133,6 +138,10 @@ export class EventLogStore extends AppendLogStore {
    * is open, persists it to the log file.
    */
   protected override async appendEntry(entry: EventLogEntryType): Promise<void> {
+    await this.#appendLock.withPermit(async () => this.#appendEntryUnlocked(entry));
+  }
+
+  async #appendEntryUnlocked(entry: EventLogEntryType): Promise<void> {
     await super.appendEntry(entry);
     if (this.#handle !== null) {
       await this.#handle.appendFile(JSON.stringify(entry) + '\n');
@@ -143,21 +152,21 @@ export class EventLogStore extends AppendLogStore {
   // ── Atomic RMW override ───────────────────────────────────────────────────
 
   /**
-   * Atomic read-modify-write. Reads the log directly via `latest()`, with no
-   * `await` before the result is computed, then appends the new value.
-   * Under JS single-threaded execution the body cannot interleave with another
-   * `update()` on the same instance, satisfying the atomicity contract.
+   * Atomic read-modify-write. The per-instance append lock covers the latest
+   * read, computed next value, in-memory append, file append, and optional sync.
    */
   override async update(
     key: string,
     fn: (current: JsonValueType | undefined) => JsonValueType,
   ): Promise<JsonValueType> {
-    const qualified = this.qualifyKey(key);
-    const stored    = this.latest(qualified);
-    const current   = stored === undefined ? undefined : stored;
-    const next      = fn(current);
-    await this.appendEntry({ 'variant': 'set', 'at': Date.now(), 'key': qualified, 'value': next });
-    return next;
+    return this.#appendLock.withPermit(async () => {
+      const qualified = this.qualifyKey(key);
+      const stored    = this.latest(qualified);
+      const current   = stored === undefined ? undefined : stored;
+      const next      = fn(current);
+      await this.#appendEntryUnlocked({ 'variant': 'set', 'at': this.eventTimestamp(), 'key': qualified, 'value': next });
+      return next;
+    });
   }
 
   // ── Replay helper ─────────────────────────────────────────────────────────

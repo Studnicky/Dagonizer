@@ -17,7 +17,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 
 import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region decompress-node
@@ -77,9 +77,9 @@ export class DecompressNode extends MonadicNode<CartographerState, 'route-format
     } catch (caught) {
       // Capture the decompression failure as data rather than swallowing it.
       state.capturedErrors = [...state.capturedErrors, GeoErrorRecord.capture('decompress', caught, `source=${state.currentSource.sourceId}`)];
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
-    return NodeOutputBuilder.of('route-format');
+    return NodeOutput.create('route-format');
   }
 }
 

@@ -6,11 +6,11 @@ import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
-import { RoutedBatchBuilder } from '../../src/entities/batch/RoutedBatchType.js';
-import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
+import { RoutedBatch } from '../../src/entities/batch/RoutedBatchType.js';
+import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../src/entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
+import { NodeError } from '../../src/entities/node/NodeError.js';
+import { NodeOutput } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 
@@ -26,7 +26,7 @@ class TestState extends NodeStateBase {
   }
 }
 
-const ctx: NodeContextType = NodeContextBuilder.of('test-dag', 'test-node', new AbortController().signal, undefined);
+const ctx: NodeContextType = NodeContext.create('test-dag', 'test-node', new AbortController().signal, undefined);
 
 // ---------------------------------------------------------------------------
 // Batch
@@ -170,22 +170,22 @@ void describe('Batch', () => {
 });
 
 // ---------------------------------------------------------------------------
-// RoutedBatchBuilder
+// RoutedBatch
 // ---------------------------------------------------------------------------
 
-void describe('RoutedBatchBuilder', () => {
-  void it('RoutedBatchBuilder.of: creates single-output map', () => {
+void describe('RoutedBatch', () => {
+  void it('RoutedBatch.of: creates single-output map', () => {
     const batch = Batch.of(new TestState(1));
-    const routed = RoutedBatchBuilder.of('done', batch);
+    const routed = RoutedBatch.create('done', batch);
     assert.equal(routed.size, 1);
     assert.equal(routed.get('done')?.size, 1);
   });
 
-  void it('RoutedBatchBuilder.from: merges duplicate keys by concat; produces empty map from empty entries', () => {
+  void it('RoutedBatch.create: merges duplicate keys by concat; produces empty map from empty entries', () => {
     const a = Batch.from<TestState>([{ 'id': '1', 'state': new TestState(1) }]);
     const b = Batch.from<TestState>([{ 'id': '2', 'state': new TestState(2) }]);
     const c = Batch.from<TestState>([{ 'id': '3', 'state': new TestState(3) }]);
-    const routed = RoutedBatchBuilder.from<'x' | 'y', TestState>([
+    const routed = RoutedBatch.create<'x' | 'y', TestState>([
       ['x', a],
       ['y', c],
       ['x', b],
@@ -198,12 +198,12 @@ void describe('RoutedBatchBuilder', () => {
     assert.equal(xBatch.row(1).id, '2');
     assert.equal(routed.get('y')?.size, 1);
 
-    const empty = RoutedBatchBuilder.from([]);
+    const empty = RoutedBatch.create([]);
     assert.equal(empty.size, 0);
   });
 
-  void it('RoutedBatchBuilder.empty: returns empty map', () => {
-    const routed = RoutedBatchBuilder.empty();
+  void it('RoutedBatch.create: returns empty map', () => {
+    const routed = RoutedBatch.create();
     assert.equal(routed.size, 0);
   });
 });
@@ -225,7 +225,7 @@ class TagNode extends MonadicNode<TestState, 'tagged' | 'skip'> {
     const tagged: ItemType<TestState>[] = [];
     const skip: ItemType<TestState>[] = [];
     for (const item of batch) {
-      const result = NodeOutputBuilder.of(item.state.value > 0 ? 'tagged' : 'skip');
+      const result = NodeOutput.create(item.state.value > 0 ? 'tagged' : 'skip');
       for (const error of result.errors) item.state.collectError(error);
       if (result.output === 'tagged') tagged.push(item);
       else skip.push(item);
@@ -247,14 +247,14 @@ class ErroringNode extends MonadicNode<TestState, 'done'> {
     batch: Batch<TestState>,
     _ctx: NodeContextType,
   ): Promise<Map<'done', Batch<TestState>>> {
-    const err = NodeErrorBuilder.from(
+    const err = NodeError.create(
       'TEST_ERROR',
       'test error message',
       'execute',
       true,
       new Date().toISOString(),
     );
-    const result = NodeOutputBuilder.of('done', { 'errors': [err] });
+    const result = NodeOutput.create('done', { 'errors': [err] });
     for (const item of batch) {
       for (const error of result.errors) item.state.collectError(error);
     }

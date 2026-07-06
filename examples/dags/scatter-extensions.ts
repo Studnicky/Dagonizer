@@ -14,11 +14,11 @@ import {
   GatherStrategies,
   GatherStrategy,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
   OutcomeReducer,
   OutcomeReducers,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type {
   DAGType,
@@ -60,7 +60,7 @@ export class ScoreNode extends MonadicNode<RankingState, 'success' | 'error'> {
       // Synthetic score: proportional to string length
       batchItem.state.candidate = { title: item, score: item.length };
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('success').output, batch);
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 // #endregion score-node
@@ -90,7 +90,7 @@ export class BatchEnrichNode extends MonadicNode<RankingState, 'enriched'> {
         score: item.state.candidate.score / max,
       };
     }
-    return RoutedBatchBuilder.of('enriched', batch);
+    return RoutedBatch.create('enriched', batch);
   }
 }
 // #endregion monad-node

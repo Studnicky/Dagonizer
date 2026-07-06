@@ -13,7 +13,7 @@ import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
+import { NodeOutput } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 
 export class TestNode {
@@ -56,7 +56,7 @@ export class TestNode {
         const routedItems = new Map<string, ItemType<TState>[]>();
         for (const item of batch) {
           const output = exec !== undefined ? await exec(item.state, context) : defaultOutput;
-          const result = NodeOutputBuilder.of(output);
+          const result = NodeOutput.create(output);
           for (const error of result.errors) item.state.collectError(error);
           const bucket = routedItems.get(result.output);
           if (bucket !== undefined) {

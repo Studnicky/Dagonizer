@@ -1,5 +1,8 @@
 import { Semaphore } from '@studnicky/concurrency/semaphore';
 import { Throttle } from '@studnicky/throttle';
+import { TIMING_STATUS } from '@studnicky/timing';
+import type { TimingEventDataType, TimingInterface } from '@studnicky/timing/interfaces';
+import type { TimingStatusValueType } from '@studnicky/timing/types';
 
 import { DAGError } from '../errors/DAGError.js';
 import type { BatchExecutionOptionsType, BatchExecutionThrottleOptionsType } from '../types/BatchExecutionOptions.js';
@@ -7,6 +10,7 @@ import type { BatchExecutionOptionsType, BatchExecutionThrottleOptionsType } fro
 type BatchItemExecutionPolicy = {
   readonly concurrency: number;
   readonly throttle: BatchExecutionThrottleOptionsType | null;
+  readonly timing: TimingInterface | null;
 };
 
 export class BatchItemExecutor {
@@ -17,7 +21,7 @@ export class BatchItemExecutor {
     signal: AbortSignal | null = null,
   ): Promise<readonly TResult[]> {
     const policy = BatchItemExecutor.#normalize(options);
-    const semaphore = Semaphore.builder().withPermits(policy.concurrency).build();
+    const semaphore = Semaphore.create({ 'permits': policy.concurrency });
     const throttle = BatchItemExecutor.#throttle(policy);
     const results: TResult[] = [];
     const errors: unknown[] = [];
@@ -37,7 +41,7 @@ export class BatchItemExecutor {
           break;
         }
 
-        const worker = BatchItemExecutor.#execute(throttle, () => mapper(item, index))
+        const worker = BatchItemExecutor.#execute(policy.timing, throttle, () => mapper(item, index))
           .then(
             (result) => {
               results[index] = result;
@@ -83,6 +87,7 @@ export class BatchItemExecutor {
             ),
             ...(options.throttle.adaptive !== undefined ? { 'adaptive': options.throttle.adaptive } : {}),
           },
+      'timing':      options.timing ?? null,
     };
   }
 
@@ -98,22 +103,39 @@ export class BatchItemExecutor {
 
   static #throttle(policy: BatchItemExecutionPolicy): Throttle | null {
     if (policy.throttle === null) return null;
-    const builder = Throttle.builder().withConcurrencyLimit(policy.throttle.concurrencyLimit);
-    if (policy.throttle.adaptive !== undefined) {
-      builder.withAdaptiveConcurrency(policy.throttle.adaptive);
-    }
-    return builder.build();
+    return Throttle.create({
+      'concurrencyLimit': policy.throttle.concurrencyLimit,
+      ...(policy.throttle.adaptive !== undefined ? { 'adaptive': policy.throttle.adaptive } : {}),
+    });
   }
 
   static async #execute<TResult>(
+    timing: TimingInterface | null,
     throttle: Throttle | null,
     mapper: () => Promise<TResult>,
   ): Promise<TResult> {
-    if (throttle === null) return mapper();
-    const result = await throttle.execute(mapper);
-    if (result === undefined) {
-      throw new DAGError('Throttle detached batch item execution unexpectedly', { 'code': 'EXECUTION_ERROR' });
+    BatchItemExecutor.#time(timing, TIMING_STATUS.START);
+    try {
+      if (throttle === null) {
+        const direct = await mapper();
+        BatchItemExecutor.#time(timing, TIMING_STATUS.COMPLETE);
+        return direct;
+      }
+      const result = await throttle.execute(mapper);
+      if (result === undefined) {
+        throw new DAGError('Throttle detached batch item execution unexpectedly', { 'code': 'EXECUTION_ERROR' });
+      }
+      BatchItemExecutor.#time(timing, TIMING_STATUS.COMPLETE);
+      return result;
+    } catch (error) {
+      BatchItemExecutor.#time(timing, TIMING_STATUS.ERROR);
+      throw error;
     }
-    return result;
+  }
+
+  static #time(timing: TimingInterface | null, status: TimingStatusValueType): void {
+    timing?.event(
+      { 'event': `batch.item.${status}` } satisfies TimingEventDataType,
+    );
   }
 }

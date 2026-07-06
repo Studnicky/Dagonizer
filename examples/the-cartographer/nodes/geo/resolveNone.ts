@@ -2,7 +2,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 import { GeoResolutionBuilder } from '../../entities/GeoResolution.ts';
 import {
   MonadicNode,
-  RoutedBatchBuilder,
+  RoutedBatch,
   type Batch,
   type NodeContextType,
   type RoutedBatchType,
@@ -25,7 +25,7 @@ export class ResolveNoneNode extends MonadicNode<CartographerState, 'resolved'> 
     for (const item of batch) {
       item.state.candidate = GeoResolutionBuilder.from({ 'source': 'none', 'weight': 0 });
     }
-    return RoutedBatchBuilder.of('resolved', batch);
+    return RoutedBatch.create('resolved', batch);
   }
 }
 

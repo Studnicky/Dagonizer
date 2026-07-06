@@ -29,7 +29,7 @@
  *   recall result (the digest will have bookCount === 0).
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { MemoryDigest } from '../ArchivistState.ts';
@@ -194,6 +194,6 @@ export class RecallMemoriesNode extends MonadicNode<ArchivistState, 'recalled'> 
     };
     }
 
-    return RoutedBatchBuilder.of('recalled', batch);
+    return RoutedBatch.create('recalled', batch);
   }
 }

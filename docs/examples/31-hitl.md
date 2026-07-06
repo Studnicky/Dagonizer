@@ -35,7 +35,7 @@ prepare → approve ──park──▶ [awaiting-input]
 | Concept | Code |
 |---------|------|
 | Write correlationKey | `state.setMetadata('correlationKey', key)` |
-| Route to park | `return RoutedBatchBuilder.of('parked', Batch.from(parked))` |
+| Route to park | `return RoutedBatch.create('parked', Batch.from(parked))` |
 | Detect parked result | `result.parked !== null` |
 | Extract cursor | `result.parked.cursor` |
 | Capture checkpoint | `Checkpoint.capture('dag', result)` |

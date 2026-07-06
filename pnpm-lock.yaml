@@ -21,6 +21,12 @@ importers:
       '@shikijs/vitepress-twoslash':
         specifier: ^2.5.0
         version: 2.5.0(typescript@6.0.3)
+      '@studnicky/cache':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/concurrency':
+        specifier: ^4.0.0
+        version: 4.0.0
       '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:packages/dagonizer
@@ -66,6 +72,15 @@ importers:
       '@studnicky/dagonizer-tool-wikipedia':
         specifier: workspace:^
         version: link:packages/dagonizer-tool-wikipedia
+      '@studnicky/fsm':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/scheduler':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
       tsx:
         specifier: ^4.22.4
         version: 4.22.4
@@ -106,6 +121,18 @@ importers:
 
   examples/the-archivist:
     dependencies:
+      '@studnicky/cache':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/circular-buffer':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/clock':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/concurrency':
+        specifier: ^4.0.0
+        version: 4.0.0
       '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:../../packages/dagonizer
@@ -160,6 +187,9 @@ importers:
       '@studnicky/logger':
         specifier: ^4.0.0
         version: 4.0.0
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       fake-indexeddb:
         specifier: ^6.0.0
@@ -176,9 +206,27 @@ importers:
       '@rapideditor/country-coder':
         specifier: ^5.6.1
         version: 5.6.1
+      '@studnicky/cache':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/circular-buffer':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/clock':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/concurrency':
+        specifier: ^4.0.0
+        version: 4.0.0
       '@studnicky/dagonizer':
         specifier: workspace:^
         version: link:../../packages/dagonizer
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/types':
+        specifier: ^4.0.0
+        version: 4.0.0
       countries-and-timezones:
         specifier: ^3.9.0
         version: 3.9.0
@@ -196,6 +244,9 @@ importers:
   packages/dagonizer:
     dependencies:
       '@studnicky/cache':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/circular-buffer':
         specifier: ^4.0.0
         version: 4.0.0
       '@studnicky/clock':
@@ -235,6 +286,9 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0
       '@studnicky/throttle':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/timing':
         specifier: ^4.0.0
         version: 4.0.0
       '@studnicky/types':
@@ -310,6 +364,12 @@ importers:
       '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/types':
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       '@types/node':
         specifier: ^26.0.0
@@ -320,6 +380,9 @@ importers:
       '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       '@types/node':
         specifier: ^26.0.0
@@ -346,6 +409,9 @@ importers:
       '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       '@types/node':
         specifier: ^26.0.0
@@ -356,6 +422,9 @@ importers:
       '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       '@types/node':
         specifier: ^26.0.0
@@ -379,6 +448,9 @@ importers:
       '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       '@types/node':
         specifier: ^26.0.0
@@ -392,6 +464,9 @@ importers:
       '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       '@types/node':
         specifier: ^26.0.0
@@ -405,6 +480,9 @@ importers:
       '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
+      '@studnicky/signal':
+        specifier: ^4.0.0
+        version: 4.0.0
     devDependencies:
       '@types/node':
         specifier: ^26.0.0
@@ -546,6 +624,12 @@ importers:
 
   packages/dagonizer-store-eventlog:
     dependencies:
+      '@studnicky/clock':
+        specifier: ^4.0.0
+        version: 4.0.0
+      '@studnicky/concurrency':
+        specifier: ^4.0.0
+        version: 4.0.0
       '@studnicky/dagonizer':
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
@@ -584,6 +668,9 @@ importers:
 
   packages/dagonizer-store-opfs:
     dependencies:
+      '@studnicky/concurrency':
+        specifier: ^4.0.0
+        version: 4.0.0
       '@studnicky/dagonizer':
         specifier: workspace:>=0.30.0
         version: link:../dagonizer
@@ -1821,11 +1908,6 @@ packages:
     peerDependencies:
       '@studnicky/logger': 4.0.0
       '@studnicky/timing': 4.0.0
-    peerDependenciesMeta:
-      '@studnicky/logger':
-        optional: true
-      '@studnicky/timing':
-        optional: true
 
   '@studnicky/sample-buffer@4.0.0':
     resolution: {integrity: sha512-zlrQ5qFJmLGIfg9Jr4G7VbPpij1PlX1Oboff+843m5LZTaklY4UeskywWxwva/f7lVx4M2H+V6NwaBcvc1r8YA==, tarball: https://npm.pkg.github.com/download/@studnicky/sample-buffer/4.0.0/fbcad8f6064a60415d3d5366fc1d9ed3d9821749}
@@ -5143,10 +5225,9 @@ snapshots:
       '@studnicky/config': 4.0.0
       '@studnicky/errors': 4.0.0
       '@studnicky/json': 4.0.0
-      '@studnicky/types': 4.0.0
-    optionalDependencies:
       '@studnicky/logger': 4.0.0
       '@studnicky/timing': 4.0.0
+      '@studnicky/types': 4.0.0
 
   '@studnicky/sample-buffer@4.0.0':
     dependencies:
@@ -5178,7 +5259,6 @@ snapshots:
       '@studnicky/errors': 4.0.0
       '@studnicky/json': 4.0.0
       '@studnicky/types': 4.0.0
-    optional: true
 
   '@studnicky/types@4.0.0':
     dependencies:

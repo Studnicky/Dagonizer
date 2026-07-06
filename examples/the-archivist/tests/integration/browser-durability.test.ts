@@ -28,9 +28,9 @@ import { IndexedDbCheckpointStore } from '@studnicky/dagonizer-store-indexeddb';
 
 import { ArchivistState } from '../../ArchivistState.ts';
 import { ArchivistNodes } from '../../nodes/ArchivistNodes.ts';
-import { ArchivistBundleFactory } from '../../dag.ts';
-import { BookSearchScatterBundleFactory } from '../../embedded-dags/BookSearchScatterDAG.ts';
-import { ComposeRetryLoopBundleFactory } from '../../embedded-dags/ComposeRetryLoopDAG.ts';
+import { archivistDAG } from '../../dag.ts';
+import { bookSearchScatterDAG } from '../../embedded-dags/BookSearchScatterDAG.ts';
+import { composeRetryLoopDAG } from '../../embedded-dags/ComposeRetryLoopDAG.ts';
 import { MemoryStore } from '../../memory/MemoryStore.ts';
 import type { ArchivistServices, ClassifiedIntent, LlmClientInterface } from '../../services.ts';
 import type { CandidateType } from '../../entities/Book.ts';
@@ -138,9 +138,9 @@ class ArchivistHitlHarness {
     dispatcher.registerBundle(toolRegistry.bundle());
 
     const nodes = ArchivistNodes.build(services);
-    dispatcher.registerBundle(BookSearchScatterBundleFactory.create(nodes));
-    dispatcher.registerBundle(ComposeRetryLoopBundleFactory.create(nodes));
-    dispatcher.registerBundle(ArchivistBundleFactory.create(nodes));
+    dispatcher.registerBundle({ 'nodes': nodes.bookSearchScatterNodes, 'dags': [bookSearchScatterDAG] });
+    dispatcher.registerBundle({ 'nodes': nodes.composeRetryLoopNodes, 'dags': [composeRetryLoopDAG] });
+    dispatcher.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [archivistDAG] });
 
     return dispatcher;
   }

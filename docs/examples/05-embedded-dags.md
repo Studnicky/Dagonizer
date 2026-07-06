@@ -60,7 +60,7 @@ See [Phase 09: Terminal placements](./09-terminals) for the full pattern with ru
 - **`stateMapping.output` (wire) / `outputs` (builder option).** After the body completes, the dispatcher copies the listed child fields back into the parent. Fields not listed stay isolated.
 - **One definition, three placements.** `book-search-scatter` is registered once and placed three times with distinct placement names. Each placement routes its `'success'` and `'error'` outputs differently (`compose-loop`, `group-by-year`, or `compose-empty`).
 - **Errors bubble up.** Anything the child accumulates via `state.collectError` reaches the parent's error accumulator automatically. The child's terminal outcome determines the `'error'` output.
-- **`bookSearchScatterBundle` and `composeRetryLoopBundle`.** Each sub-DAG module exports a `DispatcherBundleType` packaging its nodes plus its DAG. `dispatcher.registerBundle(bundle)` installs the nodes before the DAG; register both embedded-DAG bundles before the parent `archivistBundle`.
+- **`bookSearchScatterDAG` and `composeRetryLoopDAG`.** Each sub-DAG module exports a canonical JSON-LD DAG. Register literal bundles with the matching concrete node groups before the parent `archivistDAG` so embedded references resolve before parent validation.
 
 See this in action in the [Archivist live demo](./the-archivist).
 
@@ -81,4 +81,3 @@ The `.embeddedDAG()` call accepts `TChildState` and `TParentState` generic param
 A misspelled parent-state path is a compile error.
 
 `stateMapping` is the right tool when the relationship between parent and child is a pure field transfer at a single boundary. When multiple embedded-DAG placements accumulate to a single growing structure (agent memory, a ranked-results list, an audit log), pass a `Store` into each node's constructor instead. The store lives outside the DAG topology; every placement reads and writes to the same instance without threading values through stateMapping at every hop. See [Shared state](../guide/shared-state) for the decision matrix, the concurrency contract, and checkpoint integration.
-

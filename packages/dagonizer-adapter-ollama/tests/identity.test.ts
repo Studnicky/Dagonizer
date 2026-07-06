@@ -11,7 +11,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import { ChatRequest, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 
 import { OllamaApiAdapter } from '../src/index.js';
 
@@ -142,7 +142,7 @@ void test('OllamaApiAdapter.chat POSTs max_tokens (not max_completion_tokens) fo
     return new Response(CHAT_RESPONSE_BODY, { "status": 200 });
   });
   const adapter = new OllamaApiAdapter({ "model": 'llama3:latest' });
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'hello' }],
     'maxTokens': 256,
   });
@@ -171,7 +171,7 @@ void test('OllamaApiAdapter.chat injects configured systemPrompt as leading mess
     return new Response(CHAT_RESPONSE_BODY, { "status": 200 });
   });
   const adapter = new OllamaApiAdapter({ "model": 'llama3:latest', "systemPrompt": 'You are X.' });
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'hello' }],
   });
   try {
@@ -194,7 +194,7 @@ void test('OllamaApiAdapter.chat does not override an existing system turn with 
     return new Response(CHAT_RESPONSE_BODY, { "status": 200 });
   });
   const adapter = new OllamaApiAdapter({ "model": 'llama3:latest', "systemPrompt": 'You are X.' });
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [
       { 'role': 'system', 'content': 'You are Y.' },
       { 'role': 'user', 'content': 'hello' },
@@ -230,7 +230,7 @@ void test('OllamaApiAdapter.chat rejects with LlmError on timeout (hanging fetch
     });
   });
   const adapter = new OllamaApiAdapter({ "model": 'llama3:latest', "maxAttempts": 1, "timeoutMs": 1 });
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'hello' }],
   });
   try {

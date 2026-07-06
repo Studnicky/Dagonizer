@@ -12,8 +12,9 @@
  * (a deterministic recovery node); no engine `timeoutMs` crutch.
  */
 
-import { Batch, MonadicNode, NodeOutputBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -51,9 +52,10 @@ export class ComposeMemoryResponseNode extends MonadicNode<ArchivistState, 'draf
         : undefined;
       const conversation = state.conversation.length > 0 ? state.conversation : undefined;
 
-      const controller = new AbortController();
-      const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS);
-      const signal = AbortSignal.any([context.signal, controller.signal]);
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
       try {
         state.draft = await this.services.llm.composeMemoryRecall(
           state.query,
@@ -63,23 +65,21 @@ export class ComposeMemoryResponseNode extends MonadicNode<ArchivistState, 'draf
           signal,
         );
         state.clearAttempts(context.nodeName);
-        const result = NodeOutputBuilder.of('drafted');
+        const result = NodeOutput.create('drafted');
         for (const error of result.errors) state.collectError(error);
         draftedItems.push(item);
       } catch (err) {
         if (context.signal.aborted) throw err;
         if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-          const result = NodeOutputBuilder.of('retry');
+          const result = NodeOutput.create('retry');
           for (const error of result.errors) state.collectError(error);
           retryItems.push(item);
         } else {
           state.clearAttempts(context.nodeName);
-          const result = NodeOutputBuilder.of('salvage');
+          const result = NodeOutput.create('salvage');
           for (const error of result.errors) state.collectError(error);
           salvageItems.push(item);
         }
-      } finally {
-        clearTimeout(handle);
       }
     }
 
@@ -87,6 +87,6 @@ export class ComposeMemoryResponseNode extends MonadicNode<ArchivistState, 'draf
     if (draftedItems.length > 0) routes.push(['drafted', Batch.from(draftedItems)]);
     if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
     if (salvageItems.length > 0) routes.push(['salvage', Batch.from(salvageItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }

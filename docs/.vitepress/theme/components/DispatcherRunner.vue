@@ -37,7 +37,13 @@ import { LogFault } from '@studnicky/logger';
 
 import { DispatcherState } from '../../../../examples/the-dispatcher/DispatcherState.ts';
 import type { ConversationTurnType } from '../../../../examples/the-dispatcher/DispatcherState.ts';
-import { DispatcherBundleFactory } from '../../../../examples/the-dispatcher/dag.ts';
+import { supportDispatcherDAG } from '../../../../examples/the-dispatcher/dag.ts';
+import { AiComposeNode } from '../../../../examples/the-dispatcher/nodes/AiComposeNode.ts';
+import { ClassifyMessageNode } from '../../../../examples/the-dispatcher/nodes/ClassifyMessageNode.ts';
+import { DeclineNode } from '../../../../examples/the-dispatcher/nodes/DeclineNode.ts';
+import { ParkForOperatorNode } from '../../../../examples/the-dispatcher/nodes/ParkForOperatorNode.ts';
+import { SendResponseNode } from '../../../../examples/the-dispatcher/nodes/SendResponseNode.ts';
+import { SetupNode } from '../../../../examples/the-dispatcher/nodes/SetupNode.ts';
 import type { DispatcherServices } from '../../../../examples/the-dispatcher/services.ts';
 import { DispatcherLlmClient } from '../../../../examples/the-dispatcher/providers/DispatcherLlmClient.ts';
 import { DispatcherIntentClassifier } from '../../../../examples/the-dispatcher/providers/DispatcherIntentClassifier.ts';
@@ -98,7 +104,7 @@ const conversation     = ref<ConversationTurnType[]>([]);
 const trace            = ref<TraceEvent[]>([]);
 const logEvents        = ref<LogEvent[]>([]);
 const logger           = new DomConsoleLogger({ 'events': logEvents.value });
-const dispatcherDag    = ref<DAGType>(DispatcherBundleFactory.structure());
+const dispatcherDag    = ref<DAGType>(supportDispatcherDAG);
 const dagGraph         = ref<InstanceType<typeof DagGraph> | null>(null);
 const streamRef        = ref<HTMLOListElement | null>(null);
 const leftActiveKey    = ref<'customer' | 'operator'>('customer');
@@ -431,9 +437,13 @@ async function ask(): Promise<void> {
 
   await dagGraph.value?.reset();
 
-  // Re-build the bundle each run (fresh node instances, no cross-run state).
   const services = buildServices();
-  const bundle = DispatcherBundleFactory.create(services);
+  const setup           = new SetupNode();
+  const classifyMessage = new ClassifyMessageNode(services);
+  const aiCompose       = new AiComposeNode(services);
+  const parkForOperator = new ParkForOperatorNode();
+  const sendResponse    = new SendResponseNode();
+  const decline         = new DeclineNode();
 
   const state = new DispatcherState();
   state.message           = queryText;
@@ -442,7 +452,10 @@ async function ask(): Promise<void> {
   state.language          = visitorLanguage;
 
   const dispatcher = new DispatcherBrowserObserver(logger, services);
-  dispatcher.registerBundle(bundle);
+  dispatcher.registerBundle({
+    'nodes': [setup, classifyMessage, aiCompose, parkForOperator, sendResponse, decline],
+    'dags':  [supportDispatcherDAG],
+  });
 
   activeAbortController = new AbortController();
   try {
@@ -481,9 +494,13 @@ async function sendOperatorResponse(): Promise<void> {
   }];
   logger.note(`operator response captured — resuming from cursor: ${pe.cursor}`);
 
-  // Re-build the bundle for the resume run (fresh node instances).
   const services = buildServices();
-  const bundle = DispatcherBundleFactory.create(services);
+  const setup           = new SetupNode();
+  const classifyMessage = new ClassifyMessageNode(services);
+  const aiCompose       = new AiComposeNode(services);
+  const parkForOperator = new ParkForOperatorNode();
+  const sendResponse    = new SendResponseNode();
+  const decline         = new DeclineNode();
   await dagGraph.value?.reset();
 
   let restored: { state: DispatcherState; dagName: string; cursor: string } | null = null;
@@ -511,7 +528,10 @@ async function sendOperatorResponse(): Promise<void> {
   restored.state.response = responseText;
 
   const dispatcher = new DispatcherBrowserObserver(logger, services);
-  dispatcher.registerBundle(bundle);
+  dispatcher.registerBundle({
+    'nodes': [setup, classifyMessage, aiCompose, parkForOperator, sendResponse, decline],
+    'dags':  [supportDispatcherDAG],
+  });
 
   activeAbortController = new AbortController();
   try {

@@ -27,8 +27,8 @@ import { Batch } from '../../entities/batch/Batch.js';
 import type { ItemType } from '../../entities/batch/Item.js';
 import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
+import { NodeError } from '../../entities/node/NodeError.js';
+import { NodeOutput } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
 import { DAGError } from '../../errors/DAGError.js';
 import { BatchItemExecutor } from '../../execution/BatchItemExecutor.js';
@@ -150,13 +150,13 @@ export abstract class CallModelNode<
       const routed = RoutingStreamSink.of(this.sink, this.routeKey(state), source);
       const response = await adapter.chatStream(request, routed);
       this.storeResponse(state, response, context);
-      return NodeOutputBuilder.of(response.message.variant);
+      return NodeOutput.create(response.message.variant);
     } catch (cause) {
       const error = DAGError.coerce(cause);
       const recoverable = cause instanceof LlmError ? cause.classification.retryable : true;
-      return NodeOutputBuilder.of('error', {
+      return NodeOutput.create('error', {
         'errors': [
-          NodeErrorBuilder.from(
+          NodeError.create(
             'modelCallFailed',
             error.message,
             'CallModelNode.execute',

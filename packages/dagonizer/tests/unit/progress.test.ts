@@ -1,6 +1,6 @@
 /**
  * Unit tests for `@studnicky/dagonizer/progress`:
- *   - BusEventEnvelopeBuilder: wire envelope construction
+ *   - BusEventEnvelope: wire envelope construction
  *   - EventBus: publish→subscribe delivery (backed by `@studnicky/event-bus`'s
  *               typed async pub/sub + per-subscriber `BusQueue`), unsubscribe,
  *               close, throwing-handler isolation, multi-handler fan-out
@@ -15,18 +15,20 @@ import { describe, it } from 'node:test';
 
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { BusEventEnvelopeType } from '../../src/progress/BusEventEnvelope.js';
-import { BusEventEnvelopeBuilder } from '../../src/progress/BusEventEnvelope.js';
+import { BusEventEnvelope } from '../../src/progress/BusEventEnvelope.js';
 import { BusObserver } from '../../src/progress/BusObserver.js';
 import type { DagLifecycleEventType } from '../../src/progress/BusObserver.js';
 import { EventBus } from '../../src/progress/EventBus.js';
 import { SseStream } from '../../src/progress/SseStream.js';
+import { Scheduler } from '../../src/runtime/Scheduler.js';
+import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 
-// ── BusEventEnvelopeBuilder ──────────────────────────────────────────────────
+// ── BusEventEnvelope ──────────────────────────────────────────────────
 
-describe('BusEventEnvelopeBuilder', () => {
+describe('BusEventEnvelope', () => {
   it('creates an envelope with topic, payload, and a numeric timestamp', () => {
     const before = Date.now();
-    const envelope = BusEventEnvelopeBuilder.of('runs', { 'nodeId': 'a' });
+    const envelope = BusEventEnvelope.create('runs', { 'nodeId': 'a' });
     const after = Date.now();
 
     assert.equal(envelope.topic, 'runs');
@@ -38,17 +40,17 @@ describe('BusEventEnvelopeBuilder', () => {
 
   it('withTimestamp respects the explicit timestamp', () => {
     const ts = 123_456_789;
-    const envelope = BusEventEnvelopeBuilder.withTimestamp('t', 42, ts);
+    const envelope = BusEventEnvelope.create('t', 42, { 'timestamp': ts });
 
     assert.equal(envelope.timestamp, ts);
     assert.equal(envelope.payload, 42);
   });
 
   it('works with primitive payloads: string, number, boolean, null', () => {
-    assert.equal(BusEventEnvelopeBuilder.of('x', 'hello').payload, 'hello');
-    assert.equal(BusEventEnvelopeBuilder.of('x', 99).payload, 99);
-    assert.equal(BusEventEnvelopeBuilder.of('x', true).payload, true);
-    assert.equal(BusEventEnvelopeBuilder.of('x', null).payload, null);
+    assert.equal(BusEventEnvelope.create('x', 'hello').payload, 'hello');
+    assert.equal(BusEventEnvelope.create('x', 99).payload, 99);
+    assert.equal(BusEventEnvelope.create('x', true).payload, true);
+    assert.equal(BusEventEnvelope.create('x', null).payload, null);
   });
 });
 
@@ -387,6 +389,31 @@ describe('SseStream.of — heartbeat (interval=0 disables)', () => {
     reader.cancel();
     reader.releaseLock();
     await bus.close();
+  });
+
+  it('emits heartbeat frames from the configured scheduler', async () => {
+    const scheduler = new VirtualScheduler(0);
+    Scheduler.configure(scheduler);
+    const bus = EventBus.of();
+    const stream = SseStream.of(bus, ['t'], { 'heartbeatMs': 25 });
+    const reader = stream.readable.getReader();
+
+    try {
+      const connectedFrame = (await reader.read()).value;
+      assert.equal(connectedFrame, 'data: {"connected":true}\n\n');
+
+      const heartbeat = reader.read();
+      scheduler.advance(25);
+      await new Promise<void>((resolve) => { setImmediate(resolve); });
+
+      const heartbeatFrame = (await heartbeat).value;
+      assert.equal(heartbeatFrame, ': heartbeat\n\n');
+    } finally {
+      await reader.cancel();
+      reader.releaseLock();
+      await bus.close();
+      Scheduler.reset();
+    }
   });
 });
 

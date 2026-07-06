@@ -10,7 +10,7 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region confirm-delivery-node
@@ -48,7 +48,7 @@ export class ConfirmDeliveryNode extends MonadicNode<CartographerState, 'confirm
       };
     }
 
-    return RoutedBatchBuilder.of('confirmed', batch);
+    return RoutedBatch.create('confirmed', batch);
   }
 }
 

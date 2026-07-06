@@ -14,7 +14,7 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-geo-node
@@ -70,10 +70,10 @@ export class RouteGeoNode extends MonadicNode<CartographerState, 'has-geo' | 'ne
 
     if (hasResolvedGeo) {
       state.routing = { ...state.routing, 'geoLookupSkipped': true, 'geoLookupRun': false };
-      return NodeOutputBuilder.of('has-geo');
+      return NodeOutput.create('has-geo');
     }
     state.routing = { ...state.routing, 'geoLookupRun': true, 'geoLookupSkipped': false };
-    return NodeOutputBuilder.of('needs-geo');
+    return NodeOutput.create('needs-geo');
   }
 }
 // #endregion route-geo-node

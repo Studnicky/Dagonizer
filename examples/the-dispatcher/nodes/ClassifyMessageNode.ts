@@ -28,7 +28,7 @@
  *   customers in the flow.
  */
 
-import { Batch, BatchItemExecutor, MonadicNode, NodeOutputBuilder } from '@studnicky/dagonizer';
+import { Batch, BatchItemExecutor, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
@@ -90,12 +90,12 @@ export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' 
     // Trolley switch: force human routing regardless of content.
     if (state.humanMode) {
       state.escalationReason = 'Human mode active — all messages routed to operator';
-      return NodeOutputBuilder.of('escalate');
+      return NodeOutput.create('escalate');
     }
 
     // Empty message → off-topic without LLM.
     if (state.message.trim().length === 0) {
-      return NodeOutputBuilder.of('off-topic');
+      return NodeOutput.create('off-topic');
     }
 
     if (state.classificationMode === 'llm') {
@@ -122,7 +122,7 @@ export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' 
       intent = await this.#services.llm.classify(state.message, state.conversation, context.signal);
     } catch {
       state.escalationReason = 'LLM unavailable; escalated for safety';
-      return NodeOutputBuilder.of('escalate');
+      return NodeOutput.create('escalate');
     }
     return this.route(state, intent);
   }
@@ -134,9 +134,9 @@ export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' 
   ): NodeOutputType<'routine' | 'escalate' | 'off-topic'> {
     if (intent === 'escalate') {
       state.escalationReason = 'Agent determined this message requires human review.';
-      return NodeOutputBuilder.of('escalate');
+      return NodeOutput.create('escalate');
     }
-    if (intent === 'off-topic') return NodeOutputBuilder.of('off-topic');
-    return NodeOutputBuilder.of('routine');
+    if (intent === 'off-topic') return NodeOutput.create('off-topic');
+    return NodeOutput.create('routine');
   }
 }

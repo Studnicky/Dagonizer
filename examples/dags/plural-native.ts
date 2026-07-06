@@ -5,7 +5,7 @@
  */
 
 // #region execute-contract
-import { MonadicNode, RoutedBatchBuilder, Batch } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch, Batch } from '@studnicky/dagonizer';
 import type { NodeContextType, NodeStateInterface, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // The execute signature: consume Batch<TState>, return RoutedBatchType<TOutput, TState>.
@@ -18,13 +18,13 @@ export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
   }
 
   async execute(batch: Batch<NodeStateInterface>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', NodeStateInterface>> {
-    return RoutedBatchBuilder.of('out', batch);
+    return RoutedBatch.create('out', batch);
   }
 }
 // #endregion execute-contract
 
 // #region node-taxonomy
-import { NodeOutputBuilder, NodeStateBase } from '@studnicky/dagonizer';
+import { NodeOutput, NodeStateBase } from '@studnicky/dagonizer';
 
 // EventState: domain state shared by both node variants below.
 export class EventState extends NodeStateBase {
@@ -50,10 +50,10 @@ export class GeoNode extends MonadicNode<EventState, 'has-geo' | 'needs-geo'> {
   override async execute(batch: Batch<EventState>) {
     const entries: Array<readonly ['has-geo' | 'needs-geo', Batch<EventState>]> = [];
     for (const item of batch) {
-      const output = NodeOutputBuilder.of(item.state.coords === null ? 'needs-geo' : 'has-geo');
+      const output = NodeOutput.create(item.state.coords === null ? 'needs-geo' : 'has-geo');
       entries.push([output.output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -73,7 +73,7 @@ export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
         state.region = geoCache.lookup(state.coords);
       }
     }
-    return RoutedBatchBuilder.of('enriched', batch);
+    return RoutedBatch.create('enriched', batch);
   }
 }
 // #endregion node-taxonomy
@@ -96,7 +96,7 @@ export class ScoreNode extends MonadicNode<ScoreState, 'scored'> {
   }
 
   override async execute(batch: Batch<ScoreState>) {
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('scored').output, batch);
+    return RoutedBatch.create(NodeOutput.create('scored').output, batch);
   }
 }
 

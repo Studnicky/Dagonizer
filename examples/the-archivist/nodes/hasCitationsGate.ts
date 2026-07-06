@@ -15,7 +15,7 @@
  * dereferencing typed fields.
  */
 
-import { Batch, MonadicNode, NodeOutputBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import { MemoryStore } from '../memory/MemoryStore.ts';
@@ -59,7 +59,7 @@ export class HasCitationsGateNode extends MonadicNode<ArchivistState, 'pass' | '
         if (state.failureCause.trim().length === 0) {
           state.failureCause = 'No candidates found after searching all available sources. ';
         }
-        const result = NodeOutputBuilder.of('fail');
+        const result = NodeOutput.create('fail');
         for (const error of result.errors) state.collectError(error);
         failItems.push(item);
         continue;
@@ -79,7 +79,7 @@ export class HasCitationsGateNode extends MonadicNode<ArchivistState, 'pass' | '
         }
       }
       if (passed) {
-        const result = NodeOutputBuilder.of('pass');
+        const result = NodeOutput.create('pass');
         for (const error of result.errors) state.collectError(error);
         passItems.push(item);
         continue;
@@ -87,7 +87,7 @@ export class HasCitationsGateNode extends MonadicNode<ArchivistState, 'pass' | '
       if (state.failureCause.trim().length === 0) {
         state.failureCause = 'No candidates found after searching all available sources. ';
       }
-      const result = NodeOutputBuilder.of('fail');
+      const result = NodeOutput.create('fail');
       for (const error of result.errors) state.collectError(error);
       failItems.push(item);
     }
@@ -95,6 +95,6 @@ export class HasCitationsGateNode extends MonadicNode<ArchivistState, 'pass' | '
     const routes: Array<readonly ['pass' | 'fail', Batch<ArchivistState>]> = [];
     if (passItems.length > 0) routes.push(['pass', Batch.from(passItems)]);
     if (failItems.length > 0) routes.push(['fail', Batch.from(failItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }

@@ -19,9 +19,9 @@ import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
-import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
+import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
+import { NodeOutput } from '../../src/entities/node/NodeOutput.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
@@ -33,7 +33,7 @@ class TagState extends NodeStateBase {
   }
 }
 
-const ctx: NodeContextType = NodeContextBuilder.of('antipattern-dag', 'tag', new AbortController().signal, undefined);
+const ctx: NodeContextType = NodeContext.create('antipattern-dag', 'tag', new AbortController().signal, undefined);
 
 /** The supported way: a `MonadicNode` with local item routing. Tags positives, skips the rest. */
 class TagMonadicNode extends MonadicNode<TagState, 'tagged' | 'skip'> {
@@ -45,7 +45,7 @@ class TagMonadicNode extends MonadicNode<TagState, 'tagged' | 'skip'> {
   override async execute(batch: Batch<TagState>): Promise<RoutedBatchType<'tagged' | 'skip', TagState>> {
     const acc = new Map<'tagged' | 'skip', ItemType<TagState>[]>();
     for (const item of batch) {
-      const result = NodeOutputBuilder.of(item.state.value > 0 ? 'tagged' : 'skip');
+      const result = NodeOutput.create(item.state.value > 0 ? 'tagged' : 'skip');
       for (const error of result.errors) item.state.collectError(error);
       const bucket = acc.get(result.output);
       if (bucket !== undefined) { bucket.push(item); } else { acc.set(result.output, [item]); }

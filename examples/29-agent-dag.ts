@@ -1,18 +1,16 @@
 /**
- * 29-agent-builder: AgentBuilder.loop — assemble the canonical 8-node agent loop.
+ * 29-agent-dag: JSON-LD canonical 8-node agent loop.
  *
  * Shows how to:
  *   1. Subclass the 8 abstract base nodes from @studnicky/dagonizer/patterns.
- *   2. Call AgentBuilder.loop(nodes, options?) to assemble a ready-to-register DAGType.
+ *   2. Register a canonical JSON-LD DAG document authored in a separate module.
  *   3. Register nodes + DAG + tool bundle on a Dagonizer.
  *   4. Execute one text-answer turn (stub LLM returns a canned response).
  *
  * The LLM adapter in this example is a stub that always returns a plain text
  * response — no real model is required. Labeled with "STUB:" in comments.
  *
- * DAG factory: examples/dags/29-agent-builder.ts
- *
- * Run: npx tsx examples/29-agent-builder.ts
+ * Run: npx tsx examples/29-agent-dag.ts
  */
 
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -24,7 +22,7 @@ import type {
   ChatStreamChunkType,
   ToolCallType,
 } from '@studnicky/dagonizer/adapter';
-import { ChatStreamChunkBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatStreamChunk } from '@studnicky/dagonizer/adapter';
 import {
   AppendAssistantNode,
   BuildChatRequestNode,
@@ -35,12 +33,10 @@ import {
   NormalizeResponseNode,
   NormalizeToolCallsNode,
 } from '@studnicky/dagonizer/patterns';
-import type {
-  AgentLoopNodesType,
-  ToolCallScatterItemType,
-} from '@studnicky/dagonizer/patterns';
+import type { ToolCallScatterItemType } from '@studnicky/dagonizer/patterns';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
 import type { NodeContextType } from '@studnicky/dagonizer/entities';
+import { dag as agentDag } from './dags/29-agent-dag.ts';
 
 // ---------------------------------------------------------------------------
 // Domain state
@@ -98,7 +94,7 @@ class StubLlmAdapter implements LlmAdapterInterface {
     // STUB: buffered default — one full chat() call, one pushed chunk.
     const response = await this.chat(request);
     if (response.message.variant === 'text') {
-      await sink.push(ChatStreamChunkBuilder.of(response.message.content));
+      await sink.push(ChatStreamChunk.create(response.message.content));
     }
     return response;
   }
@@ -236,17 +232,11 @@ class MyAppendAssistantNode extends AppendAssistantNode<AgentState> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Assemble the agent loop via AgentBuilder.loop
-// ---------------------------------------------------------------------------
-
-import { dag } from './dags/29-agent-builder.js';
-
 // Shared stub LLM adapter.
 const llm = new StubLlmAdapter();
 
-// The 8 concrete node instances (AgentLoopNodesType).
-const nodes: AgentLoopNodesType = {
+// The 8 concrete node instances.
+const nodes = {
   'chatRequest':         new MyBuildChatRequestNode(),
   'callModel':           new MyCallModelNode(llm),
   'normalizeResponse':   new MyNormalizeResponseNode(),
@@ -278,14 +268,14 @@ const tools = new ToolRegistry();
 // tools.register(new MyTool());   // ← register your tools here
 dispatcher.registerBundle(tools.bundle());
 
-// Register the assembled agent-loop DAG.
-dispatcher.registerDAG(dag);
+// Register the authored agent-loop DAG.
+dispatcher.registerDAG(agentDag);
 
 // ---------------------------------------------------------------------------
 // Execute one text-answer turn
 // ---------------------------------------------------------------------------
 
-process.stdout.write('--- Example 29: AgentBuilder.loop ---\n\n');
+process.stdout.write('--- Example 29: agent DAG from canonical JSON-LD ---\n\n');
 
 const state = new AgentState();
 state.prompt = 'What is the capital of France?';
@@ -303,6 +293,6 @@ if (state.history.length > 0) {
   process.stdout.write(`Last message: [${last?.role ?? ''}] "${last?.content ?? ''}"\n`);
 }
 
-process.stdout.write('\nLesson: AgentBuilder.loop(nodes, options?) assembles the canonical 8-node agent\n');
-process.stdout.write('        loop into a DAGType. Subclass each abstract base node to adapt\n');
-process.stdout.write('        how state is read and written; AgentBuilder owns the topology.\n');
+process.stdout.write('\nLesson: a canonical JSON-LD DAG document is the authoring surface for the\n');
+process.stdout.write('        JSON-LD DAGType. Subclass each abstract base node to adapt\n');
+process.stdout.write('        how state is read and written; the DAG owns the topology.\n');

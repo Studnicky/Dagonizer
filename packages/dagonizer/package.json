@@ -253,6 +253,7 @@
     "@studnicky/cache": "^4.0.0",
     "@studnicky/clock": "^4.0.0",
     "@studnicky/concurrency": "^4.0.0",
+    "@studnicky/circular-buffer": "^4.0.0",
     "@studnicky/errors": "^4.0.0",
     "@studnicky/event-bus": "^4.0.0",
     "@studnicky/fsm": "^4.0.0",
@@ -263,6 +264,7 @@
     "@studnicky/retry": "^4.0.0",
     "@studnicky/scheduler": "^4.0.0",
     "@studnicky/signal": "^4.0.0",
+    "@studnicky/timing": "^4.0.0",
     "@studnicky/throttle": "^4.0.0",
     "@studnicky/types": "^4.0.0"
   },

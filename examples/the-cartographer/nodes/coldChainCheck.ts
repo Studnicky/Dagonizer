@@ -11,7 +11,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { ColdChain } from '../services.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region cold-chain-check-node
@@ -35,7 +35,7 @@ export class ColdChainCheckNode extends MonadicNode<CartographerState, 'checked'
       const shockG = v.eventType === 'sensor-reading' ? v.body.shockG : 0;
       item.state.coldChainBreach = ColdChain.breached(tempC, shockG);
     }
-    return RoutedBatchBuilder.of('checked', batch);
+    return RoutedBatch.create('checked', batch);
   }
 }
 // #endregion cold-chain-check-node

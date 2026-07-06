@@ -33,6 +33,8 @@ class DeterministicEmbedder implements EmbedderInterface {
   readonly id = 'deterministic';
   readonly displayName = 'deterministic';
   readonly dimensions = DIM;
+  embedCalls = 0;
+  embedBatchCalls = 0;
   readonly #queryVector: readonly number[];
 
   constructor(queryVector: readonly number[]) {
@@ -40,6 +42,7 @@ class DeterministicEmbedder implements EmbedderInterface {
   }
 
   async embed(text: string): Promise<readonly number[]> {
+    this.embedCalls += 1;
     // Anchor descriptions get a basis vector tied to their position;
     // anything else gets the queryVector under test.
     const anchorIndex = INTENT_LABELS.findIndex((intent) => INTENT_DESCRIPTIONS[intent] === text);
@@ -48,6 +51,7 @@ class DeterministicEmbedder implements EmbedderInterface {
   }
 
   async embedBatch(texts: readonly string[]): Promise<readonly (readonly number[])[]> {
+    this.embedBatchCalls += 1;
     const vectors: (readonly number[])[] = [];
     for (const text of texts) {
       vectors.push(await this.embed(text));
@@ -103,6 +107,8 @@ void test('IntentClassifier.create embeds every anchor once', async () => {
   const embedder = new DeterministicEmbedder(IntentVectors.basisVector(0));
   const classifier = await IntentClassifier.create(embedder);
   assert.equal(classifier.embedderId, 'deterministic');
+  assert.equal(embedder.embedBatchCalls, 1);
+  assert.equal(embedder.embedCalls, INTENT_LABELS.length);
 });
 
 void test('IntentClassifier picks the intent whose anchor matches the query embedding', async () => {

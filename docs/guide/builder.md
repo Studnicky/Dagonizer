@@ -4,7 +4,7 @@ description: 'DAGBuilder is the chainable authoring API for deterministic workfl
 seeAlso:
   - text: 'Authoring DAGs'
     link: './authoring'
-    description: 'when to choose DAGBuilder or raw DAG literals'
+    description: 'DAGBuilder as the code factory for JSON-LD DAG documents'
   - text: 'Subclassing state'
     link: './subclassing'
     description: 'define the state class your nodes mutate'
@@ -29,9 +29,9 @@ import { dag as builderDag } from '../../examples/dags/02-builder.topology.ts';
 
 # DAGBuilder
 
-`DAGBuilder` is a chainable authoring API for deterministic workflows: ETL pipelines, transformation chains, fixed sequences where the order IS the spec. Each `.node()` call narrows the `routes` map from the node `TOutput` union, so misspelled or missing routes are compile errors before the DAG runs.
+`DAGBuilder` is the chainable TypeScript factory for JSON-LD DAG documents: ETL pipelines, transformation chains, agent loops, embedded DAGs, scatter bodies, and fixed sequences all use the same surface. Each `.node()` call narrows the `routes` map from the node `TOutput` union, so misspelled or missing routes are compile errors before the DAG runs.
 
-See [Authoring DAGs](./authoring) for the decision matrix between DAGBuilder and raw `DAG` literals. Both surfaces produce the same canonical `DAG` JSON-LD object.
+See [Authoring DAGs](./authoring) for how DAGBuilder emits the canonical JSON-LD `DAG` object that serialization, validation, visualization, and dispatch all consume.
 
 ## Basic usage
 

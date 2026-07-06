@@ -5,7 +5,7 @@ import type { AddressGeocoder } from '../../contracts/AddressGeocoder.ts';
 import { OutcomeResolution } from './OutcomeResolution.ts';
 import {
   MonadicNode,
-  RoutedBatchBuilder,
+  RoutedBatch,
   type Batch,
   type NodeContextType,
   type RoutedBatchType,
@@ -46,7 +46,7 @@ export class ResolveAddressNode extends MonadicNode<CartographerState, 'resolved
       }
       item.state.candidate = OutcomeResolution.of(outcome, 'address', raw.weight);
     }
-    return RoutedBatchBuilder.of('resolved', batch);
+    return RoutedBatch.create('resolved', batch);
   }
 }
 // #endregion resolve-address-node

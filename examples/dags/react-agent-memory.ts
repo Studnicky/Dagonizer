@@ -6,7 +6,7 @@
  *
  * Two DAGs live here:
  *
- *   1. `agentDag` — the canonical 8-node ReAct loop (`AgentBuilder.loop`),
+ *   1. `agentDag` - the JSON-LD canonical 8-node ReAct loop,
  *      driven by `ScriptedAdapter`: turn 1 emits a structured `'tools'`
  *      response (`lookup`), turn 2 (once a `tool`-role message is present
  *      in history) emits a plain-text final answer. `MyDecodeTextToolCallsNode`
@@ -46,7 +46,7 @@
  * summary, injected as a leading `system` message on the next run.
  */
 
-import { NodeStateBase, Validator } from '@studnicky/dagonizer';
+import { DAG_CONTEXT, NodeStateBase, Validator } from '@studnicky/dagonizer';
 import type {
   DAGType,
   EntityValidatorInterface,
@@ -57,7 +57,7 @@ import type {
 } from '@studnicky/dagonizer';
 import { ReasoningTraceItemSchema } from '@studnicky/dagonizer';
 import type { ReasoningTraceItemType } from '@studnicky/dagonizer';
-import { BaseAdapter, ChatStreamChunkBuilder } from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatStreamChunk } from '@studnicky/dagonizer/adapter';
 import type {
   ChatMessageType,
   ChatRequestType,
@@ -69,7 +69,6 @@ import type {
 } from '@studnicky/dagonizer/adapter';
 import type { StreamSinkInterface } from '@studnicky/dagonizer';
 import {
-  AgentBuilder,
   AgentTraceProducer,
   AppendAssistantNode,
   BuildChatRequestNode,
@@ -81,8 +80,6 @@ import {
   NormalizeToolCallsNode,
 } from '@studnicky/dagonizer/patterns';
 import type {
-  AgentLoopNodesType,
-  AgentLoopOptionsType,
   BindingType,
   QuadType,
   TermType,
@@ -92,7 +89,6 @@ import type {
 import { RecordFindingsNode } from '@studnicky/dagonizer-patterns-graph';
 import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
 import type { ToolInterface } from '@studnicky/dagonizer/tool';
-import { DAG_CONTEXT } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Provenance vocabulary
@@ -219,7 +215,7 @@ export class ScriptedAdapter extends BaseAdapter {
     const text = response.message.variant === 'text' ? response.message.content : '';
     const words = text.split(' ').filter((word) => word.length > 0);
     for (const word of words) {
-      await sink.push(ChatStreamChunkBuilder.of(`${word} `));
+      await sink.push(ChatStreamChunk.create(`${word} `));
     }
     return response;
   }
@@ -582,143 +578,134 @@ export class ReActRecall {
   }
 }
 
-// ---------------------------------------------------------------------------
-// AgentLoopDagFactory: assembles the agent-loop DAG via AgentBuilder.loop
-// ---------------------------------------------------------------------------
-
-export class AgentLoopDagFactory {
-  private constructor() { /* static class */ }
-
-  /**
-   * Assemble the canonical 8-node agent loop.
-   *
-   * @param nodes   - The eight concrete node instances (see `AgentLoopNodesType`).
-   * @param options - Optional name/version overrides (defaults: `'react-agent'` / `'1'`).
-   * @returns A `DAGType` ready for `dispatcher.registerDAG(dag)`.
-   */
-  static create(nodes: AgentLoopNodesType, options: AgentLoopOptionsType = {}): DAGType {
-    return AgentBuilder.loop(nodes, options);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Pre-assembled agentDag export (placeholder nodes for the module-level export)
-//
-// Mirrors examples/dags/29-agent-builder.ts: only the DAG topology (name,
-// version, placements, routes) matters at import time — these stub nodes are
-// never registered or executed. The runnable entry point constructs its own
-// real node instances and passes them to `AgentLoopDagFactory.create`.
-// ---------------------------------------------------------------------------
-
-class _StubState extends NodeStateBase {}
-
-class _StubBuildChatRequest extends BuildChatRequestNode<_StubState> {
-  readonly name = 'build-request';
-  protected buildRequest(_state: _StubState, ctx: NodeContextType): ChatRequestType {
-    return {
-      'messages':     [],
-      'tools':        [],
-      'toolChoice':   { 'type': 'auto' },
-      'outputSchema': { 'variant': 'none' },
-      'maxTokens':    256,
-      'temperature':  0,
-      'signal':       ctx.signal,
-    };
-  }
-}
-
-class _StubCallModel extends CallModelNode<_StubState> {
-  readonly name = 'call-model';
-  constructor(llm: LlmAdapterInterface) { super(llm); }
-  protected getRequest(_state: _StubState, ctx: NodeContextType): ChatRequestType {
-    return {
-      'messages':     [],
-      'tools':        [],
-      'toolChoice':   { 'type': 'auto' },
-      'outputSchema': { 'variant': 'none' },
-      'maxTokens':    256,
-      'temperature':  0,
-      'signal':       ctx.signal,
-    };
-  }
-  protected storeResponse(_state: _StubState, _response: ChatResponseType, _ctx: NodeContextType): void { /* no-op */ }
-}
-
-class _StubNormalizeResponse extends NormalizeResponseNode<_StubState> {
-  readonly name = 'normalize-response';
-  protected getResponse(_state: _StubState, _ctx: NodeContextType): ChatResponseType | null { return null; }
-}
-
-class _StubDecodeTextToolCalls extends DecodeTextToolCallsNode<_StubState> {
-  readonly name = 'decode-tools';
-  protected getText(_state: _StubState, _ctx: NodeContextType): string { return ''; }
-  protected storeToolCalls(_state: _StubState, _calls: readonly ToolCallType[], _ctx: NodeContextType): void { /* no-op */ }
-}
-
-class _StubNormalizeToolCalls extends NormalizeToolCallsNode<_StubState> {
-  readonly name = 'normalize-tools';
-  protected getToolCalls(_state: _StubState, _ctx: NodeContextType): readonly ToolCallType[] { return []; }
-  protected writeNormalized(_state: _StubState, _calls: readonly ToolCallType[], _ctx: NodeContextType): void { /* no-op */ }
-}
-
-class _StubBuildToolWorksets extends BuildToolWorksetsNode<_StubState> {
-  readonly name = 'build-worksets';
-  protected getToolCalls(_state: _StubState, _ctx: NodeContextType): readonly ToolCallType[] { return []; }
-  protected classifyCall(_call: ToolCallType, _state: _StubState, _ctx: NodeContextType): 'safe' | 'exclusive' { return 'safe'; }
-  protected writeSafeWorkset(_state: _StubState, _calls: readonly ToolCallScatterItemType[], _ctx: NodeContextType): void { /* no-op */ }
-  protected writeExclusiveWorkset(_state: _StubState, _calls: readonly ToolCallScatterItemType[], _ctx: NodeContextType): void { /* no-op */ }
-}
-
-class _StubCollectToolResults extends CollectToolResultsNode<_StubState> {
-  readonly name = 'collect-results';
-  protected getGatheredResults(_state: _StubState, _ctx: NodeContextType): readonly unknown[] { return []; }
-  protected writeResult(_state: _StubState, _results: readonly unknown[], _ctx: NodeContextType): void { /* no-op */ }
-}
-
-class _StubAppendAssistant extends AppendAssistantNode<_StubState> {
-  readonly name = 'append-assistant';
-  protected getResponse(_state: _StubState, _ctx: NodeContextType): ChatResponseType | null { return null; }
-  protected append(_state: _StubState, _response: ChatResponseType, _ctx: NodeContextType): void { /* no-op */ }
-}
-
-// A null-object LLM adapter — only used to satisfy the CallModelNode constructor for the type stubs.
-const _nullLlm: LlmAdapterInterface = {
-  'id': '_null',
-  'displayName': 'null',
-  'capabilities': { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
-  async chat(_r: ChatRequestType): Promise<ChatResponseType> {
-    return { 'message': { 'variant': 'text', 'content': '' }, 'finishReason': 'stop', 'usage': { 'promptTokens': 0, 'completionTokens': 0 } };
-  },
-  async chatStream(
-    request: ChatRequestType,
-    sink: StreamSinkInterface<ChatStreamChunkType>,
-  ): Promise<ChatResponseType> {
-    const response = await this.chat(request);
-    if (response.message.variant === 'text') {
-      await sink.push(ChatStreamChunkBuilder.of(response.message.content));
-    }
-    return response;
-  },
-  async connect():    Promise<void>              { /* no-op */ },
-  async disconnect(): Promise<void>              { /* no-op */ },
-  async probe():      Promise<boolean>           { return false; },
-  async listModels(): Promise<readonly never[]>  { return []; },
-};
-
 /**
  * The pre-assembled agent-loop DAG, registered under the name `'react-agent'`.
  * Import and pass to `dispatcher.registerDAG(agentDag)`.
  */
-export const agentDag: DAGType = AgentLoopDagFactory.create({
-  'chatRequest':         new _StubBuildChatRequest(),
-  'callModel':           new _StubCallModel(_nullLlm),
-  'normalizeResponse':   new _StubNormalizeResponse(),
-  'decodeTextToolCalls': new _StubDecodeTextToolCalls(),
-  'normalizeToolCalls':  new _StubNormalizeToolCalls(),
-  'toolWorksets':        new _StubBuildToolWorksets(),
-  'collectToolResults':  new _StubCollectToolResults(),
-  'appendAssistant':     new _StubAppendAssistant(),
-}, { 'name': 'react-agent', 'version': '1' });
+export const agentDag: DAGType = {
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:react-agent',
+  '@type': 'DAG',
+  'name': 'react-agent',
+  'version': '1',
+  'entrypoint': 'build-request',
+  'nodes': [
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/build-request',
+      '@type': 'SingleNode',
+      'name': 'build-request',
+      'node': 'build-request',
+      'outputs': { 'ready': 'call-model', 'error': 'end-error' },
+    },
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/call-model',
+      '@type': 'SingleNode',
+      'name': 'call-model',
+      'node': 'call-model',
+      'outputs': {
+        'text': 'normalize-response',
+        'tools': 'normalize-response',
+        'mixed': 'normalize-response',
+        'error': 'end-error',
+      },
+    },
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/normalize-response',
+      '@type': 'SingleNode',
+      'name': 'normalize-response',
+      'node': 'normalize-response',
+      'outputs': {
+        'text': 'append-assistant',
+        'tools': 'decode-tools',
+        'mixed': 'decode-tools',
+        'empty': 'end-error',
+        'error': 'end-error',
+      },
+    },
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/append-assistant',
+      '@type': 'SingleNode',
+      'name': 'append-assistant',
+      'node': 'append-assistant',
+      'outputs': { 'done': 'end-done', 'error': 'end-error' },
+    },
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/decode-tools',
+      '@type': 'SingleNode',
+      'name': 'decode-tools',
+      'node': 'decode-tools',
+      'outputs': {
+        'decoded': 'normalize-tools',
+        'empty': 'end-error',
+        'error': 'end-error',
+      },
+    },
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/normalize-tools',
+      '@type': 'SingleNode',
+      'name': 'normalize-tools',
+      'node': 'normalize-tools',
+      'outputs': {
+        'valid': 'worksets',
+        'empty': 'end-error',
+        'error': 'end-error',
+      },
+    },
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/worksets',
+      '@type': 'SingleNode',
+      'name': 'worksets',
+      'node': 'build-worksets',
+      'outputs': {
+        'ready': 'dispatch-tools',
+        'empty': 'end-error',
+        'error': 'end-error',
+      },
+    },
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/dispatch-tools',
+      '@type': 'ScatterNode',
+      'name': 'dispatch-tools',
+      'source': 'safeWorkset',
+      'body': { 'dagFrom': 'dagName' },
+      'gather': {
+        'strategy': 'map',
+        'mapping': { 'output': 'toolOutputs' },
+      },
+      'outputs': {
+        'all-success': 'collect-results',
+        'partial': 'collect-results',
+        'all-error': 'collect-results',
+        'empty': 'collect-results',
+      },
+      'itemKey': 'currentItem',
+      'reducer': 'aggregate',
+    },
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/collect-results',
+      '@type': 'SingleNode',
+      'name': 'collect-results',
+      'node': 'collect-results',
+      'outputs': {
+        'done': 'build-request',
+        'empty': 'build-request',
+        'error': 'end-error',
+      },
+    },
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/end-done',
+      '@type': 'TerminalNode',
+      'name': 'end-done',
+      'outcome': 'completed',
+    },
+    {
+      '@id': 'urn:noocodex:dag:react-agent/node/end-error',
+      '@type': 'TerminalNode',
+      'name': 'end-error',
+      'outcome': 'failed',
+    },
+  ],
+};
 
 // ---------------------------------------------------------------------------
 // traceDag: scatter over the reasoning-step stream

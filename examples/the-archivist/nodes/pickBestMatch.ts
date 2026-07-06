@@ -18,7 +18,7 @@
  * Output route is always 'picked'.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
@@ -61,7 +61,7 @@ export class PickBestMatchNode extends MonadicNode<ArchivistState, 'picked'> {
       state.candidates = picked;
     }
 
-    return RoutedBatchBuilder.of('picked', batch);
+    return RoutedBatch.create('picked', batch);
   }
 }
 

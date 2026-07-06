@@ -5,7 +5,7 @@
  * appends the exchange to the conversation log, and routes 'declined'.
  */
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
@@ -35,6 +35,6 @@ export class DeclineNode extends MonadicNode<DispatcherState, 'declined'> {
       state.conversation.push({ 'role': 'agent', 'text': state.response, 'ts': now });
     }
 
-    return RoutedBatchBuilder.of('declined', batch);
+    return RoutedBatch.create('declined', batch);
   }
 }

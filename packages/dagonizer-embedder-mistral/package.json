@@ -36,6 +36,9 @@
   "peerDependencies": {
     "@studnicky/dagonizer": "workspace:>=0.14.0 <1.0.0"
   },
+  "dependencies": {
+    "@studnicky/signal": "^4.0.0"
+  },
   "engines": {
     "node": ">=24"
   },

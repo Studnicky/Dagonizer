@@ -17,7 +17,7 @@ import { GeoBaseline } from '../../core/GeoBaseline.ts';
 
 import {
   MonadicNode,
-  RoutedBatchBuilder,
+  RoutedBatch,
   type Batch,
   type NodeContextType,
   type RoutedBatchType,
@@ -43,7 +43,7 @@ export class GeoBaselineNode extends MonadicNode<CartographerState, 'baselined'>
       item.state.resolvedGeo = GeoBaseline.resolvedGeo();
       item.state.geoContext  = GeoBaseline.geoContext();
     }
-    return RoutedBatchBuilder.of('baselined', batch);
+    return RoutedBatch.create('baselined', batch);
   }
 }
 

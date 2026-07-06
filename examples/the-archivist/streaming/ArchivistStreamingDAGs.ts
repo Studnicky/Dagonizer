@@ -11,7 +11,7 @@ import {
   Batch,
   MonadicNode,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { CandidateType } from '../entities/Book.ts';
@@ -43,7 +43,7 @@ export class CollectCandidateNode extends MonadicNode<StreamingDemoState, 'done'
   }
 
   override async execute(batch: Batch<StreamingDemoState>, _context: NodeContextType) {
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 

@@ -8,12 +8,12 @@
  * ToolInterface and routes on the result.
  */
 
-import { Batch, DAG_CONTEXT, MonadicNode, NodeOutputBuilder, NodeStateBase,
-  RoutedBatchBuilder,
+import { Batch, DAG_CONTEXT, MonadicNode, NodeOutput, NodeStateBase,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { LlmAdapterInterface, ToolCallType, ToolDefinitionType } from '@studnicky/dagonizer/adapter';
-import { ChatRequestBuilder, ToolCallCodec } from '@studnicky/dagonizer/adapter';
+import { ChatRequest, ToolCallCodec } from '@studnicky/dagonizer/adapter';
 import type { ToolInterface } from '@studnicky/dagonizer/tool';
 
 // ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ export class CallLlmNode extends MonadicNode<ToolUseState, 'tool_call' | 'text'>
       if (state.adapter === null) throw new Error('callLlm: adapter not set');
 
       const tools = state.registry.definitions();
-      const request = ChatRequestBuilder.from({
+      const request = ChatRequest.create({
         'messages': [
           { 'role': 'user', 'content': state.question },
         ],
@@ -127,7 +127,7 @@ export class CallLlmNode extends MonadicNode<ToolUseState, 'tool_call' | 'text'>
           state.dispatchedTool = firstCall.name;
           // Store as serialized text for codec demo path (codec handles prose too)
           state.toolCallRaw = JSON.stringify({ tool_calls: [{ name: firstCall.name, arguments: firstCall.arguments }] });
-          entries.push([NodeOutputBuilder.of('tool_call').output, Batch.from([item])]);
+          entries.push([NodeOutput.create('tool_call').output, Batch.from([item])]);
           continue;
         }
       }
@@ -139,16 +139,16 @@ export class CallLlmNode extends MonadicNode<ToolUseState, 'tool_call' | 'text'>
         const calls: ToolCallType[] = ToolCallCodec.decode(response.message.content, 'demo');
         if (calls.length > 0 && calls[0] !== undefined) {
           state.dispatchedTool = calls[0].name;
-          entries.push([NodeOutputBuilder.of('tool_call').output, Batch.from([item])]);
+          entries.push([NodeOutput.create('tool_call').output, Batch.from([item])]);
           continue;
         }
       }
 
       // No tool call produced — treat as plain text answer
       state.finalAnswer = response.message.variant === 'text' ? response.message.content : '(no text)';
-      entries.push([NodeOutputBuilder.of('text').output, Batch.from([item])]);
+      entries.push([NodeOutput.create('text').output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -169,22 +169,22 @@ export class DispatchToolNode extends MonadicNode<ToolUseState, 'done' | 'error'
       const [call] = calls;
       if (call === undefined) {
         state.finalAnswer = 'Error: could not decode tool call from adapter response.';
-        entries.push([NodeOutputBuilder.of('error').output, Batch.from([item])]);
+        entries.push([NodeOutput.create('error').output, Batch.from([item])]);
         continue;
       }
       const tool = state.registry.resolve(call.name);
       if (tool === null) {
         state.finalAnswer = `Error: unknown tool "${call.name}"`;
-        entries.push([NodeOutputBuilder.of('error').output, Batch.from([item])]);
+        entries.push([NodeOutput.create('error').output, Batch.from([item])]);
         continue;
       }
 
       const result = await tool.execute(call.arguments);
       state.toolResult = result;
       state.finalAnswer = `ToolInterface "${call.name}" returned: ${JSON.stringify(result)}`;
-      entries.push([NodeOutputBuilder.of('done').output, Batch.from([item])]);
+      entries.push([NodeOutput.create('done').output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -198,7 +198,7 @@ export class OnTextNode extends MonadicNode<ToolUseState, 'done'> {
     for (const item of batch) {
       process.stdout.write(`  [onText] direct answer: "${item.state.finalAnswer}"\n`);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -213,7 +213,7 @@ export class OnToolDoneNode extends MonadicNode<ToolUseState, 'done'> {
       const state = item.state;
       process.stdout.write(`  [onToolDone] tool="${state.dispatchedTool}" result=${JSON.stringify(state.toolResult)}\n`);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -227,7 +227,7 @@ export class OnToolErrorNode extends MonadicNode<ToolUseState, 'done'> {
     for (const item of batch) {
       process.stdout.write(`  [onToolError] ${item.state.finalAnswer}\n`);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

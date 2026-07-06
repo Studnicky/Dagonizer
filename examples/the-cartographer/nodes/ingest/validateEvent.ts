@@ -23,7 +23,7 @@ import type { CanonicalEventVariant } from '../../entities/CanonicalEvent.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
 import { IDENTITY_EXTRAS_BY_TYPE } from '../../services.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region validate-event-node
@@ -73,7 +73,7 @@ export class ValidateEventNode extends MonadicNode<CartographerState, 'validated
 
       state.ingestedEvents = variants;
     }
-    return RoutedBatchBuilder.of('validated', batch);
+    return RoutedBatch.create('validated', batch);
   }
 }
 

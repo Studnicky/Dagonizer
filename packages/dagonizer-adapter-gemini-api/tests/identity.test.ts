@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import type { ChatResponseType } from '@studnicky/dagonizer/adapter';
-import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import { ChatRequest, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 
 import { GeminiApiAdapter, GeminiModelsResponseSchema, GeminiModelsResponseValidator } from '../src/index.js';
 
@@ -252,7 +252,7 @@ void test('performChat posts maxTokens as generationConfig.maxOutputTokens (not 
   });
   try {
     const adapter = new GeminiApiAdapter('key', { 'model': 'gemini-2.0-flash', 'maxAttempts': 1 });
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages': [{ 'role': 'user', 'content': 'hi' }],
       'maxTokens': 256,
     });
@@ -278,7 +278,7 @@ void test('performChat injects configured systemPrompt as leading system content
       'maxAttempts': 1,
       'systemPrompt': 'You are X.',
     });
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages': [{ 'role': 'user', 'content': 'hello' }],
     });
     await adapter.chat(request);
@@ -307,7 +307,7 @@ void test('performChat does not inject default systemPrompt when request already
       'maxAttempts': 1,
       'systemPrompt': 'You are X.',
     });
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages': [
         { 'role': 'system', 'content': 'You are Y.' },
         { 'role': 'user', 'content': 'hello' },
@@ -353,7 +353,7 @@ void test('chat rejects with LlmError TIMEOUT when the base deadline elapses (ha
       'maxAttempts': 1,
       'timeoutMs': 50,
     });
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages': [{ 'role': 'user', 'content': 'hi' }],
     });
     const outcome = await Promise.race([

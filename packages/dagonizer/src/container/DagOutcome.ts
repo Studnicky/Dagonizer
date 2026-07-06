@@ -20,7 +20,7 @@
  */
 
 import type { DagOutcomeType } from '../contracts/DagOutcomeType.js';
-import { NodeErrorBuilder } from '../entities/node/NodeError.js';
+import { NodeError } from '../entities/node/NodeError.js';
 import type { NodeErrorWireType } from '../entities/node/NodeError.js';
 
 import { DAG_CONTAINER_TRANSPORT } from './TransportErrorCode.js';
@@ -51,7 +51,7 @@ export class DagOutcome {
   ): DagOutcomeType {
     const code = options.code ?? DAG_CONTAINER_TRANSPORT;
     const message = options.message ?? `Transport failure for request ${correlationId}`;
-    const error: NodeErrorWireType = NodeErrorBuilder.from(
+    const error: NodeErrorWireType = NodeError.create(
       code,
       message,
       'runDag',

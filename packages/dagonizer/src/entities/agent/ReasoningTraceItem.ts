@@ -45,14 +45,14 @@ export type ReasoningTraceItemType = FromSchema<typeof ReasoningTraceItemSchema>
  *
  * @example
  * ```ts
- * const item = ReasoningTraceItemBuilder.of(0, ReasoningStepBuilder.thought('checking the cache'));
+ * const item = ReasoningTraceItem.create(0, ReasoningStep.create({ kind: 'thought', text: 'checking the cache' }));
  * ```
  */
-export class ReasoningTraceItemBuilder {
+export class ReasoningTraceItem {
   private constructor() { /* static class */ }
 
   /** Construct a `ReasoningTraceItemType` pairing `ordinal` with `step`. */
-  static of(ordinal: number, step: ReasoningStepType): ReasoningTraceItemType {
+  static create(ordinal: number, step: ReasoningStepType): ReasoningTraceItemType {
     return { 'ordinal': ordinal, 'step': step };
   }
 }

@@ -16,7 +16,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { Consent, GdprRedactor, GeoCoarsener, Jurisdictions } from '../services.ts';
 
-import { Batch, MonadicNode, NodeOutputBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region gdpr-nodes
@@ -45,7 +45,7 @@ export class ConsentGateNode extends MonadicNode<CartographerState, 'classify'> 
         'jurisdiction':  item.state.geoContext.jurisdiction,
       };
     }
-    return RoutedBatchBuilder.of('classify', batch);
+    return RoutedBatch.create('classify', batch);
   }
 }
 
@@ -71,7 +71,7 @@ export class ClassifyPiiNode extends MonadicNode<CartographerState, 'redact'> {
         'sensitiveDataFields': classification.sensitiveDataFields,
       };
     }
-    return RoutedBatchBuilder.of('redact', batch);
+    return RoutedBatch.create('redact', batch);
   }
 }
 
@@ -115,7 +115,7 @@ export class RedactPiiNode extends MonadicNode<CartographerState, 'ok' | 'violat
   private async routeItem(state: CartographerState): Promise<NodeOutputType<'ok' | 'violation'>> {
     // Genuine violation: special-category data with no lawful basis (rare drop).
     if (!GdprRedactor.hasLawfulBasis(state.raw.lawfulBasis, state.raw.specialCategory)) {
-      return NodeOutputBuilder.of('violation');
+      return NodeOutput.create('violation');
     }
 
     const juris = Jurisdictions.forCountry(state.geoContext.country);
@@ -148,7 +148,7 @@ export class RedactPiiNode extends MonadicNode<CartographerState, 'ok' | 'violat
     }
 
     state.gdprResult = result;
-    return NodeOutputBuilder.of('ok');
+    return NodeOutput.create('ok');
   }
 }
 // #endregion gdpr-nodes

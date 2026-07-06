@@ -15,7 +15,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
 import { Batch } from '@studnicky/dagonizer';
-import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
+import { NodeContext } from '@studnicky/dagonizer/entities';
 
 import { ArchivistState } from '../../ArchivistState.ts';
 import { mergeCandidates } from '../../nodes/mergeCandidates.ts';
@@ -27,7 +27,7 @@ import { BookBuilder } from '../../entities/Book.ts';
 /** Context and candidate factories for merge-fallback unit tests. */
 class MergeFallbackFixture {
   static makeContext() {
-    return NodeContextBuilder.of('test-dag', 'merge-candidates', new AbortController().signal);
+    return NodeContext.create('test-dag', 'merge-candidates', new AbortController().signal);
   }
 
   static async execute(state: ArchivistState): Promise<'ranked' | 'empty' | null> {

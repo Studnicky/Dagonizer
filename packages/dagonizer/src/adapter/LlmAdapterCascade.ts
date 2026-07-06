@@ -14,10 +14,41 @@
 
 import type { LlmAdapterInterface } from '../contracts/LlmAdapterInterface.js';
 
+import type { AdapterDescriptorShapeType } from './AdapterDescriptor.js';
 import { BaseCascade, type CascadePreferenceType } from './BaseCascade.js';
-import type { LlmAdapterRegistry } from './LlmAdapterRegistry.js';
+import { LlmAdapterRegistry, type AdapterFactoryType } from './LlmAdapterRegistry.js';
+
+/**
+ * One entry in the provider catalogue. Pairs the descriptor identity and
+ * static capabilities with the zero-arg factory the registry invokes on each
+ * resolve call.
+ */
+export type CatalogueEntryType = {
+  descriptor: AdapterDescriptorShapeType;
+  factory: AdapterFactoryType;
+}
+
+export type LlmAdapterCascadeOptionsType = Record<string, never>;
+
+const DEFAULT_CASCADE_OPTIONS: LlmAdapterCascadeOptionsType = {};
 
 export class LlmAdapterCascade extends BaseCascade<LlmAdapterRegistry, LlmAdapterInterface> {
+  static create(
+    catalogue: readonly CatalogueEntryType[],
+    options: LlmAdapterCascadeOptionsType = DEFAULT_CASCADE_OPTIONS,
+  ): LlmAdapterCascade {
+    void options;
+    const registry = new LlmAdapterRegistry();
+    for (const entry of catalogue) {
+      registry.register(entry.descriptor, entry.factory);
+    }
+    const preferences = catalogue.map((entry) => ({
+      'provider': entry.descriptor.provider,
+      'model':    entry.descriptor.model,
+    }));
+    return new LlmAdapterCascade(registry, preferences);
+  }
+
   constructor(registry: LlmAdapterRegistry, preferences: readonly CascadePreferenceType[]) {
     super('LlmAdapterCascade', registry, preferences);
   }

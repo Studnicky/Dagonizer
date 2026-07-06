@@ -5,7 +5,7 @@ import { CallingCode } from '../../geo/CallingCode.ts';
 import { CountryCodeResolution } from './CountryCodeResolution.ts';
 import {
   MonadicNode,
-  RoutedBatchBuilder,
+  RoutedBatch,
   type Batch,
   type NodeContextType,
   type RoutedBatchType,
@@ -40,7 +40,7 @@ export class ResolvePhoneNode extends MonadicNode<CartographerState, 'resolved'>
         item.state.candidate = CountryCodeResolution.forIso2(iso2, 'phone', raw.weight);
       }
     }
-    return RoutedBatchBuilder.of('resolved', batch);
+    return RoutedBatch.create('resolved', batch);
   }
 }
 

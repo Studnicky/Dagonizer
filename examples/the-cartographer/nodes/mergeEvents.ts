@@ -14,7 +14,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region merge-events-node
@@ -41,7 +41,7 @@ export class MergeEventsNode extends MonadicNode<CartographerState, 'merged'> {
       }
       item.state.canonicalEvents = merged;
     }
-    return RoutedBatchBuilder.of('merged', batch);
+    return RoutedBatch.create('merged', batch);
   }
 }
 // #endregion merge-events-node

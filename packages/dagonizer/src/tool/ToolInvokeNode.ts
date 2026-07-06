@@ -18,8 +18,8 @@ import { Batch } from '../entities/batch/Batch.js';
 import type { ItemType } from '../entities/batch/Item.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../entities/node/NodeOutput.js';
+import { NodeError } from '../entities/node/NodeError.js';
+import { NodeOutput } from '../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../entities/node/NodeOutput.js';
 import { BatchItemExecutor } from '../execution/BatchItemExecutor.js';
 import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.js';
@@ -125,7 +125,7 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
       // trusted at compile-time by TypeScript types alone.
       if (context.validateOutputs && !this.#inputValidator.is(input)) {
         const violations = this.#inputValidator.errors(input) ?? ['schema mismatch'];
-        const error = NodeErrorBuilder.from(
+        const error = NodeError.create(
           'toolInputContractViolation',
           `Tool '${this.#tool.definition.name}' received input that violates inputSchema: ${violations.join('; ')}`,
           'ToolInvokeNode.execute',
@@ -133,7 +133,7 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
           new Date().toISOString(),
           { 'context': { 'toolName': this.#tool.definition.name, 'violations': violations } },
         );
-        return NodeOutputBuilder.of('error', { 'errors': [error] });
+        return NodeOutput.create('error', { 'errors': [error] });
       }
 
       const result = await this.#tool.execute(input, { 'signal': context.signal });
@@ -141,7 +141,7 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
       // Output contract validation: gated by validateOutputs.
       if (context.validateOutputs && !this.#outputValidator.is(result)) {
         const violations = this.#outputValidator.errors(result) ?? ['schema mismatch'];
-        const error = NodeErrorBuilder.from(
+        const error = NodeError.create(
           'toolOutputContractViolation',
           `Tool '${this.#tool.definition.name}' returned output that violates outputSchema: ${violations.join('; ')}`,
           'ToolInvokeNode.execute',
@@ -149,14 +149,14 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
           new Date().toISOString(),
           { 'context': { 'toolName': this.#tool.definition.name, 'violations': violations } },
         );
-        return NodeOutputBuilder.of('error', { 'errors': [error] });
+        return NodeOutput.create('error', { 'errors': [error] });
       }
 
       state.output = result;
-      return NodeOutputBuilder.of('done');
+      return NodeOutput.create('done');
     } catch (thrown: unknown) {
       const message = thrown instanceof Error ? thrown.message : String(thrown);
-      const error = NodeErrorBuilder.from(
+      const error = NodeError.create(
         'toolExecutionFailed',
         message,
         'ToolInvokeNode.execute',
@@ -164,7 +164,7 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
         new Date().toISOString(),
         { 'context': { 'toolName': this.#tool.definition.name } },
       );
-      return NodeOutputBuilder.of('error', { 'errors': [error] });
+      return NodeOutput.create('error', { 'errors': [error] });
     }
   }
 }

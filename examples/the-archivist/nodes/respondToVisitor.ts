@@ -15,8 +15,9 @@
  */
 
 
-import { Batch, MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -35,7 +36,7 @@ export class RespondToVisitorNode extends MonadicNode<ArchivistState, 'success'>
   }
 
   override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
-    return RoutedBatchBuilder.of('success', batch);
+    return RoutedBatch.create('success', batch);
   }
 }
 
@@ -52,7 +53,7 @@ export class DeclineOffTopicNode extends MonadicNode<ArchivistState, 'success'> 
     for (const { state } of batch) {
       state.draft = "I only help with finding and identifying books. What title or topic interests you?";
     }
-    return RoutedBatchBuilder.of('success', batch);
+    return RoutedBatch.create('success', batch);
   }
 }
 
@@ -101,9 +102,10 @@ export class ComposeEmptyResponseNode extends MonadicNode<ArchivistState, 'draft
         "timestamp": new Date().toISOString(),
       });
       const conversation = state.conversation.length > 0 ? state.conversation : undefined;
-      const controller = new AbortController();
-      const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? EMPTY_TIMEOUT_MS);
-      const signal = AbortSignal.any([context.signal, controller.signal]);
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? EMPTY_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
       try {
         state.draft = await this.services.llm.composeEmptyResponse(state.query, state.failureCause, conversation, signal);
         state.clearAttempts(context.nodeName);
@@ -116,8 +118,6 @@ export class ComposeEmptyResponseNode extends MonadicNode<ArchivistState, 'draft
           state.clearAttempts(context.nodeName);
           salvageItems.push(item);
         }
-      } finally {
-        clearTimeout(handle);
       }
     }
 
@@ -125,7 +125,7 @@ export class ComposeEmptyResponseNode extends MonadicNode<ArchivistState, 'draft
     if (draftedItems.length > 0) routes.push(['drafted', Batch.from(draftedItems)]);
     if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
     if (salvageItems.length > 0) routes.push(['salvage', Batch.from(salvageItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }
 
@@ -164,7 +164,7 @@ export class ParkForInputNode extends MonadicNode<ArchivistState, 'parked' | 're
     const routes: Array<readonly ['parked' | 'resumed', Batch<ArchivistState>]> = [];
     if (parkedItems.length > 0) routes.push(['parked', Batch.from(parkedItems)]);
     if (resumedItems.length > 0) routes.push(['resumed', Batch.from(resumedItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }
 

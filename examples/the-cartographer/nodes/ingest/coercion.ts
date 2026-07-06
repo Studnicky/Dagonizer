@@ -20,7 +20,7 @@ import { TimeNormalizer } from '../../services.ts';
 import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 import type { GeoErrorRecordType } from '../../errors/GeoErrorRecord.ts';
 
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region coerce-types-node
@@ -93,7 +93,7 @@ export class CoerceTypesNode extends MonadicNode<CartographerState, 'validate-ev
         state.capturedErrors = [...state.capturedErrors, ...lineItemErrors];
       }
     }
-    return RoutedBatchBuilder.of('validate-event', batch);
+    return RoutedBatch.create('validate-event', batch);
   }
 }
 

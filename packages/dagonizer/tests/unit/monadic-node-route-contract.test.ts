@@ -12,13 +12,13 @@ import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
-import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
+import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../src/entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
+import { NodeError } from '../../src/entities/node/NodeError.js';
+import { NodeOutput } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
-const CTX: NodeContextType = NodeContextBuilder.of(
+const CTX: NodeContextType = NodeContext.create(
   'test-dag',
   'test-node',
   new AbortController().signal,
@@ -62,8 +62,8 @@ class ErrorRoutingNode extends MonadicNode<NodeStateBase, 'done' | 'error'> {
     for (const item of batch) {
       const output: 'done' | 'error' = item.id === 'bad' ? 'error' : 'done';
       const result = output === 'error'
-        ? NodeOutputBuilder.of(output, {
-          'errors': [NodeErrorBuilder.from(
+        ? NodeOutput.create(output, {
+          'errors': [NodeError.create(
             'nodeContractViolation',
             'node routed an item to error',
             'execute',
@@ -72,7 +72,7 @@ class ErrorRoutingNode extends MonadicNode<NodeStateBase, 'done' | 'error'> {
             { 'context': { 'nodeName': this.name } },
           )],
         })
-        : NodeOutputBuilder.of(output);
+        : NodeOutput.create(output);
 
       for (const error of result.errors) item.state.collectError(error);
       if (result.output === 'error') {

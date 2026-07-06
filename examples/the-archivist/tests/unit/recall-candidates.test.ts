@@ -29,7 +29,7 @@ import { GRAPH_MEMORY, MemoryStore } from '../../memory/MemoryStore.ts';
 import type { ArchivistServices } from '../../services.ts';
 
 import { Batch } from '@studnicky/dagonizer';
-import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
+import { NodeContext } from '@studnicky/dagonizer/entities';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 
 // ── Deterministic embedder ───────────────────────────────────────────────────
@@ -123,7 +123,7 @@ class RecallCandidatesFixture {
   }
 
   static context() {
-    return NodeContextBuilder.of('test-dag', 'recall-candidates', new AbortController().signal);
+    return NodeContext.create('test-dag', 'recall-candidates', new AbortController().signal);
   }
 
   static async execute(node: RecallCandidatesNode, state: ArchivistState): Promise<void> {

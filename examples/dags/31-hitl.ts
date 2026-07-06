@@ -14,9 +14,9 @@ import {
   Batch,
   DAG_CONTEXT,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -66,7 +66,7 @@ export class PrepareNode extends MonadicNode<HitlState, 'ready'> {
       item.state.item = 'Purchase Order #4201 — $4,800';
       item.state.log.push(`prepared: ${item.state.item}`);
     }
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('ready').output, batch);
+    return RoutedBatch.create(NodeOutput.create('ready').output, batch);
   }
 }
 
@@ -94,12 +94,12 @@ export class ApproveNode extends MonadicNode<HitlState, 'parked' | 'approved' | 
       const state = item.state;
       if (state.decision === 'approved') {
         state.log.push('decision: approved');
-        entries.push([NodeOutputBuilder.of('approved').output, Batch.from([item])]);
+        entries.push([NodeOutput.create('approved').output, Batch.from([item])]);
         continue;
       }
       if (state.decision === 'rejected') {
         state.log.push('decision: rejected');
-        entries.push([NodeOutputBuilder.of('rejected').output, Batch.from([item])]);
+        entries.push([NodeOutput.create('rejected').output, Batch.from([item])]);
         continue;
       }
 
@@ -108,9 +108,9 @@ export class ApproveNode extends MonadicNode<HitlState, 'parked' | 'approved' | 
       const correlationKey = `approval:${state.item.replace(/[^a-zA-Z0-9]/g, '-')}`;
       state.setMetadata('correlationKey', correlationKey);
       state.log.push(`parked: awaiting approval for "${state.item}"`);
-      entries.push([NodeOutputBuilder.of('parked').output, Batch.from([item])]);
+      entries.push([NodeOutput.create('parked').output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -126,7 +126,7 @@ export class ProcessNode extends MonadicNode<HitlState, 'done'> {
 
   override async execute(batch: Batch<HitlState>) {
     for (const item of batch) item.state.log.push(`processed: ${item.state.item}`);
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

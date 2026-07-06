@@ -8,8 +8,8 @@
  * suffix (default '.json'). performEntriesStream() iterates the directory
  * handle's async entries iterator — native streaming, lazy I/O.
  *
- * update() serializes concurrent writes to the same key by chaining Promises
- * in a per-key map so reads and writes for one key never interleave.
+ * update() serializes concurrent writes to the same key through one substrate
+ * semaphore per qualified key so reads and writes for one key never interleave.
  *
  * The synchronous high-throughput path (createSyncAccessHandle) is Worker-only
  * and is not used here. The async createWritable path works on the main thread.
@@ -18,6 +18,7 @@
  * run against an in-memory DirectoryHandleLikeInterface double.
  */
 
+import { Semaphore } from '@studnicky/concurrency/semaphore';
 import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
 import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { JsonValueType } from '@studnicky/dagonizer/entities';
@@ -57,15 +58,14 @@ class OpfsKey {
 export class OpfsStore extends BaseStore {
   readonly #directory: DirectoryHandleLikeInterface;
   readonly #fileSuffix: string;
-  // Per-key update serialization: chains void Promises per qualified key
-  readonly #updateChain: Map<string, Promise<void>>;
+  readonly #updateLocks: Map<string, Semaphore>;
 
   constructor(directory: DirectoryHandleLikeInterface, options: OpfsStoreOptionsType = {}) {
     super(options);
     const resolved = { ...OPFS_STORE_DEFAULTS, ...options };
     this.#directory = directory;
     this.#fileSuffix = resolved.fileSuffix;
-    this.#updateChain = new Map();
+    this.#updateLocks = new Map();
   }
 
   /**
@@ -152,50 +152,42 @@ export class OpfsStore extends BaseStore {
   }
 
   /**
-   * Per-key serialized update. Chains each new update for a given key as a
-   * continuation of the previous in-flight Promise, ensuring reads and writes
-   * for one key never interleave. This is structural serialization (not a native
-   * transaction) and serializes within one process only.
-   *
-   * The chain is typed as `Promise<void>` — serialization only, not value
-   * threading. The result value is captured via a single-element array written
-   * inside the continuation, avoiding non-null assertions and `as` casts.
+   * Per-key serialized update. Each qualified key owns a single-permit
+   * semaphore while it has active or queued updates. This is structural
+   * serialization, not a native transaction, and serializes within one process
+   * only.
    */
   override async update(
     key: string,
     fn: (current: JsonValueType | undefined) => JsonValueType,
   ): Promise<JsonValueType> {
     const qualified = this.qualifyKey(key);
-    const prev: Promise<void> = this.#updateChain.get(qualified) ?? Promise.resolve();
-
-    // Wrap result in an array so we can extract it from the void chain without casts.
-    const resultHolder: JsonValueType[] = [];
-
-    const next: Promise<void> = prev.then(async () => {
-      const raw = await this.performGet(qualified);
-      const current = raw === null ? undefined : raw;
-      const value = fn(current);
-      await this.performSet(qualified, value);
-      resultHolder.push(value);
-    });
-
-    // On rejection, fall back to the previous settled chain so subsequent
-    // callers are not permanently blocked.
-    this.#updateChain.set(qualified, next.catch(() => undefined));
-
-    await next;
-
-    if (this.#updateChain.get(qualified) === next) {
-      this.#updateChain.delete(qualified);
+    let lock = this.#updateLocks.get(qualified);
+    if (lock === undefined) {
+      lock = Semaphore.create({ 'permits': 1 });
+      this.#updateLocks.set(qualified, lock);
     }
 
-    const value = resultHolder[0];
-    if (value === undefined) {
-      throw new StoreError(
-        'update fn produced no value',
-        { 'reason': 'BACKING_ERROR', 'cause': new Error('update produced no value') },
-      );
+    try {
+      const value = await lock.withPermit(async () => {
+        const raw = await this.performGet(qualified);
+        const current = raw === null ? undefined : raw;
+        const value = fn(current);
+        await this.performSet(qualified, value);
+        return value;
+      });
+
+      if (value === undefined) {
+        throw new StoreError(
+          'update fn produced no value',
+          { 'reason': 'BACKING_ERROR', 'cause': new Error('update produced no value') },
+        );
+      }
+      return value;
+    } finally {
+      if (lock.available === lock.permits && this.#updateLocks.get(qualified) === lock) {
+        this.#updateLocks.delete(qualified);
+      }
     }
-    return value;
   }
 }

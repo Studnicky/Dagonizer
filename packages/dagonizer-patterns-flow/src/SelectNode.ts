@@ -2,7 +2,7 @@
  * SelectNode: root for "pick or sort items from a list" patterns.
  */
 
-import { RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
@@ -27,7 +27,7 @@ export abstract class SelectNode<
       this.writeBack(state, next);
       return next.length === 0 ? 'empty' : 'success';
     });
-    return RoutedBatchBuilder.from([...routed]);
+    return RoutedBatch.create([...routed]);
   }
 }
 

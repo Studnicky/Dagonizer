@@ -28,8 +28,9 @@
  */
 
 
-import { Batch, MonadicNode, NodeOutputBuilder, ReasoningStepBuilder, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, ReasoningStep, RoutedBatch } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 import type { ArchivistState, ConversationTurn } from '../ArchivistState.ts';
 import type { CandidateType } from '../entities/Book.ts';
@@ -202,9 +203,10 @@ export class ComposeResponseNode extends MonadicNode<ArchivistState, 'drafted' |
       // Own deadline so a slow LLM is a flow decision (retry/salvage), not an
       // engine hard-fail. The compose methods are signal-aware, so the abort
       // cancels the in-flight call.
-      const controller = new AbortController();
-      const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS);
-      const signal = AbortSignal.any([context.signal, controller.signal]);
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
 
       // Each per-intent branch keeps the same `compose-response` node
       // (the retry loop and validate-response wiring stays one
@@ -232,7 +234,7 @@ export class ComposeResponseNode extends MonadicNode<ArchivistState, 'drafted' |
         // Guard: an empty draft is a fabrication gap; route to retry/salvage
         // so the validate-response node does not receive an empty string.
         if (draft.length === 0) {
-          const result = NodeOutputBuilder.of(state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS ? 'retry' : 'salvage');
+          const result = NodeOutput.create(state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS ? 'retry' : 'salvage');
           for (const error of result.errors) state.collectError(error);
           if (result.output === 'retry') {
             retryItems.push(item);
@@ -252,7 +254,7 @@ export class ComposeResponseNode extends MonadicNode<ArchivistState, 'drafted' |
             'A previous attempt returned raw JSON instead of prose. ' +
             'Write only flowing prose; no code blocks, no JSON. ' +
             `Data in plain text: ${stripped}. `;
-          const result = NodeOutputBuilder.of(state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS ? 'retry' : 'salvage');
+          const result = NodeOutput.create(state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS ? 'retry' : 'salvage');
           for (const error of result.errors) state.collectError(error);
           if (result.output === 'retry') {
             retryItems.push(item);
@@ -266,9 +268,9 @@ export class ComposeResponseNode extends MonadicNode<ArchivistState, 'drafted' |
         // draft, another attempt). `.final` is reserved for the attempt that
         // is actually accepted, so retries never accumulate multiple 'final'
         // reasoning steps in the same run.
-        state.reasoning = [...state.reasoning, ReasoningStepBuilder.thought(`composed response for intent '${state.intent}' from ${String(state.shortlist.length)} shortlisted candidates`)];
+        state.reasoning = [...state.reasoning, ReasoningStep.create({ 'kind': 'thought', 'text': `composed response for intent '${state.intent}' from ${String(state.shortlist.length)} shortlisted candidates` })];
         state.draft = draft;
-        const result = NodeOutputBuilder.of('drafted');
+        const result = NodeOutput.create('drafted');
         for (const error of result.errors) state.collectError(error);
         draftedItems.push(item);
       } catch (err) {
@@ -276,15 +278,13 @@ export class ComposeResponseNode extends MonadicNode<ArchivistState, 'drafted' |
         if (context.signal.aborted) throw err;
         // Own timeout or transient compose failure -> retry budget decides the
         // flow. The attempt was already recorded above, so read the count.
-        const result = NodeOutputBuilder.of(state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS ? 'retry' : 'salvage');
+        const result = NodeOutput.create(state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS ? 'retry' : 'salvage');
         for (const error of result.errors) state.collectError(error);
         if (result.output === 'retry') {
           retryItems.push(item);
         } else {
           salvageItems.push(item);
         }
-      } finally {
-        clearTimeout(handle);
       }
     }
 
@@ -292,7 +292,7 @@ export class ComposeResponseNode extends MonadicNode<ArchivistState, 'drafted' |
     if (draftedItems.length > 0) routes.push(['drafted', Batch.from(draftedItems)]);
     if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
     if (salvageItems.length > 0) routes.push(['salvage', Batch.from(salvageItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }
 
@@ -440,11 +440,11 @@ export class ValidateResponseNode extends MonadicNode<
           if (state.shortlist.length > 0) {
             state.draft = ShortlistDigest.summarize(state.shortlist);
           }
-          const result = NodeOutputBuilder.of('exhausted');
+          const result = NodeOutput.create('exhausted');
           for (const error of result.errors) state.collectError(error);
           exhaustedItems.push(item);
         } else {
-          const result = NodeOutputBuilder.of('retry');
+          const result = NodeOutput.create('retry');
           for (const error of result.errors) state.collectError(error);
           retryItems.push(item);
         }
@@ -454,7 +454,7 @@ export class ValidateResponseNode extends MonadicNode<
       const ok = await this.services.llm.validate(state.draft, state.shortlist);
       state.approvalState = ok ? 'approved' : 'rejected';
       if (ok) {
-        const result = NodeOutputBuilder.of('approved');
+        const result = NodeOutput.create('approved');
         for (const error of result.errors) state.collectError(error);
         approvedItems.push(item);
         continue;
@@ -465,11 +465,11 @@ export class ValidateResponseNode extends MonadicNode<
         if (state.shortlist.length > 0) {
           state.draft = ShortlistDigest.summarize(state.shortlist);
         }
-        const result = NodeOutputBuilder.of('exhausted');
+        const result = NodeOutput.create('exhausted');
         for (const error of result.errors) state.collectError(error);
         exhaustedItems.push(item);
       } else {
-        const result = NodeOutputBuilder.of('retry');
+        const result = NodeOutput.create('retry');
         for (const error of result.errors) state.collectError(error);
         retryItems.push(item);
       }
@@ -479,6 +479,6 @@ export class ValidateResponseNode extends MonadicNode<
     if (approvedItems.length > 0) routes.push(['approved', Batch.from(approvedItems)]);
     if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
     if (exhaustedItems.length > 0) routes.push(['exhausted', Batch.from(exhaustedItems)]);
-    return RoutedBatchBuilder.from(routes);
+    return RoutedBatch.create(routes);
   }
 }

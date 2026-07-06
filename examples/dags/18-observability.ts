@@ -8,9 +8,9 @@ import {
   Batch,
   DAGBuilder,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -36,7 +36,7 @@ export class ValidateNode extends MonadicNode<PipelineState, 'ok' | 'invalid'> {
 
   override async execute(batch: Batch<PipelineState>) {
     for (const item of batch) item.state.value = 1;
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('ok').output, batch);
+    return RoutedBatch.create(NodeOutput.create('ok').output, batch);
   }
 }
 
@@ -49,7 +49,7 @@ export class TransformNode extends MonadicNode<PipelineState, 'done'> {
 
   override async execute(batch: Batch<PipelineState>) {
     for (const item of batch) item.state.value = item.state.value * 10;
-    return RoutedBatchBuilder.of(NodeOutputBuilder.of('done').output, batch);
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

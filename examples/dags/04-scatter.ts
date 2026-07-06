@@ -10,9 +10,9 @@ import {
   GatherStrategies,
   GatherStrategy,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
-  RoutedBatchBuilder,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { GatherExecutionType, GatherRecordType, NodeStateInterface, SchemaObjectType } from '@studnicky/dagonizer';
 import type { GatherConfigType } from '@studnicky/dagonizer/entities';
@@ -43,11 +43,11 @@ export class ProbeNode extends MonadicNode<ScrapeState, 'ok' | 'fail'> {
       // Each item is written to state under the itemKey ('url') before execute.
       const url = state.getter.string('url');
       // Fake probe: even-length URLs succeed, odd-length fail.
-      const output = NodeOutputBuilder.of(url.length % 2 === 0 ? 'ok' : 'fail');
+      const output = NodeOutput.create(url.length % 2 === 0 ? 'ok' : 'fail');
       for (const error of output.errors) state.collectError(error);
       entries.push([output.output, Batch.from([item])]);
     }
-    return RoutedBatchBuilder.from(entries);
+    return RoutedBatch.create(entries);
   }
 }
 // #endregion worker-node

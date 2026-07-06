@@ -17,7 +17,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { Batch, DAGBuilder, MonadicNode, NodeStateBase, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { Batch, DAGBuilder, MonadicNode, NodeStateBase, RoutedBatch } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
 class DoneNode extends MonadicNode<NodeStateBase, 'done'> {
@@ -32,7 +32,7 @@ class DoneNode extends MonadicNode<NodeStateBase, 'done'> {
   }
 
   async execute(batch: Batch<NodeStateBase>) {
-    return RoutedBatchBuilder.of('done', batch);
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -150,7 +150,7 @@ The `type` string is the stable discriminant for the resume path; include a vers
 
 ## Checkpoint integration
 
-`Checkpoint.capture` is the async factory for checkpoints that include named stores. It accepts a `dagName`, execution `result`, and optional `stores` map. All stores are snapshotted in parallel.
+`Checkpoint.capture` is the async factory for checkpoints that include named stores. It accepts a `dagName`, execution `result`, optional `stores` map, and optional `execution` policy. Store snapshots and restores run through the shared batch executor, so consumers can set `execution.concurrency`, `execution.throttle`, and `execution.timing` for remote or expensive stores.
 
 <<< @/../examples/10-shared-state.ts#store-checkpoint
 
