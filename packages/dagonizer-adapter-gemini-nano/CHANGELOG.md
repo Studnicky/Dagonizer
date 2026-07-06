@@ -1,5 +1,38 @@
 # @studnicky/dagonizer-adapter-gemini-nano
 
+## 0.30.1
+
+## 0.30.0
+
+### Minor Changes
+
+- 4639f9b: `GeminiNanoAdapter` resolves and attests a Prompt API `outputLanguage` on every `LanguageModel.create()` call, eliminating Chrome's per-request console warning ("No output language was specified"). Resolution precedence: an explicit `GeminiNanoAdapterOptionsType.outputLanguage`, then the browser's `navigator.language` narrowed to Chrome's supported code set (`de`, `en`, `es`, `fr`, `ja`), then `en`.
+
+### Patch Changes
+
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+  - @studnicky/dagonizer@1.0.0
+
 ## 0.30.0
 
 ### Minor Changes

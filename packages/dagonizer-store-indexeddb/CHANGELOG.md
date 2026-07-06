@@ -1,5 +1,39 @@
 # @studnicky/dagonizer-store-indexeddb
 
+## 0.30.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @studnicky/dagonizer@0.30.1
+
+## 0.30.0
+
+### Patch Changes
+
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+  - @studnicky/dagonizer@1.0.0
+
 ## 0.30.0
 
 ### Patch Changes

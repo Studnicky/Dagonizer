@@ -1,5 +1,34 @@
 # @studnicky/dagonizer-embedder-web-llm
 
+## 0.30.1
+
+## 0.30.0
+
+### Patch Changes
+
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+- Updated dependencies [4639f9b]
+  - @studnicky/dagonizer@1.0.0
+
 ## 0.30.0
 
 ## 0.29.1

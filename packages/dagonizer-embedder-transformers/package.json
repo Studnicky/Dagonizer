@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-embedder-transformers",
-  "version": "0.30.0",
+  "version": "0.30.1",
   "description": "Embedder plugin for @studnicky/dagonizer: TransformersEmbedder (in-browser embeddings via transformers.js / ONNX Runtime, WASM + WebGPU).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -39,7 +39,7 @@
     "json-schema-to-ts": "^3.1.1"
   },
   "peerDependencies": {
-    "@studnicky/dagonizer": "workspace:>=0.14.0 <1.0.0"
+    "@studnicky/dagonizer": "workspace:^0.30.0"
   },
   "engines": {
     "node": ">=24"
