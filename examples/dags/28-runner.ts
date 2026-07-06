@@ -6,10 +6,12 @@
 
 // #region imports
 import {
+  Batch,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
@@ -33,16 +35,16 @@ export class WordState extends NodeStateBase {
  * Routes to 'done' on success; unreachable 'error' output satisfies
  * the schema so consumers can extend with an error handler.
  */
-export class TrimNode extends ScalarNode<WordState, 'done'> {
+export class TrimNode extends MonadicNode<WordState, 'done'> {
   readonly name = 'trim';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: WordState) {
-    state.text = state.text.trim();
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<WordState>) {
+    for (const item of batch) item.state.text = item.state.text.trim();
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -50,18 +52,20 @@ export class TrimNode extends ScalarNode<WordState, 'done'> {
  * CountNode: counts whitespace-separated tokens in state.text.
  * Writes the count to state.words and routes to 'done'.
  */
-export class CountNode extends ScalarNode<WordState, 'done'> {
+export class CountNode extends MonadicNode<WordState, 'done'> {
   readonly name = 'count';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: WordState) {
-    state.words = state.text.length === 0
-      ? 0
-      : state.text.split(/\s+/).length;
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<WordState>) {
+    for (const item of batch) {
+      item.state.words = item.state.text.length === 0
+        ? 0
+        : item.state.text.split(/\s+/).length;
+    }
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion node

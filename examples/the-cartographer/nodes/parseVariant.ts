@@ -11,13 +11,11 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { CanonicalEventVariantBuilder, type CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-variant-node
-export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | 'invalid'> {
+export class ParseVariantNode extends MonadicNode<CartographerState, 'parsed' | 'invalid'> {
   readonly 'name' = 'parse-variant';
   readonly 'outputs' = ['parsed', 'invalid'] as const;
 
@@ -39,10 +37,36 @@ export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | '
     return s.length > 0 ? s : 'in transit';
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'parsed' | 'invalid'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'parsed' | 'invalid', CartographerState>> {
+    const acc = new Map<'parsed' | 'invalid', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'parsed' | 'invalid', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private routeItem(state: CartographerState): NodeOutputType<'parsed' | 'invalid'> {
     const raw = state.getMetadata('canonical-event');
     if (!CanonicalEventVariantBuilder.is(raw)) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
     const variant = raw;
     state.canonicalVariant = variant;
@@ -136,7 +160,7 @@ export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | '
       'disruptionReason':      disruptionReason,
     };
 
-    return NodeOutputBuilder.of('parsed');
+    return NodeOutput.create('parsed');
   }
 }
 

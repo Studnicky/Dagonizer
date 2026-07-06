@@ -2,12 +2,8 @@
  * Unit tests for individual pipeline nodes.
  *
  * Nodes are tested by constructing a CartographerState, setting relevant fields,
- * calling executeOne via thin public-proxy subclasses, and asserting on the
- * routed output tag and state mutations. No DAG engine is involved.
- *
- * Each node's `executeOne` is protected on the base class. The pattern below
- * creates a minimal subclass per node that widens the method to public and
- * delegates to super — a valid TypeScript subclass access widening.
+ * executing a one-item batch through the public node contract, and asserting on
+ * the routed output tag and state mutations. No DAG engine is involved.
  *
  * Node 24 type-stripping: no enums, no namespaces, no decorators, no parameter
  * properties. Type annotations only.
@@ -16,7 +12,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer/types';
+import { Batch } from '@studnicky/dagonizer';
+import type { MonadicNode, NodeContextType } from '@studnicky/dagonizer';
 import { CartographerState } from '../../CartographerState.ts';
 import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
 
@@ -28,73 +25,6 @@ import { CustomsDwellNode } from '../../nodes/customsDwell.ts';
 import { AggregateEventNode } from '../../nodes/aggregateEvent.ts';
 import { EnrichLegNode } from '../../nodes/enrichLeg.ts';
 
-// ── Public proxy subclasses ────────────────────────────────────────────────────
-// Each subclass widens the protected executeOne to public so tests can invoke
-// node logic directly without the DAG engine.
-
-class PublicValidateCoordsNode extends ValidateCoordsNode {
-  public override async executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'valid' | 'rejected'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicRouteGeoNode extends RouteGeoNode {
-  public override async executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'has-geo' | 'needs-geo'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicRouteRedactionNode extends RouteRedactionNode {
-  public override async executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'needs-redaction' | 'skip-redaction'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicColdChainCheckNode extends ColdChainCheckNode {
-  public override async executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'checked'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicCustomsDwellNode extends CustomsDwellNode {
-  public override async executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'dwelled'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicEnrichLegNode extends EnrichLegNode {
-  public override async executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'leg-measured'>> {
-    return super.executeOne(state, context);
-  }
-}
-
-class PublicAggregateEventNode extends AggregateEventNode {
-  public override async executeOne(
-    state: CartographerState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<'done'>> {
-    return super.executeOne(state, context);
-  }
-}
-
 const CTX: NodeContextType = {
   'dagName': 'test',
   'nodeName': 'test',
@@ -103,6 +33,17 @@ const CTX: NodeContextType = {
   'outputSchemaValidator': null,
 };
 
+async function executeSingle<TOutput extends string>(
+  node: MonadicNode<CartographerState, TOutput>,
+  state: CartographerState,
+): Promise<TOutput> {
+  const routed = await node.execute(Batch.of(state), CTX);
+  for (const [output, batch] of routed) {
+    if (batch.size > 0) return output;
+  }
+  throw new Error(`Node ${node.name} did not route the test item`);
+}
+
 // ── ValidateCoordsNode ─────────────────────────────────────────────────────────
 
 describe('ValidateCoordsNode', () => {
@@ -110,54 +51,54 @@ describe('ValidateCoordsNode', () => {
     const state = new CartographerState();
     state.raw.latitude  = 51.5;
     state.raw.longitude = -0.1;
-    const node = new PublicValidateCoordsNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'valid');
+    const node = new ValidateCoordsNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'valid');
   });
 
   it('routes latitude exactly at -90 boundary to "valid"', async () => {
     const state = new CartographerState();
     state.raw.latitude  = -90;
     state.raw.longitude = 0;
-    const node = new PublicValidateCoordsNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'valid');
+    const node = new ValidateCoordsNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'valid');
   });
 
   it('routes latitude exactly at +90 boundary to "valid"', async () => {
     const state = new CartographerState();
     state.raw.latitude  = 90;
     state.raw.longitude = 180;
-    const node = new PublicValidateCoordsNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'valid');
+    const node = new ValidateCoordsNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'valid');
   });
 
   it('routes latitude 91 (out of range) to "rejected"', async () => {
     const state = new CartographerState();
     state.raw.latitude  = 91;
     state.raw.longitude = 0;
-    const node = new PublicValidateCoordsNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'rejected');
+    const node = new ValidateCoordsNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'rejected');
   });
 
   it('routes longitude 185 (out of range) to "rejected"', async () => {
     const state = new CartographerState();
     state.raw.latitude  = 0;
     state.raw.longitude = 185;
-    const node = new PublicValidateCoordsNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'rejected');
+    const node = new ValidateCoordsNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'rejected');
   });
 
   it('routes NaN latitude to "rejected"', async () => {
     const state = new CartographerState();
     state.raw.latitude  = NaN;
     state.raw.longitude = 0;
-    const node = new PublicValidateCoordsNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'rejected');
+    const node = new ValidateCoordsNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'rejected');
   });
 });
 
@@ -167,9 +108,9 @@ describe('RouteGeoNode', () => {
   it('routes to "needs-geo" when canonical.geo is undefined', async () => {
     const state = new CartographerState();
     // canonical.geo starts undefined (no geo on the default variant)
-    const node = new PublicRouteGeoNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'needs-geo');
+    const node = new RouteGeoNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'needs-geo');
   });
 
   it('routes to "needs-geo" when canonical.geo has empty country', async () => {
@@ -177,9 +118,9 @@ describe('RouteGeoNode', () => {
     const v = CanonicalEventVariantBuilder.from({});
     v.geo = { 'country': '', 'continent': 'Europe', 'region': 'Central Europe' };
     state.canonical = v;
-    const node = new PublicRouteGeoNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'needs-geo');
+    const node = new RouteGeoNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'needs-geo');
   });
 
   it('routes to "needs-geo" when country is UNK placeholder', async () => {
@@ -187,9 +128,9 @@ describe('RouteGeoNode', () => {
     const v = CanonicalEventVariantBuilder.from({});
     v.geo = { 'country': 'UNK', 'continent': 'Unmapped', 'region': 'Unmapped' };
     state.canonical = v;
-    const node = new PublicRouteGeoNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'needs-geo');
+    const node = new RouteGeoNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'needs-geo');
   });
 
   it('routes to "has-geo" when fully resolved geo is present', async () => {
@@ -197,9 +138,9 @@ describe('RouteGeoNode', () => {
     const v = CanonicalEventVariantBuilder.from({});
     v.geo = { 'country': 'DE', 'continent': 'Europe', 'region': 'Central Europe' };
     state.canonical = v;
-    const node = new PublicRouteGeoNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'has-geo');
+    const node = new RouteGeoNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'has-geo');
   });
 
   it('sets routing.geoLookupSkipped when routing to "has-geo"', async () => {
@@ -207,16 +148,16 @@ describe('RouteGeoNode', () => {
     const v = CanonicalEventVariantBuilder.from({});
     v.geo = { 'country': 'FR', 'continent': 'Europe', 'region': 'Western Europe' };
     state.canonical = v;
-    const node = new PublicRouteGeoNode();
-    await node.executeOne(state, CTX);
+    const node = new RouteGeoNode();
+    await executeSingle(node, state);
     assert.equal(state.routing.geoLookupSkipped, true);
     assert.equal(state.routing.geoLookupRun, false);
   });
 
   it('sets routing.geoLookupRun when routing to "needs-geo"', async () => {
     const state = new CartographerState();
-    const node = new PublicRouteGeoNode();
-    await node.executeOne(state, CTX);
+    const node = new RouteGeoNode();
+    await executeSingle(node, state);
     assert.equal(state.routing.geoLookupRun, true);
     assert.equal(state.routing.geoLookupSkipped, false);
   });
@@ -229,9 +170,9 @@ describe('RouteRedactionNode', () => {
     const state = new CartographerState();
     // canonical.pii defaults to undefined (no pii flag); currentEvent has empty recipient fields
     state.canonical = CanonicalEventVariantBuilder.from({});
-    const node = new PublicRouteRedactionNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'skip-redaction');
+    const node = new RouteRedactionNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'skip-redaction');
   });
 
   it('routes to "needs-redaction" when canonical.pii is true', async () => {
@@ -244,9 +185,9 @@ describe('RouteRedactionNode', () => {
     state.currentEvent.marketingConsent = true;
     // Set a non-baseline jurisdiction so "light + valid" short-circuit doesn't fire
     state.geoContext.jurisdiction = 'GDPR';
-    const node = new PublicRouteRedactionNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'needs-redaction');
+    const node = new RouteRedactionNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'needs-redaction');
   });
 
   it('routes to "skip-redaction" when already handled by source', async () => {
@@ -255,9 +196,9 @@ describe('RouteRedactionNode', () => {
     v.pii = true;
     v.consentHandled = true;
     state.canonical = v;
-    const node = new PublicRouteRedactionNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'skip-redaction');
+    const node = new RouteRedactionNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'skip-redaction');
   });
 
   it('routes to "needs-redaction" when recipientName is non-empty', async () => {
@@ -266,16 +207,16 @@ describe('RouteRedactionNode', () => {
     state.currentEvent.recipientName = 'Alice Müller';
     state.currentEvent.shipmentId = 'SHP-001';
     state.geoContext.jurisdiction = 'GDPR';
-    const node = new PublicRouteRedactionNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'needs-redaction');
+    const node = new RouteRedactionNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'needs-redaction');
   });
 
   it('sets routing.redactionSkipped on skip path', async () => {
     const state = new CartographerState();
     state.canonical = CanonicalEventVariantBuilder.from({});
-    const node = new PublicRouteRedactionNode();
-    await node.executeOne(state, CTX);
+    const node = new RouteRedactionNode();
+    await executeSingle(node, state);
     assert.equal(state.routing.redactionSkipped, true);
     assert.equal(state.routing.redactionRun, false);
   });
@@ -288,8 +229,8 @@ describe('RouteRedactionNode', () => {
     state.currentEvent.recipientName = 'Bob Chen';
     state.currentEvent.shipmentId = 'SHP-002';
     state.geoContext.jurisdiction = 'GDPR';
-    const node = new PublicRouteRedactionNode();
-    await node.executeOne(state, CTX);
+    const node = new RouteRedactionNode();
+    await executeSingle(node, state);
     assert.equal(state.routing.redactionRun, true);
     assert.equal(state.routing.redactionSkipped, false);
   });
@@ -300,9 +241,9 @@ describe('RouteRedactionNode', () => {
 describe('ColdChainCheckNode', () => {
   it('routes to "checked" always', async () => {
     const state = new CartographerState();
-    const node = new PublicColdChainCheckNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'checked');
+    const node = new ColdChainCheckNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'checked');
   });
 
   it('sets coldChainBreach true for a sensor-reading with temp outside range', async () => {
@@ -339,8 +280,8 @@ describe('ColdChainCheckNode', () => {
         'phone':        '',
       },
     };
-    const node = new PublicColdChainCheckNode();
-    await node.executeOne(state, CTX);
+    const node = new ColdChainCheckNode();
+    await executeSingle(node, state);
     assert.equal(state.coldChainBreach, true);
   });
 
@@ -377,8 +318,8 @@ describe('ColdChainCheckNode', () => {
         'phone':        '',
       },
     };
-    const node = new PublicColdChainCheckNode();
-    await node.executeOne(state, CTX);
+    const node = new ColdChainCheckNode();
+    await executeSingle(node, state);
     assert.equal(state.coldChainBreach, false);
   });
 
@@ -387,8 +328,8 @@ describe('ColdChainCheckNode', () => {
     // Default canonicalVariant is a position-ping with tempC/shockG absent
     // The node reads body.tempC/shockG with fallback 0, which is below 2°C — a breach.
     // Verify the node does NOT throw for non-sensor variants.
-    const node = new PublicColdChainCheckNode();
-    assert.doesNotThrow(async () => { await node.executeOne(state, CTX); });
+    const node = new ColdChainCheckNode();
+    await assert.doesNotReject(async () => { await executeSingle(node, state); });
   });
 });
 
@@ -397,9 +338,9 @@ describe('ColdChainCheckNode', () => {
 describe('CustomsDwellNode', () => {
   it('routes to "dwelled" always', async () => {
     const state = new CartographerState();
-    const node = new PublicCustomsDwellNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'dwelled');
+    const node = new CustomsDwellNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'dwelled');
   });
 
   it('sets customsDwellHours to 18 for a held customs-event', async () => {
@@ -433,8 +374,8 @@ describe('CustomsDwellNode', () => {
         'phone':        '',
       },
     };
-    const node = new PublicCustomsDwellNode();
-    await node.executeOne(state, CTX);
+    const node = new CustomsDwellNode();
+    await executeSingle(node, state);
     assert.equal(state.customsDwellHours, 18);
   });
 
@@ -469,16 +410,16 @@ describe('CustomsDwellNode', () => {
         'phone':        '',
       },
     };
-    const node = new PublicCustomsDwellNode();
-    await node.executeOne(state, CTX);
+    const node = new CustomsDwellNode();
+    await executeSingle(node, state);
     assert.equal(state.customsDwellHours, 2);
   });
 
   it('defaults dwell to 4 for non-customs variants (empty status fallback)', async () => {
     const state = new CartographerState();
     // canonicalVariant is a position-ping — customsStatus reads '' → 4 hours default
-    const node = new PublicCustomsDwellNode();
-    await node.executeOne(state, CTX);
+    const node = new CustomsDwellNode();
+    await executeSingle(node, state);
     assert.equal(state.customsDwellHours, 4);
   });
 });
@@ -488,9 +429,9 @@ describe('CustomsDwellNode', () => {
 describe('EnrichLegNode', () => {
   it('routes to "leg-measured" always', async () => {
     const state = new CartographerState();
-    const node = new PublicEnrichLegNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'leg-measured');
+    const node = new EnrichLegNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'leg-measured');
   });
 
   it('computes legKm as haversine distance from legFrom to current scan', async () => {
@@ -500,8 +441,8 @@ describe('EnrichLegNode', () => {
     state.normalized.legFromLng = -0.1;
     state.normalized.latitude   = 48.9;
     state.normalized.longitude  = 2.3;
-    const node = new PublicEnrichLegNode();
-    await node.executeOne(state, CTX);
+    const node = new EnrichLegNode();
+    await executeSingle(node, state);
     // London→Paris ~340km
     assert.ok(state.legKm > 300 && state.legKm < 400, `Expected ~340km, got ${state.legKm}`);
   });
@@ -512,8 +453,8 @@ describe('EnrichLegNode', () => {
     state.normalized.legFromLng = -0.1;
     state.normalized.latitude   = 51.5;
     state.normalized.longitude  = -0.1;
-    const node = new PublicEnrichLegNode();
-    await node.executeOne(state, CTX);
+    const node = new EnrichLegNode();
+    await executeSingle(node, state);
     assert.equal(state.legKm, 1);
   });
 });
@@ -523,9 +464,9 @@ describe('EnrichLegNode', () => {
 describe('AggregateEventNode', () => {
   it('routes to "done"', async () => {
     const state = new CartographerState();
-    const node = new PublicAggregateEventNode();
-    const result = await node.executeOne(state, CTX);
-    assert.equal(result.output, 'done');
+    const node = new AggregateEventNode();
+    const result = await executeSingle(node, state);
+    assert.equal(result, 'done');
   });
 
   it('writes enriched from the normalized + geo + gdpr + pricing + shipping + eta state fields', async () => {
@@ -550,8 +491,8 @@ describe('AggregateEventNode', () => {
     state.gdprResult.redactionApplied = false;
     state.legKm = 450;
 
-    const node = new PublicAggregateEventNode();
-    await node.executeOne(state, CTX);
+    const node = new AggregateEventNode();
+    await executeSingle(node, state);
 
     const e = state.enriched;
     assert.equal(e.shipmentId,       'SHP-TEST-001');
@@ -578,8 +519,8 @@ describe('AggregateEventNode', () => {
   it('marks enriched.exception true when status is EXCEPTION', async () => {
     const state = new CartographerState();
     state.normalized.status = 'EXCEPTION';
-    const node = new PublicAggregateEventNode();
-    await node.executeOne(state, CTX);
+    const node = new AggregateEventNode();
+    await executeSingle(node, state);
     assert.equal(state.enriched.exception, true);
   });
 
@@ -587,8 +528,8 @@ describe('AggregateEventNode', () => {
     const state = new CartographerState();
     state.routing.geoLookupRun     = true;
     state.routing.redactionSkipped = true;
-    const node = new PublicAggregateEventNode();
-    await node.executeOne(state, CTX);
+    const node = new AggregateEventNode();
+    await executeSingle(node, state);
     assert.equal(state.enriched.routing.geoLookupRun,     true);
     assert.equal(state.enriched.routing.redactionSkipped, true);
   });

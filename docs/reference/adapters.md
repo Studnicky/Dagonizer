@@ -30,12 +30,11 @@ implement one abstract method (`performChat`), and optionally override one more
 ```ts twoslash
 import {
   BaseAdapter,
-  ChatStreamChunkBuilder,
   LlmAdapterCascade,
-  LlmAdapterCascadeBuilder,
   LlmAdapterRegistry,
   RoutingStreamSink,
   SseLineParser,
+  ChatStreamChunk,
 } from '@studnicky/dagonizer/adapter';
 import type {
   AdapterCapabilitiesType,
@@ -98,6 +97,19 @@ cascade uses to skip an adapter that cannot currently serve a request.
   default). An expired deadline classifies as `TIMEOUT`, which a cascade
   treats as retryable-elsewhere: it falls through to the next preference
   instead of hanging the whole call.
+- **`circuitBreaker`** — optional substrate `CircuitBreaker` instance wrapping
+  the whole logical `chat()` call. An open circuit rejects before retry or rate
+  limiting.
+- **`tokenBucket`** — optional substrate `TokenBucket` instance gating the
+  logical `chat()` call before the retry loop, so retries do not multiply quota
+  consumption.
+- **`timing`** — optional substrate `Timing` sink receiving `adapter.chat.start`,
+  `adapter.chat.complete`, `adapter.chat.error`, and matching
+  `adapter.chatStream.*` events for logical provider calls.
+
+See [Execution tuning](/guide/execution-tuning) for when to combine adapter
+timeouts, retries, token buckets, circuit breakers, timing, and outer retry
+policies.
 
 ```ts twoslash
 import { BaseAdapter } from '@studnicky/dagonizer/adapter';
@@ -156,7 +168,7 @@ bridges that gap:
 
 - `CallModelNode`'s constructor accepts `options: { sink?: StreamSinkInterface<RoutedChatStreamChunkType> }`,
   bound once per node instance.
-- On every `executeOne`, the node wraps `this.sink` in a fresh `RoutingStreamSink`
+- During each `execute(batch, context)` call, the node wraps `this.sink` in a fresh `RoutingStreamSink`
   (`RoutingStreamSink.of(downstream, routeKey, source)`) and hands that wrapper
   to `adapter.chatStream(request, wrapper)`.
 - `routeKey` comes from `CallModelNode.routeKey(state)` — `''` by default (a
@@ -221,12 +233,12 @@ call so each consumer gets its own retry state and session lifecycle.
 `probe()`-ing each resolved adapter in turn, and returns the first one whose
 probe resolves `true`. When every preference is exhausted it throws
 `LlmError(NO_ADAPTER_AVAILABLE)` with a summary of what was tried.
-`LlmAdapterCascadeBuilder.build(catalogue)` assembles a registry + cascade
+`LlmAdapterCascade.create(catalogue)` assembles a registry + cascade
 pair directly from a data-shaped provider catalogue (no `switch` over
 provider names required):
 
 ```ts twoslash
-import { LlmAdapterCascadeBuilder } from '@studnicky/dagonizer/adapter';
+import { LlmAdapterCascade } from '@studnicky/dagonizer/adapter';
 import type { CatalogueEntryType } from '@studnicky/dagonizer/adapter';
 
 declare const myAdapterFactory: () => import('@studnicky/dagonizer/adapter').LlmAdapterInterface;
@@ -237,7 +249,7 @@ const catalogue: CatalogueEntryType[] = [
     factory:    myAdapterFactory,
   },
 ];
-const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+const cascade = LlmAdapterCascade.create(catalogue);
 const adapter  = await cascade.select(); // probes in catalogue order
 ```
 
@@ -252,16 +264,16 @@ All exports below ship through `@studnicky/dagonizer/adapter` unless noted.
 |---|---|---|
 | `LlmAdapterInterface` | type (`./contracts`) | The transport contract every adapter implements. |
 | `BaseAdapter` | class | Abstract base: retry, classification, abort+timeout, buffered `performChatStream` default. |
-| `BaseAdapterOptionsType` | type | `systemPrompt`, `timeoutMs`, plus `BaseAdapterCoreOptionsType`. |
+| `BaseAdapterOptionsType` | type | `systemPrompt`, `timeoutMs`, `circuitBreaker`, `tokenBucket`, `timing`, plus `BaseAdapterCoreOptionsType`. |
 | `ChatRequestType` / `ChatResponseType` | type | Request/response envelopes passed to `chat()` / `chatStream()`. |
-| `ChatStreamChunkType` / `ChatStreamChunkBuilder` | type / class | One `{ delta }` streamed fragment, and its static factory. |
-| `RoutedChatStreamChunkType` / `RoutedChatStreamChunkBuilder` | type / class | `{ routeKey, delta, source }` — a chunk stamped for demultiplexing. |
+| `ChatStreamChunkType` / `ChatStreamChunk` | type / class | One `{ delta }` streamed fragment, with `ChatStreamChunk.create(...)` as its value factory. |
+| `RoutedChatStreamChunkType` / `RoutedChatStreamChunk` | type / class | `{ routeKey, delta, source }` — a chunk stamped for demultiplexing, with `RoutedChatStreamChunk.create(...)` as its value factory. |
 | `RoutingStreamSink` | class | Per-execution decorator that stamps plain chunks with `routeKey` + `source`. |
 | `StreamSinkInterface<T>` | type (`./contracts`) | Push-side, back-pressured sink contract chunks are delivered to. |
 | `SseLineParser` / `SseFrameType` | class / type | Shared isomorphic SSE framer used by every fetch-based streaming adapter. |
 | `LlmAdapterRegistry` | class | `(provider, model)` → adapter factory map. |
 | `LlmAdapterCascade` | class | Preference-ordered probe-until-available selector. |
-| `LlmAdapterCascadeBuilder` / `CatalogueEntryType` | class / type | Data-driven registry+cascade assembly. |
+| `LlmAdapterCascade` / `CatalogueEntryType` | class / type | Data-driven registry+cascade assembly via `LlmAdapterCascade.create(catalogue)`. |
 | `LlmError` / `Classifications` / `LlmErrorReasonType` | class / const / type | Error classification (`NETWORK`, `TIMEOUT`, `QUOTA_EXHAUSTED`, `SCHEMA_VIOLATION`, `CONFIGURATION`, `MODEL_NOT_FOUND`, `NO_ADAPTER_AVAILABLE`, …). |
 | `CallModelNode` | class (`./patterns`) | Agent-loop node base: reads a request, calls `adapter.chatStream` through a routed sink, writes the response to state. |
 

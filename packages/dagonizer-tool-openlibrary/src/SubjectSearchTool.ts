@@ -47,6 +47,7 @@ type SubjectSearchInputType = Record<string, unknown> & {
 };
 
 export class SubjectSearchTool implements ToolInterface<SubjectSearchInputType, readonly CandidateType[]> {
+  // #region tool-schema
   readonly definition: ToolDefinitionType = {
     'name': 'subject_search',
     'description':
@@ -80,6 +81,8 @@ export class SubjectSearchTool implements ToolInterface<SubjectSearchInputType, 
     'outputSchema': { 'type': 'array', 'items': { 'type': 'object' } },
     'strict': true,
   };
+
+  // #endregion tool-schema
 
   async execute(input: SubjectSearchInputType, options?: AbortableOptionsType): Promise<readonly CandidateType[]> {
     const signal = options?.signal;

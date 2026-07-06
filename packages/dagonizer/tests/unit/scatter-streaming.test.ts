@@ -19,16 +19,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgressType, StoredScatterProgressType } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -661,26 +661,26 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
 
     const dispatcher = new Dagonizer<StreamState>();
 
-    class WorkerNode extends ScalarNode<StreamState, 'success'> {
+    class WorkerNode extends MonadicNode<StreamState, 'success'> {
       override readonly name = 'worker';
       override readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-      protected override async executeOne(state: StreamState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
-        // Simulate some async work.
-        await new Promise<void>((resolve, reject) => {
-          const handle = setTimeout(resolve, 2);
-          context.signal.addEventListener('abort', () => {
-            clearTimeout(handle);
-            reject(context.signal.reason);
-          }, { 'once': true });
-        });
-        const n = ++completedCount;
-        // Abort after the configured number of completions.
-        if (n === ABORT_AFTER_COMPLETE) {
-          controller.abort(new Error('test-abort'));
+      override async execute(batch: Batch<StreamState>, context: NodeContextType): Promise<Map<'success', Batch<StreamState>>> {
+        for (const item of batch) {
+          await new Promise<void>((resolve, reject) => {
+            const handle = setTimeout(resolve, 2);
+            context.signal.addEventListener('abort', () => {
+              clearTimeout(handle);
+              reject(context.signal.reason);
+            }, { 'once': true });
+          });
+          const n = ++completedCount;
+          if (n === ABORT_AFTER_COMPLETE) {
+            controller.abort(new Error('test-abort'));
+          }
+          item.state.processed.push(item.state.getter.number('item', -1));
         }
-        state.processed.push(state.getter.number('item', -1));
-        return { 'errors': [], 'output': 'success' as const };
+        return new Map([['success', batch]]);
       }
     }
     dispatcher.registerNode(new WorkerNode());
@@ -808,25 +808,27 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     const executedItems: number[] = [];
 
     const dispatcher = new Dagonizer<StreamState>();
-    class ExactlyOnceWorkerNode extends ScalarNode<StreamState, 'success'> {
+    class ExactlyOnceWorkerNode extends MonadicNode<StreamState, 'success'> {
       override readonly name = 'worker';
       override readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-      protected override async executeOne(state: StreamState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
-        await new Promise<void>((resolve, reject) => {
-          const handle = setTimeout(resolve, 1);
-          context.signal.addEventListener('abort', () => {
-            clearTimeout(handle);
-            reject(context.signal.reason);
-          }, { 'once': true });
-        });
-        const item = state.getter.number('item', -1);
-        executedItems.push(item);
-        if (++completedCount === ABORT_AFTER) {
-          controller.abort(new Error('abort-at-5'));
+      override async execute(batch: Batch<StreamState>, context: NodeContextType): Promise<Map<'success', Batch<StreamState>>> {
+        for (const row of batch) {
+          await new Promise<void>((resolve, reject) => {
+            const handle = setTimeout(resolve, 1);
+            context.signal.addEventListener('abort', () => {
+              clearTimeout(handle);
+              reject(context.signal.reason);
+            }, { 'once': true });
+          });
+          const item = row.state.getter.number('item', -1);
+          executedItems.push(item);
+          if (++completedCount === ABORT_AFTER) {
+            controller.abort(new Error('abort-at-5'));
+          }
+          row.state.processed.push(item);
         }
-        state.processed.push(item);
-        return { 'errors': [], 'output': 'success' as const };
+        return new Map([['success', batch]]);
       }
     }
     dispatcher.registerNode(new ExactlyOnceWorkerNode());

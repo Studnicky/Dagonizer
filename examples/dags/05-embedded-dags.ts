@@ -5,11 +5,13 @@
  */
 
 import {
+  Batch,
   DAGBuilder,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -29,16 +31,18 @@ export class IncrementState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // The child DAG's working node: increments the payload field
-export class IncrementNode extends ScalarNode<IncrementState, 'success'> {
+export class IncrementNode extends MonadicNode<IncrementState, 'success'> {
   readonly name = 'increment';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: IncrementState) {
-    state.payload = state.payload + 1;
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<IncrementState>) {
+    for (const item of batch) {
+      item.state.payload = item.state.payload + 1;
+    }
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 

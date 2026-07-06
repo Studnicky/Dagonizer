@@ -23,6 +23,7 @@ import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
+import { Clock, VirtualClockProvider, VirtualTimeCounter } from '@studnicky/clock';
 
 import { ArchivistSession } from '../../ArchivistSession.ts';
 import type {
@@ -364,6 +365,20 @@ describe('ArchivistSession.ask()', () => {
     assert.ok(run !== undefined);
     assert.ok(typeof run.execution === 'object', 'execution result must be present');
     assert.equal(run.dagName, 'the-archivist');
+  });
+
+  it('uses the injected clock for conversation timestamps', async () => {
+    const counter = VirtualTimeCounter.create({ 'startMs': 10_000 });
+    const clock = Clock.create(VirtualClockProvider.create(counter));
+    const clockedSession = new HeadlessArchivistSession(
+      new MemoryStore(),
+      new ConsoleLogger(),
+      { 'clock': clock, 'llm': new HeadlessStubLlm() },
+    );
+
+    await clockedSession.ask('Tell me about deterministic archive clocks');
+
+    assert.equal(clockedSession.conversation[0]?.ts, 10_000);
   });
 });
 

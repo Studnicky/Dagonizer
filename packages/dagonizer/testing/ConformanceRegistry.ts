@@ -63,7 +63,8 @@ import type { NodeContextType } from '../dist/entities/node/NodeContext.js';
 import type { NodeOutputType } from '../dist/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
-import { CheckpointRestoreAdapter, NodeStateBase, ScalarNode, Timeout, Validator } from '@studnicky/dagonizer';
+import { CheckpointRestoreAdapter, MonadicNode, NodeStateBase, Timeout, Validator } from '@studnicky/dagonizer';
+import type { Batch } from '@studnicky/dagonizer';
 
 
 // ---------------------------------------------------------------------------
@@ -169,68 +170,71 @@ class AbortSleep {
 // Nodes — Laws 1–6, each records through state
 // ---------------------------------------------------------------------------
 
-class RecorderNode extends ScalarNode<ConformanceState, 'done'> {
+class RecorderNode extends MonadicNode<ConformanceState, 'done'> {
   override readonly name = 'recorder';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
-  protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
-    state.executedNodes.push('recorder');
-    return { 'errors': [], 'output': 'done' };
+  override async execute(batch: Batch<ConformanceState>, _context: NodeContextType): Promise<Map<'done', Batch<ConformanceState>>> {
+    for (const item of batch) item.state.executedNodes.push('recorder');
+    return new Map([['done', batch]]);
   }
 }
 
-class MutatorNode extends ScalarNode<ConformanceState, 'done'> {
+class MutatorNode extends MonadicNode<ConformanceState, 'done'> {
   override readonly name = 'mutator';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
-  protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
-    state.value = 99;
-    return { 'errors': [], 'output': 'done' };
+  override async execute(batch: Batch<ConformanceState>, _context: NodeContextType): Promise<Map<'done', Batch<ConformanceState>>> {
+    for (const item of batch) item.state.value = 99;
+    return new Map([['done', batch]]);
   }
 }
 
-class ErrorEmitterNode extends ScalarNode<ConformanceState, 'error'> {
+class ErrorEmitterNode extends MonadicNode<ConformanceState, 'error'> {
   override readonly name = 'error-emitter';
   override readonly outputs = ['error'] as const;
   override get outputSchema(): Record<'error', SchemaObjectType> { return { 'error': { 'type': 'object' } }; }
-  protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'error'>> {
-    state.collectError({
+  override async execute(batch: Batch<ConformanceState>, _context: NodeContextType): Promise<Map<'error', Batch<ConformanceState>>> {
+    const output: NodeOutputType<'error'> = { 'errors': [{
       'code': 'TEST_ERROR',
       'context': {},
       'message': 'conformance law error',
       'operation': 'error-emitter',
       'recoverable': true,
       'timestamp': new Date().toISOString(),
-    });
-    return { 'errors': [], 'output': 'error' };
+    }], 'output': 'error' };
+    for (const item of batch) {
+      for (const error of output.errors) item.state.collectError(error);
+    }
+    return new Map([[output.output, batch]]);
   }
 }
 
-class TimeoutSleeperNode extends ScalarNode<ConformanceState, 'done'> {
+class TimeoutSleeperNode extends MonadicNode<ConformanceState, 'done'> {
   override readonly name = 'timeout-sleeper';
   override readonly outputs = ['done'] as const;
   override readonly timeout = Timeout.ofMs(TIMEOUT_SLEEPER_TIMEOUT_MS);
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
-  protected override async executeOne(
-    _state: ConformanceState,
+  override async execute(
+    batch: Batch<ConformanceState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<'done'>> {
+  ): Promise<Map<'done', Batch<ConformanceState>>> {
     await AbortSleep.until(context.signal, SLEEPER_SAFETY_CEILING_MS);
-    return { 'errors': [], 'output': 'done' };
+    return new Map([['done', batch]]);
   }
 }
 
-class AbortSleeperNode extends ScalarNode<ConformanceState, 'done'> {
+class AbortSleeperNode extends MonadicNode<ConformanceState, 'done'> {
   override readonly name = 'abort-sleeper';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
-  protected override async executeOne(
-    state: ConformanceState,
+  override async execute(
+    batch: Batch<ConformanceState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<'done'>> {
-    state.began = true;
+  ): Promise<Map<'done', Batch<ConformanceState>>> {
+    for (const item of batch) item.state.began = true;
     await AbortSleep.until(context.signal, SLEEPER_SAFETY_CEILING_MS);
-    return { 'errors': [], 'output': 'done' };
+    return new Map([['done', batch]]);
   }
 }
 
@@ -240,13 +244,13 @@ class AbortSleeperNode extends ScalarNode<ConformanceState, 'done'> {
  * each clone into the parent's gatheredItems array. Used by Laws 7–8.
  * Observes through state so results survive snapshot/restore round-trips.
  */
-class ScatterCounterNode extends ScalarNode<ConformanceState, 'done'> {
+class ScatterCounterNode extends MonadicNode<ConformanceState, 'done'> {
   override readonly name = 'scatter-counter';
   override readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
-  protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
-    state.value += 1;
-    return { 'errors': [], 'output': 'done' };
+  override async execute(batch: Batch<ConformanceState>, _context: NodeContextType): Promise<Map<'done', Batch<ConformanceState>>> {
+    for (const item of batch) item.state.value += 1;
+    return new Map([['done', batch]]);
   }
 }
 

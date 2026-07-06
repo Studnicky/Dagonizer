@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, after } from 'node:test';
 
+import { Clock, VirtualClockProvider, VirtualTimeCounter } from '@studnicky/clock';
 import { StoreError } from '@studnicky/dagonizer/store';
 
 import { EventLogStore } from '../../src/index.js';
@@ -53,6 +54,20 @@ void test('in-memory: overwriting a key appends a new set entry', async () => {
   assert.equal(store.log().length, 2);
 });
 
+void test('in-memory: event timestamps come from the injected substrate clock', async () => {
+  const counter = VirtualTimeCounter.create({ 'startMs': 1_000 });
+  const clock = Clock.create(VirtualClockProvider.create(counter));
+  const store = new EventLogStore({ clock });
+
+  await store.set('n', 1);
+  counter.advance(5);
+  await store.update('n', (value) => (typeof value === 'number' ? value : 0) + 1);
+  counter.advance(5);
+  await store.delete('n');
+
+  assert.deepEqual(store.log().map((entry) => entry.at), [1_000, 1_005, 1_010]);
+});
+
 // ── 2. update() atomic in-memory ─────────────────────────────────────────────
 
 void test('update: applies fn to undefined for absent key', async () => {
@@ -70,20 +85,17 @@ void test('update: applies fn to existing value', async () => {
   assert.equal(await store.get('counter'), 15);
 });
 
-void test('update: concurrent Promise.all produces no lost writes (JS single-thread)', async () => {
+void test('update: concurrent Promise.all produces no lost writes', async () => {
   const store = new EventLogStore();
   await store.set('x', 0);
 
-  // Fire 10 concurrent increments. Because update() does no await before
-  // reading #latest(), each invocation reads the prior committed value.
-  // JS single-threaded semantics guarantee these interleave at microtask
-  // boundaries only after each append resolves.
+  // Fire 10 concurrent increments. The store serializes each update across
+  // latest-read, value computation, and append.
   const increments = Array.from({ "length": 10 }, () =>
     store.update('x', (v) => (typeof v === 'number' ? v : 0) + 1),
   );
   await Promise.all(increments);
 
-  // Each update reads and commits sequentially under JS's event loop.
   assert.equal(await store.get('x'), 10);
 });
 
@@ -150,6 +162,20 @@ void test('restore: clears prior log entries', async () => {
 
   assert.equal(store.log().length, 0);
   assert.equal(await store.get('old'), null);
+});
+
+void test('restore: restore entries use the injected substrate clock', async () => {
+  const counter = VirtualTimeCounter.create({ 'startMs': 2_000 });
+  const clock = Clock.create(VirtualClockProvider.create(counter));
+  const store = new EventLogStore({ clock });
+
+  await store.restore({
+    'type': 'event-log-store',
+    'version': 1,
+    'entries': [{ 'key': 'restored', 'value': 'yes' }],
+  });
+
+  assert.equal(store.log()[0]?.at, 2_000);
 });
 
 // ── 5. Tombstone semantics ────────────────────────────────────────────────────

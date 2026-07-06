@@ -32,11 +32,11 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import type { NodeInterface, SchemaObjectType  } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
@@ -100,12 +100,12 @@ void describe('per-node timeout', () => {
 
     let receivedSignal: AbortSignal | undefined;
 
-    class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
+    class SlowNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'slow';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(500);
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-      protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
+      override async execute(batch: Batch<NodeStateBase>, context: NodeContextType): Promise<Map<'success', Batch<NodeStateBase>>> {
         receivedSignal = context.signal;
         // Suspend indefinitely; the per-node deadline race wins.
         await new Promise<never>((_resolve, _reject) => {
@@ -113,7 +113,7 @@ void describe('per-node timeout', () => {
             _reject(context.signal.reason);
           }, { 'once': true });
         });
-        return { 'errors': [], 'output': 'success' };
+        return new Map([['success', batch]]);
       }
     }
 
@@ -163,16 +163,16 @@ void describe('per-node timeout', () => {
       }
     }
 
-    class TardyNode extends ScalarNode<NodeStateBase, 'success'> {
+    class TardyNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'tardy';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(200);
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-      protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
+      override async execute(batch: Batch<NodeStateBase>, context: NodeContextType): Promise<Map<'success', Batch<NodeStateBase>>> {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'errors': [], 'output': 'success' };
+        return new Map([['success', batch]]);
       }
     }
 
@@ -226,16 +226,16 @@ void describe('per-node timeout', () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
 
-    class SlowCancelNode extends ScalarNode<NodeStateBase, 'success'> {
+    class SlowCancelNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'slow-cancel';
       readonly outputs = ['success'] as const;
       override readonly timeout = Timeout.ofMs(60_000); // very long node budget; run-level cancel wins
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-      protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
+      override async execute(batch: Batch<NodeStateBase>, context: NodeContextType): Promise<Map<'success', Batch<NodeStateBase>>> {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'errors': [], 'output': 'success' };
+        return new Map([['success', batch]]);
       }
     }
 

@@ -77,6 +77,20 @@ class AbortingEmbedder extends BaseEmbedder {
   }
 }
 
+class CountingEmbedder extends BaseEmbedder {
+  calls = 0;
+
+  constructor() {
+    super('counting', 'Counting', 1);
+  }
+
+  protected override async performEmbed(text: string, _signal: AbortSignal): Promise<readonly number[]> {
+    this.calls++;
+    await Promise.resolve();
+    return [text.length];
+  }
+}
+
 class AdapterDescriptorFixture {
   private constructor() {}
 
@@ -242,6 +256,44 @@ void describe('BaseEmbedder defaults', () => {
     const out = await embedder.embedBatch(['a', 'b', 'c']);
     assert.equal(out.length, 3);
     for (const v of out) assert.deepEqual(v, [0, 1, 0, 0]);
+  });
+
+  void it('coalesces duplicate in-flight embeds for the same signal', async () => {
+    const embedder = new CountingEmbedder();
+    const controller = new AbortController();
+
+    const [first, second] = await Promise.all([
+      embedder.embed('same', { 'signal': controller.signal }),
+      embedder.embed('same', { 'signal': controller.signal }),
+    ]);
+
+    assert.deepEqual(first, [4]);
+    assert.deepEqual(second, [4]);
+    assert.equal(embedder.calls, 1);
+  });
+
+  void it('keeps different caller signals on separate embed work', async () => {
+    const embedder = new CountingEmbedder();
+
+    await Promise.all([
+      embedder.embed('same', { 'signal': new AbortController().signal }),
+      embedder.embed('same', { 'signal': new AbortController().signal }),
+    ]);
+
+    assert.equal(embedder.calls, 2);
+  });
+
+  void it('does not coalesce oversized text inputs', async () => {
+    const embedder = new CountingEmbedder();
+    const controller = new AbortController();
+    const text = 'x'.repeat(8_193);
+
+    await Promise.all([
+      embedder.embed(text, { 'signal': controller.signal }),
+      embedder.embed(text, { 'signal': controller.signal }),
+    ]);
+
+    assert.equal(embedder.calls, 2);
   });
 });
 

@@ -9,7 +9,7 @@
  *
  * `select(stage)` is fully implemented here: it looks up `stage.nodeName`
  * in the fixed `NODE_NAME_TO_KIND` dispatch map to decide which
- * `ReasoningStepBuilder` variant the stage produces, then calls `describe`
+ * `ReasoningStep` variant the stage produces, then calls `describe`
  * for the step's text. Node names not present in the map yield no step
  * (`[]`) — phase/terminal/tool-execution nodes that don't carry a
  * reasoning-visible moment. `action` steps carry `describe`'s return value
@@ -17,7 +17,7 @@
  * tool ran, not its full argument payload).
  *
  * Every emitted step is wrapped with a monotonic `ordinal` (via
- * `ReasoningTraceItemBuilder.of`) before being pushed to the sink. `produce`
+ * `ReasoningTraceItem.create`) before being pushed to the sink. `produce`
  * (`DagStreamProducer`) awaits each push in order, so this producer is the
  * single, sequential linearization point for the stream — a per-producer
  * `#ordinal` counter is sound. The ordinal increments only for steps that
@@ -28,8 +28,8 @@
  * on the order items are recorded in.
  */
 
-import { ReasoningStepBuilder } from '../../entities/agent/ReasoningStep.js';
-import { ReasoningTraceItemBuilder } from '../../entities/agent/ReasoningTraceItem.js';
+import { ReasoningStep } from '../../entities/agent/ReasoningStep.js';
+import { ReasoningTraceItem } from '../../entities/agent/ReasoningTraceItem.js';
 import type { ReasoningTraceItemType } from '../../entities/agent/ReasoningTraceItem.js';
 import type { NodeResultType } from '../../entities/node/NodeResult.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
@@ -40,7 +40,7 @@ type ReasoningKindType = 'thought' | 'action' | 'observation' | 'final';
 
 /**
  * Fixed dispatch map from the canonical agent-loop node name (as registered
- * by `AgentBuilder.loop`) to the reasoning-step kind that node's result
+ * by the canonical `DAGBuilder`-authored agent loop) to the reasoning-step kind that node's result
  * represents.
  *
  * One node per kind — the node that *produces* the moment, not the ones that
@@ -83,12 +83,12 @@ export abstract class AgentTraceProducer extends DagStreamProducer<ReasoningTrac
     if (kind === undefined) return [];
     const text = this.describe(stage);
     const step = kind === 'thought'
-      ? ReasoningStepBuilder.thought(text)
+      ? ReasoningStep.create({ 'kind': 'thought', text })
       : kind === 'observation'
-        ? ReasoningStepBuilder.observation(text)
+        ? ReasoningStep.create({ 'kind': 'observation', 'output': text })
         : kind === 'final'
-          ? ReasoningStepBuilder.final(text)
-          : ReasoningStepBuilder.action(text, {});
-    return [ReasoningTraceItemBuilder.of(this.#ordinal++, step)];
+          ? ReasoningStep.create({ 'kind': 'final', text })
+          : ReasoningStep.create({ 'kind': 'action', 'tool': text, 'args': {} });
+    return [ReasoningTraceItem.create(this.#ordinal++, step)];
   }
 }

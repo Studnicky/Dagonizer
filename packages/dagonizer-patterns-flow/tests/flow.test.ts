@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { Batch } from '@studnicky/dagonizer';
-import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
+import { NodeContext } from '@studnicky/dagonizer/entities';
 
 import { PredicateGateNode, DedupeByKeyNode } from '../src/index.js';
 
@@ -30,7 +30,7 @@ class TestDedupe extends DedupeByKeyNode<TestState, number> {
 void test('PredicateGateNode routes pass/fail', async () => {
   const gate = new TestGate();
   const signal = new AbortController().signal;
-  const ctx = NodeContextBuilder.of('test-dag', 'test-gate', signal, undefined);
+  const ctx = NodeContext.create('test-dag', 'test-gate', signal);
 
   const passState = new TestState();
   passState.ok = true;
@@ -49,7 +49,7 @@ void test('DedupeByKeyNode collapses duplicates', async () => {
   const node = new TestDedupe();
   const state = new TestState();
   state.items = [1, 2, 2, 3, 3, 3];
-  const ctx = NodeContextBuilder.of('test-dag', 'test-dedupe', new AbortController().signal, undefined);
+  const ctx = NodeContext.create('test-dag', 'test-dedupe', new AbortController().signal);
   await node.execute(Batch.of(state), ctx);
   assert.deepEqual(state.items, [1, 2, 3]);
 });

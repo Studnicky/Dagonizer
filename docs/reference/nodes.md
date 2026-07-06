@@ -116,11 +116,12 @@ structure instead of three uncoordinated sibling fields:
 - **`{ mode: 'item', concurrency?, throttle? }`** (the default: `{ mode: 'item', concurrency: 1 }`
   when `execution` is absent). `concurrency` is an item-level `Semaphore`
   permit count — the maximum number of clone bodies executing at once.
-  `throttle`, when present (`{ concurrencyLimit: number }`), wraps dispatch
-  through a second, independent `Throttle` concurrency window on top of the
-  semaphore: the semaphore still caps how far the pull loop runs ahead of
-  dispatch capacity, while `throttle.concurrencyLimit` further paces the
-  actual item-execution calls.
+  `throttle`, when present (`{ concurrencyLimit: number, adaptive? }`), wraps
+  dispatch through a second, independent `Throttle` concurrency window on top
+  of the semaphore: the semaphore still caps how far the pull loop runs ahead
+  of dispatch capacity, while `throttle.concurrencyLimit` further paces the
+  actual item-execution calls. `throttle.adaptive` passes substrate adaptive
+  concurrency tuning through to `Throttle`.
 - **`{ mode: 'reservoir', concurrency?, reservoir }`**: items are buffered by
   `reservoir.keyField` and released as a batch per key when
   `reservoir.capacity` is reached, `reservoir.idleMs` elapses, or the source
@@ -132,6 +133,10 @@ structure instead of three uncoordinated sibling fields:
   variable-size batch dispatch.
 
 Per-item resume bookkeeping is persisted under the reserved metadata key `SCATTER_PROGRESS_KEY` so a checkpoint-resume cycle skips clones completed in the prior run.
+
+See [Execution tuning](/guide/execution-tuning) for when to choose scatter
+`concurrency`, throttle, adaptive concurrency, token buckets, circuit breakers,
+retry, and coalescing.
 
 ---
 

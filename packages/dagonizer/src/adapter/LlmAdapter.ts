@@ -5,7 +5,7 @@
  * this module re-exports them ergonomically so `@studnicky/dagonizer/adapter`
  * consumers continue to see a single import path.
  *
- * `ChatRequestBuilder` and `ChatResponseMessageBuilder` remain here because
+ * `ChatRequest` and `ChatResponseMessage` remain here because
  * they have runtime logic (`Signal.never()`, discriminated dispatch).
  * Module-level defaults for `ChatRequestType` fields also live here.
  *
@@ -76,20 +76,20 @@ const CHAT_REQUEST_DEFAULTS = {
 } as const;
 
 /**
- * ChatRequestType builder. Fills defaults so callers can pass a partial
+ * ChatRequestType factory. Fills defaults so callers can pass a partial
  * literal and still get a complete, V8-monomorphic value.
  *
- *   const req = ChatRequestBuilder.from({ messages: [...] });
+ *   const req = ChatRequest.create({ messages: [...] });
  *
  * `messages` is the only field with no sensible default; passing an
  * empty array satisfies the type but produces no model output.
  */
-export class ChatRequestBuilder {
+export class ChatRequest {
   private constructor() { /* static */ }
 
   /** Materialise a complete `ChatRequestType` from a partial input by
    *  filling every absent field with its canonical default. */
-  static from(partial: PartialChatRequestType): ChatRequestType {
+  static create(partial: PartialChatRequestType): ChatRequestType {
     const defaults = { ...CHAT_REQUEST_DEFAULTS, ...partial };
     return {
       'messages':     partial.messages,
@@ -104,16 +104,16 @@ export class ChatRequestBuilder {
 }
 
 /**
- * ChatResponseMessageBuilder: static factory for `ChatResponseMessage`
+ * ChatResponseMessage: static factory for `ChatResponseMessage`
  * variants. Centralises the text/tools/mixed dispatch so every adapter
  * calls one canonical entry point. Distinct name from the type so the
  * value and type identifiers never collide at import sites.
  */
-export class ChatResponseMessageBuilder {
+export class ChatResponseMessage {
   private constructor() { /* static */ }
 
   /** Build the right discriminated variant from content + tool calls. */
-  static from(content: string, toolCalls: readonly ToolCallType[]): ChatResponseMessageType {
+  static create(content: string, toolCalls: readonly ToolCallType[]): ChatResponseMessageType {
     if (toolCalls.length === 0) return { 'variant': 'text', content };
     if (content.length === 0) return { 'variant': 'tools', 'toolCalls': [...toolCalls] };
     return { 'variant': 'mixed', content, 'toolCalls': [...toolCalls] };

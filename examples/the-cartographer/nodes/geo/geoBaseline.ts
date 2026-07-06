@@ -16,15 +16,16 @@ import type { CartographerState } from '../../CartographerState.ts';
 import { GeoBaseline } from '../../core/GeoBaseline.ts';
 
 import {
-  NodeOutputBuilder,
-  ScalarNode,
+  MonadicNode,
+  RoutedBatch,
+  type Batch,
   type NodeContextType,
-  type NodeOutputType,
+  type RoutedBatchType,
   type SchemaObjectType,
 } from '@studnicky/dagonizer';
 
 // #region geo-baseline-node
-export class GeoBaselineNode extends ScalarNode<CartographerState, 'baselined'> {
+export class GeoBaselineNode extends MonadicNode<CartographerState, 'baselined'> {
   readonly 'name' = 'geo-baseline';
   readonly 'outputs' = ['baselined'] as const;
 
@@ -34,13 +35,15 @@ export class GeoBaselineNode extends ScalarNode<CartographerState, 'baselined'> 
     };
   }
 
-  protected override async executeOne(
-    state: CartographerState,
+  override async execute(
+    batch: Batch<CartographerState>,
     _context: NodeContextType,
-  ): Promise<NodeOutputType<'baselined'>> {
-    state.resolvedGeo = GeoBaseline.resolvedGeo();
-    state.geoContext  = GeoBaseline.geoContext();
-    return NodeOutputBuilder.of('baselined');
+  ): Promise<RoutedBatchType<'baselined', CartographerState>> {
+    for (const item of batch) {
+      item.state.resolvedGeo = GeoBaseline.resolvedGeo();
+      item.state.geoContext  = GeoBaseline.geoContext();
+    }
+    return RoutedBatch.create('baselined', batch);
   }
 }
 

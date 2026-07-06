@@ -3,13 +3,14 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../src/entities/node/NodeError.js';
+import { NodeError } from '../../src/entities/node/NodeError.js';
 import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -25,7 +26,7 @@ class CounterState extends NodeStateBase {
 
 // One increment node per level; each adds a distinct power of ten so the
 // final total proves every level executed exactly once and in order.
-class IncNode extends ScalarNode<CounterState, string> {
+class IncNode extends MonadicNode<CounterState, string> {
   readonly name: string;
   readonly outputs: readonly string[];
   private readonly delta: number;
@@ -43,12 +44,12 @@ class IncNode extends ScalarNode<CounterState, string> {
     return schema;
   }
 
-  protected async executeOne(
-    state: CounterState,
+  override async execute(
+    batch: Batch<CounterState>,
     _ctx: NodeContextType,
-  ): Promise<NodeOutputType<string>> {
-    state.value += this.delta;
-    return { 'errors': [], 'output': 'success' };
+  ): Promise<Map<string, Batch<CounterState>>> {
+    for (const item of batch) item.state.value += this.delta;
+    return new Map([['success', batch]]);
   }
 
   static of(name: string, delta: number): IncNode {
@@ -364,11 +365,11 @@ void describe('Embedded-DAG lifecycle scoping', () => {
  * terminal placement in the inner DAG.
  */
 
-class PassNode extends ScalarNode<NodeStateBase, 'ok'> {
+class PassNode extends MonadicNode<NodeStateBase, 'ok'> {
   readonly name = 'pass';
   readonly outputs = ['ok'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'ok': { 'type': 'object' } }; }
-  protected async executeOne(): Promise<NodeOutputType<'ok'>> { return { 'errors': [], 'output': 'ok' as const }; }
+  override async execute(batch: Batch<NodeStateBase>): Promise<Map<'ok', Batch<NodeStateBase>>> { return new Map([['ok', batch]]); }
 }
 
 const passNode = new PassNode();
@@ -378,19 +379,23 @@ const passNode = new PassNode();
 // tolerates — e.g. one scout absorbed by an `any-success` reducer — while the
 // run continues to a `completed` terminal. The error must surface on the parent
 // state for observability without flipping the placement's terminal decision.
-class TolerantNode extends ScalarNode<NodeStateBase, 'ok'> {
+class TolerantNode extends MonadicNode<NodeStateBase, 'ok'> {
   readonly name = 'tolerant';
   readonly outputs = ['ok'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'ok': { 'type': 'object' } }; }
-  protected async executeOne(): Promise<NodeOutputType<'ok'>> {
-    const err = NodeErrorBuilder.from(
+  override async execute(batch: Batch<NodeStateBase>): Promise<Map<'ok', Batch<NodeStateBase>>> {
+    const err = NodeError.create(
       'TOOL_HTTP_429',
       'tolerated upstream rate limit',
-      'executeOne',
+      'execute',
       false,
       '2020-01-01T00:00:00Z',
     );
-    return { 'errors': [err], 'output': 'ok' as const };
+    const output: NodeOutputType<'ok'> = { 'errors': [err], 'output': 'ok' };
+    for (const item of batch) {
+      for (const error of output.errors) item.state.collectError(error);
+    }
+    return new Map([[output.output, batch]]);
   }
 }
 

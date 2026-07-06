@@ -5,10 +5,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -17,29 +19,31 @@ import type { DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dago
 // ---------------------------------------------------------------------------
 
 // #region signal-iteration
-export class BatchProcessNode extends ScalarNode<NodeStateBase, 'success'> {
+export class BatchProcessNode extends MonadicNode<NodeStateBase, 'success'> {
   readonly name = 'batch-process';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextType) {
+  override async execute(batch: Batch<NodeStateBase>, context: NodeContextType) {
     const items = ['alpha', 'beta', 'gamma', 'delta', 'epsilon'];
-    for (const item of items) {
-      if (context.signal.aborted) break;        // check between iterations
-      await this.processItem(item, context.signal); // propagate to every IO call
+    for (const batchItem of batch) {
+      for (const item of items) {
+        if (context.signal.aborted) break;        // check between iterations
+        await this.processItem(batchItem.state, item, context.signal); // propagate to every IO call
+      }
     }
-    return NodeOutputBuilder.of('success');
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 
   /** Simulate per-item IO; propagates the signal so the item-level wait aborts. */
-  private async processItem(item: string, signal: AbortSignal): Promise<void> {
+  private async processItem(state: NodeStateBase, item: string, signal: AbortSignal): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(resolve, 200);
       signal.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
     });
-    void item; // consume for side-effect
+    state.setMetadata('lastProcessedItem', item);
   }
 }
 // #endregion signal-iteration
@@ -49,21 +53,21 @@ export class BatchProcessNode extends ScalarNode<NodeStateBase, 'success'> {
 // ---------------------------------------------------------------------------
 
 // #region node-cancellation-aware
-export class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
+export class SlowNode extends MonadicNode<NodeStateBase, 'success'> {
   readonly name = 'slow';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: NodeStateBase, context: NodeContextType) {
+  override async execute(batch: Batch<NodeStateBase>, context: NodeContextType) {
     // Wrap the delay in a manual Promise that listens for abort. If the node
     // ignores context.signal, cancellation would not take effect until the
     // current node finishes, even if the signal fires.
     //
-    // When composing multiple signals (e.g. a per-operation timeout plus the
-    // dispatcher's signal), prefer `AbortSignal.any([sigA, sigB])` — it fires
-    // as soon as the first of the two aborts. Do not manually chain listeners.
+    // When composing multiple cancellation concerns (e.g. a per-operation
+    // timeout plus the dispatcher's signal), prefer `Signal.compose(...)`.
+    // Do not manually chain listeners.
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(resolve, 5_000);
       context.signal.addEventListener(
@@ -72,7 +76,7 @@ export class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
         { "once": true },
       );
     });
-    return NodeOutputBuilder.of('success');
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 // #endregion node-cancellation-aware

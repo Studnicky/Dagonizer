@@ -15,10 +15,12 @@
  */
 
 import {
+  Batch,
   DAGBuilder,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import { Timeout } from '@studnicky/dagonizer/runtime';
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
@@ -36,7 +38,7 @@ export class TaskState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region fast-node
-export class FastTaskNode extends ScalarNode<TaskState, 'done'> {
+export class FastTaskNode extends MonadicNode<TaskState, 'done'> {
   readonly name = 'fast-task';
   readonly outputs = ['done'] as const;
   // Per-node timeout budget: 200 ms. This node resolves in ~0 ms → no timeout.
@@ -44,9 +46,9 @@ export class FastTaskNode extends ScalarNode<TaskState, 'done'> {
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: TaskState) {
-    state.output = 'fast-done';
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<TaskState>) {
+    for (const item of batch) item.state.output = 'fast-done';
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion fast-node
@@ -59,7 +61,7 @@ export class FastTaskNode extends ScalarNode<TaskState, 'done'> {
 // ---------------------------------------------------------------------------
 
 // #region slow-node
-export class SlowTaskNode extends ScalarNode<TaskState, 'done'> {
+export class SlowTaskNode extends MonadicNode<TaskState, 'done'> {
   readonly name = 'slow-task';
   readonly outputs = ['done'] as const;
   // Per-node timeout budget: 50 ms. The node tries to wait 5 s → DAGError (code NODE_TIMEOUT).
@@ -67,7 +69,7 @@ export class SlowTaskNode extends ScalarNode<TaskState, 'done'> {
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(_state: TaskState, context: NodeContextType) {
+  override async execute(batch: Batch<TaskState>, context: NodeContextType) {
     // Await a 5-second delay, but honour context.signal so the engine's
     // per-node abort terminates the wait promptly at the 50 ms boundary.
     await new Promise<void>((_resolve, reject) => {
@@ -78,7 +80,7 @@ export class SlowTaskNode extends ScalarNode<TaskState, 'done'> {
         { "once": true },
       );
     });
-    return NodeOutputBuilder.of('done');
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion slow-node

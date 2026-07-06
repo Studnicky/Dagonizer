@@ -62,7 +62,7 @@ A **DAG** is therefore a graph of steps where each step's output drives the rout
 
 ## ⦿ What it is
 
-A **node** is a typed, stateless unit of work that receives a batch of state items and a context (including an `AbortSignal`) and returns a routed batch — each item mapped to a named output port. Nodes receive external dependencies through their constructors. The dispatcher routes items to the next node based on their port. Implement `NodeInterface<TState, TOutput>` for full batch control, or extend `ScalarNode` and implement `executeOne` for the common per-item case. Five placement kinds cover the composition space.
+A **node** is a typed, stateless unit of work that receives a batch of state items and a context (including an `AbortSignal`) and returns a routed batch — each item mapped to a named output port. Nodes receive external dependencies through their constructors. The dispatcher routes items to the next node based on their port. Extend `MonadicNode<TState, TOutput>` or implement `NodeInterface<TState, TOutput>` directly; per-item behavior lives inside the node's own `execute(batch, context)` loop. Five placement kinds cover the composition space.
 
 | Kind | What it does |
 |------|-------------|

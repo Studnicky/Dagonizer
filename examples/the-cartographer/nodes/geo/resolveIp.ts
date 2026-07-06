@@ -4,15 +4,16 @@ import { GeoSignalDescriptorGuard } from '../../entities/GeoSignalDescriptor.ts'
 import type { IpGeolocator } from '../../contracts/IpGeolocator.ts';
 import { OutcomeResolution } from './OutcomeResolution.ts';
 import {
-  NodeOutputBuilder,
-  ScalarNode,
+  MonadicNode,
+  RoutedBatch,
+  type Batch,
   type NodeContextType,
-  type NodeOutputType,
+  type RoutedBatchType,
   type SchemaObjectType,
 } from '@studnicky/dagonizer';
 
 // #region resolve-ip-node
-export class ResolveIpNode extends ScalarNode<CartographerState, 'resolved'> {
+export class ResolveIpNode extends MonadicNode<CartographerState, 'resolved'> {
   private readonly ipGeolocator: IpGeolocator;
 
   readonly 'name' = 'resolve-ip';
@@ -27,23 +28,25 @@ export class ResolveIpNode extends ScalarNode<CartographerState, 'resolved'> {
     return { 'resolved': { 'type': 'object' } };
   }
 
-  protected override async executeOne(
-    state: CartographerState,
+  override async execute(
+    batch: Batch<CartographerState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<'resolved'>> {
-    const raw = state.getMetadata('geo-signal');
+  ): Promise<RoutedBatchType<'resolved', CartographerState>> {
+    for (const item of batch) {
+      const raw = item.state.getMetadata('geo-signal');
 
-    if (!GeoSignalDescriptorGuard.is(raw)) {
-      state.candidate = GeoResolutionBuilder.from({ 'source': 'ip', 'weight': 0 });
-      return NodeOutputBuilder.of('resolved');
-    }
+      if (!GeoSignalDescriptorGuard.is(raw)) {
+        item.state.candidate = GeoResolutionBuilder.from({ 'source': 'ip', 'weight': 0 });
+        continue;
+      }
 
-    const outcome = await this.ipGeolocator.lookup(raw.ipAddress, context.signal);
-    if (outcome.error !== null) {
-      state.capturedErrors = [...state.capturedErrors, outcome.error];
+      const outcome = await this.ipGeolocator.lookup(raw.ipAddress, context.signal);
+      if (outcome.error !== null) {
+        item.state.capturedErrors = [...item.state.capturedErrors, outcome.error];
+      }
+      item.state.candidate = OutcomeResolution.of(outcome, 'ip', raw.weight);
     }
-    state.candidate = OutcomeResolution.of(outcome, 'ip', raw.weight);
-    return NodeOutputBuilder.of('resolved');
+    return RoutedBatch.create('resolved', batch);
   }
 }
 // #endregion resolve-ip-node

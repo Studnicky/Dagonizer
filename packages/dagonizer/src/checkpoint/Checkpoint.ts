@@ -49,7 +49,9 @@ import type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.j
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
 import type { JsonObjectType } from '../entities/json.js';
 import { DAGError } from '../errors/DAGError.js';
+import { BatchItemExecutor } from '../execution/BatchItemExecutor.js';
 import type { NodeStateBase, NodeStateInterface } from '../NodeStateBase.js';
+import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.js';
 import { Validator } from '../validation/Validator.js';
 
 /**
@@ -117,6 +119,20 @@ export type CaptureOptionsType = {
    * only.
    */
   stores?: Record<string, SnapshottableInterface>;
+  /**
+   * Execution policy for named store snapshots. Controls concurrency, throttle,
+   * and timing for `store.snapshot()` calls.
+   */
+  execution?: BatchExecutionOptionsType;
+}
+
+/** Options for `Checkpoint.restoreStores`. */
+export type RestoreStoresOptionsType = {
+  /**
+   * Execution policy for named store restores. Controls concurrency, throttle,
+   * and timing for `store.restore(snapshot)` calls.
+   */
+  execution?: BatchExecutionOptionsType;
 }
 
 /**
@@ -139,7 +155,8 @@ export class Checkpoint {
 
   /**
    * Build a `Checkpoint` instance from a flow name, execution result, and
-   * optional named stores. Snapshots all stores in parallel.
+   * optional named stores. Store snapshots run through the shared batch
+   * executor, so consumers can tune concurrency, throttle, and timing.
    *
    * Throws `DAGError` when `result.cursor === null` (the flow completed;
    * nothing to resume).
@@ -169,11 +186,13 @@ export class Checkpoint {
       return new Checkpoint(base);
     }
 
-    const snapshots: [string, StoreSnapshotType][] = await Promise.all(
-      entries.map(async ([name, store]): Promise<[string, StoreSnapshotType]> => {
+    const snapshots = await BatchItemExecutor.map(
+      entries,
+      async ([name, store]): Promise<[string, StoreSnapshotType]> => {
         const snap = await store.snapshot();
         return [name, snap];
-      }),
+      },
+      options.execution,
     );
 
     const stores: Record<string, StoreSnapshotType> = {};
@@ -267,7 +286,10 @@ export class Checkpoint {
    *   `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` on
    *   type/version mismatch; this method propagates that unchanged.
    */
-  async restoreStores(stores: Readonly<Record<string, SnapshottableInterface>>): Promise<void> {
+  async restoreStores(
+    stores: Readonly<Record<string, SnapshottableInterface>>,
+    options: RestoreStoresOptionsType = {},
+  ): Promise<void> {
     const checkpointStores = this.data.stores;
     if (Object.keys(checkpointStores).length === 0) {
       return;
@@ -286,15 +308,17 @@ export class Checkpoint {
       );
     }
 
-    await Promise.all(
-      Object.entries(checkpointStores).map(async ([name, snapshot]) => {
+    await BatchItemExecutor.map(
+      Object.entries(checkpointStores),
+      async ([name, snapshot]) => {
         // `store` is guaranteed present: the `missingNames` check above throws
         // for any checkpoint key absent from the `stores` map. The explicit
         // undefined guard narrows the index access without a cast.
         const store = stores[name];
         if (store === undefined) return;
         await store.restore(snapshot);
-      }),
+      },
+      options.execution,
     );
   }
 }

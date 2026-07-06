@@ -16,13 +16,11 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region aggregate-event-node
-export class AggregateEventNode extends ScalarNode<CartographerState, 'done'> {
+export class AggregateEventNode extends MonadicNode<CartographerState, 'done'> {
   readonly 'name' = 'aggregate-event';
   readonly 'outputs' = ['done'] as const;
 
@@ -32,63 +30,69 @@ export class AggregateEventNode extends ScalarNode<CartographerState, 'done'> {
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
-    const norm = state.normalized;
-    const geo  = state.geoContext;
-    const gdpr = state.gdprResult;
-    const po   = state.pricedOrder;
-    const sq   = state.shippingQuote;
-    const de   = state.deliveryEstimate;
-    const ev   = state.currentEvent;
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'done', CartographerState>> {
+    for (const item of batch) {
+      const state = item.state;
+      const norm = state.normalized;
+      const geo  = state.geoContext;
+      const gdpr = state.gdprResult;
+      const po   = state.pricedOrder;
+      const sq   = state.shippingQuote;
+      const de   = state.deliveryEstimate;
+      const ev   = state.currentEvent;
 
-    const isException = norm.status === 'EXCEPTION';
+      const isException = norm.status === 'EXCEPTION';
 
-    state.enriched = {
-      'shipmentId':       norm.shipmentId,
-      'scanSeq':          norm.scanSeq,
-      'epochMs':          norm.epochMs,
-      'localIso':         norm.localIso,
-      'utcOffset':        norm.utcOffset,
-      'timezone':         geo.timezone,
-      'jurisdiction':     geo.jurisdiction,
-      // Macro continent for the per-region insights rollup (from the real API).
-      'continent':        geo.continent,
-      'region':           geo.region,
-      'country':          geo.country,
-      'hub':              geo.hub,
-      'geoStatus':        geo.status,
-      // Stored coords come from currentEvent, which GDPR coarsened in-place
-      // when the jurisdiction is strict or consent is not valid.
-      'lat':              ev.latitude,
-      'lng':              ev.longitude,
-      'coordsCoarsened':  gdpr.coordsCoarsened,
-      'legKm':            state.legKm,
-      'status':           norm.status,
-      'serviceTier':      norm.serviceTier,
-      'sizeTier':         norm.sizeTier,
-      'onTime':           de.onTime,
-      'exception':        isException,
-      'consentStatus':    gdpr.consentStatus,
-      'disruptionReason': norm.disruptionReason,
-      'subtotalUsdMinor': po.subtotalUsdMinor,
-      'currency':         po.currency,
-      'shippingUsdMinor': sq.costUsdMinor,
-      'distanceKm':       sq.distanceKm,
-      'transitHours':     de.transitHours,
-      'delayHours':       de.delayHours,
-      'redactionApplied': gdpr.redactionApplied,
-      'redactedSample': {
-        'recipientName':  ev.recipientName,
-        'recipientEmail': ev.recipientEmail,
-        'recipientPhone': ev.recipientPhone,
-      },
-      // This scan's conditional-routing decisions (RAN vs SKIPPED per branch),
-      // recorded by the route-* nodes on this clone. The parent's summarize
-      // totals them into the savings view.
-      'routing': { ...state.routing },
-    };
+      state.enriched = {
+        'shipmentId':       norm.shipmentId,
+        'scanSeq':          norm.scanSeq,
+        'epochMs':          norm.epochMs,
+        'localIso':         norm.localIso,
+        'utcOffset':        norm.utcOffset,
+        'timezone':         geo.timezone,
+        'jurisdiction':     geo.jurisdiction,
+        // Macro continent for the per-region insights rollup (from the real API).
+        'continent':        geo.continent,
+        'region':           geo.region,
+        'country':          geo.country,
+        'hub':              geo.hub,
+        'geoStatus':        geo.status,
+        // Stored coords come from currentEvent, which GDPR coarsened in-place
+        // when the jurisdiction is strict or consent is not valid.
+        'lat':              ev.latitude,
+        'lng':              ev.longitude,
+        'coordsCoarsened':  gdpr.coordsCoarsened,
+        'legKm':            state.legKm,
+        'status':           norm.status,
+        'serviceTier':      norm.serviceTier,
+        'sizeTier':         norm.sizeTier,
+        'onTime':           de.onTime,
+        'exception':        isException,
+        'consentStatus':    gdpr.consentStatus,
+        'disruptionReason': norm.disruptionReason,
+        'subtotalUsdMinor': po.subtotalUsdMinor,
+        'currency':         po.currency,
+        'shippingUsdMinor': sq.costUsdMinor,
+        'distanceKm':       sq.distanceKm,
+        'transitHours':     de.transitHours,
+        'delayHours':       de.delayHours,
+        'redactionApplied': gdpr.redactionApplied,
+        'redactedSample': {
+          'recipientName':  ev.recipientName,
+          'recipientEmail': ev.recipientEmail,
+          'recipientPhone': ev.recipientPhone,
+        },
+        // This scan's conditional-routing decisions (RAN vs SKIPPED per branch),
+        // recorded by the route-* nodes on this clone. The parent's summarize
+        // totals them into the savings view.
+        'routing': { ...state.routing },
+      };
+    }
 
-    return NodeOutputBuilder.of('done');
+    return RoutedBatch.create('done', batch);
   }
 }
 // #endregion aggregate-event-node

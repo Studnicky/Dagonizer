@@ -29,7 +29,7 @@ import { Batch } from '../../src/entities/batch/Batch.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
+import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
@@ -75,7 +75,7 @@ class BatchTestTask {
       correlationId,
       'timeout': Timeout.none(),
       state,
-      'context': NodeContextBuilder.of('test-dag', 'test-node', signal),
+      'context': NodeContext.create('test-dag', 'test-node', signal),
       toRequest(): ExecutionRequestType {
         return {
           'dagName': 'test-dag',

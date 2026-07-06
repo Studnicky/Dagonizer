@@ -17,13 +17,13 @@
  * so the merge node can soft-gate downstream.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 
-export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked'> {
+export class RankByRatingNode extends MonadicNode<ArchivistState, 'ranked'> {
   readonly name = 'rank-by-rating';
   readonly outputs = ['ranked'] as const;
   override get outputSchema(): Record<'ranked', SchemaObjectType> {
@@ -32,30 +32,30 @@ export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked'> {
     };
   }
 
-  protected override executeOne(state: ArchivistState) {
-    if (state.candidates.length === 0) {
-      return Promise.resolve(NodeOutputBuilder.of('ranked'));
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      if (state.candidates.length === 0) continue;
+
+      const weighted = state.candidates.map((c) => {
+        const rating       = typeof c.notes?.['rating']       === 'number' ? c.notes['rating']       : 0;
+        const ratingsCount = typeof c.notes?.['ratingsCount'] === 'number' ? c.notes['ratingsCount'] : 0;
+        const weight = rating * Math.log10(1 + ratingsCount);
+        return { "candidate": c, weight };
+      });
+
+      const maxWeight = Math.max(...weighted.map((w) => w.weight), 0);
+
+      const ranked: CandidateType[] = weighted
+        .sort((a, b) => b.weight - a.weight)
+        .map(({ candidate, weight }) => ({
+          ...candidate,
+          'score': maxWeight > 0 ? weight / maxWeight : 0,
+        }));
+
+      state.candidates = ranked;
     }
 
-    const weighted = state.candidates.map((c) => {
-      const rating       = typeof c.notes?.['rating']       === 'number' ? c.notes['rating']       : 0;
-      const ratingsCount = typeof c.notes?.['ratingsCount'] === 'number' ? c.notes['ratingsCount'] : 0;
-      const weight = rating * Math.log10(1 + ratingsCount);
-      return { "candidate": c, weight };
-    });
-
-    const maxWeight = Math.max(...weighted.map((w) => w.weight), 0);
-
-    const ranked: CandidateType[] = weighted
-      .sort((a, b) => b.weight - a.weight)
-      .map(({ candidate, weight }) => ({
-        ...candidate,
-        'score': maxWeight > 0 ? weight / maxWeight : 0,
-      }));
-
-    state.candidates = ranked;
-
-    return Promise.resolve(NodeOutputBuilder.of('ranked'));
+    return RoutedBatch.create('ranked', batch);
   }
 }
 

@@ -20,7 +20,6 @@ import { afterEach, describe, it } from 'node:test';
 import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
@@ -28,7 +27,6 @@ import { WORKSET_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.j
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
@@ -121,7 +119,7 @@ class FanNode extends MonadicNode<WalkState, 'out'> {
   }
 }
 /** Process node: stamps each item's log. */
-class ProcNode extends ScalarNode<WalkState, 'done'> {
+class ProcNode extends MonadicNode<WalkState, 'done'> {
   readonly name: string;
   readonly outputs: readonly ['done'] = ['done'];
 
@@ -131,9 +129,9 @@ class ProcNode extends ScalarNode<WalkState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected async executeOne(state: WalkState): Promise<NodeOutputType<'done'>> {
-    state.log.push(`proc:${state.value}`);
-    return { 'errors': [], 'output': 'done' };
+  override async execute(batch: Batch<WalkState>): Promise<RoutedBatchType<'done', WalkState>> {
+    for (const item of batch) item.state.log.push(`proc:${item.state.value}`);
+    return new Map([['done', batch]]);
   }
 }
 
@@ -446,7 +444,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       const dispatcher = new Dagonizer<CountState>();
 
       // Inline node factory — increments count and routes to 'next'.
-      class IncNode extends ScalarNode<CountState, 'next'> {
+      class IncNode extends MonadicNode<CountState, 'next'> {
         readonly name: string;
         readonly outputs: readonly ['next'] = ['next'];
 
@@ -456,9 +454,9 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
           return { 'next': { 'type': 'object' } };
         }
 
-        protected async executeOne(state: CountState): Promise<NodeOutputType<'next'>> {
-          state.count++;
-          return { 'errors': [], 'output': 'next' };
+        override async execute(batch: Batch<CountState>): Promise<RoutedBatchType<'next', CountState>> {
+          for (const item of batch) item.state.count++;
+          return new Map([['next', batch]]);
         }
       }
 

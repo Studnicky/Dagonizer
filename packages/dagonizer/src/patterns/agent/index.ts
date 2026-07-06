@@ -1,5 +1,3 @@
-export { AgentBuilder } from './AgentBuilder.js';
-export type { AgentBuilderInterface, AgentLoopNodesType, AgentLoopOptionsType } from './AgentBuilder.js';
 export { AgentTraceProducer } from './AgentTraceProducer.js';
 export { AppendAssistantNode } from './AppendAssistantNode.js';
 export { BuildChatRequestNode } from './BuildChatRequestNode.js';

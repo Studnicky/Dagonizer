@@ -12,13 +12,11 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { GeoLookup } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region apply-geo-node
-export class ApplyGeoNode extends ScalarNode<CartographerState, 'normalize'> {
+export class ApplyGeoNode extends MonadicNode<CartographerState, 'normalize'> {
   readonly 'name' = 'apply-geo';
   readonly 'outputs' = ['normalize'] as const;
 
@@ -28,14 +26,19 @@ export class ApplyGeoNode extends ScalarNode<CartographerState, 'normalize'> {
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'normalize'>> {
-    const geo = state.canonical.geo;
-    // route-geo guarantees geo is present on this branch; fall back defensively.
-    const country   = geo?.country ?? state.raw.recipientCountry;
-    const continent = geo?.continent ?? 'Unmapped';
-    const region    = geo?.region ?? 'Unmapped';
-    state.geoContext = GeoLookup.fromResolved(country, continent, region, state.raw.latitude, state.raw.longitude);
-    return NodeOutputBuilder.of('normalize');
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'normalize', CartographerState>> {
+    for (const item of batch) {
+      const geo = item.state.canonical.geo;
+      // route-geo guarantees geo is present on this branch; fall back defensively.
+      const country   = geo?.country ?? item.state.raw.recipientCountry;
+      const continent = geo?.continent ?? 'Unmapped';
+      const region    = geo?.region ?? 'Unmapped';
+      item.state.geoContext = GeoLookup.fromResolved(country, continent, region, item.state.raw.latitude, item.state.raw.longitude);
+    }
+    return RoutedBatch.create('normalize', batch);
   }
 }
 // #endregion apply-geo-node

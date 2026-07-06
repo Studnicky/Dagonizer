@@ -2,7 +2,7 @@
  * `@studnicky/dagonizer/progress` — transport-agnostic progress substrate.
  *
  * Exports:
- * - `BusEventEnvelopeSchema` / `BusEventEnvelopeWireType` / `BusEventEnvelopeType<T>` / `BusEventEnvelopeBuilder`
+ * - `BusEventEnvelopeSchema` / `BusEventEnvelopeWireType` / `BusEventEnvelopeType<T>` / `BusEventEnvelope`
  * - `EventBus` / `EventBusInterface` / `BusListenerType` / `BusTopicMapType`
  * - `UnsubscribeType` (re-exported from `@studnicky/event-bus`)
  * - `SseStream` / `SseStreamOptionsType`
@@ -12,7 +12,7 @@
 export type { UnsubscribeType } from '@studnicky/event-bus';
 
 export {
-  BusEventEnvelopeBuilder,
+  BusEventEnvelope,
   BusEventEnvelopeSchema,
 } from './BusEventEnvelope.js';
 export type {

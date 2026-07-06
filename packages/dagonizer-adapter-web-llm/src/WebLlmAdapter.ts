@@ -22,8 +22,9 @@ import type {
   TokenUsageType,
   ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, ChatStreamChunkBuilder, Classifications, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessage, ChatStreamChunk, Classifications, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
+import { Scheduler } from '@studnicky/dagonizer/runtime';
 
 import type {
   WebLlmEngineType,
@@ -117,8 +118,9 @@ export type WebLlmAdapterOptionsType = {
   readonly maxAttempts?: number;
   /**
    * Default system prompt the base injects as the leading turn of any request
-   * that carries no system message of its own. Consumer-supplied persona/format
-   * framing; empty (the default) means no injection.
+   * that carries no system message of its own. The directive can include
+   * persona, format, or language framing; empty (the default) means no
+   * injection.
    */
   readonly systemPrompt?: string;
   /**
@@ -200,11 +202,19 @@ export class WebLlmAdapter extends BaseAdapter {
     if (typeof requestAdapter !== 'function') return false;
     try {
       const pending: unknown = Reflect.apply(requestAdapter, gpu, []);
-      const adapter = await Promise.race<unknown>([
-        Promise.resolve(pending),
-        new Promise((resolve) => setTimeout(() => { resolve(null); }, GPU_PROBE_TIMEOUT_MS)),
-      ]);
-      return adapter !== null;
+      const timeout = new AbortController();
+      try {
+        const adapter = await Promise.race<unknown>([
+          Promise.resolve(pending),
+          Scheduler.current()
+            .after(GPU_PROBE_TIMEOUT_MS, { 'signal': timeout.signal })
+            .then(() => null)
+            .catch(() => null),
+        ]);
+        return adapter !== null;
+      } finally {
+        timeout.abort();
+      }
     } catch {
       return false;
     }
@@ -248,7 +258,7 @@ export class WebLlmAdapter extends BaseAdapter {
     const text = raw.trim();
     const toolCalls = request.tools.length > 0 ? ToolCallCodec.decode(raw, 'webllm') : [];
     return {
-      'message': ChatResponseMessageBuilder.from(text, toolCalls),
+      'message': ChatResponseMessage.create(text, toolCalls),
       'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
       'usage': ZERO_TOKEN_USAGE,
     };
@@ -297,7 +307,7 @@ export class WebLlmAdapter extends BaseAdapter {
         const delta = chunk.choices[0]?.delta.content ?? '';
         if (delta.length > 0) {
           accumulated += delta;
-          await this.pushChunk(sink, ChatStreamChunkBuilder.of(delta));
+          await this.pushChunk(sink, ChatStreamChunk.create(delta));
         }
         if (chunk.usage !== undefined) {
           usage = {
@@ -314,7 +324,7 @@ export class WebLlmAdapter extends BaseAdapter {
     const text = raw.trim();
     const toolCalls = request.tools.length > 0 ? ToolCallCodec.decode(raw, 'webllm') : [];
     return {
-      'message': ChatResponseMessageBuilder.from(text, toolCalls),
+      'message': ChatResponseMessage.create(text, toolCalls),
       'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
       'usage': usage,
     };

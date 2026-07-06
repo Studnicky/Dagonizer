@@ -9,7 +9,7 @@
  * Implemented as a MonadicNode for batch-native processing: a single
  * execute call covers the whole batch, amortising catalog map lookups
  * and FX rate table access across all items in one pass rather than
- * dispatching N separate ScalarNode iterations.
+ * dispatching N separate per-item base-class iterations.
  *
  * Always routes 'priced' — unknown productIds resolve to a 0-cost entry
  * rather than routing to rejected (the pipeline continues; bad products
@@ -20,7 +20,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import { PricingCatalog } from '../services.ts';
 
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 
 // #region enrich-pricing-node
@@ -41,7 +41,7 @@ export class EnrichPricingNode extends MonadicNode<CartographerState, 'priced'> 
     for (const item of batch) {
       item.state.pricedOrder = PricingCatalog.order(item.state.normalized.lineItems);
     }
-    return RoutedBatchBuilder.of('priced', batch);
+    return RoutedBatch.create('priced', batch);
   }
 }
 // #endregion enrich-pricing-node

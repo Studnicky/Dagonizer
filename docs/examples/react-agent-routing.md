@@ -11,9 +11,9 @@ seeAlso:
   - text: 'Example: ReAct agent memory'
     link: './react-agent-memory'
     description: 'the agent loop, ScriptedAdapter, and node classes this example reuses unchanged'
-  - text: 'Example 29: AgentBuilder'
-    link: './29-agent-builder'
-    description: 'the 8-node agent loop this example wraps'
+  - text: 'Example 29: Agent DAG'
+    link: './29-agent-dag'
+    description: 'the 8-node JSON-LD agent loop this example runs'
 ---
 
 # Example: ReAct agent routing
@@ -27,9 +27,9 @@ ONE shared sink.
 
 ## What it demonstrates
 
-- **One node instance, many concurrent runs.** `CallModelNode.executeOne`
-  wraps its constructor-bound `{ sink }` in a fresh `RoutingStreamSink` per
-  execution, stamping every pushed chunk with `routeKey(state)` and
+- **One node instance, many concurrent runs.** `CallModelNode.execute`
+  wraps its constructor-bound `{ sink }` in fresh `RoutingStreamSink` instances
+  for the batch items it processes, stamping every pushed chunk with `routeKey(state)` and
   `{dagName, nodeName}`. A single `RoutingCallModelNode` instance, registered
   once, correctly serves as many concurrent `dispatcher.execute('react-agent',
   state)` calls as are run in parallel — no per-run node instance or

@@ -8,6 +8,7 @@ import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { RecordedAddressGeocoder } from '../../services/RecordedAddressGeocoder.ts';
 import { LiveAddressGeocoder } from '../../services/LiveAddressGeocoder.ts';
+import { LiveIpGeolocator } from '../../services/LiveIpGeolocator.ts';
 
 // ---------------------------------------------------------------------------
 // RecordedAddressGeocoder
@@ -59,6 +60,16 @@ const NOMINATIM_SUCCESS_BODY = [
   },
 ];
 
+const FREEIPAPI_SUCCESS_BODY = {
+  countryCode: 'US',
+  countryName: 'United States',
+  continent: 'North America',
+  regionName: 'California',
+  cityName: 'Mountain View',
+  latitude: 37.422,
+  longitude: -122.084,
+};
+
 // ---------------------------------------------------------------------------
 // LiveAddressGeocoder
 // ---------------------------------------------------------------------------
@@ -103,6 +114,22 @@ describe('LiveAddressGeocoder', () => {
       assert.equal(typeof outcome.candidate.lng, 'number');
       assert.ok(Math.abs(outcome.candidate.lat - 37.4224764) < 0.0001);
       assert.ok(Math.abs(outcome.candidate.lng - (-122.0842499)) < 0.0001);
+    });
+
+    it('coalesces duplicate in-flight address lookups for the same signal', async () => {
+      const geocoder = new LiveAddressGeocoder();
+      const signal = new AbortController().signal;
+
+      const [first, second] = await Promise.all([
+        geocoder.geocode('1600 Amphitheatre Parkway, Mountain View, CA', signal),
+        geocoder.geocode('1600 Amphitheatre Parkway, Mountain View, CA', signal),
+      ]);
+
+      assert.equal(first.error, null);
+      assert.equal(second.error, null);
+      assert.equal(first.candidate.country, 'US');
+      assert.equal(second.candidate.country, 'US');
+      assert.equal(fetchCallCount, 1);
     });
   });
 
@@ -152,6 +179,50 @@ describe('LiveAddressGeocoder', () => {
       assert.equal(outcome.error, null);
       assert.equal(outcome.candidate.resolved, false);
       assert.equal(outcome.candidate.modality, 'address');
+    });
+  });
+});
+
+describe('LiveIpGeolocator', () => {
+  let originalFetch: FetchFn;
+
+  before(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  describe('lookup — mocked OK response (freeipapi-shaped object)', () => {
+    let fetchCallCount = 0;
+
+    beforeEach(() => {
+      fetchCallCount = 0;
+      globalThis.fetch = async (input: Parameters<FetchFn>[0], init?: Parameters<FetchFn>[1]) => {
+        fetchCallCount++;
+        return MockFetch.of(200, FREEIPAPI_SUCCESS_BODY)(input, init);
+      };
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it('coalesces duplicate in-flight IP lookups for the same signal', async () => {
+      const locator = new LiveIpGeolocator();
+      const signal = new AbortController().signal;
+
+      const [first, second] = await Promise.all([
+        locator.lookup('8.8.8.8', signal),
+        locator.lookup('8.8.8.8', signal),
+      ]);
+
+      assert.equal(first.error, null);
+      assert.equal(second.error, null);
+      assert.equal(first.candidate.country, 'US');
+      assert.equal(second.candidate.country, 'US');
+      assert.equal(fetchCallCount, 1);
     });
   });
 });

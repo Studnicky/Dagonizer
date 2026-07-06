@@ -12,9 +12,8 @@
  * propagates to in-flight HTTP requests.
  */
 
-import { BaseLlmService } from '@studnicky/dagonizer/adapter';
+import { BaseLlmService, ChatRequest } from '@studnicky/dagonizer/adapter';
 import type { LlmAdapterInterface } from '@studnicky/dagonizer/adapter';
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 
 import type { ConversationTurnType } from '../DispatcherState.ts';
 import type { DispatcherLlmInterface } from '../services.ts';
@@ -28,9 +27,12 @@ Classify the customer message as exactly one of:
 
 Reply with a single word: routine, escalate, or off-topic.`;
 
-const SYSTEM_SUPPORT = `You are a helpful customer support agent for Noocodex, an online bookstore.
-Be concise, friendly, and professional. If you cannot help, say so clearly and offer to escalate.
-Keep responses under 3 sentences.`;
+const SYSTEM_SUPPORT = `You are the Noocodex Support Dispatcher.
+Respond as a bookstore support agent for customer service questions about orders, shipping, returns, products, and store hours.
+When a request is outside support scope, redirect the customer to the main support queue and invite a follow-up.
+For store-hours questions, answer with the store schedule directly and keep the tone concise.
+Be concise, friendly, and professional.
+Keep responses to under 3 sentences and focus only on current support policies.`;
 
 /**
  * Construction options for `DispatcherLlmClient`. `language` is the
@@ -58,19 +60,30 @@ export class DispatcherLlmClient extends BaseLlmService implements DispatcherLlm
     conversation: readonly ConversationTurnType[],
     signal?: AbortSignal,
   ): Promise<'routine' | 'escalate' | 'off-topic'> {
-    const contextBlock = conversation.length > 0
-      ? `\n\nRecent conversation:\n${conversation.slice(-4).map((t) => `[${t.role}] ${t.text}`).join('\n')}`
-      : '';
+    const request = ChatRequest.create({
+      'messages': [
+        { 'role': 'system', 'content': SYSTEM_CLASSIFY },
+        ...DispatcherLlmClient.toHistory(conversation).slice(-4),
+        { 'role': 'user', 'content': `Message to classify: ${message}` },
+      ],
+      'temperature': 0,
+      'maxTokens': 8,
+      ...(signal !== undefined ? { 'signal': signal } : {}),
+    });
 
-    const raw = await this.text(
-      `${SYSTEM_CLASSIFY}${contextBlock}\n\nMessage to classify: ${message}`,
-      { 'temperature': 0, 'maxTokens': 8, ...(signal !== undefined ? { signal } : {}) },
-    );
+    const raw = await this.chat(request).then((response) => BaseLlmService.contentOf(response));
 
     const lower = raw.toLowerCase().trim();
     if (lower.includes('escalate')) return 'escalate';
     if (lower.includes('off') || lower.includes('topic') || message.trim().length === 0) return 'off-topic';
     return 'routine';
+  }
+
+  private static toHistory(conversation: readonly ConversationTurnType[]): Array<{ role: 'user' | 'assistant'; content: string; }> {
+    return conversation.slice(-4).map((turn) => ({
+      'role': turn.role === 'customer' ? 'user' : 'assistant',
+      'content': `[${turn.role}] ${turn.text}`,
+    }));
   }
 
   async compose(
@@ -83,9 +96,9 @@ export class DispatcherLlmClient extends BaseLlmService implements DispatcherLlm
       'content': t.text,
     }));
 
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages': [
-        { 'role': 'user', 'content': DispatcherLlmClient.systemSupport(this.language) },
+        { 'role': 'system', 'content': DispatcherLlmClient.systemSupport(this.language) },
         ...history,
         { 'role': 'user', 'content': message },
       ],

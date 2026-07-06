@@ -5,10 +5,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -47,17 +49,19 @@ export class CountingState extends NodeStateBase {
 // Node: increments count and records each tick in log
 // ---------------------------------------------------------------------------
 
-export class IncNode extends ScalarNode<CountingState, 'success'> {
+export class IncNode extends MonadicNode<CountingState, 'success'> {
   readonly name = 'inc';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: CountingState) {
-    state.count++;
-    state.log.push(`tick:${state.count}`);
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<CountingState>) {
+    for (const item of batch) {
+      item.state.count++;
+      item.state.log.push(`tick:${item.state.count}`);
+    }
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 

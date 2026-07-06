@@ -17,12 +17,20 @@ The full documentation is published at **https://studnicky.github.io/Dagonizer/*
 - [Checkpoint / Resume](https://studnicky.github.io/Dagonizer/guide/checkpoint): deterministic pause and resume
 - [Schema & JSON-LD](https://studnicky.github.io/Dagonizer/guide/schema): JSON Schema validation, canonical wire format
 - [The Archivist](https://studnicky.github.io/Dagonizer/examples/the-archivist): in-browser demo running on Dagonizer
+- [The Cartographer](https://studnicky.github.io/Dagonizer/examples/the-cartographer): deterministic logistics pipeline demo
+
+## Release readiness
+
+- `pnpm run ci` passes with all package and example tests, docs checks, and lints.
+- `pnpm run docs:build` generates the GitHub Pages site successfully.
+- Example DAGs are lint-validated and stable; docs snippets are all type-checked.
+- `examples/the-cartographer` and `examples/the-archivist` are part of the validated example test set.
 
 ## Requirements
 
 Node.js >= 24 (matches `engines.node` in `package.json`).
 
-## Plugin ecosystem (v0.10.0+)
+## Plugin ecosystem (v0.30.0+)
 
 Dagonizer ships as a workspace of independently versioned plugins:
 

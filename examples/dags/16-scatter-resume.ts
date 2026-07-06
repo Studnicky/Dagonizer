@@ -20,11 +20,13 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
+  RoutedBatch,
   SCATTER_PROGRESS_KEY,
-  ScalarNode,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -98,36 +100,39 @@ export const observable: {
   controller: null,
 };
 
-export class ProcessJobNode extends ScalarNode<ResumeState, 'done'> {
+export class ProcessJobNode extends MonadicNode<ResumeState, 'done'> {
   readonly name = 'process-job';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ResumeState) {
-    const job   = state.getter.string('job', '?');
-    const label = `${job}(run-${observable.run})`;
-    // Write a scalar to `processed` on the clone. The map gather reads
-    // this and appends it to the parent's `completed` array.
-    state.processed = label;
-    // Record the body invocation in the shared external log.
-    observable.execLog.push(label);
-    // Fire the abort signal after the target number of invocations.
-    // This happens INSIDE the worker body, before the pull loop checks the
-    // signal at the top of its next iteration — guaranteeing the remaining
-    // items are not pulled.
-    const ctl = observable.controller;
-    if (
-      observable.run === 1 &&
-      observable.abortAfter > 0 &&
-      observable.execLog.filter((e) => e.includes('run-1')).length >= observable.abortAfter &&
-      ctl !== null &&
-      !ctl.signal.aborted
-    ) {
-      ctl.abort(new Error(`abort after ${observable.abortAfter} items`));
+  override async execute(batch: Batch<ResumeState>) {
+    for (const item of batch) {
+      const state = item.state;
+      const job   = state.getter.string('job', '?');
+      const label = `${job}(run-${observable.run})`;
+      // Write a scalar to `processed` on the clone. The map gather reads
+      // this and appends it to the parent's `completed` array.
+      state.processed = label;
+      // Record the body invocation in the shared external log.
+      observable.execLog.push(label);
+      // Fire the abort signal after the target number of invocations.
+      // This happens INSIDE the worker body, before the pull loop checks the
+      // signal at the top of its next iteration — guaranteeing the remaining
+      // items are not pulled.
+      const ctl = observable.controller;
+      if (
+        observable.run === 1 &&
+        observable.abortAfter > 0 &&
+        observable.execLog.filter((e) => e.includes('run-1')).length >= observable.abortAfter &&
+        ctl !== null &&
+        !ctl.signal.aborted
+      ) {
+        ctl.abort(new Error(`abort after ${observable.abortAfter} items`));
+      }
     }
-    return NodeOutputBuilder.of('done');
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion worker-node

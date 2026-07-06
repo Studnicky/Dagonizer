@@ -7,15 +7,20 @@
  * specific operations against it.
  */
 
-import { ScalarNode } from '@studnicky/dagonizer';
+import { MonadicNode } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 import type { TripleStoreInterface } from '@studnicky/dagonizer/patterns';
 import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 export abstract class GraphNode<
   TState extends NodeStateInterface,
   TOutput extends string = string,
-> extends ScalarNode<TState, TOutput> {
+> extends MonadicNode<TState, TOutput> {
   constructor(protected readonly memory: TripleStoreInterface) {
     super();
+  }
+
+  override get outputSchema(): Record<TOutput, SchemaObjectType> {
+    return MonadicNode.permissiveSchema(this.outputs);
   }
 }

@@ -29,7 +29,7 @@ for anything beyond the core `Dagonizer` class and its immediate satellites.
 | `./validation` | `Validator`, `WellFormedValidator` | Ajv-backed validators compiled once at module load against the package's own schemas |
 | `./checkpoint` | `Checkpoint`, `CheckpointRestoreAdapter`, `MemoryCheckpointStore` | Deterministic-resume persistence: capture and recall a run's cursor and state |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler`, `LoopbackChannel`, `DagConformance` | Test-only doubles for the clock/scheduler contracts and a DAG-conformance test harness |
-| `./core` | `ScalarNode`, `MonadicNode`, `LoggedScalarNode`, `PlaceholderNode`, `Batch` | Pluggable execution primitives: the node base classes consumers extend and the batch/item entities they operate on |
+| `./core` | `MonadicNode`, `PlaceholderNode`, `Batch`, `RoutedBatch` | Pluggable execution primitives: the node base class consumers extend and the batch/item entities they operate on |
 | `./viz` | `MermaidRenderer`, `CytoscapeRenderer`, `MermaidExplorer` | DAG visualization: Mermaid and Cytoscape renderers, plus an interactive explorer widget |
 | `./store` | `BaseStore`, `MemoryStore`, `TypedStore`, `StoreInterface` | Shared key-value store consumers extend for cross-node or cross-run state |
 | `./container` | `DagContainerBase`, `DagHost`, `DagTask`, `DagOutcome` | Embedded-DAG container surface: channel dispatch and worker-container transport contracts |
@@ -41,7 +41,7 @@ for anything beyond the core `Dagonizer` class and its immediate satellites.
 | `./tool` | `ToolInterface`, `HttpTransport`, `ToolError` | Tool contract surface for LLM function/tool calling: the interface a tool implements plus HTTP transport and error types |
 | `./dag` | `DAGDocument` | JSON-LD DAG document loading and parsing outside the dispatcher |
 | `./plugin` | `PluginDiscovery`, `PluginLoader`, `PluginSpecifier` | Plugin discovery and loading for the plugin registry described in the [Plugins overview](../guide/plugins) |
-| `./observe` | `ObservedDag` | A `Dagonizer` subclass with structured logging wired into every lifecycle hook, for drop-in observability |
+| `./observe` | `ObservedDag` | A `Dagonizer` subclass with structured logging and optional substrate timing wired into every lifecycle hook, for drop-in observability |
 | `./viz/explorer.css` | — | Stylesheet asset for `MermaidExplorer`; import it directly, it has no JS exports |
 
 See [Guide: DAGBuilder](../guide/builder) for the recommended authoring path

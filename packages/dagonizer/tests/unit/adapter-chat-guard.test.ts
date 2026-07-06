@@ -25,8 +25,8 @@ import { describe, it } from 'node:test';
 
 import {
   BaseAdapter,
-  ChatRequestBuilder,
-  ChatResponseMessageBuilder,
+  ChatRequest,
+  ChatResponseMessage,
   LlmError,
   ZERO_TOKEN_USAGE,
 } from '../../src/adapter/index.js';
@@ -119,7 +119,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
     const adapter = new GuardTestAdapter(neverSettles, { 'timeoutMs': 50, 'maxAttempts': 1 });
 
     const chatCall = adapter.chat(
-      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'hello' }] }),
+      ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'hello' }] }),
     );
 
     await assert.rejects(
@@ -140,7 +140,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
     setTimeout(() => { controller.abort(); }, 10);
 
     const chatCall = adapter.chat(
-      ChatRequestBuilder.from({
+      ChatRequest.create({
         'messages': [{ 'role': 'user', 'content': 'hello' }],
         'signal': controller.signal,
       }),
@@ -161,7 +161,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
 
   void it('resolves with performChat result on normal completion and does not invoke onCancelRequested', async () => {
     const expected: ChatResponseType = {
-      'message':      ChatResponseMessageBuilder.from('world', []),
+      'message':      ChatResponseMessage.create('world', []),
       'finishReason': 'stop',
       'usage':        ZERO_TOKEN_USAGE,
     };
@@ -171,7 +171,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
     );
 
     const result = await adapter.chat(
-      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'hello' }] }),
+      ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'hello' }] }),
     );
 
     assert.equal(result.finishReason, 'stop');
@@ -185,7 +185,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
     const sink = new RejectingSink();
 
     const streamCall = adapter.chatStream(
-      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'hello' }] }),
+      ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'hello' }] }),
       sink,
     );
 
@@ -201,7 +201,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
 
   void it('chatStream resolves with the full response when the sink rejects every push (best-effort)', async () => {
     const expected: ChatResponseType = {
-      'message':      ChatResponseMessageBuilder.from('world', []),
+      'message':      ChatResponseMessage.create('world', []),
       'finishReason': 'stop',
       'usage':        ZERO_TOKEN_USAGE,
     };
@@ -214,7 +214,7 @@ void describe('BaseAdapter chat guard (abort+timeout race)', () => {
     const sink = new RejectingSink();
 
     const result = await adapter.chatStream(
-      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'hello' }] }),
+      ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'hello' }] }),
       sink,
     );
 

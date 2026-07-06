@@ -22,6 +22,8 @@
  * `heartbeatMs: 0` to disable heartbeats (useful in unit tests).
  */
 
+import { Scheduler } from '../runtime/Scheduler.js';
+
 import type { EventBusInterface } from './EventBus.js';
 
 /** Options for `SseStream.of`. */
@@ -104,30 +106,30 @@ export class SseStream {
           unsubscribers.push(unsub);
         }
 
-        // Heartbeat timer (omitted when interval is 0).
-        let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
+        let heartbeatController: AbortController | null = null;
         if (heartbeatMs > 0) {
-          heartbeatHandle = setInterval(() => {
-            try {
-              controller.enqueue(HEARTBEAT_FRAME);
-            } catch {
-              // Stream already closed; stop the interval.
-              if (heartbeatHandle !== null) {
-                clearInterval(heartbeatHandle);
-                heartbeatHandle = null;
+          heartbeatController = new AbortController();
+          (async (): Promise<void> => {
+            const signal = heartbeatController?.signal;
+            if (signal === undefined) return;
+            for await (const tick of Scheduler.current().every(heartbeatMs, { signal })) {
+              tick;
+              try {
+                controller.enqueue(HEARTBEAT_FRAME);
+              } catch {
+                heartbeatController?.abort();
+                return;
               }
             }
-          }, heartbeatMs);
+          })().catch(() => undefined);
         }
 
         // Wire teardown into the shared holder so the cancel callback can
         // invoke it. This assignment happens synchronously inside `start`,
         // before any async reads can trigger `cancel`.
         teardown.fn = (): void => {
-          if (heartbeatHandle !== null) {
-            clearInterval(heartbeatHandle);
-            heartbeatHandle = null;
-          }
+          heartbeatController?.abort();
+          heartbeatController = null;
           for (const unsub of unsubscribers) unsub();
           unsubscribers.length = 0;
         };

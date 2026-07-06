@@ -5,12 +5,14 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
   DAGBuilder,
-  NodeErrorBuilder,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeError,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -26,27 +28,32 @@ export class GateState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-export class StepANode extends ScalarNode<GateState, 'ok'> {
+export class StepANode extends MonadicNode<GateState, 'ok'> {
   readonly name = 'step-a';
   readonly outputs = ['ok'] as const;
   override get outputSchema(): Record<'ok', SchemaObjectType> {
     return { 'ok': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: GateState) {
-    return NodeOutputBuilder.of('ok');
+  override async execute(batch: Batch<GateState>) {
+    return RoutedBatch.create(NodeOutput.create('ok').output, batch);
   }
 }
 
-export class CheckNode extends ScalarNode<GateState, 'pass' | 'fail'> {
+export class CheckNode extends MonadicNode<GateState, 'pass' | 'fail'> {
   readonly name = 'check';
   readonly outputs = ['pass', 'fail'] as const;
   override get outputSchema(): Record<'pass' | 'fail', SchemaObjectType> {
     return { 'pass': { 'type': 'object' }, 'fail': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: GateState) {
-    return NodeOutputBuilder.of(state.shouldPass ? 'pass' : 'fail');
+  override async execute(batch: Batch<GateState>) {
+    const entries: Array<readonly ['pass' | 'fail', Batch<GateState>]> = [];
+    for (const item of batch) {
+      const output = NodeOutput.create(item.state.shouldPass ? 'pass' : 'fail');
+      entries.push([output.output, Batch.from([item])]);
+    }
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -54,24 +61,26 @@ export class CheckNode extends ScalarNode<GateState, 'pass' | 'fail'> {
 // ScatterNode projection seeds onto the clone from parent state before the
 // child DAG body runs (a state clone carries metadata, not subclass fields;
 // projection is how parent data reaches the clone).
-export class ChildWorkNode extends ScalarNode<GateState, 'done'> {
+export class ChildWorkNode extends MonadicNode<GateState, 'done'> {
   readonly name = 'child-work';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: GateState) {
-    if (!state.shouldPass) {
-      state.collectError(NodeErrorBuilder.from(
-        'CHILD_ERR',
-        'child-work failed deliberately',
-        'child-work',
-        false,
-        new Date().toISOString(),
-      ));
+  override async execute(batch: Batch<GateState>) {
+    for (const item of batch) {
+      if (!item.state.shouldPass) {
+        item.state.collectError(NodeError.create(
+          'CHILD_ERR',
+          'child-work failed deliberately',
+          'child-work',
+          false,
+          new Date().toISOString(),
+        ));
+      }
     }
-    return NodeOutputBuilder.of('done');
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

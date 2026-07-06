@@ -25,6 +25,7 @@ import { Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ModelCost, OpenAiCompa
 import type { ChatRequestType, ChatResponseType, ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
 import type { StreamSinkInterface } from '@studnicky/dagonizer/contracts';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
+import { Signal } from '@studnicky/signal';
 
 import { OllamaTagsResponseValidator } from './OllamaTagsResponse.js';
 
@@ -79,8 +80,9 @@ export type OllamaApiAdapterOptionsType = {
   readonly timeoutMs?: number;
   /**
    * Default system prompt the base injects as the leading turn of any request
-   * that carries no system message of its own. Consumer-supplied persona/format
-   * framing; empty (the default) means no injection.
+   * that carries no system message of its own. The directive can include
+   * persona, format, or language framing; empty (the default) means no
+   * injection.
    */
   readonly systemPrompt?: string;
 };
@@ -130,14 +132,13 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
    *
    * Never throws — returns `[]` on any failure (daemon down, non-2xx,
    * malformed body, timeout). Composes `options.signal` with an internal
-   * discovery timeout via `AbortSignal.any`.
+   * discovery timeout.
    */
   override async listModels(options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
-    const signal = options?.signal !== undefined
-      ? AbortSignal.any([options.signal, controller.signal])
-      : controller.signal;
+    const signal = Signal.compose({
+      'deadlineMs': DISCOVERY_TIMEOUT_MS,
+      ...(options?.signal !== undefined ? { 'signal': options.signal } : {}),
+    });
     try {
       const res = await fetch(`${this.#baseUrl}/api/tags`, {
         'method': 'GET',
@@ -156,8 +157,6 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
       });
     } catch {
       return [];
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -219,18 +218,15 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
    * key presence. Never throws.
    */
   override async probe(): Promise<boolean> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => { controller.abort(); }, PROBE_TIMEOUT_MS);
+    const signal = Signal.timeout(PROBE_TIMEOUT_MS);
     try {
       const res = await fetch(`${this.#baseUrl}/api/tags`, {
         'method': 'GET',
-        'signal': controller.signal
+        signal,
       });
       return res.ok;
     } catch {
       return false;
-    } finally {
-      clearTimeout(timer);
     }
   }
 }

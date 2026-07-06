@@ -947,9 +947,8 @@ export class NodeScheduler {
    * asserts the size-1 invariant (exactly one route with exactly one item), and
    * returns the single output port key.
    *
-   * The node owns error-forwarding: `ScalarNode.execute` forwards per-item
-   * errors to `item.state.collectError` during `execute`. Since `Batch.of`
-   * wraps the same state reference, mutations are visible after this call.
+   * The node owns error-forwarding during `execute`. Since `Batch.of` wraps
+   * the same state reference, mutations are visible after this call.
    *
    * Throws `DAGError` if the returned `RoutedBatchType` does not contain exactly
    * one route with exactly one item (invariant violation for size-1 dispatch).
@@ -1015,8 +1014,8 @@ export class NodeScheduler {
 
   /**
    * Stage 2 — VALIDATE. Applies the node's output-schema contract to the routed
-   * output via `OutputContractApplier`. Covers BOTH ScalarNode and MonadicNode
-   * subclasses uniformly. Zero overhead when `validateOutputs` is off
+   * output via `OutputContractApplier`. Covers all `MonadicNode` subclasses
+   * uniformly. Zero overhead when `validateOutputs` is off
    * (`outputSchemaValidator` is null) — returns the routed map unchanged. On a
    * violation, the offending item is re-routed to `'error'` with a collected
    * `outputContractViolation` NodeError.

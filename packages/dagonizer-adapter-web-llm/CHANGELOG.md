@@ -1,6 +1,8 @@
 # @studnicky/dagonizer-adapter-web-llm
 
-## 1.0.0
+## 0.30.1
+
+## 0.30.0
 
 ### Patch Changes
 
@@ -61,7 +63,7 @@
 - Forward `request.maxTokens` to the engine as the native `max_tokens` generation cap (previously unset, so generation was uncapped).
 - Add a `protected loadEngine()` seam: the default boots the real MLC engine from the CDN; a subclass overrides it to inject a stub engine in tests without intercepting the dynamic import.
 - `composeMessages` folds all system turns and the structured-output coercion into one leading system message at index 0, followed by the user/assistant/tool conversation. `composeMessages` is exposed as a static so the index-0 invariant is directly testable.
-- Add a consumer-configurable `systemPrompt` option, forwarded to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one). Lets a consumer frame persona/format once at construction without hand-prepending a system message to every call.
+- Add a consumer-configurable `systemPrompt` option, forwarded to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one). Lets a consumer set a default directive once at construction without hand-prepending a system message to every call.
 - Classify a failed CDN import or weight fetch as `MODEL_NOT_FOUND` instead of leaking a raw `Failed to fetch dynamically imported module`. The in-browser runtime and model weights stream from a CDN at first use, so an unreachable CDN is a missing backend, not a transient fault — a cascade now falls through to another adapter rather than retrying a fetch that will never resolve.
 
 ## 0.27.0

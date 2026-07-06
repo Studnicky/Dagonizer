@@ -1,4 +1,4 @@
-export { ReasoningStepSchema, ReasoningStepBuilder } from './ReasoningStep.js';
+export { ReasoningStepSchema, ReasoningStep } from './ReasoningStep.js';
 export type { ReasoningStepType } from './ReasoningStep.js';
-export { ReasoningTraceItemSchema, ReasoningTraceItemBuilder } from './ReasoningTraceItem.js';
+export { ReasoningTraceItemSchema, ReasoningTraceItem } from './ReasoningTraceItem.js';
 export type { ReasoningTraceItemType } from './ReasoningTraceItem.js';

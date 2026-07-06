@@ -32,7 +32,7 @@ import type { MessageChannelInterface } from '../../src/contracts/MessageChannel
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequestType } from '../../src/entities/executor/ExecutionRequest.js';
-import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
+import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
@@ -223,7 +223,7 @@ class LoopbackTask {
       'correlationId': correlationId,
       'timeout': Timeout.none(),
       'state': new MinimalState(),
-      'context': NodeContextBuilder.of('test-dag', 'test-node', signal),
+      'context': NodeContext.create('test-dag', 'test-node', signal),
       toRequest(): ExecutionRequestType {
         return request;
       },

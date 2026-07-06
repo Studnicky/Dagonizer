@@ -9,7 +9,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { ChatRequestBuilder, LlmError } from '@studnicky/dagonizer/adapter';
+import { ChatRequest, LlmError } from '@studnicky/dagonizer/adapter';
 import type { ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
 import type { StreamSinkInterface } from '@studnicky/dagonizer/contracts';
 
@@ -60,7 +60,7 @@ void test('OllamaApiAdapter.chatStream drains SSE deltas in order and assembles 
     return new Response(SSE_BODY, { 'status': 200 });
   });
   const adapter = new OllamaApiAdapter({ 'model': 'llama3:latest' });
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'hello' }],
   });
   const sink = new CollectingSink();
@@ -82,7 +82,7 @@ void test('OllamaApiAdapter.chatStream translates a 404 into the friendly "ollam
     { 'status': 404 },
   ));
   const adapter = new OllamaApiAdapter({ 'model': 'llama3:latest' });
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'hello' }],
   });
   const sink = new CollectingSink();
@@ -120,7 +120,7 @@ for (const fixture of MODEL_NOT_FOUND_MESSAGE_FIXTURES) {
         { 'status': 404 },
       ));
       const adapter = new OllamaApiAdapter({ 'model': 'llama3:latest' });
-      const request = ChatRequestBuilder.from({
+      const request = ChatRequest.create({
         'messages': [{ 'role': 'user', 'content': 'hello' }],
       });
       const sink = new CollectingSink();

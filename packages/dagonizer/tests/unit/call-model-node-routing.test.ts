@@ -18,7 +18,7 @@ import type { StreamSinkInterface } from '../../src/contracts/StreamSinkInterfac
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ChatRequestType } from '../../src/entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../../src/entities/adapter/ChatResponse.js';
-import { ChatStreamChunkBuilder } from '../../src/entities/adapter/ChatStreamChunk.js';
+import { ChatStreamChunk } from '../../src/entities/adapter/ChatStreamChunk.js';
 import type { ChatStreamChunkType } from '../../src/entities/adapter/ChatStreamChunk.js';
 import type { RoutedChatStreamChunkType } from '../../src/entities/adapter/RoutedChatStreamChunk.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
@@ -75,7 +75,7 @@ class InterleavingWordAdapter implements LlmAdapterInterface {
     const words = response.message.variant === 'text' ? response.message.content.split(' ') : [];
     for (const word of words) {
       await TaskQueue.yield();
-      await sink.push(ChatStreamChunkBuilder.of(word));
+      await sink.push(ChatStreamChunk.create(word));
     }
     return response;
   }

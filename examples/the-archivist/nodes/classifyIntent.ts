@@ -20,8 +20,9 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices, ClassifiedIntent } from '../services.ts';
 
-import { NodeOutputBuilder, ReasoningStepBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeOutputType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, ReasoningStep, RoutedBatch } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 type IntentOutput =
   | 'lookup-author'
@@ -41,7 +42,7 @@ const NODE_TIMEOUT_MS = 30_000;
 /** Total attempts (initial + retries) before routing to salvage. */
 const RETRY_BUDGET = 2;
 
-export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput> {
+export class ClassifyIntentNode extends MonadicNode<ArchivistState, IntentOutput> {
   private readonly services: ArchivistServices;
   readonly name = 'classify-intent';
   constructor(services: ArchivistServices) {
@@ -64,67 +65,85 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput>
     };
   }
 
-  /** Public per-item entry point for tests and dispatch delegation. */
-  public async runItem(state: ArchivistState, context: NodeContextType): Promise<NodeOutputType<IntentOutput>> {
-    return this.executeOne(state, context);
-  }
+  override async execute(batch: Batch<ArchivistState>, context: NodeContextType) {
+    const buckets = new Map<IntentOutput, ItemType<ArchivistState>[]>();
+    for (const output of this.outputs) buckets.set(output, []);
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
-    const summary = state.recalledContext.summary.length > 0
-      ? state.recalledContext.summary
-      : undefined;
-    const conversation = state.conversation.length > 0 ? state.conversation : undefined;
+    for (const item of batch) {
+      const { state } = item;
+      const summary = state.recalledContext.summary.length > 0
+        ? state.recalledContext.summary
+        : undefined;
+      const conversation = state.conversation.length > 0 ? state.conversation : undefined;
 
-    const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
-    const signal = AbortSignal.any([context.signal, controller.signal]);
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
 
-    try {
-      const intent = await this.services.llm.classifyIntent(state.query, summary, conversation, signal);
-      // Guard: empty or unrecognised intent is a classification failure — treat
-      // it the same as a thrown error so the retry/salvage flow decides the path.
-      // The classifier never fabricates an intent it didn't receive.
-      if (intent.length === 0) {
-        if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-          return NodeOutputBuilder.of('retry');
+      try {
+        const intent = await this.services.llm.classifyIntent(state.query, summary, conversation, signal);
+        // Guard: empty or unrecognised intent is a classification failure; the
+        // retry/salvage flow decides the path.
+        if (intent.length === 0) {
+          if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
+            const result = NodeOutput.create('retry');
+            for (const error of result.errors) state.collectError(error);
+            buckets.get(result.output)?.push(item);
+          } else {
+            state.clearAttempts(context.nodeName);
+            const result = NodeOutput.create('salvage');
+            for (const error of result.errors) state.collectError(error);
+            buckets.get(result.output)?.push(item);
+          }
+          continue;
         }
+        state.intent = intent;
+        state.reasoning = [...state.reasoning, ReasoningStep.create({ 'kind': 'thought', 'text': `classified intent as '${intent}'` })];
         state.clearAttempts(context.nodeName);
-        return NodeOutputBuilder.of('salvage');
+        // Map every ClassifiedIntent variant to its node output port.
+        // 'search', 'describe' are general on-topic intents that route through
+        // the main pipeline (extract-query -> decide-tools -> ...). 'recommend' is
+        // a vague "good book / good story" ask: it routes through the dedicated
+        // rating-ranked branch instead of the LLM-relevance-ranked one.
+        const intentDispatch: Record<ClassifiedIntent, IntentOutput> = {
+          'off-topic':         'off-topic',
+          'lookup-author':     'lookup-author',
+          'find-reviews':      'find-reviews',
+          'describe-book':     'describe-book',
+          'recommend-similar': 'recommend-similar',
+          'recall-memories':   'recall-memories',
+          'search':            'on-topic',
+          'describe':          'on-topic',
+          'recommend':         'recommend-top-rated',
+        };
+        const result = NodeOutput.create(intentDispatch[intent]);
+        for (const error of result.errors) state.collectError(error);
+        buckets.get(result.output)?.push(item);
+      } catch (err) {
+        // External cancellation / run deadline propagates unchanged.
+        if (context.signal.aborted) throw err;
+        // Node-local timeout or LLM failure -> retry budget decides the flow. The
+        // classifier never fabricates an intent it didn't receive.
+        if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
+          const result = NodeOutput.create('retry');
+          for (const error of result.errors) state.collectError(error);
+          buckets.get(result.output)?.push(item);
+        } else {
+          state.clearAttempts(context.nodeName);
+          const result = NodeOutput.create('salvage');
+          for (const error of result.errors) state.collectError(error);
+          buckets.get(result.output)?.push(item);
+        }
       }
-      state.intent = intent;
-      state.reasoning = [...state.reasoning, ReasoningStepBuilder.thought(`classified intent as '${intent}'`)];
-      state.clearAttempts(context.nodeName);
-      // Map every ClassifiedIntent variant to its node output port.
-      // 'search', 'describe' are general on-topic intents that route through
-      // the main pipeline (extract-query → decide-tools → …). 'recommend' is
-      // a vague "good book / good story" ask: it routes through the dedicated
-      // rating-ranked branch instead of the LLM-relevance-ranked one.
-      const intentDispatch: Record<ClassifiedIntent, IntentOutput> = {
-        'off-topic':         'off-topic',
-        'lookup-author':     'lookup-author',
-        'find-reviews':      'find-reviews',
-        'describe-book':     'describe-book',
-        'recommend-similar': 'recommend-similar',
-        'recall-memories':   'recall-memories',
-        'search':            'on-topic',
-        'describe':          'on-topic',
-        'recommend':         'recommend-top-rated',
-      };
-      return NodeOutputBuilder.of(intentDispatch[intent]);
-    } catch (err) {
-      // External cancellation / run deadline propagates unchanged.
-      if (context.signal.aborted) throw err;
-      // Node-local timeout or LLM failure → retry budget decides the flow. The
-      // classifier never fabricates an intent it didn't receive.
-      if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        return NodeOutputBuilder.of('retry');
-      }
-      state.clearAttempts(context.nodeName);
-      return NodeOutputBuilder.of('salvage');
-    } finally {
-      clearTimeout(handle);
     }
+
+    const routes: Array<readonly [IntentOutput, Batch<ArchivistState>]> = [];
+    for (const output of this.outputs) {
+      const items = buckets.get(output) ?? [];
+      if (items.length > 0) routes.push([output, Batch.from(items)]);
+    }
+    return RoutedBatch.create(routes);
   }
 }
 // #endregion node-class
-

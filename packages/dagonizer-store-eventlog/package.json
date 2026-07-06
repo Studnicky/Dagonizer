@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-store-eventlog",
-  "version": "1.0.0",
+  "version": "0.30.1",
   "description": "Append-only event-log Store implementation for @studnicky/dagonizer. Every set appends an event; get returns the latest value by walking the log in reverse. Optional file persistence via node:fs/promises.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -33,8 +33,12 @@
   "devDependencies": {
     "@types/node": "^26.0.0"
   },
+  "dependencies": {
+    "@studnicky/clock": "^4.0.0",
+    "@studnicky/concurrency": "^4.0.0"
+  },
   "peerDependencies": {
-    "@studnicky/dagonizer": "workspace:>=1.0.0"
+    "@studnicky/dagonizer": "workspace:^0.30.0"
   },
   "engines": {
     "node": ">=24"

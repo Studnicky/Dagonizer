@@ -49,8 +49,11 @@ import {
   SensorReadingEventSchema,
   type SensorReadingEvent,
 } from './events/SensorReadingEvent.ts';
+import { Validator } from '@studnicky/dagonizer/validation';
 
 export const CanonicalEventVariantSchema = {
+  '$id':     'https://noocodex.dev/schemas/cartographer/CanonicalEventVariant',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'oneOf': [
     PositionPingEventSchema,
     FacilityScanEventSchema,
@@ -67,14 +70,16 @@ export type CanonicalEventVariant =
   | CustomsEvent
   | DeliveryConfirmationEvent;
 
+const canonicalEventVariantValidator = Validator.compile<CanonicalEventVariant>(CanonicalEventVariantSchema);
+
 // Complete 'position-ping' default. The producer overrides only what it knows;
 // every required envelope/body field is present so the consumer never sees a hole.
 const POSITION_PING_DEFAULT: PositionPingEvent = {
-  'shipmentId': '',
-  'eventId': '',
+  'shipmentId': 'unknown',
+  'eventId': 'unknown',
   'epochMs': 0,
   'eventType': 'position-ping',
-  'sourceId': '',
+  'sourceId': 'unknown',
   'sourceFormat': 'json',
   'sourceCompression': 'none',
   'body': {
@@ -410,21 +415,9 @@ export class CanonicalEventVariantBuilder {
   /**
    * Type-guard for CanonicalEventVariant. Narrows `unknown` to the discriminated
    * union by verifying the object shape and eventType discriminant.
-   */
+  */
   static is(value: unknown): value is CanonicalEventVariant {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-    if (!('eventType' in value)) return false;
-    const et = value.eventType;
-    if (
-      et !== 'position-ping' &&
-      et !== 'facility-scan' &&
-      et !== 'sensor-reading' &&
-      et !== 'customs-event' &&
-      et !== 'delivery-confirmation'
-    ) return false;
-    if (!('shipmentId' in value) || typeof value.shipmentId !== 'string') return false;
-    if (!('body' in value) || typeof value.body !== 'object' || value.body === null) return false;
-    return true;
+    return canonicalEventVariantValidator.is(value);
   }
 
   static from(partial: Partial<PositionPingEvent> = {}): CanonicalEventVariant {

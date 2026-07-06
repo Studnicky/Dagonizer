@@ -1,0 +1,115 @@
+---
+title: Execution tuning
+description: 'How to tune Dagonizer execution with substrate concurrency, throttling, retry, deadlines, coalescing, timing, and resilience primitives.'
+---
+
+# Execution tuning
+
+Dagonizer exposes tuning at the execution boundaries where it changes behavior:
+scatter fan-out, batch item execution, LLM adapters, tool HTTP transport, stream channels, progress delivery, and observability. These surfaces use substrate primitives directly, so consumers tune the same concepts everywhere instead of wrapping nodes in raw `Promise.all`.
+
+## Decision table
+
+| Need | Use | Where |
+|---|---|---|
+| Hard cap on simultaneous work | `Semaphore` | `ScatterNode.execution.concurrency`, `BatchExecutionOptionsType.concurrency` |
+| Adaptive or secondary pacing | `Throttle` | `ScatterNode.execution.throttle`, `BatchExecutionOptionsType.throttle` |
+| Provider throughput budget | `TokenBucket` | `BaseAdapterOptionsType.tokenBucket`, `HttpRequestOptionsType.tokenBucket` |
+| Fast-fail unhealthy provider | `CircuitBreaker` | `BaseAdapterOptionsType.circuitBreaker`, `HttpRequestOptionsType.circuitBreaker` |
+| Retry one transient operation | `RetryPolicy` / substrate `Retry` | Adapter calls, tool HTTP transport, caller-owned operation wrappers |
+| Deadline and cancellation | `Signal.compose` | `Dagonizer.execute`, adapters, tool transport, node context signals |
+| Duplicate in-flight request collapse | `Coalesce` | Embedding calls and live lookup services |
+| Operation timing context | `Timing` / `TimingEvent` | `ObservedDagOptionsType.timing`, `BaseAdapterOptionsType.timing`, `BatchExecutionOptionsType.timing` |
+| Backpressure-isolated fan-out events | substrate `EventBus`/`BusQueue` | `@studnicky/dagonizer/progress` |
+
+## Scatter policy
+
+Use scatter `concurrency` as the first control. It is a hard pull-ahead cap: the dispatcher only pulls another source item when a worker slot is available.
+
+```json
+{
+  "execution": {
+    "mode": "item",
+    "concurrency": 8
+  }
+}
+```
+
+Add `throttle` only when dispatch needs a second pacing layer. This is useful when CPU, browser model runtime, or provider latency should influence how many calls are active even though the scatter source can be pulled faster.
+
+```json
+{
+  "execution": {
+    "mode": "item",
+    "concurrency": 16,
+    "throttle": {
+      "concurrencyLimit": 4,
+      "adaptive": {
+        "enabled": true,
+        "targetLatencyMs": 250,
+        "minConcurrency": 2,
+        "maxConcurrency": 12,
+        "sampleWindow": 20,
+        "adjustmentInterval": 1000,
+        "scaleUpThreshold": 0.75,
+        "scaleDownThreshold": 1.25,
+        "stepSize": 1
+      }
+    }
+  }
+}
+```
+
+Reservoir mode batches by key and uses `concurrency` at batch granularity. It has no per-item throttle field because a variable-size batch is not a discrete item dispatch.
+
+## Adapter and tool resilience
+
+Adapters and HTTP tools accept substrate resilience instances directly. Construct them in application code and pass them to the consumer boundary that owns the provider call.
+
+```ts
+import { CircuitBreaker, TokenBucket } from '@studnicky/resilience';
+
+const circuitBreaker = CircuitBreaker.create({
+  failureThreshold: 5,
+  resetTimeoutMs: 10_000,
+  successThreshold: 2,
+  name: 'primary-llm',
+});
+
+const tokenBucket = TokenBucket.create({
+  requestsPerSecond: 5,
+  burstSize: 10,
+});
+```
+
+For adapters, the circuit breaker wraps the whole logical call, the token bucket gates before the retry loop, and the adapter retry policy handles retryable provider errors inside that boundary. For tools, `HttpTransport` applies the same order around HTTP retries. A retry never burns extra rate-limit tokens for the same logical request.
+
+## Timing
+
+Use substrate `Timing` when a run needs operation-level timing context. Pass a consumer-owned timing sink into the boundaries that perform work:
+
+```ts
+import { Timing } from '@studnicky/timing';
+import { ObservedDag } from '@studnicky/dagonizer';
+
+const timing = Timing.create({ maxEvents: 100 });
+const dispatcher = new ObservedDag(logger, { timing });
+```
+
+`ObservedDag` records `dag.flow.*`, `dag.node.*`, and `dag.phase.*` events. `BaseAdapter` records `adapter.chat.*` and `adapter.chatStream.*` events when `BaseAdapterOptionsType.timing` is supplied. `BatchItemExecutor` records `batch.item.*` events when `BatchExecutionOptionsType.timing` is supplied through pattern nodes, tool invocation, or direct calls. Keep one `Timing` instance per request, run, or trace window; call `timing.getEvents()` when emitting the final structured log record.
+
+## Coalescing
+
+Coalescing is for duplicate in-flight misses, not long-lived cache entries. `BaseEmbedder.embed()` coalesces identical text for the same embedder, model, dimensions, and caller signal. Cartographer live address and IP resolvers coalesce duplicate external lookups for the same key and signal, then populate their normal cache when the request settles.
+
+Signal identity is part of the key. Calls with different `AbortSignal` instances do not share the same in-flight provider request, so one caller's abort policy does not cancel unrelated callers.
+
+## Streams and progress
+
+`StreamChannel` remains Dagonizer-owned because it provides awaited bounded `push()`, explicit failure propagation, and durable resume cursors. Substrate `Channel` and `AsyncIter` are useful for generic async composition, but they do not replace the stream resume contract.
+
+Progress uses substrate `EventBus` through `@studnicky/dagonizer/progress`. Each subscriber receives its own `BusQueue`; a slow subscriber applies backpressure to its own queue without blocking unrelated subscribers.
+
+## Practical defaults
+
+Start with `execution.concurrency` only. Add `throttle` when active work needs adaptive pacing. Add `TokenBucket` for external quotas, `CircuitBreaker` for dependency health, `Timing` for request/run context, and `RetryPolicy` for one operation that can succeed by trying again. Use flow-level retry edges when the graph needs to route to recovery work.

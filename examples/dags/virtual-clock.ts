@@ -6,12 +6,14 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
+  MonadicNode,
   NodeStateBase,
-  ScalarNode,
   Timeout,
 } from '@studnicky/dagonizer';
-import type { DAGType, NodeContextType, NodeOutputType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
 
 export { Scheduler } from '@studnicky/dagonizer/runtime';
 export { VirtualScheduler } from '@studnicky/dagonizer/testing';
@@ -30,7 +32,7 @@ export class SlowState extends NodeStateBase {}
 // ---------------------------------------------------------------------------
 
 // #region slow-node
-export class SlowNode extends ScalarNode<SlowState, 'success'> {
+export class SlowNode extends MonadicNode<SlowState, 'success'> {
   readonly name = 'slow';
   readonly outputs = ['success'] as const;
   override readonly timeout = Timeout.ofMs(200);
@@ -38,12 +40,12 @@ export class SlowNode extends ScalarNode<SlowState, 'success'> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: SlowState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
+  override async execute(batch: Batch<SlowState>, context: NodeContextType) {
     // Suspends until the per-node deadline aborts context.signal.
     await new Promise<never>((_resolve, reject) => {
       context.signal.addEventListener('abort', () => { reject(context.signal.reason); }, { 'once': true });
     });
-    return { 'errors': [], 'output': 'success' };
+    return RoutedBatch.create('success', batch);
   }
 }
 // #endregion slow-node

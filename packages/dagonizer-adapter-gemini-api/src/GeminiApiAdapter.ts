@@ -31,8 +31,8 @@ import type {
 } from '@studnicky/dagonizer/adapter';
 import {
   BaseAdapter,
-  ChatResponseMessageBuilder,
-  ChatStreamChunkBuilder,
+  ChatResponseMessage,
+  ChatStreamChunk,
   Classifications,
   DEFAULT_MAX_ATTEMPTS,
   LlmError,
@@ -41,6 +41,7 @@ import {
   ZERO_TOKEN_USAGE,
 } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
+import { Signal } from '@studnicky/signal';
 
 import { GeminiModelsResponseValidator } from './GeminiModelsResponse.js';
 import type { GeminiErrorFrameType, GeminiResponseBodyType } from './GeminiResponseBody.js';
@@ -57,8 +58,9 @@ export type GeminiApiAdapterOptionsType = {
   readonly timeoutMs?: number;
   /**
    * Default system prompt the base injects as the leading turn of any request
-   * that carries no system message of its own. Consumer-supplied persona/format
-   * framing; empty (the default) means no injection.
+   * that carries no system message of its own. The directive can include
+   * persona, format, or language framing; empty (the default) means no
+   * injection.
    */
   readonly systemPrompt?: string;
 };
@@ -108,15 +110,13 @@ export class GeminiApiAdapter extends BaseAdapter {
    * All Gemini models are cloud-hosted (`cloud: true`).
    *
    * Never throws — returns `[]` on any failure (network error, non-2xx, malformed body,
-   * timeout). Composes `options.signal` with an internal discovery timeout via
-   * `AbortSignal.any`.
+   * timeout). Composes `options.signal` with an internal discovery timeout.
    */
   override async listModels(options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
-    const signal = options?.signal !== undefined
-      ? AbortSignal.any([options.signal, controller.signal])
-      : controller.signal;
+    const signal = Signal.compose({
+      'deadlineMs': DISCOVERY_TIMEOUT_MS,
+      ...(options?.signal !== undefined ? { 'signal': options.signal } : {}),
+    });
     try {
       const res = await fetch(`${ENDPOINT}?key=${encodeURIComponent(this.#apiKey)}`, {
         'method': 'GET',
@@ -138,8 +138,6 @@ export class GeminiApiAdapter extends BaseAdapter {
       });
     } catch {
       return [];
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -247,7 +245,7 @@ export class GeminiApiAdapter extends BaseAdapter {
       }
     }
     return {
-      'message': ChatResponseMessageBuilder.from(text, toolCalls),
+      'message': ChatResponseMessage.create(text, toolCalls),
       'finishReason': this.#mapFinishReason(candidate?.finishReason, toolCalls.length > 0),
       'usage': this.#toUsage(payload.usageMetadata),
     };
@@ -342,7 +340,7 @@ export class GeminiApiAdapter extends BaseAdapter {
         }
         if (delta.length > 0) {
           text += delta;
-          await this.pushChunk(sink, ChatStreamChunkBuilder.of(delta));
+          await this.pushChunk(sink, ChatStreamChunk.create(delta));
         }
         if (candidate?.finishReason !== undefined) rawFinishReason = candidate.finishReason;
         if (chunk.usageMetadata !== undefined) usageMetadata = chunk.usageMetadata;
@@ -359,7 +357,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     }
 
     return {
-      'message': ChatResponseMessageBuilder.from(text, []),
+      'message': ChatResponseMessage.create(text, []),
       'finishReason': this.#mapFinishReason(rawFinishReason, false),
       'usage': this.#toUsage(usageMetadata),
     };

@@ -4,8 +4,9 @@
  * field downstream nodes need at the top level.
  */
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import { RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -18,11 +19,14 @@ export abstract class ExtractFieldNode<
   protected abstract extract(state: TState): TValue;
   protected abstract apply(state: TState, value: TValue): void;
 
-  protected override async executeOne(
-    state: TState,
-  ): Promise<NodeOutputType<'success'>> {
-    const value = this.extract(state);
-    this.apply(state, value);
-    return NodeOutputBuilder.of('success');
+  override async execute(
+    batch: Batch<TState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'success', TState>> {
+    for (const item of batch) {
+      const value = this.extract(item.state);
+      this.apply(item.state, value);
+    }
+    return RoutedBatch.create('success', batch);
   }
 }

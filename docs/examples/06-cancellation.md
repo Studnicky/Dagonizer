@@ -44,9 +44,9 @@ The `#cancellation-run` region shows the `AbortController`, the `signal` + `dead
 
 ### Scout signal pass-through
 
-The `#signal-scout` region shows how `openLibraryScout` propagates `context.signal` through the `scoutRetry` policy and into the tool call. When the signal fires, the retry policy aborts mid-backoff instead of waiting:
+The `#tool-candidate-gather-strategy` region shows how `openLibraryScout` propagates `context.signal` through the `scoutRetry` policy and into the tool call. When the signal fires, the retry policy aborts mid-backoff instead of waiting:
 
-<<< @/../examples/the-archivist/nodes/scouts.ts#signal-scout
+<<< @/../examples/the-archivist/nodes/scouts.ts#tool-candidate-gather-strategy
 
 ## What it demonstrates
 

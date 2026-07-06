@@ -17,36 +17,34 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { DAGBuilder, NodeOutputBuilder, NodeStateBase } from '@studnicky/dagonizer';
-import type { NodeInterface } from '@studnicky/dagonizer/contracts';
+import { Batch, DAGBuilder, MonadicNode, NodeStateBase, RoutedBatch } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 
-class StepANode implements NodeInterface<NodeStateBase, 'done'> {
-  readonly name = 'step-a';
-  readonly outputs = ['done'] as const;
-  async execute() { return NodeOutputBuilder.of('done'); }
-}
+class DoneNode extends MonadicNode<NodeStateBase, 'done'> {
+  readonly outputs: readonly 'done'[] = ['done'];
 
-class StepBNode implements NodeInterface<NodeStateBase, 'done'> {
-  readonly name = 'step-b';
-  readonly outputs = ['done'] as const;
-  async execute() { return NodeOutputBuilder.of('done'); }
-}
+  constructor(readonly name: string) {
+    super();
+  }
 
-class ChildStepNode implements NodeInterface<NodeStateBase, 'done'> {
-  readonly name = 'child-step';
-  readonly outputs = ['done'] as const;
-  async execute() { return NodeOutputBuilder.of('done'); }
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { done: { type: 'object' } };
+  }
+
+  async execute(batch: Batch<NodeStateBase>) {
+    return RoutedBatch.create('done', batch);
+  }
 }
 
 const childDag = new DAGBuilder('sub-flow', '1')
-  .node('child-step', new ChildStepNode(), { done: 'child-end' })
+  .node('child-step', new DoneNode('child-step'), { done: 'child-end' })
   .terminal('child-end')
   .build();
 
 const parentDag = new DAGBuilder('main-flow', '1')
-  .node('step-a', new StepANode(), { done: 'run-child' })
+  .node('step-a', new DoneNode('step-a'), { done: 'run-child' })
   .embeddedDAG('run-child', 'sub-flow', { success: 'step-b', error: 'step-b' })
-  .node('step-b', new StepBNode(), { done: 'end' })
+  .node('step-b', new DoneNode('step-b'), { done: 'end' })
   .terminal('end')
   .build();
 
@@ -152,7 +150,7 @@ The `type` string is the stable discriminant for the resume path; include a vers
 
 ## Checkpoint integration
 
-`Checkpoint.capture` is the async factory for checkpoints that include named stores. It accepts a `dagName`, execution `result`, and optional `stores` map. All stores are snapshotted in parallel.
+`Checkpoint.capture` is the async factory for checkpoints that include named stores. It accepts a `dagName`, execution `result`, optional `stores` map, and optional `execution` policy. Store snapshots and restores run through the shared batch executor, so consumers can set `execution.concurrency`, `execution.throttle`, and `execution.timing` for remote or expensive stores.
 
 <<< @/../examples/10-shared-state.ts#store-checkpoint
 

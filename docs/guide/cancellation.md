@@ -19,7 +19,7 @@ nextSteps:
 
 # Cancellation
 
-Cancellation flows through the standard Web `AbortSignal` API. The dispatcher accepts two optional fields in the `execute()` and `resume()` options object: a caller-supplied `signal` and a `deadlineMs` budget. Internally the two compose via `AbortSignal.any([signal, AbortSignal.timeout(deadlineMs)])` and the result lands on `context.signal` for every node.
+Cancellation flows through the standard Web `AbortSignal` API. The dispatcher accepts two optional fields in the `execute()` and `resume()` options object: a caller-supplied `signal` and a `deadlineMs` budget. Internally the two compose via `Signal.compose({ signal, deadlineMs })` and the result lands on `context.signal` for every node.
 
 ## `signal` and `deadlineMs`
 
@@ -71,7 +71,7 @@ When a flow exits via abort or timeout, `result.interruptedAt` carries structure
 
 ## Signal composition
 
-The dispatcher uses `AbortSignal.any()` to merge signals. Callers can do the same to compose multiple concerns before passing them in:
+The dispatcher uses `Signal.compose(...)` to merge cancellation concerns. Callers can do the same before passing a single signal in:
 
 <<< @/../examples/06-cancellation.ts#signal-composition
 

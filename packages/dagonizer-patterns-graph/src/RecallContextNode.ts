@@ -7,9 +7,10 @@
  * (write the recalled context back to state).
  */
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { BindingType, SlotPatternType } from '@studnicky/dagonizer/patterns';
-import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { GraphNode } from './GraphNode.js';
 
@@ -22,13 +23,17 @@ export abstract class RecallContextNode<
   protected abstract applyRecall(state: TState, bindings: readonly TBinding[]): void;
 
 
-  protected override async executeOne(
-    state: TState,
-  ): Promise<NodeOutputType<'success' | 'empty'>> {
-    const pattern = this.composeQuery(state);
-    const rows = this.memory.select(pattern);
-    const bindings = this.mapBindings(rows);
-    this.applyRecall(state, bindings);
-    return NodeOutputBuilder.of(bindings.length === 0 ? 'empty' : 'success');
+  override async execute(
+    batch: Batch<TState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'success' | 'empty', TState>> {
+    const routed = batch.partition<'success' | 'empty'>((state) => {
+      const pattern = this.composeQuery(state);
+      const rows = this.memory.select(pattern);
+      const bindings = this.mapBindings(rows);
+      this.applyRecall(state, bindings);
+      return bindings.length === 0 ? 'empty' : 'success';
+    });
+    return RoutedBatch.create([...routed]);
   }
 }

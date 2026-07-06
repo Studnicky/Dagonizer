@@ -3,7 +3,7 @@
  *
  * Demonstrates:
  *   1. EchoNode — a minimal MonadicNode that passes the whole batch through.
- *   2. GeoNode (ScalarNode) and EnrichNode (MonadicNode) side by side.
+ *   2. GeoNode and EnrichNode using different batch strategies.
  *   3. A reservoir-configured scatter DAG registered and executed.
  *
  * DAG definition (nodes, DAG): examples/dags/plural-native.ts
@@ -31,16 +31,15 @@ const echoNode = new EchoNode();
 
 // EchoNode is not registered in a DAG here; just verify construction.
 process.stdout.write(`EchoNode name: ${echoNode.name}\n`);
+process.stdout.write(`Echo dispatcher DAGs: ${echoDispatcher.dagNames().length}\n`);
 
 // ── 2. GeoNode vs EnrichNode: same EventState, different execute granularity ─
 
 const geoNode    = new GeoNode();
 const enrichNode = new EnrichNode();
 
-process.stdout.write(`GeoNode name:    ${geoNode.name}  (per-item ScalarNode)\n`);
+process.stdout.write(`GeoNode name:    ${geoNode.name}  (item-preserving batch routing)\n`);
 process.stdout.write(`EnrichNode name: ${enrichNode.name}  (batch-native MonadicNode)\n`);
-
-void echoDispatcher;
 
 // ── 3. Reservoir scatter DAG: ScoreNode registered on reservoirDag ───────────
 

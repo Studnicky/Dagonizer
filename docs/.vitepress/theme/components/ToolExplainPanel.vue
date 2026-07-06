@@ -7,10 +7,12 @@
  * TripleInspector pattern. The runner supplies `selectedTool` and
  * `llm`; the panel fetches on first open and caches thereafter.
  *
- * Cache: `Map<string, string>` keyed by tool name; once fetched, the
- * cached text is reused on subsequent opens; no second network call.
+ * Cache: bounded by tool name; concurrent opens for the same name share one
+ * explanation request.
  */
 
+import { LruCache } from '@studnicky/cache';
+import { Coalesce } from '@studnicky/concurrency/coalesce';
 import { ref, watch } from 'vue';
 import type { LlmClientInterface } from '../../../../examples/the-archivist/services.ts';
 
@@ -27,8 +29,9 @@ const emit = defineEmits<{
 const explanation = ref<string | null>(null);
 const loading     = ref(false);
 
-/** Session-scoped cache: never fires two requests for the same name. */
-const cache = new Map<string, string>();
+const EXPLANATION_CACHE_CAPACITY = 64;
+const cache = LruCache.create<string, string>({ 'capacity': EXPLANATION_CACHE_CAPACITY });
+const explanationRequests = Coalesce.create<string>();
 
 watch(() => props.selectedTool, async (name) => {
   if (name === null) {
@@ -56,8 +59,13 @@ watch(() => props.selectedTool, async (name) => {
       loading.value     = false;
       return;
     }
-    const text = await llm.explainTool(name, context);
-    cache.set(name, text);
+    const text = await explanationRequests.run(name, async () => {
+      const coalescedCached = cache.get(name);
+      if (coalescedCached !== undefined) return coalescedCached;
+      const generated = await llm.explainTool(name, context);
+      cache.set(name, generated);
+      return generated;
+    });
     // Only apply if the tool hasn't changed while we were waiting.
     if (props.selectedTool === name) {
       explanation.value = text;

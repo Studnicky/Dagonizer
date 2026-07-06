@@ -21,6 +21,9 @@
  * `NodeVizAdapter`, keeping the FSM pure (no cytoscape import).
  */
 
+import type { FsmStepType } from '@studnicky/fsm';
+import { StateMachine } from '@studnicky/fsm';
+
 export type NodeVizState = 'pending' | 'active' | 'completed' | 'errored';
 
 export type NodeVizEventKind = 'start' | 'end' | 'error' | 'reset';
@@ -68,15 +71,34 @@ const EXIT_CLASSES: Readonly<Record<NodeVizState, readonly string[]>> = {
   errored:   ['dag-active', 'dag-completed'],
 };
 
+type NodeVizStateRecord = { readonly variant: NodeVizState };
+
+class NodeVizReducer extends StateMachine<NodeVizStateRecord, NodeVizEvent, never> {
+  constructor() {
+    super();
+  }
+
+  getInitialState(): NodeVizStateRecord {
+    return { 'variant': 'pending' };
+  }
+
+  reduce(state: NodeVizStateRecord, event: NodeVizEvent): FsmStepType<NodeVizStateRecord, never> {
+    const next = TRANSITIONS[state.variant][event.type] ?? state.variant;
+    return { 'state': { 'variant': next }, 'effects': [] };
+  }
+}
+
+const NODE_VIZ_REDUCER = new NodeVizReducer();
+
 export class NodeVizMachine {
-  #state: NodeVizState = 'pending';
+  #state: NodeVizStateRecord = NODE_VIZ_REDUCER.getInitialState();
   readonly #adapter: NodeVizAdapter;
 
   constructor(adapter: NodeVizAdapter) {
     this.#adapter = adapter;
   }
 
-  get state(): NodeVizState { return this.#state; }
+  get state(): NodeVizState { return this.#state.variant; }
 
   /**
    * Dispatch an event. Returns the new state (which may equal the
@@ -84,10 +106,12 @@ export class NodeVizMachine {
    * outcome, not an error).
    */
   dispatch(event: NodeVizEvent): NodeVizState {
-    const next = TRANSITIONS[this.#state][event.type];
-    if (next === undefined || next === this.#state) return this.#state;
-    this.#applyExit(this.#state, next);
-    this.#state = next;
+    const current = this.#state;
+    const step = NODE_VIZ_REDUCER.transition(current, event);
+    const next = step.state.variant;
+    if (next === current.variant) return current.variant;
+    this.#applyExit(current.variant, next);
+    this.#state = step.state;
     this.#applyEntry(next);
     return next;
   }

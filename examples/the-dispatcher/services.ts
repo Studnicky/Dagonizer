@@ -9,6 +9,7 @@
  */
 
 import type { ConversationTurnType } from './DispatcherState.ts';
+import type { BatchExecutionOptionsType } from '@studnicky/dagonizer';
 
 /**
  * LLM contract for the Dispatcher: classify an inbound customer message
@@ -44,4 +45,5 @@ export interface DispatcherIntentInterface {
 export interface DispatcherServices {
   readonly llm: DispatcherLlmInterface;
   readonly intent: DispatcherIntentInterface | null;
+  readonly execution?: BatchExecutionOptionsType;
 }

@@ -81,6 +81,18 @@ class FailingProducer<T> implements StreamProducerInterface<T> {
   }
 }
 
+class ThrowingProducer<T> implements StreamProducerInterface<T> {
+  readonly #error: unknown;
+
+  constructor(error: unknown) {
+    this.#error = error;
+  }
+
+  produce(_sink: StreamSinkInterface<T>): Promise<void> {
+    throw this.#error;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // (a) push below capacity resolves without awaiting a consumer
 // ---------------------------------------------------------------------------
@@ -99,6 +111,22 @@ void describe('StreamChannel: push below capacity', () => {
     assert.deepStrictEqual(items, [1, 2, 3]);
   });
 
+});
+
+void describe('StreamChannel: constructor validation', () => {
+  void it('rejects non-positive capacity', () => {
+    assert.throws(
+      () => new StreamChannel<number>({ 'capacity': 0 }),
+      (err: unknown) => err instanceof RangeError && err.message.includes('positive finite integer'),
+    );
+  });
+
+  void it('rejects non-integer capacity', () => {
+    assert.throws(
+      () => new StreamChannel<number>({ 'capacity': 1.5 }),
+      (err: unknown) => err instanceof RangeError && err.message.includes('positive finite integer'),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -156,6 +184,16 @@ void describe('StreamChannel: FIFO iteration order', () => {
 
     const items = await AsyncDrain.collect(channel);
     assert.deepStrictEqual(items, ['a', 'b', 'c']);
+  });
+
+  void it('yields undefined as a legitimate payload value', async () => {
+    const channel = new StreamChannel<undefined>({ 'capacity': 2 });
+    await channel.push(undefined);
+    channel.close();
+
+    const iter = channel[Symbol.asyncIterator]();
+    assert.deepStrictEqual(await iter.next(), { 'value': undefined, 'done': false });
+    assert.deepStrictEqual(await iter.next(), { 'value': undefined, 'done': true });
   });
 
 });
@@ -320,6 +358,18 @@ void describe('StreamChannel.driven', () => {
     // The first item was buffered and should be drained; then the error surfaces.
     assert.strictEqual(collected[0], 'x');
     assert.strictEqual(caught, sentinel, 'iteration must reject with the producer error');
+  });
+
+  void it('synchronous producer throw fails the returned channel', async () => {
+    const sentinel = new Error('producer-sync-throw');
+    const producer = new ThrowingProducer<number>(sentinel);
+    const channel = StreamChannel.driven(producer);
+
+    const iter = channel[Symbol.asyncIterator]();
+    await assert.rejects(
+      () => iter.next(),
+      (err: unknown) => err === sentinel,
+    );
   });
 
 });

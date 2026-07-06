@@ -7,13 +7,11 @@
  */
 
 import type { CartographerState } from '../CartographerState.ts';
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region validate-coords-node
-export class ValidateCoordsNode extends ScalarNode<CartographerState, 'valid' | 'rejected'> {
+export class ValidateCoordsNode extends MonadicNode<CartographerState, 'valid' | 'rejected'> {
   readonly 'name' = 'validate-coords';
   readonly 'outputs' = ['valid', 'rejected'] as const;
 
@@ -24,10 +22,36 @@ export class ValidateCoordsNode extends ScalarNode<CartographerState, 'valid' | 
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'valid' | 'rejected'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'valid' | 'rejected', CartographerState>> {
+    const acc = new Map<'valid' | 'rejected', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'valid' | 'rejected', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private routeItem(state: CartographerState): NodeOutputType<'valid' | 'rejected'> {
     const { latitude, longitude } = state.raw;
     const isValid = latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
-    return NodeOutputBuilder.of(isValid ? 'valid' : 'rejected');
+    return NodeOutput.create(isValid ? 'valid' : 'rejected');
   }
 }
 

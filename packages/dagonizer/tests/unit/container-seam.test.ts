@@ -35,13 +35,13 @@ import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { ObserverRelayInterface } from '../../src/contracts/ObserverRelayInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import { Placement } from '../../src/entities/dag/Placement.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { JsonValue } from '../../src/entities/JsonValue.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
@@ -67,38 +67,38 @@ class CounterState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-class NoopNode extends ScalarNode<NodeStateBase, 'success'> {
+class NoopNode extends MonadicNode<NodeStateBase, 'success'> {
   readonly name = 'noop';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+  override async execute(batch: Batch<NodeStateBase>): Promise<Map<'success', Batch<NodeStateBase>>> { return new Map([['success', batch]]); }
 }
 const noop = new NoopNode();
 
-class IncrementNode extends ScalarNode<CounterState, 'success'> {
+class IncrementNode extends MonadicNode<CounterState, 'success'> {
   readonly name = 'increment';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-  protected async executeOne(state: CounterState): Promise<NodeOutputType<'success'>> {
-    state.value += 10;
-    return { 'errors': [], 'output': 'success' as const };
+  override async execute(batch: Batch<CounterState>): Promise<Map<'success', Batch<CounterState>>> {
+    for (const item of batch) item.state.value += 10;
+    return new Map([['success', batch]]);
   }
 }
 const incrementNode = new IncrementNode();
 
-class TerminalNode extends ScalarNode<CounterState, 'completed'> {
+class TerminalNode extends MonadicNode<CounterState, 'completed'> {
   readonly name = 'done-node';
   readonly outputs = ['completed'] as const;
   override get outputSchema(): Record<'completed', SchemaObjectType> { return { 'completed': { 'type': 'object' } }; }
-  protected async executeOne(): Promise<NodeOutputType<'completed'>> { return { 'errors': [], 'output': 'completed' as const }; }
+  override async execute(batch: Batch<CounterState>): Promise<Map<'completed', Batch<CounterState>>> { return new Map([['completed', batch]]); }
 }
 const terminalNode = new TerminalNode();
 
-class BodyNode extends ScalarNode<NodeStateBase, 'success'> {
+class BodyNode extends MonadicNode<NodeStateBase, 'success'> {
   readonly name = 'body-node';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-  protected async executeOne(): Promise<NodeOutputType<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+  override async execute(batch: Batch<NodeStateBase>): Promise<Map<'success', Batch<NodeStateBase>>> { return new Map([['success', batch]]); }
 }
 const bodyNode = new BodyNode();
 

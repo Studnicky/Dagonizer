@@ -8,13 +8,13 @@ import {
 } from '../../src/checkpoint/index.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { SnapshottableInterface, StoreSnapshotEntryType, StoreSnapshotType } from '../../src/contracts/SnapshottableInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { CheckpointDataType, DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
@@ -61,7 +61,7 @@ class StoreState extends NodeStateBase {
 // node is suspended, giving a deterministic interruption without any real timer
 // dependencies.
 
-class SlowNode extends ScalarNode<NodeStateBase, 'done'> {
+class SlowNode extends MonadicNode<NodeStateBase, 'done'> {
   readonly name = 'slow';
   readonly outputs = ['done'] as const;
   readonly #onReady: () => void;
@@ -69,14 +69,14 @@ class SlowNode extends ScalarNode<NodeStateBase, 'done'> {
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'done'>> {
+  override async execute(batch: Batch<NodeStateBase>, context: NodeContextType): Promise<Map<'done', Batch<NodeStateBase>>> {
     this.#onReady();
     await new Promise<void>((_resolve, reject) => {
       context.signal.addEventListener('abort', () => {
         reject(context.signal.reason);
       }, { 'once': true });
     });
-    return { 'errors': [], 'output': 'done' };
+    return new Map([['done', batch]]);
   }
 }
 
@@ -159,6 +159,45 @@ class FactLog implements SnapshottableInterface {
   }
 }
 
+class ConcurrencyProbeStore implements SnapshottableInterface {
+  readonly #name: string;
+  readonly #stats: { active: number; max: number };
+
+  constructor(name: string, stats: { active: number; max: number }) {
+    this.#name = name;
+    this.#stats = stats;
+  }
+
+  async snapshot(): Promise<StoreSnapshotType> {
+    this.#stats.active += 1;
+    this.#stats.max = Math.max(this.#stats.max, this.#stats.active);
+    await Scheduler.current().after(1);
+    this.#stats.active -= 1;
+    return {
+      'version': 1,
+      'type':    'concurrency-probe',
+      'entries': [{ 'key': this.#name, 'value': this.#name }],
+    };
+  }
+
+  async restore(_snapshot: StoreSnapshotType): Promise<void> {
+    this.#stats.active += 1;
+    this.#stats.max = Math.max(this.#stats.max, this.#stats.active);
+    await Scheduler.current().after(1);
+    this.#stats.active -= 1;
+  }
+
+  async *snapshotStream(): AsyncIterable<StoreSnapshotEntryType> {
+    yield { 'key': this.#name, 'value': this.#name };
+  }
+
+  async restoreStream(entries: AsyncIterable<StoreSnapshotEntryType>): Promise<void> {
+    for await (const _entry of entries) {
+      await Promise.resolve();
+    }
+  }
+}
+
 const SAMPLE_CHECKPOINT: CheckpointDataType = {
   'dagName': 'demo',
   'cursor': 'next-node',
@@ -230,18 +269,18 @@ void describe('cursor on ExecutionResultType', () => {
     let resolveNodeReady!: () => void;
     const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
 
-    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
+    class OpNode extends MonadicNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> {
         return { 'success': { 'type': 'object' } };
       }
-      protected async executeOne(_state: NodeStateBase, context: NodeContextType): Promise<NodeOutputType<'success'>> {
+      override async execute(batch: Batch<NodeStateBase>, context: NodeContextType): Promise<Map<'success', Batch<NodeStateBase>>> {
         resolveNodeReady();
         await new Promise<void>((_resolve, reject) => {
           context.signal.addEventListener('abort', () => { reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'errors': [], 'output': 'success' as const };
+        return new Map([['success', batch]]);
       }
     }
     dispatcher.registerNode(new OpNode());
@@ -678,5 +717,61 @@ void describe('Checkpoint.capture + restoreStores', () => {
     await recalled.restoreStores({ 'log': freshLog });
 
     assert.deepEqual([...freshLog.facts], ['born', 'crawled']);
+  });
+
+  void it('capture defaults store snapshots to one in-flight operation', async () => {
+    const stats = { 'active': 0, 'max': 0 };
+    const result = await TestCheckpoint.abortedResult();
+
+    await Checkpoint.capture('store-test', result, {
+      'stores': {
+        'a': new ConcurrencyProbeStore('a', stats),
+        'b': new ConcurrencyProbeStore('b', stats),
+        'c': new ConcurrencyProbeStore('c', stats),
+      },
+    });
+
+    assert.equal(stats.max, 1);
+  });
+
+  void it('capture accepts execution concurrency for store snapshots', async () => {
+    const stats = { 'active': 0, 'max': 0 };
+    const result = await TestCheckpoint.abortedResult();
+
+    await Checkpoint.capture('store-test', result, {
+      'execution': { 'concurrency': 2 },
+      'stores': {
+        'a': new ConcurrencyProbeStore('a', stats),
+        'b': new ConcurrencyProbeStore('b', stats),
+        'c': new ConcurrencyProbeStore('c', stats),
+      },
+    });
+
+    assert.equal(stats.max, 2);
+  });
+
+  void it('restoreStores accepts execution concurrency for store restores', async () => {
+    const captureStats = { 'active': 0, 'max': 0 };
+    const restoreStats = { 'active': 0, 'max': 0 };
+    const result = await TestCheckpoint.abortedResult();
+    const ckpt = await Checkpoint.capture('store-test', result, {
+      'execution': { 'concurrency': 3 },
+      'stores': {
+        'a': new ConcurrencyProbeStore('a', captureStats),
+        'b': new ConcurrencyProbeStore('b', captureStats),
+        'c': new ConcurrencyProbeStore('c', captureStats),
+      },
+    });
+
+    await ckpt.restoreStores(
+      {
+        'a': new ConcurrencyProbeStore('a', restoreStats),
+        'b': new ConcurrencyProbeStore('b', restoreStats),
+        'c': new ConcurrencyProbeStore('c', restoreStats),
+      },
+      { 'execution': { 'concurrency': 2 } },
+    );
+
+    assert.equal(restoreStats.max, 2);
   });
 });

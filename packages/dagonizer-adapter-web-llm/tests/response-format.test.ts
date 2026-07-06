@@ -15,7 +15,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequest } from '@studnicky/dagonizer/adapter';
 
 import { WebLlmAdapter } from '../src/index.js';
 import type { WebLlmEngineType, WebLlmStreamingParamsType } from '../src/index.js';
@@ -114,7 +114,7 @@ void test('response_format: outputSchema variant=schema sends json_object with s
   const stub = new ResponseFormatCaptureStub([JSON.stringify({ 'title': 'Dune' })]);
   const adapter = new ResponseFormatTestAdapter(stub);
 
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages':     [{ 'role': 'user', 'content': 'Recommend a novel.' }],
     'outputSchema': { 'variant': 'schema', 'id': 'rec', 'schema': theSchema },
   }));
@@ -138,7 +138,7 @@ void test('response_format: tools sends json_object with tool-plan schema string
   const stub = new ResponseFormatCaptureStub([JSON.stringify({ 'tool_calls': [{ 'name': 'search', 'arguments': { 'q': 'books' } }] })]);
   const adapter = new ResponseFormatTestAdapter(stub);
 
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Find a book.' }],
     'tools': [
       {
@@ -184,7 +184,7 @@ void test('response_format: plain text (no tools, no schema) sends type=text wit
   const stub = new ResponseFormatCaptureStub(['Hello!']);
   const adapter = new ResponseFormatTestAdapter(stub);
 
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Hi.' }],
   }));
 

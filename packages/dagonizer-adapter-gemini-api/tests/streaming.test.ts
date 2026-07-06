@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import type { ChatStreamChunkType, StreamSinkInterface } from '@studnicky/dagonizer/adapter';
-import { ChatRequestBuilder, LlmError } from '@studnicky/dagonizer/adapter';
+import { ChatRequest, LlmError } from '@studnicky/dagonizer/adapter';
 
 import { GeminiApiAdapter } from '../src/index.js';
 
@@ -77,7 +77,7 @@ void test('chatStream pushes deltas in order and returns the concatenated text, 
   try {
     const adapter = new GeminiApiAdapter('key', { 'model': 'gemini-2.0-flash', 'maxAttempts': 1 });
     const sink = new CollectingSink();
-    const request = ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] });
+    const request = ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] });
 
     const response = await adapter.chatStream(request, sink);
 
@@ -108,7 +108,7 @@ void test('chatStream maps a MAX_TOKENS finishReason through to the returned res
   try {
     const adapter = new GeminiApiAdapter('key', { 'model': 'gemini-2.0-flash', 'maxAttempts': 1 });
     const sink = new CollectingSink();
-    const request = ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] });
+    const request = ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] });
 
     const response = await adapter.chatStream(request, sink);
 
@@ -134,7 +134,7 @@ void test('chatStream falls back to generateContent (buffered) when the request 
   try {
     const adapter = new GeminiApiAdapter('key', { 'model': 'gemini-2.0-flash', 'maxAttempts': 1 });
     const sink = new CollectingSink();
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages': [{ 'role': 'user', 'content': 'Call a tool.' }],
       'tools': [{
         'name': 'foo',
@@ -165,7 +165,7 @@ void test('chatStream rejects with a NETWORK LlmError when the streamed response
   try {
     const adapter = new GeminiApiAdapter('key', { 'model': 'gemini-2.0-flash', 'maxAttempts': 1 });
     const sink = new CollectingSink();
-    const request = ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] });
+    const request = ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] });
 
     await assert.rejects(() => adapter.chatStream(request, sink));
   } finally {
@@ -188,7 +188,7 @@ void test('chatStream rejects with a classified LlmError when a mid-stream frame
   try {
     const adapter = new GeminiApiAdapter('key', { 'model': 'gemini-2.0-flash', 'maxAttempts': 1 });
     const sink = new CollectingSink();
-    const request = ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] });
+    const request = ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] });
 
     await assert.rejects(
       () => adapter.chatStream(request, sink),
@@ -229,7 +229,7 @@ void test('chatStream wraps a mid-stream reader failure in a classified LlmError
   try {
     const adapter = new GeminiApiAdapter('key', { 'model': 'gemini-2.0-flash', 'maxAttempts': 1 });
     const sink = new CollectingSink();
-    const request = ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] });
+    const request = ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] });
 
     await assert.rejects(
       () => adapter.chatStream(request, sink),

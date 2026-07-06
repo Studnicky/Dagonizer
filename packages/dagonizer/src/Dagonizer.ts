@@ -15,7 +15,7 @@ import { Batch } from './entities/batch/Batch.js';
 import type { DAGType } from './entities/dag/DAG.js';
 import type { DAGNodeType } from './entities/dag/Placement.js';
 import type { ExecutionResultType } from './entities/execution/ExecutionResult.js';
-import { NodeContextBuilder } from './entities/node/NodeContext.js';
+import { NodeContext } from './entities/node/NodeContext.js';
 import type { NodeContextType } from './entities/node/NodeContext.js';
 import type { NodeResultType } from './entities/node/NodeResult.js';
 import { DAGError } from './errors/index.js';
@@ -503,11 +503,11 @@ implements DagonizerInterface<TState> {
 
       /**
        * Build a node context for a sub-DAG body invocation. Forwards to
-       * `NodeContextBuilder.of`. `signal` is always a valid `AbortSignal` — a run
+       * `NodeContext.create`. `signal` is always a valid `AbortSignal` — a run
        * with no caller-supplied cancellation surface carries `Signal.never()`.
        */
       bodyContext(dagName: string, nodeName: string, signal: AbortSignal): NodeContextType {
-        return NodeContextBuilder.of(dagName, nodeName, signal, this.#validateOutputs, this.#outputSchemaValidator);
+        return NodeContext.create(dagName, nodeName, signal, this.#validateOutputs, this.#outputSchemaValidator);
       }
 
       /**
@@ -515,7 +515,7 @@ implements DagonizerInterface<TState> {
        * valid `AbortSignal`.
        */
       nodeContext(dagName: string, placementName: string, signal: AbortSignal): NodeContextType {
-        return NodeContextBuilder.of(dagName, placementName, signal, this.#validateOutputs, this.#outputSchemaValidator);
+        return NodeContext.create(dagName, placementName, signal, this.#validateOutputs, this.#outputSchemaValidator);
       }
 
       /**

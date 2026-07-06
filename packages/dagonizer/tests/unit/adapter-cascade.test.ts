@@ -1,5 +1,5 @@
 /**
- * Unit tests for `LlmAdapterCascadeBuilder`.
+ * Unit tests for `LlmAdapterCascade.create`.
  *
  * Verifies that the builder assembles a cascade from a catalogue, that
  * preference order is honoured (first entry wins when it probes true), and
@@ -17,7 +17,7 @@ import type {
   ChatResponseType,
 } from '../../src/adapter/LlmAdapter.js';
 import { ZERO_TOKEN_USAGE } from '../../src/adapter/LlmAdapter.js';
-import { LlmAdapterCascadeBuilder, type CatalogueEntryType } from '../../src/adapter/LlmAdapterCascadeBuilder.js';
+import { LlmAdapterCascade, type CatalogueEntryType } from '../../src/adapter/LlmAdapterCascade.js';
 import { LlmError } from '../../src/adapter/LlmError.js';
 
 // ── Shared test capabilities ──────────────────────────────────────────────────
@@ -82,13 +82,13 @@ class TestCatalogue {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-void describe('LlmAdapterCascadeBuilder.build', () => {
+void describe('LlmAdapterCascade.create', () => {
   void it('returns a cascade that selects the first entry when it probes true', async () => {
     const catalogue: readonly CatalogueEntryType[] = [
       TestCatalogue.entry('provA', 'modelA', true),
       TestCatalogue.entry('provB', 'modelB', true),
     ];
-    const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+    const cascade = LlmAdapterCascade.create(catalogue);
     const adapter = await cascade.select();
     assert.equal(adapter.id, 'provA:modelA');
   });
@@ -98,7 +98,7 @@ void describe('LlmAdapterCascadeBuilder.build', () => {
       TestCatalogue.entry('cold', 'modelA', false),
       TestCatalogue.entry('warm', 'modelB', true),
     ];
-    const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+    const cascade = LlmAdapterCascade.create(catalogue);
     const adapter = await cascade.select();
     assert.equal(adapter.id, 'warm:modelB');
   });
@@ -108,7 +108,7 @@ void describe('LlmAdapterCascadeBuilder.build', () => {
       TestCatalogue.entry('a', 'm1', false),
       TestCatalogue.entry('b', 'm2', false),
     ];
-    const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+    const cascade = LlmAdapterCascade.create(catalogue);
     await assert.rejects(
       () => cascade.select(),
       (err: unknown): err is LlmError => {
@@ -127,13 +127,13 @@ void describe('LlmAdapterCascadeBuilder.build', () => {
       TestCatalogue.entry('p2', 'm', false),
       TestCatalogue.entry('p3', 'm', true),
     ];
-    const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+    const cascade = LlmAdapterCascade.create(catalogue);
     const adapter = await cascade.select();
     assert.equal(adapter.id, 'p3:m');
   });
 
   void it('throws NO_ADAPTER_AVAILABLE for an empty catalogue', async () => {
-    const cascade = LlmAdapterCascadeBuilder.build([]);
+    const cascade = LlmAdapterCascade.create([]);
     await assert.rejects(
       () => cascade.select(),
       (err: unknown): err is LlmError => {
@@ -150,7 +150,7 @@ void describe('LlmAdapterCascadeBuilder.build', () => {
       TestCatalogue.entry('same', 'model', true),
     ];
     assert.throws(
-      () => { LlmAdapterCascadeBuilder.build(catalogue); },
+      () => { LlmAdapterCascade.create(catalogue); },
       (err: unknown): err is LlmError => {
         if (!(err instanceof LlmError)) return false;
         assert.equal(err.classification.reason, 'CONFIGURATION');

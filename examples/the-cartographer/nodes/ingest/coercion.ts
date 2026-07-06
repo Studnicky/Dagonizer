@@ -20,10 +20,8 @@ import { TimeNormalizer } from '../../services.ts';
 import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 import type { GeoErrorRecordType } from '../../errors/GeoErrorRecord.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region coerce-types-node
 const NUMERIC_FIELDS = [
@@ -34,7 +32,7 @@ const NUMERIC_FIELDS = [
 
 const BOOLEAN_FIELDS = ['marketingConsent', 'delivered'] as const;
 
-export class CoerceTypesNode extends ScalarNode<CartographerState, 'validate-event'> {
+export class CoerceTypesNode extends MonadicNode<CartographerState, 'validate-event'> {
   readonly 'name' = 'coerce-types';
   readonly 'outputs' = ['validate-event'] as const;
 
@@ -59,37 +57,43 @@ export class CoerceTypesNode extends ScalarNode<CartographerState, 'validate-eve
     return false;
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'validate-event'>> {
-    const lineItemErrors: GeoErrorRecordType[] = [];
-    const coerced: Array<Record<string, unknown>> = state.mappedRecords.map((rec) => {
-      const out: Record<string, unknown> = { ...rec };
-      for (const field of NUMERIC_FIELDS) {
-        if (field in out) out[field] = CoerceTypesNode.toNumber(out[field]);
-      }
-      for (const field of BOOLEAN_FIELDS) {
-        if (field in out) out[field] = CoerceTypesNode.toBoolean(out[field]);
-      }
-      // Timestamp string → epoch ms (kept alongside the raw string).
-      if ('epochRaw' in out) {
-        out['epochMs'] = TimeNormalizer.toEpochMs(String(out['epochRaw'] ?? ''));
-      }
-      // lineItems may arrive as a JSON string (CSV/NDJSON) or an array (JSON).
-      if ('lineItems' in out && typeof out['lineItems'] === 'string') {
-        try {
-          out['lineItems'] = JSON.parse(out['lineItems']);
-        } catch (caught) {
-          // Capture the lineItems parse failure as data; degrade to empty array.
-          lineItemErrors.push(GeoErrorRecord.capture('coerce-types', caught, `source=${state.currentSource.sourceId}`));
-          out['lineItems'] = [];
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'validate-event', CartographerState>> {
+    for (const item of batch) {
+      const state = item.state;
+      const lineItemErrors: GeoErrorRecordType[] = [];
+      const coerced: Array<Record<string, unknown>> = state.mappedRecords.map((rec) => {
+        const out: Record<string, unknown> = { ...rec };
+        for (const field of NUMERIC_FIELDS) {
+          if (field in out) out[field] = CoerceTypesNode.toNumber(out[field]);
         }
+        for (const field of BOOLEAN_FIELDS) {
+          if (field in out) out[field] = CoerceTypesNode.toBoolean(out[field]);
+        }
+        // Timestamp string → epoch ms (kept alongside the raw string).
+        if ('epochRaw' in out) {
+          out['epochMs'] = TimeNormalizer.toEpochMs(String(out['epochRaw'] ?? ''));
+        }
+        // lineItems may arrive as a JSON string (CSV/NDJSON) or an array (JSON).
+        if ('lineItems' in out && typeof out['lineItems'] === 'string') {
+          try {
+            out['lineItems'] = JSON.parse(out['lineItems']);
+          } catch (caught) {
+            // Capture the lineItems parse failure as data; degrade to empty array.
+            lineItemErrors.push(GeoErrorRecord.capture('coerce-types', caught, `source=${state.currentSource.sourceId}`));
+            out['lineItems'] = [];
+          }
+        }
+        return out;
+      });
+      state.mappedRecords = coerced;
+      if (lineItemErrors.length > 0) {
+        state.capturedErrors = [...state.capturedErrors, ...lineItemErrors];
       }
-      return out;
-    });
-    state.mappedRecords = coerced;
-    if (lineItemErrors.length > 0) {
-      state.capturedErrors = [...state.capturedErrors, ...lineItemErrors];
     }
-    return NodeOutputBuilder.of('validate-event');
+    return RoutedBatch.create('validate-event', batch);
   }
 }
 

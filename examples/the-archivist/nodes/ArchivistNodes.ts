@@ -2,22 +2,25 @@
  * ArchivistNodes: the single shared registry of node instances.
  *
  * Every services-injected node and every pure node the archivist app uses is
- * constructed EXACTLY ONCE here, then shared across all three bundle factories
+ * constructed EXACTLY ONCE here, then shared across all three DAG registrations
  * (book-search-scatter, compose-retry-loop, the-archivist parent).
  *
  * Why one shared set: services-injected nodes appear in more than one bundle
  * (e.g. extract-query, decide-tools, record-findings). The DagRegistrar is
  * idempotent for the SAME instance (Object.is) but rejects a DIFFERENT instance
  * registered under the same node name/IRI. Constructing each node once and
- * passing this object to every factory makes the duplicate registrations refer
+ * passing this object to every registration makes the duplicate registrations refer
  * to identical instances, so the registrar accepts them.
  *
  * Construction discipline (Node strip-only type syntax): no parameter
  * properties. Every field is declared explicitly and assigned in the
  * constructor body in declaration order, preserving V8 hidden-class stability.
- * `ArchivistNodes.build(services)` is the canonical factory (noun.verb).
+ * `ArchivistNodes.build(services)` constructs the full shared node set.
  */
 
+import type { NodeInterface } from '@studnicky/dagonizer';
+
+import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
 import { ClassifyIntentNode }        from './classifyIntent.ts';
@@ -95,6 +98,10 @@ export class ArchivistNodes {
   readonly composeEmptyResponseSalvage: ComposeEmptyResponseSalvageNode;
   readonly composeMemoryResponseSalvage: ComposeMemoryResponseSalvageNode;
 
+  readonly bookSearchScatterNodes: NodeInterface<ArchivistState, string>[];
+  readonly composeRetryLoopNodes:  NodeInterface<ArchivistState, string>[];
+  readonly parentNodes:            NodeInterface<ArchivistState, string>[];
+
   constructor(services: ArchivistServices) {
     this.recallContext         = new RecallContextNode(services);
     this.classifyIntent        = new ClassifyIntentNode(services);
@@ -129,9 +136,31 @@ export class ArchivistNodes {
     this.composeResponseSalvage       = new ComposeResponseSalvageNode();
     this.composeEmptyResponseSalvage  = new ComposeEmptyResponseSalvageNode();
     this.composeMemoryResponseSalvage = new ComposeMemoryResponseSalvageNode();
+
+    this.bookSearchScatterNodes = [
+      this.extractQuery, this.decideTools, this.recallCandidates, this.buildBookWorksets,
+      this.rankCandidates, this.mergeCandidates, this.recordFindings, this.hasCitationsGate,
+      this.recallPastVisits, this.extractQuerySalvage, this.decideToolsSalvage,
+      this.rankCandidatesSalvage,
+    ];
+    this.composeRetryLoopNodes = [
+      this.composeResponse, this.validateResponse, this.composeResponseSalvage,
+    ];
+    this.parentNodes = [
+      this.preRunSetup,
+      this.parkForInput,
+      this.recallContext, this.classifyIntent, this.extractQuery, this.decideTools,
+      this.buildBookWorksets,
+      this.rankByRating, this.pickBestMatch, this.mergeCandidates, this.recordFindings,
+      this.hasCitationsGate, this.groupByYear, this.recallPastVisits, this.recommendSimilar,
+      this.recallMemories, this.composeMemoryResponse, this.respondToVisitor,
+      this.declineOffTopic, this.composeEmptyResponse,
+      this.classifyIntentSalvage, this.extractQuerySalvage, this.decideToolsSalvage,
+      this.composeMemoryResponseSalvage, this.composeEmptyResponseSalvage,
+    ];
   }
 
-  /** Canonical factory: build the full shared node set from services. */
+  /** Build the full shared node set from services. */
   static build(services: ArchivistServices): ArchivistNodes {
     return new ArchivistNodes(services);
   }

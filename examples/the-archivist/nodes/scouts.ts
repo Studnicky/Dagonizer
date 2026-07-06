@@ -27,6 +27,8 @@ import type { NodeStateInterface } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
+import { Validator } from '@studnicky/dagonizer/validation';
+import { CandidateSchema } from '@studnicky/dagonizer-book-entities';
 
 /**
  * ScoutUtils: pure helper methods for scout query shaping and sanitisation.
@@ -132,23 +134,14 @@ export class ScoutUtils {
 class ToolCandidateGatherStrategy extends GatherStrategy {
   readonly name = 'tool-candidate-merge';
 
+  private static readonly candidateValidator = Validator.compile<CandidateType>(CandidateSchema);
+
   /**
    * Type predicate: narrows an element to CandidateType without a cast.
    * A CandidateType must carry a `book` object with an `identity` sub-object.
    */
   static isCandidateType(el: unknown): el is CandidateType {
-    return (
-      typeof el === 'object' &&
-      el !== null &&
-      'book' in el &&
-      typeof el.book === 'object' &&
-      el.book !== null &&
-      'publication' in el.book &&
-      typeof el.book.publication === 'object' &&
-      el.book.publication !== null &&
-      'languages' in el.book.publication &&
-      Array.isArray(el.book.publication.languages)
-    );
+    return ToolCandidateGatherStrategy.candidateValidator.is(el);
   }
 
   override reduce(

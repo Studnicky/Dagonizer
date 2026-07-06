@@ -18,11 +18,13 @@
 
 import * as fs from 'node:fs/promises';
 import {
+  Batch,
   DAGBuilder,
   Dagonizer,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import { DAGDocument } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
@@ -31,16 +33,18 @@ import type { SchemaObjectType } from '@studnicky/dagonizer';
 // Node: a minimal transform node for the demo DAG
 // ---------------------------------------------------------------------------
 
-class TransformNode extends ScalarNode<NodeStateBase, 'success'> {
+class TransformNode extends MonadicNode<NodeStateBase, 'success'> {
   readonly name = 'transform';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: NodeStateBase) {
-    state.setMetadata('transformed', true);
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<NodeStateBase>) {
+    for (const item of batch) {
+      item.state.setMetadata('transformed', true);
+    }
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 

@@ -8,11 +8,12 @@
 
 import {
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  Batch,
+  MonadicNode,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
-import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { DAGType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { CandidateType } from '../entities/Book.ts';
 
 // ---------------------------------------------------------------------------
@@ -29,7 +30,7 @@ export class StreamingDemoState extends NodeStateBase {
 // Body node: runs once per scatter clone; gather handles accumulation via append
 // ---------------------------------------------------------------------------
 
-export class CollectCandidateNode extends ScalarNode<StreamingDemoState, 'done'> {
+export class CollectCandidateNode extends MonadicNode<StreamingDemoState, 'done'> {
   readonly name = 'collect-candidate';
   readonly outputs = ['done'] as const;
 
@@ -41,8 +42,8 @@ export class CollectCandidateNode extends ScalarNode<StreamingDemoState, 'done'>
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: StreamingDemoState) {
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<StreamingDemoState>, _context: NodeContextType) {
+    return RoutedBatch.create('done', batch);
   }
 }
 

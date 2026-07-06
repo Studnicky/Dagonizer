@@ -27,6 +27,18 @@ import { TestNode } from '../_support/TestNode.js';
 // ─── ScatterNodeDefaults.executionPolicy — unit-level default resolution ─────
 
 void describe('ScatterNodeDefaults.executionPolicy', () => {
+  const ADAPTIVE_THROTTLE = {
+    'enabled': true,
+    'targetLatencyMs': 50,
+    'minConcurrency': 1,
+    'maxConcurrency': 4,
+    'sampleWindow': 3,
+    'adjustmentInterval': 1,
+    'scaleUpThreshold': 0.8,
+    'scaleDownThreshold': 1.2,
+    'stepSize': 1,
+  } as const;
+
   const BASE: ScatterNodeType = {
     '@id':     'urn:noocodex:dag:x/node/fan',
     '@type':   'ScatterNode',
@@ -53,6 +65,22 @@ void describe('ScatterNodeDefaults.executionPolicy', () => {
       'execution': { 'mode': 'item', 'concurrency': 8, 'throttle': { 'concurrencyLimit': 2 } },
     });
     assert.deepEqual(policy, { 'mode': 'item', 'concurrency': 8, 'throttle': { 'concurrencyLimit': 2 } });
+  });
+
+  void it('preserves caller-supplied adaptive throttle tuning', () => {
+    const policy = ScatterNodeDefaults.executionPolicy({
+      ...BASE,
+      'execution': {
+        'mode': 'item',
+        'concurrency': 8,
+        'throttle': { 'concurrencyLimit': 2, 'adaptive': ADAPTIVE_THROTTLE },
+      },
+    });
+    assert.deepEqual(policy, {
+      'mode': 'item',
+      'concurrency': 8,
+      'throttle': { 'concurrencyLimit': 2, 'adaptive': ADAPTIVE_THROTTLE },
+    });
   });
 
   void it('resolves reservoir mode with concurrency default (1) and idleMs null when absent', () => {

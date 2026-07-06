@@ -61,37 +61,21 @@ export const ReasoningStepSchema = {
 export type ReasoningStepType = FromSchema<typeof ReasoningStepSchema>;
 
 /**
- * Static factory for `ReasoningStepType`. One named constructor per variant
- * so callers never hand-assemble the discriminant.
+ * Static factory for `ReasoningStepType`.
  *
  * @example
  * ```ts
- * steps.push(ReasoningStepBuilder.thought('checking the cache first'));
- * steps.push(ReasoningStepBuilder.action('cacheLookup', { key: 'user:42' }));
- * steps.push(ReasoningStepBuilder.observation('cache miss'));
- * steps.push(ReasoningStepBuilder.final('the user is not cached'));
+ * steps.push(ReasoningStep.create({ kind: 'thought', text: 'checking the cache first' }));
+ * steps.push(ReasoningStep.create({ kind: 'action', tool: 'cacheLookup', args: { key: 'user:42' } }));
+ * steps.push(ReasoningStep.create({ kind: 'observation', output: 'cache miss' }));
+ * steps.push(ReasoningStep.create({ kind: 'final', text: 'the user is not cached' }));
  * ```
  */
-export class ReasoningStepBuilder {
+export class ReasoningStep {
   private constructor() { /* static class */ }
 
-  /** Construct a `thought` step. */
-  static thought(text: string): ReasoningStepType {
-    return { 'kind': 'thought', 'text': text };
-  }
-
-  /** Construct an `action` step invoking `tool` with `args`. */
-  static action(tool: string, args: Record<string, unknown>): ReasoningStepType {
-    return { 'kind': 'action', 'tool': tool, 'args': args };
-  }
-
-  /** Construct an `observation` step carrying tool `output`. */
-  static observation(output: string): ReasoningStepType {
-    return { 'kind': 'observation', 'output': output };
-  }
-
-  /** Construct a `final` step carrying the agent's terminal answer. */
-  static final(text: string): ReasoningStepType {
-    return { 'kind': 'final', 'text': text };
+  /** Construct a `ReasoningStepType` variant. */
+  static create(step: ReasoningStepType): ReasoningStepType {
+    return step;
   }
 }

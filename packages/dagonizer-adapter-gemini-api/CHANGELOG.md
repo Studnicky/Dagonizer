@@ -1,6 +1,8 @@
 # @studnicky/dagonizer-adapter-gemini-api
 
-## 1.0.0
+## 0.30.1
+
+## 0.30.0
 
 ### Patch Changes
 
@@ -55,7 +57,7 @@
 
 ### Patch Changes
 
-- Add a consumer-configurable `systemPrompt` option, forwarded to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one, no-op when empty). Lets a consumer frame persona/format once at construction instead of hand-prepending a system message to every call.
+- Add a consumer-configurable `systemPrompt` option, forwarded to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one, no-op when empty). Lets a consumer set a default directive once at construction instead of hand-prepending a system message to every call.
 - Forward `request.maxTokens` to Gemini's native `generationConfig.maxOutputTokens` field.
 - Enforce the `timeoutMs` deadline (default 60s) around the REST POST via an internal `AbortController`. An expired deadline surfaces as a `TIMEOUT` classification — the timeout abort reason is a `TIMEOUT`-classified `LlmError` that the network catch now re-throws unchanged, so it is no longer downgraded to `NETWORK`. A cascade falls through to the next adapter instead of hanging.
 

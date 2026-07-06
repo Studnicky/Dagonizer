@@ -12,7 +12,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import type { StreamSinkInterface } from '@studnicky/dagonizer';
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequest } from '@studnicky/dagonizer/adapter';
 import type { ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
 
 import { WebLlmAdapter } from '../src/index.js';
@@ -119,7 +119,7 @@ void test('performChatStream: aborting mid-stream rejects and stops generation',
   const sink = new RecordingSink();
   const controller = new AbortController();
 
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Say hello.' }],
     'signal':   controller.signal,
   });
@@ -149,7 +149,7 @@ void test('performChatStream: a tool-bearing request routes to buffered default,
   const adapter = new AbortTestAdapter(stub);
   const sink = new RecordingSink();
 
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Use a tool.' }],
     'tools':    [{ 'name': 'noop', 'description': 'does nothing', 'inputSchema': { 'type': 'object' } }],
   });

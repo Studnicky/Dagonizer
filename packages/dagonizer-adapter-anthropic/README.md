@@ -16,11 +16,11 @@ npm install @studnicky/dagonizer @studnicky/dagonizer-adapter-anthropic
 
 ```ts
 import { AnthropicApiAdapter } from '@studnicky/dagonizer-adapter-anthropic';
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequest } from '@studnicky/dagonizer/adapter';
 
 const llm = new AnthropicApiAdapter(process.env.ANTHROPIC_API_KEY!);
 
-const response = await llm.chat(ChatRequestBuilder.from({
+const response = await llm.chat(ChatRequest.create({
   messages: [{ role: 'user', content: 'Hello' }],
 }));
 ```

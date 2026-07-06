@@ -14,6 +14,9 @@
  * object. V8 shape: all fields initialised in constructor in declaration order.
  */
 
+import { CircularBuffer } from '@studnicky/circular-buffer';
+import { Signal } from '@studnicky/signal';
+
 import type { ResumableStreamProducerInterface } from '../contracts/ResumableStreamProducerInterface.js';
 import type { StreamProducerInterface } from '../contracts/StreamProducerInterface.js';
 import type { StreamSinkInterface } from '../contracts/StreamSinkInterface.js';
@@ -31,7 +34,7 @@ export type StreamChannelOptionsType = {
 /** Module-level defaults. `capacity` is 256 items; signal never aborts. */
 const STREAM_CHANNEL_DEFAULTS: StreamChannelOptionsType = {
   'capacity': 256,
-  'signal': new AbortController().signal,
+  'signal': Signal.never(),
 };
 
 // ---------------------------------------------------------------------------
@@ -67,27 +70,38 @@ type PullWaiterType<T> = {
   'reject': (err: unknown) => void;
 };
 
+type BufferedItemType<T> = {
+  'value': T;
+};
+
 // ---------------------------------------------------------------------------
 // StreamChannel
 // ---------------------------------------------------------------------------
 
 export class StreamChannel<T> implements StreamChannelInterface<T> {
-  readonly #buffer: T[];
-  readonly #pushWaiters: PushWaiterType<T>[];
+  readonly #options: StreamChannelOptionsType;
+  readonly #buffer: CircularBuffer<BufferedItemType<T>>;
+  readonly #pushWaiters: CircularBuffer<PushWaiterType<T>>;
   #pullWaiter: PullWaiterType<T> | null;
   #closed: boolean;
   #error: unknown;
   #failed: boolean;
-  readonly #options: StreamChannelOptionsType;
 
   constructor(options?: Partial<StreamChannelOptionsType>) {
-    this.#buffer = [];
-    this.#pushWaiters = [];
+    this.#options = { ...STREAM_CHANNEL_DEFAULTS, ...options };
+    StreamChannel.#validateCapacity(this.#options.capacity);
+    this.#buffer = CircularBuffer.create<BufferedItemType<T>>({
+      'capacity': this.#options.capacity,
+      'overflow': 'grow',
+    });
+    this.#pushWaiters = CircularBuffer.create<PushWaiterType<T>>({
+      'capacity': this.#options.capacity,
+      'overflow': 'grow',
+    });
     this.#pullWaiter = null;
     this.#closed = false;
     this.#error = undefined;
     this.#failed = false;
-    this.#options = { ...STREAM_CHANNEL_DEFAULTS, ...options };
 
     const { signal } = this.#options;
     if (signal.aborted) {
@@ -121,7 +135,7 @@ export class StreamChannel<T> implements StreamChannelInterface<T> {
 
     // Buffer has capacity: enqueue and resolve immediately.
     if (this.#buffer.length < this.#options.capacity) {
-      this.#buffer.push(item);
+      this.#buffer.push({ 'value': item });
       return Promise.resolve();
     }
 
@@ -179,10 +193,13 @@ export class StreamChannel<T> implements StreamChannelInterface<T> {
         }
 
         // Drain buffer: yield next item and release one push-waiter slot if any.
-        const item = this.#buffer.shift();
-        if (item !== undefined) {
+        if (this.#buffer.length > 0) {
+          const entry = this.#buffer.shift();
+          if (entry === undefined) {
+            return Promise.reject(new Error('StreamChannel: invariant violation while shifting buffer'));
+          }
           StreamChannel.#releaseOnePushWaiter(this.#buffer, this.#pushWaiters);
-          return Promise.resolve({ 'value': item, 'done': false });
+          return Promise.resolve({ 'value': entry.value, 'done': false });
         }
 
         // Buffer empty, channel closed — done.
@@ -212,7 +229,7 @@ export class StreamChannel<T> implements StreamChannelInterface<T> {
     options?: Partial<StreamChannelOptionsType>,
   ): StreamChannel<T> {
     const channel = new StreamChannel<T>(options);
-    producer.produce(channel).then(
+    Promise.resolve().then(() => producer.produce(channel)).then(
       () => { channel.close(); },
       (err: unknown) => { channel.fail(err); },
     );
@@ -259,7 +276,7 @@ export class StreamChannel<T> implements StreamChannelInterface<T> {
     let failed = false;
 
     for (const producer of producers) {
-      producer.produce(channel).then(
+      Promise.resolve().then(() => producer.produce(channel)).then(
         () => {
           remaining--;
           if (remaining === 0) {
@@ -299,7 +316,7 @@ export class StreamChannel<T> implements StreamChannelInterface<T> {
     options?: Partial<StreamChannelOptionsType>,
   ): StreamChannel<T> {
     const channel = new StreamChannel<T>(options);
-    producer.produce(channel, resumeAfter).then(
+    Promise.resolve().then(() => producer.produce(channel, resumeAfter)).then(
       () => { channel.close(); },
       (err: unknown) => { channel.fail(err); },
     );
@@ -323,7 +340,7 @@ export class StreamChannel<T> implements StreamChannelInterface<T> {
     }
   }
 
-  static #drainPushWaiters<T>(waiters: PushWaiterType<T>[], err: unknown): void {
+  static #drainPushWaiters<T>(waiters: CircularBuffer<PushWaiterType<T>>, err: unknown): void {
     let waiter = waiters.shift();
     while (waiter !== undefined) {
       waiter.reject(err);
@@ -331,11 +348,20 @@ export class StreamChannel<T> implements StreamChannelInterface<T> {
     }
   }
 
-  static #releaseOnePushWaiter<T>(buffer: T[], waiters: PushWaiterType<T>[]): void {
+  static #releaseOnePushWaiter<T>(
+    buffer: CircularBuffer<BufferedItemType<T>>,
+    waiters: CircularBuffer<PushWaiterType<T>>,
+  ): void {
     const waiter = waiters.shift();
     if (waiter !== undefined) {
-      buffer.push(waiter.item);
+      buffer.push({ 'value': waiter.item });
       waiter.resolve();
+    }
+  }
+
+  static #validateCapacity(capacity: number): void {
+    if (!Number.isFinite(capacity) || !Number.isInteger(capacity) || capacity < 1) {
+      throw new RangeError('StreamChannel capacity must be a positive finite integer');
     }
   }
 

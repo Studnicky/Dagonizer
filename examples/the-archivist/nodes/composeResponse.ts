@@ -28,8 +28,9 @@
  */
 
 
-import { NodeOutputBuilder, ReasoningStepBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, ReasoningStep, RoutedBatch } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 import type { ArchivistState, ConversationTurn } from '../ArchivistState.ts';
 import type { CandidateType } from '../entities/Book.ts';
@@ -163,7 +164,7 @@ class ShortlistDigest {
   }
 }
 
-export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
+export class ComposeResponseNode extends MonadicNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
   private readonly services: ArchivistServices;
   readonly name = 'compose-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
@@ -180,93 +181,118 @@ export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
-    state.recordAttempt('compose');
-    const llm = this.services.llm;
-    const prior = state.priorContext.length > 0 ? state.priorContext : undefined;
-    const recalledSummary = state.recalledContext.summary.length > 0
-      ? state.recalledContext.summary
-      : undefined;
-    // Accumulated repair guidance (JSON-format directive from a prior attempt,
-    // anti-hallucination cause from the validator) rides its own dedicated
-    // compose argument so the recalled-memory channel stays pure.
-    const repairHint = state.failureCause.trim();
-    const conversation = state.conversation.length > 0 ? state.conversation : undefined;
+  override async execute(batch: Batch<ArchivistState>, context: NodeContextType) {
+    const draftedItems: ItemType<ArchivistState>[] = [];
+    const retryItems: ItemType<ArchivistState>[] = [];
+    const salvageItems: ItemType<ArchivistState>[] = [];
 
-    // Own deadline so a slow LLM is a flow decision (retry/salvage), not an
-    // engine hard-fail. The compose methods are signal-aware, so the abort
-    // cancels the in-flight call.
-    const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS);
-    const signal = AbortSignal.any([context.signal, controller.signal]);
+    for (const item of batch) {
+      const { state } = item;
+      state.recordAttempt('compose');
+      const llm = this.services.llm;
+      const prior = state.priorContext.length > 0 ? state.priorContext : undefined;
+      const recalledSummary = state.recalledContext.summary.length > 0
+        ? state.recalledContext.summary
+        : undefined;
+      // Accumulated repair guidance (JSON-format directive from a prior attempt,
+      // anti-hallucination cause from the validator) rides its own dedicated
+      // compose argument so the recalled-memory channel stays pure.
+      const repairHint = state.failureCause.trim();
+      const conversation = state.conversation.length > 0 ? state.conversation : undefined;
 
-    // Each per-intent branch keeps the same `compose-response` node
-    // (the retry loop and validate-response wiring stays one
-    // implementation), and dispatches to the intent-flavoured prompt
-    // builder so the LLM gets the right directives + framing.
-    type ComposeMethod = (
-      query: string,
-      shortlist: readonly CandidateType[],
-      prior: readonly { variant: string; text: string }[] | undefined,
-      recalledSummary: string | undefined,
-      conversation: readonly ConversationTurn[] | undefined,
-      signal: AbortSignal,
-      repairHint: string,
-    ) => Promise<string>;
-    const composeDispatch: Partial<Record<string, ComposeMethod>> = {
-      'lookup-author':     (q, sl, p, rs, cv, sig, rh) => llm.composeAuthor(q, sl, p, rs, cv, sig, rh),
-      'find-reviews':      (q, sl, p, rs, cv, sig, rh) => llm.composeReviews(q, sl, p, rs, cv, sig, rh),
-      'describe-book':     (q, sl, p, rs, cv, sig, rh) => llm.describeBook(q, sl, p, rs, cv, sig, rh),
-      'recommend-similar': (q, sl, p, rs, cv, sig, rh) => llm.composeSimilar(q, sl, p, rs, cv, sig, rh),
-    };
-    const composeFn: ComposeMethod = composeDispatch[state.intent] ??
-      ((q, sl, p, rs, cv, sig, rh) => llm.compose(q, sl, p, rs, cv, sig, rh));
-    try {
-      const draft = await composeFn(state.query, state.shortlist, prior, recalledSummary, conversation, signal, repairHint);
-      // Guard: an empty draft is a fabrication gap — route to retry/salvage
-      // so the validate-response node does not receive an empty string.
-      if (draft.length === 0) {
-        if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
-          return NodeOutputBuilder.of('retry');
+      // Own deadline so a slow LLM is a flow decision (retry/salvage), not an
+      // engine hard-fail. The compose methods are signal-aware, so the abort
+      // cancels the in-flight call.
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
+
+      // Each per-intent branch keeps the same `compose-response` node
+      // (the retry loop and validate-response wiring stays one
+      // implementation), and dispatches to the intent-flavoured prompt
+      // builder so the LLM gets the right directives + framing.
+      type ComposeMethod = (
+        query: string,
+        shortlist: readonly CandidateType[],
+        prior: readonly { variant: string; text: string }[] | undefined,
+        recalledSummary: string | undefined,
+        conversation: readonly ConversationTurn[] | undefined,
+        signal: AbortSignal,
+        repairHint: string,
+      ) => Promise<string>;
+      const composeDispatch: Partial<Record<string, ComposeMethod>> = {
+        'lookup-author':     (q, sl, p, rs, cv, sig, rh) => llm.composeAuthor(q, sl, p, rs, cv, sig, rh),
+        'find-reviews':      (q, sl, p, rs, cv, sig, rh) => llm.composeReviews(q, sl, p, rs, cv, sig, rh),
+        'describe-book':     (q, sl, p, rs, cv, sig, rh) => llm.describeBook(q, sl, p, rs, cv, sig, rh),
+        'recommend-similar': (q, sl, p, rs, cv, sig, rh) => llm.composeSimilar(q, sl, p, rs, cv, sig, rh),
+      };
+      const composeFn: ComposeMethod = composeDispatch[state.intent] ??
+        ((q, sl, p, rs, cv, sig, rh) => llm.compose(q, sl, p, rs, cv, sig, rh));
+      try {
+        const draft = await composeFn(state.query, state.shortlist, prior, recalledSummary, conversation, signal, repairHint);
+        // Guard: an empty draft is a fabrication gap; route to retry/salvage
+        // so the validate-response node does not receive an empty string.
+        if (draft.length === 0) {
+          const result = NodeOutput.create(state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS ? 'retry' : 'salvage');
+          for (const error of result.errors) state.collectError(error);
+          if (result.output === 'retry') {
+            retryItems.push(item);
+          } else {
+            salvageItems.push(item);
+          }
+          continue;
         }
-        return NodeOutputBuilder.of('salvage');
-      }
-      // Guard: a JSON-shaped draft is a format failure for weak on-device models.
-      // Strip the structure to plain text, record the repair directive in
-      // failureCause so the next attempt receives prose guidance via the
-      // dedicated repairHint compose argument, and route retry/salvage via the
-      // compose budget.
-      if (DraftShape.isJson(draft)) {
-        const stripped = DraftShape.strip(draft);
-        state.failureCause +=
-          'A previous attempt returned raw JSON instead of prose. ' +
-          'Write only flowing prose; no code blocks, no JSON. ' +
-          `Data in plain text: ${stripped}. `;
-        if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
-          return NodeOutputBuilder.of('retry');
+        // Guard: a JSON-shaped draft is a format failure for weak on-device models.
+        // Strip the structure to plain text, record the repair directive in
+        // failureCause so the next attempt receives prose guidance via the
+        // dedicated repairHint compose argument, and route retry/salvage via the
+        // compose budget.
+        if (DraftShape.isJson(draft)) {
+          const stripped = DraftShape.strip(draft);
+          state.failureCause +=
+            'A previous attempt returned raw JSON instead of prose. ' +
+            'Write only flowing prose; no code blocks, no JSON. ' +
+            `Data in plain text: ${stripped}. `;
+          const result = NodeOutput.create(state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS ? 'retry' : 'salvage');
+          for (const error of result.errors) state.collectError(error);
+          if (result.output === 'retry') {
+            retryItems.push(item);
+          } else {
+            salvageItems.push(item);
+          }
+          continue;
         }
-        return NodeOutputBuilder.of('salvage');
+        // A non-terminal `.thought` kind: this draft still has to clear
+        // validate-response, which can route back here on rejection (another
+        // draft, another attempt). `.final` is reserved for the attempt that
+        // is actually accepted, so retries never accumulate multiple 'final'
+        // reasoning steps in the same run.
+        state.reasoning = [...state.reasoning, ReasoningStep.create({ 'kind': 'thought', 'text': `composed response for intent '${state.intent}' from ${String(state.shortlist.length)} shortlisted candidates` })];
+        state.draft = draft;
+        const result = NodeOutput.create('drafted');
+        for (const error of result.errors) state.collectError(error);
+        draftedItems.push(item);
+      } catch (err) {
+        // External cancellation / run deadline propagates unchanged.
+        if (context.signal.aborted) throw err;
+        // Own timeout or transient compose failure -> retry budget decides the
+        // flow. The attempt was already recorded above, so read the count.
+        const result = NodeOutput.create(state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS ? 'retry' : 'salvage');
+        for (const error of result.errors) state.collectError(error);
+        if (result.output === 'retry') {
+          retryItems.push(item);
+        } else {
+          salvageItems.push(item);
+        }
       }
-      // A non-terminal `.thought` kind: this draft still has to clear
-      // validate-response, which can route back here on rejection (another
-      // draft, another attempt). `.final` is reserved for the attempt that
-      // is actually accepted, so retries never accumulate multiple 'final'
-      // reasoning steps in the same run.
-      state.reasoning = [...state.reasoning, ReasoningStepBuilder.thought(`composed response for intent '${state.intent}' from ${String(state.shortlist.length)} shortlisted candidates`)];
-      state.draft = draft;
-      return NodeOutputBuilder.of('drafted');
-    } catch (err) {
-      // External cancellation / run deadline propagates unchanged.
-      if (context.signal.aborted) throw err;
-      // Own timeout or transient compose failure → retry budget decides the
-      // flow. The attempt was already recorded above, so read the count.
-      if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
-        return NodeOutputBuilder.of('retry');
-      }
-      return NodeOutputBuilder.of('salvage');
-    } finally {
-      clearTimeout(handle);
     }
+
+    const routes: Array<readonly ['drafted' | 'retry' | 'salvage', Batch<ArchivistState>]> = [];
+    if (draftedItems.length > 0) routes.push(['drafted', Batch.from(draftedItems)]);
+    if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
+    if (salvageItems.length > 0) routes.push(['salvage', Batch.from(salvageItems)]);
+    return RoutedBatch.create(routes);
   }
 }
 
@@ -373,7 +399,7 @@ export class ResponseAnalysis {
   }
 }
 
-export class ValidateResponseNode extends ScalarNode<
+export class ValidateResponseNode extends MonadicNode<
   ArchivistState,
   'approved' | 'retry' | 'exhausted'
 > {
@@ -393,37 +419,66 @@ export class ValidateResponseNode extends ScalarNode<
     };
   }
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
-    // ── Deterministic anti-hallucination pre-check ───────────────────────
-    // Runs BEFORE the LLM validator. When it fails we force a retry
-    // without paying for an LLM round-trip; we accumulate a
-    // failureCause so the next compose attempt knows what to fix.
-    const antiHal = ResponseAnalysis.antiHallucinationCheck(state.draft, state.shortlist, state.priorCandidates);
-    if (antiHal.status === 'fail') {
-      state.failureCause += antiHal.cause;
-      state.approvalState = 'rejected';
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    const approvedItems: ItemType<ArchivistState>[] = [];
+    const retryItems: ItemType<ArchivistState>[] = [];
+    const exhaustedItems: ItemType<ArchivistState>[] = [];
+
+    for (const item of batch) {
+      const { state } = item;
+      // ── Deterministic anti-hallucination pre-check ───────────────────────
+      // Runs BEFORE the LLM validator. When it fails we force a retry
+      // without paying for an LLM round-trip; we accumulate a
+      // failureCause so the next compose attempt knows what to fix.
+      const antiHal = ResponseAnalysis.antiHallucinationCheck(state.draft, state.shortlist, state.priorCandidates);
+      if (antiHal.status === 'fail') {
+        state.failureCause += antiHal.cause;
+        state.approvalState = 'rejected';
+        if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
+          // Budget exhausted: replace a bad draft with a deterministic summary
+          // when the shortlist has real records, so the visitor always sees titles.
+          if (state.shortlist.length > 0) {
+            state.draft = ShortlistDigest.summarize(state.shortlist);
+          }
+          const result = NodeOutput.create('exhausted');
+          for (const error of result.errors) state.collectError(error);
+          exhaustedItems.push(item);
+        } else {
+          const result = NodeOutput.create('retry');
+          for (const error of result.errors) state.collectError(error);
+          retryItems.push(item);
+        }
+        continue;
+      }
+
+      const ok = await this.services.llm.validate(state.draft, state.shortlist);
+      state.approvalState = ok ? 'approved' : 'rejected';
+      if (ok) {
+        const result = NodeOutput.create('approved');
+        for (const error of result.errors) state.collectError(error);
+        approvedItems.push(item);
+        continue;
+      }
       if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
         // Budget exhausted: replace a bad draft with a deterministic summary
         // when the shortlist has real records, so the visitor always sees titles.
         if (state.shortlist.length > 0) {
           state.draft = ShortlistDigest.summarize(state.shortlist);
         }
-        return NodeOutputBuilder.of('exhausted');
+        const result = NodeOutput.create('exhausted');
+        for (const error of result.errors) state.collectError(error);
+        exhaustedItems.push(item);
+      } else {
+        const result = NodeOutput.create('retry');
+        for (const error of result.errors) state.collectError(error);
+        retryItems.push(item);
       }
-      return NodeOutputBuilder.of('retry');
     }
 
-    const ok = await this.services.llm.validate(state.draft, state.shortlist);
-    state.approvalState = ok ? 'approved' : 'rejected';
-    if (ok) return NodeOutputBuilder.of('approved');
-    if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
-      // Budget exhausted: replace a bad draft with a deterministic summary
-      // when the shortlist has real records, so the visitor always sees titles.
-      if (state.shortlist.length > 0) {
-        state.draft = ShortlistDigest.summarize(state.shortlist);
-      }
-      return NodeOutputBuilder.of('exhausted');
-    }
-    return NodeOutputBuilder.of('retry');
+    const routes: Array<readonly ['approved' | 'retry' | 'exhausted', Batch<ArchivistState>]> = [];
+    if (approvedItems.length > 0) routes.push(['approved', Batch.from(approvedItems)]);
+    if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
+    if (exhaustedItems.length > 0) routes.push(['exhausted', Batch.from(exhaustedItems)]);
+    return RoutedBatch.create(routes);
   }
 }

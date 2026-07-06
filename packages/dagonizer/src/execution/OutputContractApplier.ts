@@ -7,7 +7,7 @@
  * (`fire → validate → route`); the scatter path invokes it again at each per-item
  * emit into the gather. It is the single place output contracts are enforced.
  *
- * Covers Scalar AND Monadic nodes uniformly. Given a node's `RoutedBatchType`,
+ * Covers all Monadic nodes uniformly. Given a node's `RoutedBatchType`,
  * on a per-port violation it re-routes the offending item to `'error'` and
  * collects a `NodeError` (code `outputContractViolation`) on the item's state.
  * When `validateOutputs` is off (validator is null) the call is a no-op — zero
@@ -21,7 +21,7 @@
 import type { OutputSchemaValidatorInterface, SchemaObjectType } from '../contracts/NodeInterface.js';
 import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
-import { NodeErrorBuilder } from '../entities/node/NodeError.js';
+import { NodeError } from '../entities/node/NodeError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 /** The port a contract violation re-routes to. Every node declares an `error` output. */
@@ -60,7 +60,7 @@ export class OutputContractApplier {
           if (violations !== null) {
             anyViolation = true;
             const violationList = violations.length > 0 ? violations : ['schema mismatch'];
-            const contractError = NodeErrorBuilder.from(
+            const contractError = NodeError.create(
               'outputContractViolation',
               `Node '${nodeName}' output '${port}' violates outputSchema: ${violationList.join('; ')}`,
               'OutputContractApplier.applyToRouted',

@@ -35,7 +35,7 @@
 import type { ExecutionResultType } from '@studnicky/dagonizer';
 import { ObservedDag } from '@studnicky/dagonizer';
 import type { DagLoggerInterface } from '@studnicky/dagonizer';
-import { LogBody } from '@studnicky/logger';
+import { Clock as SubstrateClock, RealTimeClockProvider } from '@studnicky/clock';
 import { ToolInvocationState, ToolRegistry } from '@studnicky/dagonizer/tool';
 import type { EmbedderInterface } from '@studnicky/dagonizer/contracts';
 import type { ExecuteOptionsType } from '@studnicky/dagonizer/contracts';
@@ -46,9 +46,9 @@ import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
 
 import { ArchivistState } from './ArchivistState.ts';
 import type { ConversationTurn } from './ArchivistState.ts';
-import { ArchivistBundleFactory } from './dag.ts';
-import { BookSearchScatterBundleFactory } from './embedded-dags/BookSearchScatterDAG.ts';
-import { ComposeRetryLoopBundleFactory } from './embedded-dags/ComposeRetryLoopDAG.ts';
+import { archivistDAG } from './dag.ts';
+import { bookSearchScatterDAG } from './embedded-dags/BookSearchScatterDAG.ts';
+import { composeRetryLoopDAG } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ArchivistNodes } from './nodes/ArchivistNodes.ts';
@@ -181,6 +181,8 @@ const DEFAULT_TIMEOUT_SETTINGS: SessionTimeoutSettings = {
 export interface ArchivistSessionOptions {
   readonly conversationContextWindow?: number;
   readonly timeoutSettings?: Partial<SessionTimeoutSettings>;
+  /** Clock for session timestamps and deterministic fallback selection. */
+  readonly clock?: SubstrateClock;
   /** Pre-built LlmClientInterface; bypasses BackendMatrix when set. */
   readonly llm?: LlmClientInterface;
   /**
@@ -291,7 +293,8 @@ class SessionObserver extends ObservedDag<ArchivistState> {
       this.#shownErrorCount = state.errors.length;
     }
 
-    this.#prov.recordNodeEnd(nodeName, output ?? undefined, state.reasoning);
+    const reasoning = state instanceof ArchivistState ? state.reasoning : [];
+    this.#prov.recordNodeEnd(nodeName, output ?? undefined, reasoning);
     this.#sink.pumpNodeEnd(nodeName, output, state, placementPath);
   }
 
@@ -370,6 +373,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   conversation: ConversationTurn[];
 
   // ── Private run plumbing (shape-stable; always present) ──────────────────
+  readonly #clock: SubstrateClock;
   readonly #injectedLlm: LlmClientInterface | null;
   #abortController: AbortController | null;
   #isRunning: boolean;
@@ -392,6 +396,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     this.embedder         = null;
     this.intentClassifier = null;
     this.conversation     = [];
+    this.#clock           = options.clock ?? SubstrateClock.create(RealTimeClockProvider.create());
     this.#injectedLlm     = options.llm ?? null;
     this.#abortController = null;
     this.#isRunning       = false;
@@ -540,30 +545,26 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     if (savedEntry !== null && savedEntry.runnable) {
       this.activeBackend = savedEntry.id;
       this.logger.info(
-        LogBody.create()
-          .component('archivist')
-          .operation('backend-select')
-          .status('complete')
-          .message(`backend from saved preference: ${savedEntry.id}`)
-          .context({ 'backendId': savedEntry.id, 'source': 'saved-preference' })
-          .build(),
+        {
+          'context': { 'backendId': savedEntry.id, 'source': 'saved-preference' },
+          'event': 'archivist.backend-select',
+          'message': `backend from saved preference: ${savedEntry.id}`,
+          'status': 'complete',
+        },
       );
     } else {
       const picked = BackendMatrix.pickBest(this.backends, { 'isMobile': this.isMobile });
       if (picked !== null) {
         this.activeBackend = picked.id;
         this.logger.info(
-          LogBody.create()
-            .component('archivist')
-            .operation('backend-select')
-            .status('complete')
-            .message(
-              savedId === null
-                ? `backend auto-selected: ${picked.displayName}`
-                : `saved preference "${savedId}" unavailable; defaulting to ${picked.displayName}`,
-            )
-            .context({ 'backendId': picked.id, 'source': savedId === null ? 'auto' : 'fallback' })
-            .build(),
+          {
+            'context': { 'backendId': picked.id, 'source': savedId === null ? 'auto' : 'fallback' },
+            'event': 'archivist.backend-select',
+            'message': savedId === null
+              ? `backend auto-selected: ${picked.displayName}`
+              : `saved preference "${savedId}" unavailable; defaulting to ${picked.displayName}`,
+            'status': 'complete',
+          },
         );
       }
     }
@@ -579,7 +580,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    */
   async greet(): Promise<string> {
     const llm = this.#resolveLlm();
-    let greeting = ArchivistSession.#staticGreeting();
+    let greeting = this.#staticGreeting();
 
     if (llm !== null) {
       try {
@@ -602,7 +603,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    */
   async sampleReply(greeting: string): Promise<void> {
     const llm = this.#resolveLlm();
-    let reply = ArchivistSession.#staticVisitorReply();
+    let reply = this.#staticVisitorReply();
 
     if (llm !== null) {
       try {
@@ -641,34 +642,32 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     const llm = this.#resolveLlm();
     if (llm === null) throw new Error('ArchivistSession.ask: no LLM available; call boot() first');
 
-    const visitorTurn: ConversationTurn = { 'role': 'visitor', 'text': query, 'ts': Date.now() };
+    const visitorTurn: ConversationTurn = { 'role': 'visitor', 'text': query, 'ts': this.#clock.now() };
     this.conversation = [...this.conversation, visitorTurn];
     this.onVisitorTurn(query);
 
     this.#isRunning = true;
     this.#abortController = new AbortController();
 
-    const runId = ArchivistSession.#generateRunId();
+    const runId = this.#generateRunId();
     StateProjection.clear(runId, this.store);
 
     const prov = new RdfProvObserver({
       'store':             this.store,
       'runId':             runId,
       'dispatcherAgentId': `dispatcher:${this.activeBackend ?? 'injected'}`,
+      'clock':             this.#clock,
       'alreadyPersistedReasoning': [],
     });
 
     const rig = this.buildRig(llm, this.embedder);
     const nodes = ArchivistNodes.build(rig.services);
-    const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
-    const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
-    const parentBundle     = ArchivistBundleFactory.create(nodes);
 
     const observer = new SessionObserver(this.logger, this, prov);
     observer.registerBundle(rig.toolRegistry.bundle());
-    observer.registerBundle(bookSearchBundle);
-    observer.registerBundle(composeBundle);
-    observer.registerBundle(parentBundle);
+    observer.registerBundle({ 'nodes': nodes.bookSearchScatterNodes, 'dags': [bookSearchScatterDAG] });
+    observer.registerBundle({ 'nodes': nodes.composeRetryLoopNodes, 'dags': [composeRetryLoopDAG] });
+    observer.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [archivistDAG] });
 
     const visitor = new ArchivistState();
     visitor.query    = query;
@@ -756,7 +755,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     const llm = this.#resolveLlm();
     if (llm === null) throw new Error('ArchivistSession.resumeRun: no LLM available; call boot() first');
 
-    const visitorTurn: ConversationTurn = { 'role': 'visitor', 'text': humanText, 'ts': Date.now() };
+    const visitorTurn: ConversationTurn = { 'role': 'visitor', 'text': humanText, 'ts': this.#clock.now() };
     this.conversation = [...this.conversation, visitorTurn];
 
     this.#isRunning = true;
@@ -779,20 +778,18 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       'store':             this.store,
       'runId':             runId,
       'dispatcherAgentId': `dispatcher:${this.activeBackend ?? 'injected'}`,
+      'clock':             this.#clock,
       'alreadyPersistedReasoning': state.reasoning,
     });
 
     const rig = this.buildRig(llm, this.embedder);
     const nodes = ArchivistNodes.build(rig.services);
-    const bookSearchBundle = BookSearchScatterBundleFactory.create(nodes);
-    const composeBundle    = ComposeRetryLoopBundleFactory.create(nodes);
-    const parentBundle     = ArchivistBundleFactory.create(nodes);
 
     const observer = new SessionObserver(this.logger, this, prov);
     observer.registerBundle(rig.toolRegistry.bundle());
-    observer.registerBundle(bookSearchBundle);
-    observer.registerBundle(composeBundle);
-    observer.registerBundle(parentBundle);
+    observer.registerBundle({ 'nodes': nodes.bookSearchScatterNodes, 'dags': [bookSearchScatterDAG] });
+    observer.registerBundle({ 'nodes': nodes.composeRetryLoopNodes, 'dags': [composeRetryLoopDAG] });
+    observer.registerBundle({ 'nodes': nodes.parentNodes, 'dags': [archivistDAG] });
 
     const { composeMs, webSearchMs, rankMs } = this.timeoutSettings;
     const deadlineMs = composeMs + webSearchMs + rankMs + 5_000;
@@ -829,10 +826,11 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   ): void {
     const fullId = [...placementPath, nodeName].join('/');
     const isTopLevel = placementPath.length === 0;
+    const ts = this.#clock.now();
     const trace: SessionTraceEntry | null = isTopLevel
-      ? { 'node': fullId, 'ts': Date.now(), 'variant': 'start', 'output': null, 'message': '' }
+      ? { 'node': fullId, ts, 'variant': 'start', 'output': null, 'message': '' }
       : null;
-    this.onNodeEvent({ 'kind': 'nodeStart', 'node': nodeName, fullId, placementPath, 'output': null, trace, 'ts': Date.now() });
+    this.onNodeEvent({ 'kind': 'nodeStart', 'node': nodeName, fullId, placementPath, 'output': null, trace, ts });
   }
 
   pumpNodeEnd(
@@ -859,24 +857,23 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
         const noteMsg     = isRateLimit
           ? `${toolName} · rate-limited · skipped`
           : `${toolName} · unavailable · skipped`;
-        trace = { 'node': toolName, 'ts': Date.now(), 'variant': 'note', 'output': null, 'message': noteMsg };
+        trace = { 'node': toolName, 'ts': this.#clock.now(), 'variant': 'note', 'output': null, 'message': noteMsg };
       }
     } else {
       // Top-level nodes: structured end trace row.
-      trace = { 'node': fullId, 'ts': Date.now(), 'variant': 'end', output, 'message': '' };
+      trace = { 'node': fullId, 'ts': this.#clock.now(), 'variant': 'end', output, 'message': '' };
 
       // Log per-node supplemental summary via the dispatch map.
       if (state instanceof ArchivistState) {
         const supplement = NODE_TRACE_MESSAGES[nodeName]?.(state);
         if (supplement !== undefined) {
           this.logger.info(
-            LogBody.create()
-              .component('archivist')
-              .operation('node-summary')
-              .status('complete')
-              .message(supplement)
-              .context({ nodeName })
-              .build(),
+            {
+              'context': { nodeName },
+              'event': 'archivist.node-summary',
+              'message': supplement,
+              'status': 'complete',
+            },
           );
         }
       }
@@ -888,7 +885,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
       this.onMemoryChanged();
     }
 
-    this.onNodeEvent({ 'kind': 'nodeEnd', 'node': nodeName, fullId, placementPath, output, trace, 'ts': Date.now() });
+    this.onNodeEvent({ 'kind': 'nodeEnd', 'node': nodeName, fullId, placementPath, output, trace, 'ts': this.#clock.now() });
   }
 
   pumpError(
@@ -900,14 +897,15 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     const isTopLevel = placementPath.length === 0;
     if (isTopLevel) {
       const msg = error.message !== '' ? error.message : String(error);
+      const ts = this.#clock.now();
       this.onNodeEvent({
         'kind': 'nodeEnd',
         'node': nodeName,
         fullId,
         placementPath,
         'output': 'error',
-        'trace': { 'node': fullId, 'ts': Date.now(), 'variant': 'error', 'output': null, 'message': msg },
-        'ts': Date.now(),
+        'trace': { 'node': fullId, ts, 'variant': 'error', 'output': null, 'message': msg },
+        ts,
       });
     }
   }
@@ -921,7 +919,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
 
     // Push the archivist turn when the run produced a draft.
     if (state.draft.length > 0) {
-      const archivistTurn: ConversationTurn = { 'role': 'archivist', 'text': state.draft, 'ts': Date.now() };
+      const archivistTurn: ConversationTurn = { 'role': 'archivist', 'text': state.draft, 'ts': this.#clock.now() };
       this.conversation = [...this.conversation, archivistTurn];
       this.onArchivistTurn(state.draft);
     }
@@ -1076,9 +1074,9 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     });
   }
 
-  static #generateRunId(): string {
+  #generateRunId(): string {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
-    return `r-${String(Date.now())}-${String(Math.floor(Math.random() * 1e6))}`;
+    return `r-${String(this.#clock.now())}-${String(Math.floor(Math.random() * 1e6))}`;
   }
 
   static #loadSavedBackend(): ProviderId | null {
@@ -1088,13 +1086,13 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     return null;
   }
 
-  static #staticGreeting(): string {
+  #staticGreeting(): string {
     const pool = STATIC_GREETINGS;
-    return pool[Date.now() % pool.length] ?? pool[0] ?? '';
+    return pool[this.#clock.now() % pool.length] ?? pool[0] ?? '';
   }
 
-  static #staticVisitorReply(): string {
+  #staticVisitorReply(): string {
     const pool = STATIC_VISITOR_REPLIES;
-    return pool[Date.now() % pool.length] ?? pool[0] ?? '';
+    return pool[this.#clock.now() % pool.length] ?? pool[0] ?? '';
   }
 }

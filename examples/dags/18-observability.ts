@@ -5,10 +5,12 @@
  */
 
 import {
+  Batch,
   DAGBuilder,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -25,29 +27,29 @@ export class PipelineState extends NodeStateBase {
 // Nodes: a trivial two-step pipeline to give the observer something to trace
 // ---------------------------------------------------------------------------
 
-export class ValidateNode extends ScalarNode<PipelineState, 'ok' | 'invalid'> {
+export class ValidateNode extends MonadicNode<PipelineState, 'ok' | 'invalid'> {
   readonly name = 'validate';
   readonly outputs = ['ok', 'invalid'] as const;
   override get outputSchema(): Record<'ok' | 'invalid', SchemaObjectType> {
     return { 'ok': { 'type': 'object' }, 'invalid': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: PipelineState) {
-    state.value = 1;
-    return NodeOutputBuilder.of('ok');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) item.state.value = 1;
+    return RoutedBatch.create(NodeOutput.create('ok').output, batch);
   }
 }
 
-export class TransformNode extends ScalarNode<PipelineState, 'done'> {
+export class TransformNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'transform';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: PipelineState) {
-    state.value = state.value * 10;
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) item.state.value = item.state.value * 10;
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

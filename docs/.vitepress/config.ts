@@ -165,6 +165,7 @@ const sidebar = [
       { text: 'Schema and JSON loading',   link: '/guide/schema' },
       { text: 'Cancellation',              link: '/guide/cancellation' },
       { text: 'Retry',                     link: '/guide/retry' },
+      { text: 'Execution tuning',          link: '/guide/execution-tuning' },
       { text: 'Reservoir',                 link: '/guide/reservoir' },
       { text: 'Streaming producers',       link: '/guide/streaming-producers' },
       { text: 'Migrating to batch',        link: '/guide/migrating-to-batch' },

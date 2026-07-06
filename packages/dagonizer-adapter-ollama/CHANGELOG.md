@@ -1,6 +1,8 @@
 # @studnicky/dagonizer-adapter-ollama
 
-## 1.0.0
+## 0.30.1
+
+## 0.30.0
 
 ### Patch Changes
 
@@ -49,7 +51,7 @@
 
 ### Patch Changes
 
-- Add a consumer-configurable `systemPrompt` option, forwarded through `OpenAiCompatibleAdapter` to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one, no-op when empty). Lets a consumer frame persona/format once at construction instead of hand-prepending a system message to every call.
+- Add a consumer-configurable `systemPrompt` option, forwarded through `OpenAiCompatibleAdapter` to the `BaseAdapter` seam: when set, it is injected as the leading system turn of any request that carries no system message of its own (never overriding an explicit one, no-op when empty). Lets a consumer set a default directive once at construction instead of hand-prepending a system message to every call.
 - Forward `request.maxTokens` to Ollama's OpenAI-compatible `max_tokens` field (Ollama maps it to `num_predict`).
 - Inherit the `timeoutMs` deadline (default 60s) enforced by `OpenAiCompatibleAdapter` around the `/v1/chat/completions` POST. An expired deadline surfaces as a `TIMEOUT` classification rather than `NETWORK`, so a cascade falls through to the next adapter instead of hanging.
 

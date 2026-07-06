@@ -10,13 +10,11 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region confirm-delivery-node
-export class ConfirmDeliveryNode extends ScalarNode<CartographerState, 'confirmed'> {
+export class ConfirmDeliveryNode extends MonadicNode<CartographerState, 'confirmed'> {
   readonly 'name' = 'confirm-delivery';
   readonly 'outputs' = ['confirmed'] as const;
 
@@ -26,25 +24,31 @@ export class ConfirmDeliveryNode extends ScalarNode<CartographerState, 'confirme
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'confirmed'>> {
-    const v = state.canonicalVariant;
-    if (v.eventType !== 'delivery-confirmation') {
-      return NodeOutputBuilder.of('confirmed');
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'confirmed', CartographerState>> {
+    for (const item of batch) {
+      const state = item.state;
+      const v = state.canonicalVariant;
+      if (v.eventType !== 'delivery-confirmation') {
+        continue;
+      }
+
+      const delivered = v.body.delivered;
+
+      state.normalized = {
+        ...state.normalized,
+        'status': delivered ? 'DELIVERED' : state.normalized.status,
+      };
+
+      state.currentEvent = {
+        ...state.currentEvent,
+        'eventType': delivered ? 'DELIVERED' : state.currentEvent.eventType,
+      };
     }
 
-    const delivered = v.body.delivered;
-
-    state.normalized = {
-      ...state.normalized,
-      'status': delivered ? 'DELIVERED' : state.normalized.status,
-    };
-
-    state.currentEvent = {
-      ...state.currentEvent,
-      'eventType': delivered ? 'DELIVERED' : state.currentEvent.eventType,
-    };
-
-    return NodeOutputBuilder.of('confirmed');
+    return RoutedBatch.create('confirmed', batch);
   }
 }
 

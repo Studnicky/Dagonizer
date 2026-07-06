@@ -22,6 +22,7 @@
  * replay and idle-timer releases.
  */
 
+import { CircularBuffer } from '@studnicky/circular-buffer';
 import { Semaphore } from '@studnicky/concurrency/semaphore';
 
 import type { ReservoirDriverInterface } from '../contracts/ReservoirDriver.js';
@@ -69,7 +70,7 @@ export class ReservoirBuffer {
   readonly #reservoir: { keyField: string; capacity: number; idleMs: number | null };
   readonly #idleTimeout: Timeout;
   readonly #accessor: StateAccessorInterface;
-  readonly #activeBuffers: Map<string, BufferedItem[]>;
+  readonly #activeBuffers: Map<string, CircularBuffer<BufferedItem>>;
   readonly #poolErrors: unknown[];
   readonly #keyGeneration: Map<string, number>;
   readonly #idleAbort: AbortController | null;
@@ -79,7 +80,7 @@ export class ReservoirBuffer {
 
   constructor(driver: ReservoirDriverInterface, options: ReservoirBufferOptionsType) {
     this.#driver = driver;
-    this.#semaphore = Semaphore.builder().withPermits(options.concurrencyLimit).build();
+    this.#semaphore = Semaphore.create({ 'permits': options.concurrencyLimit });
     this.#inbox = options.inbox;
     this.#freshIter = options.freshIter;
     this.#signal = options.signal;
@@ -90,7 +91,7 @@ export class ReservoirBuffer {
     // never `#reservoir.idleMs` directly.
     this.#idleTimeout = Timeout.ofWire(options.reservoir.idleMs);
     this.#accessor = options.accessor;
-    this.#activeBuffers = new Map<string, BufferedItem[]>();
+    this.#activeBuffers = new Map<string, CircularBuffer<BufferedItem>>();
     this.#poolErrors = [];
     this.#keyGeneration = new Map<string, number>();
     this.#idleAbort = this.#idleTimeout.isNone ? null : new AbortController();
@@ -129,21 +130,12 @@ export class ReservoirBuffer {
    * and resume replay — is gated by the same real concurrency cap.
    */
   #spawnBatchWorker(items: BufferedItem[]): void {
-    const workerPromise = this.#semaphore.acquire().then((release) =>
-      this.#driver.executeBatch(items).then(
-        (batchResult) => this.#driver.ackBatch(batchResult).then(
-          () => { release(); },
-          (err: unknown) => {
-            this.#poolErrors.push(err);
-            release();
-          },
-        ),
-        (err: unknown) => {
-          this.#poolErrors.push(err);
-          release();
-        },
-      ),
-    );
+    const workerPromise = this.#semaphore.withPermit(async () => {
+      const batchResult = await this.#driver.executeBatch(items);
+      await this.#driver.ackBatch(batchResult);
+    }).catch((err: unknown) => {
+      this.#poolErrors.push(err);
+    });
     this.#workerPromises.push(workerPromise);
   }
 
@@ -185,7 +177,7 @@ export class ReservoirBuffer {
     if (buf === undefined || buf.length === 0) return;
 
     // Release the partial buffer as an idle batch.
-    const batch = buf.splice(0);
+    const batch = ReservoirBuffer.#drainBuffer(buf);
     this.#activeBuffers.delete(key);
     // Bump generation so any racing timer (impossible here, but defensive) is stale.
     this.#keyGeneration.set(key, gen + 1);
@@ -209,13 +201,15 @@ export class ReservoirBuffer {
       if (buf !== undefined) {
         buf.push(buffered);
       } else {
-        this.#activeBuffers.set(key, [buffered]);
+        const next = this.#buffer();
+        next.push(buffered);
+        this.#activeBuffers.set(key, next);
       }
     }
     // Release any groups already at capacity (synchronous dispatch).
     for (const [key, buf] of this.#activeBuffers) {
       if (buf.length >= capacity) {
-        const batch = buf.splice(0, capacity);
+        const batch = ReservoirBuffer.#drainBuffer(buf, capacity);
         if (buf.length === 0) this.#activeBuffers.delete(key);
         this.#spawnBatchWorker(batch);
       }
@@ -265,7 +259,7 @@ export class ReservoirBuffer {
           // Capacity release: bump generation (invalidates any pending idle timer),
           // then dispatch this key's buffer as a batch.
           this.#keyGeneration.set(bufferKey, (this.#keyGeneration.get(bufferKey) ?? 0) + 1);
-          const batch = existing.splice(0, capacity);
+          const batch = ReservoirBuffer.#drainBuffer(existing, capacity);
           if (existing.length === 0) {
             this.#activeBuffers.delete(bufferKey);
           } else {
@@ -278,7 +272,9 @@ export class ReservoirBuffer {
           this.#armIdleTimer(bufferKey);
         }
       } else {
-        this.#activeBuffers.set(bufferKey, [buffered]);
+        const next = this.#buffer();
+        next.push(buffered);
+        this.#activeBuffers.set(bufferKey, next);
         if (capacity === 1) {
           // Capacity of 1: bump generation and release immediately.
           this.#keyGeneration.set(bufferKey, (this.#keyGeneration.get(bufferKey) ?? 0) + 1);
@@ -305,7 +301,7 @@ export class ReservoirBuffer {
           while (this.#semaphore.available === 0) {
             await this.#waitForCapacity();
           }
-          const batch = [...buf];
+          const batch = ReservoirBuffer.#drainBuffer(buf);
           this.#activeBuffers.delete(key);
           this.#spawnBatchWorker(batch);
         }
@@ -324,5 +320,21 @@ export class ReservoirBuffer {
       const first = this.#poolErrors[0];
       throw first instanceof Error ? first : new DAGError(String(first), { 'code': 'EXECUTION_ERROR' });
     }
+  }
+
+  #buffer(): CircularBuffer<BufferedItem> {
+    return CircularBuffer.create<BufferedItem>({
+      'capacity': this.#reservoir.capacity,
+      'overflow': 'grow',
+    });
+  }
+
+  static #drainBuffer(buffer: CircularBuffer<BufferedItem>, limit = Number.POSITIVE_INFINITY): BufferedItem[] {
+    const batch: BufferedItem[] = [];
+    while (batch.length < limit && buffer.length > 0) {
+      const item = buffer.shift();
+      if (item !== undefined) batch.push(item);
+    }
+    return batch;
   }
 }

@@ -5,10 +5,12 @@
  */
 
 import {
+  Batch,
   DAGBuilder,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -31,17 +33,19 @@ export class PhaseState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region pre-phase-node
-export class PreSetupNode extends ScalarNode<PhaseState, 'ready'> {
+export class PreSetupNode extends MonadicNode<PhaseState, 'ready'> {
   readonly name = 'pre-setup';
   readonly outputs = ['ready'] as const;
   override get outputSchema(): Record<'ready', SchemaObjectType> {
     return { 'ready': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: PhaseState) {
-    state.executionLog.push('pre-setup');
-    state.seedValue = 42;
-    return NodeOutputBuilder.of('ready');
+  override async execute(batch: Batch<PhaseState>) {
+    for (const item of batch) {
+      item.state.executionLog.push('pre-setup');
+      item.state.seedValue = 42;
+    }
+    return RoutedBatch.create(NodeOutput.create('ready').output, batch);
   }
 }
 // #endregion pre-phase-node
@@ -50,17 +54,19 @@ export class PreSetupNode extends ScalarNode<PhaseState, 'ready'> {
 // Main node: the flow entrypoint. Reads seedValue left by the pre-phase.
 // ---------------------------------------------------------------------------
 
-export class ComputeNode extends ScalarNode<PhaseState, 'done'> {
+export class ComputeNode extends MonadicNode<PhaseState, 'done'> {
   readonly name = 'compute';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: PhaseState) {
-    state.executionLog.push('compute');
-    state.result = `computed:${String(state.seedValue * 2)}`;
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PhaseState>) {
+    for (const item of batch) {
+      item.state.executionLog.push('compute');
+      item.state.result = `computed:${String(item.state.seedValue * 2)}`;
+    }
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -71,18 +77,20 @@ export class ComputeNode extends ScalarNode<PhaseState, 'done'> {
 // ---------------------------------------------------------------------------
 
 // #region post-phase-node
-export class PostAuditNode extends ScalarNode<PhaseState, 'audited'> {
+export class PostAuditNode extends MonadicNode<PhaseState, 'audited'> {
   readonly name = 'post-audit';
   readonly outputs = ['audited'] as const;
   override get outputSchema(): Record<'audited', SchemaObjectType> {
     return { 'audited': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: PhaseState) {
-    state.executionLog.push('post-audit');
-    // State is already finalized; this is the last observer.
-    state.executionLog.push(`final-result:${state.result}`);
-    return NodeOutputBuilder.of('audited');
+  override async execute(batch: Batch<PhaseState>) {
+    for (const item of batch) {
+      item.state.executionLog.push('post-audit');
+      // State is already finalized; this is the last observer.
+      item.state.executionLog.push(`final-result:${item.state.result}`);
+    }
+    return RoutedBatch.create(NodeOutput.create('audited').output, batch);
   }
 }
 // #endregion post-phase-node

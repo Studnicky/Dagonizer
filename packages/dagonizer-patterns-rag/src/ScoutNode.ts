@@ -11,21 +11,28 @@
  * that plug in a specific ToolInterface instance.
  */
 
-import { NodeOutputBuilder, ScalarNode  } from '@studnicky/dagonizer';
+import { Batch, BatchItemExecutor, MonadicNode, NodeError, NodeOutput } from '@studnicky/dagonizer';
+import type { BatchExecutionOptionsType, ItemType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { ToolInterface } from '@studnicky/dagonizer/tool';
-import type { NodeContextType, NodeOutputType, NodeStateInterface  } from '@studnicky/dagonizer/types';
+import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 export abstract class ScoutNode<
   TState extends NodeStateInterface,
   TInput extends Record<string, unknown>,
   TToolOutput,
   TItem,
-> extends ScalarNode<TState, 'success' | 'empty' | 'error'> {
-  constructor(protected readonly tool: ToolInterface<TInput, TToolOutput>) {
+> extends MonadicNode<TState, 'success' | 'empty' | 'error'> {
+  readonly #execution: BatchExecutionOptionsType;
+
+  constructor(
+    protected readonly tool: ToolInterface<TInput, TToolOutput>,
+    options: { readonly execution?: BatchExecutionOptionsType } = {},
+  ) {
     super();
+    this.#execution = options.execution ?? {};
   }
 
-  /** Build the input the tool's `run()` expects, from state. */
+  /** Build the input the tool's `execute()` expects, from state. */
   protected abstract composeInput(state: TState): TInput;
 
   /** Normalise the tool's raw output into the consumer's item shape. */
@@ -34,19 +41,57 @@ export abstract class ScoutNode<
   /** Write the normalized items back into state. */
   protected abstract writeBack(state: TState, items: readonly TItem[]): void;
 
+  override async execute(
+    batch: Batch<TState>,
+    context: NodeContextType,
+  ): Promise<RoutedBatchType<'success' | 'empty' | 'error', TState>> {
+    const acc = new Map<'success' | 'empty' | 'error', ItemType<TState>[]>();
+    const results = await BatchItemExecutor.map(batch.items(), async (item) => {
+      const output = await this.executeItem(item.state, context);
 
-  protected override async executeOne(
+      for (const error of output.errors) {
+        item.state.collectError(error);
+      }
+      return { item, output };
+    }, this.#execution, context.signal);
+
+    for (const result of results) {
+      const bucket = acc.get(result.output.output);
+      if (bucket !== undefined) {
+        bucket.push(result.item);
+      } else {
+        acc.set(result.output.output, [result.item]);
+      }
+    }
+
+    const routed = new Map<'success' | 'empty' | 'error', Batch<TState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private async executeItem(
     state: TState,
     context: NodeContextType,
   ): Promise<NodeOutputType<'success' | 'empty' | 'error'>> {
-    const input = this.composeInput(state);
     try {
-      const raw = await this.tool.execute(input, { "signal": context.signal });
+      const input = this.composeInput(state);
+      const raw = await this.tool.execute(input, { 'signal': context.signal });
       const items = this.normalize(raw);
       this.writeBack(state, items);
-      return NodeOutputBuilder.of(items.length === 0 ? 'empty' : 'success');
-    } catch {
-      return NodeOutputBuilder.of('error');
+      return NodeOutput.create(items.length === 0 ? 'empty' : 'success');
+    } catch (thrown: unknown) {
+      const message = thrown instanceof Error ? thrown.message : String(thrown);
+      const error = NodeError.create(
+        'scoutExecutionFailed',
+        message,
+        'ScoutNode.execute',
+        false,
+        new Date().toISOString(),
+        { 'context': { 'toolName': this.tool.definition.name } },
+      );
+      return NodeOutput.create('error', { 'errors': [error] });
     }
   }
 }

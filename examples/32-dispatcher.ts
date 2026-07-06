@@ -10,7 +10,7 @@
  *   Escalation triggers (refund, billing, etc.) → auto-escalate to operator.
  *   Trolley switch: humanMode = true → ALL messages go to operator.
  *
- * LLM resolved via LlmAdapterCascadeBuilder (same pattern as runArchivist.ts):
+ * LLM resolved via LlmAdapterCascade (same pattern as runArchivist.ts):
  *   Ollama (localhost) → API key providers (GEMINI_API_KEY, GROQ_API_KEY, etc.)
  *   Set OLLAMA_BASE_URL to override the default 127.0.0.1:11434.
  *
@@ -31,14 +31,20 @@ import {
 } from '@studnicky/dagonizer';
 
 import {
-  LlmAdapterCascadeBuilder,
+  LlmAdapterCascade,
   type CatalogueEntryType,
 } from '@studnicky/dagonizer/adapter';
 
 import { OllamaApiAdapter }  from '@studnicky/dagonizer-adapter-ollama';
 
 import { DispatcherState }         from './the-dispatcher/DispatcherState.js';
-import { DispatcherBundleFactory } from './the-dispatcher/dag.js';
+import { supportDispatcherDAG }    from './the-dispatcher/dag.js';
+import { AiComposeNode }           from './the-dispatcher/nodes/AiComposeNode.js';
+import { ClassifyMessageNode }     from './the-dispatcher/nodes/ClassifyMessageNode.js';
+import { DeclineNode }             from './the-dispatcher/nodes/DeclineNode.js';
+import { ParkForOperatorNode }     from './the-dispatcher/nodes/ParkForOperatorNode.js';
+import { SendResponseNode }        from './the-dispatcher/nodes/SendResponseNode.js';
+import { SetupNode }               from './the-dispatcher/nodes/SetupNode.js';
 import { DispatcherLlmClient }     from './the-dispatcher/providers/DispatcherLlmClient.js';
 import type { DispatcherServices } from './the-dispatcher/services.js';
 import { UserLanguage }            from './the-dispatcher/language/UserLanguage.js';
@@ -78,7 +84,7 @@ if (resolvedOllamaModel !== null) {
   });
 }
 
-const cascade = LlmAdapterCascadeBuilder.build(catalogue);
+const cascade = LlmAdapterCascade.create(catalogue);
 const adapter = await cascade.select();
 
 process.stdout.write(`\nLLM backend: ${adapter.id} (${adapter.displayName})\n`);
@@ -105,7 +111,17 @@ const services: DispatcherServices = {
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<DispatcherState>();
-dispatcher.registerBundle(DispatcherBundleFactory.create(services));
+const setup           = new SetupNode();
+const classifyMessage = new ClassifyMessageNode(services);
+const aiCompose       = new AiComposeNode(services);
+const parkForOperator = new ParkForOperatorNode();
+const sendResponse    = new SendResponseNode();
+const decline         = new DeclineNode();
+
+dispatcher.registerBundle({
+  'nodes': [setup, classifyMessage, aiCompose, parkForOperator, sendResponse, decline],
+  'dags':  [supportDispatcherDAG],
+});
 
 // ---------------------------------------------------------------------------
 // Scenario 1: Routine query — AI handles end-to-end

@@ -31,6 +31,8 @@ class DeterministicEmbedder implements EmbedderInterface {
   readonly id = 'deterministic';
   readonly displayName = 'deterministic';
   readonly dimensions = DIM;
+  embedCalls = 0;
+  embedBatchCalls = 0;
   readonly #queryVector: readonly number[];
 
   constructor(queryVector: readonly number[]) {
@@ -38,6 +40,7 @@ class DeterministicEmbedder implements EmbedderInterface {
   }
 
   async embed(text: string): Promise<readonly number[]> {
+    this.embedCalls += 1;
     // Anchor descriptions get a basis vector tied to their position;
     // anything else gets the queryVector under test.
     const anchorIndex = DISPATCHER_INTENT_LABELS.findIndex(
@@ -48,7 +51,12 @@ class DeterministicEmbedder implements EmbedderInterface {
   }
 
   async embedBatch(texts: readonly string[]): Promise<readonly (readonly number[])[]> {
-    return Promise.all(texts.map((t) => this.embed(t)));
+    this.embedBatchCalls += 1;
+    const vectors: (readonly number[])[] = [];
+    for (const text of texts) {
+      vectors.push(await this.embed(text));
+    }
+    return vectors;
   }
 
   async probe(): Promise<boolean> { return true; }
@@ -79,6 +87,8 @@ void test('DispatcherIntentClassifier picks "routine" when the message embedding
   assert.notEqual(targetIndex, -1);
   const embedder = new DeterministicEmbedder(IntentVectors.basisVector(targetIndex));
   const classifier = await DispatcherIntentClassifier.create(embedder);
+  assert.equal(embedder.embedBatchCalls, 1);
+  assert.equal(embedder.embedCalls, DISPATCHER_INTENT_LABELS.length);
 
   const result = await classifier.classify('what are your store hours?');
   assert.notEqual(result, null);

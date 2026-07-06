@@ -17,13 +17,11 @@ import type { CartographerState } from '../../CartographerState.ts';
 
 import { GeoErrorRecord } from '../../errors/GeoErrorRecord.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region parse-yaml-node
-export class ParseYamlNode extends ScalarNode<CartographerState, 'normalized' | 'invalid'> {
+export class ParseYamlNode extends MonadicNode<CartographerState, 'normalized' | 'invalid'> {
   readonly 'name' = 'parse-yaml';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
 
@@ -39,7 +37,33 @@ export class ParseYamlNode extends ScalarNode<CartographerState, 'normalized' | 
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'normalized' | 'invalid'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'normalized' | 'invalid', CartographerState>> {
+    const acc = new Map<'normalized' | 'invalid', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'normalized' | 'invalid', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private routeItem(state: CartographerState): NodeOutputType<'normalized' | 'invalid'> {
     // Use decompressed text when available (gzip path), else the raw payload.
     const text = state.decodedText.length > 0 ? state.decodedText : state.currentSource.payload;
     let parsed: unknown;
@@ -48,10 +72,10 @@ export class ParseYamlNode extends ScalarNode<CartographerState, 'normalized' | 
     } catch (caught) {
       // Capture the parse failure as data rather than swallowing it.
       state.capturedErrors = [...state.capturedErrors, GeoErrorRecord.capture('parse-yaml', caught, `source=${state.currentSource.sourceId}`)];
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
     if (!Array.isArray(parsed)) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
     const records: Array<Record<string, unknown>> = [];
     for (const row of parsed) {
@@ -60,10 +84,10 @@ export class ParseYamlNode extends ScalarNode<CartographerState, 'normalized' | 
       }
     }
     if (records.length === 0) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
     state.parsedRecords = records;
-    return NodeOutputBuilder.of('normalized');
+    return NodeOutput.create('normalized');
   }
 }
 

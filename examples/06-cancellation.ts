@@ -17,6 +17,7 @@
  */
 
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 import { BatchProcessNode, SlowNode, batchDag, dag } from './dags/06-cancellation.js';
 
 const dispatcher = new Dagonizer<NodeStateBase>();
@@ -63,12 +64,12 @@ if (bResult.interruptedAt !== null) {
 
 // #region signal-composition
 // Compose a user abort and a request-scoped deadline into a single signal
-// before passing it to execute(). AbortSignal.any() fires as soon as the
-// first of the composed signals aborts.
+// before passing it to execute().
 const userAbortController = new AbortController();
-const userSignal    = userAbortController.signal;
-const requestSignal = AbortSignal.timeout(10_000);
-const combined      = AbortSignal.any([userSignal, requestSignal]);
+const combined = Signal.compose({
+  'signal':     userAbortController.signal,
+  'deadlineMs': 10_000,
+});
 
 const cState  = new NodeStateBase();
 const cResult = await dispatcher.execute('slow-dag', cState, { signal: combined });

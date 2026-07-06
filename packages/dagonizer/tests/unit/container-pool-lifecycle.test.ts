@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 // Engine imports come from the PUBLIC package entry (dist) so this test's type
 // identity matches the dist-compiled `testing/` harness + `ConformanceRegistry`
 // bundle it drives — no src↔dist brand bridge.
+import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import {
   ConformanceRegistry,
   ConformanceState,
@@ -45,7 +46,6 @@ import type {
 import { DagContainerBase, DagHost } from '@studnicky/dagonizer/container';
 import type { PoolEntryType } from '@studnicky/dagonizer/container';
 import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
-import { NodeContextBuilder } from '@studnicky/dagonizer/entities';
 
 
 // ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ class MinimalTask implements DagTaskInterface {
     this.correlationId = correlationId;
     this.timeout = Timeout.none();
     this.state = new NodeStateBase();
-    this.context = NodeContextBuilder.of(CONFORMANCE_DAG.law1, '', new AbortController().signal);
+    this.context = NodeContext.create(CONFORMANCE_DAG.law1, '', new AbortController().signal);
   }
 
   toRequest() {
@@ -330,7 +330,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
         'correlationId': 'con1-abort',
         'timeout': Timeout.none(),
         'state': new AbortableTask(),
-        'context': NodeContextBuilder.of(CONFORMANCE_DAG.law1, '', controller.signal),
+        'context': NodeContext.create(CONFORMANCE_DAG.law1, '', controller.signal),
         toRequest() {
           return {
             'dagName': this.dagName,

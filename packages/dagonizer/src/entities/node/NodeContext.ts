@@ -52,9 +52,9 @@ export type NodeContextType = NodeContextWireType & {
   /** Name of the current node. */
   'nodeName': string;
   /**
-   * When `true`, `ScalarNode.execute` validates each item's state against
-   * `this.outputSchema[port]` after `executeOne` returns. On mismatch the
-   * item is re-routed to `'error'` with code `outputContractViolation`.
+   * When `true`, the scheduler validates routed batch item state against
+   * `this.outputSchema[port]` after `execute` returns. On mismatch the item
+   * is re-routed to `'error'` with code `outputContractViolation`.
    * Set from `DagonizerOptionsType.validateOutputs`; default `false`.
    */
   'validateOutputs': boolean;
@@ -68,17 +68,14 @@ export type NodeContextType = NodeContextWireType & {
 };
 
 /**
- * Static factory for `NodeContextType`. Named `NodeContextBuilder` to
- * avoid collision with the `NodeContext` wire type (the `FromSchema`-derived
- * type occupies that identifier). The `*Builder` pattern follows the same
- * convention used elsewhere in this codebase where the type name is taken.
+ * Static factory for `NodeContextType`.
  *
  * Key order (signal, dagName, nodeName, validateOutputs, outputSchemaValidator) is
  * fixed for V8 shape stability: every instance has the same hidden class regardless
  * of call site.
  */
-export class NodeContextBuilder {
-  static of(
+export class NodeContext {
+  static create(
     dagName: string,
     nodeName: string,
     signal: AbortSignal,

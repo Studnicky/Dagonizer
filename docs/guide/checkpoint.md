@@ -84,7 +84,7 @@ When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the
 
 ## Named stores ride along
 
-`Checkpoint.capture(dagName, result, { stores })` snapshots named stores into the checkpoint envelope alongside the state, and `ckpt.restoreStores(map)` repopulates fresh instances on resume. The following shows the full abort-capture-restore-resume cycle with a `MemoryStore` riding along in the checkpoint:
+`Checkpoint.capture(dagName, result, { stores, execution })` snapshots named stores into the checkpoint envelope alongside the state, and `ckpt.restoreStores(map, { execution })` repopulates fresh instances on resume. The `execution` policy uses the same batch executor options as tool and node batch execution, giving remote or expensive stores explicit concurrency, throttle, and timing controls. The following shows the full abort-capture-restore-resume cycle with a `MemoryStore` riding along in the checkpoint:
 
 <<< @/../examples/10-shared-state.ts#store-checkpoint
 
