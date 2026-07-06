@@ -12,6 +12,10 @@
  * Never throws — a failed lookup resolves to an unresolved candidate.
  */
 
+import { Coalesce } from '@studnicky/concurrency/coalesce';
+import { LruCache } from '@studnicky/cache';
+import { Guard } from '@studnicky/types';
+
 import type { GeoCandidate } from '../entities/GeoCandidate.ts';
 import type { IpGeolocator } from '../contracts/IpGeolocator.ts';
 import { GeoErrorRecord } from '../errors/GeoErrorRecord.ts';
@@ -20,39 +24,52 @@ import { GeoLookupOutcome, type GeoLookupOutcomeType } from '../errors/GeoLookup
 // #region live-ip-geolocator
 const FREEIPAPI_ENDPOINT = 'https://freeipapi.com/api/json';
 const ERROR_SOURCE = 'ip-geolocate';
+const IP_CACHE_CAPACITY = 512;
+const IP_CACHE_TTL_MS = 60 * 60 * 1_000;
 
 export class LiveIpGeolocator implements IpGeolocator {
-  readonly #cache = new Map<string, GeoCandidate>();
+  static readonly #signalIds = new WeakMap<AbortSignal, string>();
+  static #nextSignalId = 0;
 
-  private static str(value: unknown): string {
-    return typeof value === 'string' ? value : '';
-  }
+  readonly #cache = LruCache.create<string, GeoCandidate>({
+    'capacity': IP_CACHE_CAPACITY,
+    'ttlMs':    IP_CACHE_TTL_MS,
+  });
+  readonly #lookups = Coalesce.create<GeoLookupOutcomeType>();
 
   private static num(value: unknown): number {
-    return typeof value === 'number' ? value : 0;
+    return Guard.asNumber(value) ?? 0;
   }
 
   /** Parse an `unknown` API response body into a `GeoCandidate`, or return `null` when unresolvable. */
   private static parseBody(body: unknown): GeoCandidate | null {
-    if (body === null || typeof body !== 'object' || Array.isArray(body)) return null;
-    // `body` is narrowed to `object` — use Reflect.get for cast-free property access.
-    const countryCode = LiveIpGeolocator.str(Reflect.get(body, 'countryCode'));
+    const record = Guard.asRecord(body);
+    if (record === undefined) return null;
+    const countryCode = Guard.asString(record['countryCode']) ?? '';
     if (countryCode.length === 0) return null;
     return {
       'modality':    'ip',
       'resolved':    true,
       'country':     countryCode,
-      'countryName': LiveIpGeolocator.str(Reflect.get(body, 'countryName')),
-      'continent':   LiveIpGeolocator.str(Reflect.get(body, 'continent')),
-      'region':      LiveIpGeolocator.str(Reflect.get(body, 'regionName')),
-      'locality':    LiveIpGeolocator.str(Reflect.get(body, 'cityName')),
-      'lat':         LiveIpGeolocator.num(Reflect.get(body, 'latitude')),
-      'lng':         LiveIpGeolocator.num(Reflect.get(body, 'longitude')),
+      'countryName': Guard.asString(record['countryName']) ?? '',
+      'continent':   Guard.asString(record['continent']) ?? '',
+      'region':      Guard.asString(record['regionName']) ?? '',
+      'locality':    Guard.asString(record['cityName']) ?? '',
+      'lat':         LiveIpGeolocator.num(record['latitude']),
+      'lng':         LiveIpGeolocator.num(record['longitude']),
       'water':       false,
     };
   }
 
   async lookup(ipAddress: string, signal: AbortSignal): Promise<GeoLookupOutcomeType> {
+    const cached = this.#cache.get(ipAddress);
+    if (cached !== undefined) return GeoLookupOutcome.resolved(cached);
+
+    const key = `${LiveIpGeolocator.signalKey(signal)}\u0000${ipAddress}`;
+    return this.#lookups.run(key, () => this.#lookupMiss(ipAddress, signal));
+  }
+
+  async #lookupMiss(ipAddress: string, signal: AbortSignal): Promise<GeoLookupOutcomeType> {
     const cached = this.#cache.get(ipAddress);
     if (cached !== undefined) return GeoLookupOutcome.resolved(cached);
 
@@ -86,6 +103,15 @@ export class LiveIpGeolocator implements IpGeolocator {
 
     this.#cache.set(ipAddress, candidate);
     return GeoLookupOutcome.resolved(candidate);
+  }
+
+  private static signalKey(signal: AbortSignal): string {
+    const existing = LiveIpGeolocator.#signalIds.get(signal);
+    if (existing !== undefined) return existing;
+    const next = `signal:${String(LiveIpGeolocator.#nextSignalId)}`;
+    LiveIpGeolocator.#nextSignalId++;
+    LiveIpGeolocator.#signalIds.set(signal, next);
+    return next;
   }
 
   private static unresolved(): GeoCandidate {

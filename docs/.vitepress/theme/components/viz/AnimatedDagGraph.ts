@@ -28,6 +28,8 @@
 
 import type cytoscape from 'cytoscape';
 import type { Core, EdgeCollection, NodeSingular } from 'cytoscape';
+import { RealTimeScheduler } from '@studnicky/scheduler';
+import type { ScheduledTaskType, SchedulerProviderType } from '@studnicky/scheduler';
 
 import type { DAGType } from '../../../../../packages/dagonizer/src/entities/dag/DAG.js';
 import { CytoscapeGraph } from '../../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
@@ -131,8 +133,9 @@ export class AnimatedDagGraph extends CytoscapeGraph {
   /** Set of currently-active node ids for camera follow. */
   readonly #activeNodeIds: Set<string> = new Set();
 
-  /** Debounce timer handle for camera follow. */
-  #pendingFitTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Scheduler-owned debounce task for camera follow. */
+  readonly #scheduler: SchedulerProviderType = RealTimeScheduler.create();
+  #pendingFitTask: ScheduledTaskType | null = null;
 
   /** True when the visitor has grabbed the camera. Released by applyFit(). */
   #userInteracted: boolean = false;
@@ -365,9 +368,9 @@ export class AnimatedDagGraph extends CytoscapeGraph {
   // ── Public: camera follow ─────────────────────────────────────────────────
 
   #followActiveSet(): void {
-    if (this.#pendingFitTimer !== null) clearTimeout(this.#pendingFitTimer);
-    this.#pendingFitTimer = setTimeout(() => {
-      this.#pendingFitTimer = null;
+    this.#pendingFitTask?.cancel();
+    this.#pendingFitTask = this.#scheduler.scheduleAt(Date.now() + 200, () => {
+      this.#pendingFitTask = null;
       if (this.#userInteracted) return;
       const cy = this.cyInstance;
       if (cy === null || this.#activeNodeIds.size === 0) return;
@@ -394,7 +397,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
       if (insideX && insideY) return;
       cy.animate({ 'center': { 'eles': nodes } }, { 'duration': 240, 'easing': 'ease' });
       this.#pollZoom(cy);
-    }, 200);
+    });
   }
 
   // ── Public: dispatch surface ─────────────────────────────────────────────
@@ -432,16 +435,14 @@ export class AnimatedDagGraph extends CytoscapeGraph {
   async reset(): Promise<void> {
     const cy = this.cyInstance;
     cy?.stop(true, false);
-    if (this.#pendingFitTimer !== null) {
-      clearTimeout(this.#pendingFitTimer);
-      this.#pendingFitTimer = null;
-    }
+    this.#pendingFitTask?.cancel();
+    this.#pendingFitTask = null;
     this.#activeNodeIds.clear();
 
     const stateEls = cy?.elements('.dag-active, .dag-completed, .dag-errored, .dag-traversed');
     if (stateEls !== undefined && stateEls.length > 0) {
       stateEls.addClass('dag-resetting');
-      await new Promise<void>((resolve) => { setTimeout(resolve, 280); });
+      await new Promise<void>((resolve) => { this.#scheduler.scheduleAt(Date.now() + 280, resolve); });
     }
     this.dispatch({ type: 'RESET' });
     this.applyFit();
@@ -580,10 +581,9 @@ export class AnimatedDagGraph extends CytoscapeGraph {
    * destroy the cytoscape Core. Call from Vue's `onBeforeUnmount`.
    */
   destroy(): void {
-    if (this.#pendingFitTimer !== null) {
-      clearTimeout(this.#pendingFitTimer);
-      this.#pendingFitTimer = null;
-    }
+    this.#pendingFitTask?.cancel();
+    this.#pendingFitTask = null;
+    this.#scheduler.cancelAll();
 
     const cy = this.cyInstance;
     if (cy !== null) {

@@ -3,8 +3,9 @@
  * Leaves: DedupeByKeyNode, GroupByFieldNode, MergeReducerNode.
  */
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import { RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -18,13 +19,16 @@ export abstract class ReduceNode<
   protected abstract writeBack(state: TState, result: TResult): void;
 
 
-  protected override async executeOne(
-    state: TState,
-  ): Promise<NodeOutputType<'success'>> {
-    const items = this.readItems(state);
-    const result = this.reduce(items);
-    this.writeBack(state, result);
-    return NodeOutputBuilder.of('success');
+  override async execute(
+    batch: Batch<TState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'success', TState>> {
+    for (const item of batch) {
+      const items = this.readItems(item.state);
+      const result = this.reduce(items);
+      this.writeBack(item.state, result);
+    }
+    return RoutedBatch.create('success', batch);
   }
 }
 

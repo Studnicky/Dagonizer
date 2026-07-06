@@ -10,13 +10,11 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { EventClassifier, Units } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region canonicalize-facility-node
-export class CanonicalizeFacilityNode extends ScalarNode<CartographerState, 'done'> {
+export class CanonicalizeFacilityNode extends MonadicNode<CartographerState, 'done'> {
   readonly 'name' = 'canonicalize-facility';
   readonly 'outputs' = ['done'] as const;
 
@@ -26,26 +24,32 @@ export class CanonicalizeFacilityNode extends ScalarNode<CartographerState, 'don
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
-    if (state.canonicalVariant.eventType !== 'facility-scan') {
-      return NodeOutputBuilder.of('done');
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'done', CartographerState>> {
+    for (const item of batch) {
+      const state = item.state;
+      if (state.canonicalVariant.eventType !== 'facility-scan') {
+        continue;
+      }
+
+      const raw = state.raw;
+      const weightGrams = Units.toGrams(raw.weight, raw.weightUnit);
+      const serviceTier = EventClassifier.serviceTier(state.normalized.carrierId, weightGrams);
+      const sizeTier    = EventClassifier.sizeTier(weightGrams);
+
+      state.normalized = {
+        ...state.normalized,
+        'weightGrams': weightGrams,
+        'facilityId':  raw.facilityId,
+        'lineItems':   raw.lineItems.map((li) => ({ ...li })),
+        'serviceTier': serviceTier,
+        'sizeTier':    sizeTier,
+      };
     }
 
-    const raw = state.raw;
-    const weightGrams = Units.toGrams(raw.weight, raw.weightUnit);
-    const serviceTier = EventClassifier.serviceTier(state.normalized.carrierId, weightGrams);
-    const sizeTier    = EventClassifier.sizeTier(weightGrams);
-
-    state.normalized = {
-      ...state.normalized,
-      'weightGrams': weightGrams,
-      'facilityId':  raw.facilityId,
-      'lineItems':   raw.lineItems.map((li) => ({ ...li })),
-      'serviceTier': serviceTier,
-      'sizeTier':    sizeTier,
-    };
-
-    return NodeOutputBuilder.of('done');
+    return RoutedBatch.create('done', batch);
   }
 }
 

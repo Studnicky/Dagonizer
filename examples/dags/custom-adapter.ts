@@ -15,7 +15,7 @@
 
 import {
   BaseAdapter,
-  ChatResponseMessageBuilder,
+  ChatResponseMessage,
   ZERO_TOKEN_USAGE,
 } from '@studnicky/dagonizer/adapter';
 import type { ChatRequestType, ChatResponseType } from '@studnicky/dagonizer/adapter';
@@ -36,7 +36,7 @@ export class EchoAdapter extends BaseAdapter {
     const lastUser = [...request.messages].reverse().find((m) => m.role === 'user');
     const reply = lastUser === undefined ? '(no user message)' : `echo: ${lastUser.content}`;
     return {
-      message: ChatResponseMessageBuilder.from(reply, []),
+      message: ChatResponseMessage.create(reply, []),
       finishReason: 'stop',
       usage: ZERO_TOKEN_USAGE,
     };

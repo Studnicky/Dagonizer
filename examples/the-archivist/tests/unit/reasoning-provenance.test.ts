@@ -10,10 +10,8 @@
  *     `dag:Reasoning` entities, and surfaces the first one on
  *     `state.recalledContext.priorReasoning` / `.summary`.
  *
- * `RecallContextNode.executeOne` is protected. Following the established
- * house pattern (`dispatcher-classify-node.test.ts`'s
- * `PublicClassifyMessageNode`), a test-only subclass widens it to public
- * so the test can invoke node logic directly without the DAG engine.
+ * `RecallContextNode` is exercised through `execute(Batch.of(state), context)`
+ * so the test covers the monadic batch contract directly.
  */
 
 import { test } from 'node:test';
@@ -26,7 +24,9 @@ import { RdfProvObserver } from '../../provenance/RdfProvObserver.ts';
 import { DAG_ENT, DAG_PRED, PROV, ProvIris, RDF_TYPE } from '../../provenance/PROV.ts';
 import type { ArchivistServices } from '../../services.ts';
 
-import { ReasoningStepBuilder } from '@studnicky/dagonizer';
+import { Clock, VirtualClockProvider, VirtualTimeCounter } from '@studnicky/clock';
+import { Batch, ReasoningStep } from '@studnicky/dagonizer';
+import { NodeContext } from '@studnicky/dagonizer/entities';
 
 // ── Stub implementations for never-called ArchivistServices ─────────────────
 
@@ -67,23 +67,11 @@ class NullLlm {
   async explainTool(): Promise<never>        { return Promise.reject(new Error('not called')); }
 }
 
-/**
- * Test-only widening of `RecallContextNode`'s protected `executeOne` to
- * public, mirroring `dispatcher-classify-node.test.ts`'s
- * `PublicClassifyMessageNode` convention already established in this
- * tests directory.
- */
-class PublicRecallContextNode extends RecallContextNode {
-  public override async executeOne(state: ArchivistState) {
-    return super.executeOne(state);
-  }
-}
-
 // ── Fixture ──────────────────────────────────────────────────────────────────
 
 /** Setup helpers for the reasoning-provenance unit tests. */
 class ReasoningProvFixture {
-  static makeRecallNode(memory: MemoryStore): PublicRecallContextNode {
+  static makeRecallNode(memory: MemoryStore): RecallContextNode {
     const services: ArchivistServices = {
       webSearch:        new NullTool(),
       googleBooks:      new NullTool(),
@@ -94,7 +82,11 @@ class ReasoningProvFixture {
       embedder:         null,
       nodeTimeouts:     {},
     };
-    return new PublicRecallContextNode(services);
+    return new RecallContextNode(services);
+  }
+
+  static context() {
+    return NodeContext.create('test-dag', 'recall-context', new AbortController().signal);
   }
 
   /** Writes one `dag:Reasoning` PROV entity directly, mirroring what `RdfProvObserver.recordReasoning` writes. */
@@ -134,8 +126,8 @@ void test('RdfProvObserver: records reasoning as dag:Reasoning quads', async () 
   const state = new ArchivistState();
   state.runId = 'run-a';
   state.reasoning = [
-    ReasoningStepBuilder.thought('checking cache'),
-    ReasoningStepBuilder.action('rankCandidates.llmTiebreak', { candidateCount: 3 }),
+    ReasoningStep.create({ 'kind': 'thought', 'text': 'checking cache' }),
+    ReasoningStep.create({ 'kind': 'action', 'tool': 'rankCandidates.llmTiebreak', 'args': { 'candidateCount': 3 } }),
   ];
 
   obs.recordNodeStart('rank-candidates');
@@ -191,14 +183,50 @@ void test('RdfProvObserver: records reasoning as dag:Reasoning quads', async () 
   assert.ok(kinds.includes('action'), 'action kind recorded');
 });
 
+void test('RdfProvObserver: uses the injected substrate clock for PROV timestamps', async () => {
+  const store = new MemoryStore();
+  const counter = VirtualTimeCounter.create({ 'startMs': 42_000 });
+  const clock = Clock.create(VirtualClockProvider.create(counter));
+  const obs = new RdfProvObserver({ store, runId: 'run-clock', dispatcherAgentId: 'dispatcher', clock, alreadyPersistedReasoning: [] });
+
+  obs.recordFlowStart('the-archivist');
+  obs.recordNodeStart('rank-candidates');
+  obs.recordNodeEnd('rank-candidates', 'ranked', []);
+
+  const graph = MemoryStore.provGraphIri('run-clock');
+  const nodeActivity = store.select({
+    subject:   '?activity',
+    predicate: MemoryStore.dagIri('nodeName'),
+    object:    MemoryStore.lit.str('rank-candidates'),
+    graph,
+  })[0]?.['activity'];
+  assert.ok(nodeActivity !== undefined, 'node activity is recorded');
+
+  const startedAt = store.select({
+    subject:   nodeActivity,
+    predicate: PROV.startedAtTime,
+    object:    '?timestamp',
+    graph,
+  })[0]?.['timestamp']?.value;
+  const endedAt = store.select({
+    subject:   nodeActivity,
+    predicate: PROV.endedAtTime,
+    object:    '?timestamp',
+    graph,
+  })[0]?.['timestamp']?.value;
+
+  assert.equal(startedAt, new Date(42_000).toISOString());
+  assert.equal(endedAt, new Date(42_000).toISOString());
+});
+
 void test('RdfProvObserver: idempotent on duplicate lifecycle fire', async () => {
   const store = new MemoryStore();
   const obs = new RdfProvObserver({ store, runId: 'run-b', dispatcherAgentId: 'dispatcher', alreadyPersistedReasoning: [] });
   const state = new ArchivistState();
   state.runId = 'run-b';
   state.reasoning = [
-    ReasoningStepBuilder.thought('first pass'),
-    ReasoningStepBuilder.action('webSearch.query', { query: 'Piranesi' }),
+    ReasoningStep.create({ 'kind': 'thought', 'text': 'first pass' }),
+    ReasoningStep.create({ 'kind': 'action', 'tool': 'webSearch.query', 'args': { 'query': 'Piranesi' } }),
   ];
 
   const graph = MemoryStore.provGraphIri('run-b');
@@ -245,7 +273,8 @@ void test('RecallContextNode: recall surfaces prior-run reasoning', async () => 
   state.query = 'existentialism fiction';
   state.terms = ['existentialism', 'fiction'];
 
-  await node.executeOne(state);
+  const routed = await node.execute(Batch.of(state), ReasoningProvFixture.context());
+  assert.equal(routed.get('recalled')?.size, 1, 'state routes to recalled');
 
   assert.ok(state.recalledContext.priorReasoning.length >= 1, 'at least one prior reasoning step recalled');
   const recalled = state.recalledContext.priorReasoning.find((r) => r.text === 'recalled thought text');
@@ -272,8 +301,8 @@ void test('RdfProvObserver: resume observer does not re-persist pre-park reasoni
   const state = new ArchivistState();
   state.runId = runId;
   state.reasoning = [
-    ReasoningStepBuilder.thought('pre-park step 0'),
-    ReasoningStepBuilder.thought('pre-park step 1'),
+    ReasoningStep.create({ 'kind': 'thought', 'text': 'pre-park step 0' }),
+    ReasoningStep.create({ 'kind': 'thought', 'text': 'pre-park step 1' }),
   ];
   preParkObserver.recordNodeStart('classify-intent');
   preParkObserver.recordNodeEnd('classify-intent', undefined, state.reasoning);
@@ -292,7 +321,7 @@ void test('RdfProvObserver: resume observer does not re-persist pre-park reasoni
 
   // The visitor's reply resolves the park; a new node appends one more
   // reasoning step on top of the two restored ones.
-  state.reasoning = [...state.reasoning, ReasoningStepBuilder.thought('post-resume step 2')];
+  state.reasoning = [...state.reasoning, ReasoningStep.create({ 'kind': 'thought', 'text': 'post-resume step 2' })];
 
   resumeObserver.recordNodeStart('compose-response');
   resumeObserver.recordNodeEnd('compose-response', undefined, state.reasoning);

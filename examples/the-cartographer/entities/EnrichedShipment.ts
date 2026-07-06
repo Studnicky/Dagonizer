@@ -25,6 +25,7 @@
 
 // #region enriched-shipment-entity
 import type { FromSchema } from 'json-schema-to-ts';
+import { Validator } from '@studnicky/dagonizer/validation';
 
 export const EnrichedShipmentSchema = {
   '$id': 'https://noocodex.dev/schemas/cartographer/EnrichedShipment',
@@ -131,16 +132,15 @@ export const EnrichedShipmentSchema = {
 
 export type EnrichedShipment = FromSchema<typeof EnrichedShipmentSchema>;
 
+const enrichedShipmentValidator = Validator.compile<EnrichedShipment>(EnrichedShipmentSchema);
+
 export class EnrichedShipmentGuard {
   /**
    * Type-guard for EnrichedShipment. Narrows `unknown` to the schema-derived type
    * by verifying required fields that consumers rely on after narrowing.
    */
   static is(value: unknown): value is EnrichedShipment {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-    if (!('shipmentId' in value) || typeof value.shipmentId !== 'string' || value.shipmentId.length === 0) return false;
-    if (!('routing' in value) || typeof value.routing !== 'object' || value.routing === null) return false;
-    return true;
+    return enrichedShipmentValidator.is(value);
   }
 }
 // #endregion enriched-shipment-entity

@@ -21,6 +21,7 @@
 
 // #region geo-error-record
 import type { FromSchema } from 'json-schema-to-ts';
+import { Validator } from '@studnicky/dagonizer/validation';
 
 export const GeoErrorRecordSchema = {
   '$id': 'https://noocodex.dev/schemas/cartographer/GeoErrorRecord',
@@ -37,6 +38,7 @@ export const GeoErrorRecordSchema = {
 } as const;
 
 export type GeoErrorRecordType = FromSchema<typeof GeoErrorRecordSchema>;
+const geoErrorRecordValidator = Validator.compile<GeoErrorRecordType>(GeoErrorRecordSchema);
 
 
 /** Longest `input` summary retained per record; longer summaries are truncated. */
@@ -50,13 +52,7 @@ export class GeoErrorRecord {
    * Type-guard for GeoErrorRecordType. Narrows `unknown` to the schema-derived type.
    */
   static is(value: unknown): value is GeoErrorRecordType {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-    return (
-      'source' in value && typeof value.source === 'string' &&
-      'variant' in value && typeof value.variant === 'string' &&
-      'message' in value && typeof value.message === 'string' &&
-      'input' in value && typeof value.input === 'string'
-    );
+    return geoErrorRecordValidator.is(value);
   }
 
   /**

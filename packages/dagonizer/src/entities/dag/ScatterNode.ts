@@ -38,7 +38,8 @@
  *   second, independent `Throttle` concurrency window on top of the
  *   semaphore: the semaphore still caps how far the pull loop runs ahead of
  *   dispatch capacity, while `throttle.concurrencyLimit` further paces the
- *   actual item-execution calls.
+ *   actual item-execution calls. `throttle.adaptive`, when present, passes
+ *   substrate adaptive concurrency tuning directly to `Throttle`.
  * - `{ mode: 'reservoir', concurrency?, reservoir }`: items are buffered by
  *   `reservoir.keyField` and released as a batch per key when `capacity` is
  *   reached, `idleMs` elapses, or the source drains. `concurrency` still
@@ -47,9 +48,27 @@
  *   maximum number of items. There is no `throttle` field in this mode.
  */
 
+import type { AdaptiveConfigEntity } from '@studnicky/throttle';
 import type { FromSchema } from 'json-schema-to-ts';
 
 import { GatherConfigSchema } from './GatherConfig.js';
+
+const ScatterThrottleAdaptiveSchema = {
+  'type': 'object',
+  'required': ['enabled'],
+  'properties': {
+    'enabled': { 'type': 'boolean' },
+    'targetLatencyMs': { 'type': 'number', 'exclusiveMinimum': 0 },
+    'minConcurrency': { 'type': 'integer', 'minimum': 1 },
+    'maxConcurrency': { 'type': 'integer', 'minimum': 1 },
+    'sampleWindow': { 'type': 'integer', 'minimum': 1 },
+    'adjustmentInterval': { 'type': 'integer', 'minimum': 1 },
+    'scaleUpThreshold': { 'type': 'number', 'exclusiveMinimum': 0 },
+    'scaleDownThreshold': { 'type': 'number', 'exclusiveMinimum': 0 },
+    'stepSize': { 'type': 'integer', 'minimum': 1 },
+  },
+  'additionalProperties': false,
+} as const;
 
 export const ScatterNodeSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterNode',
@@ -128,6 +147,7 @@ export const ScatterNodeSchema = {
               'required': ['concurrencyLimit'],
               'properties': {
                 'concurrencyLimit': { 'type': 'integer', 'minimum': 1 },
+                'adaptive': ScatterThrottleAdaptiveSchema,
               },
               'additionalProperties': false,
             },
@@ -187,6 +207,7 @@ const SCATTER_CONCURRENCY_DEFAULT = 1;
  */
 export type ScatterThrottleOptionsType = {
   concurrencyLimit: number;
+  adaptive?: AdaptiveConfigEntity.AdaptiveConfigInputType;
 } | null;
 
 /**
@@ -230,7 +251,12 @@ export class ScatterNodeDefaults {
       return {
         'mode': 'item',
         'concurrency': execution?.concurrency ?? SCATTER_CONCURRENCY_DEFAULT,
-        'throttle': execution?.throttle !== undefined ? { 'concurrencyLimit': execution.throttle.concurrencyLimit } : null,
+        'throttle': execution?.throttle !== undefined
+          ? {
+              'concurrencyLimit': execution.throttle.concurrencyLimit,
+              ...(execution.throttle.adaptive !== undefined ? { 'adaptive': execution.throttle.adaptive } : {}),
+            }
+          : null,
       };
     }
     return {

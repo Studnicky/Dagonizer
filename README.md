@@ -22,7 +22,7 @@ The full documentation is published at **https://studnicky.github.io/Dagonizer/*
 
 Node.js >= 24 (matches `engines.node` in `package.json`).
 
-## Plugin ecosystem (v0.10.0+)
+## Plugin ecosystem (v0.30.0+)
 
 Dagonizer ships as a workspace of independently versioned plugins:
 

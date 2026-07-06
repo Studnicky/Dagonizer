@@ -1,6 +1,6 @@
 ---
-title: 'Example 29: AgentBuilder'
-description: 'AgentBuilder.loop — assemble the canonical 8-node agent loop into a DAGType in one call.'
+title: 'Example 29: Agent DAG with JSON-LD'
+description: 'Author the canonical 8-node agent loop as a JSON-LD DAG and register it on the dispatcher.'
 seeAlso:
   - text: 'Guide: Agent loop'
     link: '../guide/conversational#agent-loop'
@@ -16,24 +16,24 @@ seeAlso:
     description: 'A full multi-branch agent application built on Dagonizer'
 ---
 
-# Example 29: AgentBuilder
+# Example 29: Agent DAG with JSON-LD
 
-`AgentBuilder.loop(nodes, options?)` assembles the canonical 8-node agent
-loop into a `DAGType` ready for `dispatcher.registerDAG(dag)`. The topology —
-placement names, route maps, scatter configuration, terminal outcomes — is
-owned by `AgentBuilder`; callers only subclass the 8 abstract base nodes to
-adapt how state is read and written.
+Agents are DAGs. The canonical 8-node agent loop is authored directly as
+JSON-LD and registered like any other `DAGType`. The topology —
+placement names, route maps, scatter configuration, terminal outcomes — stays
+visible at the authoring site while the 8 abstract base nodes adapt how state
+is read and written.
 
-## Why AgentBuilder exists
+## Why the agent DAG exists
 
 Every LLM agent loop repeats the same structure: build a chat request, send
 it to the model, inspect the variant of the response, decode any embedded tool
 calls, validate them, partition them into safe/exclusive worksets, scatter
 dispatch, gather results, loop back. Three independent consumers rebuilt this
-topology from scratch before `AgentBuilder` was introduced.
+topology from scratch.
 
-`AgentBuilder.loop` captures the verified topology in one place. Consumers
-subclass; they do not re-wire.
+The JSON-LD DAG lives in `examples/dags/29-agent-dag.ts`, and the runnable example imports it as a first-class
+runtime artifact.
 
 ## The 8-node topology
 
@@ -63,8 +63,8 @@ runtime. `CollectToolResultsNode` runs after the gather and loops back to
 ## Import
 
 ```ts
+import { Dagonizer } from '@studnicky/dagonizer';
 import {
-  AgentBuilder,
   AppendAssistantNode,
   BuildChatRequestNode,
   BuildToolWorksetsNode,
@@ -74,7 +74,7 @@ import {
   NormalizeResponseNode,
   NormalizeToolCallsNode,
 } from '@studnicky/dagonizer/patterns';
-import type { AgentLoopNodesType, AgentLoopOptionsType } from '@studnicky/dagonizer/patterns';
+import { dag as agentDag } from './dags/29-agent-dag.ts';
 ```
 
 ## Subclassing the 8 abstract base nodes
@@ -104,10 +104,10 @@ class MyCallModelNode extends CallModelNode<AgentState> {
 }
 ```
 
-## Calling AgentBuilder.loop
+## Authoring the agent DAG
 
 ```ts
-const nodes: AgentLoopNodesType = {
+const nodes = {
   chatRequest:         new MyBuildChatRequestNode(),
   callModel:           new MyCallModelNode(llm),
   normalizeResponse:   new MyNormalizeResponseNode(),
@@ -118,11 +118,10 @@ const nodes: AgentLoopNodesType = {
   appendAssistant:     new MyAppendAssistantNode(),
 };
 
-const dag = AgentBuilder.loop(nodes, { name: 'my-agent', version: '1' });
 ```
 
-`options.name` defaults to `'agent-loop'`; `options.version` defaults to `'1'`.
-Override both when multiple agent loops coexist in the same dispatcher.
+Use distinct DAG names and versions when multiple agent loops coexist in the
+same dispatcher.
 
 ## Wiring the dispatcher
 
@@ -142,19 +141,20 @@ dispatcher.registerNode(nodes.appendAssistant);
 // Register tool DAGs (each tool:<name> synthesized by ToolRegistry).
 dispatcher.registerBundle(toolRegistry.bundle());
 
-// Register the assembled agent-loop DAG.
-dispatcher.registerDAG(dag);
+// Register the authored agent DAG.
+dispatcher.registerDAG(agentDag);
 ```
 
 ## Code
 
-<<< @/../examples/29-agent-builder.ts
+The runnable example keeps the same node subclasses, dispatcher registration,
+and stub LLM adapter as the snippet above.
 
 ## What it demonstrates
 
-- **`AgentBuilder.loop(nodes, options?)`** — one call assembles the full 8-node
-  agent loop topology. The returned `DAGType` is data-only; it carries no
-  runtime state.
+- **Agent DAG authoring from JSON-LD** — the full 8-node agent loop topology
+  is an explicit JSON-LD `DAGType` artifact. The returned `DAGType` is
+  data-only; it carries no runtime state.
 - **Template-method pattern** — each abstract base node separates framework
   concerns (execution, error wrapping, routing) from domain concerns (state
   reads and writes). Subclasses override only the abstract template methods.
@@ -168,7 +168,7 @@ dispatcher.registerDAG(dag);
 ## Run
 
 ```bash
-npx tsx examples/29-agent-builder.ts
+npx tsx examples/29-agent-dag.ts
 ```
 
 No external dependencies required; the example uses a stub LLM adapter that

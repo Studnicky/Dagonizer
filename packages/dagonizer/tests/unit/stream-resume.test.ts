@@ -126,6 +126,18 @@ class BlockingProducer<T> implements StreamProducerInterface<T> {
   }
 }
 
+class ThrowingProducer<T> implements StreamProducerInterface<T>, ResumableStreamProducerInterface<T> {
+  readonly #error: unknown;
+
+  constructor(error: unknown) {
+    this.#error = error;
+  }
+
+  produce(_sink: StreamSinkInterface<T>, _resumeAfter?: number): Promise<void> {
+    throw this.#error;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // (1) StreamCursor.resumeAfter — fresh state returns 0
 // ---------------------------------------------------------------------------
@@ -198,6 +210,16 @@ void describe('StreamChannel.resumable', () => {
     assert.deepStrictEqual(items, [0, 1, 2, 3]);
   });
 
+  void it('synchronous producer throw fails the returned channel', async () => {
+    const sentinel = new Error('resumable-sync-throw');
+    const channel = StreamChannel.resumable(new ThrowingProducer<number>(sentinel), 5);
+
+    await assert.rejects(
+      () => AsyncDrain.collect(channel),
+      (err: unknown) => err === sentinel,
+    );
+  });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -267,6 +289,16 @@ void describe('StreamChannel.fanIn: first producer rejects', () => {
     assert.strictEqual(caught, sentinel, 'for-await must reject with the producer error');
     // We may or may not have collected some items before the error surfaces;
     // the important assertion is the error identity.
+  });
+
+  void it('synchronous producer throw fails the returned channel', async () => {
+    const sentinel = new Error('fanin-sync-throw');
+    const channel = StreamChannel.fanIn([new ThrowingProducer<number>(sentinel)]);
+
+    await assert.rejects(
+      () => AsyncDrain.collect(channel),
+      (err: unknown) => err === sentinel,
+    );
   });
 
 });

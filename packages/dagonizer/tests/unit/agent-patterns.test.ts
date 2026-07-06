@@ -20,7 +20,7 @@ import type { StreamSinkInterface } from '../../src/contracts/StreamSinkInterfac
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ChatRequestType } from '../../src/entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../../src/entities/adapter/ChatResponse.js';
-import { ChatStreamChunkBuilder } from '../../src/entities/adapter/ChatStreamChunk.js';
+import { ChatStreamChunk } from '../../src/entities/adapter/ChatStreamChunk.js';
 import type { ChatStreamChunkType } from '../../src/entities/adapter/ChatStreamChunk.js';
 import type { ToolCallType } from '../../src/entities/adapter/ToolCall.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
@@ -138,7 +138,7 @@ class FakeTextToolAdapter {
   ): Promise<ChatResponseType> {
     const response = await this.chat(request);
     if (response.message.variant === 'text') {
-      await sink.push(ChatStreamChunkBuilder.of(response.message.content));
+      await sink.push(ChatStreamChunk.create(response.message.content));
     }
     return response;
   }

@@ -25,14 +25,13 @@
  * the worker thread, not the parent.
  */
 
-import { ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode } from '@studnicky/dagonizer';
+import type { Batch, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 import type {
   RegistryBundleInterface,
   RegistryModuleInterface,
 } from '@studnicky/dagonizer/contracts';
-import { NodeOutputBuilder } from '@studnicky/dagonizer/entities';
-import type { JsonObjectType, NodeContextType, NodeOutputType } from '@studnicky/dagonizer/entities';
+import type { JsonObjectType, NodeContextType } from '@studnicky/dagonizer/entities';
 import { ConformanceRegistry } from '@studnicky/dagonizer/testing';
 import type { ConformanceState } from '@studnicky/dagonizer/testing';
 
@@ -45,7 +44,7 @@ export const KILL_ITEM = 20;
  * result — the silent-death simulation. Reads the current item from metadata
  * via the node context's itemKey ('currentItem').
  */
-class ScatterKillerNode extends ScalarNode<ConformanceState, 'done'> {
+class ScatterKillerNode extends MonadicNode<ConformanceState, 'done'> {
   readonly 'name' = 'scatter-counter';
   readonly 'outputs' = ['done'] as const;
 
@@ -53,16 +52,21 @@ class ScatterKillerNode extends ScalarNode<ConformanceState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ConformanceState, _context: NodeContextType): Promise<NodeOutputType<'done'>> {
-    const current = state.getMetadata('currentItem');
-    if (current === KILL_ITEM) {
-      // Silent death: terminate this worker thread mid-request. No result is
-      // sent. The parent's exit listener is the only thing that unblocks the
-      // pending request. Give the event loop nothing else to do first.
-      process.exit(7);
+  override async execute(
+    batch: Batch<ConformanceState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'done', ConformanceState>> {
+    for (const item of batch) {
+      const current = item.state.getMetadata('currentItem');
+      if (current === KILL_ITEM) {
+        // Silent death: terminate this worker thread mid-request. No result is
+        // sent. The parent's exit listener is the only thing that unblocks the
+        // pending request. Give the event loop nothing else to do first.
+        process.exit(7);
+      }
+      item.state.value += 1;
     }
-    state.value += 1;
-    return NodeOutputBuilder.of('done');
+    return new Map([['done', batch]]);
   }
 }
 

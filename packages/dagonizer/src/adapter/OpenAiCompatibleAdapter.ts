@@ -20,8 +20,11 @@
  * error signal, causing the adapter to retry the request without tools.
  */
 
+import { Signal } from '@studnicky/signal';
+import { Guard } from '@studnicky/types';
+
 import type { StreamSinkInterface } from '../contracts/StreamSinkInterface.js';
-import { ChatStreamChunkBuilder } from '../entities/adapter/ChatStreamChunk.js';
+import { ChatStreamChunk } from '../entities/adapter/ChatStreamChunk.js';
 import type { ChatStreamChunkType } from '../entities/adapter/ChatStreamChunk.js';
 import type { LlmModelType } from '../entities/adapter/LlmModel.js';
 import type { OpenAiResponseBodyType } from '../entities/adapter/OpenAiResponseBody.js';
@@ -31,7 +34,7 @@ import { Validator } from '../validation/Validator.js';
 import { BaseAdapter } from './BaseAdapter.js';
 import { DEFAULT_BASE_DELAY_MS, DEFAULT_MAX_ATTEMPTS } from './BaseAdapterCore.js';
 import {
-  ChatResponseMessageBuilder,
+  ChatResponseMessage,
   ZERO_TOKEN_USAGE,
 } from './LlmAdapter.js';
 import type {
@@ -85,8 +88,9 @@ export type OpenAiCompatibleAdapterOptionsType = {
   readonly baseDelayMs?: number;
   /**
    * Default system prompt the base injects as the leading turn of any request
-   * that carries no system message of its own. Consumer-supplied persona/format
-   * framing; empty (the default) means no injection.
+   * that carries no system message of its own. The directive can include
+   * persona, format, or language framing; empty (the default) means no
+   * injection.
    */
   readonly systemPrompt?: string;
 }
@@ -128,11 +132,10 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
    * violation — never throws (mirrors `probe` discipline).
    */
   override async listModels(options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
-    const signals: AbortSignal[] = [controller.signal];
-    if (options?.signal !== undefined) signals.push(options.signal);
-    const signal = AbortSignal.any(signals);
+    const signal = Signal.compose({
+      'deadlineMs': DISCOVERY_TIMEOUT_MS,
+      ...(options?.signal !== undefined ? { 'signal': options.signal } : {}),
+    });
 
     try {
       const res = await fetch(this.#config.modelsEndpoint, {
@@ -151,8 +154,6 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
         .map((entry) => ({ 'name': entry.id, 'variant': 'chat' as const, 'cloud': true, 'costRank': ModelCost.rankFromOpenAiEntry(entry) }));
     } catch {
       return [];
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
@@ -311,7 +312,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
           const delta = choice.delta?.content ?? '';
           if (delta.length > 0) {
             text += delta;
-            await this.pushChunk(sink, ChatStreamChunkBuilder.of(delta));
+            await this.pushChunk(sink, ChatStreamChunk.create(delta));
           }
           if (choice.finish_reason === 'length') finishReason = 'length';
         }
@@ -330,7 +331,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
     }
 
     return {
-      'message': ChatResponseMessageBuilder.from(text, []),
+      'message': ChatResponseMessage.create(text, []),
       'finishReason': finishReason,
       'usage': usage,
     };
@@ -448,7 +449,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
       ? 'tool_call'
       : choice?.finish_reason === 'length' ? 'length' : 'stop';
     return {
-      'message': ChatResponseMessageBuilder.from(text, toolCalls),
+      'message': ChatResponseMessage.create(text, toolCalls),
       'finishReason': finishReason,
       'usage': payload.usage !== undefined
         ? { 'promptTokens': payload.usage.prompt_tokens ?? 0, 'completionTokens': payload.usage.completion_tokens ?? 0 }
@@ -479,7 +480,7 @@ export class OpenAiCompatibleAdapter extends BaseAdapter {
 
   /** A non-null, non-array object — the JSON-object ingest shape. */
   static #isJsonObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
+    return Guard.isRecord(value);
   }
 
   /** Pre-configured adapter for Groq (api.groq.com). Uses max_completion_tokens. */

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequest } from '@studnicky/dagonizer/adapter';
 import { EchoAdapter } from '../dags/custom-adapter.ts';
 
 class MessageReader {
@@ -15,7 +15,7 @@ class MessageReader {
 describe('custom-adapter: EchoAdapter echoes the last user message', () => {
   it('echoes user message content with "echo:" prefix', async () => {
     const adapter = new EchoAdapter();
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       messages: [{ role: 'user', content: 'hello' }],
     });
     const response = await adapter.chat(request);
@@ -29,7 +29,7 @@ describe('custom-adapter: EchoAdapter echoes the last user message', () => {
 
   it('handles multiple messages and echoes the last user message', async () => {
     const adapter = new EchoAdapter();
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       messages: [
         { role: 'user', content: 'first message' },
         { role: 'assistant', content: 'got it' },
@@ -47,7 +47,7 @@ describe('custom-adapter: EchoAdapter echoes the last user message', () => {
 
   it('returns finishReason of "stop"', async () => {
     const adapter = new EchoAdapter();
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       messages: [{ role: 'user', content: 'ping' }],
     });
     const response = await adapter.chat(request);
@@ -57,7 +57,7 @@ describe('custom-adapter: EchoAdapter echoes the last user message', () => {
 
   it('returns zero token usage', async () => {
     const adapter = new EchoAdapter();
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       messages: [{ role: 'user', content: 'ping' }],
     });
     const response = await adapter.chat(request);
@@ -68,7 +68,7 @@ describe('custom-adapter: EchoAdapter echoes the last user message', () => {
 
   it('handles no user message gracefully', async () => {
     const adapter = new EchoAdapter();
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       messages: [{ role: 'assistant', content: 'hello' }],
     });
     const response = await adapter.chat(request);

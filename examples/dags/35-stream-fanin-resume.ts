@@ -5,13 +5,15 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeOutputType } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer';
 import type {
   ResumableStreamProducerInterface,
   StreamProducerInterface,
@@ -83,7 +85,7 @@ export class AbortCoordinator {
 // Worker nodes
 // ---------------------------------------------------------------------------
 
-export class CollectNode extends ScalarNode<FanInState, 'done'> {
+export class CollectNode extends MonadicNode<FanInState, 'done'> {
   readonly name    = 'collect';
   readonly outputs = ['done'] as const;
 
@@ -91,9 +93,11 @@ export class CollectNode extends ScalarNode<FanInState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: FanInState) {
-    state.item = state.getter.number('fan-item', 0);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<FanInState>) {
+    for (const item of batch) {
+      item.state.item = item.state.getter.number('fan-item', 0);
+    }
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -103,7 +107,7 @@ export class CollectNode extends ScalarNode<FanInState, 'done'> {
  * each completion. The coordinator fires the run-level abort when the configured
  * threshold is reached.
  */
-export class AbortingCollectNode extends ScalarNode<FanInState, 'done'> {
+export class AbortingCollectNode extends MonadicNode<FanInState, 'done'> {
   readonly name    = 'collect';
   readonly outputs = ['done'] as const;
   readonly #coordinator: AbortCoordinator;
@@ -117,20 +121,22 @@ export class AbortingCollectNode extends ScalarNode<FanInState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(
-    state: FanInState,
+  override async execute(
+    batch: Batch<FanInState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<'done'>> {
-    await new Promise<void>((resolve, reject) => {
-      const handle = setTimeout(resolve, 2);
-      context.signal.addEventListener('abort', () => {
-        clearTimeout(handle);
-        reject(context.signal.reason);
-      }, { 'once': true });
-    });
-    state.item = state.getter.number('fan-item', 0);
-    this.#coordinator.tick();
-    return NodeOutputBuilder.of('done');
+  ) {
+    for (const item of batch) {
+      await new Promise<void>((resolve, reject) => {
+        const handle = setTimeout(resolve, 2);
+        context.signal.addEventListener('abort', () => {
+          clearTimeout(handle);
+          reject(context.signal.reason);
+        }, { 'once': true });
+      });
+      item.state.item = item.state.getter.number('fan-item', 0);
+      this.#coordinator.tick();
+    }
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

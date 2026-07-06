@@ -12,8 +12,9 @@
  * (a deterministic recovery node); no engine `timeoutMs` crutch.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, RoutedBatch } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -22,7 +23,7 @@ import { COMPOSE_TIMEOUT_MS } from './composeResponse.ts';
 /** Total attempts (initial + retries) before routing to salvage. */
 const RETRY_BUDGET = 3;
 
-export class ComposeMemoryResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
+export class ComposeMemoryResponseNode extends MonadicNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
   readonly name = 'compose-memory-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
 
@@ -39,35 +40,53 @@ export class ComposeMemoryResponseNode extends ScalarNode<ArchivistState, 'draft
     };
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
-    const recalledSummary = state.recalledContext.summary.length > 0
-      ? state.recalledContext.summary
-      : undefined;
-    const conversation = state.conversation.length > 0 ? state.conversation : undefined;
+  override async execute(batch: Batch<ArchivistState>, context: NodeContextType) {
+    const draftedItems: ItemType<ArchivistState>[] = [];
+    const retryItems: ItemType<ArchivistState>[] = [];
+    const salvageItems: ItemType<ArchivistState>[] = [];
 
-    const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS);
-    const signal = AbortSignal.any([context.signal, controller.signal]);
-    try {
-      state.draft = await this.services.llm.composeMemoryRecall(
-        state.query,
-        state.memoryDigest,
-        recalledSummary,
-        conversation,
-        signal,
-      );
-      state.clearAttempts(context.nodeName);
-      return NodeOutputBuilder.of('drafted');
-    } catch (err) {
-      if (context.signal.aborted) throw err;
-      if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        return NodeOutputBuilder.of('retry');
+    for (const item of batch) {
+      const { state } = item;
+      const recalledSummary = state.recalledContext.summary.length > 0
+        ? state.recalledContext.summary
+        : undefined;
+      const conversation = state.conversation.length > 0 ? state.conversation : undefined;
+
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? COMPOSE_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
+      try {
+        state.draft = await this.services.llm.composeMemoryRecall(
+          state.query,
+          state.memoryDigest,
+          recalledSummary,
+          conversation,
+          signal,
+        );
+        state.clearAttempts(context.nodeName);
+        const result = NodeOutput.create('drafted');
+        for (const error of result.errors) state.collectError(error);
+        draftedItems.push(item);
+      } catch (err) {
+        if (context.signal.aborted) throw err;
+        if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
+          const result = NodeOutput.create('retry');
+          for (const error of result.errors) state.collectError(error);
+          retryItems.push(item);
+        } else {
+          state.clearAttempts(context.nodeName);
+          const result = NodeOutput.create('salvage');
+          for (const error of result.errors) state.collectError(error);
+          salvageItems.push(item);
+        }
       }
-      state.clearAttempts(context.nodeName);
-      return NodeOutputBuilder.of('salvage');
-    } finally {
-      clearTimeout(handle);
     }
+
+    const routes: Array<readonly ['drafted' | 'retry' | 'salvage', Batch<ArchivistState>]> = [];
+    if (draftedItems.length > 0) routes.push(['drafted', Batch.from(draftedItems)]);
+    if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
+    if (salvageItems.length > 0) routes.push(['salvage', Batch.from(salvageItems)]);
+    return RoutedBatch.create(routes);
   }
 }
-

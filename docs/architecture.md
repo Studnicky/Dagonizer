@@ -119,14 +119,13 @@ flowchart TB
   end
 ```
 
-### Node taxonomy
+### Node base
 
-Two abstract base classes cover the authoring surface:
+One abstract base class covers the authoring surface:
 
-- **`MonadicNode<TState, TOutput>`** — the root node base. Implements `NodeInterface` and supplies `name` / `outputs` / `outputSchema` / `timeout` / `validate` / `destroy`, leaving `execute(batch)` abstract. Extend directly for **batch-native** nodes — the hot path where one call processes the whole batch and shares caches across items.
-- **`ScalarNode<TState, TOutput>`** — extends `MonadicNode`. You implement `protected executeOne(state, context): Promise<NodeOutputType<TOutput>>`; the base loops it over the batch and groups items by returned port. This is the common per-item case.
+- **`MonadicNode<TState, TOutput>`** — implements `NodeInterface` and supplies `timeout` / `validate` / `destroy` defaults. Concrete nodes declare `name`, `outputs`, `outputSchema`, and `execute(batch, context)`. Batch-native nodes process the whole batch in one call; per-item nodes keep the item loop inside `execute` and return the same `RoutedBatchType`.
 
-`MonadicNode` ships from `@studnicky/dagonizer/patterns` alongside the agent-flow template-method bases; `ScalarNode` ships from `@studnicky/dagonizer` (the root barrel).
+`MonadicNode` ships from `@studnicky/dagonizer` and `@studnicky/dagonizer/core`; `@studnicky/dagonizer/patterns` re-exports it for co-import with the agent-flow template-method bases.
 
 #### `dagFrom` — runtime DAG resolution
 
@@ -179,7 +178,7 @@ Timestamps are monotonic milliseconds from `Clock.monotonicMs()`. Use them for d
 `Dagonizer.execute()` wraps an async generator in an `Execution<TState>` instance. The generator:
 
 1. Resolves the DAG from the registry.
-2. Composes `signal` and `deadlineMs` into one `AbortSignal` via `AbortSignal.any()`.
+2. Composes `signal` and `deadlineMs` into one `AbortSignal` via `Signal.compose(...)`.
 3. Marks state `running`.
 4. Iterates the node graph: look up the current node, call `executeDAGNode`, yield the result, follow the routing to the next node name.
 5. For `EmbeddedDAGNode` and `ScatterNode` placements that declare a `container` role, the dispatcher resolves the bound `DagContainerInterface` and delegates the sub-DAG execution to that backend. The child state crosses the boundary as a snapshot; the backend runs the sub-DAG to completion and returns the terminal snapshot; the dispatcher applies it in-place and continues. An unbound role resolves to the in-process recursive path.
@@ -230,7 +229,7 @@ Embedded and contained child DAGs never publish — only the top-level host does
 dispatcher.execute(dag, state, { signal, deadlineMs })
         │
         ▼
-AbortSignal.any([signal, AbortSignal.timeout(deadlineMs)])
+Signal.compose({ signal, deadlineMs })
         │
         ▼
 node.execute(state, { signal: composedSignal, dagName, nodeName })
@@ -333,7 +332,7 @@ Class extension is the only extension mechanism. Zero callbacks. Zero function-p
 
 - **Observability**: subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`). Multi-observer composition is the consumer's responsibility; write it into the subclass.
 - **Domain state**: subclass `NodeStateBase`. Override `snapshotData()` and `restoreData()` for checkpointable fields.
-- **Nodes**: implement `NodeInterface<TState, TOutput>`. Nodes receive their dependencies through their constructors. Nodes never throw; they return a routed batch. Extend `ScalarNode` and implement `executeOne` for the per-item case.
+- **Nodes**: extend `MonadicNode<TState, TOutput>` or implement `NodeInterface<TState, TOutput>` directly. Nodes receive their dependencies through their constructors. Nodes never throw; they return a routed batch from `execute(batch, context)`.
 - **Time and scheduling**: implement `ClockProviderInterface` and `SchedulerProviderInterface`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` and `VirtualScheduler` for deterministic time.
 - **Isolating compute**: implement `DagContainerInterface` to run an embedded DAG or scatter-dag-body in any isolate. Bind roles to backend instances at dispatcher construction via `options.containers`. The `@studnicky/dagonizer-executor-node` package ships `WorkerThreadContainer`, `ForkContainer`, `ClusterContainer`, and `SpawnContainer` for Node.js deployments.
 - **Cross-host egress**: implement `HandoffChannelInterface` to publish `DAGHandoff` envelopes to any transport (queue, message bus, HTTP endpoint). Bind to terminal names at construction via `options.channels`. `InMemoryChannel` (from `./channels`) is the reference implementation for tests and demos.

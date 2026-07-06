@@ -19,14 +19,12 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
+import { NodeOutput } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { ToolInterface } from '../../src/tool/ToolInterface.js';
@@ -52,7 +50,7 @@ class ContractState extends NodeStateBase {
  * sets `state.name = ''` (empty string, fails minLength). This simulates a
  * contract violation when validateOutputs is true.
  */
-class ViolatingNode extends ScalarNode<ContractState, 'done' | 'error'> {
+class ViolatingNode extends MonadicNode<ContractState, 'done' | 'error'> {
   readonly name = 'violating-node';
   readonly outputs = ['done', 'error'] as const;
 
@@ -67,20 +65,25 @@ class ViolatingNode extends ScalarNode<ContractState, 'done' | 'error'> {
     };
   }
 
-  protected async executeOne(
-    state: ContractState,
+  override async execute(
+    batch: Batch<ContractState>,
     _context: NodeContextType,
-  ): Promise<NodeOutputType<'done' | 'error'>> {
-    // Sets name to '' — violates minLength: 3
-    state.name = '';
-    return NodeOutputBuilder.of('done');
+  ): Promise<RoutedBatchType<'done' | 'error', ContractState>> {
+    const routedItems: ItemType<ContractState>[] = [];
+    for (const item of batch) {
+      item.state.name = '';
+      const result = NodeOutput.create('done');
+      for (const error of result.errors) item.state.collectError(error);
+      routedItems.push(item);
+    }
+    return new Map([['done', Batch.from(routedItems)]]);
   }
 }
 
 /**
  * A node whose output satisfies its declared outputSchema.
  */
-class ConformingNode extends ScalarNode<ContractState, 'done' | 'error'> {
+class ConformingNode extends MonadicNode<ContractState, 'done' | 'error'> {
   readonly name = 'conforming-node';
   readonly outputs = ['done', 'error'] as const;
 
@@ -95,13 +98,18 @@ class ConformingNode extends ScalarNode<ContractState, 'done' | 'error'> {
     };
   }
 
-  protected async executeOne(
-    state: ContractState,
+  override async execute(
+    batch: Batch<ContractState>,
     _context: NodeContextType,
-  ): Promise<NodeOutputType<'done' | 'error'>> {
-    // Sets name to a value satisfying minLength: 3
-    state.name = 'ok!';
-    return NodeOutputBuilder.of('done');
+  ): Promise<RoutedBatchType<'done' | 'error', ContractState>> {
+    const routedItems: ItemType<ContractState>[] = [];
+    for (const item of batch) {
+      item.state.name = 'ok!';
+      const result = NodeOutput.create('done');
+      for (const error of result.errors) item.state.collectError(error);
+      routedItems.push(item);
+    }
+    return new Map([['done', Batch.from(routedItems)]]);
   }
 }
 
@@ -109,7 +117,7 @@ class ConformingNode extends ScalarNode<ContractState, 'done' | 'error'> {
  * A node whose outputSchema is missing an entry for the `'skip'` port.
  * Registering this node must throw DAGError (structural enforcement at registerNode).
  */
-class MissingPortSchemaNode extends ScalarNode<ContractState, 'done' | 'skip' | 'error'> {
+class MissingPortSchemaNode extends MonadicNode<ContractState, 'done' | 'skip' | 'error'> {
   readonly name = 'missing-port-schema';
   readonly outputs = ['done', 'skip', 'error'] as const;
 
@@ -121,11 +129,15 @@ class MissingPortSchemaNode extends ScalarNode<ContractState, 'done' | 'skip' | 
     };
   }
 
-  protected async executeOne(
-    _state: ContractState,
+  override async execute(
+    batch: Batch<ContractState>,
     _context: NodeContextType,
-  ): Promise<NodeOutputType<'done' | 'skip' | 'error'>> {
-    return NodeOutputBuilder.of('done');
+  ): Promise<RoutedBatchType<'done' | 'skip' | 'error', ContractState>> {
+    const result = NodeOutput.create<'done' | 'skip' | 'error'>('done');
+    for (const item of batch) {
+      for (const error of result.errors) item.state.collectError(error);
+    }
+    return new Map([[result.output, batch]]);
   }
 }
 
@@ -199,10 +211,10 @@ class StrictInputTool implements ToolInterface<Record<string, unknown>, unknown>
 // ── Batch-native MonadicNode fixture ─────────────────────────────────────────
 
 /**
- * A batch-native node extending MonadicNode directly (not ScalarNode).
+ * A batch-native node extending MonadicNode directly.
  * Sets state.name = '' on every item — violates minLength: 3 on the 'done' port.
  * Used to verify that validation is applied uniformly at the dispatch funnel,
- * not just inside ScalarNode.
+ * not just inside item-oriented nodes.
  */
 class BatchViolatingNode extends MonadicNode<ContractState, 'done' | 'error'> {
   readonly name = 'batch-violating-node';

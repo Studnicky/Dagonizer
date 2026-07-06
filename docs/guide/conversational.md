@@ -1,6 +1,6 @@
 ---
 title: 'Conversational & interactive nodes'
-description: 'Patterns for slot-filling, turn-based dialogs, human-in-the-loop workflows, and the canonical 8-node agent loop (AgentBuilder) within a DAG.'
+description: 'Patterns for slot-filling, turn-based dialogs, human-in-the-loop workflows, and the canonical 8-node agent loop authored as a DAG.'
 seeAlso:
   - text: 'State & metadata'
     link: './shared-state'
@@ -11,8 +11,8 @@ seeAlso:
   - text: 'Dependency injection'
     link: './services'
     description: 'inject IO adapters via node constructors'
-  - text: 'Example 29: AgentBuilder'
-    link: '../examples/29-agent-builder'
+  - text: 'Example 29: Agent DAG'
+    link: '../examples/29-agent-dag'
     description: 'working example of the 8-node agent loop with stub LLM'
   - text: 'ReAct agent: streaming + provenance recall'
     link: './react-agent'
@@ -87,53 +87,68 @@ export class HandoffMachine {
 }
 
 // IntakeNode.ts — the interactive node
-import type { NodeInterface } from '@studnicky/dagonizer';
-import type { NodeOutputType } from '@studnicky/dagonizer/entities';
-import { NodeOutputBuilder } from '@studnicky/dagonizer/entities';
+import { Batch, MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { ItemType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
+import type { NodeContextType } from '@studnicky/dagonizer/entities';
 
-export class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'success'> {
+export class IntakeNode extends MonadicNode<TripState, 'incomplete' | 'success'> {
   readonly name = 'intake';
-  readonly outputs = ['incomplete', 'success'] as const;
+  readonly outputs: readonly ('incomplete' | 'success')[] = ['incomplete', 'success'];
 
-  constructor(private readonly llm: LLMAdapter) {}
+  constructor(private readonly llm: LLMAdapter) {
+    super();
+  }
+
+  override get outputSchema(): Record<'incomplete' | 'success', SchemaObjectType> {
+    return MonadicNode.permissiveSchema(this.outputs);
+  }
 
   async execute(batch: Batch<TripState>, context: NodeContextType): Promise<RoutedBatchType<'incomplete' | 'success', TripState>> {
-    // Nodes implement execute over a Batch; this shows the per-item pattern for clarity.
-    // In practice, extend ScalarNode and implement executeOne instead.
-    const state = batch.items[0].state;
+    // Nodes implement execute over a Batch; this node owns its per-item routing locally.
+    const incomplete: ItemType<TripState>[] = [];
+    const success: ItemType<TripState>[] = [];
 
-    // Read inbound message from orchestrator (typed, cast-free)
-    const userMessage = state.getter.string('userMessage');
+    for (const item of batch) {
+      const state = item.state;
 
-    // Extract preferences with LLM or prompt
-    const { extracted } = await this.llm.extract({
-      message: userMessage,
-      schema: PreferenceSchema,
-      guidance: 'Extract travel preferences: budget, duration, destination.',
-    });
+      // Read inbound message from orchestrator (typed, cast-free)
+      const userMessage = state.getter.string('userMessage');
 
-    // Update state and check conversation state machine
-    state.preferences = { ...state.preferences, ...extracted };
-    state.handoff = HandoffMachine.transition(state.handoff, { type: 'slotsUpdated' }, {
-      extractedPreferences: state.preferences,
-    });
+      // Extract preferences with LLM or prompt
+      const { extracted } = await this.llm.extract({
+        message: userMessage,
+        schema: PreferenceSchema,
+        guidance: 'Extract travel preferences: budget, duration, destination.',
+      });
 
-    // Write outbound message
-    if (state.handoff.variant === 'awaitingSlots') {
+      // Update state and check conversation state machine
+      state.preferences = { ...state.preferences, ...extracted };
+      state.handoff = HandoffMachine.transition(state.handoff, { type: 'slotsUpdated' }, {
+        extractedPreferences: state.preferences,
+      });
+
+      // Write outbound message
+      if (state.handoff.variant === 'awaitingSlots') {
+        state.setMetadata('assistantMessage', {
+          role: 'assistant',
+          content: state.handoff.nextQuestion,
+        });
+        incomplete.push(item);
+        continue;
+      }
+
+      // All slots filled; continue to specialist nodes
       state.setMetadata('assistantMessage', {
         role: 'assistant',
-        content: state.handoff.nextQuestion,
+        content: 'Got it! Finding options for you...',
       });
-      // Return 'incomplete' → route to 'incomplete' terminal → HTTP turn ends
-      return NodeOutputBuilder.of('incomplete');
+      success.push(item);
     }
 
-    // All slots filled; continue to specialist nodes
-    state.setMetadata('assistantMessage', {
-      role: 'assistant',
-      content: 'Got it! Finding options for you...',
-    });
-    return NodeOutputBuilder.of('success');
+    return RoutedBatch.create([
+      ['incomplete', Batch.from(incomplete)],
+      ['success', Batch.from(success)],
+    ]);
   }
 }
 ```
@@ -142,8 +157,8 @@ export class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'succ
 
 ```typescript
 // Orchestrator.ts
-import { Dagonizer } from '@studnicky/dagonizer';
-import { DAGBuilder } from '@studnicky/dagonizer/builder';
+import { DAG_CONTEXT, Dagonizer } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 
 export class TripOrchestrator {
   private dispatcher: Dagonizer<TripState>;
@@ -155,20 +170,71 @@ export class TripOrchestrator {
     const retrieve = new RetrievalNode(this.searchEngine);
     const propose = new ProposalNode(this.templateEngine);
 
-    // Build the DAG using DAGBuilder
-    const dag = new DAGBuilder('trip-planner', '1.0')
-      .node('intake',    intake,    { success: 'retrieve', incomplete: 'end-incomplete' })
-      .node('retrieve',  retrieve,  { success: 'propose' })
-      .node('propose',   propose,   { success: 'end-success' })
-      .terminal('end-incomplete')
-      .terminal('end-success')
-      .build();
+    const tripPlannerDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': 'urn:noocodex:trip-planner:dag',
+      '@type': 'DAG',
+      'name': 'trip-planner',
+      'version': '1.0',
+      'entrypoint': 'intake',
+      'nodes': [
+        {
+          '@id': 'urn:noocodex:trip-planner:dag/intake',
+          '@type': 'SingleNode',
+          'name': 'intake',
+          'node': 'intake',
+          'outputs': {
+            'success': 'retrieve',
+            'incomplete': 'end-incomplete',
+            'error': 'end-error',
+          },
+        },
+        {
+          '@id': 'urn:noocodex:trip-planner:dag/retrieve',
+          '@type': 'SingleNode',
+          'name': 'retrieve',
+          'node': 'retrieve',
+          'outputs': {
+            'success': 'propose',
+            'error': 'end-error',
+          },
+        },
+        {
+          '@id': 'urn:noocodex:trip-planner:dag/propose',
+          '@type': 'SingleNode',
+          'name': 'propose',
+          'node': 'propose',
+          'outputs': {
+            'success': 'end-success',
+            'error': 'end-error',
+          },
+        },
+        {
+          '@id': 'urn:noocodex:trip-planner:dag/end-incomplete',
+          '@type': 'TerminalNode',
+          'name': 'end-incomplete',
+          'outcome': 'completed',
+        },
+        {
+          '@id': 'urn:noocodex:trip-planner:dag/end-success',
+          '@type': 'TerminalNode',
+          'name': 'end-success',
+          'outcome': 'completed',
+        },
+        {
+          '@id': 'urn:noocodex:trip-planner:dag/end-error',
+          '@type': 'TerminalNode',
+          'name': 'end-error',
+          'outcome': 'failed',
+        },
+      ],
+    };
 
     this.dispatcher = new Dagonizer<TripState>();
     this.dispatcher.registerNode(intake);
     this.dispatcher.registerNode(retrieve);
     this.dispatcher.registerNode(propose);
-    this.dispatcher.registerDAG(dag);
+    this.dispatcher.registerDAG(tripPlannerDag);
   }
 
   async runTurn(conversationId: string, userMessage: string): Promise<string> {
@@ -288,12 +354,12 @@ export class EventBus {
 }
 
 // EscalateForDecisionNode.ts — the HITL node
-import type { NodeInterface } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { SchemaObjectType } from '@studnicky/dagonizer';
 import type { NodeContextType } from '@studnicky/dagonizer/entities';
-import { NodeOutputBuilder } from '@studnicky/dagonizer/entities';
 
 export class EscalateForDecisionNode
-  implements NodeInterface<RefundAgentState, 'queued'>
+  extends MonadicNode<RefundAgentState, 'queued'>
 {
   private readonly escalations: EscalationQueue;
   private readonly eventBus: EventBus;
@@ -304,35 +370,42 @@ export class EscalateForDecisionNode
   }
 
   readonly name = 'escalate-for-decision';
-  readonly outputs = ['queued'] as const;
+  readonly outputs: readonly 'queued'[] = ['queued'];
+
+  override get outputSchema(): Record<'queued', SchemaObjectType> {
+    return { queued: { type: 'object' } };
+  }
 
   async execute(
     batch: Batch<RefundAgentState>,
-    _context: NodeContextType
+    context: NodeContextType
   ): Promise<RoutedBatchType<'queued', RefundAgentState>> {
+    if (context.signal.aborted) return RoutedBatch.create();
     const { escalations, eventBus } = this;
-    const state = batch.items[0].state;
+    for (const row of batch) {
+      const state = row.state;
 
-    // Enqueue the decision for a human
-    const item = escalations.enqueue(
-      'review',
-      `Customer requested refund for order ${state.orderId}. Policy allows if < 30 days.`,
-      state.customerId,
-      state.conversationId,
-      { orderDate: state.orderDate }
-    );
+      // Enqueue the decision for a human
+      const item = escalations.enqueue(
+        'review',
+        `Customer requested refund for order ${state.orderId}. Policy allows if < 30 days.`,
+        state.customerId,
+        state.conversationId,
+        { orderDate: state.orderDate }
+      );
 
-    // Publish to admin SSE stream
-    eventBus.publish('escalations', { variant: 'queued', item });
+      // Publish to admin SSE stream
+      eventBus.publish('escalations', { variant: 'queued', item });
 
-    // Also publish to the customer's SSE stream (tell them to wait)
-    eventBus.publish(`conversation:${state.customerId}`, {
-      variant: 'pending',
-      message: 'Your request is under review. You will be notified shortly.',
-    });
+      // Also publish to the customer's SSE stream (tell them to wait)
+      eventBus.publish(`conversation:${state.customerId}`, {
+        variant: 'pending',
+        message: 'Your request is under review. You will be notified shortly.',
+      });
 
-    state.escalation = item;
-    return NodeOutputBuilder.of('queued');
+      state.escalation = item;
+    }
+    return RoutedBatch.create('queued', batch);
   }
 }
 ```
@@ -462,14 +535,16 @@ export function makeSseStream(eventBus: EventBus, customerId: string) {
 Constructor injection is the dependency injection model. Nodes receive dependencies through their constructors and hold them as private fields.
 
 ```typescript
-class IntakeNode implements NodeInterface<TripState, 'incomplete' | 'success'> {
+class IntakeNode extends MonadicNode<TripState, 'incomplete' | 'success'> {
   private readonly llm: LLMAdapter;
+  readonly name = 'intake';
+  readonly outputs: readonly ('incomplete' | 'success')[] = ['incomplete', 'success'];
 
   constructor(llm: LLMAdapter) {
     super();
     this.llm = llm;
   }
-  // implements execute(batch, context) — uses this.llm
+  // define execute(batch, context) — uses this.llm
 }
 
 const intake = new IntakeNode(this.llm);
@@ -478,7 +553,7 @@ dispatcher.registerNode(intake);
 
 When a dependency varies per execution (for example, a per-request ledger keyed by `customerId`), construct the node with the appropriate instance before registering it, or restructure the dependency to be execution-agnostic (read the `customerId` from state inside the node, and pass a factory or a repository rather than a pre-built per-user object).
 
-Nodes are testable in isolation: instantiate with a stub or fake, call `execute` or `executeOne` directly, and assert on the result without wiring a dispatcher.
+Nodes are testable in isolation: instantiate with a stub or fake, call `execute(Batch.of(state), context)` directly, and assert on the result without wiring a dispatcher.
 
 ---
 
@@ -546,14 +621,15 @@ build-request
                                                          └─ collect-results ──► build-request
 ```
 
-Every LLM-with-tools agent repeats this structure. `AgentBuilder.loop` captures
-the verified topology so callers subclass rather than re-wire.
+Every LLM-with-tools agent repeats this structure. Author it as an explicit
+JSON-LD `DAGType` so the verified topology remains visible while callers
+subclass the node bases.
 
-### AgentBuilder.loop
+### Agent DAG as JSON-LD
 
 ```ts
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 import {
-  AgentBuilder,
   BuildChatRequestNode,
   CallModelNode,
   NormalizeResponseNode,
@@ -563,9 +639,9 @@ import {
   CollectToolResultsNode,
   AppendAssistantNode,
 } from '@studnicky/dagonizer/patterns';
-import type { AgentLoopNodesType } from '@studnicky/dagonizer/patterns';
+import { dag as agentDag } from '../../examples/dags/29-agent-dag';
 
-const nodes: AgentLoopNodesType = {
+const nodes = {
   chatRequest:         new MyBuildChatRequestNode(),
   callModel:           new MyCallModelNode(llm),
   normalizeResponse:   new MyNormalizeResponseNode(),
@@ -576,16 +652,13 @@ const nodes: AgentLoopNodesType = {
   appendAssistant:     new MyAppendAssistantNode(),
 };
 
-// Assemble the DAGType in one call.
-const dag = AgentBuilder.loop(nodes, { name: 'my-agent', version: '1' });
-
 const dispatcher = new Dagonizer<AgentState>();
-// Register all 8 nodes, tool bundle, and the assembled DAG.
+// Register all 8 nodes, tool bundle, and the authored DAG.
 dispatcher.registerNode(nodes.chatRequest);
 dispatcher.registerNode(nodes.callModel);
 // … register remaining nodes …
 dispatcher.registerBundle(toolRegistry.bundle()); // tool:<name> DAGs
-dispatcher.registerDAG(dag);
+dispatcher.registerDAG(agentDag);
 ```
 
 ### Subclassing each base node
@@ -644,7 +717,7 @@ dispatcher.registerBundle(tools.bundle());
 
 ### Cross-reference
 
-See [Example 29: AgentBuilder](../examples/29-agent-builder) for a complete
+See [Example 29: Agent DAG with JSON-LD](../examples/29-agent-dag) for a complete
 working example with a stub LLM adapter and all 8 subclasses wired end-to-end.
 
 See [ReAct agent: streaming + provenance recall](./react-agent) for the ReAct

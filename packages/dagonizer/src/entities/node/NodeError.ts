@@ -7,7 +7,7 @@
  * Every `NodeError` carries `context` (required, defaults to `{}` when no
  * additional diagnostic data is available). One hidden class — V8 monomorphic.
  *
- * Construction routes through `NodeErrorBuilder.from(code, message, operation,
+ * Construction routes through `NodeError.create(code, message, operation,
  * recoverable, timestamp, options?)` which fills `context: {}` when the caller
  * omits it, so authors never write boilerplate.
  */
@@ -60,7 +60,7 @@ export type NodeErrorType = Omit<NodeErrorWireType, 'context'> & {
    * Diagnostic context record for this error.
    *
    * Always present. Callers with no additional data omit the options object;
-   * `NodeErrorBuilder.from` fills `context: {}` automatically.
+   * `NodeError.create` fills `context: {}` automatically.
    */
   'context': Record<string, unknown>;
 };
@@ -68,17 +68,13 @@ export type NodeErrorType = Omit<NodeErrorWireType, 'context'> & {
 /**
  * Static factory for `NodeErrorType`.
  *
- * Named `NodeErrorBuilder` to avoid the identifier collision with the
- * schema-derived `NodeError` type (per the canonical-names rule: when a type
- * and a value would share a name, rename the value to its real role).
- *
  * Required fields are positional in their natural order. The optional
  * `context` lives in the trailing options object. `context` defaults to `{}`
  * when the services record is omitted, so authors never write boilerplate.
  *
  * @example
  * ```ts
- * return NodeErrorBuilder.from(
+ * return NodeError.create(
  *   'FETCH_FAILED',
  *   'HTTP 503',
  *   'fetchUser',
@@ -86,7 +82,7 @@ export type NodeErrorType = Omit<NodeErrorWireType, 'context'> & {
  *   new Date().toISOString(),
  * );
  *
- * return NodeErrorBuilder.from(
+ * return NodeError.create(
  *   'VALIDATION_ERROR',
  *   'missing required field',
  *   'validate',
@@ -96,7 +92,7 @@ export type NodeErrorType = Omit<NodeErrorWireType, 'context'> & {
  * );
  * ```
  */
-export class NodeErrorBuilder {
+export class NodeError {
   private constructor() { /* static class */ }
 
   /**
@@ -109,7 +105,7 @@ export class NodeErrorBuilder {
    * @param timestamp - ISO 8601 timestamp of the error.
    * @param options - Optional record; `context` defaults to `{}`.
    */
-  static from(
+  static create(
     code: string,
     message: string,
     operation: string,

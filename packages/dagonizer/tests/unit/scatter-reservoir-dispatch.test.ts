@@ -55,15 +55,16 @@ import type { RegistryBundleInterface } from '../../src/contracts/RegistryBundle
 import type { RegistryModuleInterface } from '../../src/contracts/RegistryModuleInterface.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
+import type { ItemType } from '../../src/entities/batch/Item.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessage.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { JsonValue } from '../../src/entities/JsonValue.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -192,13 +193,13 @@ class CurrentItemGuard {
  * RouterNode: reads `currentItem` metadata and routes `value % 2 === 0`
  * → 'even', otherwise → 'odd'.
  *
- * Extends ScalarNode<NodeStateBase> so the node is structurally compatible
+ * Extends MonadicNode<NodeStateBase> so the node is structurally compatible
  * with NodeInterface<NodeStateInterface> — required for Suite D's bundle
  * (DispatcherBundleType<NodeStateInterface>) without casting.
  * getMetadata is declared on NodeStateBase, so narrowing via the base type
  * is safe.
  */
-class RouterNode extends ScalarNode<NodeStateBase, 'even' | 'odd'> {
+class RouterNode extends MonadicNode<NodeStateBase, 'even' | 'odd'> {
   override readonly name = 'router';
   override readonly outputs = ['even', 'odd'] as const;
 
@@ -206,10 +207,19 @@ class RouterNode extends ScalarNode<NodeStateBase, 'even' | 'odd'> {
     return { 'even': { 'type': 'object' }, 'odd': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: NodeStateBase): Promise<NodeOutputType<'even' | 'odd'>> {
-    const raw = state.getMetadata('currentItem');
-    const output: 'even' | 'odd' = (CurrentItemGuard.is(raw) && raw.value % 2 === 0) ? 'even' : 'odd';
-    return { 'errors': [], output };
+  override async execute(batch: Batch<NodeStateBase>): Promise<Map<'even' | 'odd', Batch<NodeStateBase>>> {
+    const even: ItemType<NodeStateBase>[] = [];
+    const odd: ItemType<NodeStateBase>[] = [];
+    for (const item of batch) {
+      const raw = item.state.getMetadata('currentItem');
+      const output: 'even' | 'odd' = (CurrentItemGuard.is(raw) && raw.value % 2 === 0) ? 'even' : 'odd';
+      if (output === 'even') even.push(item);
+      else odd.push(item);
+    }
+    const routed = new Map<'even' | 'odd', Batch<NodeStateBase>>();
+    if (even.length > 0) routed.set('even', Batch.from(even));
+    if (odd.length > 0) routed.set('odd', Batch.from(odd));
+    return routed;
   }
 }
 
@@ -320,7 +330,7 @@ const reservoirDagBodyContainerDag: DAGType = Validator.dag.validate({
 
 // ── Suite C: node body regression ─────────────────────────────────────────────
 
-class PassThroughNode extends ScalarNode<ReservoirDispatchState, 'done'> {
+class PassThroughNode extends MonadicNode<ReservoirDispatchState, 'done'> {
   override readonly name = 'pass-through';
   override readonly outputs = ['done'] as const;
 
@@ -328,8 +338,8 @@ class PassThroughNode extends ScalarNode<ReservoirDispatchState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(): Promise<NodeOutputType<'done'>> {
-    return { 'errors': [], 'output': 'done' };
+  override async execute(batch: Batch<ReservoirDispatchState>): Promise<Map<'done', Batch<ReservoirDispatchState>>> {
+    return new Map([['done', batch]]);
   }
 }
 
@@ -670,7 +680,7 @@ const suiteDRestoreAdapter: CheckpointRestoreAdapterInterface<NodeStateInterface
   });
 
 const suiteDBundle: DispatcherBundleType<NodeStateInterface> = {
-  // RouterNode extends ScalarNode<NodeStateBase, ...> which is structurally
+  // RouterNode extends MonadicNode<NodeStateBase, ...> which is structurally
   // compatible with NodeInterface<NodeStateInterface, string, unknown> —
   // no cast required.
   'nodes': [new RouterNode()],

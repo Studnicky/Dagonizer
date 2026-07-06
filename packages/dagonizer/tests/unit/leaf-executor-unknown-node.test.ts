@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { SingleNodePlacementType } from '../../src/entities/dag/SingleNode.js';
-import { NodeContextBuilder } from '../../src/entities/node/NodeContext.js';
+import { NodeContext } from '../../src/entities/node/NodeContext.js';
 import { DAGError } from '../../src/errors/index.js';
 import type { LeafExecutorSourceInterface } from '../../src/execution/LeafExecutor.js';
 import { LeafExecutor } from '../../src/execution/LeafExecutor.js';
@@ -21,7 +21,7 @@ function sourceOf(names: readonly string[]): LeafExecutorSourceInterface {
   return {
     nodes,
     "withNodeTimeout": async (_node, signal, fn) => fn(signal),
-    "nodeContext": (dagName, placementName, signal) => NodeContextBuilder.of(dagName, placementName, signal),
+    "nodeContext": (dagName, placementName, signal) => NodeContext.create(dagName, placementName, signal),
     "runNodeOnState": async () => 'success',
   };
 }

@@ -31,10 +31,10 @@
  *             'error' branch
  *
  * Molecular import pattern:
- *   import { BookSearchScatterBundleFactory } from './embedded-dags/BookSearchScatterDAG.ts';
+ *   import { bookSearchScatterDAG } from './embedded-dags/BookSearchScatterDAG.ts';
  *   const nodes = ArchivistNodes.build(services);
  *   dispatcher.registerBundle(toolRegistry.bundle<ArchivistServices>());
- *   dispatcher.registerBundle(BookSearchScatterBundleFactory.create(nodes));
+ *   dispatcher.registerBundle({ nodes: nodes.bookSearchScatterNodes, dags: [bookSearchScatterDAG] });
  *
  * The sub-DAG reads `state.query` directly (no input stateMapping; the field
  * names already align with the parent). Each parent placement supplies an
@@ -53,20 +53,25 @@
  * distinct post-scout steps (rankByRating and pickBestMatch respectively).
  */
 
-import type { ArchivistState }    from '../ArchivistState.ts';
-import type { ArchivistNodes }    from '../nodes/ArchivistNodes.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
 
-import type { DispatcherBundleType } from '@studnicky/dagonizer';
-import { DAGBuilder } from '@studnicky/dagonizer';
+import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
 
-/**
- * Factory for the `book-search-scatter` bundle: one packaged unit that any
- * parent DAG can reference via
- * `.embeddedDAG('placement-name', 'book-search-scatter', routes)`.
- */
-export class BookSearchScatterBundleFactory {
-  static create(nodes: ArchivistNodes): DispatcherBundleType<ArchivistState> {
-    const dag = new DAGBuilder('book-search-scatter', '1.0')
+const extractQuery          = new PlaceholderNode<ArchivistState, 'success' | 'retry' | 'salvage'>('extract-query', ['success', 'retry', 'salvage']);
+const extractQuerySalvage   = new PlaceholderNode<ArchivistState, 'done'>('extract-query-salvage', ['done']);
+const decideTools           = new PlaceholderNode<ArchivistState, 'tools' | 'no-tools' | 'retry' | 'salvage'>('decide-tools', ['tools', 'no-tools', 'retry', 'salvage']);
+const decideToolsSalvage    = new PlaceholderNode<ArchivistState, 'done'>('decide-tools-salvage', ['done']);
+const recallCandidates      = new PlaceholderNode<ArchivistState, 'recalled'>('recall-candidates', ['recalled']);
+const buildBookWorksets     = new PlaceholderNode<ArchivistState, 'ready'>('build-book-worksets', ['ready']);
+const rankCandidates        = new PlaceholderNode<ArchivistState, 'ranked' | 'retry' | 'salvage'>('rank-candidates', ['ranked', 'retry', 'salvage']);
+const rankCandidatesSalvage = new PlaceholderNode<ArchivistState, 'done'>('rank-candidates-salvage', ['done']);
+const mergeCandidates       = new PlaceholderNode<ArchivistState, 'ranked' | 'empty'>('merge-candidates', ['ranked', 'empty']);
+const recordFindings        = new PlaceholderNode<ArchivistState, 'recorded'>('record-findings', ['recorded']);
+const hasCitationsGate      = new PlaceholderNode<ArchivistState, 'pass' | 'fail'>('has-citations-gate', ['pass', 'fail']);
+const recallPastVisits      = new PlaceholderNode<ArchivistState, 'recalled'>('recall-past-visits', ['recalled']);
+
+export const bookSearchScatterDAG: DAGType = new DAGBuilder('book-search-scatter', '1.0')
 
       // ── 1. extract-query ─────────────────────────────────────────────────────
       // LLM parses the raw visitor question into structured search terms.
@@ -74,12 +79,12 @@ export class BookSearchScatterBundleFactory {
       // 'retry' loops back (bounded by the state retry budget); 'salvage' routes to
       // a deterministic recovery node; never a fabricated term list on the node.
       // #region retry-salvage-wiring
-      .node('extract-query', nodes.extractQuery, {
+      .node('extract-query', extractQuery, {
         'success': 'decide-tools',
         'retry':   'extract-query',          // flow-shape retry loop (self-edge)
         'salvage': 'extract-query-salvage',  // recovery route
       })
-      .node('extract-query-salvage', nodes.extractQuerySalvage, {
+      .node('extract-query-salvage', extractQuerySalvage, {
         'done': 'decide-tools',              // deterministic recovery rejoins the happy path
       })
       // #endregion retry-salvage-wiring
@@ -88,13 +93,13 @@ export class BookSearchScatterBundleFactory {
       // LLM decides which external sources to invoke. Both outputs route into
       // recall-candidates so prior memory is loaded before scouts fire.
       // 'retry' loops back (bounded); 'salvage' routes to the minimal-plan node.
-      .node('decide-tools', nodes.decideTools, {
+      .node('decide-tools', decideTools, {
         'tools':    'recall-candidates',
         'no-tools': 'recall-candidates',
         'retry':    'decide-tools',
         'salvage':  'decide-tools-salvage',
       })
-      .node('decide-tools-salvage', nodes.decideToolsSalvage, {
+      .node('decide-tools-salvage', decideToolsSalvage, {
         'done': 'recall-candidates',
       })
 
@@ -102,7 +107,7 @@ export class BookSearchScatterBundleFactory {
       // Pre-loads state.priorCandidates from memory: shortlisted books from prior
       // runs whose visitor query has Jaccard >= 0.35 overlap with the current
       // query. Cap 10. Always routes 'recalled', even when no prior runs match.
-      .node('recall-candidates', nodes.recallCandidates, {
+      .node('recall-candidates', recallCandidates, {
         'recalled': 'build-book-worksets',
       })
 
@@ -111,7 +116,7 @@ export class BookSearchScatterBundleFactory {
       // carries { dagName: 'tool:<name>', arguments: {...} }. The scatter
       // placement reads dagName via { dagFrom: 'dagName' } to resolve the body
       // DAG at runtime — each item dispatches to its own tool:<name> embedded DAG.
-      .node('build-book-worksets', nodes.buildBookWorksets, {
+      .node('build-book-worksets', buildBookWorksets, {
         'ready': 'book-search-scatter',
       })
 
@@ -139,12 +144,12 @@ export class BookSearchScatterBundleFactory {
       // still a valid ranking, so merge can soft-gate on zero candidates).
       // 'retry' loops back (bounded); 'salvage' passes candidates through unranked
       // via a dedicated node rather than emitting them as if they were ranked.
-      .node('rank-candidates', nodes.rankCandidates, {
+      .node('rank-candidates', rankCandidates, {
         'ranked':  'merge-candidates',
         'retry':   'rank-candidates',
         'salvage': 'rank-candidates-salvage',
       })
-      .node('rank-candidates-salvage', nodes.rankCandidatesSalvage, {
+      .node('rank-candidates-salvage', rankCandidatesSalvage, {
         'done': 'merge-candidates',
       })
 
@@ -152,14 +157,14 @@ export class BookSearchScatterBundleFactory {
       // Cross-source dedupe via CanonicalId, top-5. Routes 'empty' to
       // no-results (TerminalNode(failed)) so the parent EmbeddedDAGNode's
       // terminal outcome routes the parent placement to its 'error' branch.
-      .node('merge-candidates', nodes.mergeCandidates, {
+      .node('merge-candidates', mergeCandidates, {
         'ranked': 'record-findings',
         'empty':  'no-results',
       })
 
       // ── 6. record-findings ───────────────────────────────────────────────────
       // Deterministic RDF write: same input always produces the same triples.
-      .node('record-findings', nodes.recordFindings, {
+      .node('record-findings', recordFindings, {
         'recorded': 'has-citations-gate',
       })
 
@@ -167,7 +172,7 @@ export class BookSearchScatterBundleFactory {
       // SPARQL ASK over the per-run state graph. Symbolic fence for the LLM.
       // 'fail' routes to no-results (TerminalNode(failed)) so the parent
       // EmbeddedDAGNode routes the parent placement to 'error'.
-      .node('has-citations-gate', nodes.hasCitationsGate, {
+      .node('has-citations-gate', hasCitationsGate, {
         'pass': 'recall-past-visits',
         'fail': 'no-results',
       })
@@ -176,7 +181,7 @@ export class BookSearchScatterBundleFactory {
       // Injects prior-session context (prior queries + shortlisted titles) into
       // state.priorContext, then routes to the canonical `found` TerminalNode
       // (completed) so the parent EmbeddedDAGNode resolves its 'success' branch.
-      .node('recall-past-visits', nodes.recallPastVisits, {
+      .node('recall-past-visits', recallPastVisits, {
         'recalled': 'found',
       })
 
@@ -188,15 +193,3 @@ export class BookSearchScatterBundleFactory {
       .terminal('no-results', { outcome: 'failed' })
 
       .build();
-
-    return {
-      'nodes': [
-        nodes.extractQuery, nodes.decideTools, nodes.recallCandidates, nodes.buildBookWorksets,
-        nodes.rankCandidates, nodes.mergeCandidates, nodes.recordFindings, nodes.hasCitationsGate,
-        nodes.recallPastVisits, nodes.extractQuerySalvage, nodes.decideToolsSalvage,
-        nodes.rankCandidatesSalvage,
-      ],
-      'dags': [dag],
-    };
-  }
-}

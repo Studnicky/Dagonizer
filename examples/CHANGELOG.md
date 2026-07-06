@@ -170,7 +170,7 @@
 
 ### Changed
 
-- `NodeErrorBuilder.from(...)` is positional: `from(code, message, operation, recoverable, timestamp, options?)`. All call sites updated.
+- `NodeError.create(...)` is positional: `create(code, message, operation, recoverable, timestamp, options?)`. All call sites updated.
 - `MonadicNode` no longer provides `successPort()`/`emptyPort()`/`errorPort()` helpers. Subclasses return the output port string literal directly.
 - Registry modules (`12-workers.registry.ts`, `13-multibackend.registry.ts`): `restoreState` is a `CheckpointRestoreAdapter<NodeStateInterface>`, wrapped with `CheckpointRestoreAdapter.wrap(...)` from `@studnicky/dagonizer/checkpoint`.
 - `RetryPolicy.getDelay` override signature requires `{ error: Error | null }` (not optional).

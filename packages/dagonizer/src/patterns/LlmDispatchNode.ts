@@ -17,19 +17,26 @@
  * response into a node output.
  */
 
+import { ChatRequest } from '../adapter/LlmAdapter.js';
+import type { ChatRequestType, ChatResponseType, PartialChatRequestType } from '../adapter/LlmAdapter.js';
 import type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
-
-import { ScalarNode } from '@studnicky/dagonizer';
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
-import type { ChatRequestType, ChatResponseType, PartialChatRequestType } from '@studnicky/dagonizer/adapter';
-import type { NodeContextType, NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import { MonadicNode } from '../core/MonadicNode.js';
+import type { NodeContextType } from '../entities/node/NodeContext.js';
+import type { NodeStateInterface } from '../NodeStateBase.js';
+import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.js';
 
 export abstract class LlmDispatchNode<
   TState extends NodeStateInterface,
   TOutput extends string,
-> extends ScalarNode<TState, TOutput> {
-  constructor(protected readonly llm: LlmClientInterface) {
+> extends MonadicNode<TState, TOutput> {
+  protected readonly execution: BatchExecutionOptionsType;
+
+  constructor(
+    protected readonly llm: LlmClientInterface,
+    options: { readonly execution?: BatchExecutionOptionsType } = {},
+  ) {
     super();
+    this.execution = options.execution ?? {};
   }
 
   /** Build the user prompt from state. */
@@ -54,7 +61,7 @@ export abstract class LlmDispatchNode<
   /** Send the request through the configured LLM. */
   protected async dispatch(state: TState, context: NodeContextType): Promise<ChatResponseType> {
     const prompt = this.composePrompt(state);
-    const request: ChatRequestType = ChatRequestBuilder.from(this.composeRequest(prompt, context.signal));
+    const request: ChatRequestType = ChatRequest.create(this.composeRequest(prompt, context.signal));
     return this.llm.chat(request);
   }
 
@@ -66,10 +73,4 @@ export abstract class LlmDispatchNode<
   protected extractContent(response: ChatResponseType): string {
     return response.message.variant === 'tools' ? '' : response.message.content;
   }
-
-  /** Leaves provide their own executeOne(); the dispatch loop is shared. */
-  protected abstract override executeOne(
-    state: TState,
-    context: NodeContextType,
-  ): Promise<NodeOutputType<TOutput>>;
 }

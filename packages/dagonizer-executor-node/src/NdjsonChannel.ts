@@ -28,7 +28,7 @@
 import type { Readable, Writable } from 'node:stream';
 
 import { BaseMessageChannel } from '@studnicky/dagonizer/container';
-import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
+import { BridgeMessage } from '@studnicky/dagonizer/entities';
 import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 
@@ -65,10 +65,10 @@ export class NdjsonChannel extends BaseMessageChannel {
       // Buffer overflow guard: cap at MAX_BUFFER_BYTES to prevent unbounded growth.
       if (this.#buffer.length > MAX_BUFFER_BYTES) {
         this.#buffer = '';
-        this.dispatch(BridgeMessageBuilder.invalid(
-          'NDJSON_PARSE_ERROR',
-          `NDJSON buffer overflow: accumulated data exceeded ${MAX_BUFFER_BYTES} bytes; buffer reset`,
-        ));
+        this.dispatch(BridgeMessage.create({
+          'code': 'NDJSON_PARSE_ERROR',
+          'message': `NDJSON buffer overflow: accumulated data exceeded ${MAX_BUFFER_BYTES} bytes; buffer reset`,
+        }));
         return;
       }
 
@@ -77,10 +77,10 @@ export class NdjsonChannel extends BaseMessageChannel {
 
     this.#readable.on('error', (err: Error) => {
       if (this.closed) return;
-      this.dispatch(BridgeMessageBuilder.invalid(
-        'NDJSON_PARSE_ERROR',
-        `NDJSON readable stream error: ${err.message}`,
-      ));
+      this.dispatch(BridgeMessage.create({
+        'code': 'NDJSON_PARSE_ERROR',
+        'message': `NDJSON readable stream error: ${err.message}`,
+      }));
     });
 
     this.#readable.on('close', () => {
@@ -89,10 +89,10 @@ export class NdjsonChannel extends BaseMessageChannel {
       const trailing = this.#buffer.trim();
       if (trailing.length > 0) {
         this.#buffer = '';
-        this.dispatch(BridgeMessageBuilder.invalid(
-          'NDJSON_PARSE_ERROR',
-          `NDJSON stream closed with un-terminated trailing line: ${trailing.slice(0, 200)}`,
-        ));
+        this.dispatch(BridgeMessage.create({
+          'code': 'NDJSON_PARSE_ERROR',
+          'message': `NDJSON stream closed with un-terminated trailing line: ${trailing.slice(0, 200)}`,
+        }));
       }
     });
   }
@@ -138,10 +138,10 @@ export class NdjsonChannel extends BaseMessageChannel {
       parsed = JSON.parse(line);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.dispatch(BridgeMessageBuilder.invalid(
-        'NDJSON_PARSE_ERROR',
-        `Failed to parse NDJSON line: ${message}`,
-      ));
+      this.dispatch(BridgeMessage.create({
+        'code': 'NDJSON_PARSE_ERROR',
+        'message': `Failed to parse NDJSON line: ${message}`,
+      }));
       return;
     }
 
@@ -150,10 +150,10 @@ export class NdjsonChannel extends BaseMessageChannel {
       validated = Validator.bridgeMessage.validate(parsed);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.dispatch(BridgeMessageBuilder.invalid(
-        'NDJSON_VALIDATION_ERROR',
-        `BridgeMessage validation failed: ${message}`,
-      ));
+      this.dispatch(BridgeMessage.create({
+        'code': 'NDJSON_VALIDATION_ERROR',
+        'message': `BridgeMessage validation failed: ${message}`,
+      }));
       return;
     }
 

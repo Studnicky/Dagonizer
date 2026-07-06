@@ -25,13 +25,11 @@ import {
   TimeZoneResolver,
 } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region canonicalize-core-node
-export class CanonicalizeCoreNode extends ScalarNode<CartographerState, 'normalized' | 'rejected'> {
+export class CanonicalizeCoreNode extends MonadicNode<CartographerState, 'normalized' | 'rejected'> {
   readonly 'name' = 'canonicalize-core';
   readonly 'outputs' = ['normalized', 'rejected'] as const;
 
@@ -42,12 +40,38 @@ export class CanonicalizeCoreNode extends ScalarNode<CartographerState, 'normali
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'normalized' | 'rejected'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'normalized' | 'rejected', CartographerState>> {
+    const acc = new Map<'normalized' | 'rejected', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'normalized' | 'rejected', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private routeItem(state: CartographerState): NodeOutputType<'normalized' | 'rejected'> {
     const raw = state.raw;
 
     const epochMs = TimeNormalizer.toEpochMs(raw.rawTimestamp);
     if (!isFinite(epochMs) || epochMs <= 0) {
-      return NodeOutputBuilder.of('rejected');
+      return NodeOutput.create('rejected');
     }
 
     const dispatchEpochMs = TimeNormalizer.toEpochMs(raw.rawDispatchAt);
@@ -104,7 +128,7 @@ export class CanonicalizeCoreNode extends ScalarNode<CartographerState, 'normali
       'disruptionReason': raw.disruptionReason,
     };
 
-    return NodeOutputBuilder.of('normalized');
+    return NodeOutput.create('normalized');
   }
 }
 

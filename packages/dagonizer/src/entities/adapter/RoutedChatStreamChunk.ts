@@ -50,11 +50,11 @@ export type RoutedChatStreamChunkType = FromSchema<typeof RoutedChatStreamChunkS
  * @example
  * ```ts
  * downstream.push(
- *   RoutedChatStreamChunkBuilder.of(routeKey, 'Hello', { dagName: 'chat', nodeName: 'call-model' }),
+ *   RoutedChatStreamChunk.create(routeKey, 'Hello', { dagName: 'chat', nodeName: 'call-model' }),
  * );
  * ```
  */
-export class RoutedChatStreamChunkBuilder {
+export class RoutedChatStreamChunk {
   private constructor() { /* static class */ }
 
   /**
@@ -65,7 +65,7 @@ export class RoutedChatStreamChunkBuilder {
    * @param delta - The text fragment produced since the previous chunk.
    * @param source - The dag/node that produced this chunk.
    */
-  static of(
+  static create(
     routeKey: string,
     delta: string,
     source: RoutedChatStreamChunkType['source'],

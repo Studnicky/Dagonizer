@@ -15,7 +15,7 @@
  */
 
 import { BaseMessageChannel } from '@studnicky/dagonizer/container';
-import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
+import { BridgeMessage } from '@studnicky/dagonizer/entities';
 import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 
@@ -73,10 +73,10 @@ export class PostMessageChannel extends BaseMessageChannel {
       // Invalid payload: surface as an error message to the handler.
       // This keeps the channel alive and lets the DagHost or DagContainerBase
       // surface the failure rather than silently swallowing it.
-      this.dispatch(BridgeMessageBuilder.invalid(
-        'INVALID_MESSAGE',
-        'PostMessageChannel received a payload that does not conform to BridgeMessage schema',
-      ));
+      this.dispatch(BridgeMessage.create({
+        'code': 'INVALID_MESSAGE',
+        'message': 'PostMessageChannel received a payload that does not conform to BridgeMessage schema',
+      }));
       return;
     }
 

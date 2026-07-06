@@ -5,10 +5,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
@@ -39,50 +41,64 @@ export class GenerateState extends NodeStateBase {
 //
 // The 'success' output token is what the default 'aggregate' reducer counts:
 // every clone returning 'success' yields the 'all-success' route.
-export class ProviderNode extends ScalarNode<GenerateState, 'success'> {
+export class ProviderNode extends MonadicNode<GenerateState, 'success'> {
   readonly name = 'provider';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: GenerateState) {
-    const name = state.getter.string('provider', 'unknown');
-    // Deterministic pseudo-score so the example output is stable: score by
-    // the provider name length plus a per-provider salt. In a real flow this
-    // is an LLM/tool call producing a candidate answer + a quality score.
-    const score = name.length * 10 + (name.charCodeAt(0) % 7);
-    // Write to a clone field; the map gather reads `candidate` off each
-    // clone via the StateAccessorInterface and appends it into parent.candidates.
-    state.candidate = {
-      "provider": name,
-      "text":     `answer from ${name}`,
-      score,
-    };
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<GenerateState>) {
+    for (const item of batch) {
+      const state = item.state;
+      const name = state.getter.string('provider', 'unknown');
+      // Deterministic pseudo-score so the example output is stable: score by
+      // the provider name length plus a per-provider salt. In a real flow this
+      // is an LLM/tool call producing a candidate answer + a quality score.
+      const score = name.length * 10 + (name.charCodeAt(0) % 7);
+      // Write to a clone field; the map gather reads `candidate` off each
+      // clone via the StateAccessorInterface and appends it into parent.candidates.
+      state.candidate = {
+        "provider": name,
+        "text":     `answer from ${name}`,
+        score,
+      };
+    }
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 // #endregion provider-node
 
 // #region select-node
 // Reads the collected candidates off parent state and picks the highest score.
-export class SelectNode extends ScalarNode<GenerateState, 'selected' | 'none'> {
+export class SelectNode extends MonadicNode<GenerateState, 'selected' | 'none'> {
   readonly name = 'select';
   readonly outputs = ['selected', 'none'] as const;
   override get outputSchema(): Record<'selected' | 'none', SchemaObjectType> {
     return { 'selected': { 'type': 'object' }, 'none': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: GenerateState) {
-    if (state.candidates.length === 0) return NodeOutputBuilder.of('none');
-    const first = state.candidates[0];
-    if (first === undefined) return NodeOutputBuilder.of('none');
-    let best = first;
-    for (const candidate of state.candidates) {
-      if (candidate.score > best.score) best = candidate;
+  override async execute(batch: Batch<GenerateState>) {
+    const entries: Array<readonly ['selected' | 'none', Batch<GenerateState>]> = [];
+    for (const item of batch) {
+      const state = item.state;
+      if (state.candidates.length === 0) {
+        entries.push([NodeOutput.create('none').output, Batch.from([item])]);
+        continue;
+      }
+      const first = state.candidates[0];
+      if (first === undefined) {
+        entries.push([NodeOutput.create('none').output, Batch.from([item])]);
+        continue;
+      }
+      let best = first;
+      for (const candidate of state.candidates) {
+        if (candidate.score > best.score) best = candidate;
+      }
+      state.chosen = best;
+      entries.push([NodeOutput.create('selected').output, Batch.from([item])]);
     }
-    state.chosen = best;
-    return NodeOutputBuilder.of('selected');
+    return RoutedBatch.create(entries);
   }
 }
 // #endregion select-node

@@ -15,11 +15,14 @@
  */
 
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
-import { ScalarNode } from '../../core/ScalarNode.js';
+import { MonadicNode } from '../../core/MonadicNode.js';
 import type { ToolCallType } from '../../entities/adapter/ToolCall.js';
+import { Batch } from '../../entities/batch/Batch.js';
+import type { ItemType } from '../../entities/batch/Item.js';
+import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
+import { NodeError } from '../../entities/node/NodeError.js';
+import { NodeOutput } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
 import { DAGError } from '../../errors/DAGError.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
@@ -38,7 +41,7 @@ export type ToolCallScatterItemType = ToolCallType & {
 
 export abstract class BuildToolWorksetsNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'ready' | 'empty' | 'error'> {
+> extends MonadicNode<TState, 'ready' | 'empty' | 'error'> {
   readonly outputs = ['ready', 'empty', 'error'] as const;
 
   override get outputSchema(): Record<'ready' | 'empty' | 'error', SchemaObjectType> {
@@ -79,50 +82,73 @@ export abstract class BuildToolWorksetsNode<
     context: NodeContextType,
   ): void;
 
-  protected override async executeOne(
-    state: TState,
+  override async execute(
+    batch: Batch<TState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<'ready' | 'empty' | 'error'>> {
-    try {
-      const calls = this.getToolCalls(state, context);
-      if (calls.length === 0) {
-        return NodeOutputBuilder.of('empty');
-      }
+  ): Promise<RoutedBatchType<'ready' | 'empty' | 'error', TState>> {
+    const acc = new Map<'ready' | 'empty' | 'error', ItemType<TState>[]>();
 
-      const safeItems: ToolCallScatterItemType[] = [];
-      const exclusiveItems: ToolCallScatterItemType[] = [];
+    for (const item of batch) {
+      const state = item.state;
+      let output: NodeOutputType<'ready' | 'empty' | 'error'>;
 
-      for (const call of calls) {
-        const bucket = this.classifyCall(call, state, context);
-        const item: ToolCallScatterItemType = {
-          'id': call.id,
-          'name': call.name,
-          'arguments': call.arguments,
-          'dagName': `tool:${call.name}`,
-        };
-        if (bucket === 'safe') {
-          safeItems.push(item);
+      try {
+        const calls = this.getToolCalls(state, context);
+        if (calls.length === 0) {
+          output = NodeOutput.create('empty');
         } else {
-          exclusiveItems.push(item);
+          const safeItems: ToolCallScatterItemType[] = [];
+          const exclusiveItems: ToolCallScatterItemType[] = [];
+
+          for (const call of calls) {
+            const bucket = this.classifyCall(call, state, context);
+            const scatterItem: ToolCallScatterItemType = {
+              'id': call.id,
+              'name': call.name,
+              'arguments': call.arguments,
+              'dagName': `tool:${call.name}`,
+            };
+            if (bucket === 'safe') {
+              safeItems.push(scatterItem);
+            } else {
+              exclusiveItems.push(scatterItem);
+            }
+          }
+
+          this.writeSafeWorkset(state, safeItems, context);
+          this.writeExclusiveWorkset(state, exclusiveItems, context);
+          output = NodeOutput.create('ready');
         }
+      } catch (cause) {
+        const error = DAGError.coerce(cause);
+        output = NodeOutput.create('error', {
+          'errors': [
+            NodeError.create(
+              'buildToolWorksetsFailed',
+              error.message,
+              'BuildToolWorksetsNode.execute',
+              true,
+              new Date().toISOString(),
+            ),
+          ],
+        });
       }
 
-      this.writeSafeWorkset(state, safeItems, context);
-      this.writeExclusiveWorkset(state, exclusiveItems, context);
-      return NodeOutputBuilder.of('ready');
-    } catch (cause) {
-      const error = DAGError.coerce(cause);
-      return NodeOutputBuilder.of('error', {
-        'errors': [
-          NodeErrorBuilder.from(
-            'buildToolWorksetsFailed',
-            error.message,
-            'BuildToolWorksetsNode.executeOne',
-            true,
-            new Date().toISOString(),
-          ),
-        ],
-      });
+      for (const error of output.errors) {
+        state.collectError(error);
+      }
+      const bucket = acc.get(output.output);
+      if (bucket !== undefined) {
+        bucket.push(item);
+      } else {
+        acc.set(output.output, [item]);
+      }
     }
+
+    const routed = new Map<'ready' | 'empty' | 'error', Batch<TState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
   }
 }

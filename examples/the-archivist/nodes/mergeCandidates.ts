@@ -23,8 +23,8 @@
  * named output union narrower than the default `'success'`.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, NodeOutputType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput, RoutedBatch } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -33,7 +33,7 @@ import { CanonicalId } from '@studnicky/dagonizer-book-entities';
 
 const SHORTLIST_LIMIT = 8;
 
-export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'empty'> {
+export class MergeCandidatesNode extends MonadicNode<ArchivistState, 'ranked' | 'empty'> {
   readonly name = 'merge-candidates';
   readonly outputs = ['ranked', 'empty'] as const;
   override get outputSchema(): Record<'ranked' | 'empty', SchemaObjectType> {
@@ -43,12 +43,12 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
     };
   }
 
-  /** Public per-item entry point for tests and dispatch delegation. */
-  public async runItem(state: ArchivistState, context: NodeContextType): Promise<NodeOutputType<'ranked' | 'empty'>> {
-    return this.executeOne(state, context);
-  }
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    const rankedItems: ItemType<ArchivistState>[] = [];
+    const emptyItems: ItemType<ArchivistState>[] = [];
 
-  protected override async executeOne(state: ArchivistState, _context: NodeContextType) {
+    for (const item of batch) {
+      const { state } = item;
     const targetIso2 = UserLanguage.toIso6392(state.userLanguage);
 
     // ── Both pools empty → soft gate ──────────────────────────────────────
@@ -57,7 +57,10 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
       if (state.failureCause.trim().length === 0) {
         state.failureCause = 'No candidates found after searching all available sources. ';
       }
-      return NodeOutputBuilder.of('empty');
+      const result = NodeOutput.create('empty');
+      for (const error of result.errors) state.collectError(error);
+      emptyItems.push(item);
+      continue;
     }
 
     // ── Build the combined pool ────────────────────────────────────────────
@@ -99,8 +102,20 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
     if (ranked.length === 0 && state.failureCause.trim().length === 0) {
       state.failureCause = 'No candidates found after searching all available sources. ';
     }
-    return NodeOutputBuilder.of(ranked.length > 0 ? 'ranked' : 'empty');
+      const result = NodeOutput.create(ranked.length > 0 ? 'ranked' : 'empty');
+      for (const error of result.errors) state.collectError(error);
+      if (result.output === 'ranked') {
+        rankedItems.push(item);
+      } else {
+        emptyItems.push(item);
+      }
     // #endregion merge-aggregation
+    }
+
+    const routes: Array<readonly ['ranked' | 'empty', Batch<ArchivistState>]> = [];
+    if (rankedItems.length > 0) routes.push(['ranked', Batch.from(rankedItems)]);
+    if (emptyItems.length > 0) routes.push(['empty', Batch.from(emptyItems)]);
+    return RoutedBatch.create(routes);
   }
 }
 

@@ -1,13 +1,12 @@
 /**
  * HttpTransport: shared fetch wrapper for tool packages.
  *
- * Every HTTP-backed tool (OpenLibrary, Google Books, Wikipedia, …)
- * needs the same boilerplate: abort propagation, per-request timeout,
- * retry on transient errors (network, 5xx, 429), JSON parsing,
- * classification of failures into `ToolError`. Consolidating that here
- * keeps every tool class thin: a concrete tool's `execute()` method is
- * roughly: build the URL, hand off to `HttpTransport.getJson(...)`,
- * map the response.
+ * Every HTTP-backed tool (OpenLibrary, Google Books, Wikipedia, …) needs the
+ * same boilerplate: abort propagation, per-request timeout, retry on transient
+ * errors (network, 5xx, 429), optional rate/circuit protection, JSON parsing,
+ * classification of failures into `ToolError`. Consolidating that here keeps
+ * every tool class thin: a concrete tool's `execute()` method is roughly:
+ * build the URL, hand off to `HttpTransport.getJson(...)`, map the response.
  *
  * Static class per project standards (`noun.verb()`). No constructor,
  * no instance state.
@@ -20,6 +19,13 @@
  * non-retryable `ToolError(PARSE_ERROR)`.
  */
 
+import type { CircuitBreaker, TokenBucket } from '@studnicky/resilience';
+import { MaxRetriesExceededError, NonRetryableError, Retry } from '@studnicky/retry';
+import type { ErrorClassificationType, RetryContextType } from '@studnicky/retry';
+import { BackoffStrategy } from '@studnicky/retry/backoff';
+import { Signal } from '@studnicky/signal';
+
+import { Scheduler } from '../runtime/Scheduler.js';
 import type { EntityValidatorInterface } from '../validation/Validator.js';
 
 import { OpenApiGuard } from './OpenApiGuard.js';
@@ -38,17 +44,137 @@ export type HttpRequestOptionsType = {
   timeoutMs: number;
   /** Maximum retry attempts on transient errors (3 total tries at default 2). */
   maxRetries: number;
+  /** Base exponential backoff delay in ms between transient retry attempts. */
+  baseBackoffMs: number;
+  /** Ceiling for retry backoff delay in ms. */
+  maxBackoffMs: number;
+  /**
+   * Optional logical-request circuit breaker. Wraps the whole retry run once,
+   * so open-circuit rejection does not burn retry budget.
+   */
+  circuitBreaker?: CircuitBreaker | null;
+  /**
+   * Optional logical-request token bucket. Consumes/waits for one token before
+   * the retry run starts, so retries do not multiply quota consumption.
+   */
+  tokenBucket?: TokenBucket | null;
 }
 
 const DEFAULT_TIMEOUT_MS  = 30_000;
 const DEFAULT_MAX_RETRIES = 2;
 const BASE_BACKOFF_MS     = 400;
+const MAX_BACKOFF_MS      = 5_000;
 
-/** Canonical defaults for the two defaultable fields of `HttpRequestOptionsType`. */
+/** Canonical defaults for defaultable fields of `HttpRequestOptionsType`. */
 const HTTP_REQUEST_DEFAULTS = {
-  'timeoutMs':  DEFAULT_TIMEOUT_MS,
-  'maxRetries': DEFAULT_MAX_RETRIES,
+  'timeoutMs':      DEFAULT_TIMEOUT_MS,
+  'maxRetries':     DEFAULT_MAX_RETRIES,
+  'baseBackoffMs':  BASE_BACKOFF_MS,
+  'maxBackoffMs':   MAX_BACKOFF_MS,
+  'circuitBreaker': null,
+  'tokenBucket':    null,
 } as const;
+
+/** Abort-signal helpers shared by the retry policy and transport core. */
+class HttpAbortSignals {
+  private constructor() { /* static class */ }
+
+  static errorFromSignal(signal: AbortSignal): ToolError {
+    const reason = HttpAbortSignals.isTimeoutSignal(signal) ? 'TIMEOUT' : 'ABORTED';
+    return new ToolError(
+      reason === 'TIMEOUT' ? 'request timeout' : 'request aborted',
+      { reason, 'retryable': false, 'status': null, 'cause': signal.reason },
+    );
+  }
+
+  static isTimeoutSignal(signal: AbortSignal): boolean {
+    const reason = signal.reason;
+    return reason instanceof DOMException && reason.name === 'TimeoutError';
+  }
+
+  static waitForRetryDelay(ms: number, signal: AbortSignal): Promise<void> {
+    if (ms <= 0) return Promise.resolve();
+    if (signal.aborted) return Promise.reject(HttpAbortSignals.errorFromSignal(signal));
+    return Scheduler.current().after(ms, { signal }).catch((error: unknown) => {
+      if (signal.aborted) {
+        throw HttpAbortSignals.errorFromSignal(signal);
+      }
+      throw error;
+    });
+  }
+}
+
+/** Retry policy for tool HTTP attempts, backed by `@studnicky/retry`. */
+class HttpRetryPolicy extends Retry {
+  readonly #baseBackoffMs: number;
+  readonly #maxBackoffMs: number;
+  readonly #signal: AbortSignal;
+
+  private constructor(options: HttpRequestOptionsType, signal: AbortSignal) {
+    super({ 'maxRetries': options.maxRetries });
+    this.#baseBackoffMs = options.baseBackoffMs;
+    this.#maxBackoffMs = options.maxBackoffMs;
+    this.#signal = signal;
+  }
+
+  static of(options: HttpRequestOptionsType, signal: AbortSignal): HttpRetryPolicy {
+    return new HttpRetryPolicy(options, signal);
+  }
+
+  async run<T>(task: () => Promise<T>): Promise<T> {
+    if (this.#signal.aborted) {
+      throw HttpAbortSignals.errorFromSignal(this.#signal);
+    }
+
+    const execution = this.execute(task).catch((error: unknown) => {
+      throw HttpRetryPolicy.unwrap(error);
+    });
+
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = (): void => {
+        reject(HttpAbortSignals.errorFromSignal(this.#signal));
+      };
+      this.#signal.addEventListener('abort', onAbort, { 'once': true });
+      execution.then(
+        (value) => {
+          this.#signal.removeEventListener('abort', onAbort);
+          resolve(value);
+        },
+        (error: unknown) => {
+          this.#signal.removeEventListener('abort', onAbort);
+          reject(error);
+        },
+      );
+    });
+  }
+
+  protected override classifyError(error: Error): ErrorClassificationType {
+    if (error instanceof ToolError) {
+      return { 'retryable': error.retryable, 'reason': error.reason };
+    }
+    return { 'retryable': true, 'reason': 'NETWORK' };
+  }
+
+  protected override async onRetryScheduled(context: RetryContextType): Promise<void> {
+    const strategy = BackoffStrategy.withCeiling(BackoffStrategy.exponential, this.#maxBackoffMs);
+    const delayMs = strategy(context.attemptNumber, this.#baseBackoffMs);
+    context.delayMs = 0;
+    await HttpAbortSignals.waitForRetryDelay(delayMs, this.#signal);
+  }
+
+  private static unwrap(error: unknown): Error {
+    if (error instanceof NonRetryableError) {
+      return error.originalError;
+    }
+    if (error instanceof MaxRetriesExceededError) {
+      return error.errors.at(-1) ?? error;
+    }
+    if (error instanceof Error) {
+      return error;
+    }
+    return new ToolError(String(error), { 'reason': 'UNKNOWN', 'retryable': false, 'status': null });
+  }
+}
 
 export class HttpTransport {
   private constructor() { /* static class */ }
@@ -94,76 +220,45 @@ export class HttpTransport {
   private static resolveOptions(options: Partial<HttpRequestOptionsType>): HttpRequestOptionsType {
     const merged = { ...HTTP_REQUEST_DEFAULTS, ...options };
     return {
-      'timeoutMs':  merged.timeoutMs,
-      'maxRetries': merged.maxRetries,
+      'timeoutMs':     merged.timeoutMs,
+      'maxRetries':    merged.maxRetries,
+      'baseBackoffMs': merged.baseBackoffMs,
+      'maxBackoffMs':  merged.maxBackoffMs,
       ...(options.signal  !== undefined ? { 'signal':  options.signal }  : {}),
       ...(options.headers !== undefined ? { 'headers': options.headers } : {}),
+      'circuitBreaker': merged.circuitBreaker,
+      'tokenBucket':    merged.tokenBucket,
     };
   }
 
   /**
-   * Core request loop: applies timeout, honours caller abort, retries
-   * transient failures with exponential backoff. Returns the raw
-   * `Response` for callers that need the body unparsed.
+   * Core request path: applies timeout, honours caller abort, retries
+   * transient failures with exponential backoff through substrate `Retry`,
+   * and optionally gates the logical request through substrate resilience
+   * primitives. Returns the raw `Response` for callers that need the body
+   * unparsed.
    */
   static async request(url: string, init: RequestInit, options: Partial<HttpRequestOptionsType> = {}): Promise<Response> {
     const resolved = HttpTransport.resolveOptions(options);
-    const timeoutMs  = resolved.timeoutMs;
-    const maxRetries = resolved.maxRetries;
+    const signal = Signal.compose({
+      'deadlineMs': resolved.timeoutMs,
+      ...(resolved.signal !== undefined ? { 'signal': resolved.signal } : {}),
+    });
+    const headers = HttpTransport.headersFor(init.headers, resolved.headers);
+    const retry = HttpRetryPolicy.of(resolved, signal);
 
-    let attempt = 0;
-    let lastError: ToolError | null = null;
-
-    while (attempt <= maxRetries) {
-      const controller = new AbortController();
-      const timeoutId  = setTimeout(() => controller.abort(new ToolError('timeout', { 'reason': 'TIMEOUT', 'retryable': true, 'status': null })), timeoutMs);
-      const signal = AbortSignal.any([controller.signal, ...(resolved.signal !== undefined ? [resolved.signal] : [])]);
-
-      const headers: Record<string, string> = {};
-      if (init.headers !== undefined) {
-        for (const [k, v] of Object.entries(init.headers)) headers[k] = String(v);
+    const run = async (): Promise<Response> => {
+      if (resolved.tokenBucket !== null && resolved.tokenBucket !== undefined) {
+        await resolved.tokenBucket.waitForToken({ signal });
       }
-      if (resolved.headers !== undefined) {
-        for (const [k, v] of Object.entries(resolved.headers)) headers[k] = v;
-      }
+      return retry.run(() => HttpTransport.fetchOnce(url, init, headers, signal, resolved.signal));
+    };
 
-      try {
-        const response = await fetch(url, { ...init, signal, headers });
-        clearTimeout(timeoutId);
-
-        if (response.ok) return response;
-
-        const classification = HttpTransport.classifyStatus(response.status);
-        lastError = new ToolError(
-          `HTTP ${String(response.status)} ${response.statusText} on ${url}`,
-          { 'reason': classification.reason, 'retryable': classification.retryable, 'status': response.status },
-        );
-        if (!classification.retryable || attempt === maxRetries) throw lastError;
-      } catch (err) {
-        clearTimeout(timeoutId);
-        if (err instanceof ToolError) {
-          lastError = err;
-          if (!err.retryable || attempt === maxRetries) throw err;
-        } else {
-          const isAbort  = (err instanceof DOMException && err.name === 'AbortError')
-            || (err instanceof Error && err.name === 'AbortError');
-          const callerAbort = resolved.signal?.aborted === true;
-          const reason: ToolErrorReasonType = callerAbort ? 'ABORTED' : isAbort ? 'TIMEOUT' : 'NETWORK';
-          const retryable = !callerAbort && reason !== 'ABORTED';
-          lastError = new ToolError(`${reason.toLowerCase()} fetching ${url}`, { reason, retryable, 'status': null, 'cause': err });
-          if (!retryable || attempt === maxRetries) throw lastError;
-        }
-      }
-
-      // Exponential backoff before next attempt. Abort-aware: if the caller
-      // cancels during the sleep, reject immediately rather than hanging.
-      const delay = BASE_BACKOFF_MS * 2 ** attempt;
-      await HttpTransport.#abortAwareSleep(delay, resolved.signal);
-      attempt++;
+    if (resolved.circuitBreaker !== null && resolved.circuitBreaker !== undefined) {
+      return resolved.circuitBreaker.execute(run);
     }
 
-    // Loop exits via throw; this is unreachable but TypeScript needs it.
-    throw lastError ?? new ToolError(`request failed after ${String(maxRetries)} retries: ${url}`, { 'reason': 'UNKNOWN', 'retryable': false, 'status': null });
+    return run();
   }
 
   private static async decodeJson<TResponse>(
@@ -186,24 +281,63 @@ export class HttpTransport {
     return { 'reason': 'UNKNOWN', 'retryable': false };
   }
 
-  /**
-   * Sleep for `ms` milliseconds, but abort immediately if `signal` fires.
-   * On abort, rejects with a non-retryable `ToolError` so the retry loop
-   * does not hang until the timeout expires.
-   */
-  static async #abortAwareSleep(ms: number, signal?: AbortSignal): Promise<void> {
-    if (signal?.aborted === true) {
-      throw new ToolError('request aborted during backoff', { 'reason': 'ABORTED', 'retryable': false, 'status': null });
+  private static async fetchOnce(
+    url: string,
+    init: RequestInit,
+    headers: Record<string, string>,
+    signal: AbortSignal,
+    callerSignal: AbortSignal | undefined,
+  ): Promise<Response> {
+    if (signal.aborted) {
+      throw HttpAbortSignals.errorFromSignal(signal);
     }
-    return new Promise<void>((resolve, reject) => {
-      const timerId = setTimeout(resolve, ms);
-      if (signal === undefined) return;
-      const onAbort = (): void => {
-        clearTimeout(timerId);
-        signal.removeEventListener('abort', onAbort);
-        reject(new ToolError('request aborted during backoff', { 'reason': 'ABORTED', 'retryable': false, 'status': null }));
-      };
-      signal.addEventListener('abort', onAbort, { 'once': true });
-    });
+
+    try {
+      const response = await fetch(url, { ...init, signal, headers });
+
+      if (response.ok) return response;
+
+      const classification = HttpTransport.classifyStatus(response.status);
+      throw new ToolError(
+        `HTTP ${String(response.status)} ${response.statusText} on ${url}`,
+        { 'reason': classification.reason, 'retryable': classification.retryable, 'status': response.status },
+      );
+    } catch (err) {
+      throw HttpTransport.transportError(url, err, signal, callerSignal);
+    }
   }
+
+  private static headersFor(initHeaders: RequestInit['headers'], optionHeaders: Record<string, string> | undefined): Record<string, string> {
+    const headers: Record<string, string> = {};
+    if (initHeaders !== undefined) {
+      new Headers(initHeaders).forEach((value, key) => {
+        headers[key] = value;
+      });
+    }
+    if (optionHeaders !== undefined) {
+      for (const [key, value] of Object.entries(optionHeaders)) headers[key] = value;
+    }
+    return headers;
+  }
+
+  private static transportError(
+    url: string,
+    err: unknown,
+    signal: AbortSignal,
+    callerSignal: AbortSignal | undefined,
+  ): Error {
+    if (err instanceof ToolError) return err;
+    if (callerSignal?.aborted === true) {
+      return new ToolError(`aborted fetching ${url}`, { 'reason': 'ABORTED', 'retryable': false, 'status': null, 'cause': err });
+    }
+    if (signal.aborted) {
+      const reason: ToolErrorReasonType = HttpAbortSignals.isTimeoutSignal(signal) ? 'TIMEOUT' : 'ABORTED';
+      return new ToolError(`${reason.toLowerCase()} fetching ${url}`, { reason, 'retryable': false, 'status': null, 'cause': err });
+    }
+    const isAbort  = (err instanceof DOMException && err.name === 'AbortError')
+      || (err instanceof Error && err.name === 'AbortError');
+    const reason: ToolErrorReasonType = isAbort ? 'TIMEOUT' : 'NETWORK';
+    return new ToolError(`${reason.toLowerCase()} fetching ${url}`, { reason, 'retryable': true, 'status': null, 'cause': err });
+  }
+
 }

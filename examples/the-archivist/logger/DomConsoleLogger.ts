@@ -5,10 +5,10 @@
  * an in-browser surface. Two surfaces, both driven from the one override and
  * neither using a callback fan-out:
  *
- *   • `events`: a live array every emission is appended to. A reactive view
- *     (the docs `TraceFeed` component) wraps the instance and reads `events`
- *     directly, so new lines appear without the logger calling back into the
- *     view.
+ *   • `events`: a live array synced from a bounded ring buffer. A reactive
+ *     view (the docs `TraceFeed` component) wraps the instance and reads
+ *     `events` directly, so new lines appear without the logger calling back
+ *     into the view.
  *
  *   • `panel`: an optional `<pre>`-style host element. When supplied, the
  *     override also appends a styled `<span>` line and keeps the panel
@@ -21,6 +21,9 @@
 
 import { ConsoleLogger } from './ConsoleLogger.ts';
 import type { LogEvent } from './ConsoleLogger.ts';
+import { CircularBuffer } from '@studnicky/circular-buffer';
+
+const DEFAULT_DOM_LOG_EVENT_CAPACITY = 1000;
 
 /**
  * Minimal host-element contract for the optional log panel. Derived from the
@@ -34,8 +37,10 @@ export interface LogPanelHost {
 }
 
 export class DomConsoleLogger extends ConsoleLogger {
+  readonly #eventsBuffer: CircularBuffer<LogEvent>;
+
   /**
-   * Live event log the override appends to. A reactive view (the docs
+   * Live event log synced from `#eventsBuffer`. A reactive view (the docs
    * `TraceFeed`) supplies its own framework-reactive array via the `events`
    * option so new lines render without the logger calling back into the view;
    * otherwise the logger owns a plain array.
@@ -51,6 +56,10 @@ export class DomConsoleLogger extends ConsoleLogger {
     readonly events?: LogEvent[];
   } = {}) {
     super(options.maxBuffer !== undefined ? { 'maxBuffer': options.maxBuffer } : {});
+    this.#eventsBuffer = CircularBuffer.create<LogEvent>({
+      'capacity': options.maxBuffer ?? DEFAULT_DOM_LOG_EVENT_CAPACITY,
+      'overflow': 'overwrite',
+    });
     this.events = options.events ?? [];
     this.#panel = options.panel ?? null;
   }
@@ -61,7 +70,8 @@ export class DomConsoleLogger extends ConsoleLogger {
    * `<pre>` panel when one was supplied at construction.
    */
   protected override onEmit(event: LogEvent): void {
-    this.events.push(event);
+    this.#eventsBuffer.push(event);
+    this.#syncEvents();
     const panel = this.#panel;
     if (panel === null) return;
     const line = document.createElement('span');
@@ -69,5 +79,23 @@ export class DomConsoleLogger extends ConsoleLogger {
     line.textContent = `[${event.level}] ${event.message}\n`;
     panel.appendChild(line);
     panel.scrollTop = panel.scrollHeight;
+  }
+
+  override clear(): void {
+    let event = this.#eventsBuffer.shift();
+    while (event !== undefined) event = this.#eventsBuffer.shift();
+    this.events.splice(0, this.events.length);
+    super.clear();
+  }
+
+  #syncEvents(): void {
+    const events: LogEvent[] = [];
+    let event = this.#eventsBuffer.shift();
+    while (event !== undefined) {
+      events.push(event);
+      event = this.#eventsBuffer.shift();
+    }
+    for (const retained of events) this.#eventsBuffer.push(retained);
+    this.events.splice(0, this.events.length, ...events);
   }
 }

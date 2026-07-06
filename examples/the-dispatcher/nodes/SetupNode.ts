@@ -9,12 +9,12 @@
  * Routes 'ready' always.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
 
-export class SetupNode extends ScalarNode<DispatcherState, 'ready'> {
+export class SetupNode extends MonadicNode<DispatcherState, 'ready'> {
   readonly name = 'dispatcher-setup';
   readonly outputs = ['ready'] as const;
 
@@ -22,10 +22,14 @@ export class SetupNode extends ScalarNode<DispatcherState, 'ready'> {
     return { 'ready': { 'type': 'object' } };
   }
 
-  protected override executeOne(state: DispatcherState) {
-    // Stamp a per-run identifier for diagnostics and metadata correlation.
-    const runId = new Date().toISOString().replace(/[:.]/g, '-');
-    state.setMetadata('runId', runId);
-    return Promise.resolve(NodeOutputBuilder.of('ready'));
+  override async execute(
+    batch: Batch<DispatcherState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'ready', DispatcherState>> {
+    for (const item of batch) {
+      const runId = new Date().toISOString().replace(/[:.]/g, '-');
+      item.state.setMetadata('runId', runId);
+    }
+    return RoutedBatch.create('ready', batch);
   }
 }

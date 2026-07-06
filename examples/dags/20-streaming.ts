@@ -5,10 +5,12 @@
  */
 
 import {
+  Batch,
   DAGBuilder,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
 
@@ -24,39 +26,39 @@ export class PipelineState extends NodeStateBase {
 // Nodes: each stage appends to `items` so the consumer can see progress
 // ---------------------------------------------------------------------------
 
-export class IngestNode extends ScalarNode<PipelineState, 'done'> {
+export class IngestNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'ingest';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: PipelineState) {
-    state.items.push('raw-data');
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) item.state.items.push('raw-data');
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
-export class EnrichNode extends ScalarNode<PipelineState, 'done'> {
+export class EnrichNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'enrich';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: PipelineState) {
-    state.items.push('enriched-data');
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) item.state.items.push('enriched-data');
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
-export class PersistNode extends ScalarNode<PipelineState, 'done'> {
+export class PersistNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'persist';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
-  protected override async executeOne(state: PipelineState) {
-    state.items.push('persisted');
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) item.state.items.push('persisted');
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 

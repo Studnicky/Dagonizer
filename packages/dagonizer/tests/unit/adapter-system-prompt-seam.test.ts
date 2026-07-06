@@ -14,8 +14,8 @@ import { describe, it } from 'node:test';
 
 import {
   BaseAdapter,
-  ChatRequestBuilder,
-  ChatResponseMessageBuilder,
+  ChatRequest,
+  ChatResponseMessage,
   ZERO_TOKEN_USAGE,
 } from '../../src/adapter/index.js';
 import type {
@@ -38,7 +38,7 @@ class RecordingAdapter extends BaseAdapter {
   protected performChat(request: ChatRequestType): Promise<ChatResponseType> {
     this.seen = request;
     return Promise.resolve({
-      'message':      ChatResponseMessageBuilder.from('ok', []),
+      'message':      ChatResponseMessage.create('ok', []),
       'finishReason': 'stop',
       'usage':        ZERO_TOKEN_USAGE,
     });
@@ -48,7 +48,7 @@ class RecordingAdapter extends BaseAdapter {
 void describe('BaseAdapter systemPrompt seam', () => {
   void it('injects the default as the leading system message for a user-only request', async () => {
     const a = new RecordingAdapter({ 'systemPrompt': 'You are the Archivist.' });
-    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
+    await a.chat(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
     assert.deepEqual(a.seen?.messages, [
       { 'role': 'system', 'content': 'You are the Archivist.' },
       { 'role': 'user',   'content': 'Hello.' },
@@ -57,13 +57,13 @@ void describe('BaseAdapter systemPrompt seam', () => {
 
   void it('does not inject when no default is configured (empty string)', async () => {
     const a = new RecordingAdapter();
-    await a.chat(ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
+    await a.chat(ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello.' }] }));
     assert.deepEqual(a.seen?.messages, [{ 'role': 'user', 'content': 'Hello.' }]);
   });
 
   void it('never overrides or duplicates an explicit system message', async () => {
-    const a = new RecordingAdapter({ 'systemPrompt': 'Default persona.' });
-    await a.chat(ChatRequestBuilder.from({
+    const a = new RecordingAdapter({ 'systemPrompt': 'Default directive.' });
+    await a.chat(ChatRequest.create({
       'messages': [
         { 'role': 'system', 'content': 'Caller persona.' },
         { 'role': 'user',   'content': 'Hello.' },

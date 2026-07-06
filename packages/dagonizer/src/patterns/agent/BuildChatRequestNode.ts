@@ -9,18 +9,21 @@
  */
 
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
-import { ScalarNode } from '../../core/ScalarNode.js';
+import { MonadicNode } from '../../core/MonadicNode.js';
 import type { ChatRequestType } from '../../entities/adapter/ChatRequest.js';
+import { Batch } from '../../entities/batch/Batch.js';
+import type { ItemType } from '../../entities/batch/Item.js';
+import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
+import { NodeError } from '../../entities/node/NodeError.js';
+import { NodeOutput } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
 import { DAGError } from '../../errors/DAGError.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class BuildChatRequestNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'ready' | 'error'> {
+> extends MonadicNode<TState, 'ready' | 'error'> {
   readonly outputs = ['ready', 'error'] as const;
 
   override get outputSchema(): Record<'ready' | 'error', SchemaObjectType> {
@@ -40,26 +43,49 @@ export abstract class BuildChatRequestNode<
     context: NodeContextType,
   ): ChatRequestType;
 
-  protected override async executeOne(
-    state: TState,
+  override async execute(
+    batch: Batch<TState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<'ready' | 'error'>> {
-    try {
-      this.buildRequest(state, context);
-      return NodeOutputBuilder.of('ready');
-    } catch (cause) {
-      const error = DAGError.coerce(cause);
-      return NodeOutputBuilder.of('error', {
-        'errors': [
-          NodeErrorBuilder.from(
-            'buildRequestFailed',
-            error.message,
-            'BuildChatRequestNode.executeOne',
-            true,
-            new Date().toISOString(),
-          ),
-        ],
-      });
+  ): Promise<RoutedBatchType<'ready' | 'error', TState>> {
+    const acc = new Map<'ready' | 'error', ItemType<TState>[]>();
+
+    for (const item of batch) {
+      const state = item.state;
+      let output: NodeOutputType<'ready' | 'error'>;
+
+      try {
+        this.buildRequest(state, context);
+        output = NodeOutput.create('ready');
+      } catch (cause) {
+        const error = DAGError.coerce(cause);
+        output = NodeOutput.create('error', {
+          'errors': [
+            NodeError.create(
+              'buildRequestFailed',
+              error.message,
+              'BuildChatRequestNode.execute',
+              true,
+              new Date().toISOString(),
+            ),
+          ],
+        });
+      }
+
+      for (const error of output.errors) {
+        state.collectError(error);
+      }
+      const bucket = acc.get(output.output);
+      if (bucket !== undefined) {
+        bucket.push(item);
+      } else {
+        acc.set(output.output, [item]);
+      }
     }
+
+    const routed = new Map<'ready' | 'error', Batch<TState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
   }
 }

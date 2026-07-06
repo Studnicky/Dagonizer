@@ -94,12 +94,18 @@ export class IntentClassifier {
    * LLM-only).
    */
   static async create(embedder: EmbedderInterface): Promise<IntentClassifier> {
-    const vectors = await Promise.all(
-      INTENT_LABELS.map<Promise<IntentVector>>(async (intent) => ({
-        intent,
-        'vector': await embedder.embed(INTENT_DESCRIPTIONS[intent]),
-      })),
-    );
+    const descriptions = INTENT_LABELS.map((intent) => INTENT_DESCRIPTIONS[intent]);
+    const embeddings = await embedder.embedBatch(descriptions);
+    if (embeddings.length !== INTENT_LABELS.length) {
+      throw new Error(`IntentClassifier expected ${String(INTENT_LABELS.length)} embeddings, received ${String(embeddings.length)}`);
+    }
+    const vectors = INTENT_LABELS.map<IntentVector>((intent, index) => {
+      const vector = embeddings[index];
+      if (vector === undefined) {
+        throw new Error(`IntentClassifier missing embedding at index ${String(index)}`);
+      }
+      return { intent, vector };
+    });
     return new IntentClassifier(embedder, vectors);
   }
 

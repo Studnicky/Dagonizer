@@ -4,15 +4,16 @@ import { GeoSignalDescriptorGuard } from '../../entities/GeoSignalDescriptor.ts'
 import { CallingCode } from '../../geo/CallingCode.ts';
 import { CountryCodeResolution } from './CountryCodeResolution.ts';
 import {
-  NodeOutputBuilder,
-  ScalarNode,
+  MonadicNode,
+  RoutedBatch,
+  type Batch,
   type NodeContextType,
-  type NodeOutputType,
+  type RoutedBatchType,
   type SchemaObjectType,
 } from '@studnicky/dagonizer';
 
 // #region resolve-phone-node
-export class ResolvePhoneNode extends ScalarNode<CartographerState, 'resolved'> {
+export class ResolvePhoneNode extends MonadicNode<CartographerState, 'resolved'> {
   readonly 'name' = 'resolve-phone';
   readonly 'outputs' = ['resolved'] as const;
 
@@ -20,24 +21,26 @@ export class ResolvePhoneNode extends ScalarNode<CartographerState, 'resolved'> 
     return { 'resolved': { 'type': 'object' } };
   }
 
-  protected override async executeOne(
-    state: CartographerState,
+  override async execute(
+    batch: Batch<CartographerState>,
     _context: NodeContextType,
-  ): Promise<NodeOutputType<'resolved'>> {
-    const raw = state.getMetadata('geo-signal');
+  ): Promise<RoutedBatchType<'resolved', CartographerState>> {
+    for (const item of batch) {
+      const raw = item.state.getMetadata('geo-signal');
 
-    if (!GeoSignalDescriptorGuard.is(raw)) {
-      state.candidate = GeoResolutionBuilder.from({ 'source': 'phone', 'weight': 0 });
-      return NodeOutputBuilder.of('resolved');
-    }
+      if (!GeoSignalDescriptorGuard.is(raw)) {
+        item.state.candidate = GeoResolutionBuilder.from({ 'source': 'phone', 'weight': 0 });
+        continue;
+      }
 
-    const iso2 = CallingCode.countryFor(raw.phone);
-    if (iso2 === '') {
-      state.candidate = GeoResolutionBuilder.from({ 'source': 'phone', 'weight': 0 });
-    } else {
-      state.candidate = CountryCodeResolution.forIso2(iso2, 'phone', raw.weight);
+      const iso2 = CallingCode.countryFor(raw.phone);
+      if (iso2 === '') {
+        item.state.candidate = GeoResolutionBuilder.from({ 'source': 'phone', 'weight': 0 });
+      } else {
+        item.state.candidate = CountryCodeResolution.forIso2(iso2, 'phone', raw.weight);
+      }
     }
-    return NodeOutputBuilder.of('resolved');
+    return RoutedBatch.create('resolved', batch);
   }
 }
 

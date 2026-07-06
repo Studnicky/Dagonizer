@@ -12,13 +12,11 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { ShippingCalculator } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region enrich-leg-node
-export class EnrichLegNode extends ScalarNode<CartographerState, 'leg-measured'> {
+export class EnrichLegNode extends MonadicNode<CartographerState, 'leg-measured'> {
   readonly 'name' = 'enrich-leg';
   readonly 'outputs' = ['leg-measured'] as const;
 
@@ -28,17 +26,22 @@ export class EnrichLegNode extends ScalarNode<CartographerState, 'leg-measured'>
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'leg-measured'>> {
-    const norm = state.normalized;
-    // Seq 0 starts at the origin (legFrom == origin), so its leg is the first
-    // hop. Distance is min-clamped to ~1 km by ShippingCalculator.
-    state.legKm = ShippingCalculator.distanceKm(
-      norm.legFromLat,
-      norm.legFromLng,
-      norm.latitude,
-      norm.longitude,
-    );
-    return NodeOutputBuilder.of('leg-measured');
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'leg-measured', CartographerState>> {
+    for (const item of batch) {
+      const norm = item.state.normalized;
+      // Seq 0 starts at the origin (legFrom == origin), so its leg is the first
+      // hop. Distance is min-clamped to ~1 km by ShippingCalculator.
+      item.state.legKm = ShippingCalculator.distanceKm(
+        norm.legFromLat,
+        norm.legFromLng,
+        norm.latitude,
+        norm.longitude,
+      );
+    }
+    return RoutedBatch.create('leg-measured', batch);
   }
 }
 // #endregion enrich-leg-node

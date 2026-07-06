@@ -28,13 +28,13 @@
  *   customers in the flow.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, BatchItemExecutor, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
 import type { DispatcherServices } from '../services.ts';
 
-export class ClassifyMessageNode extends ScalarNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'> {
+export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'> {
   readonly name = 'classify-message';
   readonly outputs = ['routine', 'escalate', 'off-topic'] as const;
 
@@ -53,16 +53,49 @@ export class ClassifyMessageNode extends ScalarNode<DispatcherState, 'routine' |
     };
   }
 
-  protected override async executeOne(state: DispatcherState, context: NodeContextType) {
+  override async execute(
+    batch: Batch<DispatcherState>,
+    context: NodeContextType,
+  ): Promise<RoutedBatchType<'routine' | 'escalate' | 'off-topic', DispatcherState>> {
+    const acc = new Map<'routine' | 'escalate' | 'off-topic', ItemType<DispatcherState>[]>();
+    const results = await BatchItemExecutor.map(batch.items(), async (item) => {
+      const output = await this.routeItem(item.state, context);
+
+      for (const error of output.errors) {
+        item.state.collectError(error);
+      }
+      return { item, output };
+    }, this.#services.execution, context.signal);
+
+    for (const result of results) {
+      const bucket = acc.get(result.output.output);
+      if (bucket === undefined) {
+        acc.set(result.output.output, [result.item]);
+      } else {
+        bucket.push(result.item);
+      }
+    }
+
+    const routed = new Map<'routine' | 'escalate' | 'off-topic', Batch<DispatcherState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private async routeItem(
+    state: DispatcherState,
+    context: NodeContextType,
+  ): Promise<NodeOutputType<'routine' | 'escalate' | 'off-topic'>> {
     // Trolley switch: force human routing regardless of content.
     if (state.humanMode) {
       state.escalationReason = 'Human mode active — all messages routed to operator';
-      return NodeOutputBuilder.of('escalate');
+      return NodeOutput.create('escalate');
     }
 
     // Empty message → off-topic without LLM.
     if (state.message.trim().length === 0) {
-      return NodeOutputBuilder.of('off-topic');
+      return NodeOutput.create('off-topic');
     }
 
     if (state.classificationMode === 'llm') {
@@ -80,24 +113,30 @@ export class ClassifyMessageNode extends ScalarNode<DispatcherState, 'routine' |
   }
 
   /** LLM classification with conservative escalation on error. */
-  private async classifyViaLlm(state: DispatcherState, context: NodeContextType) {
+  private async classifyViaLlm(
+    state: DispatcherState,
+    context: NodeContextType,
+  ): Promise<NodeOutputType<'routine' | 'escalate' | 'off-topic'>> {
     let intent: 'routine' | 'escalate' | 'off-topic';
     try {
       intent = await this.#services.llm.classify(state.message, state.conversation, context.signal);
     } catch {
       state.escalationReason = 'LLM unavailable; escalated for safety';
-      return NodeOutputBuilder.of('escalate');
+      return NodeOutput.create('escalate');
     }
     return this.route(state, intent);
   }
 
   /** Shared routing for both the embedder and LLM classification paths. */
-  private route(state: DispatcherState, intent: 'routine' | 'escalate' | 'off-topic') {
+  private route(
+    state: DispatcherState,
+    intent: 'routine' | 'escalate' | 'off-topic',
+  ): NodeOutputType<'routine' | 'escalate' | 'off-topic'> {
     if (intent === 'escalate') {
       state.escalationReason = 'Agent determined this message requires human review.';
-      return NodeOutputBuilder.of('escalate');
+      return NodeOutput.create('escalate');
     }
-    if (intent === 'off-topic') return NodeOutputBuilder.of('off-topic');
-    return NodeOutputBuilder.of('routine');
+    if (intent === 'off-topic') return NodeOutput.create('off-topic');
+    return NodeOutput.create('routine');
   }
 }

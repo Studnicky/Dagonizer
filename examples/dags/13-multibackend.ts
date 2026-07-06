@@ -23,10 +23,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -75,31 +77,35 @@ export class MultiBackendState extends NodeStateBase {
 
 // #region nodes
 /** CPU node: squares the current scatter item. Runs inside the `cpu` container. */
-export class SquareNode extends ScalarNode<MultiBackendState, 'done'> {
+export class SquareNode extends MonadicNode<MultiBackendState, 'done'> {
   readonly name = 'squareNode';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: MultiBackendState) {
-    const task = state.getter.number('task');
-    state.lastResult = task * task;
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<MultiBackendState>) {
+    for (const item of batch) {
+      const task = item.state.getter.number('task');
+      item.state.lastResult = task * task;
+    }
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
 /** IO node: sums all results. Runs inside the `io` container. */
-export class SumNode extends ScalarNode<MultiBackendState, 'done'> {
+export class SumNode extends MonadicNode<MultiBackendState, 'done'> {
   readonly name = 'sumNode';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: MultiBackendState) {
-    state.total = state.results.reduce((acc, n) => acc + n, 0);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<MultiBackendState>) {
+    for (const item of batch) {
+      item.state.total = item.state.results.reduce((acc, n) => acc + n, 0);
+    }
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion nodes

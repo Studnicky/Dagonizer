@@ -25,7 +25,7 @@ import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../../src/contracts/StateAccessorInterface.js';
 import type { GatherRecordType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -33,7 +33,6 @@ import type { GatherConfigType } from '../../src/entities/dag/GatherConfig.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { ChildStateFactory } from '../../src/runtime/ChildStateFactory.js';
@@ -92,16 +91,18 @@ let bodyReceivedClass: string = '';
  * Body node that runs inside the child DAG. Increments `shared` and records
  * the runtime class of the state it received.
  */
-class EmbedBodyNode extends ScalarNode<EmbedChildState, 'success'> {
+class EmbedBodyNode extends MonadicNode<EmbedChildState, 'success'> {
   readonly name = 'embedBody';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
 
-  protected async executeOne(state: EmbedChildState, _ctx: NodeContextType): Promise<NodeOutputType<'success'>> {
-    bodyReceivedClass = state.constructor.name;
-    state.childValue = 'written-by-child';
-    state.shared     = state.shared + 10;
-    return { 'errors': [], 'output': 'success' };
+  override async execute(batch: Batch<EmbedChildState>, _ctx: NodeContextType): Promise<Map<'success', Batch<EmbedChildState>>> {
+    for (const item of batch) {
+      bodyReceivedClass = item.state.constructor.name;
+      item.state.childValue = 'written-by-child';
+      item.state.shared     = item.state.shared + 10;
+    }
+    return new Map([['success', batch]]);
   }
 }
 
@@ -307,16 +308,18 @@ let scatterBodyClassSeen: Set<string>;
  * Scatter body node: reads the item value from metadata and doubles it into `itemResult`.
  * Records the class of the state it received.
  */
-class ScatterBodyNode extends ScalarNode<ScatterItemState, 'success'> {
+class ScatterBodyNode extends MonadicNode<ScatterItemState, 'success'> {
   readonly name = 'scatterBody';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
 
-  protected async executeOne(state: ScatterItemState, _ctx: NodeContextType): Promise<NodeOutputType<'success'>> {
-    scatterBodyClassSeen.add(state.constructor.name);
-    const item = state.getter.number('item');
-    state.itemResult = item * 2;
-    return { 'errors': [], 'output': 'success' };
+  override async execute(batch: Batch<ScatterItemState>, _ctx: NodeContextType): Promise<Map<'success', Batch<ScatterItemState>>> {
+    for (const item of batch) {
+      scatterBodyClassSeen.add(item.state.constructor.name);
+      const value = item.state.getter.number('item');
+      item.state.itemResult = value * 2;
+    }
+    return new Map([['success', batch]]);
   }
 }
 

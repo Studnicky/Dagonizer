@@ -12,13 +12,14 @@
 
 import {
   DAG_CONTEXT,
+  Batch,
   DagStreamProducer,
   Dagonizer,
-  NodeOutputBuilder,
+  MonadicNode,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
-import type { DAGType, NodeResultType, NodeStateInterface, SchemaObjectType } from '@studnicky/dagonizer';
+import type { DAGType, NodeContextType, NodeResultType, NodeStateInterface, SchemaObjectType } from '@studnicky/dagonizer';
 import type { CandidateType } from '../entities/Book.ts';
 
 // ---------------------------------------------------------------------------
@@ -34,7 +35,7 @@ class CandidateDiscoveryState extends NodeStateBase {
 // Inner node: copies pendingBatch → candidates
 // ---------------------------------------------------------------------------
 
-class DiscoverCandidatesNode extends ScalarNode<CandidateDiscoveryState, 'done'> {
+class DiscoverCandidatesNode extends MonadicNode<CandidateDiscoveryState, 'done'> {
   readonly name    = 'discover-candidates';
   readonly outputs = ['done'] as const;
 
@@ -46,9 +47,11 @@ class DiscoverCandidatesNode extends ScalarNode<CandidateDiscoveryState, 'done'>
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: CandidateDiscoveryState) {
-    state.candidates = [...state.pendingBatch];
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<CandidateDiscoveryState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      state.candidates = [...state.pendingBatch];
+    }
+    return RoutedBatch.create('done', batch);
   }
 }
 

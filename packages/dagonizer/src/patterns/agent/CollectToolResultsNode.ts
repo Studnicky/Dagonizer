@@ -14,17 +14,20 @@
  */
 
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
-import { ScalarNode } from '../../core/ScalarNode.js';
+import { MonadicNode } from '../../core/MonadicNode.js';
+import { Batch } from '../../entities/batch/Batch.js';
+import type { ItemType } from '../../entities/batch/Item.js';
+import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
+import { NodeError } from '../../entities/node/NodeError.js';
+import { NodeOutput } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
 import { DAGError } from '../../errors/DAGError.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
 
 export abstract class CollectToolResultsNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'done' | 'empty' | 'error'> {
+> extends MonadicNode<TState, 'done' | 'empty' | 'error'> {
   readonly outputs = ['done', 'empty', 'error'] as const;
 
   override get outputSchema(): Record<'done' | 'empty' | 'error', SchemaObjectType> {
@@ -54,30 +57,54 @@ export abstract class CollectToolResultsNode<
     context: NodeContextType,
   ): void;
 
-  protected override async executeOne(
-    state: TState,
+  override async execute(
+    batch: Batch<TState>,
     context: NodeContextType,
-  ): Promise<NodeOutputType<'done' | 'empty' | 'error'>> {
-    try {
-      const results = this.getGatheredResults(state, context);
-      if (results.length === 0) {
-        return NodeOutputBuilder.of('empty');
+  ): Promise<RoutedBatchType<'done' | 'empty' | 'error', TState>> {
+    const acc = new Map<'done' | 'empty' | 'error', ItemType<TState>[]>();
+
+    for (const item of batch) {
+      const state = item.state;
+      let output: NodeOutputType<'done' | 'empty' | 'error'>;
+
+      try {
+        const results = this.getGatheredResults(state, context);
+        if (results.length === 0) {
+          output = NodeOutput.create('empty');
+        } else {
+          this.writeResult(state, results, context);
+          output = NodeOutput.create('done');
+        }
+      } catch (cause) {
+        const error = DAGError.coerce(cause);
+        output = NodeOutput.create('error', {
+          'errors': [
+            NodeError.create(
+              'collectToolResultsFailed',
+              error.message,
+              'CollectToolResultsNode.execute',
+              true,
+              new Date().toISOString(),
+            ),
+          ],
+        });
       }
-      this.writeResult(state, results, context);
-      return NodeOutputBuilder.of('done');
-    } catch (cause) {
-      const error = DAGError.coerce(cause);
-      return NodeOutputBuilder.of('error', {
-        'errors': [
-          NodeErrorBuilder.from(
-            'collectToolResultsFailed',
-            error.message,
-            'CollectToolResultsNode.executeOne',
-            true,
-            new Date().toISOString(),
-          ),
-        ],
-      });
+
+      for (const error of output.errors) {
+        state.collectError(error);
+      }
+      const bucket = acc.get(output.output);
+      if (bucket !== undefined) {
+        bucket.push(item);
+      } else {
+        acc.set(output.output, [item]);
+      }
     }
+
+    const routed = new Map<'done' | 'empty' | 'error', Batch<TState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
   }
 }

@@ -5,7 +5,7 @@
  */
 
 // #region execute-contract
-import { MonadicNode, RoutedBatchBuilder, Batch } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch, Batch } from '@studnicky/dagonizer';
 import type { NodeContextType, NodeStateInterface, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // The execute signature: consume Batch<TState>, return RoutedBatchType<TOutput, TState>.
@@ -18,13 +18,13 @@ export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
   }
 
   async execute(batch: Batch<NodeStateInterface>, _ctx: NodeContextType): Promise<RoutedBatchType<'out', NodeStateInterface>> {
-    return RoutedBatchBuilder.of('out', batch);
+    return RoutedBatch.create('out', batch);
   }
 }
 // #endregion execute-contract
 
 // #region node-taxonomy
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
+import { NodeOutput, NodeStateBase } from '@studnicky/dagonizer';
 
 // EventState: domain state shared by both node variants below.
 export class EventState extends NodeStateBase {
@@ -39,19 +39,21 @@ const geoCache = {
   },
 };
 
-// per-item (the common case): ScalarNode processes one EventState at a time.
-export class GeoNode extends ScalarNode<EventState, 'has-geo' | 'needs-geo'> {
+// item-independent routing: loop locally and preserve each item's route.
+export class GeoNode extends MonadicNode<EventState, 'has-geo' | 'needs-geo'> {
   readonly name    = 'geo';
   readonly outputs = ['has-geo', 'needs-geo'] as const;
   override get outputSchema(): Record<'has-geo' | 'needs-geo', SchemaObjectType> {
     return { 'has-geo': { 'type': 'object' }, 'needs-geo': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: EventState) {
-    if (state.coords === null) {
-      return NodeOutputBuilder.of('needs-geo');
+  override async execute(batch: Batch<EventState>) {
+    const entries: Array<readonly ['has-geo' | 'needs-geo', Batch<EventState>]> = [];
+    for (const item of batch) {
+      const output = NodeOutput.create(item.state.coords === null ? 'needs-geo' : 'has-geo');
+      entries.push([output.output, Batch.from([item])]);
     }
-    return NodeOutputBuilder.of('has-geo');
+    return RoutedBatch.create(entries);
   }
 }
 
@@ -71,7 +73,7 @@ export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
         state.region = geoCache.lookup(state.coords);
       }
     }
-    return RoutedBatchBuilder.of('enriched', batch);
+    return RoutedBatch.create('enriched', batch);
   }
 }
 // #endregion node-taxonomy
@@ -86,15 +88,15 @@ export class ScoreState extends NodeStateBase {
   topCandidates:  unknown[] = [];
 }
 
-export class ScoreNode extends ScalarNode<ScoreState, 'scored'> {
+export class ScoreNode extends MonadicNode<ScoreState, 'scored'> {
   readonly name    = 'score';
   readonly outputs = ['scored'] as const;
   override get outputSchema(): Record<'scored', SchemaObjectType> {
     return { 'scored': { 'type': 'object' } };
   }
 
-  protected override async executeOne(_state: ScoreState) {
-    return NodeOutputBuilder.of('scored');
+  override async execute(batch: Batch<ScoreState>) {
+    return RoutedBatch.create(NodeOutput.create('scored').output, batch);
   }
 }
 

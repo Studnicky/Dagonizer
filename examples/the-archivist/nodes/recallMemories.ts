@@ -29,8 +29,8 @@
  *   recall result (the digest will have bookCount === 0).
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { MemoryDigest } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -70,7 +70,7 @@ class MemorySummarizer {
   }
 }
 
-export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled'> {
+export class RecallMemoriesNode extends MonadicNode<ArchivistState, 'recalled'> {
   private readonly services: ArchivistServices;
   readonly name = 'recall-memories';
   readonly outputs = ['recalled'] as const;
@@ -85,9 +85,10 @@ export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled'> {
     this.services = services;
   }
 
-  protected override async executeOne(state: ArchivistState) {
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
     const memory = this.services.memory;
-    const currentGraphIri = state.runId !== '' ? MemoryStore.stateGraphIri(state.runId).value : null;
+    for (const { state } of batch) {
+      const currentGraphIri = state.runId !== '' ? MemoryStore.stateGraphIri(state.runId).value : null;
 
     // ── Query 1: distinct books in the default graph ─────────────────────
     // recordFindings writes <book> dag:title "<title>" with no named graph
@@ -191,9 +192,8 @@ export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled'> {
       'intentBreakdown': intentBreakdown,
       'summary':         summary,
     };
+    }
 
-
-    return NodeOutputBuilder.of('recalled');
+    return RoutedBatch.create('recalled', batch);
   }
 }
-

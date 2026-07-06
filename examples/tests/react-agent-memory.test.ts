@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { Dagonizer, ReasoningStepBuilder, ReasoningTraceItemBuilder, StreamChannel } from '@studnicky/dagonizer';
+import { Dagonizer, ReasoningStep, ReasoningTraceItem, StreamChannel } from '@studnicky/dagonizer';
 import type { ReasoningTraceItemType, StreamProducerInterface, StreamSinkInterface } from '@studnicky/dagonizer';
 import type { ChatMessageType } from '@studnicky/dagonizer/adapter';
 import { ToolRegistry } from '@studnicky/dagonizer/tool';
@@ -148,10 +148,10 @@ describe('RecordReasoningStepNode: wasInformedBy chain is ordinal-derived, not r
     // order (2, 0, 3, 1) proves RecordReasoningStepNode holds no cross-item
     // state and derives every link from `item.ordinal` alone.
     const items = [
-      ReasoningTraceItemBuilder.of(0, ReasoningStepBuilder.thought('first thought')),
-      ReasoningTraceItemBuilder.of(1, ReasoningStepBuilder.action('lookup', { 'query': 'dagonizer' })),
-      ReasoningTraceItemBuilder.of(2, ReasoningStepBuilder.observation('an observation')),
-      ReasoningTraceItemBuilder.of(3, ReasoningStepBuilder.final('a final answer')),
+      ReasoningTraceItem.create(0, ReasoningStep.create({ 'kind': 'thought', 'text': 'first thought' })),
+      ReasoningTraceItem.create(1, ReasoningStep.create({ 'kind': 'action', 'tool': 'lookup', 'args': { 'query': 'dagonizer' } })),
+      ReasoningTraceItem.create(2, ReasoningStep.create({ 'kind': 'observation', 'output': 'an observation' })),
+      ReasoningTraceItem.create(3, ReasoningStep.create({ 'kind': 'final', 'text': 'a final answer' })),
     ];
     const shuffledEmissionOrder: ReasoningTraceItemType[] = [];
     for (const index of [2, 0, 3, 1]) {

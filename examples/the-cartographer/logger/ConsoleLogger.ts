@@ -25,6 +25,9 @@
  */
 
 // #region cartographer-console-logger
+import { CircularBuffer } from '@studnicky/circular-buffer';
+import { Clock as SubstrateClock, RealTimeClockProvider } from '@studnicky/clock';
+
 const HAS_NODE_STDIO =
   typeof process !== 'undefined'
   && typeof process.stdout?.write === 'function';
@@ -42,19 +45,24 @@ export interface LogEventInterface {
 const STDERR_LEVELS: ReadonlySet<LogLevelType> = new Set<LogLevelType>(['warn', 'error', 'fatal']);
 
 export class ConsoleLogger {
-  readonly #buffer: LogEventInterface[] = [];
-  readonly #maxBuffer: number;
+  readonly #buffer: CircularBuffer<LogEventInterface>;
+  readonly #clock: SubstrateClock;
 
-  constructor(options: { readonly maxBuffer: number } = { 'maxBuffer': 500 }) {
-    this.#maxBuffer = options.maxBuffer;
+  constructor(options: { readonly clock?: SubstrateClock; readonly maxBuffer?: number } = {}) {
+    this.#buffer = CircularBuffer.create<LogEventInterface>({
+      'capacity': options.maxBuffer ?? 500,
+      'overflow': 'overwrite',
+    });
+    this.#clock = options.clock ?? SubstrateClock.create(RealTimeClockProvider.create());
   }
 
   /** All events captured so far (most recent last). */
-  history(): readonly LogEventInterface[] { return [...this.#buffer]; }
+  history(): readonly LogEventInterface[] { return this.#snapshot(); }
 
   /** Empty the buffer; invoked at the top of each Cartographer run. */
   clear(): void {
-    this.#buffer.length = 0;
+    let event = this.#buffer.shift();
+    while (event !== undefined) event = this.#buffer.shift();
   }
 
   /** Finest-grained diagnostic; stdout. */
@@ -98,13 +106,23 @@ export class ConsoleLogger {
   }
 
   #emit(level: LogLevelType, component: string, operation: string, message: string): void {
-    const event: LogEventInterface = { level, component, operation, message, 'ts': Date.now() };
+    const event: LogEventInterface = { level, component, operation, message, 'ts': this.#clock.now() };
     this.#buffer.push(event);
-    if (this.#buffer.length > this.#maxBuffer) this.#buffer.shift();
     if (HAS_NODE_STDIO) {
       const stream = STDERR_LEVELS.has(level) ? process.stderr : process.stdout;
       stream.write(`[cartographer:${level}] ${component}.${operation} ${message}\n`);
     }
+  }
+
+  #snapshot(): readonly LogEventInterface[] {
+    const events: LogEventInterface[] = [];
+    let event = this.#buffer.shift();
+    while (event !== undefined) {
+      events.push(event);
+      event = this.#buffer.shift();
+    }
+    for (const retained of events) this.#buffer.push(retained);
+    return events;
   }
 }
 // #endregion cartographer-console-logger

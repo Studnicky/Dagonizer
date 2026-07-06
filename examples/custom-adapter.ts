@@ -13,7 +13,7 @@
  * Run: npx tsx examples/custom-adapter.ts
  */
 
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequest } from '@studnicky/dagonizer/adapter';
 import { EchoAdapter } from './dags/custom-adapter.js';
 
 process.stdout.write('\n=== custom-adapter: EchoAdapter extends BaseAdapter ===\n\n');
@@ -22,7 +22,7 @@ const adapter = new EchoAdapter();
 process.stdout.write(`[adapter] id="${adapter.id}" displayName="${adapter.displayName}"\n`);
 process.stdout.write(`[adapter] capabilities=${JSON.stringify(adapter.capabilities)}\n\n`);
 
-const request = ChatRequestBuilder.from({
+const request = ChatRequest.create({
   messages: [
     { role: 'system', content: 'You are a helpful assistant.' },
     { role: 'user', content: 'What is a DAG?' },

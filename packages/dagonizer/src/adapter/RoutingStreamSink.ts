@@ -5,8 +5,8 @@
  *
  * `BaseAdapter.chatStream` pushes plain `ChatStreamChunkType` ({delta})
  * values — adapters never know about concurrent runs or which node/DAG
- * invoked them. `CallModelNode.executeOne` constructs a fresh
- * `RoutingStreamSink` per execution (via `RoutingStreamSink.of`), wraps the
+ * invoked them. `CallModelNode.execute` constructs a fresh
+ * `RoutingStreamSink` per batch item (via `RoutingStreamSink.of`), wraps the
  * node's shared `this.sink` as its downstream, and hands the wrapper to
  * `adapter.chatStream`. Each pushed `{delta}` becomes a self-describing
  * `RoutedChatStreamChunkType` (`routeKey` + `source`) at the downstream sink,
@@ -16,7 +16,7 @@
 
 import type { StreamSinkInterface } from '../contracts/StreamSinkInterface.js';
 import type { ChatStreamChunkType } from '../entities/adapter/ChatStreamChunk.js';
-import { RoutedChatStreamChunkBuilder } from '../entities/adapter/RoutedChatStreamChunk.js';
+import { RoutedChatStreamChunk } from '../entities/adapter/RoutedChatStreamChunk.js';
 import type { RoutedChatStreamChunkType } from '../entities/adapter/RoutedChatStreamChunk.js';
 
 export class RoutingStreamSink implements StreamSinkInterface<ChatStreamChunkType> {
@@ -28,7 +28,7 @@ export class RoutingStreamSink implements StreamSinkInterface<ChatStreamChunkTyp
 
   /** Forward a plain adapter chunk to `downstream`, stamped with `routeKey` and `source`. */
   async push(chunk: ChatStreamChunkType): Promise<void> {
-    await this.downstream.push(RoutedChatStreamChunkBuilder.of(this.routeKey, chunk.delta, this.source));
+    await this.downstream.push(RoutedChatStreamChunk.create(this.routeKey, chunk.delta, this.source));
   }
 
   /**

@@ -78,16 +78,16 @@ export type { StoreSnapshotEntryWireType, StoreSnapshotWireType } from './checkp
 export { NodeSchema } from './node/Node.js';
 export type { NodeUnionType } from './node/Node.js';
 
-export { NodeContextSchema, NodeContextBuilder } from './node/NodeContext.js';
+export { NodeContextSchema, NodeContext } from './node/NodeContext.js';
 export type { NodeContextWireType, NodeContextType } from './node/NodeContext.js';
 
-export { NodeErrorBuilder, NodeErrorProperties, NodeErrorSchema } from './node/NodeError.js';
+export { NodeError, NodeErrorProperties, NodeErrorSchema } from './node/NodeError.js';
 export type { NodeErrorWireType, NodeErrorType } from './node/NodeError.js';
 
 export { NodeWarningProperties, NodeWarningSchema } from './node/NodeWarning.js';
 export type { NodeWarningType } from './node/NodeWarning.js';
 
-export { NodeOutputSchema, NodeOutputBuilder } from './node/NodeOutput.js';
+export { NodeOutputSchema, NodeOutput } from './node/NodeOutput.js';
 export type { NodeOutputWireType, NodeOutputType } from './node/NodeOutput.js';
 
 export { NodeResultSchema } from './node/NodeResult.js';
@@ -153,7 +153,7 @@ export type { ExecutionRequestType } from './executor/ExecutionRequest.js';
 export { ExecutionResponseSchema } from './executor/ExecutionResponse.js';
 export type { ExecutionResponseType } from './executor/ExecutionResponse.js';
 
-export { BridgeMessageBuilder, BridgeMessageSchema } from './executor/BridgeMessage.js';
+export { BridgeMessage, BridgeMessageSchema } from './executor/BridgeMessage.js';
 export type { BridgeMessageType } from './executor/BridgeMessage.js';
 
 export {
@@ -224,13 +224,13 @@ export type { ChatResponseType } from './adapter/ChatResponse.js';
 export { ChatResponseMessageSchema } from './adapter/ChatResponseMessage.js';
 export type { ChatResponseMessageType } from './adapter/ChatResponseMessage.js';
 
-export { ChatStreamChunkSchema, ChatStreamChunkBuilder } from './adapter/ChatStreamChunk.js';
+export { ChatStreamChunkSchema, ChatStreamChunk } from './adapter/ChatStreamChunk.js';
 export type { ChatStreamChunkType } from './adapter/ChatStreamChunk.js';
 
 export { LlmModelSchema } from './adapter/LlmModel.js';
 export type { LlmModelType } from './adapter/LlmModel.js';
 
-export { RoutedChatStreamChunkSchema, RoutedChatStreamChunkBuilder } from './adapter/RoutedChatStreamChunk.js';
+export { RoutedChatStreamChunkSchema, RoutedChatStreamChunk } from './adapter/RoutedChatStreamChunk.js';
 export type { RoutedChatStreamChunkType } from './adapter/RoutedChatStreamChunk.js';
 
 export { OpenAiModelsResponseSchema } from './adapter/OpenAiModelsResponse.js';
@@ -252,9 +252,9 @@ export type { ToolDefinitionType } from './adapter/ToolDefinition.js';
 // agent (reasoning-trace wire shapes)
 // ---------------------------------------------------------------------------
 
-export { ReasoningStepSchema, ReasoningStepBuilder } from './agent/ReasoningStep.js';
+export { ReasoningStepSchema, ReasoningStep } from './agent/ReasoningStep.js';
 export type { ReasoningStepType } from './agent/ReasoningStep.js';
-export { ReasoningTraceItemSchema, ReasoningTraceItemBuilder } from './agent/ReasoningTraceItem.js';
+export { ReasoningTraceItemSchema, ReasoningTraceItem } from './agent/ReasoningTraceItem.js';
 export type { ReasoningTraceItemType } from './agent/ReasoningTraceItem.js';
 
 // ---------------------------------------------------------------------------

@@ -19,10 +19,11 @@
  * Snapshot version: 1
  */
 
+import { Clock as SubstrateClock, RealTimeClockProvider } from '@studnicky/clock';
 import type { StoreSnapshotEntryType } from '@studnicky/dagonizer/contracts';
 import type { JsonValueType } from '@studnicky/dagonizer/entities';
 import { BASE_STORE_DEFAULTS, BaseStore, StoreError, type BaseStoreOptionsType } from '@studnicky/dagonizer/store';
-import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
+import { type EntityValidatorInterface, Validator } from '@studnicky/dagonizer/validation';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -79,32 +80,21 @@ export type EventLogEntryType =
 
 // ── Local validator ───────────────────────────────────────────────────────────
 
+const CompiledEventLogEntryValidator = Validator.compile<EventLogEntryType>(EventLogEntrySchema);
+
 /**
- * Structural validator for `EventLogEntry` at the file-read JSON ingest
- * boundary. Compiled once at module load; no external runtime dependency.
- *
- * Performs the minimum structural check the discriminated union requires:
- *   - `variant` is `'set'` or `'delete'`
- *   - `at` is a number
- *   - `key` is a string
- *   - `value` is present on `set` entries
- * `additionalProperties` on the stored objects are NOT rejected — the schema
- * allows forward-compat reads. Malformed/missing required fields throw.
+ * Schema-backed validator for `EventLogEntry` at the file-read JSON ingest
+ * boundary. Invalid persisted entries surface as store snapshot incompatibility.
  */
 export const EventLogEntryValidator: EntityValidatorInterface<EventLogEntryType> = {
   is(value): value is EventLogEntryType {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-    if (!('at' in value) || typeof value.at !== 'number') return false;
-    if (!('key' in value) || typeof value.key !== 'string') return false;
-    if (!('variant' in value)) return false;
-    if (value.variant === 'set') return 'value' in value;
-    if (value.variant === 'delete') return true;
-    return false;
+    return CompiledEventLogEntryValidator.is(value);
   },
   validate(value): EventLogEntryType {
-    if (EventLogEntryValidator.is(value)) return value;
+    if (CompiledEventLogEntryValidator.is(value)) return value;
+    const errors = CompiledEventLogEntryValidator.errors(value) ?? ['invalid EventLogEntry shape'];
     throw new StoreError(
-      `invalid EventLogEntry: ${JSON.stringify(value)}`,
+      `invalid EventLogEntry: ${errors.join('; ')}`,
       {
         'reason':          'INCOMPATIBLE_SNAPSHOT',
         'expectedType':    'event-log-store',
@@ -115,14 +105,19 @@ export const EventLogEntryValidator: EntityValidatorInterface<EventLogEntryType>
     );
   },
   errors(value): string[] | null {
-    if (EventLogEntryValidator.is(value)) return null;
-    return [`invalid EventLogEntry shape: variant must be 'set' or 'delete', at must be number, key must be string`];
+    return CompiledEventLogEntryValidator.errors(value);
   },
 };
 
 // ── Options ───────────────────────────────────────────────────────────────────
 
-export type AppendLogStoreOptionsType = BaseStoreOptionsType;
+export type AppendLogStoreOptionsType = BaseStoreOptionsType & {
+  /**
+   * Clock used for persisted event `at` timestamps. Defaults to a real
+   * epoch-ms substrate clock; tests may inject a virtual provider.
+   */
+  readonly clock?: SubstrateClock;
+};
 
 // ── Implementation ────────────────────────────────────────────────────────────
 
@@ -134,10 +129,12 @@ export type AppendLogStoreOptionsType = BaseStoreOptionsType;
  * its `connect()` lifecycle method.
  */
 export class AppendLogStore extends BaseStore {
+  readonly #clock: SubstrateClock;
   readonly #log: EventLogEntryType[];
 
   constructor(options: AppendLogStoreOptionsType = BASE_STORE_DEFAULTS) {
     super(options);
+    this.#clock = options.clock ?? SubstrateClock.create(RealTimeClockProvider.create());
     this.#log = [];
   }
 
@@ -160,7 +157,7 @@ export class AppendLogStore extends BaseStore {
     const stored    = this.latest(qualified);
     const current   = stored === undefined ? undefined : stored;
     const next      = fn(current);
-    await this.appendEntry({ 'variant': 'set', 'at': Date.now(), 'key': qualified, 'value': next });
+    await this.appendEntry({ 'variant': 'set', 'at': this.eventTimestamp(), 'key': qualified, 'value': next });
     return next;
   }
 
@@ -171,7 +168,7 @@ export class AppendLogStore extends BaseStore {
   }
 
   protected async performSet(key: string, value: JsonValueType): Promise<void> {
-    await this.appendEntry({ 'variant': 'set', 'at': Date.now(), 'key': key, 'value': value });
+    await this.appendEntry({ 'variant': 'set', 'at': this.eventTimestamp(), 'key': key, 'value': value });
   }
 
   protected async performHas(key: string): Promise<boolean> {
@@ -180,7 +177,7 @@ export class AppendLogStore extends BaseStore {
 
   protected async performDelete(key: string): Promise<boolean> {
     if (!await this.performHas(key)) return false;
-    await this.appendEntry({ 'variant': 'delete', 'at': Date.now(), 'key': key });
+    await this.appendEntry({ 'variant': 'delete', 'at': this.eventTimestamp(), 'key': key });
     return true;
   }
 
@@ -197,7 +194,7 @@ export class AppendLogStore extends BaseStore {
   }
 
   protected async performRestoreEntry(entry: StoreSnapshotEntryType): Promise<void> {
-    const at = Date.now();
+    const at = this.eventTimestamp();
     this.#log.push({ 'variant': 'set', at, 'key': entry.key, 'value': entry.value });
     // Restoring does NOT rewrite any backing file. Connect with a fresh
     // filePath to start a new persisted log from the restored state.
@@ -244,6 +241,11 @@ export class AppendLogStore extends BaseStore {
       return entry.value;
     }
     return undefined;
+  }
+
+  /** Epoch-ms timestamp for event-log entries. */
+  protected eventTimestamp(): number {
+    return this.#clock.now();
   }
 
   /**

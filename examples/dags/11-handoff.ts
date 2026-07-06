@@ -20,10 +20,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { DAGHandoffType, JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -63,58 +65,61 @@ export class PipelineState extends NodeStateBase {
 
 // DAG A: collect three items into state.items
 // #region node-collect
-export class CollectANode extends ScalarNode<PipelineState, 'done'> {
+export class CollectANode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'collectA';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: PipelineState) {
-    state.items.push('alpha');
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) item.state.items.push('alpha');
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
-export class CollectBNode extends ScalarNode<PipelineState, 'done'> {
+export class CollectBNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'collectB';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: PipelineState) {
-    state.items.push('beta');
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) item.state.items.push('beta');
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
-export class CollectCNode extends ScalarNode<PipelineState, 'done'> {
+export class CollectCNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'collectC';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: PipelineState) {
-    state.items.push('gamma');
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) item.state.items.push('gamma');
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion node-collect
 
 // DAG B: summarize the items collected by DAG A
 // #region node-summarize
-export class SummarizeNode extends ScalarNode<PipelineState, 'done'> {
+export class SummarizeNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'summarize';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: PipelineState) {
-    state.summary = `processed ${state.items.length} item(s): ${state.items.join(', ')}`;
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) {
+      const state = item.state;
+      state.summary = `processed ${state.items.length} item(s): ${state.items.join(', ')}`;
+    }
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion node-summarize
@@ -206,9 +211,11 @@ export const dagB: DAGType = {
  * dispatcher catches all errors.
  */
 export class QueueChannel implements HandoffChannelInterface {
+  readonly published: DAGHandoffType[] = [];
+
   async publish(handoff: DAGHandoffType): Promise<void> {
     // await myQueueSdk.send(JSON.stringify(handoff));
-    void handoff;
+    this.published.push(handoff);
   }
 }
 // #endregion queue-channel-pattern

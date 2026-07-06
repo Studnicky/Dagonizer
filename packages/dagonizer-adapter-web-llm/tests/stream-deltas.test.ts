@@ -14,7 +14,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import type { StreamSinkInterface } from '@studnicky/dagonizer';
-import { ChatRequestBuilder, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import { ChatRequest, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 import type { ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
 
 import { WebLlmAdapter } from '../src/index.js';
@@ -98,7 +98,7 @@ void test('performChatStream: pushes ordered per-token deltas without coalescing
   const sink = new RecordingSink();
 
   const response = await adapter.chatStream(
-    ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Say hello.' }] }),
+    ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Say hello.' }] }),
     sink,
   );
 
@@ -117,7 +117,7 @@ void test('performChatStream: captures usage from the final chunk', async () => 
   const sink = new RecordingSink();
 
   const response = await adapter.chatStream(
-    ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Say hello.' }] }),
+    ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Say hello.' }] }),
     sink,
   );
 
@@ -129,7 +129,7 @@ void test('performChat (buffered) remains unchanged after the #openStream extrac
   const adapter = new DeltaTestAdapter(stub);
 
   const response = await adapter.chat(
-    ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Say hello.' }] }),
+    ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Say hello.' }] }),
   );
 
   assert.equal(response.message.variant, 'text', 'response variant must be text');

@@ -3,14 +3,13 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/index.js';
 import type { SchemaObjectType, NodeInterface  } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { Batch } from '../../src/entities/batch/Batch.js';
 import type { ItemType } from '../../src/entities/batch/Item.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -22,7 +21,7 @@ class TrackingState extends NodeStateBase {
   trace: string[] = [];
 }
 
-class PhaseThrowingNode extends ScalarNode<TrackingState, string> {
+class PhaseThrowingNode extends MonadicNode<TrackingState, string> {
   readonly name: string;
   readonly outputs: readonly ['success'] = ['success'];
   private readonly message: string;
@@ -35,7 +34,7 @@ class PhaseThrowingNode extends ScalarNode<TrackingState, string> {
 
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
 
-  protected async executeOne(): Promise<NodeOutputType<string>> {
+  override async execute(_batch: Batch<TrackingState>): Promise<RoutedBatchType<string, TrackingState>> {
     throw new Error(this.message);
   }
 }

@@ -13,7 +13,7 @@
  */
 
 import { BaseMessageChannel } from '@studnicky/dagonizer/container';
-import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
+import { BridgeMessage } from '@studnicky/dagonizer/entities';
 import type { BridgeMessageType } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 
@@ -48,10 +48,10 @@ export class MessagePortChannel extends BaseMessageChannel {
       if (Validator.bridgeMessage.is(value)) {
         this.dispatch(value);
       } else {
-        this.dispatch(BridgeMessageBuilder.invalid(
-          'INVALID_MESSAGE',
-          'Received a message that does not conform to BridgeMessage schema',
-        ));
+        this.dispatch(BridgeMessage.create({
+          'code': 'INVALID_MESSAGE',
+          'message': 'Received a message that does not conform to BridgeMessage schema',
+        }));
       }
     });
   }

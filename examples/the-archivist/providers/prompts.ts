@@ -145,7 +145,7 @@ export const directives = {
 
   // Visitor persona: the leading system message for the bootstrap suggestion
   // calls. A `role: 'system'` message makes `BaseAdapter.#withDefaultSystemPrompt`
-  // skip its Archivist-persona injection, so a weak model writes as the visitor
+  // skip its default Archivist directive injection, so a weak model writes as the visitor
   // rather than echoing a librarian greeting.
   "visitorPersona":         'You are a curious visitor approaching The Archivist with book questions. Generate one short, natural visitor message as directed.',
 
@@ -608,11 +608,11 @@ export const prompts = {
     return PromptFormat.withLanguagePreamble(language, body);
   },
 
-  /** System persona for the visitor-role bootstrap calls (starter query, visitor reply). */
+  /** System directive for the visitor-role bootstrap calls (starter query, visitor reply). */
   visitorPersona(): string { return directives.visitorPersona; },
 
   suggestStarterQuery(language: string): string {
-    // Runs under the visitorPersona() system message, so the Archivist persona
+    // Runs under the visitorPersona() system message, so the Archivist directive
     // directives are intentionally omitted here; starterGenrePool supplies the
     // full genre frame.
     const body = [

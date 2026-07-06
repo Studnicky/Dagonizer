@@ -271,6 +271,26 @@ describe('InsightsFoldGather durable-resume contract', () => {
     assert.equal(americasSummary.shipmentCount, 2, 'Americas: 2 shipments');
   });
 
+  it('sampleRecords keeps the newest 200 records in FIFO order', async () => {
+    const strategy = GatherStrategies.resolve('insights-fold');
+    assert.ok(strategy instanceof InsightsFoldGather);
+    const accessor = new DirectAccessor();
+    const state = new CartographerState();
+    const items = Array.from({ 'length': 205 }, (_unused, index) =>
+      FixtureShipment.of({
+        'shipmentId': `SHP-${String(index).padStart(3, '0')}`,
+        'scanSeq': index,
+        'epochMs': 1_700_000_000_000 + index,
+      }),
+    );
+
+    await GatherHarness.run(strategy, state, accessor, items);
+
+    assert.equal(state.sampleRecords.length, 200);
+    assert.equal(state.sampleRecords[0]?.shipmentId, 'SHP-005');
+    assert.equal(state.sampleRecords[199]?.shipmentId, 'SHP-204');
+  });
+
   it('snapshot → restore → resume produces same fingerprint as full run', async () => {
     const strategy = GatherStrategies.resolve('insights-fold');
     assert.ok(strategy instanceof InsightsFoldGather);

@@ -19,15 +19,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgressType, StoredScatterProgressType } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -137,24 +137,26 @@ class CheckpointSizer {
 
     const dispatcher = new Dagonizer<BoundedState>();
 
-    class SizeWorkerNode extends ScalarNode<BoundedState, 'success'> {
+    class SizeWorkerNode extends MonadicNode<BoundedState, 'success'> {
       override readonly name = 'worker';
       override readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-      protected override async executeOne(state: BoundedState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
-        await new Promise<void>((resolve, reject) => {
-          const handle = setTimeout(resolve, 1);
-          context.signal.addEventListener('abort', () => {
-            clearTimeout(handle);
-            reject(context.signal.reason);
-          }, { 'once': true });
-        });
-        const item = state.getter.number('item', -1);
-        state.processed.push(item);
-        if (++completedCount === crashAt) {
-          ctl.abort(new Error('crash'));
+      override async execute(batch: Batch<BoundedState>, context: NodeContextType): Promise<Map<'success', Batch<BoundedState>>> {
+        for (const item of batch) {
+          await new Promise<void>((resolve, reject) => {
+            const handle = setTimeout(resolve, 1);
+            context.signal.addEventListener('abort', () => {
+              clearTimeout(handle);
+              reject(context.signal.reason);
+            }, { 'once': true });
+          });
+          const value = item.state.getter.number('item', -1);
+          item.state.processed.push(value);
+          if (++completedCount === crashAt) {
+            ctl.abort(new Error('crash'));
+          }
         }
-        return { 'errors': [], 'output': 'success' };
+        return new Map([['success', batch]]);
       }
     }
     dispatcher.registerNode(new SizeWorkerNode());
@@ -350,24 +352,26 @@ void describe('Scatter: O(1) bounded watermark checkpoint', () => {
 
     const interruptedDispatcher = new Dagonizer<BoundedState>();
 
-    class InterruptedWorkerNode extends ScalarNode<BoundedState, 'success'> {
+    class InterruptedWorkerNode extends MonadicNode<BoundedState, 'success'> {
       override readonly name = 'worker';
       override readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-      protected override async executeOne(state: BoundedState, context: NodeContextType): Promise<NodeOutputType<'success'>> {
-        await new Promise<void>((resolve, reject) => {
-          const handle = setTimeout(resolve, 1);
-          context.signal.addEventListener('abort', () => {
-            clearTimeout(handle);
-            reject(context.signal.reason);
-          }, { 'once': true });
-        });
-        const item = state.getter.number('item', -1);
-        state.processed.push(item);
-        if (++completedCount === K) {
-          controller.abort(new Error('crash'));
+      override async execute(batch: Batch<BoundedState>, context: NodeContextType): Promise<Map<'success', Batch<BoundedState>>> {
+        for (const item of batch) {
+          await new Promise<void>((resolve, reject) => {
+            const handle = setTimeout(resolve, 1);
+            context.signal.addEventListener('abort', () => {
+              clearTimeout(handle);
+              reject(context.signal.reason);
+            }, { 'once': true });
+          });
+          const value = item.state.getter.number('item', -1);
+          item.state.processed.push(value);
+          if (++completedCount === K) {
+            controller.abort(new Error('crash'));
+          }
         }
-        return { 'errors': [], 'output': 'success' };
+        return new Map([['success', batch]]);
       }
     }
     interruptedDispatcher.registerNode(new InterruptedWorkerNode());

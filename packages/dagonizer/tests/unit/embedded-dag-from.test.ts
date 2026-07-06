@@ -13,12 +13,12 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 
@@ -44,7 +44,7 @@ class RoutingState extends NodeStateBase {
 }
 
 /** Increments `state.executed` (for state round-trip) and the shared probe. */
-class IncrNode extends ScalarNode<RoutingState, 'success' | 'error'> {
+class IncrNode extends MonadicNode<RoutingState, 'success' | 'error'> {
   readonly name: string;
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } }; }
@@ -56,18 +56,20 @@ class IncrNode extends ScalarNode<RoutingState, 'success' | 'error'> {
     this.#probe = probe;
   }
 
-  protected async executeOne(
-    state: RoutingState,
+  override async execute(
+    batch: Batch<RoutingState>,
     _ctx: NodeContextType,
-  ): Promise<NodeOutputType<'success' | 'error'>> {
-    state.executed += 1;
-    this.#probe.count += 1;
-    return { 'errors': [], 'output': 'success' };
+  ): Promise<Map<'success' | 'error', Batch<RoutingState>>> {
+    for (const item of batch) {
+      item.state.executed += 1;
+      this.#probe.count += 1;
+    }
+    return new Map([['success', batch]]);
   }
 }
 
 /** Sets `state.selectedDag` to the provided value then routes success. */
-class SetDagNode extends ScalarNode<RoutingState, 'success'> {
+class SetDagNode extends MonadicNode<RoutingState, 'success'> {
   readonly name: string;
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
@@ -79,12 +81,12 @@ class SetDagNode extends ScalarNode<RoutingState, 'success'> {
     this.#dagName = dagName;
   }
 
-  protected async executeOne(
-    state: RoutingState,
+  override async execute(
+    batch: Batch<RoutingState>,
     _ctx: NodeContextType,
-  ): Promise<NodeOutputType<'success'>> {
-    state.selectedDag = this.#dagName;
-    return { 'errors': [], 'output': 'success' };
+  ): Promise<Map<'success', Batch<RoutingState>>> {
+    for (const item of batch) item.state.selectedDag = this.#dagName;
+    return new Map([['success', batch]]);
   }
 }
 

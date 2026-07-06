@@ -15,8 +15,7 @@
 
 import { strict as assert } from 'node:assert';
 
-import { OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
-import { ChatRequestBuilder }  from '@studnicky/dagonizer/adapter';
+import { ChatRequest, OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
 import type { ChatRequestType }    from '@studnicky/dagonizer/adapter';
 
 interface CapturedRequest {
@@ -86,7 +85,7 @@ class SmokeRunner {
   }
 }
 
-const sampleRequest: ChatRequestType = ChatRequestBuilder.from({
+const sampleRequest: ChatRequestType = ChatRequest.create({
   'messages': [{ 'role': 'user', 'content': 'find me a book about labyrinths' }],
   'tools': [{
     'name': 'web_search_books',

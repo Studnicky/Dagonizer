@@ -26,6 +26,7 @@ import { Classifications, CloudEmbedder, LlmError, ModelCost } from '@studnicky/
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsType } from '@studnicky/dagonizer/contracts';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
+import { Signal } from '@studnicky/signal';
 
 import { GeminiApiEmbedResponseValidator } from './GeminiApiEmbedResponse.js';
 import { GeminiModelsResponseValidator } from './GeminiModelsResponse.js';
@@ -106,47 +107,39 @@ export class GeminiApiEmbedder extends CloudEmbedder {
    * Never throws.
    */
   override async listModels(options?: AbortableOptionsType): Promise<readonly LlmModelType[]> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => { controller.abort(); }, LIST_MODELS_TIMEOUT_MS);
+    const signal = Signal.compose({
+      'deadlineMs': LIST_MODELS_TIMEOUT_MS,
+      ...(options?.signal !== undefined ? { 'signal': options.signal } : {}),
+    });
 
-    const signals: AbortSignal[] = [controller.signal];
-    if (options?.signal !== undefined) {
-      signals.push(options.signal);
-    }
-    const composed = AbortSignal.any(signals);
-
+    const url = `${MODELS_ENDPOINT}?key=${encodeURIComponent(this.#apiKey)}`;
+    let res: Response;
     try {
-      const url = `${MODELS_ENDPOINT}?key=${encodeURIComponent(this.#apiKey)}`;
-      let res: Response;
-      try {
-        res = await fetch(url, { 'signal': composed });
-      } catch {
-        return [];
-      }
-      if (!res.ok) return [];
-
-      const body: unknown = await res.json();
-      if (!GeminiModelsResponseValidator.is(body)) return [];
-
-      return body.models.map((entry): LlmModelType => {
-        const name = entry.name.startsWith(MODELS_NAME_PREFIX)
-          ? entry.name.slice(MODELS_NAME_PREFIX.length)
-          : entry.name;
-
-        const methods = entry.supportedGenerationMethods ?? [];
-        let variant: LlmModelType['variant'];
-        if (methods.includes('embedContent')) {
-          variant = 'embedding';
-        } else if (methods.includes('generateContent')) {
-          variant = 'chat';
-        } else {
-          variant = 'unknown';
-        }
-
-        return { name, variant, 'cloud': true, 'costRank': ModelCost.rankFromName(name) };
-      });
-    } finally {
-      clearTimeout(timer);
+      res = await fetch(url, { signal });
+    } catch {
+      return [];
     }
+    if (!res.ok) return [];
+
+    const body: unknown = await res.json();
+    if (!GeminiModelsResponseValidator.is(body)) return [];
+
+    return body.models.map((entry): LlmModelType => {
+      const name = entry.name.startsWith(MODELS_NAME_PREFIX)
+        ? entry.name.slice(MODELS_NAME_PREFIX.length)
+        : entry.name;
+
+      const methods = entry.supportedGenerationMethods ?? [];
+      let variant: LlmModelType['variant'];
+      if (methods.includes('embedContent')) {
+        variant = 'embedding';
+      } else if (methods.includes('generateContent')) {
+        variant = 'chat';
+      } else {
+        variant = 'unknown';
+      }
+
+      return { name, variant, 'cloud': true, 'costRank': ModelCost.rankFromName(name) };
+    });
   }
 }

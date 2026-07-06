@@ -21,6 +21,8 @@ import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+import { Scheduler } from '@studnicky/dagonizer/runtime';
+
 import type { GeoCandidate } from './entities/GeoCandidate.ts';
 import { ShipmentEvents } from './services.ts';
 import { LiveIpGeolocator } from './services/LiveIpGeolocator.ts';
@@ -60,7 +62,7 @@ for (const ip of ipList) {
   ipDone++;
   const r = outcome.candidate;
   console.log(`  ip-geolocated ${ipDone}/${ipList.length}: ${ip} → ${r.resolved ? `${r.country}/${r.locality}` : 'unresolved'}`);
-  await new Promise((resolve) => setTimeout(resolve, 1500));
+  await Scheduler.current().after(1_500, { 'signal': ac.signal });
 }
 
 const fixture = {

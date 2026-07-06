@@ -29,6 +29,7 @@
 
 import { Dagonizer } from '@studnicky/dagonizer';
 import type { ExecutionResultType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 import { PipelineState, ValidateNode, TransformNode, dag } from './dags/18-observability.js';
 
 // ---------------------------------------------------------------------------
@@ -232,15 +233,15 @@ if (lc.variant === 'completed') {
 
 // #region signal-compose
 // execute() composes an optional caller AbortSignal and an optional deadlineMs
-// into one composed signal via AbortSignal.any. Both are optional; either alone
-// is also valid. Each node receives the composed signal as context.signal.
+// into one signal with Signal.compose. Both are optional; either alone is also
+// valid. Each node receives the composed signal as context.signal.
 class AbortSignals {
   private constructor() { /* static-only */ }
   static composed(callerSignal: AbortSignal | undefined, deadlineMs: number | undefined): AbortSignal {
-    const sources: AbortSignal[] = [];
-    if (callerSignal !== undefined) sources.push(callerSignal);
-    if (deadlineMs !== undefined) sources.push(AbortSignal.timeout(deadlineMs));
-    return sources.length > 0 ? AbortSignal.any(sources) : new AbortController().signal;
+    return Signal.compose({
+      ...(callerSignal !== undefined ? { 'signal': callerSignal } : {}),
+      ...(deadlineMs !== undefined ? { deadlineMs } : {}),
+    });
   }
 }
 void AbortSignals; // documentation region — not called at runtime

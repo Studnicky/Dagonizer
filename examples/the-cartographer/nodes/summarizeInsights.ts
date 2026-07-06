@@ -20,15 +20,13 @@ import type {
   JourneyScan,
   RegionInsights,
 } from '../CartographerState.ts';
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 type SizeTierKey = 'envelope' | 'small' | 'medium' | 'large' | 'freight';
 
 // #region summarize-insights-node
-export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'success'> {
+export class SummarizeInsightsNode extends MonadicNode<CartographerState, 'success'> {
   private static readonly sizeTierDispatch: Readonly<Record<SizeTierKey, (entry: RegionInsights) => void>> = {
     'envelope': (entry) => { entry.sizeTierEnvelope++; },
     'small':    (entry) => { entry.sizeTierSmall++; },
@@ -45,11 +43,21 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'success'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'success', CartographerState>> {
+    for (const item of batch) {
+      this.summarizeItem(item.state);
+    }
+    return RoutedBatch.create('success', batch);
+  }
+
+  private summarizeItem(state: CartographerState): void {
     // Streaming path: insights-fold gather already produced state.insights,
     // state.journeys, and state.sampleRecords with bounded memory. Nothing to do.
     if (state.insights.size > 0 || state.journeys.size > 0) {
-      return NodeOutputBuilder.of('success');
+      return;
     }
 
     // Array-path fallback: fold state.records into insights and journeys for
@@ -212,8 +220,6 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
       };
       state.journeys.set(shipmentId, journey);
     }
-
-    return NodeOutputBuilder.of('success');
   }
 }
 

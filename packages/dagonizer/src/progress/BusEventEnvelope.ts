@@ -10,7 +10,10 @@
  * type when the generic parameter cannot be expressed in JSON Schema.
  */
 
+import { Clock as SubstrateClock, RealTimeClockProvider } from '@studnicky/clock';
 import type { FromSchema } from 'json-schema-to-ts';
+
+const eventEnvelopeClock = SubstrateClock.create(RealTimeClockProvider.create());
 
 export const BusEventEnvelopeSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/BusEventEnvelope',
@@ -44,32 +47,25 @@ export type BusEventEnvelopeType<TPayload = unknown> = {
   readonly 'topic': string;
   /** Application value published by the sender. */
   readonly 'payload': TPayload;
-  /** Unix epoch milliseconds at publish time (`Date.now()`). */
+  /** Unix epoch milliseconds at publish time. */
   readonly 'timestamp': number;
 };
 
 /**
  * Static factory for `BusEventEnvelopeType<TPayload>`.
- * Named `BusEventEnvelopeBuilder` to separate the factory noun from the
- * type name (both would otherwise map to `BusEventEnvelope`).
  *
  * Property order (topic, payload, timestamp) is fixed for V8 shape stability:
  * every instance shares the same hidden class.
  */
-export class BusEventEnvelopeBuilder {
+export class BusEventEnvelope {
   private constructor() { /* static class */ }
 
-  /** Wrap `payload` in a typed envelope for `topic`. Timestamp is `Date.now()`. */
-  static of<TPayload>(topic: string, payload: TPayload): BusEventEnvelopeType<TPayload> {
-    return { 'topic': topic, 'payload': payload, 'timestamp': Date.now() };
-  }
-
-  /** Wrap `payload` with an explicit `timestamp` (useful in tests). */
-  static withTimestamp<TPayload>(
+  /** Wrap `payload` in a typed envelope for `topic`. Timestamp defaults to the package clock. */
+  static create<TPayload>(
     topic: string,
     payload: TPayload,
-    timestamp: number,
+    options: { timestamp?: number } = {},
   ): BusEventEnvelopeType<TPayload> {
-    return { 'topic': topic, 'payload': payload, 'timestamp': timestamp };
+    return { 'topic': topic, 'payload': payload, 'timestamp': options.timestamp ?? eventEnvelopeClock.now() };
   }
 }

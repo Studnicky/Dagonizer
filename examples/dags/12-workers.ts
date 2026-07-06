@@ -18,10 +18,12 @@
  */
 
 import {
+  Batch,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
@@ -65,21 +67,24 @@ export class WorkState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region worker-node
-export class SquareWorkerNode extends ScalarNode<WorkState, 'done'> {
+export class SquareWorkerNode extends MonadicNode<WorkState, 'done'> {
   readonly name = 'squareWorker';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: WorkState) {
-    // Each scatter item is written to metadata under the itemKey ('task').
-    const task = state.getter.number('task');
-    // StoreInterface the per-item result in a scalar field. The 'append' gather
-    // strategy reads this field from the child clone and appends it to
-    // state.results on the parent after all items complete.
-    state.lastResult = task * task;
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<WorkState>) {
+    for (const item of batch) {
+      const state = item.state;
+      // Each scatter item is written to metadata under the itemKey ('task').
+      const task = state.getter.number('task');
+      // Store the per-item result in a scalar field. The 'append' gather
+      // strategy reads this field from the child clone and appends it to
+      // state.results on the parent after all items complete.
+      state.lastResult = task * task;
+    }
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion worker-node

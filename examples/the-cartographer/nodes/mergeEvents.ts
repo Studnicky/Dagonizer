@@ -14,13 +14,11 @@
 import type { CartographerState } from '../CartographerState.ts';
 import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region merge-events-node
-export class MergeEventsNode extends ScalarNode<CartographerState, 'merged'> {
+export class MergeEventsNode extends MonadicNode<CartographerState, 'merged'> {
   readonly 'name' = 'merge-events';
   readonly 'outputs' = ['merged'] as const;
 
@@ -30,15 +28,20 @@ export class MergeEventsNode extends ScalarNode<CartographerState, 'merged'> {
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'merged'>> {
-    const merged: CanonicalEventVariant[] = [];
-    for (const bucket of state.ingestBuckets) {
-      for (const event of bucket) {
-        merged.push(event);
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'merged', CartographerState>> {
+    for (const item of batch) {
+      const merged: CanonicalEventVariant[] = [];
+      for (const bucket of item.state.ingestBuckets) {
+        for (const event of bucket) {
+          merged.push(event);
+        }
       }
+      item.state.canonicalEvents = merged;
     }
-    state.canonicalEvents = merged;
-    return NodeOutputBuilder.of('merged');
+    return RoutedBatch.create('merged', batch);
   }
 }
 // #endregion merge-events-node

@@ -16,54 +16,7 @@
 import { MermaidRenderer } from '@studnicky/dagonizer/viz';
 import { Dagonizer }       from '@studnicky/dagonizer';
 
-import { ArchivistBundleFactory } from '../dag.ts';
-import { ArchivistNodes } from '../nodes/ArchivistNodes.ts';
-import { MemoryStore } from '../memory/MemoryStore.ts';
-import type { ArchivistServices } from '../services.ts';
-
-// Minimal stub services — no methods are called during DAG construction.
-const STUB_DEFINITION = {
-  'name': 'stub', 'description': '', 'inputSchema': { 'type': 'object' as const },
-  'outputSchema': { 'type': 'object' as const }, 'strict': false,
-} satisfies ArchivistServices['webSearch']['definition'];
-
-class NullTool {
-  readonly definition = STUB_DEFINITION;
-  async execute(): Promise<never> { return Promise.reject(new Error('stub')); }
-}
-
-class NullLlm {
-  async classifyIntent(): Promise<never>       { return Promise.reject(new Error('stub')); }
-  async extractTerms(): Promise<never>         { return Promise.reject(new Error('stub')); }
-  async decideTools(): Promise<never>          { return Promise.reject(new Error('stub')); }
-  async rankCandidates(): Promise<never>       { return Promise.reject(new Error('stub')); }
-  async compose(): Promise<never>              { return Promise.reject(new Error('stub')); }
-  async composeAuthor(): Promise<never>        { return Promise.reject(new Error('stub')); }
-  async composeReviews(): Promise<never>       { return Promise.reject(new Error('stub')); }
-  async describeBook(): Promise<never>         { return Promise.reject(new Error('stub')); }
-  async composeSimilar(): Promise<never>       { return Promise.reject(new Error('stub')); }
-  async validate(): Promise<never>             { return Promise.reject(new Error('stub')); }
-  async composeMemoryRecall(): Promise<never>  { return Promise.reject(new Error('stub')); }
-  async composeEmptyResponse(): Promise<never> { return Promise.reject(new Error('stub')); }
-  async suggestStarterQuery(): Promise<never>  { return Promise.reject(new Error('stub')); }
-  async suggestGreeting(): Promise<never>      { return Promise.reject(new Error('stub')); }
-  async suggestVisitorReplyTo(): Promise<never> { return Promise.reject(new Error('stub')); }
-  async explainTool(): Promise<never>          { return Promise.reject(new Error('stub')); }
-}
-
-const stubServices: ArchivistServices = {
-  'webSearch':        new NullTool(),
-  'googleBooks':      new NullTool(),
-  'subjectSearch':    new NullTool(),
-  'wikipediaSummary': new NullTool(),
-  'llm':              new NullLlm(),
-  'memory':           new MemoryStore(),
-  'embedder':         null,
-  'nodeTimeouts':     {},
-};
-
-const archivistDAG = ArchivistBundleFactory.create(ArchivistNodes.build(stubServices)).dags[0];
-if (archivistDAG === undefined) throw new Error('archivistDAG not found in bundle');
+import { archivistDAG } from '../dag.ts';
 
 const flowchartSource = MermaidRenderer.render(archivistDAG);
 

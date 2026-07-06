@@ -21,11 +21,11 @@ ollama pull llama3.2
 
 ```ts
 import { OllamaApiAdapter } from '@studnicky/dagonizer-adapter-ollama';
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequest } from '@studnicky/dagonizer/adapter';
 
 const llm = new OllamaApiAdapter({ model: 'llama3.2:latest' });
 
-const response = await llm.chat(ChatRequestBuilder.from({
+const response = await llm.chat(ChatRequest.create({
   messages: [{ role: 'user', content: 'Hello', toolCallId: '', toolName: '' }],
 }));
 ```

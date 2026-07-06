@@ -13,7 +13,7 @@
  * required — always present, no optional fields, one hidden class per shape.
  * V8 monomorphic.
  *
- * `NodeOutputBuilder.of(output, options?)` is the construction factory.
+ * `NodeOutput.create(output, options?)` is the construction factory.
  * It fills `errors: []` by default so node authors never write boilerplate.
  */
 
@@ -54,7 +54,7 @@ export type NodeOutputWireType = FromSchema<typeof NodeOutputSchema>;
  *   - `errors` is narrowed from the entity's inlined shape to `NodeErrorType[]`
  *     (which carries a narrowed `context: Record<string, unknown>`)
  *
- * `errors` is required — always present. `NodeOutputBuilder.of` fills `errors: []`
+ * `errors` is required — always present. `NodeOutput.create` fills `errors: []`
  * by default so authors never write boilerplate.
  */
 export type NodeOutputType<TOutput extends string = string> = Omit<NodeOutputWireType, 'errors' | 'output'> & {
@@ -76,15 +76,11 @@ export type NodeOutputType<TOutput extends string = string> = Omit<NodeOutputWir
 /**
  * Static factory for `NodeOutputType`.
  *
- * Named `NodeOutputBuilder` to avoid the identifier collision with the
- * schema-derived `NodeOutputType` type (per the canonical-names rule: when a
- * type and a value share a name, rename the value to its real role).
- *
- * `NodeOutputBuilder.of(output, options?)` constructs a complete result with
+ * `NodeOutput.create(output, options?)` constructs a complete result with
  * `errors: []` by default so node authors need not write `errors: []`
  * explicitly when returning a clean result.
  */
-export class NodeOutputBuilder {
+export class NodeOutput {
   private constructor() { /* static class */ }
 
   /**
@@ -92,11 +88,11 @@ export class NodeOutputBuilder {
    *
    * @example
    * ```ts
-   * return NodeOutputBuilder.of('success');
-   * return NodeOutputBuilder.of('error', { errors: [NodeErrorBuilder.from('CODE', 'msg', 'op', false, new Date().toISOString())] });
+   * return NodeOutput.create('success');
+   * return NodeOutput.create('error', { errors: [NodeError.create('CODE', 'msg', 'op', false, new Date().toISOString())] });
    * ```
    */
-  static of<TOutput extends string>(
+  static create<TOutput extends string>(
     output: TOutput,
     options: { errors?: NodeErrorType[] } = {},
   ): NodeOutputType<TOutput> {

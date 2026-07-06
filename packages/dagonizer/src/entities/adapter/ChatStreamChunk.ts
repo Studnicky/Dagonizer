@@ -29,10 +29,10 @@ export type ChatStreamChunkType = FromSchema<typeof ChatStreamChunkSchema>;
  *
  * @example
  * ```ts
- * yield ChatStreamChunkBuilder.of('Hello');
+ * yield ChatStreamChunk.create('Hello');
  * ```
  */
-export class ChatStreamChunkBuilder {
+export class ChatStreamChunk {
   private constructor() { /* static class */ }
 
   /**
@@ -40,7 +40,7 @@ export class ChatStreamChunkBuilder {
    *
    * @param delta - The text fragment produced since the previous chunk.
    */
-  static of(delta: string): ChatStreamChunkType {
+  static create(delta: string): ChatStreamChunkType {
     return { delta };
   }
 }

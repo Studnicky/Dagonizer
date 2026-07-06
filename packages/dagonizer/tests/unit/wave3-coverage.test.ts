@@ -18,7 +18,7 @@
  *
  *   TST-W3-7: BaseStore.connect / BaseStore.disconnect no-op defaults (MemoryStore)
  *
- *   TST-W3-8: NodeErrorBuilder.from positional signature and options object
+ *   TST-W3-8: NodeError.from positional signature and options object
  */
 
 import assert from 'node:assert/strict';
@@ -29,7 +29,7 @@ import { DAGIdentity } from '../../src/entities/dag/DAG.js';
 import { BridgeMessageSchema } from '../../src/entities/executor/BridgeMessage.js';
 import { ExecutionRequestSchema } from '../../src/entities/executor/ExecutionRequest.js';
 import { ExecutionResponseSchema } from '../../src/entities/executor/ExecutionResponse.js';
-import { NodeErrorSchema, NodeErrorBuilder  } from '../../src/entities/node/NodeError.js';
+import { NodeErrorSchema, NodeError  } from '../../src/entities/node/NodeError.js';
 import type { NodeErrorType } from '../../src/entities/node/NodeError.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
@@ -668,12 +668,12 @@ void describe('TST-W3-7: BaseStore.connect / disconnect no-op defaults', () => {
 });
 
 // ---------------------------------------------------------------------------
-// TST-W3-8: NodeErrorBuilder.from positional signature
+// TST-W3-8: NodeError.from positional signature
 // ---------------------------------------------------------------------------
 
-void describe('TST-W3-8: NodeErrorBuilder.from positional signature', () => {
+void describe('TST-W3-8: NodeError.from positional signature', () => {
   void it('fills context: {} by default when options object is omitted', () => {
-    const err = NodeErrorBuilder.from(
+    const err = NodeError.create(
       'CODE',
       'msg',
       'op',
@@ -685,7 +685,7 @@ void describe('TST-W3-8: NodeErrorBuilder.from positional signature', () => {
   });
 
   void it('fills context: {} by default when options object is empty', () => {
-    const err = NodeErrorBuilder.from(
+    const err = NodeError.create(
       'CODE',
       'msg',
       'op',
@@ -699,7 +699,7 @@ void describe('TST-W3-8: NodeErrorBuilder.from positional signature', () => {
 
   void it('honors the context when provided in the options object', () => {
     const ctx = { 'field': 'email', 'value': null };
-    const err = NodeErrorBuilder.from(
+    const err = NodeError.create(
       'VALIDATION_ERROR',
       'missing required field',
       'validate',
@@ -712,7 +712,7 @@ void describe('TST-W3-8: NodeErrorBuilder.from positional signature', () => {
   });
 
   void it('produces an object satisfying NodeErrorType shape', () => {
-    const err: NodeErrorType = NodeErrorBuilder.from(
+    const err: NodeErrorType = NodeError.create(
       'FETCH_FAILED',
       'HTTP 503',
       'fetchUser',
@@ -728,7 +728,7 @@ void describe('TST-W3-8: NodeErrorBuilder.from positional signature', () => {
   });
 
   void it('produced object passes Validator.nodeError.is()', () => {
-    const err = NodeErrorBuilder.from(
+    const err = NodeError.create(
       'INTERNAL',
       'unexpected state',
       'executeNode',
@@ -737,11 +737,11 @@ void describe('TST-W3-8: NodeErrorBuilder.from positional signature', () => {
       { 'context': { 'nodeId': 'step-1' } },
     );
     assert.ok(Validator.nodeError.is(err),
-      'NodeErrorBuilder.from result must satisfy NodeErrorSchema');
+      'NodeError.from result must satisfy NodeErrorSchema');
   });
 
   void it('positional args are mapped to correct fields', () => {
-    const err = NodeErrorBuilder.from(
+    const err = NodeError.create(
       'MY_CODE',
       'my message',
       'my-operation',

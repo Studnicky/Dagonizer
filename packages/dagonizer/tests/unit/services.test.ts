@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ class Logger {
  * UseServicesNode: receives a Logger via constructor.
  * Proves that constructor DI replaces the services container pattern.
  */
-class UseServicesNode extends ScalarNode<S, 'success'> {
+class UseServicesNode extends MonadicNode<S, 'success'> {
   readonly name = 'use-services';
   readonly outputs = ['success'] as const;
   readonly #logger: Logger;
@@ -40,10 +40,12 @@ class UseServicesNode extends ScalarNode<S, 'success'> {
     return { 'success': { 'type': 'object' } };
   }
 
-  protected async executeOne(state: S, _context: NodeContextType): Promise<NodeOutputType<'success'>> {
-    this.#logger.log(`hit:${state.out}`);
-    state.out = 'served';
-    return { 'errors': [], 'output': 'success' as const };
+  override async execute(batch: Batch<S>, _context: NodeContextType): Promise<Map<'success', Batch<S>>> {
+    for (const item of batch) {
+      this.#logger.log(`hit:${item.state.out}`);
+      item.state.out = 'served';
+    }
+    return new Map([['success', batch]]);
   }
 }
 
@@ -88,15 +90,15 @@ void describe('Dagonizer constructor DI', () => {
   });
 
   void it('node without injected dep completes flow cleanly', async () => {
-    class NoDepNode extends ScalarNode<S, 'success'> {
+    class NoDepNode extends MonadicNode<S, 'success'> {
       readonly name = 'no-dep';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<'success', SchemaObjectType> {
         return { 'success': { 'type': 'object' } };
       }
-      protected async executeOne(state: S, _ctx: NodeContextType): Promise<NodeOutputType<'success'>> {
-        state.out = 'done';
-        return { 'errors': [], 'output': 'success' as const };
+      override async execute(batch: Batch<S>, _ctx: NodeContextType): Promise<Map<'success', Batch<S>>> {
+        for (const item of batch) item.state.out = 'done';
+        return new Map([['success', batch]]);
       }
     }
 

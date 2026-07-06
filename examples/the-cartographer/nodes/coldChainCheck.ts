@@ -11,13 +11,11 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { ColdChain } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region cold-chain-check-node
-export class ColdChainCheckNode extends ScalarNode<CartographerState, 'checked'> {
+export class ColdChainCheckNode extends MonadicNode<CartographerState, 'checked'> {
   readonly 'name' = 'cold-chain-check';
   readonly 'outputs' = ['checked'] as const;
 
@@ -27,12 +25,17 @@ export class ColdChainCheckNode extends ScalarNode<CartographerState, 'checked'>
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'checked'>> {
-    const v = state.canonicalVariant;
-    const tempC = v.eventType === 'sensor-reading' ? v.body.tempC : 0;
-    const shockG = v.eventType === 'sensor-reading' ? v.body.shockG : 0;
-    state.coldChainBreach = ColdChain.breached(tempC, shockG);
-    return NodeOutputBuilder.of('checked');
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'checked', CartographerState>> {
+    for (const item of batch) {
+      const v = item.state.canonicalVariant;
+      const tempC = v.eventType === 'sensor-reading' ? v.body.tempC : 0;
+      const shockG = v.eventType === 'sensor-reading' ? v.body.shockG : 0;
+      item.state.coldChainBreach = ColdChain.breached(tempC, shockG);
+    }
+    return RoutedBatch.create('checked', batch);
   }
 }
 // #endregion cold-chain-check-node

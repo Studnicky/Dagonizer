@@ -26,7 +26,7 @@ import type {
   ErrorClassificationType,
   ToolDefinitionType,
 } from '@studnicky/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, ChatStreamChunkBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessage, ChatStreamChunk, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ModelCost, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import type {
@@ -87,8 +87,9 @@ export type GeminiNanoAdapterOptionsType = {
   readonly maxAttempts?: number;
   /**
    * Default system prompt the base injects as the leading turn of any request
-   * that carries no system message of its own. Consumer-supplied persona/format
-   * framing; empty (the default) means no injection.
+   * that carries no system message of its own. The directive can include
+   * persona, format, or language framing; empty (the default) means no
+   * injection.
    */
   readonly systemPrompt?: string;
   /**
@@ -220,7 +221,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       const text = raw.trim();
       const toolCalls = request.tools.length > 0 ? ToolCallCodec.decode(raw, 'nano') : [];
       return {
-        'message': ChatResponseMessageBuilder.from(text, toolCalls),
+        'message': ChatResponseMessage.create(text, toolCalls),
         'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
         'usage': ZERO_TOKEN_USAGE,
       };
@@ -297,7 +298,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
             accumulated += chunk;
           }
           if (delta !== '') {
-            await this.pushChunk(sink, ChatStreamChunkBuilder.of(delta));
+            await this.pushChunk(sink, ChatStreamChunk.create(delta));
           }
         }
       } catch (err) {
@@ -305,7 +306,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       }
       const text = accumulated.trim();
       return {
-        'message': ChatResponseMessageBuilder.from(text, []),
+        'message': ChatResponseMessage.create(text, []),
         'finishReason': 'stop',
         'usage': ZERO_TOKEN_USAGE,
       };

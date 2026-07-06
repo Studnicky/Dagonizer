@@ -36,6 +36,7 @@
     "node": ">=24"
   },
   "dependencies": {
+    "@studnicky/concurrency": "^4.0.0",
     "@studnicky/dagonizer": "workspace:>=0.30.0"
   },
   "devDependencies": {

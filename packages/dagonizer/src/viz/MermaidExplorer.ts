@@ -32,6 +32,8 @@
  * ```
  */
 
+import { Scheduler } from '../runtime/Scheduler.js';
+
 // ---------------------------------------------------------------------------
 // Minimal DOM surface declarations (no DOM lib in this package tsconfig)
 //
@@ -165,8 +167,6 @@ type DomMutationObserverCtorType = new (callback: () => void) => DomMutationObse
 declare const document:             DomDocumentType;
 declare const MutationObserver:     DomMutationObserverCtorType;
 declare const requestAnimationFrame: (cb: () => void) => void;
-declare const setInterval:          (cb: () => void, ms: number) => number;
-declare const clearInterval:        (id: number) => void;
 
 // ---------------------------------------------------------------------------
 // Options
@@ -316,12 +316,12 @@ export class MermaidExplorer {
     observer.observe(document.body, { 'childList': true, 'subtree': true });
 
     // Bounded poll: belt-and-suspenders for Mermaid's flush-callback insertion.
-    let ticks = 0;
-    const id = setInterval(() => {
-      MermaidExplorer.#enhanceAll(resolved);
-      ticks += 1;
-      if (ticks >= POLL_TICKS) clearInterval(id);
-    }, POLL_INTERVAL_MS);
+    void (async () => {
+      for (let ticks = 0; ticks < POLL_TICKS; ticks += 1) {
+        await Scheduler.current().after(POLL_INTERVAL_MS);
+        MermaidExplorer.#enhanceAll(resolved);
+      }
+    })().catch(() => { /* scheduler reset cancels the bounded poll */ });
   }
 
   /**

@@ -9,7 +9,7 @@
  * Implemented as a MonadicNode for batch-native processing: a single
  * execute call covers the whole batch, amortising carrier rate table
  * lookups across all items in one pass rather than dispatching N
- * separate ScalarNode iterations.
+ * separate per-item base-class iterations.
  *
  * Always routes 'shipping-quoted'.
  */
@@ -18,7 +18,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import { ShippingCalculator } from '../services.ts';
 
 import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
-import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, RoutedBatchType } from '@studnicky/dagonizer';
 
 // #region enrich-shipping-node
@@ -51,7 +51,7 @@ export class EnrichShippingNode extends MonadicNode<CartographerState, 'shipping
         norm.carrierId,
       );
     }
-    return RoutedBatchBuilder.of('shipping-quoted', batch);
+    return RoutedBatch.create('shipping-quoted', batch);
   }
 }
 // #endregion enrich-shipping-node

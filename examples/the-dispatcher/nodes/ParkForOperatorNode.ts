@@ -13,12 +13,12 @@
  * before routing and surfaces `result.parked` with the correlationKey and cursor.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { DispatcherState } from '../DispatcherState.ts';
 
-export class ParkForOperatorNode extends ScalarNode<DispatcherState, 'parked' | 'ready'> {
+export class ParkForOperatorNode extends MonadicNode<DispatcherState, 'parked' | 'ready'> {
   readonly name = 'park-for-operator';
   readonly outputs = ['parked', 'ready'] as const;
 
@@ -29,15 +29,41 @@ export class ParkForOperatorNode extends ScalarNode<DispatcherState, 'parked' | 
     };
   }
 
-  protected override async executeOne(state: DispatcherState) {
+  override async execute(
+    batch: Batch<DispatcherState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'parked' | 'ready', DispatcherState>> {
+    const acc = new Map<'parked' | 'ready', ItemType<DispatcherState>[]>();
+
+    for (const item of batch) {
+      const result = this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'parked' | 'ready', Batch<DispatcherState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private routeItem(state: DispatcherState): NodeOutputType<'parked' | 'ready'> {
     if (state.response.length > 0) {
       // Operator has filled in the response; resume the flow.
-      return NodeOutputBuilder.of('ready');
+      return NodeOutput.create('ready');
     }
 
     // First call: park and await human input.
     const correlationKey = 'escalation:' + Date.now().toString();
     state.park(correlationKey);
-    return NodeOutputBuilder.of('parked');
+    return NodeOutput.create('parked');
   }
 }

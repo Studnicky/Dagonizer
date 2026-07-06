@@ -15,8 +15,9 @@
  */
 
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Signal } from '@studnicky/signal';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -25,7 +26,7 @@ import type { ArchivistServices } from '../services.ts';
 const EMPTY_TIMEOUT_MS = 60_000;
 const EMPTY_RETRY_BUDGET = 2;
 
-export class RespondToVisitorNode extends ScalarNode<ArchivistState, 'success'> {
+export class RespondToVisitorNode extends MonadicNode<ArchivistState, 'success'> {
   readonly name = 'respond-to-visitor';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
@@ -34,12 +35,12 @@ export class RespondToVisitorNode extends ScalarNode<ArchivistState, 'success'> 
     };
   }
 
-  protected override async executeOne() {
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    return RoutedBatch.create('success', batch);
   }
 }
 
-export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success'> {
+export class DeclineOffTopicNode extends MonadicNode<ArchivistState, 'success'> {
   readonly name = 'decline-off-topic';
   readonly outputs = ['success'] as const;
   override get outputSchema(): Record<'success', SchemaObjectType> {
@@ -48,9 +49,11 @@ export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success'> {
     };
   }
 
-  protected override async executeOne(state: ArchivistState) {
-    state.draft = "I only help with finding and identifying books. What title or topic interests you?";
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      state.draft = "I only help with finding and identifying books. What title or topic interests you?";
+    }
+    return RoutedBatch.create('success', batch);
   }
 }
 
@@ -68,7 +71,7 @@ export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success'> {
  * salvage edge; not in this node's catch. No in-node `RetryPolicy`, no engine
  * `timeoutMs` crutch.
  */
-export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
+export class ComposeEmptyResponseNode extends MonadicNode<ArchivistState, 'drafted' | 'retry' | 'salvage'> {
   private readonly services: ArchivistServices;
   readonly name = 'compose-empty';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
@@ -85,31 +88,44 @@ export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafte
     this.services = services;
   }
 
-  protected override async executeOne(state: ArchivistState, context: NodeContextType) {
-    state.collectWarning({
-      "code":      'EMPTY_SHORTLIST',
-      "message":   'no candidates after merge; composing empty response',
-      "operation": 'compose-empty',
-      "timestamp": new Date().toISOString(),
-    });
-    const conversation = state.conversation.length > 0 ? state.conversation : undefined;
-    const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), this.services.nodeTimeouts[context.nodeName] ?? EMPTY_TIMEOUT_MS);
-    const signal = AbortSignal.any([context.signal, controller.signal]);
-    try {
-      state.draft = await this.services.llm.composeEmptyResponse(state.query, state.failureCause, conversation, signal);
-      state.clearAttempts(context.nodeName);
-      return NodeOutputBuilder.of('drafted');
-    } catch (err) {
-      if (context.signal.aborted) throw err;
-      if (state.withinRetryBudget(context.nodeName, EMPTY_RETRY_BUDGET)) {
-        return NodeOutputBuilder.of('retry');
+  override async execute(batch: Batch<ArchivistState>, context: NodeContextType) {
+    const draftedItems: ItemType<ArchivistState>[] = [];
+    const retryItems: ItemType<ArchivistState>[] = [];
+    const salvageItems: ItemType<ArchivistState>[] = [];
+
+    for (const item of batch) {
+      const { state } = item;
+      state.collectWarning({
+        "code":      'EMPTY_SHORTLIST',
+        "message":   'no candidates after merge; composing empty response',
+        "operation": 'compose-empty',
+        "timestamp": new Date().toISOString(),
+      });
+      const conversation = state.conversation.length > 0 ? state.conversation : undefined;
+      const signal = Signal.compose({
+        'deadlineMs': this.services.nodeTimeouts[context.nodeName] ?? EMPTY_TIMEOUT_MS,
+        'signal':     context.signal,
+      });
+      try {
+        state.draft = await this.services.llm.composeEmptyResponse(state.query, state.failureCause, conversation, signal);
+        state.clearAttempts(context.nodeName);
+        draftedItems.push(item);
+      } catch (err) {
+        if (context.signal.aborted) throw err;
+        if (state.withinRetryBudget(context.nodeName, EMPTY_RETRY_BUDGET)) {
+          retryItems.push(item);
+        } else {
+          state.clearAttempts(context.nodeName);
+          salvageItems.push(item);
+        }
       }
-      state.clearAttempts(context.nodeName);
-      return NodeOutputBuilder.of('salvage');
-    } finally {
-      clearTimeout(handle);
     }
+
+    const routes: Array<readonly ['drafted' | 'retry' | 'salvage', Batch<ArchivistState>]> = [];
+    if (draftedItems.length > 0) routes.push(['drafted', Batch.from(draftedItems)]);
+    if (retryItems.length > 0) routes.push(['retry', Batch.from(retryItems)]);
+    if (salvageItems.length > 0) routes.push(['salvage', Batch.from(salvageItems)]);
+    return RoutedBatch.create(routes);
   }
 }
 
@@ -124,7 +140,7 @@ export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafte
  *               the human answer then resumes via `dispatcher.resume()`.
  *   'resumed' — query is non-empty; continues to `recall-context`.
  */
-export class ParkForInputNode extends ScalarNode<ArchivistState, 'parked' | 'resumed'> {
+export class ParkForInputNode extends MonadicNode<ArchivistState, 'parked' | 'resumed'> {
   readonly name = 'park-for-input';
   readonly outputs = ['parked', 'resumed'] as const;
   override get outputSchema(): Record<'parked' | 'resumed', SchemaObjectType> {
@@ -134,12 +150,21 @@ export class ParkForInputNode extends ScalarNode<ArchivistState, 'parked' | 'res
     };
   }
 
-  protected override async executeOne(state: ArchivistState) {
-    if (state.query.length === 0) {
-      state.park('archivist-hitl');
-      return NodeOutputBuilder.of('parked');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    const parkedItems: ItemType<ArchivistState>[] = [];
+    const resumedItems: ItemType<ArchivistState>[] = [];
+    for (const item of batch) {
+      if (item.state.query.length === 0) {
+        item.state.park('archivist-hitl');
+        parkedItems.push(item);
+      } else {
+        resumedItems.push(item);
+      }
     }
-    return NodeOutputBuilder.of('resumed');
+    const routes: Array<readonly ['parked' | 'resumed', Batch<ArchivistState>]> = [];
+    if (parkedItems.length > 0) routes.push(['parked', Batch.from(parkedItems)]);
+    if (resumedItems.length > 0) routes.push(['resumed', Batch.from(resumedItems)]);
+    return RoutedBatch.create(routes);
   }
 }
 

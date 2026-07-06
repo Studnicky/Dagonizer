@@ -4,13 +4,15 @@
  * ip, code, phone, locale) with its assigned weight and the raw signal values for
  * that modality.
  *
- * Used in Wave 1+: the scatter phase produces one GeoSignalDescriptor per active
- * modality; the gather phase folds the highest-weight resolved descriptor into the
- * canonical GeoResolution.
+ * The scatter phase produces one GeoSignalDescriptor per active modality; the
+ * gather phase folds the highest-weight resolved descriptor into the canonical
+ * GeoResolution.
  *
  * @module
  */
 import type { FromSchema } from 'json-schema-to-ts';
+
+import { Validator } from '@studnicky/dagonizer/validation';
 
 export const GeoSignalDescriptorSchema = {
   '$id': 'https://noocodex.dev/schemas/cartographer/GeoSignalDescriptor',
@@ -75,9 +77,7 @@ export class GeoSignalDescriptorBuilder {
   }
 }
 
-const GEO_SIGNAL_KINDS: ReadonlySet<string> = new Set([
-  'coords', 'address', 'ip', 'code', 'phone', 'locale',
-]);
+const geoSignalDescriptorValidator = Validator.compile<GeoSignalDescriptor>(GeoSignalDescriptorSchema);
 
 export class GeoSignalDescriptorGuard {
   /**
@@ -87,16 +87,6 @@ export class GeoSignalDescriptorGuard {
    * array element re-enters as an untyped JSON value on the clone.
    */
   static is(value: unknown): value is GeoSignalDescriptor {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-    if (!('kind' in value) || typeof value.kind !== 'string' || !GEO_SIGNAL_KINDS.has(value.kind)) return false;
-    if (!('weight' in value) || typeof value.weight !== 'number') return false;
-    if (!('lat' in value) || typeof value.lat !== 'number') return false;
-    if (!('lng' in value) || typeof value.lng !== 'number') return false;
-    if (!('ipAddress' in value) || typeof value.ipAddress !== 'string') return false;
-    if (!('address' in value) || typeof value.address !== 'string') return false;
-    if (!('localeTag' in value) || typeof value.localeTag !== 'string') return false;
-    if (!('countryCode' in value) || typeof value.countryCode !== 'string') return false;
-    if (!('phone' in value) || typeof value.phone !== 'string') return false;
-    return true;
+    return geoSignalDescriptorValidator.is(value);
   }
 }

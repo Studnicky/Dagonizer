@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
-import type { NodeOutputType } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -283,11 +283,11 @@ void describe('Dagonizer validation', () => {
 
   void it('rejects nodes with invalid validate result', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class BadNode extends ScalarNode<NodeStateBase, string> {
+    class BadNode extends MonadicNode<NodeStateBase, string> {
       readonly name = 'bad';
       readonly outputs = ['success'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
-      protected override async executeOne(): Promise<NodeOutputType<string>> { return { 'errors': [], 'output': 'success' as const }; }
+      override async execute(batch: Batch<NodeStateBase>): Promise<Map<string, Batch<NodeStateBase>>> { return new Map([['success', batch]]); }
       override validate() { return { 'valid': false, 'errors': ['bad config'] }; }
     }
     assert.throws(() => dispatcher.registerNode(new BadNode()), DAGError);

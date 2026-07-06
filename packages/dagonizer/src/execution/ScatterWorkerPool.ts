@@ -89,10 +89,8 @@ export class ScatterWorkerPool {
 
   constructor(driver: ScatterPoolDriverInterface, options: ScatterWorkerPoolOptionsType) {
     this.#driver = driver;
-    this.#semaphore = Semaphore.builder().withPermits(options.concurrencyLimit).build();
-    this.#throttle = options.throttle !== null
-      ? Throttle.builder().withConcurrencyLimit(options.throttle.concurrencyLimit).build()
-      : null;
+    this.#semaphore = Semaphore.create({ 'permits': options.concurrencyLimit });
+    this.#throttle = ScatterWorkerPool.#throttleFor(options.throttle);
     this.#inbox = options.inbox;
     this.#freshIter = options.freshIter;
     this.#signal = options.signal;
@@ -129,6 +127,14 @@ export class ScatterWorkerPool {
    */
   get errors(): readonly unknown[] {
     return this.#poolErrors;
+  }
+
+  static #throttleFor(options: ScatterThrottleOptionsType): Throttle | null {
+    if (options === null) return null;
+    return Throttle.create({
+      'concurrencyLimit': options.concurrencyLimit,
+      ...(options.adaptive !== undefined ? { 'adaptive': options.adaptive } : {}),
+    });
   }
 
   /**

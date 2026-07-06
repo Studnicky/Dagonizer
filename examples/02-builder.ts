@@ -10,9 +10,9 @@
  * DAGBuilder is the right tool for: ETL pipelines, transformation chains,
  * fixed user-onboarding flows, anywhere the order IS the spec.
  *
- * Watch: DAGBuilder.build() returns a fully-formed DAG including '@context',
- * '@id', and '@type'. Identical canonical output to 01-linear's hand-written
- * DAG literal; DAGBuilder is sugar that produces the same wire-format object.
+ * Watch: DAGBuilder.build() returns a fully-formed JSON-LD DAG including
+ * '@context', '@id', and '@type'. The dispatcher consumes that document
+ * directly.
  *
  * DAG definition (state, nodes, dag): examples/dags/02-builder.topology.ts
  *
@@ -41,6 +41,6 @@ process.stdout.write(`  input:  "${state.input}"\n`);
 process.stdout.write(`  reply:  "${state.reply}"\n`);
 process.stdout.write(`\n  built DAG @id: ${dag['@id']}\n`);
 process.stdout.write(`  nodes:  ${dag.nodes.map(n => `${n['@type']}(${n.name})`).join(' → ')}\n`);
-process.stdout.write('\nLesson: DAGBuilder.build() produces the same canonical JSON-LD shape\n');
-process.stdout.write('        as a hand-written literal; routes are exhaustiveness-checked.\n');
+process.stdout.write('\nLesson: DAGBuilder.build() produces the canonical JSON-LD DAG document;\n');
+process.stdout.write('        routes are exhaustiveness-checked.\n');
 // #endregion run

@@ -6,9 +6,10 @@
  * record) and `toQuads` (turn one entity into a list of quads).
  */
 
-import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import { RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType } from '@studnicky/dagonizer';
 import type { QuadType } from '@studnicky/dagonizer/patterns';
-import type { NodeOutputType, NodeStateInterface } from '@studnicky/dagonizer/types';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { GraphNode } from './GraphNode.js';
 
@@ -20,15 +21,18 @@ export abstract class RecordFindingsNode<
   protected abstract toQuads(entity: TEntity): readonly QuadType[];
 
 
-  protected override async executeOne(
-    state: TState,
-  ): Promise<NodeOutputType<'success'>> {
-    const entities = this.selectEntities(state);
-    for (const entity of entities) {
-      for (const q of this.toQuads(entity)) {
-        this.memory.assert(q.subject, q.predicate, q.object, q.graph);
+  override async execute(
+    batch: Batch<TState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'success', TState>> {
+    for (const item of batch) {
+      const entities = this.selectEntities(item.state);
+      for (const entity of entities) {
+        for (const q of this.toQuads(entity)) {
+          this.memory.assert(q.subject, q.predicate, q.object, q.graph);
+        }
       }
     }
-    return NodeOutputBuilder.of('success');
+    return RoutedBatch.create('success', batch);
   }
 }

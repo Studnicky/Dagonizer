@@ -13,8 +13,8 @@
  * failed node would have continued to.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 
@@ -26,20 +26,22 @@ const MAX_NAIVE_TERMS = 6;
  * caps at six. Deterministic; no LLM. Writes `state.terms` and rejoins at
  * decide-tools.
  */
-export class ExtractQuerySalvageNode extends ScalarNode<ArchivistState, 'done'> {
+export class ExtractQuerySalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'extract-query-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState) {
-    state.terms = state.query
-      .toLowerCase()
-      .split(/\s+/u)
-      .filter((t) => t.length > 2)
-      .slice(0, MAX_NAIVE_TERMS);
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      state.terms = state.query
+        .toLowerCase()
+        .split(/\s+/u)
+        .filter((t) => t.length > 2)
+        .slice(0, MAX_NAIVE_TERMS);
+    }
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -48,16 +50,18 @@ export class ExtractQuerySalvageNode extends ScalarNode<ArchivistState, 'done'> 
  * arg; each scout falls back to `state.terms.join(' ')`. Rejoins at
  * recall-candidates.
  */
-export class DecideToolsSalvageNode extends ScalarNode<ArchivistState, 'done'> {
+export class DecideToolsSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'decide-tools-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState) {
-    state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
+    }
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -66,16 +70,18 @@ export class DecideToolsSalvageNode extends ScalarNode<ArchivistState, 'done'> {
  * so the visitor still gets a book search. Rejoins at the on-topic search
  * branch.
  */
-export class ClassifyIntentSalvageNode extends ScalarNode<ArchivistState, 'done'> {
+export class ClassifyIntentSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'classify-intent-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState) {
-    state.intent = 'search';
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      state.intent = 'search';
+    }
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -84,15 +90,15 @@ export class ClassifyIntentSalvageNode extends ScalarNode<ArchivistState, 'done'
  * (deterministic given the same inputs). No fabricated scores. Rejoins at
  * merge-candidates, which soft-gates on emptiness.
  */
-export class RankCandidatesSalvageNode extends ScalarNode<ArchivistState, 'done'> {
+export class RankCandidatesSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'rank-candidates-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne() {
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -105,16 +111,18 @@ const COMPOSE_SALVAGE_DRAFT =
  * budget. Emit a deterministic acknowledgement rather than fabricating a
  * fluent answer, then exit the compose loop.
  */
-export class ComposeResponseSalvageNode extends ScalarNode<ArchivistState, 'done'> {
+export class ComposeResponseSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'compose-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState) {
-    state.draft = COMPOSE_SALVAGE_DRAFT;
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      state.draft = COMPOSE_SALVAGE_DRAFT;
+    }
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -127,16 +135,18 @@ const EMPTY_SALVAGE_DRAFT =
  * after retries. Emit the deterministic acknowledgement so the visitor always
  * gets a response, then route on to respond-to-visitor.
  */
-export class ComposeEmptyResponseSalvageNode extends ScalarNode<ArchivistState, 'done'> {
+export class ComposeEmptyResponseSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'compose-empty-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState) {
-    state.draft = EMPTY_SALVAGE_DRAFT;
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      state.draft = EMPTY_SALVAGE_DRAFT;
+    }
+    return RoutedBatch.create('done', batch);
   }
 }
 
@@ -148,16 +158,18 @@ const MEMORY_SALVAGE_DRAFT =
  * compose-memory-response salvage: the recall composer exhausted its budget.
  * Emit a deterministic acknowledgement and route on to respond-to-visitor.
  */
-export class ComposeMemoryResponseSalvageNode extends ScalarNode<ArchivistState, 'done'> {
+export class ComposeMemoryResponseSalvageNode extends MonadicNode<ArchivistState, 'done'> {
   readonly name = 'compose-memory-salvage';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: ArchivistState) {
-    state.draft = MEMORY_SALVAGE_DRAFT;
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      state.draft = MEMORY_SALVAGE_DRAFT;
+    }
+    return RoutedBatch.create('done', batch);
   }
 }
 

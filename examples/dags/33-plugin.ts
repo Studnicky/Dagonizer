@@ -6,10 +6,12 @@
 
 // #region imports
 import {
+  Batch,
   DAG_CONTEXT,
-  NodeOutputBuilder,
+  MonadicNode,
+  NodeOutput,
   NodeStateBase,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type { DAGType, DispatcherBundleType, NodeStateInterface, PluginInterface, PluginReceiverType, SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
@@ -36,16 +38,18 @@ export class PipelineState extends NodeStateBase {
  * This node lives inside the plugin bundle — the consumer never registers it
  * directly; the plugin takes care of that.
  */
-export class NormalizeNode extends ScalarNode<PipelineState, 'done'> {
+export class NormalizeNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'normalize';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { done: { type: 'object' } };
   }
 
-  protected override async executeOne(state: PipelineState) {
-    state.normalized = state.phrase.trim().toLowerCase();
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) {
+      item.state.normalized = item.state.phrase.trim().toLowerCase();
+    }
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 
@@ -53,16 +57,18 @@ export class NormalizeNode extends ScalarNode<PipelineState, 'done'> {
  * SummarizeNode: sets a status tag based on the normalized phrase length.
  * Registered alongside NormalizeNode in the plugin bundle.
  */
-export class SummarizeNode extends ScalarNode<PipelineState, 'done'> {
+export class SummarizeNode extends MonadicNode<PipelineState, 'done'> {
   readonly name = 'summarize';
   readonly outputs = ['done'] as const;
   override get outputSchema(): Record<'done', SchemaObjectType> {
     return { done: { type: 'object' } };
   }
 
-  protected override async executeOne(state: PipelineState) {
-    state.status = state.normalized.length > 20 ? 'long' : 'short';
-    return NodeOutputBuilder.of('done');
+  override async execute(batch: Batch<PipelineState>) {
+    for (const item of batch) {
+      item.state.status = item.state.normalized.length > 20 ? 'long' : 'short';
+    }
+    return RoutedBatch.create(NodeOutput.create('done').output, batch);
   }
 }
 // #endregion plugin-nodes

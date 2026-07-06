@@ -26,14 +26,12 @@ import type { CartographerState } from '../CartographerState.ts';
 import { Sources } from '../services.ts';
 import { EventStreamSource } from '../services/EventStreamSource.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 import { StreamChannel, StreamCursor } from '@studnicky/dagonizer/channels';
 
 // #region seed-events-node
-export class SeedEventsNode extends ScalarNode<CartographerState, 'done'> {
+export class SeedEventsNode extends MonadicNode<CartographerState, 'done'> {
   readonly 'name' = 'seed';
   // A `PhaseNode('pre')` runs before the entrypoint and never appears in the
   // routing graph, so this output token is never consumed — but the node still
@@ -44,22 +42,27 @@ export class SeedEventsNode extends ScalarNode<CartographerState, 'done'> {
     return { 'done': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: CartographerState, context: NodeContextType): Promise<NodeOutputType<'done'>> {
-    if (state.useStreamingSource) {
-      const count = state.streamCount > 0 ? state.streamCount : undefined;
-      const cursor = StreamCursor.resumeAfter(state, 'process-stream');
-      const channelOptions = state.streamChannelCapacity > 0
-        ? { 'signal': context.signal, 'capacity': state.streamChannelCapacity }
-        : { 'signal': context.signal };
-      state.sources = StreamChannel.resumable(
-        EventStreamSource.resumableProducer(state.eventConfig, count),
-        cursor,
-        channelOptions,
-      );
-    } else {
-      state.sources = await Sources.buildTypedFeed(state.eventConfig);
+  override async execute(
+    batch: Batch<CartographerState>,
+    context: NodeContextType,
+  ): Promise<RoutedBatchType<'done', CartographerState>> {
+    for (const item of batch) {
+      if (item.state.useStreamingSource) {
+        const count = item.state.streamCount > 0 ? item.state.streamCount : undefined;
+        const cursor = StreamCursor.resumeAfter(item.state, 'process-stream');
+        const channelOptions = item.state.streamChannelCapacity > 0
+          ? { 'signal': context.signal, 'capacity': item.state.streamChannelCapacity }
+          : { 'signal': context.signal };
+        item.state.sources = StreamChannel.resumable(
+          EventStreamSource.resumableProducer(item.state.eventConfig, count),
+          cursor,
+          channelOptions,
+        );
+      } else {
+        item.state.sources = await Sources.buildTypedFeed(item.state.eventConfig);
+      }
     }
-    return NodeOutputBuilder.of('done');
+    return RoutedBatch.create('done', batch);
   }
 }
 

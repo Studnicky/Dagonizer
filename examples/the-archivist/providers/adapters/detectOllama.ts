@@ -17,6 +17,8 @@
  * before starting the daemon so the browser can probe it.
  */
 
+import { Signal } from '@studnicky/signal';
+
 const PING_URL = 'http://127.0.0.1:11434/api/version';
 const TIMEOUT_MS = 600;
 
@@ -27,15 +29,12 @@ export class OllamaProbe {
    */
   static async detect(): Promise<boolean> {
     if (typeof fetch === 'undefined') return false;
-    const controller = new AbortController();
-    const timer = setTimeout(() => { controller.abort(); }, TIMEOUT_MS);
+    const signal = Signal.timeout(TIMEOUT_MS);
     try {
-      const res = await fetch(PING_URL, { 'method': 'GET', 'signal': controller.signal });
+      const res = await fetch(PING_URL, { 'method': 'GET', signal });
       return res.ok;
     } catch {
       return false;
-    } finally {
-      clearTimeout(timer);
     }
   }
 }

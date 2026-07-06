@@ -29,8 +29,8 @@
  * variant: 'deterministic': pure SPARQL pattern-match over a stable store.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
-import type { NodeOutputType, SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 
 import type { CandidateType } from '../entities/Book.ts';
 import { BookBuilder } from '../entities/Book.ts';
@@ -72,7 +72,7 @@ class EmbeddingParser {
   }
 }
 
-export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled'> {
+export class RecallCandidatesNode extends MonadicNode<ArchivistState, 'recalled'> {
   private readonly services: ArchivistServices;
   readonly name = 'recall-candidates';
   readonly outputs = ['recalled'] as const;
@@ -87,14 +87,10 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled'>
     this.services = services;
   }
 
-  /** Public per-item entry point for tests and dispatch delegation. */
-  public async runItem(state: ArchivistState): Promise<NodeOutputType<'recalled'>> {
-    return this.executeOne(state);
-  }
-
-  protected override async executeOne(state: ArchivistState) {
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
     const memory   = this.services.memory;
     const embedder = this.services.embedder;
+    for (const { state } of batch) {
 
     // Use extracted terms when available; fall back to raw query tokens.
     const queryText     = state.terms.length > 0 ? state.terms.join(' ') : state.query;
@@ -172,7 +168,7 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled'>
     }
 
     if (matchingRunIris.length === 0) {
-      return NodeOutputBuilder.of('recalled');
+      continue;
     }
 
     // ── Collect shortlisted book IRIs from matching runs ──────────────
@@ -222,8 +218,8 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled'>
     }
 
     state.priorCandidates = priorCandidates;
+    }
 
-    return NodeOutputBuilder.of('recalled');
+    return RoutedBatch.create('recalled', batch);
   }
 }
-

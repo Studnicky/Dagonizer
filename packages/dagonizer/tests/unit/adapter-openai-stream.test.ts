@@ -18,7 +18,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ChatRequestBuilder, OpenAiCompatibleAdapter } from '../../src/adapter/index.js';
+import { ChatRequest, OpenAiCompatibleAdapter } from '../../src/adapter/index.js';
 import { SseLineParser } from '../../src/adapter/SseLineParser.js';
 import type { StreamSinkInterface } from '../../src/contracts/StreamSinkInterface.js';
 import type { ChatStreamChunkType } from '../../src/entities/adapter/ChatStreamChunk.js';
@@ -186,7 +186,7 @@ void describe('OpenAiCompatibleAdapter.chatStream — text turn', () => {
     const calls = stubbed.calls;
 
     const response = await FetchHarness.with(stubbed.fetch, () => adapter.chatStream(
-      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }], 'maxTokens': 64 }),
+      ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }], 'maxTokens': 64 }),
       sink,
     ));
 
@@ -213,7 +213,7 @@ void describe('OpenAiCompatibleAdapter.chatStream — text turn', () => {
     const stubbed = StreamFetchStub.of(lengthSse);
 
     const response = await FetchHarness.with(stubbed.fetch, () => adapter.chatStream(
-      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }),
+      ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hi.' }] }),
       sink,
     ));
 
@@ -237,7 +237,7 @@ void describe('OpenAiCompatibleAdapter.chatStream — tool turn falls back to bu
       }), { 'status': 200, 'headers': { 'content-type': 'application/json' } }));
     };
 
-    const request = ChatRequestBuilder.from({
+    const request = ChatRequest.create({
       'messages': [{ 'role': 'user', 'content': 'Call a tool.' }],
       'tools': [{
         'name': 'foo',

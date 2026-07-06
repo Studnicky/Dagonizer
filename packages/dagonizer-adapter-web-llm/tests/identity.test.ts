@@ -1,7 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import { ChatRequest, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import { Scheduler } from '@studnicky/dagonizer/runtime';
+import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 
 import { WebLlmAdapter } from '../src/index.js';
 import type { WebLlmEngineType, WebLlmStreamingParamsType } from '../src/index.js';
@@ -258,11 +260,31 @@ void test('WebLlmAdapter.probe does not throw when requestAdapter rejects', asyn
   }
 });
 
+void test('WebLlmAdapter.probe timeout is scheduler-controlled', async () => {
+  const scheduler = new VirtualScheduler(0);
+  Scheduler.configure(scheduler);
+  NavigatorStub.install({
+    "gpu": { "requestAdapter": () => new Promise<unknown>(() => undefined) },
+  });
+  const a = new WebLlmAdapter();
+  try {
+    const probed = a.probe();
+    await Promise.resolve();
+    assert.equal(scheduler.pendingCount, 1);
+    scheduler.advance(1_500);
+    assert.equal(await probed, false);
+    assert.equal(scheduler.pendingCount, 0);
+  } finally {
+    Scheduler.reset();
+    NavigatorStub.remove();
+  }
+});
+
 void test('composeMessages folds the schema coercion into one leading system message', () => {
   // The MLC engine rejects a `{ role: 'system' }` entry at any index but 0.
   // A schema request must NOT append a trailing system message — the coercion
   // instruction folds into the single index-0 system turn.
-  const messages = WebLlmAdapter.composeMessages(ChatRequestBuilder.from({
+  const messages = WebLlmAdapter.composeMessages(ChatRequest.create({
     'messages':     [{ 'role': 'user', 'content': 'Recommend a novel.' }],
     'outputSchema': { 'variant': 'schema', 'id': 'rec', 'schema': { 'type': 'object' } },
   }));
@@ -275,7 +297,7 @@ void test('composeMessages folds the schema coercion into one leading system mes
 });
 
 void test('composeMessages folds caller system turns and tool coercion into one leading system message', () => {
-  const messages = WebLlmAdapter.composeMessages(ChatRequestBuilder.from({
+  const messages = WebLlmAdapter.composeMessages(ChatRequest.create({
     'messages': [
       { 'role': 'system', 'content': 'You are the Archivist.' },
       { 'role': 'user',   'content': 'Find a book.' },
@@ -291,7 +313,7 @@ void test('composeMessages folds caller system turns and tool coercion into one 
 });
 
 void test('composeMessages emits no system message when none is needed', () => {
-  const messages = WebLlmAdapter.composeMessages(ChatRequestBuilder.from({
+  const messages = WebLlmAdapter.composeMessages(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Hello.' }],
   }));
   assert.deepEqual(messages, [{ 'role': 'user', 'content': 'Hello.' }]);
@@ -314,7 +336,7 @@ void test('WebLlmAdapter default construction (no timeoutMs) still has correct i
 void test('max_tokens forwarding: create is called with max_tokens from the request', async () => {
   const stub = new EngineStub(['Hello']);
   const adapter = new TestAdapter(stub);
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages':  [{ 'role': 'user', 'content': 'Hi' }],
     'maxTokens': 256,
   });
@@ -328,7 +350,7 @@ void test('max_tokens forwarding: create is called with max_tokens from the requ
 void test('streaming accumulation: chunks are concatenated into the text response', async () => {
   const stub = new EngineStub(['Hel', 'lo']);
   const adapter = new TestAdapter(stub);
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Say hello.' }],
   });
 
@@ -342,7 +364,7 @@ void test('interrupt on timeout: rejects with TIMEOUT LlmError and calls interru
   // Stub with no chunks — the stream hangs until interruptGenerate() is called.
   const stub = new EngineStub([]);
   const adapter = new TestAdapter(stub, { 'timeoutMs': 1 });
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Slow response.' }],
   });
 
@@ -363,7 +385,7 @@ void test('interrupt on external abort: interruptGenerate is called and call rej
   const stub = new EngineStub([]);
   const adapter = new TestAdapter(stub, { 'timeoutMs': 60_000 });
   const controller = new AbortController();
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Abort this.' }],
     'signal':   controller.signal,
   });
@@ -396,7 +418,7 @@ void test('base timeout guard rejects even when interruptGenerate is a no-op (fr
   // the caller's promise independently of any cooperative interrupt.
   const stub = new FrozenEngineStub();
   const adapter = new TestAdapter(stub, { 'timeoutMs': 50, 'maxAttempts': 1 });
-  const request = ChatRequestBuilder.from({
+  const request = ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'hi' }],
   });
 

@@ -15,13 +15,11 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import { SourcePayloadGuard } from '../../entities/SourcePayload.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region select-source-node
-export class SelectSourceNode extends ScalarNode<CartographerState, 'compressed' | 'plain' | 'invalid'> {
+export class SelectSourceNode extends MonadicNode<CartographerState, 'compressed' | 'plain' | 'invalid'> {
   readonly 'name' = 'select-source';
   readonly 'outputs' = ['compressed', 'plain', 'invalid'] as const;
 
@@ -33,13 +31,39 @@ export class SelectSourceNode extends ScalarNode<CartographerState, 'compressed'
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'compressed' | 'plain' | 'invalid'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'compressed' | 'plain' | 'invalid', CartographerState>> {
+    const acc = new Map<'compressed' | 'plain' | 'invalid', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'compressed' | 'plain' | 'invalid', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private routeItem(state: CartographerState): NodeOutputType<'compressed' | 'plain' | 'invalid'> {
     const raw = state.getMetadata('source');
     if (!SourcePayloadGuard.is(raw)) {
-      return NodeOutputBuilder.of('invalid');
+      return NodeOutput.create('invalid');
     }
     state.currentSource = raw;
-    return NodeOutputBuilder.of(raw.compression === 'gzip' ? 'compressed' : 'plain');
+    return NodeOutput.create(raw.compression === 'gzip' ? 'compressed' : 'plain');
   }
 }
 

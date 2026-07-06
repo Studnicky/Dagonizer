@@ -19,32 +19,38 @@ import type { LlmAdapterInterface } from '../../contracts/LlmAdapterInterface.js
 import type { SchemaObjectType } from '../../contracts/NodeInterface.js';
 import { NullStreamSink } from '../../contracts/NullStreamSink.js';
 import type { StreamSinkInterface } from '../../contracts/StreamSinkInterface.js';
-import { ScalarNode } from '../../core/ScalarNode.js';
+import { MonadicNode } from '../../core/MonadicNode.js';
 import type { ChatRequestType } from '../../entities/adapter/ChatRequest.js';
 import type { ChatResponseType } from '../../entities/adapter/ChatResponse.js';
 import type { RoutedChatStreamChunkType } from '../../entities/adapter/RoutedChatStreamChunk.js';
+import { Batch } from '../../entities/batch/Batch.js';
+import type { ItemType } from '../../entities/batch/Item.js';
+import type { RoutedBatchType } from '../../entities/batch/RoutedBatchType.js';
 import type { NodeContextType } from '../../entities/node/NodeContext.js';
-import { NodeErrorBuilder } from '../../entities/node/NodeError.js';
-import { NodeOutputBuilder } from '../../entities/node/NodeOutput.js';
+import { NodeError } from '../../entities/node/NodeError.js';
+import { NodeOutput } from '../../entities/node/NodeOutput.js';
 import type { NodeOutputType } from '../../entities/node/NodeOutput.js';
 import { DAGError } from '../../errors/DAGError.js';
+import { BatchItemExecutor } from '../../execution/BatchItemExecutor.js';
 import type { NodeStateInterface } from '../../NodeStateBase.js';
+import type { BatchExecutionOptionsType } from '../../types/BatchExecutionOptions.js';
 
 export abstract class CallModelNode<
   TState extends NodeStateInterface,
-> extends ScalarNode<TState, 'text' | 'tools' | 'mixed' | 'error'> {
+> extends MonadicNode<TState, 'text' | 'tools' | 'mixed' | 'error'> {
   readonly outputs = ['text', 'tools', 'mixed', 'error'] as const;
 
   /**
    * Bound per node INSTANCE, but every chunk that reaches it is
-   * self-describing: `executeOne` wraps `this.sink` in a fresh
-   * `RoutingStreamSink` per execution, stamping each chunk with
+   * self-describing: `execute` wraps `this.sink` in a fresh
+   * `RoutingStreamSink` for each item execution, stamping each chunk with
    * `routeKey(state)` and the `{dagName, nodeName}` source. One shared sink
    * — for example a `StreamChannel` feeding a routing DAG that scatters by
    * `routeKey` — correctly demultiplexes concurrent runs on a single node
    * instance; no per-run node instance or dispatcher is needed.
    */
   protected readonly sink: StreamSinkInterface<RoutedChatStreamChunkType>;
+  protected readonly execution: BatchExecutionOptionsType;
 
   constructor(
     protected readonly llm: LlmAdapterInterface,
@@ -53,10 +59,14 @@ export abstract class CallModelNode<
      * forwarded to it are routed (tagged with `routeKey` + `source`), so one
      * shared sink safely demultiplexes concurrent runs.
      */
-    options: { sink?: StreamSinkInterface<RoutedChatStreamChunkType> } = {},
+    options: {
+      sink?: StreamSinkInterface<RoutedChatStreamChunkType>;
+      execution?: BatchExecutionOptionsType;
+    } = {},
   ) {
     super();
     this.sink = options.sink ?? new NullStreamSink<RoutedChatStreamChunkType>();
+    this.execution = options.execution ?? {};
   }
 
   override get outputSchema(): Record<'text' | 'tools' | 'mixed' | 'error', SchemaObjectType> {
@@ -99,7 +109,37 @@ export abstract class CallModelNode<
     context: NodeContextType,
   ): void;
 
-  protected override async executeOne(
+  override async execute(
+    batch: Batch<TState>,
+    context: NodeContextType,
+  ): Promise<RoutedBatchType<'text' | 'tools' | 'mixed' | 'error', TState>> {
+    const acc = new Map<'text' | 'tools' | 'mixed' | 'error', ItemType<TState>[]>();
+    const results = await BatchItemExecutor.map(batch.items(), async (item) => {
+      const output = await this.#executeItem(item.state, context);
+
+      for (const error of output.errors) {
+        item.state.collectError(error);
+      }
+      return { item, output };
+    }, this.execution, context.signal);
+
+    for (const result of results) {
+      const bucket = acc.get(result.output.output);
+      if (bucket !== undefined) {
+        bucket.push(result.item);
+      } else {
+        acc.set(result.output.output, [result.item]);
+      }
+    }
+
+    const routed = new Map<'text' | 'tools' | 'mixed' | 'error', Batch<TState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  async #executeItem(
     state: TState,
     context: NodeContextType,
   ): Promise<NodeOutputType<'text' | 'tools' | 'mixed' | 'error'>> {
@@ -110,16 +150,16 @@ export abstract class CallModelNode<
       const routed = RoutingStreamSink.of(this.sink, this.routeKey(state), source);
       const response = await adapter.chatStream(request, routed);
       this.storeResponse(state, response, context);
-      return NodeOutputBuilder.of(response.message.variant);
+      return NodeOutput.create(response.message.variant);
     } catch (cause) {
       const error = DAGError.coerce(cause);
       const recoverable = cause instanceof LlmError ? cause.classification.retryable : true;
-      return NodeOutputBuilder.of('error', {
+      return NodeOutput.create('error', {
         'errors': [
-          NodeErrorBuilder.from(
+          NodeError.create(
             'modelCallFailed',
             error.message,
-            'CallModelNode.executeOne',
+            'CallModelNode.execute',
             recoverable,
             new Date().toISOString(),
           ),

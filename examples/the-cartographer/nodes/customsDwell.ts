@@ -11,13 +11,11 @@
 import type { CartographerState } from '../CartographerState.ts';
 import { Customs } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region customs-dwell-node
-export class CustomsDwellNode extends ScalarNode<CartographerState, 'dwelled'> {
+export class CustomsDwellNode extends MonadicNode<CartographerState, 'dwelled'> {
   readonly 'name' = 'customs-dwell';
   readonly 'outputs' = ['dwelled'] as const;
 
@@ -27,11 +25,16 @@ export class CustomsDwellNode extends ScalarNode<CartographerState, 'dwelled'> {
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'dwelled'>> {
-    const v = state.canonicalVariant;
-    const customsStatus = v.eventType === 'customs-event' ? v.body.customsStatus : '';
-    state.customsDwellHours = Customs.dwellHours(customsStatus);
-    return NodeOutputBuilder.of('dwelled');
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'dwelled', CartographerState>> {
+    for (const item of batch) {
+      const v = item.state.canonicalVariant;
+      const customsStatus = v.eventType === 'customs-event' ? v.body.customsStatus : '';
+      item.state.customsDwellHours = Customs.dwellHours(customsStatus);
+    }
+    return RoutedBatch.create('dwelled', batch);
   }
 }
 // #endregion customs-dwell-node

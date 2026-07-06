@@ -5,8 +5,7 @@
  * Consumers subclass `ObservedDag<TState>` and pass any object implementing
  * `DagLoggerInterface` (four methods: `trace`, `debug`, `info`, `error`).
  * Each lifecycle hook calls the corresponding level with a structured
- * `LogBodyDataType` (or, for `error`, a `LogFaultDataType`) built via
- * `@studnicky/logger`'s `LogBody`/`LogFault` builders; subclass overrides call
+ * `LogBodyDataType` (or, for `error`, a `LogFaultDataType`); subclass overrides call
  * `super.<hook>(...)` first to preserve the base log lines, then add their own
  * effects (DAG graph animation, trace feed updates, provenance recording, etc.).
  *
@@ -32,8 +31,10 @@
  * pass `dagName` as a hook argument at that level.
  */
 
-import { LogBody, LogFault } from '@studnicky/logger';
 import type { LogBodyDataType, LogFaultDataType } from '@studnicky/logger/interfaces';
+import { TIMING_STATUS } from '@studnicky/timing';
+import type { TimingEventDataType, TimingInterface } from '@studnicky/timing/interfaces';
+import type { TimingStatusValueType } from '@studnicky/timing/types';
 
 import type { DagonizerOptionsType } from './Dagonizer.js';
 import { Dagonizer } from './Dagonizer.js';
@@ -59,12 +60,19 @@ export interface DagLoggerInterface {
   error(fault: LogFaultDataType): void;
 }
 
+export type ObservedDagOptionsType = DagonizerOptionsType & {
+  readonly timing?: TimingInterface | null;
+};
+
 export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TState> {
   readonly #logger: DagLoggerInterface;
+  readonly #timing: TimingInterface | null;
 
-  constructor(logger: DagLoggerInterface, options: DagonizerOptionsType = {}) {
-    super(options);
+  constructor(logger: DagLoggerInterface, options: ObservedDagOptionsType = {}) {
+    const { timing = null, ...dagonizerOptions } = options;
+    super(dagonizerOptions);
     this.#logger = logger;
+    this.#timing = timing;
   }
 
   /** The injected logger. Subclasses and drivers may read this for co-located output. */
@@ -81,16 +89,22 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
     return DagExecutionContext.correlationIdOf(signal) ?? NO_CORRELATION_ID;
   }
 
+  #time(operation: string, status: TimingStatusValueType): void {
+    this.#timing?.event(
+      { 'event': `dag.${operation}.${status}` } satisfies TimingEventDataType,
+    );
+  }
+
   protected override onFlowStart(dagName: string, state: TState, signal: AbortSignal): void {
     void state;
+    this.#time('flow', TIMING_STATUS.START);
     this.#logger.info(
-      LogBody.create()
-        .component('dag')
-        .operation('flow')
-        .status('in_progress')
-        .message(`start dag=${dagName}`)
-        .context({ dagName, 'correlationId': this.#correlationId(signal) })
-        .build(),
+      {
+        'context': { dagName, 'correlationId': this.#correlationId(signal) },
+        'event': 'dag.flow',
+        'message': `start dag=${dagName}`,
+        'status': 'in_progress',
+      },
     );
   }
 
@@ -102,14 +116,14 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
   ): void {
     void state;
     const outcome = result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none';
+    this.#time('flow', TIMING_STATUS.COMPLETE);
     this.#logger.info(
-      LogBody.create()
-        .component('dag')
-        .operation('flow')
-        .status('complete')
-        .message(`end dag=${dagName} outcome=${outcome}`)
-        .context({ dagName, outcome, 'correlationId': this.#correlationId(signal) })
-        .build(),
+      {
+        'context': { dagName, outcome, 'correlationId': this.#correlationId(signal) },
+        'event': 'dag.flow',
+        'message': `end dag=${dagName} outcome=${outcome}`,
+        'status': 'complete',
+      },
     );
   }
 
@@ -120,16 +134,16 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
     signal: AbortSignal,
   ): void {
     void state;
+    this.#time('node', TIMING_STATUS.START);
     const path = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
     const dagName = DagExecutionContext.dagNameOf(signal);
     this.#logger.debug(
-      LogBody.create()
-        .component('dag')
-        .operation('node')
-        .status('in_progress')
-        .message(`start ${path}${nodeName}`)
-        .context({ nodeName, placementPath, dagName, 'correlationId': this.#correlationId(signal) })
-        .build(),
+      {
+        'context': { nodeName, placementPath, dagName, 'correlationId': this.#correlationId(signal) },
+        'event': 'dag.node',
+        'message': `start ${path}${nodeName}`,
+        'status': 'in_progress',
+      },
     );
   }
 
@@ -141,17 +155,17 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
     signal: AbortSignal,
   ): void {
     void state;
+    this.#time('node', TIMING_STATUS.COMPLETE);
     const path   = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
     const outTag = output ?? '(terminal)';
     const dagName = DagExecutionContext.dagNameOf(signal);
     this.#logger.debug(
-      LogBody.create()
-        .component('dag')
-        .operation('node')
-        .status('complete')
-        .message(`end ${path}${nodeName} → ${outTag}`)
-        .context({ nodeName, placementPath, 'output': outTag, dagName, 'correlationId': this.#correlationId(signal) })
-        .build(),
+      {
+        'context': { nodeName, placementPath, 'output': outTag, dagName, 'correlationId': this.#correlationId(signal) },
+        'event': 'dag.node',
+        'message': `end ${path}${nodeName} → ${outTag}`,
+        'status': 'complete',
+      },
     );
   }
 
@@ -163,45 +177,45 @@ export class ObservedDag<TState extends NodeStateInterface> extends Dagonizer<TS
     signal: AbortSignal,
   ): void {
     void state;
+    this.#time('node', TIMING_STATUS.ERROR);
     const path = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
     const dagName = DagExecutionContext.dagNameOf(signal);
     this.#logger.error(
-      LogFault.create()
-        .component('dag')
-        .operation('node')
-        .status('failed')
-        .name(error.constructor.name)
-        .message(`${path}${nodeName} threw ${error.message}`)
-        .context({ nodeName, placementPath, dagName, 'correlationId': this.#correlationId(signal) })
-        .build(),
+      {
+        'context': { nodeName, placementPath, dagName, 'correlationId': this.#correlationId(signal) },
+        'event': 'dag.node',
+        'message': `${path}${nodeName} threw ${error.message}`,
+        'name': error.constructor.name,
+        'status': 'failed',
+      },
     );
   }
 
   protected override onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[], signal: AbortSignal): void {
     void state;
     void placementPath;
+    this.#time('phase', TIMING_STATUS.START);
     this.#logger.trace(
-      LogBody.create()
-        .component('dag')
-        .operation('phase')
-        .status('in_progress')
-        .message(`enter dag=${dagName} phase=${phase} placement=${placementName}`)
-        .context({ dagName, phase, placementName, 'correlationId': this.#correlationId(signal) })
-        .build(),
+      {
+        'context': { dagName, phase, placementName, 'correlationId': this.#correlationId(signal) },
+        'event': 'dag.phase',
+        'message': `enter dag=${dagName} phase=${phase} placement=${placementName}`,
+        'status': 'in_progress',
+      },
     );
   }
 
   protected override onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[], signal: AbortSignal): void {
     void state;
     void placementPath;
+    this.#time('phase', TIMING_STATUS.COMPLETE);
     this.#logger.trace(
-      LogBody.create()
-        .component('dag')
-        .operation('phase')
-        .status('complete')
-        .message(`exit dag=${dagName} phase=${phase} placement=${placementName}`)
-        .context({ dagName, phase, placementName, 'correlationId': this.#correlationId(signal) })
-        .build(),
+      {
+        'context': { dagName, phase, placementName, 'correlationId': this.#correlationId(signal) },
+        'event': 'dag.phase',
+        'message': `exit dag=${dagName} phase=${phase} placement=${placementName}`,
+        'status': 'complete',
+      },
     );
   }
 }

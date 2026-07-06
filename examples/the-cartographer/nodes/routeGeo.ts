@@ -14,13 +14,11 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 
-import { NodeOutputBuilder, type NodeContextType, type NodeOutputType,
-  ScalarNode,
-} from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
+import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region route-geo-node
-export class RouteGeoNode extends ScalarNode<CartographerState, 'has-geo' | 'needs-geo'> {
+export class RouteGeoNode extends MonadicNode<CartographerState, 'has-geo' | 'needs-geo'> {
   readonly 'name' = 'route-geo';
   readonly 'outputs' = ['has-geo', 'needs-geo'] as const;
 
@@ -31,7 +29,33 @@ export class RouteGeoNode extends ScalarNode<CartographerState, 'has-geo' | 'nee
     };
   }
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextType): Promise<NodeOutputType<'has-geo' | 'needs-geo'>> {
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'has-geo' | 'needs-geo', CartographerState>> {
+    const acc = new Map<'has-geo' | 'needs-geo', ItemType<CartographerState>[]>();
+
+    for (const item of batch) {
+      const result = this.routeItem(item.state);
+      for (const error of result.errors) {
+        item.state.collectError(error);
+      }
+      const bucket = acc.get(result.output);
+      if (bucket === undefined) {
+        acc.set(result.output, [item]);
+      } else {
+        bucket.push(item);
+      }
+    }
+
+    const routed = new Map<'has-geo' | 'needs-geo', Batch<CartographerState>>();
+    for (const [output, items] of acc) {
+      routed.set(output, Batch.from(items));
+    }
+    return routed;
+  }
+
+  private routeItem(state: CartographerState): NodeOutputType<'has-geo' | 'needs-geo'> {
     const geo = state.canonical.geo;
     // A source's pre-resolved geo only lets us skip the lookup when it actually
     // resolved a location — an 'UNK'/'Unmapped' placeholder (e.g. a ping whose
@@ -46,10 +70,10 @@ export class RouteGeoNode extends ScalarNode<CartographerState, 'has-geo' | 'nee
 
     if (hasResolvedGeo) {
       state.routing = { ...state.routing, 'geoLookupSkipped': true, 'geoLookupRun': false };
-      return NodeOutputBuilder.of('has-geo');
+      return NodeOutput.create('has-geo');
     }
     state.routing = { ...state.routing, 'geoLookupRun': true, 'geoLookupSkipped': false };
-    return NodeOutputBuilder.of('needs-geo');
+    return NodeOutput.create('needs-geo');
   }
 }
 // #endregion route-geo-node

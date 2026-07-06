@@ -20,9 +20,9 @@
  * required; an empty workset means the scatter body is skipped).
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { SchemaObjectType } from '@studnicky/dagonizer';
-import type { NodeOutputType } from '@studnicky/dagonizer';
+import type { Batch, NodeContextType } from '@studnicky/dagonizer';
 import type { JsonObjectType } from '@studnicky/dagonizer/types';
 
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -35,7 +35,7 @@ export type BookWorksetItemType = {
   readonly arguments: JsonObjectType;
 };
 
-export class BuildBookWorksetsNode extends ScalarNode<ArchivistState, 'ready'> {
+export class BuildBookWorksetsNode extends MonadicNode<ArchivistState, 'ready'> {
   readonly name = 'build-book-worksets';
   readonly outputs = ['ready'] as const;
 
@@ -45,10 +45,9 @@ export class BuildBookWorksetsNode extends ScalarNode<ArchivistState, 'ready'> {
     };
   }
 
-  protected override async executeOne(
-    state: ArchivistState,
-  ): Promise<NodeOutputType<'ready'>> {
-    const worksets: BookWorksetItemType[] = [];
+  override async execute(batch: Batch<ArchivistState>, _context: NodeContextType) {
+    for (const { state } of batch) {
+      const worksets: BookWorksetItemType[] = [];
 
     // ── web_search_books (OpenLibrary) ───────────────────────────────────────
     const openLibraryPlan = state.toolPlan.find((c) => c.name === 'web_search_books');
@@ -138,8 +137,9 @@ export class BuildBookWorksetsNode extends ScalarNode<ArchivistState, 'ready'> {
       }
     }
 
-    state.bookWorksets = worksets;
-    return NodeOutputBuilder.of('ready');
+      state.bookWorksets = worksets;
+    }
+    return RoutedBatch.create('ready', batch);
   }
 }
 

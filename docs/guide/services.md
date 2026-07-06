@@ -22,23 +22,29 @@ Nodes receive external dependencies through their constructors and hold them as 
 Declare the dependency as a private field on the node class. Accept it via the constructor. Register the node with an injected instance: `dispatcher.registerNode(new FetchNode(db))`.
 
 ```ts
-import { ScalarNode, NodeOutputBuilder } from '@studnicky/dagonizer';
-import type { NodeStateBase } from '@studnicky/dagonizer';
+import { Batch, MonadicNode, NodeStateBase, RoutedBatch } from '@studnicky/dagonizer';
+import type { ItemType } from '@studnicky/dagonizer';
+import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
 import type { StoreInterface } from '@studnicky/dagonizer/contracts';
 
-class WriteNode extends ScalarNode<NodeStateBase, 'done'> {
+class WriteNode extends MonadicNode<NodeStateBase, 'done'> {
   private readonly store: StoreInterface;
   readonly name    = 'write';
-  readonly outputs = ['done'] as const;
+  readonly outputs: readonly 'done'[] = ['done'];
 
   constructor(store: StoreInterface) {
     super();
     this.store = store;
   }
 
-  protected override async executeOne(_state: NodeStateBase) {
+  override get outputSchema(): Record<'done', SchemaObjectType> {
+    return { done: { type: 'object' } };
+  }
+
+  async execute(batch: Batch<NodeStateBase>, context: NodeContextType) {
+    if (context.signal.aborted) return RoutedBatch.create();
     await this.store.set('key', 'value');
-    return NodeOutputBuilder.of('done');
+    return RoutedBatch.create('done', batch);
   }
 }
 ```
@@ -70,21 +76,36 @@ interface CartographerDeps {
   readonly logger: LoggerInterface;
 }
 
-class GeoEnrichNode extends ScalarNode<CartographerState, 'enriched' | 'error'> {
+class GeoEnrichNode extends MonadicNode<CartographerState, 'enriched' | 'error'> {
   private readonly deps: CartographerDeps;
   readonly name    = 'geo-enrich';
-  readonly outputs = ['enriched', 'error'] as const;
+  readonly outputs: readonly ('enriched' | 'error')[] = ['enriched', 'error'];
 
   constructor(deps: CartographerDeps) {
     super();
     this.deps = deps;
   }
 
-  protected override async executeOne(state: CartographerState) {
-    const result = await this.deps.geo.resolve(state.ipAddress);
-    if (result === null) return NodeOutputBuilder.of('error');
-    state.geoData = result;
-    return NodeOutputBuilder.of('enriched');
+  override get outputSchema(): Record<'enriched' | 'error', SchemaObjectType> {
+    return MonadicNode.permissiveSchema(this.outputs);
+  }
+
+  async execute(batch: Batch<CartographerState>) {
+    const enriched: ItemType<CartographerState>[] = [];
+    const failed: ItemType<CartographerState>[] = [];
+    for (const item of batch) {
+      const result = await this.deps.geo.resolve(item.state.ipAddress);
+      if (result === null) {
+        failed.push(item);
+      } else {
+        item.state.geoData = result;
+        enriched.push(item);
+      }
+    }
+    return RoutedBatch.create([
+      ['enriched', Batch.from(enriched)],
+      ['error', Batch.from(failed)],
+    ]);
   }
 }
 ```
@@ -118,8 +139,7 @@ If a dependency needs per-execution state (such as a request identifier), put th
 Because dependencies are constructor arguments, a node can be tested directly without wiring a dispatcher:
 
 ```ts
-import { NodeStateBase, NodeOutputBuilder } from '@studnicky/dagonizer';
-import { Batch } from '@studnicky/dagonizer';
+import { Batch, NodeStateBase } from '@studnicky/dagonizer';
 
 const fakeStore: StoreInterface = {
   async set() { /* no-op */ },
@@ -131,7 +151,7 @@ const node  = new WriteNode(fakeStore);
 const state = new NodeStateBase();
 ```
 
-Stub the dependencies at construction time, call `execute` or `executeOne` directly, and assert on state mutations and routing output.
+Stub the dependencies at construction time, call `execute(Batch.of(state), context)` directly, and assert on state mutations and routing output.
 
 ## Related reference
 

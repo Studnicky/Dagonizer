@@ -20,7 +20,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 
 import type { StreamSinkInterface } from '@studnicky/dagonizer';
 import type { ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
-import { ChatRequestBuilder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import { ChatRequest, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
 
 import { AnthropicApiAdapter } from '../src/index.js';
 
@@ -184,7 +184,7 @@ void test('outgoing request targets the Anthropic Messages endpoint', async () =
   globalThis.fetch = capture.stub(TEXT_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Hello' }],
   }));
 
@@ -197,7 +197,7 @@ void test('outgoing request carries x-api-key and anthropic-version headers', as
   globalThis.fetch = capture.stub(TEXT_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-key-value');
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Hello' }],
   }));
 
@@ -211,7 +211,7 @@ void test('system messages are extracted into top-level system field', async () 
   globalThis.fetch = capture.stub(TEXT_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [
       { 'role': 'system',    'content': 'You are helpful.' },
       { 'role': 'user',      'content': 'Hello' },
@@ -232,7 +232,7 @@ void test('system messages are absent from wire body when none supplied', async 
   globalThis.fetch = capture.stub(TEXT_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Hello' }],
   }));
 
@@ -244,7 +244,7 @@ void test('tool definitions map to Anthropic tools array with input_schema', asy
   globalThis.fetch = capture.stub(TOOL_USE_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Search for cats.' }],
     'tools': [SEARCH_TOOL],
   }));
@@ -267,7 +267,7 @@ void test('tool_choice auto maps to { type: "auto" } on wire', async () => {
   globalThis.fetch = capture.stub(TOOL_USE_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages':   [{ 'role': 'user', 'content': 'Go.' }],
     'tools':      [SEARCH_TOOL],
     'toolChoice': { 'type': 'auto' },
@@ -281,7 +281,7 @@ void test('tool_choice required maps to { type: "any" } on wire', async () => {
   globalThis.fetch = capture.stub(TOOL_USE_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages':   [{ 'role': 'user', 'content': 'Go.' }],
     'tools':      [SEARCH_TOOL],
     'toolChoice': { 'type': 'required' },
@@ -295,7 +295,7 @@ void test('tool_choice specific tool maps to { type: "tool", name } on wire', as
   globalThis.fetch = capture.stub(TOOL_USE_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages':   [{ 'role': 'user', 'content': 'Go.' }],
     'tools':      [SEARCH_TOOL],
     'toolChoice': { 'type': 'tool', 'name': 'search' },
@@ -309,7 +309,7 @@ void test('tool result message maps to user role with tool_result content block'
   globalThis.fetch = capture.stub(TEXT_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [
       { 'role': 'user',    'content': 'Search for cats.' },
       {
@@ -338,7 +338,7 @@ void test('text response decodes to { variant: "text", content } message', async
   globalThis.fetch = new FetchCapture().stub(TEXT_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  const response = await adapter.chat(ChatRequestBuilder.from({
+  const response = await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Hello' }],
   }));
 
@@ -355,7 +355,7 @@ void test('tool_use response decodes to { variant: "tools", toolCalls } message'
   globalThis.fetch = new FetchCapture().stub(TOOL_USE_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  const response = await adapter.chat(ChatRequestBuilder.from({
+  const response = await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Search for cats.' }],
     'tools':    [SEARCH_TOOL],
   }));
@@ -378,7 +378,7 @@ void test('mixed response (text + tool_use) decodes to { variant: "mixed" } mess
   globalThis.fetch = new FetchCapture().stub(MIXED_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  const response = await adapter.chat(ChatRequestBuilder.from({
+  const response = await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Look up foo.' }],
     'tools':    [{ ...SEARCH_TOOL, 'name': 'lookup', 'description': 'Look up a term.' }],
   }));
@@ -403,7 +403,7 @@ void test('custom baseUrl is used for the endpoint', async () => {
   const adapter = new AnthropicApiAdapter('sk-ant-test', {
     'baseUrl': 'https://proxy.example.com',
   });
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Hello' }],
   }));
 
@@ -417,7 +417,7 @@ void test('custom anthropicVersion option overrides default header', async () =>
   const adapter = new AnthropicApiAdapter('sk-ant-test', {
     'anthropicVersion': '2024-01-01',
   });
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Hello' }],
   }));
 
@@ -431,7 +431,7 @@ void test('usage is zero when provider omits usage field', async () => {
   });
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  const response = await adapter.chat(ChatRequestBuilder.from({
+  const response = await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Hello' }],
   }));
 
@@ -446,7 +446,7 @@ void test('maxTokens maps to top-level max_tokens (not max_completion_tokens or 
   globalThis.fetch = capture.stub(TEXT_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test');
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages':  [{ 'role': 'user', 'content': 'Hello' }],
     'maxTokens': 256,
   }));
@@ -461,7 +461,7 @@ void test('configured systemPrompt is injected when request has no system messag
   globalThis.fetch = capture.stub(TEXT_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test', { 'systemPrompt': 'You are X.' });
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [{ 'role': 'user', 'content': 'Hello' }],
   }));
 
@@ -473,7 +473,7 @@ void test('caller system message is not overridden by configured systemPrompt', 
   globalThis.fetch = capture.stub(TEXT_RESPONSE);
 
   const adapter = new AnthropicApiAdapter('sk-ant-test', { 'systemPrompt': 'You are X.' });
-  await adapter.chat(ChatRequestBuilder.from({
+  await adapter.chat(ChatRequest.create({
     'messages': [
       { 'role': 'system', 'content': 'You are Y.' },
       { 'role': 'user',   'content': 'Hello' },
@@ -510,7 +510,7 @@ void test('timeoutMs fires and rejects with LlmError from the timeout path', asy
   const adapter = new AnthropicApiAdapter('sk-ant-test', { 'maxAttempts': 1, 'timeoutMs': 1 });
   let thrown: unknown;
   try {
-    await adapter.chat(ChatRequestBuilder.from({
+    await adapter.chat(ChatRequest.create({
       'messages': [{ 'role': 'user', 'content': 'Hello' }],
     }));
   } catch (err) {
@@ -553,7 +553,7 @@ void test('chatStream drains SSE frames into sink chunks and an assembled respon
   const adapter = new AnthropicApiAdapter('sk-ant-test');
   const sink = new RecordingSink();
   const response = await adapter.chatStream(
-    ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
+    ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
     sink,
   );
 
@@ -577,7 +577,7 @@ void test('chatStream with tools falls back to the buffered path (no stream: tru
   const adapter = new AnthropicApiAdapter('sk-ant-test');
   const sink = new RecordingSink();
   await adapter.chatStream(
-    ChatRequestBuilder.from({
+    ChatRequest.create({
       'messages': [{ 'role': 'user', 'content': 'Search for cats.' }],
       'tools':    [SEARCH_TOOL],
     }),
@@ -621,7 +621,7 @@ void test('chatStream drains a text_delta frame split across two chunk() boundar
   const adapter = new AnthropicApiAdapter('sk-ant-test');
   const sink = new RecordingSink();
   const response = await adapter.chatStream(
-    ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
+    ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
     sink,
   );
 
@@ -664,7 +664,7 @@ void test('chatStream rejects with a classified LlmError (not a raw AbortError) 
   let thrown: unknown;
   try {
     await adapter.chatStream(
-      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
+      ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
       sink,
     );
   } catch (err) {
@@ -711,7 +711,7 @@ void test('a mid-stream read failure is classified as a NETWORK LlmError, not le
   let thrown: unknown;
   try {
     await adapter.chatStream(
-      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
+      ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
       sink,
     );
   } catch (err) {
@@ -742,7 +742,7 @@ void test('an "error" SSE event is classified as a SCHEMA_VIOLATION LlmError sur
   let thrown: unknown;
   try {
     await adapter.chatStream(
-      ChatRequestBuilder.from({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
+      ChatRequest.create({ 'messages': [{ 'role': 'user', 'content': 'Hello' }] }),
       sink,
     );
   } catch (err) {

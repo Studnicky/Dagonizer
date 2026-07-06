@@ -218,7 +218,7 @@ await fetch(url, { signal });
 
 - Neither field supplied: returns `Signal.never()` (a never-aborting sentinel — always a valid `AbortSignal`, never `null`).
 - One field supplied: returns that signal directly.
-- Both supplied: returns `AbortSignal.any([signal, AbortSignal.timeout(deadlineMs)])`.
+- Both supplied: returns a composed signal that aborts when either the caller signal or deadline fires.
 
 `deadlineMs` is wired through `AbortSignal.timeout()`, which surfaces a platform `TimeoutError` as the abort reason. `Dagonizer` inspects that reason to mark the lifecycle `timed_out` rather than `cancelled`. A negative or `NaN` `deadlineMs` throws `SignalError`.
 

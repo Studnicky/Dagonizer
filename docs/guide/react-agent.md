@@ -4,7 +4,7 @@ description: 'Map the 8-node agent loop onto ReAct Thought/Action/Observation/Fi
 seeAlso:
   - text: 'Conversational agents'
     link: './conversational#agent-loop'
-    description: 'the 8-node agent loop and AgentBuilder.loop'
+    description: 'the 8-node agent loop authored as JSON-LD'
   - text: 'Streaming producers'
     link: './streaming-producers'
     description: 'StreamChannel, DagStreamProducer, and the scatter-source idiom this guide reuses'
@@ -14,16 +14,16 @@ seeAlso:
   - text: 'Example: ReAct agent routing'
     link: '../examples/react-agent-routing'
     description: 'working example: one shared sink demultiplexes two concurrent conversations by routeKey'
-  - text: 'Example 29: AgentBuilder'
-    link: '../examples/29-agent-builder'
-    description: 'the 8-node loop this guide annotates as ReAct'
+  - text: 'Example 29: Agent DAG'
+    link: '../examples/29-agent-dag'
+    description: 'the 8-node JSON-LD topology this guide annotates as ReAct'
 ---
 
 # ReAct agent: streaming reasoning + provenance recall
 
 ReAct (Reason + Act) names a loop already built into `@studnicky/dagonizer`:
-the [8-node agent loop](./conversational#agent-loop) assembled by
-`AgentBuilder.loop`. This guide gives that loop its ReAct vocabulary, then adds
+the [8-node agent loop](./conversational#agent-loop) authored as
+JSON-LD. This guide gives that loop its ReAct vocabulary, then adds
 three capabilities on top — all built on frameworks the engine already ships:
 streaming ([streaming producers](./streaming-producers)) and graph provenance.
 None of this is a new execution mechanism.
@@ -174,8 +174,8 @@ recording, and cross-run recall.
 ## Routing concurrent streams — the sink is a DAG
 
 The `{ sink }` option on `CallModelNode` is bound once, per node INSTANCE —
-not per execution. That is deliberate: `CallModelNode.executeOne` wraps
-`this.sink` in a fresh `RoutingStreamSink` on every call, via
+not per execution. That is deliberate: `CallModelNode.execute` wraps
+`this.sink` in fresh `RoutingStreamSink` instances for the batch items it processes, via
 `RoutingStreamSink.of(this.sink, this.routeKey(state), source)`. Each pushed
 `ChatStreamChunkType` (`{delta}`) becomes a self-describing
 `RoutedChatStreamChunkType` at the downstream sink — `{routeKey, delta,

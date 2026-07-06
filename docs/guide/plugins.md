@@ -37,7 +37,7 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 | `OpenAiCompatibleAdapter` | Concrete base for OpenAI-shaped HTTP backends |
 | `LlmAdapterCascade`, `LlmAdapterRegistry`, `AdapterDescriptor` | Multi-adapter routing |
 | `EmbedderCascade`, `EmbedderRegistry`, `BaseEmbedder` | Embedding model cascade |
-| `ChatRequestType`, `ChatResponseType`, `ChatRequestBuilder`, `ChatResponseMessageBuilder` | Wire types and value factories |
+| `ChatRequestType`, `ChatResponseType`, `ChatRequest`, `ChatResponseMessage` | Wire types and value factories via `.create(...)` |
 | `LlmError`, `Classifications` | Error taxonomy — `LlmError.classifyHttp(status, body)` and `LlmError.ofNetworkError(err)` are static methods on `LlmError` |
 | `ToolCallCodec` | JSON envelope decoder for models that emit tool calls as text (Gemini Nano, WebLLM) |
 | `AdapterCapabilitiesType`, `ToolCall`, `ToolChoiceType`, `ToolDefinition`, `TokenUsage` | Capability metadata |
@@ -62,7 +62,7 @@ The tool subpath exposes a small surface for external-service wrappers:
 |--------|------|
 | `ToolInterface<TInput, TOutput>` | Contract: `definition` (the JSON-Schema LLM-facing surface) + `execute(input, options?)` |
 | `ToolError` | Error type with `classification.reason` |
-| `HttpTransport` | Built-in retry, timeout, abort propagation, JSON parsing for HTTP-backed tools |
+| `HttpTransport` | Built-in retry, timeout, abort propagation, optional token bucket / circuit breaker composition, JSON parsing for HTTP-backed tools |
 
 ### Using a tool
 
@@ -72,7 +72,7 @@ The tool subpath exposes a small surface for external-service wrappers:
 
 <<< @/../examples/dags/26-tool-use.ts#tool-impl
 
-`HttpTransport` handles retry on 429/5xx/network, abort propagation, JSON parsing, and timeout; every tool gets it for free.
+`HttpTransport` handles retry on 429/5xx/network, abort propagation, JSON parsing, timeout, and optional substrate `TokenBucket` / `CircuitBreaker` guards; every HTTP-backed tool gets the same logical-request ordering. See [Execution tuning](/guide/execution-tuning) for when to apply those guards.
 
 ## `@studnicky/dagonizer/patterns`
 

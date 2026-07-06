@@ -3,8 +3,9 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/index.js';
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
-import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultType } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAGType } from '../../src/entities/index.js';
@@ -42,21 +43,27 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
 
 class TestErrorNode {
   private constructor() { /* static class */ }
-  static of(nodeName: string): ScalarNode<NodeStateBase, 'done'> {
-    class ErrorNode extends ScalarNode<NodeStateBase, 'done'> {
+  static of(nodeName: string): MonadicNode<NodeStateBase, 'done'> {
+    class ErrorNode extends MonadicNode<NodeStateBase, 'done'> {
       readonly name = nodeName;
       readonly outputs = ['done'] as const;
       override get outputSchema(): Record<string, SchemaObjectType> { return { 'done': { 'type': 'object' } }; }
-      protected async executeOne(state: NodeStateBase): Promise<NodeOutputType<'done'>> {
-        state.collectError({
+      override async execute(batch: Batch<NodeStateBase>): Promise<Map<'done', Batch<NodeStateBase>>> {
+        const output: NodeOutputType<'done'> = {
+          'errors': [{
           'code':        'ERR',
           'context':     {},
           'message':     'node failed',
           'operation':   nodeName,
           'recoverable': false,
           'timestamp':   new Date().toISOString(),
-        });
-        return { 'errors': [], 'output': 'done' as const };
+          }],
+          'output': 'done',
+        };
+        for (const item of batch) {
+          for (const error of output.errors) item.state.collectError(error);
+        }
+        return new Map([[output.output, batch]]);
       }
     }
     return new ErrorNode();

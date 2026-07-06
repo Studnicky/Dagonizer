@@ -38,6 +38,7 @@ import { Classifications, CloudEmbedder, LlmError, ModelCost } from '@studnicky/
 import type { BaseEmbedderOptionsType } from '@studnicky/dagonizer/adapter';
 import { JsonValue } from '@studnicky/dagonizer/entities';
 import type { LlmModelType } from '@studnicky/dagonizer/entities';
+import { Signal } from '@studnicky/signal';
 
 import { OllamaEmbedResponseValidator } from './OllamaEmbedResponse.js';
 import { OllamaTagsResponseValidator } from './OllamaTagsResponse.js';
@@ -200,8 +201,7 @@ export class OllamaEmbedder extends CloudEmbedder {
    * `OllamaApiAdapter.probe`.
    */
   override async probe(): Promise<boolean> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => { controller.abort(); }, PROBE_TIMEOUT_MS);
+    const signal = Signal.timeout(PROBE_TIMEOUT_MS);
     const headers: Record<string, string> = {};
     if (this.#apiKey.length > 0) {
       headers['Authorization'] = `Bearer ${this.#apiKey}`;
@@ -210,13 +210,11 @@ export class OllamaEmbedder extends CloudEmbedder {
       const res = await fetch(`${this.#baseUrl}/api/tags`, {
         'method': 'GET',
         headers,
-        'signal': controller.signal,
+        signal,
       });
       return res.ok;
     } catch {
       return false;
-    } finally {
-      clearTimeout(timer);
     }
   }
 
@@ -235,11 +233,10 @@ export class OllamaEmbedder extends CloudEmbedder {
    * Returns `[]` on any transport failure or validation error — never throws.
    */
   override async listModels(options?: { readonly signal?: AbortSignal }): Promise<readonly LlmModelType[]> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => { controller.abort(); }, DISCOVERY_TIMEOUT_MS);
-    if (options?.signal !== undefined) {
-      options.signal.addEventListener('abort', () => { controller.abort(); }, { 'once': true });
-    }
+    const signal = Signal.compose({
+      'deadlineMs': DISCOVERY_TIMEOUT_MS,
+      ...(options?.signal !== undefined ? { 'signal': options.signal } : {}),
+    });
     const headers: Record<string, string> = {};
     if (this.#apiKey.length > 0) {
       headers['Authorization'] = `Bearer ${this.#apiKey}`;
@@ -248,7 +245,7 @@ export class OllamaEmbedder extends CloudEmbedder {
       const res = await fetch(`${this.#baseUrl}/api/tags`, {
         'method': 'GET',
         headers,
-        'signal': controller.signal,
+        signal,
       });
       if (!res.ok) {
         return [];
@@ -270,8 +267,6 @@ export class OllamaEmbedder extends CloudEmbedder {
       });
     } catch {
       return [];
-    } finally {
-      clearTimeout(timer);
     }
   }
 }

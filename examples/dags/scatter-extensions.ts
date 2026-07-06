@@ -14,12 +14,11 @@ import {
   GatherStrategies,
   GatherStrategy,
   MonadicNode,
-  NodeOutputBuilder,
+  NodeOutput,
   NodeStateBase,
   OutcomeReducer,
   OutcomeReducers,
-  RoutedBatchBuilder,
-  ScalarNode,
+  RoutedBatch,
 } from '@studnicky/dagonizer';
 import type {
   DAGType,
@@ -48,18 +47,20 @@ export class RankingState extends NodeStateBase {
 
 // #region score-node
 // Worker node: produces a scored candidate from each scatter item.
-export class ScoreNode extends ScalarNode<RankingState, 'success' | 'error'> {
+export class ScoreNode extends MonadicNode<RankingState, 'success' | 'error'> {
   readonly name    = 'score';
   readonly outputs = ['success', 'error'] as const;
   override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
     return { 'success': { 'type': 'object' }, 'error': { 'type': 'object' } };
   }
 
-  protected override async executeOne(state: RankingState) {
-    const item = state.getter.string('item');
-    // Synthetic score: proportional to string length
-    state.candidate = { title: item, score: item.length };
-    return NodeOutputBuilder.of('success');
+  override async execute(batch: Batch<RankingState>, _context?: unknown) {
+    for (const batchItem of batch) {
+      const item = batchItem.state.getter.string('item');
+      // Synthetic score: proportional to string length
+      batchItem.state.candidate = { title: item, score: item.length };
+    }
+    return RoutedBatch.create(NodeOutput.create('success').output, batch);
   }
 }
 // #endregion score-node
@@ -89,7 +90,7 @@ export class BatchEnrichNode extends MonadicNode<RankingState, 'enriched'> {
         score: item.state.candidate.score / max,
       };
     }
-    return RoutedBatchBuilder.of('enriched', batch);
+    return RoutedBatch.create('enriched', batch);
   }
 }
 // #endregion monad-node

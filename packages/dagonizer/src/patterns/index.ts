@@ -4,9 +4,8 @@
  * Ships:
  *   - `MonadicNode<TState, TOutput>`: the root node base (the monad —
  *     `execute(batch) → RoutedBatchType`), re-exported here from `core` for
- *     co-import with the pattern surface. Per-item pattern bases extend
- *     `ScalarNode` (which extends `MonadicNode`); hot-path nodes extend
- *     `MonadicNode` directly.
+ *     co-import with the pattern surface. Pattern bases extend `MonadicNode`
+ *     and own their batch routing directly.
  *   - Agent-flow template-method bases: `BuildChatRequestNode`, `CallModelNode`,
  *     `NormalizeResponseNode`, `DecodeTextToolCallsNode`, `AppendAssistantNode`,
  *     `NormalizeToolCallsNode`, `BuildToolWorksetsNode`, `CollectToolResultsNode`.
@@ -27,7 +26,6 @@
 export { MonadicNode } from '../core/MonadicNode.js';
 
 export {
-  AgentBuilder,
   AgentTraceProducer,
   AppendAssistantNode,
   BuildChatRequestNode,
@@ -39,7 +37,7 @@ export {
   NormalizeToolCallsNode,
 } from './agent/index.js';
 
-export type { AgentBuilderInterface, AgentLoopNodesType, AgentLoopOptionsType, ToolCallScatterItemType } from './agent/index.js';
+export type { ToolCallScatterItemType } from './agent/index.js';
 
 export type { LlmClientInterface } from '../contracts/LlmClientInterface.js';
 

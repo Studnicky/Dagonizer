@@ -14,11 +14,11 @@ npm install @studnicky/dagonizer @studnicky/dagonizer-adapter-gemini-api
 
 ```ts
 import { GeminiApiAdapter } from '@studnicky/dagonizer-adapter-gemini-api';
-import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import { ChatRequest } from '@studnicky/dagonizer/adapter';
 
 const llm = new GeminiApiAdapter({ apiKey: process.env.GEMINI_API_KEY! });
 
-const response = await llm.chat(ChatRequestBuilder.from({
+const response = await llm.chat(ChatRequest.create({
   messages: [{ role: 'user', content: 'Hello', toolCallId: '', toolName: '' }],
 }));
 ```
