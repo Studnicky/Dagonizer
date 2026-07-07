@@ -65,7 +65,7 @@ const linearDAG: DAGType = {
   '@type':    'DAG',
   'name':       'linear',
   'version':    '1',
-  'entrypoint': 'a',
+  'entrypoints': { 'main': 'a' },
   'nodes': [
     { '@id': 'urn:noocodex:dag:linear/node/a', '@type': 'SingleNode',
       'name': 'a', 'node': 'a', 'outputs': { 'success': 'b' } },
@@ -89,7 +89,7 @@ const leafDAG: DAGType = {
   '@type': 'DAG',
   'name': 'pp-leaf',
   'version': '1',
-  'entrypoint': 'leaf-step',
+  'entrypoints': { 'main': 'leaf-step' },
   'nodes': [
     {
       '@id':   'urn:noocodex:dag:pp-leaf/node/leaf-step',
@@ -109,7 +109,7 @@ const middleDAG: DAGType = {
   '@type': 'DAG',
   'name': 'pp-middle',
   'version': '1',
-  'entrypoint': 'middle-step',
+  'entrypoints': { 'main': 'middle-step' },
   'nodes': [
     {
       '@id':   'urn:noocodex:dag:pp-middle/node/middle-step',
@@ -138,7 +138,7 @@ const placementParentDAG: DAGType = {
   '@type': 'DAG',
   'name': 'pp-parent',
   'version': '1',
-  'entrypoint': 'top-step',
+  'entrypoints': { 'main': 'top-step' },
   'nodes': [
     {
       '@id':   'urn:noocodex:dag:pp-parent/node/top-step',
@@ -170,7 +170,7 @@ void describe('Dagonizer subclass hooks contract', () => {
       '@type':    'DAG',
       'name':       'noop-default',
       'version':    '1',
-      'entrypoint': 'only',
+      'entrypoints': { 'main': 'only' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:noop-default/node/only', '@type': 'SingleNode',
           'name': 'only', 'node': 'only', 'outputs': { 'success': 'end' } },
@@ -210,7 +210,7 @@ void describe('Dagonizer subclass hooks contract', () => {
       '@type':    'DAG',
       'name':       'inst-child',
       'version':    '1',
-      'entrypoint': 'child-only',
+      'entrypoints': { 'main': 'child-only' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-child/node/child-only', '@type': 'SingleNode',
           'name': 'child-only', 'node': 'child-only', 'outputs': { 'success': 'end' } },
@@ -225,7 +225,7 @@ void describe('Dagonizer subclass hooks contract', () => {
       '@type':    'DAG',
       'name':       'inst-parent',
       'version':    '1',
-      'entrypoint': 'parent-entry',
+      'entrypoints': { 'main': 'parent-entry' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-parent/node/parent-entry', '@type': 'SingleNode',
           'name': 'parent-entry', 'node': 'parent-entry', 'outputs': { 'success': 'run-child' } },
@@ -269,7 +269,7 @@ void describe('Dagonizer subclass hooks contract', () => {
       '@type':    'DAG',
       'name':       'inst-err',
       'version':    '1',
-      'entrypoint': 'boom',
+      'entrypoints': { 'main': 'boom' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-err/node/boom', '@type': 'SingleNode',
           'name': 'boom', 'node': 'boom', 'outputs': { 'success': 'end' } },
@@ -309,7 +309,7 @@ void describe('Dagonizer subclass hooks contract', () => {
       '@type':    'DAG',
       'name':       'inst-throw',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-throw/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'a', 'outputs': { 'success': 'end' } },
@@ -395,7 +395,7 @@ void describe('Dagonizer subclass hooks contract', () => {
       '@type': 'DAG',
       'name': 'pp-shared-inner',
       'version': '1',
-      'entrypoint': 'inner-step',
+      'entrypoints': { 'main': 'inner-step' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:pp-shared-inner/node/inner-step',
@@ -414,7 +414,7 @@ void describe('Dagonizer subclass hooks contract', () => {
       '@type': 'DAG',
       'name': 'pp-two-instances',
       'version': '1',
-      'entrypoint': 'first-embed',
+      'entrypoints': { 'main': 'first-embed' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:pp-two-instances/node/first-embed',

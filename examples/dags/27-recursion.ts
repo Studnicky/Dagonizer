@@ -3,14 +3,14 @@
  * No side effects, no dispatcher, no execute.
  * Imported by examples/27-recursion.ts (the executable entry point).
  *
- * Pattern: a countdown DAG embeds ITSELF via `dagFrom` runtime resolution.
+ * Pattern: a countdown DAG embeds ITSELF via a dynamic `DagReference`.
  * Each invocation adds `remaining` to `total`, then either:
  *   - routes to `recurse` (EmbeddedDAGNode that re-runs the same DAG) when
  *     remaining > 0, OR
  *   - routes to `base` (TerminalNode) when remaining === 0.
  *
- * The engine reads the DAG name from `state.dagName` at execution time
- * (`dagFrom: 'dagName'`), spawns a FRESH isolated child state for each
+ * The engine reads the DAG name from `state.dagName` at execution time,
+ * constrains it to the declared `countdown` candidate, spawns a FRESH isolated child state for each
  * recursive invocation, and copies fields across the boundary via
  * `stateMapping.input` / `stateMapping.output` — so each frame is safe and
  * independent of its parent's internal shape.
@@ -34,7 +34,7 @@ import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 
 // #region state
 export class CountdownState extends NodeStateBase {
-  /** The registered name of this DAG — read by the engine for `dagFrom` lookup. */
+  /** The registered name of this DAG, read by the dynamic DagReference. */
   dagName     = 'countdown';
   /** How many steps remain before the base case. */
   remaining   = 0;
@@ -98,8 +98,8 @@ export class AccumulateNode extends MonadicNode<CountdownState, 'recurse' | 'bas
  *                                └── success ──► end  (TerminalNode, completed)
  *                                └── error   ──► end-error  (TerminalNode, failed)
  *
- * The `embed` placement uses `dagFrom: 'dagName'` so the engine resolves which
- * DAG to run from `state.dagName` at runtime.  Seeding the child with
+ * The `embed` placement uses a dynamic DagReference so the engine resolves
+ * which DAG to run from `state.dagName` at runtime. Seeding the child with
  * `remaining ← nextRemaining` and `total ← total`, then writing `total` back
  * after the child finishes, threads the accumulator through each frame.
  */
@@ -109,7 +109,7 @@ export const countdownDAG: DAGType = {
   '@type':     'DAG',
   "name":        'countdown',
   "version":     '1',
-  "entrypoint":  'accumulate',
+  "entrypoints": { "main": 'accumulate' },
   "nodes": [
     // #region accumulate-placement
     {
@@ -138,9 +138,14 @@ export const countdownDAG: DAGType = {
       '@id':   'urn:noocodex:dag:countdown/node/embed',
       '@type': 'EmbeddedDAGNode',
       "name":    'embed',
-      // dagFrom: the engine reads state.dagName at runtime to resolve which DAG
-      // to run.  Because state.dagName === 'countdown', this DAG embeds ITSELF.
-      "dagFrom":  'dagName',
+      // The engine reads state.dagName at runtime. Because state.dagName ===
+      // 'countdown' and that is the only candidate, this DAG embeds ITSELF.
+      "dag": {
+        '@type': 'DagReference',
+        "from": 'state',
+        "path": 'dagName',
+        "candidates": ['countdown'],
+      },
       "stateMapping": {
         // inputs: seed the child frame's fields from the current (parent) frame
         // { childKey: parentPath }

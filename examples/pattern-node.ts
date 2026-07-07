@@ -42,7 +42,7 @@ const dag: DAGType = {
   '@type': 'DAG',
   name: 'intent-demo',
   version: '1',
-  entrypoint: 'classify-intent',
+  entrypoints: { main: 'classify-intent' },
   nodes: [
     {
       '@id': 'urn:noocodex:dag:intent-demo/node/classify-intent',

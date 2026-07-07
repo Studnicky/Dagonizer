@@ -24,7 +24,7 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':       'mini',
       'version':    '1',
-      'entrypoint': 'greet',
+      'entrypoints': { 'main': 'greet' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:mini/node/greet',
@@ -57,7 +57,7 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':     'fan',
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:fan/node/fan',
@@ -84,7 +84,7 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':       'chain',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:chain/node/a', '@type': 'SingleNode', 'name': 'a', 'node': 'n', 'outputs': { 'success': 'b' } },
         { '@id': 'urn:noocodex:dag:chain/node/b', '@type': 'SingleNode', 'name': 'b', 'node': 'n', 'outputs': { 'success': 'end' } },
@@ -108,7 +108,7 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':       'ids',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ids/node/a',
@@ -134,7 +134,7 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':     'inner',
       'version':  '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:inner/node/step',
@@ -152,7 +152,7 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':     'outer',
       'version':  '1',
-      'entrypoint': 'embed',
+      'entrypoints': { 'main': 'embed' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:outer/node/embed',
@@ -186,7 +186,7 @@ void describe('CytoscapeRenderer.render', () => {
       '@type':    'DAG',
       'name':     'scatter-node',
       'version':  '1',
-      'entrypoint': 'scatter',
+      'entrypoints': { 'main': 'scatter' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:scatter-node/node/scatter',
@@ -226,7 +226,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':       'cy-worker',
       'version':    '1',
-      'entrypoint': 'plain',
+      'entrypoints': { 'main': 'plain' },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:cy-worker/node/plain',
@@ -288,7 +288,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':       'cy-scatter-worker',
       'version':    '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:cy-scatter-worker/node/fan',
@@ -334,7 +334,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':       'cy-scatter-node',
       'version':    '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:cy-scatter-node/node/fan',
@@ -369,7 +369,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':     'cy-multi-role',
       'version':  '1',
-      'entrypoint': 'cpu-step',
+      'entrypoints': { 'main': 'cpu-step' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:cy-multi-role/node/cpu-step',
@@ -419,7 +419,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':     'cy-same-role',
       'version':  '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:cy-same-role/node/a',
@@ -473,7 +473,7 @@ void describe('CytoscapeRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       'ct',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ct/node/step',
@@ -511,7 +511,7 @@ void describe('CytoscapeRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       'ct2',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ct2/node/step',
@@ -537,7 +537,7 @@ void describe('CytoscapeRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       'ct-multi',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ct-multi/node/step',
@@ -573,7 +573,7 @@ void describe('CytoscapeRenderer.render: PhaseNode', () => {
       '@type':    'DAG',
       'name':       'ph',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ph/node/step',
@@ -615,7 +615,7 @@ void describe('CytoscapeRenderer.render: PhaseNode', () => {
       '@type':    'DAG',
       'name':       'ph2',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ph2/node/step',
@@ -678,7 +678,7 @@ const RESERVOIR_DAG: DAGType = {
   '@type':    'DAG',
   'name':       'reservoir',
   'version':    '1',
-  'entrypoint': 'buffer',
+  'entrypoints': { 'main': 'buffer' },
   'nodes': [
     {
       '@id':      'urn:noocodex:dag:reservoir/node/buffer',
@@ -701,7 +701,7 @@ const RESERVOIR_NO_IDLEMS_DAG: DAGType = {
   '@type':    'DAG',
   'name':       'reservoir-no-idle',
   'version':    '1',
-  'entrypoint': 'batch',
+  'entrypoints': { 'main': 'batch' },
   'nodes': [
     {
       '@id':      'urn:noocodex:dag:reservoir-no-idle/node/batch',
@@ -724,7 +724,7 @@ const PLAIN_SCATTER_DAG: DAGType = {
   '@type':    'DAG',
   'name':       'plain-scatter',
   'version':    '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': 'fan' },
   'nodes': [
     {
       '@id':    'urn:noocodex:dag:plain-scatter/node/fan',

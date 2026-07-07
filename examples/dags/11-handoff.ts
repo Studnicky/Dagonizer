@@ -135,7 +135,7 @@ export const dagA: DAGType = {
   '@type':     'DAG',
   "name":        'pipeline-a',
   "version":     '1',
-  "entrypoint":  'step-a',
+  "entrypoints": { "main": 'step-a' },
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:pipeline-a/node/step-a',
@@ -181,7 +181,7 @@ export const dagB: DAGType = {
   '@type':     'DAG',
   "name":        'pipeline-b',
   "version":     '1',
-  "entrypoint":  'summarize',
+  "entrypoints": { "main": 'summarize' },
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:pipeline-b/node/summarize',

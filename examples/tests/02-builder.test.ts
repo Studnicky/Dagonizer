@@ -50,8 +50,8 @@ describe('02-builder: DAGBuilder produces identical DAG shape', () => {
     assert.ok(result.executedNodes.includes('respond'));
   });
 
-  it('dag entrypoint is classify', () => {
-    assert.equal(dag.entrypoint, 'classify');
+  it('dag main entrypoint is classify', () => {
+    assert.equal(dag.entrypoints['main'], 'classify');
   });
 
 });

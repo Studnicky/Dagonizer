@@ -20,8 +20,10 @@ export class DAGShape {
       nodeNames.add(node.name);
     }
 
-    if (!nodeNames.has(dag.entrypoint)) {
-      errors.push(`Entrypoint '${dag.entrypoint}' does not exist in nodes`);
+    for (const [label, entrypoint] of Object.entries(dag.entrypoints)) {
+      if (!nodeNames.has(entrypoint)) {
+        errors.push(`Entrypoint '${label}' targets '${entrypoint}' which does not exist in nodes`);
+      }
     }
 
     for (const node of dag.nodes) {
@@ -44,6 +46,8 @@ export class DAGShape {
       DAGShape.validateScatterNode(entry, nodeNames, errors);
     } else if (Placement.isSingle(entry)) {
       DAGShape.validateSingleNode(entry, nodeNames, errors);
+    } else if (Placement.isGather(entry)) {
+      DAGShape.validateGatherNode(entry, nodeNames, errors);
     }
   }
 
@@ -64,10 +68,10 @@ export class DAGShape {
     nodeNames: ReadonlySet<string>,
     errors: string[],
   ): void {
-    if (placement.dag !== undefined && placement.dagFrom !== undefined) {
-      errors.push(`EmbeddedDAGNode '${placement.name}': requires exactly one of dag or dagFrom, not both`);
-    } else if (placement.dag === undefined && placement.dagFrom === undefined) {
-      errors.push(`EmbeddedDAGNode '${placement.name}': requires exactly one of dag or dagFrom`);
+    if (placement.dag === undefined) {
+      errors.push(`EmbeddedDAGNode '${placement.name}': requires dag`);
+    } else if (typeof placement.dag !== 'string' && placement.dag.from !== 'state') {
+      errors.push(`EmbeddedDAGNode '${placement.name}': dynamic dag reference must use from='state'`);
     }
 
     for (const [output, target] of Object.entries(placement.outputs)) {
@@ -92,8 +96,24 @@ export class DAGShape {
       }
     }
 
+    if ('dag' in scatter.body && typeof scatter.body.dag !== 'string' && scatter.body.dag.from !== 'item') {
+      errors.push(`ScatterNode '${scatter.name}': dynamic dag reference must use from='item'`);
+    }
+
     if (scatter.execution !== undefined && scatter.execution.mode === 'reservoir') {
       DAGShape.validateReservoir(scatter, scatter.execution.reservoir, errors);
+    }
+  }
+
+  private static validateGatherNode(
+    gather: { name: string; outputs: Record<string, string> },
+    nodeNames: ReadonlySet<string>,
+    errors: string[],
+  ): void {
+    for (const [output, target] of Object.entries(gather.outputs)) {
+      if (!nodeNames.has(target)) {
+        errors.push(`GatherNode '${gather.name}': output '${output}' routes to unknown node '${target}'`);
+      }
     }
   }
 

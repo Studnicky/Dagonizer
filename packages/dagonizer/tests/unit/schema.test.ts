@@ -17,7 +17,7 @@ const validDAG: DAGType = {
   '@type':    'DAG',
   'name': 'demo',
   'version': '1',
-  'entrypoint': 's',
+  'entrypoints': { 'main': 's' },
   'nodes': [
     { '@id': 'urn:noocodex:dag:demo/node/s', '@type': 'SingleNode',
       'name': 's', 'node': 'op', 'outputs': { 'success': 'done' } },
@@ -32,9 +32,9 @@ void describe('Validator.dag', () => {
     assert.deepEqual(Validator.dag.validate(validDAG), validDAG);
   });
 
-  void it('rejects DAG with missing entrypoint field', () => {
+  void it('rejects DAG with missing entrypoints field', () => {
     const bad = { ...validDAG };
-    Reflect.deleteProperty(bad, 'entrypoint');
+    Reflect.deleteProperty(bad, 'entrypoints');
     assert.equal(Validator.dag.is(bad), false);
     assert.throws(() => Validator.dag.validate(bad), DAGErrorPredicate.isValidationError);
   });
@@ -42,7 +42,7 @@ void describe('Validator.dag', () => {
   void it('rejects a flat DAG missing @context, @id, @type', () => {
     // A flat (non-JSON-LD) DAG must fail schema validation
     const flat = {
-      'name': 'x', 'version': '1', 'entrypoint': 's',
+      'name': 'x', 'version': '1', 'entrypoints': { 'main': 'start' },
       'nodes': [{ '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': {} }],
     };
     assert.throws(() => Validator.dag.validate(flat), DAGErrorPredicate.isValidationError);
@@ -53,7 +53,7 @@ void describe('Validator.dag', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
-      'name': 'x', 'version': '1', 'entrypoint': 's',
+      'name': 'x', 'version': '1', 'entrypoints': { 'main': 'start' },
       'nodes': [{ '@id': 'urn:x', '@type': 'NotANodeType', 'name': 's', 'node': 'op', 'outputs': {} }],
     };
     assert.throws(() => Validator.dag.validate(bad), DAGErrorPredicate.isValidationError);
@@ -64,7 +64,7 @@ void describe('Validator.dag', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
-      'name': 'x', 'version': '1', 'entrypoint': 's',
+      'name': 'x', 'version': '1', 'entrypoints': { 'main': 's' },
       'nodes': [{
         '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op',
         'outputs': { 'success': null },
@@ -81,7 +81,7 @@ void describe('Validator.dag', () => {
       '@type':    'DAG',
       'name':     'test',
       'version':  '1',
-      'entrypoint': 'start',
+      'entrypoints': { 'main': 'start' },
       'nodes': [{
         '@id':   'urn:noocodex:dag:test/node/start',
         '@type': 'SingleNode',
@@ -98,7 +98,7 @@ void describe('Validator.dag', () => {
       '@type':    'DAG',
       'name':     'test',
       'version':  '1',
-      'entrypoint': 'start',
+      'entrypoints': { 'main': 'start' },
       'nodes': [{
         '@id':   'urn:noocodex:dag:test/node/start',
         '@type': 'SingleNode',
@@ -119,7 +119,7 @@ void describe('Validator.dag', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
-      'name': 'x', 'version': '1', 'entrypoint': 'f',
+      'name': 'x', 'version': '1', 'entrypoints': { 'main': 'f' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:x/node/f',
@@ -188,7 +188,7 @@ void describe('Dagonizer.registerDAG validation layers', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
-      'name': '', 'version': '1', 'entrypoint': 's',
+      'name': '', 'version': '1', 'entrypoints': { 'main': 's' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:x/node/s', '@type': 'SingleNode',
           'name': 's', 'node': 'op', 'outputs': { 'success': 'done' } },
@@ -208,7 +208,7 @@ void describe('Dagonizer.registerDAG validation layers', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
-      'name': 'x', 'version': '1', 'entrypoint': 'missing',
+      'name': 'x', 'version': '1', 'entrypoints': { 'main': 'missing' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:x/node/s', '@type': 'SingleNode',
           'name': 's', 'node': 'op', 'outputs': { 'success': 'ghost' } },
@@ -219,28 +219,16 @@ void describe('Dagonizer.registerDAG validation layers', () => {
 
     assert.throws(
       () => dispatcher.registerDAG(dag),
-      /Entrypoint 'missing' does not exist in nodes[\s\S]*output 'success' routes to unknown node 'ghost'/u,
+      /Entrypoint 'main' targets 'missing' which does not exist in nodes[\s\S]*output 'success' routes to unknown node 'ghost'/u,
     );
   });
 
-  void it('shape layer rejects invalid embedded DAG selector shape before registry lookup', () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerDAG({
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:child',
-      '@type':    'DAG',
-      'name': 'child', 'version': '1', 'entrypoint': 'done',
-      'nodes': [
-        { '@id': 'urn:noocodex:dag:child/node/done', '@type': 'TerminalNode',
-          'name': 'done', 'outcome': 'completed' },
-      ],
-    });
-
-    const dag: DAGType = {
+  void it('schema layer rejects legacy embedded dagFrom before registry lookup', () => {
+    const dag: unknown = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
-      'name': 'x', 'version': '1', 'entrypoint': 'invoke',
+      'name': 'x', 'version': '1', 'entrypoints': { 'main': 'invoke' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:x/node/invoke', '@type': 'EmbeddedDAGNode',
           'name': 'invoke', 'dag': 'child', 'dagFrom': 'selectedDag',
@@ -253,8 +241,8 @@ void describe('Dagonizer.registerDAG validation layers', () => {
     };
 
     assert.throws(
-      () => dispatcher.registerDAG(dag),
-      /EmbeddedDAGNode 'invoke': requires exactly one of dag or dagFrom, not both/u,
+      () => Validator.dag.validate(dag),
+      DAGErrorPredicate.isValidationError,
     );
   });
 
@@ -266,7 +254,7 @@ void describe('Dagonizer.registerDAG validation layers', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
-      'name': 'x', 'version': '1', 'entrypoint': 's',
+      'name': 'x', 'version': '1', 'entrypoints': { 'main': 's' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:x/node/s', '@type': 'SingleNode',
           'name': 's', 'node': 'ghost', 'outputs': { 'success': 'done' } },
@@ -285,7 +273,7 @@ void describe('Dagonizer.registerDAG validation layers', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
-      'name': 'x', 'version': '1', 'entrypoint': 's',
+      'name': 'x', 'version': '1', 'entrypoints': { 'main': 's' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:x/node/s', '@type': 'SingleNode',
           'name': 's', 'node': 'op', 'outputs': { 'success': 'done' } },

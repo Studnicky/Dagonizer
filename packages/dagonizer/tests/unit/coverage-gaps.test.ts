@@ -148,7 +148,7 @@ void describe('TST-17: DAGHandoffType stateSnapshotRef publishing path', () => {
       '@type': 'DAG',
       'name': 'ref-handoff',
       'version': '1',
-      'entrypoint': 'noop',
+      'entrypoints': { 'main': 'noop' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:ref-handoff/node/noop',
@@ -215,7 +215,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
       '@type': 'DAG',
       'name': 'warn-test',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:warn-test/node/fan',
@@ -258,7 +258,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
       '@type': 'DAG',
       'name': 'inner-worker',
       'version': '1',
-      'entrypoint': 'noop-unbound',
+      'entrypoints': { 'main': 'noop-unbound' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:inner-worker/node/noop-unbound',
@@ -279,7 +279,7 @@ void describe('TST-18: registerBundle node-body scatter without container role',
       '@type': 'DAG',
       'name': 'unbound-role-test',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:unbound-role-test/node/fan',
@@ -489,7 +489,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
       '@type': 'DAG',
       'name': bodyDagName,
       'version': '1',
-      'entrypoint': 'counter',
+      'entrypoints': { 'main': 'counter' },
       'nodes': [
         {
           '@id': 'urn:test:abort-body-dag/node/counter',
@@ -509,7 +509,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
       '@type': 'DAG',
       'name': 'abort-parent-dag',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id': 'urn:test:abort-parent-dag/node/fan',

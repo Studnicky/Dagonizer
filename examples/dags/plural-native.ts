@@ -109,7 +109,7 @@ export const reservoirDag: DAGType = {
   '@type':     'DAG',
   name:        'plural-native-demo',
   version:     '1',
-  entrypoint:  'batch-score',
+  entrypoints: { main: 'batch-score' },
   nodes: [
     {
       '@id':       'urn:noocodex:dag:plural-native-demo/node/batch-score',

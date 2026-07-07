@@ -106,7 +106,7 @@ const bodyDag: DAGType = Validator.dag.validate({
   '@type':    'DAG',
   'name':     BODY_DAG_NAME,
   'version':  '1',
-  'entrypoint': 'body-a',
+  'entrypoints': { 'main': 'body-a' },
   'nodes': [
     {
       '@id':    `urn:noocodex:dag:${BODY_DAG_NAME}/node/body-a`,
@@ -149,7 +149,7 @@ class TestScatterDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':         `urn:noocodex:dag:${name}/node/fan`,

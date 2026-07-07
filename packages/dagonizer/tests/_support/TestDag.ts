@@ -31,7 +31,7 @@ export class TestDag {
    * Fills the boilerplate fields (`@context`, `@id`, `@type`, `version`)
    * using the canonical `DAG_CONTEXT` and the standard IRI pattern
    * `urn:noocodex:dag:<name>`. Callers supply the test-specific
-   * `entrypoint` and `nodes` array.
+   * primary entrypoint and `nodes` array.
    *
    * @param name       - Registered DAG name; also used for the `@id` IRI.
    * @param entrypoint - Name of the entrypoint placement node.
@@ -48,7 +48,7 @@ export class TestDag {
       '@type':     'DAG',
       name,
       'version':   '1',
-      entrypoint,
+      'entrypoints': { 'main': entrypoint },
       nodes,
     };
   }

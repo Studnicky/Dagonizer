@@ -75,7 +75,7 @@ export const dag: DAGType = {
   '@type':     'DAG',
   "name":        'count',
   "version":     '1',
-  "entrypoint":  'a',
+  "entrypoints": { "main": 'a' },
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:count/node/a',

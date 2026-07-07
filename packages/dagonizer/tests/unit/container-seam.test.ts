@@ -111,7 +111,7 @@ const childDAG: DAGType = {
   '@type':    'DAG',
   'name':     'child',
   'version':  '1',
-  'entrypoint': 'increment',
+  'entrypoints': { 'main': 'increment' },
   'nodes': [
     {
       '@id':     'urn:noocodex:dag:child/node/increment',
@@ -135,7 +135,7 @@ const parentDAG: DAGType = {
   '@type':    'DAG',
   'name':     'parent',
   'version':  '1',
-  'entrypoint': 'embed',
+  'entrypoints': { 'main': 'embed' },
   'nodes': [
     {
       '@id':     'urn:noocodex:dag:parent/node/embed',
@@ -159,7 +159,7 @@ const parentContainerDAG: DAGType = {
   '@type':    'DAG',
   'name':     'parent-c',
   'version':  '1',
-  'entrypoint': 'embed',
+  'entrypoints': { 'main': 'embed' },
   'nodes': [
     {
       '@id':       'urn:noocodex:dag:parent-c/node/embed',
@@ -192,7 +192,7 @@ const invalidScatterDAG: DAGType = {
   '@type':    'DAG',
   'name':     'invalid',
   'version':  '1',
-  'entrypoint': 'scatter',
+  'entrypoints': { 'main': 'scatter' },
   'nodes': [
     {
       '@id':       'urn:noocodex:dag:invalid/node/scatter',
@@ -220,7 +220,7 @@ const validDagBodyScatterDAG: DAGType = {
   '@type':    'DAG',
   'name':     'valid-dag-body',
   'version':  '1',
-  'entrypoint': 'scatter',
+  'entrypoints': { 'main': 'scatter' },
   'nodes': [
     {
       '@id':       'urn:noocodex:dag:valid-dag-body/node/scatter',
@@ -257,7 +257,7 @@ const bodyChildDAG: DAGType = {
   '@type':    'DAG',
   'name':     'body-child',
   'version':  '1',
-  'entrypoint': 'body-node',
+  'entrypoints': { 'main': 'body-node' },
   'nodes': [
     {
       '@id':     'urn:noocodex:dag:body-child/node/body-node',

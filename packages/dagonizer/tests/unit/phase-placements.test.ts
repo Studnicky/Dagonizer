@@ -162,7 +162,7 @@ void describe('PhaseNode placements: schema validation', () => {
       '@type':    'DAG',
       'name':       'demo',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:demo/node/setup',
@@ -437,7 +437,7 @@ void describe('PhaseNode placements: registration validation', () => {
       '@type':    'DAG',
       'name':       'bad-phase',
       'version':    '1',
-      'entrypoint': 'entry',
+      'entrypoints': { 'main': 'entry' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:bad-phase/node/entry',

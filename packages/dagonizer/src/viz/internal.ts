@@ -7,14 +7,16 @@
 
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import type { TerminalNodeType } from '../entities/dag/TerminalNode.js';
 
-/** 5-member union of every concrete placement shape. */
+/** Union of every concrete placement shape. */
 export type PlacementEntryType =
   | EmbeddedDAGNodeType
+  | GatherNodeType
   | ScatterNodeType
   | SingleNodePlacementType
   | TerminalNodeType
@@ -140,6 +142,7 @@ export class PlacementUtils {
   /** The discriminant values that identify a valid `PlacementEntryType`. */
   private static readonly PLACEMENT_TYPES = new Set<string>([
     'EmbeddedDAGNode',
+    'GatherNode',
     'ScatterNode',
     'SingleNode',
     'TerminalNode',
@@ -169,8 +172,12 @@ export class PlacementUtils {
    *   - `ScatterNode` with dag body → `placement.body.dag`
    */
   static embeddedDagName(placement: PlacementEntryType): string | null {
-    if (placement['@type'] === 'EmbeddedDAGNode') return placement.dag ?? null;
-    if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) return placement.body.dag;
+    if (placement['@type'] === 'EmbeddedDAGNode') {
+      return typeof placement.dag === 'string' ? placement.dag : null;
+    }
+    if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) {
+      return typeof placement.body.dag === 'string' ? placement.body.dag : null;
+    }
     return null;
   }
 
@@ -220,6 +227,7 @@ export class PlacementUtils {
       case 'SingleNode':      return dispatch['SingleNode'](placement);
       case 'ScatterNode':     return dispatch['ScatterNode'](placement);
       case 'EmbeddedDAGNode': return dispatch['EmbeddedDAGNode'](placement);
+      case 'GatherNode':      return dispatch['GatherNode'](placement);
       case 'TerminalNode':    return dispatch['TerminalNode'](placement);
       case 'PhaseNode':       return dispatch['PhaseNode'](placement);
     }

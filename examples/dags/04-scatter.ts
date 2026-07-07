@@ -117,7 +117,7 @@ export const dag: DAGType = {
   '@type':      'DAG',
   "name":         'scrape',
   "version":      '1',
-  "entrypoint":   'probe-all',
+  "entrypoints": { "main": 'probe-all' },
   "nodes": [
     {
       '@id':        'urn:noocodex:dag:scrape/node/probe-all',

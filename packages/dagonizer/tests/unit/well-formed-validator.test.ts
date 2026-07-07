@@ -53,7 +53,7 @@ class TestDagFixture {
       '@type':      'DAG',
       'name':       'test',
       'version':    '1',
-      'entrypoint': nodes[0]?.name ?? 'start',
+      'entrypoints': { 'main': nodes[0]?.name ?? 'start' },
       'nodes':      nodes,
     };
   }

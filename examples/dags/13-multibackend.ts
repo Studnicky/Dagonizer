@@ -121,7 +121,7 @@ export const squareItemDag: DAGType = {
   '@type':     'DAG',
   "name":       'square-item-mb',
   "version":    '1',
-  "entrypoint": 'square',
+  "entrypoints": { "main": 'square' },
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:square-item-mb/node/square',
@@ -151,7 +151,7 @@ export const sumResultsDag: DAGType = {
   '@type':     'DAG',
   "name":       'sum-results',
   "version":    '1',
-  "entrypoint": 'sum',
+  "entrypoints": { "main": 'sum' },
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:sum-results/node/sum',
@@ -181,7 +181,7 @@ export const dag: DAGType = {
   '@type':     'DAG',
   "name":       'multibackend',
   "version":    '1',
-  "entrypoint": 'square-all',
+  "entrypoints": { "main": 'square-all' },
   "nodes": [
     {
       '@id':        'urn:noocodex:dag:multibackend/node/square-all',

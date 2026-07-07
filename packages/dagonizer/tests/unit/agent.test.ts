@@ -7,7 +7,7 @@
  *   2. The assembled DAG registers cleanly in a Dagonizer (no schema errors,
  *      no missing node references).
  *   3. The loop-back edge is present: collect-results routes to build-request.
- *   4. Scatter placement resolves tool body via dagFrom.
+ *   4. Scatter placement resolves tool body via a typed DagReference.
  *   5. Terminal placements use the correct outcome values.
  *   6. The scatter gather strategy is `map` with the canonical field mapping.
  */
@@ -266,7 +266,7 @@ function buildAgentDag(
     .scatter(
       'dispatch-tools',
       'safeWorkset',
-      { 'dagFrom': 'dagName' },
+      { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['tool:calculator'] } },
       {
         'all-success': 'collect-results',
         'partial':     'collect-results',
@@ -305,8 +305,8 @@ void describe('JSON-LD agent DAG: topology', () => {
     assert.ok(dag['@context'] !== undefined);
   });
 
-  void it('entrypoint is build-request', () => {
-    assert.equal(dag.entrypoint, 'build-request');
+  void it('main entrypoint is build-request', () => {
+    assert.equal(dag.entrypoints['main'], 'build-request');
   });
 
   void it('contains exactly the expected placement names', () => {
@@ -351,16 +351,19 @@ void describe('JSON-LD agent DAG: topology', () => {
     }
   });
 
-  void it('dispatch-tools scatter uses dagFrom body', () => {
+  void it('dispatch-tools scatter uses a DagReference body', () => {
     const scatter = dag.nodes.find((n) => n.name === 'dispatch-tools');
     assert.ok(scatter !== undefined, 'dispatch-tools must exist');
     assert.equal(scatter['@type'], 'ScatterNode', 'dispatch-tools must be a ScatterNode');
 
     if (scatter['@type'] === 'ScatterNode') {
-      assert.ok('dagFrom' in scatter.body, 'scatter body must use dagFrom');
-      if ('dagFrom' in scatter.body) {
-        assert.equal(scatter.body.dagFrom, 'dagName', 'dagFrom must reference dagName field');
-      }
+      assert.ok('dag' in scatter.body, 'scatter body must use a DagReference');
+      assert.deepEqual(scatter.body.dag, {
+        '@type': 'DagReference',
+        'from': 'item',
+        'path': 'dagName',
+        'candidates': ['tool:calculator'],
+      });
       assert.equal(scatter.source, 'safeWorkset', 'scatter source must be safeWorkset');
     }
   });
@@ -413,8 +416,7 @@ void describe('JSON-LD agent DAG: Dagonizer registration', () => {
     dispatcher.registerNode(nodes.toolWorksets);
     dispatcher.registerNode(nodes.collectToolResults);
     dispatcher.registerNode(nodes.appendAssistant);
-    // No tool DAGs registered: scatter with dagFrom resolves at runtime,
-    // so missing tool DAGs are not a registration-time error.
+    dispatcher.registerDAG(new DAGBuilder('tool:calculator', '1').terminal('end').build());
     dispatcher.registerDAG(dag);
     // Reaching here without throw proves the DAG is schema-valid and all
     // node references resolve.
@@ -434,6 +436,7 @@ void describe('JSON-LD agent DAG: Dagonizer registration', () => {
     dispatcher.registerNode(nodes.toolWorksets);
     dispatcher.registerNode(nodes.collectToolResults);
     dispatcher.registerNode(nodes.appendAssistant);
+    dispatcher.registerDAG(new DAGBuilder('tool:calculator', '1').terminal('end').build());
     dispatcher.registerDAG(dag);
 
     const state = new LoopState();

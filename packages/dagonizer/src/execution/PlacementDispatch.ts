@@ -109,6 +109,12 @@ export class PlacementDispatch {
         if (!Placement.isSingle(e)) throw new DAGError(`Dispatch type mismatch: expected SingleNode`);
         return this.#leaf.executeSingleNode(e, state, dagName, signal);
       },
+      'GatherNode': (e) => {
+        if (!Placement.isGather(e)) throw new DAGError(`Dispatch type mismatch: expected GatherNode`);
+        return Promise.resolve({ 'nextStage': null, 'result': {
+          'output': 'pending', 'skipped': true, 'nodeName': e.name, state, 'intermediateResults': [],
+        } });
+      },
       'TerminalNode': (e) => {
         if (!Placement.isTerminal(e)) throw new DAGError(`Dispatch type mismatch: expected TerminalNode`);
         return Promise.resolve({ 'nextStage': null, 'result': {

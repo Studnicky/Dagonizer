@@ -89,7 +89,7 @@ class TestScatterDag {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoint': 'fan',
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
@@ -408,7 +408,7 @@ void describe('Scatter: incremental gather', () => {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoint': 'fan',
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
@@ -494,7 +494,7 @@ void describe('Scatter: incremental gather', () => {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoint': 'fan',
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
@@ -558,7 +558,7 @@ void describe('Scatter: incremental gather', () => {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoint': 'fan',
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':    `urn:noocodex:dag:${dagName}/node/fan`,

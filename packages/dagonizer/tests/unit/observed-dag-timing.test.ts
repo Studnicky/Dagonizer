@@ -23,7 +23,7 @@ const OBSERVED_TIMING_DAG: DAGType = {
   '@type':    'DAG',
   'name':     'observed-timing',
   'version':  '1',
-  'entrypoint': 'work',
+  'entrypoints': { 'main': 'work' },
   'nodes': [
     {
       '@id':    'urn:noocodex:dag:observed-timing/node/work',

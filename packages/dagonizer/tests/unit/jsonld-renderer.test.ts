@@ -32,7 +32,7 @@ void describe('JsonLdRenderer.render', () => {
       '@type':    'DAG',
       'name':       'mini',
       'version':    '1',
-      'entrypoint': 'greet',
+      'entrypoints': { 'main': 'greet' },
       'nodes': [{
         '@id':    'urn:noocodex:dag:mini/node/greet',
         '@type':  'SingleNode',
@@ -49,7 +49,7 @@ void describe('JsonLdRenderer.render', () => {
     const root = doc['@graph'][0];
     assert.equal(root?.['@id'], 'urn:dagonizer:mini');
     assert.equal(root?.['@type'], 'dag:DAG');
-    assert.equal(root?.['dag:entrypoint'], 'urn:dagonizer:mini#greet');
+    assert.deepEqual(root?.['dag:entrypoints'], { 'main': 'urn:dagonizer:mini#greet' });
   });
 
   void it('renders ScatterNode (body.node) with source, itemKey, execution, gather config', () => {
@@ -59,7 +59,7 @@ void describe('JsonLdRenderer.render', () => {
       '@type':    'DAG',
       'name':       'scrape',
       'version':    '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [{
         '@id':         'urn:noocodex:dag:scrape/node/fan',
         '@type':       'ScatterNode',
@@ -92,7 +92,7 @@ void describe('JsonLdRenderer.render', () => {
       '@type':    'DAG',
       'name':       'one',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [{
         '@id':    'urn:noocodex:dag:one/node/a',
         '@type':  'SingleNode',
@@ -118,7 +118,7 @@ void describe('JsonLdRenderer.render', () => {
       '@type':    'DAG',
       'name':       'parent',
       'version':    '1',
-      'entrypoint': 'invoke',
+      'entrypoints': { 'main': 'invoke' },
       'nodes': [{
         '@id':          'urn:noocodex:dag:parent/node/invoke',
         '@type':        'EmbeddedDAGNode',
@@ -147,7 +147,7 @@ void describe('JsonLdRenderer.render: containment', () => {
       '@type':    'DAG',
       'name':       'jld-worker',
       'version':    '1',
-      'entrypoint': 'invoke',
+      'entrypoints': { 'main': 'invoke' },
       'nodes': [{
         '@id':       'urn:noocodex:dag:jld-worker/node/invoke',
         '@type':     'EmbeddedDAGNode',
@@ -172,7 +172,7 @@ void describe('JsonLdRenderer.render: containment', () => {
       '@type':    'DAG',
       'name':       'jld-inprocess',
       'version':    '1',
-      'entrypoint': 'invoke',
+      'entrypoints': { 'main': 'invoke' },
       'nodes': [{
         '@id':     'urn:noocodex:dag:jld-inprocess/node/invoke',
         '@type':   'EmbeddedDAGNode',
@@ -196,7 +196,7 @@ void describe('JsonLdRenderer.render: containment', () => {
       '@type':    'DAG',
       'name':       'jld-scatter-worker',
       'version':    '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [{
         '@id':       'urn:noocodex:dag:jld-scatter-worker/node/fan',
         '@type':     'ScatterNode',
@@ -231,7 +231,7 @@ void describe('JsonLdRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       'jt',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:jt/node/step',
@@ -265,7 +265,7 @@ void describe('JsonLdRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       'jt2',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:jt2/node/step',
@@ -291,7 +291,7 @@ void describe('JsonLdRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       'jt3',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:jt3/node/step',
@@ -337,7 +337,7 @@ void describe('JsonLdRenderer.renderReachable', () => {
       '@type':    'DAG',
       'name':     'child',
       'version':  '1',
-      'entrypoint': 'child-end',
+      'entrypoints': { 'main': 'child-end' },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:child/node/child-end',
@@ -353,7 +353,7 @@ void describe('JsonLdRenderer.renderReachable', () => {
       '@type':    'DAG',
       'name':     'parent',
       'version':  '1',
-      'entrypoint': 'invoke',
+      'entrypoints': { 'main': 'invoke' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:parent/node/invoke',

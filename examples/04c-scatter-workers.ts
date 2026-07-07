@@ -43,7 +43,7 @@ const probeItemDag: DAGType = {
   '@type':     'DAG',
   "name":        'probe-item',
   "version":     '1',
-  "entrypoint":  'probe',
+  "entrypoints": { "main": 'probe' },
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:probe-item/node/probe',
@@ -80,7 +80,7 @@ const scrapeWithContainerDag: DAGType = {
   '@type':     'DAG',
   "name":        'scrape-c',
   "version":     '1',
-  "entrypoint":  'probe-all',
+  "entrypoints": { "main": 'probe-all' },
   "nodes": [
     {
       '@id':        'urn:noocodex:dag:scrape-c/node/probe-all',

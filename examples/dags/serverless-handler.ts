@@ -66,7 +66,7 @@ export const settleDag: DAGType = {
   '@type': 'DAG',
   name: 'settle',
   version: '1',
-  entrypoint: 'settle',
+  entrypoints: { main: 'settle' },
   nodes: [
     {
       '@id': 'urn:noocodex:dag:settle/node/settle',

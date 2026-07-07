@@ -94,7 +94,7 @@ class TestCheckpoint {
     '@context': DAG_CONTEXT,
     '@id':      'urn:noocodex:dag:store-test',
     '@type':    'DAG',
-    'name': 'store-test', 'version': '1', 'entrypoint': 'a',
+    'name': 'store-test', 'version': '1', 'entrypoints': { 'main': 'a' },
     'nodes': [
       {
         '@id': 'urn:noocodex:dag:store-test/node/a', '@type': 'SingleNode',
@@ -252,7 +252,7 @@ void describe('cursor on ExecutionResultType', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:clean',
       '@type':    'DAG',
-      'name': 'clean', 'version': '1', 'entrypoint': 's',
+      'name': 'clean', 'version': '1', 'entrypoints': { 'main': 's' },
       'nodes': [{
         '@id': 'urn:noocodex:dag:clean/node/s', '@type': 'SingleNode',
         'name': 's', 'node': 'op', 'outputs': { 'success': 'end' },
@@ -289,7 +289,7 @@ void describe('cursor on ExecutionResultType', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:two',
       '@type':    'DAG',
-      'name': 'two', 'version': '1', 'entrypoint': 'a',
+      'name': 'two', 'version': '1', 'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:two/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
@@ -328,7 +328,7 @@ void describe('Checkpoint round-trip', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:count',
       '@type':    'DAG',
-      'name': 'count', 'version': '1', 'entrypoint': 'a',
+      'name': 'count', 'version': '1', 'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:count/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'inc', 'outputs': { 'success': 'b' } },
@@ -381,7 +381,7 @@ void describe('Checkpoint round-trip', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:done',
       '@type':    'DAG',
-      'name': 'done', 'version': '1', 'entrypoint': 's',
+      'name': 'done', 'version': '1', 'entrypoints': { 'main': 's' },
       'nodes': [{
         '@id': 'urn:noocodex:dag:done/node/s', '@type': 'SingleNode',
         'name': 's', 'node': 'op', 'outputs': { 'success': 'end' },

@@ -196,7 +196,7 @@ export const fanInDag: DAGType = {
   '@type':      'DAG',
   'name':       'stream-fanin',
   'version':    '1',
-  'entrypoint': 'scatter-fanin',
+  'entrypoints': { 'main': 'scatter-fanin' },
   'nodes': [
     {
       '@id':         'urn:noocodex:dag:stream-fanin/node/scatter-fanin',
@@ -236,7 +236,7 @@ export const resumeDag: DAGType = {
   '@type':      'DAG',
   'name':       'resume-stream',
   'version':    '1',
-  'entrypoint': 'resume-stream',
+  'entrypoints': { 'main': 'resume-stream' },
   'nodes': [
     {
       '@id':         'urn:noocodex:dag:stream-resume/node/resume-stream',

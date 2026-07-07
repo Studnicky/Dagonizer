@@ -68,7 +68,7 @@ class TestAbortDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':         `urn:noocodex:dag:${name}/node/fan`,
@@ -196,7 +196,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
       '@type':    'DAG',
       'name':     'abort-async-resume',
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':         'urn:noocodex:dag:abort-async-resume/node/fan',
@@ -310,7 +310,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
       '@type':    'DAG',
       'name':     'exactly-once-abort',
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':         'urn:noocodex:dag:exactly-once-abort/node/fan',

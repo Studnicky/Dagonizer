@@ -57,7 +57,7 @@ export const fanInCandidatesDag: DAGType = {
   '@type':      'DAG',
   'name':       'fan-in-candidates',
   'version':    '1',
-  'entrypoint': 'scatter-candidates',
+  'entrypoints': { 'main': 'scatter-candidates' },
   'nodes': [
     {
       '@id':         'urn:noocodex:dag:archivist-streaming:fan-in-candidates/node/scatter-candidates',
@@ -97,7 +97,7 @@ export const streamProducerCandidatesDag: DAGType = {
   '@type':      'DAG',
   'name':       'stream-producer-candidates',
   'version':    '1',
-  'entrypoint': 'scatter-candidates',
+  'entrypoints': { 'main': 'scatter-candidates' },
   'nodes': [
     {
       '@id':         'urn:noocodex:dag:archivist-streaming:stream-producer-candidates/node/scatter-candidates',

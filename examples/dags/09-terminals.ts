@@ -134,7 +134,7 @@ export const childDAG: DAGType = {
   '@type':     'DAG',
   "name":      'child-for-terminals',
   "version":   '1',
-  "entrypoint": 'child-work',
+  "entrypoints": { "main": 'child-work' },
   "nodes": [
     {
       '@id':    'urn:noocodex:dag:child-for-terminals/node/child-work',

@@ -51,7 +51,7 @@ describe('01-linear: classify → respond', () => {
     assert.ok(result.executedNodes.includes('respond'), 'executedNodes should include "respond"');
   });
 
-  it('dag entrypoint is classify', () => {
-    assert.equal(dag.entrypoint, 'classify');
+  it('dag main entrypoint is classify', () => {
+    assert.equal(dag.entrypoints['main'], 'classify');
   });
 });

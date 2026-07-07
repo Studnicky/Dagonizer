@@ -195,7 +195,7 @@ export const reservoirDag: DAGType = {
   '@type':    'DAG',
   name:       'reservoir-demo',
   version:    '1',
-  entrypoint: 'batch-score',
+  entrypoints: { main: 'batch-score' },
   nodes: [
     {
       '@id':       'urn:noocodex:dag:reservoir-demo/node/batch-score',

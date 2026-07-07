@@ -241,7 +241,7 @@ export const dag: DAGType = {
   '@type':    'DAG',
   'name':       'tool-use-demo',
   'version':    '1',
-  'entrypoint': 'callLlm',
+  'entrypoints': { 'main': 'callLlm' },
   'nodes': [
     {
       '@id':   'urn:noocodex:dag:tool-use-demo/node/callLlm',

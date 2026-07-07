@@ -21,7 +21,7 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'linear-rank',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:linear-rank/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'a', 'outputs': { 'ok': 'b' } },
@@ -49,7 +49,7 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'branch-rank',
       'version': '1',
-      'entrypoint': 'entry',
+      'entrypoints': { 'main': 'entry' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:branch-rank/node/entry', '@type': 'SingleNode',
           'name': 'entry', 'node': 'entry', 'outputs': { 'left': 'left', 'right': 'right' } },
@@ -80,7 +80,7 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'diamond-rank',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:diamond-rank/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'a', 'outputs': { 'x': 'b', 'y': 'c' } },
@@ -110,7 +110,7 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'asym-diamond',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:asym-diamond/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'a', 'outputs': { 'long': 'b', 'short': 'join' } },
@@ -139,7 +139,7 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'self-loop-rank',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:self-loop-rank/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'a', 'outputs': { 'retry': 'a', 'done': 'end' } },
@@ -164,7 +164,7 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'two-cycle',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:two-cycle/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'a', 'outputs': { 'loop': 'b', 'done': 'end' } },
@@ -196,7 +196,7 @@ void describe('PlacementRank.compute', () => {
       '@type': 'DAG',
       'name': 'unreachable',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:unreachable/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'a', 'outputs': { 'ok': 'end' } },

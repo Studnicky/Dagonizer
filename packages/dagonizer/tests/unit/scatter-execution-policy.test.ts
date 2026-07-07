@@ -133,7 +133,7 @@ class ItemModeDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':       `urn:noocodex:dag:${name}/node/fan`,
@@ -212,7 +212,7 @@ class ReservoirModeDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':       `urn:noocodex:dag:${name}/node/fan`,

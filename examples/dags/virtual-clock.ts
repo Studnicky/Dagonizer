@@ -60,7 +60,7 @@ export const dag: DAGType = {
   '@type':      'DAG',
   'name':       'virtual-clock-dag',
   'version':    '1',
-  'entrypoint': 'slow',
+  'entrypoints': { 'main': 'slow' },
   'nodes': [
     {
       '@id':     'urn:noocodex:dag:virtual-clock-dag/node/slow',

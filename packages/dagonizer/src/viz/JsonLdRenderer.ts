@@ -108,6 +108,7 @@ export class JsonLdRenderer {
     'SingleNode':      'dag:SingleNode',
     'ScatterNode':     'dag:ScatterNode',
     'EmbeddedDAGNode': 'dag:EmbeddedDAGNode',
+    'GatherNode':      'dag:GatherNode',
     'TerminalNode':    'dag:TerminalNode',
     'PhaseNode':       'dag:PhaseNode',
   };
@@ -166,6 +167,18 @@ export class JsonLdRenderer {
     return `urn:dagonizer:${dagName}`;
   }
 
+  private static renderDagReference(reference: string | { readonly '@type': 'DagReference'; readonly from: string; readonly path: string; readonly candidates: readonly string[] }): unknown {
+    if (typeof reference === 'string') {
+      return JsonLdRenderer.dagIri(reference);
+    }
+    return {
+      '@type': 'dag:DagReference',
+      'dag:from': reference.from,
+      'dag:path': reference.path,
+      'dag:candidateDag': reference.candidates.map((candidate) => JsonLdRenderer.dagIri(candidate)),
+    };
+  }
+
   /**
    * Convert a routing map to JSON-LD route descriptors that reference
    * the full placement IRIs (so consumers don't have to re-resolve
@@ -211,9 +224,7 @@ export class JsonLdRenderer {
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, sp.outputs),
           'dag:body':   'node' in sp.body
             ? { 'dag:node': sp.body.node }
-            : 'dag' in sp.body
-              ? { 'dag:dag': JsonLdRenderer.dagIri(sp.body.dag) }
-              : { 'dag:dagFrom': sp.body.dagFrom },
+            : { 'dag:dag': JsonLdRenderer.renderDagReference(sp.body.dag) },
         };
         if (sp.source !== undefined)       out['dag:source']       = sp.source;
         if (sp.itemKey !== undefined)      out['dag:itemKey']      = sp.itemKey;
@@ -226,18 +237,26 @@ export class JsonLdRenderer {
         return out;
       },
       'EmbeddedDAGNode': (ep) => {
-        // EmbeddedDAGNode may carry optional stateMapping and container fields.
-        // Either `dag` (build-time literal) or `dagFrom` (runtime path) is present.
+        // EmbeddedDAGNode may carry optional stateMapping, gatherResult, and container fields.
         const out: JsonLdGraphEntryType & Record<string, unknown> = {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, ep.outputs),
         };
-        if (ep.dag !== undefined)     out['dag:dag']     = JsonLdRenderer.dagIri(ep.dag);
-        if (ep.dagFrom !== undefined) out['dag:dagFrom'] = ep.dagFrom;
+        if (ep.dag !== undefined) out['dag:dag'] = JsonLdRenderer.renderDagReference(ep.dag);
         if (ep.stateMapping !== undefined) out['dag:stateMapping'] = ep.stateMapping;
+        if (ep.gatherResult !== undefined) out['dag:gatherResult'] = ep.gatherResult;
         // container is a placement property mapped in DAG_CONTEXT; include when present.
         if (ep.container !== undefined)    out['dag:container']    = ep.container;
         return out;
+      },
+      'GatherNode': (gp) => {
+        return {
+          ...base,
+          'dag:sources': gp.sources,
+          'dag:gather': gp.gather,
+          'dag:policy': gp.policy,
+          'dag:routes': JsonLdRenderer.renderRoutes(dagName, gp.outputs),
+        };
       },
       'TerminalNode': (tp) => {
         // TerminalNode placements end the flow; no routing, no dag:routes field.
@@ -266,7 +285,12 @@ export class JsonLdRenderer {
       '@type':          'dag:DAG',
       'dag:name':       dag.name,
       'dag:version':    dag.version,
-      'dag:entrypoint': JsonLdRenderer.placementIri(dag.name, dag.entrypoint),
+      'dag:entrypoints': Object.fromEntries(
+        Object.entries(dag.entrypoints).map(([label, entrypoint]) => [
+          label,
+          JsonLdRenderer.placementIri(dag.name, entrypoint),
+        ]),
+      ),
       'dag:placements': dag.nodes.map((placement) =>
         JsonLdRenderer.placementIri(dag.name, placement.name),
       ),

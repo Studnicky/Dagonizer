@@ -73,7 +73,7 @@ class TestHarness {
       '@type':    'DAG',
       'name': dagName,
       'version': '1',
-      'entrypoint': 'stage',
+      'entrypoints': { 'main': 'stage' },
       'nodes': [{
         '@id':   `urn:noocodex:dag:${dagName}/node/stage`,
         '@type': 'SingleNode',

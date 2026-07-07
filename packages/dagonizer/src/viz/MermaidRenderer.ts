@@ -44,6 +44,7 @@
  * ```
  */
 
+import { DAGEntrypoints } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 
 import { PlacementUtils, RoleColorUtils } from './internal.js';
@@ -119,7 +120,7 @@ export class MermaidRenderer {
     if (init !== null) lines.push(init);
     lines.push(`flowchart ${opts.orientation}`);
     lines.push(`  %% ${dag.name} (v${dag.version})`);
-    lines.push(`  ${MermaidRenderer.idFor(dag.entrypoint, idByName, opts.sanitizeNodeIds)}`);
+    lines.push(`  ${MermaidRenderer.idFor(DAGEntrypoints.primary(dag), idByName, opts.sanitizeNodeIds)}`);
 
     // Map from sanitized role token → list of placement names assigned that token.
     const roleToIds = new Map<string, string[]>();
@@ -469,6 +470,7 @@ export class MermaidRenderer {
         return `${id}[/${label}/]`;
       },
       'EmbeddedDAGNode': () => `${id}[[${label}]]`,
+      'GatherNode': () => `${id}{${label}}`,
       'TerminalNode': (tp) => {
         const outcomeLabel = MermaidRenderer.label(`${placement.name}\\n(${tp.outcome})`);
         if (tp.outcome === 'completed') {

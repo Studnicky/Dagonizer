@@ -51,18 +51,22 @@ void describe('DAGBuilder.embed', () => {
 
     assert.equal(dag.nodes[0]?.['@type'], 'EmbeddedDAGNode');
     assert.equal(dag.nodes[0]?.dag, 'child-dag');
-    assert.equal(dag.nodes[0]?.dagFrom, undefined);
+    assert.deepEqual(dag.nodes[0]?.dag, 'child-dag');
   });
 
-  void it('accepts a dagFrom object and emits dagFrom', () => {
+  void it('accepts a dynamic DAG reference object and emits DagReference', () => {
     const dag = new DAGBuilder('dag-from-embed', '1')
-      .embed('invoke', { 'from': 'selectedDag' }, { 'success': 'end', 'error': 'end' })
+      .embed('invoke', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['child-dag'] }, { 'success': 'end', 'error': 'end' })
       .node('entry', entryNode, { 'success': 'end' })
       .terminal('end')
       .build();
 
     assert.equal(dag.nodes[0]?.['@type'], 'EmbeddedDAGNode');
-    assert.equal(dag.nodes[0]?.dag, undefined);
-    assert.equal(dag.nodes[0]?.dagFrom, 'selectedDag');
+    assert.deepEqual(dag.nodes[0]?.dag, {
+      '@type': 'DagReference',
+      'from': 'state',
+      'path': 'selectedDag',
+      'candidates': ['child-dag'],
+    });
   });
 });

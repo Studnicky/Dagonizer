@@ -98,7 +98,7 @@ export const childDag: DAGType = {
   '@type':      'DAG',
   "name":       'sub-flow',
   "version":    '1',
-  "entrypoint": 'child-step',
+  "entrypoints": { "main": 'child-step' },
   "nodes": [
     {
       '@id':     'urn:noocodex:dag:sub-flow/node/child-step',
@@ -127,7 +127,7 @@ export const parentDag: DAGType = {
   '@type':      'DAG',
   "name":       'main-flow',
   "version":    '1',
-  "entrypoint": 'step-a',
+  "entrypoints": { "main": 'step-a' },
   "nodes": [
     {
       '@id':     'urn:noocodex:dag:main-flow/node/step-a',

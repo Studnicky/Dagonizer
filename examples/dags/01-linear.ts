@@ -75,7 +75,7 @@ export const dag: DAGType = {
   '@type':      'DAG',                               // RDF class: top-level DAG document
   "name":         'chat',
   "version":      '1',
-  "entrypoint":   'classify',                          // first placement to execute
+  "entrypoints": { "main": 'classify' },                          // first placement to execute
   "nodes": [
     {
       '@id':    'urn:noocodex:dag:chat/node/classify',

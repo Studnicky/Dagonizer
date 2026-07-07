@@ -121,7 +121,7 @@ class EmbedDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'embedBody',
+      'entrypoints': { 'main': 'embedBody' },
       'nodes': [
         {
           '@id':   `urn:noocodex:dag:${name}/node/embedBody`,
@@ -148,7 +148,7 @@ class EmbedDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'embed',
+      'entrypoints': { 'main': 'embed' },
       'nodes': [
         {
           '@id':   `urn:noocodex:dag:${name}/node/embed`,
@@ -373,7 +373,7 @@ class ScatterDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'scatterBody',
+      'entrypoints': { 'main': 'scatterBody' },
       'nodes': [
         {
           '@id':   `urn:noocodex:dag:${name}/node/scatterBody`,
@@ -399,7 +399,7 @@ class ScatterDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':         `urn:noocodex:dag:${name}/node/fan`,

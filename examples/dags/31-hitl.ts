@@ -140,7 +140,7 @@ export const dag: DAGType = {
   '@type':     'DAG',
   'name':      'hitl',
   'version':   '1',
-  'entrypoint': 'prepare',
+  'entrypoints': { 'main': 'prepare' },
   'nodes': [
     {
       '@id':     'urn:noocodex:dag:hitl/node/prepare',

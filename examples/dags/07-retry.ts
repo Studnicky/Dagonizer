@@ -151,7 +151,7 @@ export const dag: DAGType = {
   '@type':      'DAG',
   "name":       'retry-dag',
   "version":    '1',
-  "entrypoint": 'fetch',
+  "entrypoints": { "main": 'fetch' },
   "nodes": [
     {
       '@id':     'urn:noocodex:dag:retry-dag/node/fetch',

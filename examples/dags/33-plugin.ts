@@ -87,7 +87,7 @@ export const pluginDag: DAGType = {
   '@type':     'DAG',
   name:        'plugin-normalize',
   version:     '1',
-  entrypoint:  'normalize',
+  entrypoints: { main: 'normalize' },
   nodes: [
     {
       '@id':    'urn:noocodex:dag:plugin-normalize/node/normalize',

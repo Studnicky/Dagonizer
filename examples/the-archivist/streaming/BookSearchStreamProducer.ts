@@ -65,7 +65,7 @@ const CANDIDATE_DISCOVERY_DAG: DAGType = {
   '@type':      'DAG',
   'name':       'candidate-discovery',
   'version':    '1',
-  'entrypoint': 'discover-candidates',
+  'entrypoints': { 'main': 'discover-candidates' },
   'nodes': [
     {
       '@id':     'urn:noocodex:dag:archivist-streaming:candidate-discovery/node/discover-candidates',

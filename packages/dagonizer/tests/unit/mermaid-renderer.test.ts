@@ -15,7 +15,7 @@ void describe('MermaidRenderer.render', () => {
       '@type':    'DAG',
       'name':       'mini',
       'version':    '1',
-      'entrypoint': 'greet',
+      'entrypoints': { 'main': 'greet' },
       'nodes': [{
         '@id':    'urn:noocodex:dag:mini/node/greet',
         '@type':  'SingleNode',
@@ -41,7 +41,7 @@ void describe('MermaidRenderer.render', () => {
       '@type':    'DAG',
       'name':       'fan',
       'version':    '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [{
         '@id':    'urn:noocodex:dag:fan/node/fan',
         '@type':  'ScatterNode',
@@ -67,7 +67,7 @@ void describe('MermaidRenderer.render', () => {
       '@type':    'DAG',
       'name':       'deep',
       'version':    '1',
-      'entrypoint': 'enrich',
+      'entrypoints': { 'main': 'enrich' },
       'nodes': [{
         '@id':  'urn:noocodex:dag:deep/node/enrich',
         '@type': 'EmbeddedDAGNode',
@@ -92,7 +92,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
       '@type':    'DAG',
       'name':       'ph',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ph/node/step',
@@ -129,7 +129,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
       '@type':    'DAG',
       'name':       'ph2',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:ph2/node/step',
@@ -161,7 +161,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':       'worker-test',
       'version':    '1',
-      'entrypoint': 'in-process',
+      'entrypoints': { 'main': 'in-process' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:worker-test/node/in-process',
@@ -202,7 +202,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':       'scatter-worker',
       'version':    '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:scatter-worker/node/fan',
@@ -240,7 +240,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':       'no-container',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [{
         '@id':     'urn:noocodex:dag:no-container/node/step',
         '@type':   'SingleNode',
@@ -263,7 +263,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':     'multi-role',
       'version':  '1',
-      'entrypoint': 'cpu-work',
+      'entrypoints': { 'main': 'cpu-work' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:multi-role/node/cpu-work',
@@ -314,7 +314,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
       '@type':    'DAG',
       'name':     'same-role',
       'version':  '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:same-role/node/a',
@@ -374,7 +374,7 @@ void describe('MermaidRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       't',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:t/node/step',
@@ -403,7 +403,7 @@ void describe('MermaidRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       't2',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:t2/node/step',
@@ -437,7 +437,7 @@ void describe('MermaidRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       't3',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:t3/node/step',
@@ -464,7 +464,7 @@ void describe('MermaidRenderer.render: TerminalNodeType', () => {
       '@type':    'DAG',
       'name':       't4',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:t4/node/step',
@@ -499,7 +499,7 @@ const RESERVOIR_DAG: DAGType = {
   '@type':    'DAG',
   'name':       'reservoir',
   'version':    '1',
-  'entrypoint': 'buffer',
+  'entrypoints': { 'main': 'buffer' },
   'nodes': [
     {
       '@id':      'urn:noocodex:dag:reservoir/node/buffer',
@@ -522,7 +522,7 @@ const RESERVOIR_NO_IDLEMS_DAG: DAGType = {
   '@type':    'DAG',
   'name':       'reservoir-no-idle',
   'version':    '1',
-  'entrypoint': 'batch',
+  'entrypoints': { 'main': 'batch' },
   'nodes': [
     {
       '@id':      'urn:noocodex:dag:reservoir-no-idle/node/batch',
@@ -545,7 +545,7 @@ const PLAIN_SCATTER_DAG: DAGType = {
   '@type':    'DAG',
   'name':       'plain-scatter',
   'version':    '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': 'fan' },
   'nodes': [
     {
       '@id':    'urn:noocodex:dag:plain-scatter/node/fan',
@@ -607,7 +607,7 @@ const COLON_NODE_DAG: DAGType = {
   '@type':    'DAG',
   'name':       'colon-test',
   'version':    '1',
-  'entrypoint': 'extract:class-base',
+  'entrypoints': { 'main': 'extract:class-base' },
   'nodes': [
     {
       '@id':     'urn:noocodex:dag:colon-test/node/extract:class-base',
@@ -685,7 +685,7 @@ void describe('MermaidRenderer: options — node-id sanitization', () => {
       '@type':    'DAG',
       'name':       'reserved-id',
       'version':    '1',
-      'entrypoint': 'class',
+      'entrypoints': { 'main': 'class' },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:reserved-id/node/class',
@@ -729,7 +729,7 @@ void describe('MermaidRenderer: options — node-id sanitization', () => {
       '@type':    'DAG',
       'name':       'reserved-prefix-id',
       'version':    '1',
-      'entrypoint': 'build-request',
+      'entrypoints': { 'main': 'build-request' },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:reserved-prefix-id/node/build-request',
@@ -760,7 +760,7 @@ void describe('MermaidRenderer: options — node-id sanitization', () => {
       '@type':    'DAG',
       'name':       'sanitize-classDef-guard',
       'version':    '1',
-      'entrypoint': 'embed',
+      'entrypoints': { 'main': 'embed' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:sanitize-classDef-guard/node/embed',
@@ -797,7 +797,7 @@ void describe('MermaidRenderer: options — terminal-annotation strip', () => {
       '@type':    'DAG',
       'name':       'strip-completed',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:strip-completed/node/step',
@@ -823,7 +823,7 @@ void describe('MermaidRenderer: options — terminal-annotation strip', () => {
       '@type':    'DAG',
       'name':       'strip-failed',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:strip-failed/node/step',
@@ -849,7 +849,7 @@ void describe('MermaidRenderer: options — terminal-annotation strip', () => {
       '@type':    'DAG',
       'name':       'keep-annotations',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:keep-annotations/node/step',
@@ -873,7 +873,7 @@ void describe('MermaidRenderer: options — terminal-annotation strip', () => {
       '@type':    'DAG',
       'name':       'strip-directive-guard',
       'version':    '1',
-      'entrypoint': 'work',
+      'entrypoints': { 'main': 'work' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:strip-directive-guard/node/work',
@@ -900,7 +900,7 @@ void describe('MermaidRenderer: options — containerTints theme override', () =
       '@type':    'DAG',
       'name':       'tints-test',
       'version':    '1',
-      'entrypoint': 'task',
+      'entrypoints': { 'main': 'task' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:tints-test/node/task',
@@ -928,7 +928,7 @@ void describe('MermaidRenderer: options — containerTints theme override', () =
       '@type':    'DAG',
       'name':       'tints-partial',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         {
           '@id':       'urn:noocodex:dag:tints-partial/node/a',

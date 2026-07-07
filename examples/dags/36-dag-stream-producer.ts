@@ -123,7 +123,7 @@ export const innerDag: DAGType = {
   '@type':      'DAG',
   'name':       'inner-stream',
   'version':    '1',
-  'entrypoint': 'generate',
+  'entrypoints': { 'main': 'generate' },
   'nodes': [
     {
       '@id':     'urn:noocodex:dag:inner-stream/node/generate',
@@ -151,7 +151,7 @@ export const outerDag: DAGType = {
   '@type':      'DAG',
   'name':       'label-stream',
   'version':    '1',
-  'entrypoint': 'scatter-labels',
+  'entrypoints': { 'main': 'scatter-labels' },
   'nodes': [
     {
       '@id':         'urn:noocodex:dag:label-stream/node/scatter-labels',

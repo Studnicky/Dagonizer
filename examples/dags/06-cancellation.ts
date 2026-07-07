@@ -91,7 +91,7 @@ export const batchDag: DAGType = {
   '@type':     'DAG',
   name:        'batch-dag',
   version:     '1',
-  entrypoint:  'batch-process',
+  entrypoints: { main: 'batch-process' },
   nodes: [
     {
       '@id':   'urn:noocodex:dag:batch-dag/node/batch-process',
@@ -115,7 +115,7 @@ export const dag: DAGType = {
   '@type':     'DAG',
   "name":        'slow-dag',
   "version":     '1',
-  "entrypoint":  'slow',
+  "entrypoints": { "main": 'slow' },
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:slow-dag/node/slow',

@@ -2,8 +2,8 @@
  * BuildToolWorksetsNode: abstract base for partitioning normalized tool calls
  * into safe (concurrent) and exclusive (serial) worksets for scatter dispatch.
  *
- * Each call is stamped with `dagName: 'tool:' + call.name` so the scatter
- * placement can resolve the body dag at runtime via `{ dagFrom: 'dagName' }`.
+ * Each call is stamped with `dagName: 'tool:' + call.name` so a scatter
+ * placement can resolve the body DAG through an item-scoped `DagReference`.
  *
  * Template methods:
  *   - `getToolCalls`: read the normalized tool calls from state.
@@ -30,10 +30,11 @@ import type { NodeStateInterface } from '../../NodeStateBase.js';
 /**
  * A scatter item that pairs a tool call with the name of the embedded DAG
  * body to run it in. The `dagName` field is read by the scatter placement's
- * `dagFrom` option to resolve the body dag at execution time.
+ * item-scoped `DagReference` to resolve the body DAG at execution time.
  *
- * Convention: the scatter placement uses `{ dagFrom: 'dagName' }` to read
- * this field from each item and dispatch to `tool:<name>`.
+ * Convention: the scatter placement uses
+ * `{ dag: { from: 'item', path: 'dagName', candidates: [...] } }` to read this
+ * field from each item and dispatch to a declared `tool:<name>` candidate.
  */
 export type ToolCallScatterItemType = ToolCallType & {
   readonly dagName: string;

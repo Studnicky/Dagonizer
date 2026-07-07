@@ -25,7 +25,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
       '@type':    'DAG',
       'name': 'cancel',
       'version': '1',
-      'entrypoint': 'slow',
+      'entrypoints': { 'main': 'slow' },
       'nodes': [{
         '@id':   'urn:noocodex:dag:cancel/node/slow',
         '@type': 'SingleNode',
@@ -61,7 +61,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
       '@type':    'DAG',
       'name':       'mid-cancel',
       'version':    '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:mid-cancel/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'first', 'outputs': { 'success': 'b' } },
@@ -97,7 +97,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
       '@type':    'DAG',
       'name': 't',
       'version': '1',
-      'entrypoint': 'slow',
+      'entrypoints': { 'main': 'slow' },
       'nodes': [{
         '@id':   'urn:noocodex:dag:t/node/slow',
         '@type': 'SingleNode',
@@ -128,7 +128,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
       '@type':    'DAG',
       'name': 'inspect-dag',
       'version': '1',
-      'entrypoint': 's1',
+      'entrypoints': { 'main': 's1' },
       'nodes': [{
         '@id':   'urn:noocodex:dag:inspect-dag/node/s1',
         '@type': 'SingleNode',
@@ -171,7 +171,7 @@ void describe('Dagonizer extension hooks', () => {
       '@type':    'DAG',
       'name': 'hooked',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:hooked/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
@@ -216,7 +216,7 @@ void describe('Dagonizer extension hooks', () => {
       '@type':    'DAG',
       'name': 'err',
       'version': '1',
-      'entrypoint': 's',
+      'entrypoints': { 'main': 's' },
       'nodes': [{
         '@id':   'urn:noocodex:dag:err/node/s',
         '@type': 'SingleNode',

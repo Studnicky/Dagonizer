@@ -22,9 +22,7 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-export const GatherConfigSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/GatherConfig',
-  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+export const GatherConfigShapeSchema = {
   'type': 'object',
   'required': ['strategy'],
   'properties': {
@@ -34,6 +32,7 @@ export const GatherConfigSchema = {
       'additionalProperties': { 'type': 'string' },
     },
     'field': { 'type': 'string' },
+    'resultField': { 'type': 'string', 'minLength': 1 },
     'target': { 'type': 'string' },
     'partitions': {
       'type': 'object',
@@ -64,6 +63,12 @@ export const GatherConfigSchema = {
       'then': { 'required': ['customNode'] },
     },
   ],
+} as const;
+
+export const GatherConfigSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/GatherConfig',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  ...GatherConfigShapeSchema,
 } as const;
 
 /** TypeScript type derived from `GatherConfigSchema` via `json-schema-to-ts`. */

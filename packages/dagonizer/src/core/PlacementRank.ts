@@ -14,6 +14,7 @@
  * of their `outputs` record (next placement names).
  */
 
+import { DAGEntrypoints } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
@@ -113,7 +114,7 @@ export class PlacementRank {
 
     // Compute reachability from the entry placement (forward DFS, forward edges).
     const reachable = new Set<string>();
-    const reachStack: string[] = [dag.entrypoint];
+    const reachStack: string[] = [DAGEntrypoints.primary(dag)];
     while (reachStack.length > 0) {
       const cur = reachStack.pop();
       if (cur === undefined) continue;

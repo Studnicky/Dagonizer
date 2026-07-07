@@ -105,8 +105,8 @@ export class ToolInvokeNode extends MonadicNode<ToolInvocationState, 'done' | 'e
     try {
       // Resolve tool input from `state.input` (embeddedDAG path, seeded via
       // `inputs` mapping) or from the scatter item stored in metadata
-      // (scatter/dagFrom path: scatter sets metadata[currentItem] = the scatter
-      // item, which carries `arguments`). The embeddedDAG path wins when
+      // (scatter DagReference path: scatter sets metadata[currentItem] = the
+      // scatter item, which carries `arguments`). The embeddedDAG path wins when
       // `state.input` is non-empty; the scatter path is the fallback. The item
       // comes out of the `unknown`-typed metadata record and is narrowed through a
       // type guard — no cast.

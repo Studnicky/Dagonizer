@@ -83,7 +83,7 @@ class ReservoirDag {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoint': 'fan',
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':    `urn:noocodex:dag:${dagName}/node/fan`,
@@ -426,7 +426,7 @@ void describe('Reservoir scatter — no-reservoir parity', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:no-reservoir',
       '@type':    'DAG',
-      'name': 'no-reservoir', 'version': '1', 'entrypoint': 'fan',
+      'name': 'no-reservoir', 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:no-reservoir/node/fan',

@@ -12,7 +12,7 @@ class Harness {
   }
 }
 
-describe('27-recursion: countdown DAG embeds itself via dagFrom', () => {
+describe('27-recursion: countdown DAG embeds itself via DagReference', () => {
   it('countdown(5) produces total=15 (5+4+3+2+1+0)', async () => {
     const dispatcher = Harness.dispatcher();
     const state = new CountdownState();
@@ -70,7 +70,7 @@ describe('27-recursion: countdown DAG embeds itself via dagFrom', () => {
     );
   });
 
-  it('countdownDAG entrypoint is accumulate', () => {
-    assert.equal(countdownDAG.entrypoint, 'accumulate');
+  it('countdownDAG main entrypoint is accumulate', () => {
+    assert.equal(countdownDAG.entrypoints['main'], 'accumulate');
   });
 });

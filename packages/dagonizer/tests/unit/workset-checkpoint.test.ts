@@ -181,7 +181,7 @@ class TestWorksetDag {
       '@type': 'DAG',
       'name': 'fan-proc-collect',
       'version': '1',
-      'entrypoint': 'fan-node',
+      'entrypoints': { 'main': 'fan-node' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:fan-proc-collect/node/fan-node',
@@ -468,7 +468,7 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
         '@type': 'DAG',
         'name': 'size1-ckpt',
         'version': '1',
-        'entrypoint': 'a',
+        'entrypoints': { 'main': 'a' },
         'nodes': [
           { '@id': 'urn:noocodex:dag:size1-ckpt/node/a', '@type': 'SingleNode',
             'name': 'a', 'node': 'inc', 'outputs': { 'next': 'b' } },

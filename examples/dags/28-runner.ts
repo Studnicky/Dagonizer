@@ -77,7 +77,7 @@ export const dag: DAGType = {
   '@type':      'DAG',
   "name":       'word-count',
   "version":    '1',
-  "entrypoint": 'trim',
+  "entrypoints": { "main": 'trim' },
   "nodes": [
     {
       '@id':     'urn:noocodex:dag:word-count/node/trim',

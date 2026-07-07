@@ -110,7 +110,7 @@ export const dag: DAGType = {
   '@type':      'DAG',
   "name":         'generate-select',
   "version":      '1',
-  "entrypoint":   'generate',
+  "entrypoints": { "main": 'generate' },
   "nodes": [
     {
       '@id':        'urn:noocodex:dag:generate-select/node/generate',

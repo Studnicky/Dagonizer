@@ -27,7 +27,7 @@ void describe('Dagonizer single-node routing', () => {
       '@type':    'DAG',
       'name': 'classify-route',
       'version': '1',
-      'entrypoint': 'classify',
+      'entrypoints': { 'main': 'classify' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:classify-route/node/classify', '@type': 'SingleNode',
           'name': 'classify', 'node': 'classify', 'outputs': { 'ok': 'plan', 'no': 'reject' } },
@@ -63,7 +63,7 @@ void describe('Dagonizer single-node routing', () => {
       '@type':    'DAG',
       'name': 'rogue',
       'version': '1',
-      'entrypoint': 'rogue',
+      'entrypoints': { 'main': 'rogue' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:rogue/node/rogue', '@type': 'SingleNode',
           'name': 'rogue', 'node': 'rogue', 'outputs': { 'success': 'end' } },
@@ -102,7 +102,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
       '@type':    'DAG',
       'name': 'fan',
       'version': '1',
-      'entrypoint': 'scatter',
+      'entrypoints': { 'main': 'scatter' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:fan/node/scatter', '@type': 'ScatterNode',
           'name': 'scatter', 'body': { 'node': 'double' },
@@ -133,7 +133,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
       '@type':    'DAG',
       'name': 'empty',
       'version': '1',
-      'entrypoint': 'scatter',
+      'entrypoints': { 'main': 'scatter' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:empty/node/scatter', '@type': 'ScatterNode',
           'name': 'scatter', 'body': { 'node': 'noop' },
@@ -171,7 +171,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
       '@type':    'DAG',
       'name': 'child',
       'version': '1',
-      'entrypoint': 'inc',
+      'entrypoints': { 'main': 'inc' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:child/node/inc', '@type': 'SingleNode',
           'name': 'inc', 'node': 'inc', 'outputs': { 'success': 'end' } },
@@ -186,7 +186,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
       '@type':    'DAG',
       'name': 'parent',
       'version': '1',
-      'entrypoint': 'invoke',
+      'entrypoints': { 'main': 'invoke' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:parent/node/invoke', '@type': 'EmbeddedDAGNode',
           'name': 'invoke', 'dag': 'child',
@@ -219,7 +219,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
       '@type':    'DAG',
       'name': 'orphan',
       'version': '1',
-      'entrypoint': 's',
+      'entrypoints': { 'main': 's' },
       'nodes': [
         // EmbeddedDAGNode outputs route to a parent placement so the
         // output invariant passes; registration still fails because
@@ -247,7 +247,7 @@ void describe('Dagonizer validation', () => {
       '@type':    'DAG',
       'name': 'dup',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:dup/node/a',  '@type': 'SingleNode',
           'name': 'a', 'node': 'op', 'outputs': { 'success': 'end' } },
@@ -270,7 +270,7 @@ void describe('Dagonizer validation', () => {
       '@type':    'DAG',
       'name': 'noentry',
       'version': '1',
-      'entrypoint': 'ghost',
+      'entrypoints': { 'main': 'ghost' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:noentry/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'op', 'outputs': { 'success': 'end' } },
@@ -319,7 +319,7 @@ void describe('Dagonizer validation', () => {
       '@type':    'DAG',
       'name': 'once',
       'version': '1',
-      'entrypoint': 'op',
+      'entrypoints': { 'main': 'op' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:once/node/op', '@type': 'SingleNode',
           'name': 'op', 'node': 'op', 'outputs': { 'success': 'end' } },
@@ -340,7 +340,7 @@ void describe('Dagonizer validation', () => {
       '@type':    'DAG',
       'name': 'dup-dag',
       'version': '1',
-      'entrypoint': 'op2',
+      'entrypoints': { 'main': 'op2' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:dup-dag/node/op2', '@type': 'SingleNode',
           'name': 'op2', 'node': 'op2', 'outputs': { 'success': 'end' } },
@@ -369,7 +369,7 @@ void describe('Dagonizer iterative execution', () => {
       '@type':    'DAG',
       'name': 'iter',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:iter/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'a', 'outputs': { 'success': 'b' } },

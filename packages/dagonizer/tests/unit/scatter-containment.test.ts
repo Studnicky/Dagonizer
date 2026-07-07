@@ -95,7 +95,7 @@ const bodyDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': BODY_DAG_NAME,
   'version': '1',
-  'entrypoint': 'counter',
+  'entrypoints': { 'main': 'counter' },
   'nodes': [
     {
       '@id': 'urn:test:scatter-body/node/counter',
@@ -126,7 +126,7 @@ const runnerDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': RUNNER_DAG_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': 'fan' },
   'nodes': [
     {
       '@id': 'urn:test:scatter-runner/node/fan',
@@ -161,7 +161,7 @@ const inProcessRunnerDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': 'scatter-inprocess',
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': 'fan' },
   'nodes': [
     {
       '@id': 'urn:test:scatter-inprocess/node/fan',
@@ -195,7 +195,7 @@ const nodeBodyRunnerDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': 'scatter-nodebody',
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': 'fan' },
   'nodes': [
     {
       '@id': 'urn:test:scatter-nodebody/node/fan',

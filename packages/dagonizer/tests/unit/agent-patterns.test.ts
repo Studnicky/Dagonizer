@@ -464,7 +464,7 @@ void describe('Agent-flow nodes: full turn/tool pipeline end-to-end', () => {
     // Parent DAG:
     //   build-request (ready) → call-model (text) → decode-tools (decoded)
     //   → normalize-tools (valid) → build-worksets (ready)
-    //   → scatter [dispatch-tools] on safeWorkset (dagFrom: 'dagName')
+    //   → scatter [dispatch-tools] on safeWorkset (DagReference reads item.dagName)
     //   → (all-success) → collect-results (done) → end
     //
     // The scatter `map` gather strategy maps each clone's `output` field
@@ -478,7 +478,7 @@ void describe('Agent-flow nodes: full turn/tool pipeline end-to-end', () => {
       .scatter<HarnessState, string>(
         'dispatch-tools',
         'safeWorkset',
-        { 'dagFrom': 'dagName' },
+        { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['tool:calculator'] } },
         {
           'all-success': 'collect-results',
           'partial':     'collect-results',

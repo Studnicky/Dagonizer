@@ -18,6 +18,7 @@ import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
 import type { DAGType } from '../entities/dag/DAG.js';
+import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
@@ -278,6 +279,28 @@ export class ScatterPoolDriver
     return dag !== undefined ? ContextResolver.contextOf(dag['@context']) : {};
   }
 
+  #resolveScatterDagReference(
+    reference: DagReferenceType,
+    item: unknown,
+    dagContext: Record<string, unknown>,
+  ): string | null {
+    if (typeof reference === 'string') {
+      return ContextResolver.expand(reference, dagContext);
+    }
+    if (reference.from !== 'item' || typeof item !== 'object' || item === null) {
+      return null;
+    }
+    const resolved = this.#adapter.accessor.get(item, reference.path);
+    if (typeof resolved !== 'string' || resolved.length === 0) {
+      return null;
+    }
+    if (!reference.candidates.includes(resolved)) {
+      return null;
+    }
+    const resolvedIri = ContextResolver.expand(resolved, dagContext);
+    return this.#adapter.dags.has(resolvedIri) ? resolvedIri : null;
+  }
+
   async executeItem(itemIndex: number, item: unknown): Promise<ScatterItemResultType> {
     const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
     const dagContext = this.#dagContext();
@@ -336,41 +359,14 @@ export class ScatterPoolDriver
       for (const warn of cloneState.warnings) state.collectWarning(warn);
       return { 'index': itemIndex, item, output, 'terminalOutcome': null, 'cloneState': cloneState };
     } else {
-      // DAG body (`dag` literal or `dagFrom` runtime path) — resolve the dag
-      // name first, then look up its factory, then build the child clone.
-      // An unresolvable `dagFrom` or an unregistered resolved name routes the
-      // item to `error` (same as an infrastructure failure that routes to error
-      // — no throw, so the item is acked, not re-queued).
-      let bodyDagName: string;
-      if ('dagFrom' in scatter.body) {
-        // Resolve the body dag name from the ITEM: each scatter item names its
-        // own body dag (e.g. a tool call carrying `dagName: 'tool:<name>'`). The
-        // item is available before any clone, so resolution precedes the
-        // isolation-factory child build. An unresolvable or unregistered name
-        // routes the item to `error` (no throw; the item is acked, not re-queued).
-        const resolved = (typeof item === 'object' && item !== null)
-          ? this.#adapter.accessor.get(item, scatter.body.dagFrom)
-          : null;
-        if (typeof resolved !== 'string' || resolved.length === 0) {
-          const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
-          errorClone.deleteMetadata(SCATTER_PROGRESS_KEY);
-          errorClone.deleteMetadata(WORKSET_PROGRESS_KEY);
-          errorClone.setMetadata(itemKey, item);
-          errorClone.setMetadata('itemIndex', itemIndex);
-          return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone };
-        }
-        const resolvedIri = ContextResolver.expand(resolved, dagContext);
-        if (!this.#adapter.dags.has(resolvedIri)) {
-          const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
-          errorClone.deleteMetadata(SCATTER_PROGRESS_KEY);
-          errorClone.deleteMetadata(WORKSET_PROGRESS_KEY);
-          errorClone.setMetadata(itemKey, item);
-          errorClone.setMetadata('itemIndex', itemIndex);
-          return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone };
-        }
-        bodyDagName = resolvedIri;
-      } else {
-        bodyDagName = ContextResolver.expand(scatter.body.dag, dagContext);
+      const bodyDagName = this.#resolveScatterDagReference(scatter.body.dag, item, dagContext);
+      if (bodyDagName === null) {
+        const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
+        errorClone.deleteMetadata(SCATTER_PROGRESS_KEY);
+        errorClone.deleteMetadata(WORKSET_PROGRESS_KEY);
+        errorClone.setMetadata(itemKey, item);
+        errorClone.setMetadata('itemIndex', itemIndex);
+        return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone };
       }
 
       // Build the child clone using the body dag's registered factory (spawnChild
@@ -580,49 +576,23 @@ export class ScatterPoolDriver
     }
 
     // ── Branch B / C: DAG body ────────────────────────────────────────────────
-    // Resolve dag name: `dag` literal or `dagFrom` runtime path. For `dagFrom`,
-    // each ITEM names its own body dag — but at batch-execution time all items in
-    // a released batch share the same body dag (reservoir batches group by key,
-    // not by dag), so resolve against the first item as the representative.
-    // An unresolvable or unregistered name routes every item in the batch to `error`.
-    let batchBodyDagName: string;
-    if ('dagFrom' in scatter.body) {
-      const firstItem = items[0]?.item;
-      const rawResolved = (typeof firstItem === 'object' && firstItem !== null)
-        ? this.#adapter.accessor.get(firstItem, scatter.body.dagFrom)
-        : null;
-      if (typeof rawResolved !== 'string' || rawResolved.length === 0) {
-        return {
-          'results': items.map((buffered) => {
-            const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
-            clone.deleteMetadata(SCATTER_PROGRESS_KEY);
-            clone.deleteMetadata(WORKSET_PROGRESS_KEY);
-            clone.setMetadata(itemKey, buffered.item);
-            clone.setMetadata('itemIndex', buffered.index);
-            for (const err of clone.errors) state.collectError(err);
-            for (const warn of clone.warnings) state.collectWarning(warn);
-            return { 'index': buffered.index, 'item': buffered.item, 'output': 'error', 'terminalOutcome': 'failed' as const, 'cloneState': clone };
-          }),
-        };
-      }
-      const batchResolvedIri = ContextResolver.expand(rawResolved, dagContext);
-      if (!this.#adapter.dags.has(batchResolvedIri)) {
-        return {
-          'results': items.map((buffered) => {
-            const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
-            clone.deleteMetadata(SCATTER_PROGRESS_KEY);
-            clone.deleteMetadata(WORKSET_PROGRESS_KEY);
-            clone.setMetadata(itemKey, buffered.item);
-            clone.setMetadata('itemIndex', buffered.index);
-            for (const err of clone.errors) state.collectError(err);
-            for (const warn of clone.warnings) state.collectWarning(warn);
-            return { 'index': buffered.index, 'item': buffered.item, 'output': 'error', 'terminalOutcome': 'failed' as const, 'cloneState': clone };
-          }),
-        };
-      }
-      batchBodyDagName = batchResolvedIri;
-    } else {
-      batchBodyDagName = ContextResolver.expand(scatter.body.dag, dagContext);
+    // Resolve the declared DAG reference. Batch execution resolves dynamic
+    // references against the first item because reservoir batches are grouped
+    // by reservoir key; Phase 5+ retains selected DAGs per record.
+    const batchBodyDagName = this.#resolveScatterDagReference(scatter.body.dag, items[0]?.item, dagContext);
+    if (batchBodyDagName === null) {
+      return {
+        'results': items.map((buffered) => {
+          const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
+          clone.deleteMetadata(SCATTER_PROGRESS_KEY);
+          clone.deleteMetadata(WORKSET_PROGRESS_KEY);
+          clone.setMetadata(itemKey, buffered.item);
+          clone.setMetadata('itemIndex', buffered.index);
+          for (const err of clone.errors) state.collectError(err);
+          for (const warn of clone.warnings) state.collectWarning(warn);
+          return { 'index': buffered.index, 'item': buffered.item, 'output': 'error', 'terminalOutcome': 'failed' as const, 'cloneState': clone };
+        }),
+      };
     }
 
     const innerPath: readonly string[] = [...placementPath, scatter.name];

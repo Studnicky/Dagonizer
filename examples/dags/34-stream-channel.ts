@@ -78,7 +78,7 @@ export const dag: DAGType = {
   '@type':      'DAG',
   'name':       'stream-channel',
   'version':    '1',
-  'entrypoint': 'scatter-items',
+  'entrypoints': { 'main': 'scatter-items' },
   'nodes': [
     {
       '@id':         'urn:noocodex:dag:stream-channel/node/scatter-items',

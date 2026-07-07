@@ -62,8 +62,10 @@ export type {
 
 export { DAGBuilder } from './builder/index.js';
 export type {
+  DynamicDAGReferenceInputType,
   EmbeddableDAGType,
   PathType,
+  ScatterDAGBodyType,
   ScatterOptionsType,
   TypedEmbeddedDAGOptionsType,
 } from './builder/index.js';
@@ -91,6 +93,9 @@ export {
   Placement,
   NodeError,
   NodeOutput,
+  DagReference,
+  DagReferenceSchema,
+  GatherNodeSchema,
   ScatterNodeSchema,
   EmbeddedDAGNodeSchema,
   GatherConfigSchema,
@@ -117,6 +122,7 @@ export {
   BackoffStrategySchema,
   BackoffStrategyNames,
   DAG_CONTEXT,
+  DAGEntrypoints,
   ExecutorIntermediateSchema,
   ExecutionRequestSchema,
   ExecutionResponseSchema,
@@ -134,8 +140,12 @@ export {
 export type {
   BackoffStrategyType,
   DAGNodeType,
+  DagReferenceType,
+  DynamicDagReferenceType,
   ScatterNodeType,
   EmbeddedDAGNodeType,
+  GatherNodeType,
+  GatherPolicyType,
   GatherConfigType,
   DAGType,
   DAGLifecycleStateDataType,

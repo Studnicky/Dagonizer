@@ -119,7 +119,7 @@ class TestScatterDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':         `urn:noocodex:dag:${name}/node/fan`,
@@ -154,7 +154,7 @@ class TestScatterDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':         `urn:noocodex:dag:${name}/node/fan`,
@@ -324,7 +324,7 @@ void describe('Scatter: bounded-memory invariant for compactable gathers', () =>
       '@type':    'DAG',
       'name':     'retained-record-count',
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':         'urn:noocodex:dag:retained-record-count/node/fan',
@@ -432,7 +432,7 @@ const multiNodeBodyDag: DAGType = Validator.dag.validate({
   '@type':    'DAG',
   'name':     MULTI_BODY_DAG_NAME,
   'version':  '1',
-  'entrypoint': 'inner-a',
+  'entrypoints': { 'main': 'inner-a' },
   'nodes': [
     {
       '@id':    'urn:noocodex:dag:multi-node-body/node/inner-a',

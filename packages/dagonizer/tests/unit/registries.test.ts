@@ -267,7 +267,7 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
       '@type':    'DAG',
       'name': 'demo',
       'version': '1',
-      'entrypoint': 'greet',
+      'entrypoints': { 'main': 'greet' },
       'nodes': [{
         '@id':   'urn:noocodex:dag:demo/node/greet',
         '@type': 'SingleNode',
@@ -309,7 +309,7 @@ class TestRegistryDag {
       '@type': 'DAG',
       'name': dagName,
       'version': '1',
-      'entrypoint': nodeName,
+      'entrypoints': { 'main': nodeName },
       'nodes': [{
         '@id': `urn:noocodex:dag:${dagName}/node/${nodeName}`,
         '@type': 'SingleNode',

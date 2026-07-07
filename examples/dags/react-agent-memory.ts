@@ -589,7 +589,7 @@ export const agentDag: DAGType = {
   '@type': 'DAG',
   'name': 'react-agent',
   'version': '1',
-  'entrypoint': 'build-request',
+  'entrypoints': { 'main': 'build-request' },
   'nodes': [
     {
       '@id': 'urn:noocodex:dag:react-agent/node/build-request',
@@ -668,7 +668,14 @@ export const agentDag: DAGType = {
       '@type': 'ScatterNode',
       'name': 'dispatch-tools',
       'source': 'safeWorkset',
-      'body': { 'dagFrom': 'dagName' },
+      'body': {
+        'dag': {
+          '@type': 'DagReference',
+          'from': 'item',
+          'path': 'dagName',
+          'candidates': ['tool:calculator'],
+        },
+      },
       'gather': {
         'strategy': 'map',
         'mapping': { 'output': 'toolOutputs' },
@@ -720,7 +727,7 @@ export const traceDag: DAGType = {
   '@type':      'DAG',
   'name':       'react-agent-memory-trace',
   'version':    '1',
-  'entrypoint': 'scatter-steps',
+  'entrypoints': { 'main': 'scatter-steps' },
   'nodes': [
     {
       '@id':         'urn:noocodex:dag:react-agent-memory-trace/node/scatter-steps',

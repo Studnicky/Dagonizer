@@ -212,7 +212,7 @@ void describe('Validator.dag validates a well-formed DAG literal', () => {
       '@type': 'DAG',
       'name': 'cte-smoke',
       'version': '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:cte-smoke/node/step',

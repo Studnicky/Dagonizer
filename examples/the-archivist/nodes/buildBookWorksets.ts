@@ -5,7 +5,7 @@
  * emits a `bookWorksets` array where each entry is a JSON-serialisable
  * `{ dagName: string; arguments: Record<string, unknown> }` object. The
  * `dagName` field names the embedded `tool:<name>` DAG registered by
- * ToolRegistry; the scatter placement uses `{ dagFrom: 'dagName' }` to
+ * ToolRegistry; the scatter placement uses an item-scoped DagReference to
  * resolve the body DAG at runtime.
  *
  * Argument-building mirrors the old per-scout logic exactly:

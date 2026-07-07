@@ -55,7 +55,7 @@ const SVC_DAG: DAGType = {
   '@type':    'DAG',
   'name': 'svc',
   'version': '1',
-  'entrypoint': 'use-services',
+  'entrypoints': { 'main': 'use-services' },
   'nodes': [
     {
       '@id':   'urn:noocodex:dag:svc/node/use-services',
@@ -110,7 +110,7 @@ void describe('Dagonizer constructor DI', () => {
       '@type':    'DAG',
       'name': 'no-dep',
       'version': '1',
-      'entrypoint': 'no-dep',
+      'entrypoints': { 'main': 'no-dep' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:no-dep/node/no-dep',

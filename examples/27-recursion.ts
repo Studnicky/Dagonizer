@@ -1,13 +1,13 @@
 /**
  * 27-recursion: a countdown DAG that recursively invokes ITSELF via
- * `dagFrom` runtime DAG-name resolution.
+ * dynamic `DagReference` resolution.
  *
  * Each recursive frame:
  *   1. AccumulateNode adds `remaining` to `total`, then decrements to
  *      `nextRemaining`.
  *   2. Base case (remaining === 0): route to `base-end` terminal.
- *   3. Recursive case: EmbeddedDAGNode reads `state.dagName` via `dagFrom`
- *      at runtime, spawns a fresh isolated child frame, seeds it with
+ *   3. Recursive case: EmbeddedDAGNode reads `state.dagName` through a
+ *      dynamic DagReference, spawns a fresh isolated child frame, seeds it with
  *      `remaining ← nextRemaining` and the carried `total`, executes the
  *      same `'countdown'` DAG, then maps the child's `total` back into the
  *      parent frame.
@@ -36,10 +36,10 @@ state.remaining = 5;
 
 const result = await dispatcher.execute('countdown', state);
 
-process.stdout.write('\nRecursive countdown via dagFrom runtime resolution\n');
+process.stdout.write('\nRecursive countdown via dynamic DagReference resolution\n');
 process.stdout.write(`  remaining=5 → 5+4+3+2+1+0 = ${state.total}\n`);
 process.stdout.write(`  terminalOutcome: ${result.terminalOutcome}\n`);
-process.stdout.write('\nLesson: dagFrom reads state.dagName at runtime so the DAG\n');
+process.stdout.write('\nLesson: DagReference reads state.dagName at runtime so the DAG\n');
 process.stdout.write('        embeds itself — true recursion. Each frame runs on a\n');
 process.stdout.write('        FRESH isolated child state; stateMapping.input seeds\n');
 process.stdout.write('        the next frame and stateMapping.output carries the\n');

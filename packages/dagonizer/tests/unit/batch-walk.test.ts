@@ -424,7 +424,7 @@ void describe('Batch walk — size-1 parity', () => {
       '@type': 'DAG',
       'name': 'parity-linear',
       'version': '1',
-      'entrypoint': 'p1',
+      'entrypoints': { 'main': 'p1' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:parity-linear/node/p1', '@type': 'SingleNode',
           'name': 'p1', 'node': 'step1', 'outputs': { 'ok': 'p2' } },
@@ -455,7 +455,7 @@ void describe('Batch walk — size-1 parity', () => {
       '@type': 'DAG',
       'name': 'parity-branch',
       'version': '1',
-      'entrypoint': 'cls',
+      'entrypoints': { 'main': 'cls' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:parity-branch/node/cls', '@type': 'SingleNode',
           'name': 'cls', 'node': 'classify', 'outputs': { 'ok': 'proc', 'skip': 'end' } },
@@ -589,7 +589,7 @@ void describe('Batch walk — multi-item plain placements', () => {
       '@type': 'DAG',
       'name': 'linear-multi',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:linear-multi/node/fan', '@type': 'SingleNode',
           'name': 'fan', 'node': 'fanout', 'outputs': { 'out': 'rec' } },
@@ -637,7 +637,7 @@ void describe('Batch walk — multi-item plain placements', () => {
       '@type': 'DAG',
       'name': 'branch-multi',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:branch-multi/node/fan', '@type': 'SingleNode',
           'name': 'fan', 'node': 'fanout', 'outputs': { 'out': 'partition' } },
@@ -695,7 +695,7 @@ void describe('Batch walk — multi-item plain placements', () => {
       '@type': 'DAG',
       'name': 'diamond-join',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:diamond-join/node/fan', '@type': 'SingleNode',
           'name': 'fan', 'node': 'fanout', 'outputs': { 'out': 'partition' } },
@@ -1064,7 +1064,7 @@ void describe('Batch walk — cycles and retry loops', () => {
       '@type': 'DAG',
       'name': 'cycle-size1',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:cycle-size1/node/a',
@@ -1124,7 +1124,7 @@ void describe('Batch walk — cycles and retry loops', () => {
       '@type': 'DAG',
       'name': 'cycle-immediate',
       'version': '1',
-      'entrypoint': 'a',
+      'entrypoints': { 'main': 'a' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:cycle-immediate/node/a',
@@ -1178,7 +1178,7 @@ void describe('Batch walk — cycles and retry loops', () => {
       '@type': 'DAG',
       'name': 'cycle-homogeneous',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:cycle-homogeneous/node/fan',
@@ -1249,7 +1249,7 @@ void describe('Batch walk — cycles and retry loops', () => {
       '@type': 'DAG',
       'name': 'cycle-heterogeneous',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:cycle-heterogeneous/node/fan',
@@ -1356,7 +1356,7 @@ void describe('Batch walk — cycles and retry loops', () => {
       '@type': 'DAG',
       'name': 'cycle-budget',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:cycle-budget/node/fan',
@@ -1470,7 +1470,7 @@ void describe('Batch walk — cycles and retry loops', () => {
       '@type': 'DAG',
       'name': 'cycle-join',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:cycle-join/node/fan',

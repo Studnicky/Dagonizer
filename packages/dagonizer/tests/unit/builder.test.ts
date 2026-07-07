@@ -17,7 +17,7 @@ void describe('DAGBuilder', () => {
 
     assert.equal(dag.name, 'demo');
     assert.equal(dag.version, '1.0');
-    assert.equal(dag.entrypoint, 'greet');
+    assert.deepEqual(dag.entrypoints, { 'main': 'greet' });
     assert.equal(dag.nodes.length, 1);
     // JSON-LD shape: @type discriminator, @id URN, @context at root
     assert.equal(dag['@type'], 'DAG');
@@ -35,7 +35,7 @@ void describe('DAGBuilder', () => {
       .node('greet', greet, { 'success': 'plan' })
       .node('plan', plan, { 'success': 'end', 'error': 'end' })
       .build();
-    assert.equal(dag.entrypoint, 'plan');
+    assert.deepEqual(dag.entrypoints, { 'main': 'plan' });
   });
 
   void it('produces a config the dispatcher accepts', () => {

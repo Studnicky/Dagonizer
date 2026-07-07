@@ -194,7 +194,7 @@ export const incrementalDag: DAGType = {
   '@type':     'DAG',
   "name":      'incremental',
   "version":   '1',
-  "entrypoint": 'scatter',
+  "entrypoints": { "main": 'scatter' },
   "nodes": [
     {
       '@id':       'urn:noocodex:dag:gather-demo:incremental/node/scatter',
@@ -236,7 +236,7 @@ export const batchDag: DAGType = {
   '@type':     'DAG',
   "name":      'batch',
   "version":   '1',
-  "entrypoint": 'scatter',
+  "entrypoints": { "main": 'scatter' },
   "nodes": [
     {
       '@id':       'urn:noocodex:dag:gather-demo:batch/node/scatter',

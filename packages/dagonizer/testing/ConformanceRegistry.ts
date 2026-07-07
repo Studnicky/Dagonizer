@@ -262,7 +262,7 @@ const DAG_CONTEXT = {
   '@version': 1.1,
   'name':            { '@id': 'https://noocodex.dev/ontology/dag/name' },
   'version':         { '@id': 'https://noocodex.dev/ontology/dag/version' },
-  'entrypoint':      { '@id': 'https://noocodex.dev/ontology/dag/entrypoint' },
+  'entrypoints':     { '@id': 'https://noocodex.dev/ontology/dag/entrypoints', '@container': '@index' },
   'nodes':           { '@id': 'https://noocodex.dev/ontology/dag/nodes', '@container': '@set' },
   'outputs':         { '@id': 'https://noocodex.dev/ontology/dag/outputs' },
   'node':            { '@id': 'https://noocodex.dev/ontology/dag/node' },
@@ -307,7 +307,7 @@ class ConformanceDags {
       '@type': 'DAG',
       'name': dagName,
       'version': '1',
-      'entrypoint': nodeName,
+      'entrypoints': { 'main': nodeName },
       'nodes': [
         {
           '@id': `urn:conformance:dag:${dagName}/node/${nodeName}`,
@@ -338,7 +338,7 @@ class ConformanceDags {
       '@type': 'DAG',
       'name': runnerName,
       'version': '1',
-      'entrypoint': 'run-child',
+      'entrypoints': { 'main': 'run-child' },
       'nodes': [
         {
           '@id': `urn:conformance:dag:${runnerName}/node/run-child`,
@@ -374,7 +374,7 @@ class ConformanceDags {
       '@type': 'DAG',
       'name': SCATTER_ITEM_BODY_DAG,
       'version': '1',
-      'entrypoint': 'scatter-counter',
+      'entrypoints': { 'main': 'scatter-counter' },
       'nodes': [
         {
           '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}/node/scatter-counter`,
@@ -400,7 +400,7 @@ class ConformanceDags {
       '@type': 'DAG',
       'name': runnerName,
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id': `urn:conformance:dag:${runnerName}/node/fan`,

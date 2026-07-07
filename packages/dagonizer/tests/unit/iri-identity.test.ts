@@ -122,7 +122,7 @@ void describe('IRI identity — duplicate prefix rejection', () => {
       '@type':      'DAG',
       'name':       'collision-dag',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         {
           '@id': 'urn:test:collision-dag/node/step', '@type': 'SingleNode',

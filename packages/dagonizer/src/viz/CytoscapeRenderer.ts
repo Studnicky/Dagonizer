@@ -34,7 +34,9 @@
  * plain element array synchronously.
  */
 
+import { DAGEntrypoints } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
+import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 
 import { PlacementUtils, RoleColorUtils } from './internal.js';
@@ -52,7 +54,7 @@ export type CytoscapeNodeDataType = {
   id: string;
   label: string;
   /** Placement variant; selector use: `node[type="scatter"]`. */
-  type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase';
+  type: 'single' | 'scatter' | 'embedded-dag' | 'gather' | 'terminal' | 'phase';
   // ── Containment (EmbeddedDAGNode / dag-body ScatterNode with a container role) ──
   container?: string;
   containerColor?: string;
@@ -65,7 +67,8 @@ export type CytoscapeNodeDataType = {
   phase?: string;      // PhaseNode
   body?: string;       // ScatterNode body ref
   source?: string;     // ScatterNode
-  gather?: GatherConfigType; // ScatterNode
+  gather?: GatherConfigType; // ScatterNode, GatherNode
+  sources?: readonly string[]; // GatherNode
   reducer?: string;    // ScatterNode
   /**
    * Reservoir config for a reservoir-configured ScatterNode.
@@ -216,13 +219,20 @@ export class CytoscapeRenderer {
   }
 
   /** Mapping from JSON-LD placement-discriminator to Cytoscape `data.type` value. */
-  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase'>> = {
+  private static readonly PLACEMENT_KIND: Readonly<Record<string, CytoscapeNodeDataType['type']>> = {
     'SingleNode':       'single',
     'ScatterNode':      'scatter',
     'EmbeddedDAGNode':  'embedded-dag',
+    'GatherNode':       'gather',
     'TerminalNode':     'terminal',
     'PhaseNode':        'phase',
   };
+
+  private static dagReferenceLabel(reference: DagReferenceType): string {
+    return typeof reference === 'string'
+      ? reference
+      : `${reference.from}:${reference.path} -> ${reference.candidates.join('|')}`;
+  }
 
   static render(dag: DAGType, options: RenderOptionsType = {}): readonly CytoscapeElementType[] {
     const resolved: ResolvedRenderOptions = { ...CYTOSCAPE_RENDER_DEFAULTS, ...options };
@@ -305,7 +315,7 @@ export class CytoscapeRenderer {
         return { ...base, "data": { ...base.data, "node": sp.node } };
       },
       'ScatterNode': (sp) => {
-        const bodyRef = 'node' in sp.body ? sp.body.node : ('dag' in sp.body ? sp.body.dag : `dagFrom:${sp.body.dagFrom}`);
+        const bodyRef = 'node' in sp.body ? sp.body.node : CytoscapeRenderer.dagReferenceLabel(sp.body.dag);
         // Add dag-reservoir class when reservoir mode is configured, so a
         // stylesheet or animation layer can target it for the glyph and
         // per-key fill. Per-key fill and per-firing batch size are runtime
@@ -341,7 +351,17 @@ export class CytoscapeRenderer {
         };
       },
       'EmbeddedDAGNode': (ep) => {
-        return { ...base, "data": { ...base.data, ...(ep.dag !== undefined && { "dag": ep.dag }), ...(ep.dagFrom !== undefined && { "dagFrom": ep.dagFrom }) } };
+        return { ...base, "data": { ...base.data, ...(ep.dag !== undefined ? { "dag": CytoscapeRenderer.dagReferenceLabel(ep.dag) } : {}) } };
+      },
+      'GatherNode': (gp) => {
+        return {
+          ...base,
+          "data": {
+            ...base.data,
+            "sources": gp.sources,
+            "gather": gp.gather,
+          },
+        };
       },
       'TerminalNode': (tp) => {
         return {
@@ -436,7 +456,7 @@ export class CytoscapeRenderer {
       if (depth >= maxDepth) continue;
       if (visited.has(dagName)) continue;
       const placementId = PlacementUtils.idIn(prefix, placement.name);
-      const entryChildId = PlacementUtils.idIn(placementId, body.entrypoint);
+      const entryChildId = PlacementUtils.idIn(placementId, DAGEntrypoints.primary(body));
       embeddedEntryRewrite.set(placement.name, entryChildId);
     }
 

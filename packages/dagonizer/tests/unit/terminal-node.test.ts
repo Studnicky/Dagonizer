@@ -119,7 +119,7 @@ void describe('TerminalNode: schema validation', () => {
       '@type':    'DAG',
       'name':       'demo',
       'version':    '1',
-      'entrypoint': 'end',
+      'entrypoints': { 'main': 'end' },
       'nodes': [
         {
           '@id':     'urn:noocodex:dag:demo/node/end',
@@ -139,7 +139,7 @@ void describe('TerminalNode: schema validation', () => {
       '@type':    'DAG',
       'name':       'demo',
       'version':    '1',
-      'entrypoint': 's',
+      'entrypoints': { 'main': 's' },
       'nodes': [{
         '@id':   'urn:noocodex:dag:demo/node/s',
         '@type': 'SingleNode',
@@ -237,7 +237,7 @@ void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () 
     '@type':    'DAG',
     'name':       'child-tn',
     'version':    '1',
-    'entrypoint': 'child-step',
+    'entrypoints': { 'main': 'child-step' },
     'nodes': [
       {
         '@id':   'urn:noocodex:dag:child-tn/node/child-step',
@@ -267,7 +267,7 @@ void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () 
       '@type':    'DAG',
       'name':       'parent-tn',
       'version':    '1',
-      'entrypoint': 'parent-entry',
+      'entrypoints': { 'main': 'parent-entry' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:parent-tn/node/parent-entry',
@@ -315,7 +315,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
         '@type':    'DAG',
         'name':       'parent-explicit',
         'version':    '1',
-        'entrypoint': 'run-child',
+        'entrypoints': { 'main': 'run-child' },
         'nodes': [
           {
             '@id':   'urn:noocodex:dag:parent-explicit/node/run-child',
@@ -352,7 +352,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
       '@type':    'DAG',
       'name':       'child-explicit',
       'version':    '1',
-      'entrypoint': 'child-work',
+      'entrypoints': { 'main': 'child-work' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:child-explicit/node/child-work',
@@ -389,7 +389,7 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
       '@type':    'DAG',
       'name':       'child-explicit',
       'version':    '1',
-      'entrypoint': 'child-work',
+      'entrypoints': { 'main': 'child-work' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:child-explicit/node/child-work',

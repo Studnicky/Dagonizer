@@ -100,7 +100,7 @@ export const workerDag: DAGType = {
   '@type':     'DAG',
   "name":        'square-item',
   "version":     '1',
-  "entrypoint":  'square',
+  "entrypoints": { "main": 'square' },
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:square-item/node/square',
@@ -130,7 +130,7 @@ export const dag: DAGType = {
   '@type':     'DAG',
   "name":        'square-all',
   "version":     '1',
-  "entrypoint":  'square-all',
+  "entrypoints": { "main": 'square-all' },
   "nodes": [
     {
       '@id':        'urn:noocodex:dag:square-all/node/square-all',

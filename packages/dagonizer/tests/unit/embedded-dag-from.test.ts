@@ -1,11 +1,11 @@
 /**
- * Tests for the `dagFrom` runtime dag-name resolution feature.
+ * Tests for runtime DagReference resolution.
  *
  * `EmbeddedDAGNode` and `ScatterNode` can read the dag name from a dotted
- * state path at execution time (`dagFrom`) in addition to the build-time
- * literal (`dag`). An unresolved or unregistered dag name routes to the
- * placement's `error` output without throwing. The validator enforces
- * exactly-one-of `dag` | `dagFrom` at wire-load time.
+ * state or item path at execution time in addition to build-time literal
+ * DAG references. An empty or non-candidate dag name routes to the placement's
+ * `error` output without throwing. The validator enforces that every dynamic
+ * reference declares its candidate DAG set.
  */
 
 import assert from 'node:assert/strict';
@@ -35,11 +35,11 @@ class ExecutionProbe {
 }
 
 class RoutingState extends NodeStateBase {
-  /** The dag name placed here by a setup node and read by the dagFrom embed. */
+  /** The dag name placed here by a setup node and read by the dynamic embed reference. */
   selectedDag = '';
   /** Execution counter threaded through the cardinality-1 embed via state mapping. */
   executed = 0;
-  /** Scatter items: each names its own body dag (read by the scatter `dagFrom`). */
+  /** Scatter items: each names its own body dag. */
   items: Array<{ dagName: string }> = [{ 'dagName': 'scatter-child' }, { 'dagName': 'scatter-child' }];
 }
 
@@ -120,7 +120,7 @@ class TestDag {
       '@type':    'DAG',
       'name':     name,
       'version':  '1',
-      'entrypoint': 'run',
+      'entrypoints': { 'main': 'run' },
       'nodes': [
         {
           '@id':   `urn:noocodex:dag:${name}/node/run`,
@@ -136,9 +136,9 @@ class TestDag {
   }
 }
 
-// ── EmbeddedDAGNode dagFrom tests ─────────────────────────────────────────────
+// ── EmbeddedDAGNode DagReference tests ────────────────────────────────────────
 
-void describe('EmbeddedDAGNode: dagFrom runtime resolution', () => {
+void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
   void it('resolves the dag name from a state path and executes the child dag', async () => {
     const probe = new ExecutionProbe();
     const incrNode = new IncrNode('incr', probe);
@@ -147,7 +147,7 @@ void describe('EmbeddedDAGNode: dagFrom runtime resolution', () => {
 
     const parentDag = new DAGBuilder('parent', '1')
       .node('set-dag', setNode, { 'success': 'invoke' })
-      .embeddedDAG<RoutingState, RoutingState>('invoke', { 'from': 'selectedDag' }, { 'success': 'end', 'error': 'end-fail' }, {
+      .embeddedDAG<RoutingState, RoutingState>('invoke', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['child-a'] }, { 'success': 'end', 'error': 'end-fail' }, {
         'inputs':  { 'executed': 'executed' },
         'outputs': { 'executed': 'executed' },
       })
@@ -169,35 +169,40 @@ void describe('EmbeddedDAGNode: dagFrom runtime resolution', () => {
     assert.equal(state.executed, 1, 'child increment maps back into parent state');
   });
 
-  void it('routes to error when dagFrom resolves to an unregistered dag name', async () => {
+  void it('routes to error when the state value is not in the candidate set', async () => {
     const setNode = new SetDagNode('set-dag', 'does-not-exist');
+    const childDag = TestDag.child('child-a');
 
     const parentDag = new DAGBuilder('parent-missing', '1')
       .node('set-dag', setNode, { 'success': 'invoke' })
-      .embeddedDAG('invoke', { 'from': 'selectedDag' }, { 'success': 'end-ok', 'error': 'end-fail' })
+      .embeddedDAG('invoke', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['child-a'] }, { 'success': 'end-ok', 'error': 'end-fail' })
       .terminal('end-ok')
       .terminal('end-fail', { 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>();
     dispatcher.registerNode(setNode);
+    dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
+    dispatcher.registerDAG(childDag);
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
     const result = await dispatcher.execute('parent-missing', state);
 
-    assert.equal(result.terminalOutcome, 'failed', 'unregistered dag → error output → failed terminal');
+    assert.equal(result.terminalOutcome, 'failed', 'non-candidate dag → error output → failed terminal');
   });
 
-  void it('routes to error when dagFrom path resolves to an empty string', async () => {
+  void it('routes to error when dynamic reference path resolves to an empty string', async () => {
     // selectedDag starts as '' — an empty string is not a valid dag name.
     const parentDag = new DAGBuilder('parent-empty', '1')
-      .embeddedDAG('invoke', { 'from': 'selectedDag' }, { 'success': 'end-ok', 'error': 'end-fail' })
+      .embeddedDAG('invoke', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['child-a'] }, { 'success': 'end-ok', 'error': 'end-fail' })
       .terminal('end-ok')
       .terminal('end-fail', { 'outcome': 'failed' })
       .build();
 
     const dispatcher = new Dagonizer<RoutingState>();
+    dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
+    dispatcher.registerDAG(TestDag.child('child-a'));
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState(); // selectedDag === ''
@@ -207,18 +212,17 @@ void describe('EmbeddedDAGNode: dagFrom runtime resolution', () => {
   });
 });
 
-// ── ScatterNode dagFrom tests ─────────────────────────────────────────────────
+// ── ScatterNode DagReference tests ────────────────────────────────────────────
 
-void describe('ScatterNode: dagFrom runtime resolution', () => {
+void describe('ScatterNode: DagReference runtime resolution', () => {
   void it('resolves each item dag name from clone state and runs the sub-dag per item', async () => {
     const probe = new ExecutionProbe();
     const incrNode = new IncrNode('incr', probe);
     const childDag = TestDag.child('scatter-child');
 
-    // Each scatter item names its own body dag; `dagFrom: 'dagName'` reads it
-    // from the item directly (not from the clone state).
+    // Each scatter item names its own body dag from the item directly.
     const parentDag = new DAGBuilder('scatter-parent', '1')
-      .scatter('scatter', 'items', { 'dagFrom': 'dagName' }, {
+      .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['scatter-child'] } }, {
         'all-success': 'end',
         'partial':     'end',
         'all-error':   'end',
@@ -242,12 +246,13 @@ void describe('ScatterNode: dagFrom runtime resolution', () => {
     assert.equal(probe.count, 3, 'child dag should run once per item');
   });
 
-  void it('routes scatter items to error when dagFrom resolves to an unregistered dag', async () => {
+  void it('routes scatter items to error when the item value is not in the candidate set', async () => {
     const probe = new ExecutionProbe();
     const incrNode = new IncrNode('incr', probe);
+    const childDag = TestDag.child('scatter-child');
 
     const parentDag = new DAGBuilder('scatter-bad', '1')
-      .scatter('scatter', 'items', { 'dagFrom': 'dagName' }, {
+      .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['scatter-child'] } }, {
         'all-success': 'end-ok',
         'partial':     'end-ok',
         'all-error':   'end-ok',
@@ -260,6 +265,7 @@ void describe('ScatterNode: dagFrom runtime resolution', () => {
 
     const dispatcher = new Dagonizer<RoutingState>();
     dispatcher.registerNode(incrNode);
+    dispatcher.registerDAG(childDag);
     dispatcher.registerDAG(parentDag);
 
     const state = new RoutingState();
@@ -272,35 +278,30 @@ void describe('ScatterNode: dagFrom runtime resolution', () => {
   });
 });
 
-// ── Validator: exactly-one-of dag | dagFrom ───────────────────────────────────
+// ── Validator: canonical DagReference shape ───────────────────────────────────
 //
-// The semantic constraint (exactly one of `dag` | `dagFrom`) is enforced when
-// `registerDAG` validates the DAG. Wire-shape schema validation runs first and
-// may catch invalid shapes before the semantic check.
+// The schema rejects `dagFrom`; dynamic references use `dag: DagReference`.
 
-void describe('DAGValidator: embedded dag exactly-one-of constraint', () => {
-  void it('registerDAG rejects a node with both dag and dagFrom set', () => {
+void describe('DAGValidator: embedded dag reference shape', () => {
+  void it('schema rejects a node with legacy dagFrom set', () => {
     const dispatcher = new Dagonizer<RoutingState>();
     // Register a child dag first (the dag:'some-child' reference must resolve);
     // its `run` node references `incr`, so that node must exist too.
     dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
     dispatcher.registerDAG(TestDag.child('some-child'));
 
-    // Build the raw wire object as unknown, validate through the schema
-    // (schema allows both dag + dagFrom coexisting; semantic rejection is in registerDAG).
     const bogusRaw: unknown = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:bogus-both',
       '@type':    'DAG',
       'name':     'bogus-both',
       'version':  '1',
-      'entrypoint': 'embed',
+      'entrypoints': { 'main': 'embed' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:bogus-both/node/embed',
           '@type':  'EmbeddedDAGNode',
           'name':   'embed',
-          // Both set — invalid: exactly one of dag | dagFrom is allowed.
           'dag':     'some-child',
           'dagFrom': 'selectedDag',
           'outputs': { 'success': 'end', 'error': 'end' },
@@ -308,30 +309,24 @@ void describe('DAGValidator: embedded dag exactly-one-of constraint', () => {
         TestDag.terminal('bogus-both'),
       ],
     };
-    const bogus = Validator.dag.validate(bogusRaw);
-
-    assert.throws(() => dispatcher.registerDAG(bogus));
+    assert.throws(() => Validator.dag.validate(bogusRaw));
   });
 
-  void it('registerDAG rejects a node with neither dag nor dagFrom set', () => {
+  void it('registerDAG rejects a node with no dag reference', () => {
     const dispatcher = new Dagonizer<RoutingState>();
 
-    // Build raw wire object — both dag and dagFrom are optional in schema,
-    // so neither being present passes schema validation; semantic rejection
-    // fires in registerDAG.
     const bogusRaw: unknown = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:bogus-neither',
       '@type':    'DAG',
       'name':     'bogus-neither',
       'version':  '1',
-      'entrypoint': 'embed',
+      'entrypoints': { 'main': 'embed' },
       'nodes': [
         {
           '@id':    'urn:noocodex:dag:bogus-neither/node/embed',
           '@type':  'EmbeddedDAGNode',
           'name':   'embed',
-          // Neither dag nor dagFrom — invalid.
           'outputs': { 'success': 'end', 'error': 'end' },
         },
         TestDag.terminal('bogus-neither'),
@@ -358,16 +353,17 @@ void describe('DAGValidator: embedded dag exactly-one-of constraint', () => {
     assert.doesNotThrow(() => dispatcher.registerDAG(parentDag));
   });
 
-  void it('registerDAG accepts a node with only dagFrom set (no static registration required)', () => {
+  void it('registerDAG accepts a node with a dynamic dag reference and registered candidates', () => {
     const dispatcher = new Dagonizer<RoutingState>();
+    dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
+    dispatcher.registerDAG(TestDag.child('valid-child-dynamic'));
 
     const parentDag = new DAGBuilder('valid-from-only', '1')
-      .embeddedDAG('embed', { 'from': 'selectedDag' }, { 'success': 'end', 'error': 'end-fail' })
+      .embeddedDAG('embed', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['valid-child-dynamic'] }, { 'success': 'end', 'error': 'end-fail' })
       .terminal('end')
       .terminal('end-fail', { 'outcome': 'failed' })
       .build();
 
-    // dagFrom: no static child-dag registration needed — checked at runtime only.
     assert.doesNotThrow(() => dispatcher.registerDAG(parentDag));
   });
 });

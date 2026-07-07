@@ -17,8 +17,10 @@ import type { RetryPolicyOptionsType } from '../contracts/RetryPolicyOptionsType
 import { PlaceholderNode } from '../core/PlaceholderNode.js';
 import { DAGIdentity, DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
+import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
+import type { GatherNodeType, GatherPolicyType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterExecutionOptionsType, ScatterNodeType } from '../entities/dag/ScatterNode.js';
@@ -118,8 +120,18 @@ export type TypedEmbeddedDAGOptionsType<
   container?: string;
 }
 
+/** Dynamic DAG reference accepted by the unified builder entrypoints. */
+export type DynamicDAGReferenceInputType = {
+  readonly from: 'state' | 'item';
+  readonly path: string;
+  readonly candidates: readonly [string, ...string[]];
+};
+
 /** A DAG reference accepted by the unified `embed()` builder entrypoint. */
-export type EmbeddableDAGType = string | DAGType | { readonly from: string };
+export type EmbeddableDAGType = string | DAGType | DynamicDAGReferenceInputType;
+
+/** A DAG body reference accepted by `scatter()`. */
+export type ScatterDAGBodyType = { readonly dag: string | DynamicDAGReferenceInputType };
 
 /**
  * Explicit fluent API that builds a `DAG` in JSON-LD canonical form.
@@ -149,7 +161,7 @@ export class DAGBuilder {
   readonly #name: string;
   readonly #version: string;
   readonly #nodes: DAGNodeType[] = [];
-  #entrypoint: string | null = null;
+  readonly #entrypoints = new Map<string, string>();
 
   constructor(name: string, version: string) {
     this.#name = name;
@@ -159,19 +171,56 @@ export class DAGBuilder {
   /** Normalize any embeddable DAG reference into the wire shape. */
   private static embeddedDagField(
     dag: EmbeddableDAGType,
-  ): { dag: string } | { dagFrom: string } {
+  ): { dag: DagReferenceType } {
     if (typeof dag === 'string') {
       return { 'dag': dag };
     }
-    if ('from' in dag) {
-      return { 'dagFrom': dag.from };
+    if ('candidates' in dag) {
+      return {
+        'dag': {
+          '@type': 'DagReference',
+          'from': dag.from,
+          'path': dag.path,
+          'candidates': [...dag.candidates],
+        },
+      };
     }
     return { 'dag': dag.name };
   }
 
+  private static scatterDagField(body: ScatterDAGBodyType): { dag: DagReferenceType } {
+    if (typeof body.dag === 'string') {
+      return { 'dag': body.dag };
+    }
+    return {
+      'dag': {
+        '@type': 'DagReference',
+        'from': body.dag.from,
+        'path': body.dag.path,
+        'candidates': [...body.dag.candidates],
+      },
+    };
+  }
+
+  #defaultEntrypoint(name: string): void {
+    if (this.#entrypoints.size === 0) {
+      this.#entrypoints.set('main', name);
+    }
+  }
+
   /** Set (or override) the entrypoint node name. */
   entrypoint(nodeName: string): this {
-    this.#entrypoint = nodeName;
+    this.#entrypoints.clear();
+    this.#entrypoints.set('main', nodeName);
+    return this;
+  }
+
+  /** Set labeled DAG entrypoints. */
+  entrypoints(entries: Readonly<Record<string, string>>): this {
+    this.#entrypoints.clear();
+    for (const [label, nodeName] of Object.entries(entries)) {
+      this.#entrypoints.set(label, nodeName);
+    }
     return this;
   }
 
@@ -200,7 +249,7 @@ export class DAGBuilder {
       ? { ...base, 'retry': options.retry }
       : base;
     this.#nodes.push(placement);
-    if (this.#entrypoint === null) this.#entrypoint = name;
+    this.#defaultEntrypoint(name);
     return this;
   }
 
@@ -228,7 +277,7 @@ export class DAGBuilder {
   scatter<TState extends NodeStateInterface, TOutput extends string>(
     name: string,
     source: string,
-    body: NodeInterface<TState, TOutput> | { readonly dag: string } | { readonly dagFrom: string },
+    body: NodeInterface<TState, TOutput> | ScatterDAGBodyType,
     outputs: Record<string, string>,
     options: ScatterOptionsType<TState>,
   ): this {
@@ -238,12 +287,10 @@ export class DAGBuilder {
     // container) remain optional and are spread only when the caller provides them.
     const resolved = ScatterOptions.resolve(options);
 
-    // Resolve body to the wire shape: node, dag, or dagFrom.
+    // Resolve body to the wire shape: node or graph-addressable dag reference.
     let wireBody: ScatterNodeType['body'];
     if ('dag' in body) {
-      wireBody = { 'dag': body.dag };
-    } else if ('dagFrom' in body) {
-      wireBody = { 'dagFrom': body.dagFrom };
+      wireBody = DAGBuilder.scatterDagField(body);
     } else {
       wireBody = { 'node': body.name };
     }
@@ -269,7 +316,7 @@ export class DAGBuilder {
     };
 
     this.#nodes.push(scatterNode);
-    if (this.#entrypoint === null) this.#entrypoint = name;
+    this.#defaultEntrypoint(name);
     return this;
   }
 
@@ -291,8 +338,8 @@ export class DAGBuilder {
    *   { success: 'next', error: 'end-fail' },
    *   { inputs: { payload: 'user.name' }, outputs: { 'user.age': 'result' } },
    * );
-   * // Runtime state path:
-   * builder.embeddedDAG('invoke', { from: 'selectedDag' },
+   * // Runtime state path constrained by declared candidates:
+   * builder.embeddedDAG('invoke', { from: 'state', path: 'selectedDag', candidates: ['child'] },
    *   { success: 'next', error: 'end-fail' },
    * );
    * ```
@@ -320,7 +367,7 @@ export class DAGBuilder {
       '@type':   'EmbeddedDAGNode',
       name,
       'outputs': outputs,
-      // Exactly one of dag | dagFrom, spread at construction — no post-construction shape mutation.
+      // Literal names and dynamic DagReference values share the canonical `dag` field.
       ...DAGBuilder.embeddedDagField(dag),
       // Optional fields spread at construction — no post-construction shape mutation.
       ...(stateMapping !== undefined ? { 'stateMapping': stateMapping } : {}),
@@ -328,7 +375,7 @@ export class DAGBuilder {
     };
 
     this.#nodes.push(embeddedNode);
-    if (this.#entrypoint === null) this.#entrypoint = name;
+    this.#defaultEntrypoint(name);
     return this;
   }
 
@@ -369,7 +416,7 @@ export class DAGBuilder {
       outcome,
     };
     this.#nodes.push(placement);
-    if (this.#entrypoint === null) this.#entrypoint = name;
+    this.#defaultEntrypoint(name);
     return this;
   }
 
@@ -392,6 +439,28 @@ export class DAGBuilder {
   ): this {
     const node = new PlaceholderNode<NodeStateInterface, TOutput>(name, outputs);
     return this.node(name, node, routes);
+  }
+
+  /** Append a first-class gather barrier placement. */
+  gather(
+    name: string,
+    sources: readonly [string, ...string[]],
+    gather: GatherConfigType,
+    outputs: Record<string, string>,
+    options: { readonly policy?: GatherPolicyType } = {},
+  ): this {
+    const placement: GatherNodeType = {
+      '@id': DAGIdentity.placementId(this.#name, name),
+      '@type': 'GatherNode',
+      name,
+      'sources': [...sources],
+      gather,
+      outputs,
+      ...(options.policy !== undefined ? { 'policy': options.policy } : {}),
+    };
+    this.#nodes.push(placement);
+    this.#defaultEntrypoint(name);
+    return this;
   }
 
   /**
@@ -433,8 +502,8 @@ export class DAGBuilder {
    * does not build.
    */
   build(): DAGType {
-    if (this.#entrypoint === null) {
-      throw new DAGError(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint; call .entrypoint() or add at least one node first`, { 'code': 'CONFIGURATION_ERROR' });
+    if (this.#entrypoints.size === 0) {
+      throw new DAGError(`DAGBuilder('${this.#name}'): cannot build DAG without entrypoints; call .entrypoint(), .entrypoints(), or add at least one placement first`, { 'code': 'CONFIGURATION_ERROR' });
     }
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -442,7 +511,7 @@ export class DAGBuilder {
       '@type':    'DAG',
       'name':       this.#name,
       'version':    this.#version,
-      'entrypoint': this.#entrypoint,
+      'entrypoints': Object.fromEntries(this.#entrypoints),
       'nodes':      [...this.#nodes],
     };
 

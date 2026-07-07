@@ -110,7 +110,7 @@ export const dag: DAGType = {
   '@type':     'DAG',
   "name":      'async-source',
   "version":   '1',
-  "entrypoint": 'scatter-stream',
+  "entrypoints": { "main": 'scatter-stream' },
   "nodes": [
     {
       '@id':       'urn:noocodex:dag:async-source/node/scatter-stream',

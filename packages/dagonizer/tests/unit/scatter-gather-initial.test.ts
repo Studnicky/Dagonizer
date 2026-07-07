@@ -90,7 +90,7 @@ class TestGatherInitialDag {
       '@type':    'DAG',
       'name':     dagName,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':   `urn:noocodex:dag:${dagName}/node/fan`,

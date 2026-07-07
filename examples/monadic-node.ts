@@ -28,7 +28,7 @@ const dag: DAGType = {
   '@type':     'DAG',
   name:        'catalogue-search',
   version:     '1',
-  entrypoint:  'search',
+  entrypoints: { main: 'search' },
   nodes: [
     {
       '@id':   'urn:noocodex:dag:catalogue-search/node/search',

@@ -1,17 +1,17 @@
 /**
- * PluginDiscovery: static DAG-walker for finding literal dag-body references.
+ * PluginDiscovery: static DAG-walker for finding declared DAG references.
  *
  * Consumers use this utility to discover which plugin DAGs a given entry DAG
  * transitively depends on, so they can register the right plugins before
  * executing.
  *
- * Only literal `dag` body references are collected — `dagFrom` bodies use
- * runtime resolution (the name is read from state at execution time) and
- * cannot be statically discovered.
+ * Literal references contribute one DAG name; dynamic `DagReference` values
+ * contribute their declared candidate DAG names.
  */
 
 import type { PluginInterface } from '../contracts/PluginInterface.js';
 import type { DAGType } from '../entities/dag/DAG.js';
+import { DagReference } from '../entities/dag/DagReference.js';
 
 import { PluginLoader } from './PluginLoader.js';
 
@@ -25,13 +25,13 @@ export class PluginDiscovery {
   private constructor() { /* static-only */ }
 
   /**
-   * Collect all literal dag-body names referenced in the DAG's placement graph.
+   * Collect all declared dag-body names referenced in the DAG's placement graph.
    *
    * Inspects every placement in `dag.nodes` and collects:
-   * - `EmbeddedDAGNode.dag` (build-time literal sub-DAG name)
-   * - `ScatterNode.body.dag` (scatter dag-body literal name)
+   * - `EmbeddedDAGNode.dag` literal or dynamic candidate names
+   * - `ScatterNode.body.dag` literal or dynamic candidate names
    *
-   * Skips `dagFrom` (resolved at runtime from state) and `node` bodies.
+   * Skips `node` bodies because they reference registered nodes, not DAGs.
    * Returns a deduplicated, stable-ordered array of dag names.
    */
   static referencedDagNames(dag: DAGType): readonly string[] {
@@ -39,17 +39,16 @@ export class PluginDiscovery {
     for (const placement of dag.nodes) {
       const type = placement['@type'];
       if (type === 'EmbeddedDAGNode') {
-        // EmbeddedDAGNode: literal `dag` field (dagFrom is runtime, skip)
-        const p = placement as { dag?: string };
-        if (p.dag !== undefined && p.dag.length > 0) {
-          seen.add(p.dag);
+        if (placement.dag !== undefined) {
+          for (const candidate of DagReference.candidates(placement.dag)) {
+            seen.add(candidate);
+          }
         }
       } else if (type === 'ScatterNode') {
-        // ScatterNode: body may be { dag: string }
-        const p = placement as { body: { dag?: string; dagFrom?: string; node?: string } };
-        const body = p.body;
-        if ('dag' in body && typeof body.dag === 'string' && body.dag.length > 0) {
-          seen.add(body.dag);
+        if ('dag' in placement.body) {
+          for (const candidate of DagReference.candidates(placement.body.dag)) {
+            seen.add(candidate);
+          }
         }
       }
     }
@@ -58,7 +57,7 @@ export class PluginDiscovery {
 
   /**
    * Walk a DAG forest breadth-first: entry DAG + all reachable sub-DAGs
-   * referenced by literal `dag` fields.
+   * referenced by literal or dynamic candidate `dag` fields.
    *
    * Returns the ordered list of all DAG names reachable from `dag` (including
    * `dag.name` itself at index 0). DAGs absent from `registry` are skipped

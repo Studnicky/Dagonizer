@@ -52,7 +52,7 @@ void describe('DAGBuilder.placeholder', () => {
       .terminal('end')
       .build();
 
-    assert.equal(dag.entrypoint, 'validate');
+    assert.equal(dag.entrypoints['main'], 'validate');
     const placement = dag.nodes.find((n) => n.name === 'validate');
     assert.ok(placement !== undefined);
     assert.equal(placement['@type'], 'SingleNode');

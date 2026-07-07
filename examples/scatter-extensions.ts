@@ -38,7 +38,7 @@ const dag: DAGType = {
   '@type':     'DAG',
   name:        'top-n-ranking',
   version:     '1',
-  entrypoint:  'rank-all',
+  entrypoints: { main: 'rank-all' },
   nodes: [
     {
       '@id':        'urn:noocodex:dag:top-n-ranking/node/rank-all',

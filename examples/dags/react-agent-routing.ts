@@ -161,7 +161,7 @@ export const routingDag: DAGType = {
   '@type':      'DAG',
   'name':       'react-agent-routing',
   'version':    '1',
-  'entrypoint': 'scatter-chunks',
+  'entrypoints': { 'main': 'scatter-chunks' },
   'nodes': [
     {
       '@id':         'urn:noocodex:dag:react-agent-routing/node/scatter-chunks',

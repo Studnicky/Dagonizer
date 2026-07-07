@@ -105,7 +105,7 @@ export const dag: DAGType = {
   '@type':     'DAG',
   name:        'pipeline',
   version:     '1',
-  entrypoint:  'ingest',
+  entrypoints: { main: 'ingest' },
   nodes: [
     {
       '@id':   'urn:noocodex:dag:pipeline/node/ingest',

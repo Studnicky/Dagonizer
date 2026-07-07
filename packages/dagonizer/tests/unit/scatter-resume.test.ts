@@ -65,7 +65,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-clean',
       '@type':    'DAG',
-      'name': 'scatter-clean', 'version': '1', 'entrypoint': 'fan',
+      'name': 'scatter-clean', 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-clean/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
@@ -107,7 +107,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-interrupt',
       '@type':    'DAG',
-      'name': 'scatter-interrupt', 'version': '1', 'entrypoint': 'fan',
+      'name': 'scatter-interrupt', 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-interrupt/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
@@ -154,7 +154,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-resume',
       '@type':    'DAG',
-      'name': 'scatter-resume', 'version': '1', 'entrypoint': 'fan',
+      'name': 'scatter-resume', 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-resume/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
@@ -198,7 +198,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-aggregate',
       '@type':    'DAG',
-      'name': 'scatter-aggregate', 'version': '1', 'entrypoint': 'fan',
+      'name': 'scatter-aggregate', 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-aggregate/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
@@ -263,7 +263,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
       '@type':    'DAG',
-      'name': dagName, 'version': '1', 'entrypoint': 'fan',
+      'name': dagName, 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': `urn:noocodex:dag:${dagName}/node/fan`, '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'producer' },
@@ -347,7 +347,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-twin',
       '@type':    'DAG',
-      'name': 'scatter-twin', 'version': '1', 'entrypoint': 'fanA',
+      'name': 'scatter-twin', 'version': '1', 'entrypoints': { 'main': 'fanA' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-twin/node/fanA', '@type': 'ScatterNode',
           'name': 'fanA', 'body': { 'node': 'workerA' },
@@ -430,7 +430,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-batched',
       '@type':    'DAG',
-      'name': 'scatter-batched', 'version': '1', 'entrypoint': 'fan',
+      'name': 'scatter-batched', 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-batched/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
@@ -461,7 +461,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-ckpt',
       '@type':    'DAG',
-      'name': 'scatter-ckpt', 'version': '1', 'entrypoint': 'fan',
+      'name': 'scatter-ckpt', 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-ckpt/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },
@@ -531,7 +531,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-e2e',
       '@type':    'DAG',
-      'name': 'scatter-e2e', 'version': '1', 'entrypoint': 'fan',
+      'name': 'scatter-e2e', 'version': '1', 'entrypoints': { 'main': 'fan' },
       'nodes': [
         { '@id': 'urn:noocodex:dag:scatter-e2e/node/fan', '@type': 'ScatterNode',
           'name': 'fan', 'body': { 'node': 'worker' },

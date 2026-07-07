@@ -11,7 +11,7 @@
  *     └─ recalled ──► build-book-worksets
  *   build-book-worksets
  *     └─ ready ──► book-search-scatter (scatter over bookWorksets, concurrency 4)
- *          body: { dagFrom: 'dagName' } (resolves tool:<name> DAG per item at runtime)
+ *          body: DagReference(item.dagName) (resolves declared tool:<name> DAG per item)
  *          gather: tool-candidate-merge (reads clone output via accessor, no cast)
  *          reducer: any-success (routes 'success' if any tool found results)
  *     └─ rank-candidates
@@ -57,6 +57,13 @@ import type { ArchivistState } from '../ArchivistState.ts';
 
 import { DAGBuilder, PlaceholderNode } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
+
+const BOOK_SEARCH_TOOL_DAGS = [
+  'tool:web_search_books',
+  'tool:google_books_search',
+  'tool:subject_search',
+  'tool:wikipedia_summary',
+] as const;
 
 const extractQuery          = new PlaceholderNode<ArchivistState, 'success' | 'retry' | 'salvage'>('extract-query', ['success', 'retry', 'salvage']);
 const extractQuerySalvage   = new PlaceholderNode<ArchivistState, 'done'>('extract-query-salvage', ['done']);
@@ -114,22 +121,22 @@ export const bookSearchScatterDAG: DAGType = new DAGBuilder('book-search-scatter
       // ── 2c. build-book-worksets ──────────────────────────────────────────────
       // Converts state.toolPlan into a bookWorksets array where each entry
       // carries { dagName: 'tool:<name>', arguments: {...} }. The scatter
-      // placement reads dagName via { dagFrom: 'dagName' } to resolve the body
-      // DAG at runtime — each item dispatches to its own tool:<name> embedded DAG.
+      // placement reads dagName through an item-scoped DagReference to resolve
+      // the body DAG at runtime.
       .node('build-book-worksets', buildBookWorksets, {
         'ready': 'book-search-scatter',
       })
 
       // ── 3. book-search-scatter ───────────────────────────────────────────────
       // Tool-registry scatter: bookWorksets items fan out concurrently. Each item
-      // names its own tool:<name> embedded DAG via dagName; { dagFrom: 'dagName' }
+      // names its own tool:<name> embedded DAG via dagName; the DagReference
       // resolves the body DAG at runtime from the item. ToolInvokeNode reads the
       // item's arguments field and calls the bound tool. tool-candidate-merge
       // gather reads each clone's ToolInvocationState.output (via accessor, no cast)
       // and folds the CandidateType[] into the parent state's candidates.
       // any-success reducer: 'success' → rank-candidates when at least one tool hit;
       // 'error' → rank-candidates to allow graceful empty-candidates handling.
-      .scatter('book-search-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
+      .scatter('book-search-scatter', 'bookWorksets', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': BOOK_SEARCH_TOOL_DAGS } }, {
         'success': 'rank-candidates',
         'error':   'rank-candidates',
         'empty':   'rank-candidates',

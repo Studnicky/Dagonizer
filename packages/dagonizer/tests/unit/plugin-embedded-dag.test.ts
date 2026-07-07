@@ -5,6 +5,7 @@ import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { defineDagonizerPlugin } from '../../src/plugin/defineDagonizerPlugin.js';
+import { PluginDiscovery } from '../../src/plugin/PluginDiscovery.js';
 import { TestNode } from '../_support/TestNode.js';
 
 class SharedState extends NodeStateBase {
@@ -60,5 +61,36 @@ void describe('plugin-authored embedded DAGs', () => {
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(state.documents, 'docs:hello');
     assert.equal(state.answer, 'hello:docs:hello');
+  });
+});
+
+void describe('PluginDiscovery', () => {
+  void it('collects literal and dynamic DagReference candidate DAG names', () => {
+    const parentDag = new DAGBuilder('dynamic-plugin-host', '1')
+      .embed('choose-child', {
+        'from': 'state',
+        'path': 'selectedDag',
+        'candidates': ['plugin:a', 'plugin:b'],
+      }, { 'success': 'fan-out', 'error': 'failed' })
+      .scatter('fan-out', 'items', {
+        'dag': {
+          'from': 'item',
+          'path': 'dagName',
+          'candidates': ['plugin:c', 'plugin:d'],
+        },
+      }, {
+        'all-success': 'done',
+        'partial':     'done',
+        'all-error':   'failed',
+        'empty':       'done',
+      }, {})
+      .terminal('done')
+      .terminal('failed', { 'outcome': 'failed' })
+      .build();
+
+    assert.deepEqual(
+      PluginDiscovery.referencedDagNames(parentDag),
+      ['plugin:a', 'plugin:b', 'plugin:c', 'plugin:d'],
+    );
   });
 });

@@ -123,6 +123,13 @@ import type { DAGType } from '@studnicky/dagonizer';
 // — and use prefixed names like 'archivist:recallContext' to prevent collisions
 // with other plugins that might register a node named 'recallContext'.
 // See docs/guide/iri-identity.md for the full expansion rule set.
+const BOOK_SEARCH_TOOL_DAGS = [
+  'tool:web_search_books',
+  'tool:google_books_search',
+  'tool:subject_search',
+  'tool:wikipedia_summary',
+] as const;
+
 const nodes = {
   'preRunSetup': new PlaceholderNode<ArchivistState, 'ready'>('pre-run-setup', ['ready']),
   'parkForInput': new PlaceholderNode<ArchivistState, 'parked' | 'resumed'>('park-for-input', ['parked', 'resumed']),
@@ -267,14 +274,14 @@ export const archivistDAG: DAGType = new DAGBuilder('the-archivist', '6.0')
         'done': 'reviews-build-worksets',
       })
       // Build scatter worksets: converts toolPlan into bookWorksets items so the
-      // scatter can dispatch to each tool:<name> embedded DAG via dagFrom.
+      // scatter can dispatch to each declared tool:<name> embedded DAG.
       .node('reviews-build-worksets', nodes.buildBookWorksets, {
         'ready': 'reviews-scatter',
       })
       // Tool-registry scatter: each bookWorksets item names its own tool:<name>
       // embedded DAG. tool-candidate-merge gather reads each clone's output via
       // accessor (no cast) and folds CandidateType[] into parent candidates.
-      .scatter('reviews-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
+      .scatter('reviews-scatter', 'bookWorksets', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': BOOK_SEARCH_TOOL_DAGS } }, {
         'success': 'reviews-rank',
         'error':   'reviews-rank',
         'empty':   'reviews-rank',
@@ -312,14 +319,14 @@ export const archivistDAG: DAGType = new DAGBuilder('the-archivist', '6.0')
         'done': 'recommend-build-worksets',
       })
       // Build scatter worksets: converts toolPlan into bookWorksets items so the
-      // scatter can dispatch to each tool:<name> embedded DAG via dagFrom.
+      // scatter can dispatch to each declared tool:<name> embedded DAG.
       .node('recommend-build-worksets', nodes.buildBookWorksets, {
         'ready': 'recommend-scatter',
       })
       // Tool-registry scatter: each bookWorksets item names its own tool:<name>
       // embedded DAG. tool-candidate-merge gather reads each clone's output via
       // accessor (no cast) and folds CandidateType[] into parent candidates.
-      .scatter('recommend-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
+      .scatter('recommend-scatter', 'bookWorksets', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': BOOK_SEARCH_TOOL_DAGS } }, {
         'success': 'recommend-rank',
         'error':   'recommend-rank',
         'empty':   'recommend-rank',
@@ -346,10 +353,10 @@ export const archivistDAG: DAGType = new DAGBuilder('the-archivist', '6.0')
       .node('describe-build-worksets', nodes.buildBookWorksets, {
         'ready': 'describe-scatter',
       })
-      // Tool-registry scatter: dagFrom resolves body DAG from each item's dagName.
+      // Tool-registry scatter: DagReference resolves body DAG from each item's dagName.
       // any-success reducer: 'success' → describe-pick, 'error' → compose-empty.
       // 'error' fires when all tool scouts return empty.
-      .scatter('describe-scatter', 'bookWorksets', { 'dagFrom': 'dagName' }, {
+      .scatter('describe-scatter', 'bookWorksets', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': BOOK_SEARCH_TOOL_DAGS } }, {
         'success': 'describe-pick',
         'error':   'compose-empty',
         'empty':   'compose-empty',

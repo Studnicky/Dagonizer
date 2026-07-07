@@ -75,7 +75,7 @@ class TestHandoffDag {
       '@type': 'DAG',
       'name': dagName,
       'version': '1',
-      'entrypoint': 'increment',
+      'entrypoints': { 'main': 'increment' },
       'nodes': [
         {
           '@id': `urn:noocodex:dag:${dagName}/node/increment`,
@@ -246,7 +246,7 @@ void describe('handoff-channel: embedded child does not publish', () => {
       '@type': 'DAG',
       'name': 'handoff-child',
       'version': '1',
-      'entrypoint': 'noop',
+      'entrypoints': { 'main': 'noop' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:handoff-child/node/noop',
@@ -271,7 +271,7 @@ void describe('handoff-channel: embedded child does not publish', () => {
       '@type': 'DAG',
       'name': 'handoff-parent',
       'version': '1',
-      'entrypoint': 'embed',
+      'entrypoints': { 'main': 'embed' },
       'nodes': [
         {
           '@id': 'urn:noocodex:dag:handoff-parent/node/embed',

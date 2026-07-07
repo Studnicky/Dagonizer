@@ -12,6 +12,7 @@ import { WorkSet } from '../core/WorkSet.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
+import { DAGEntrypoints } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
@@ -63,7 +64,7 @@ export interface NodeSchedulerSourceInterface {
   readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
   /** Registry version stamped into every `DAGHandoff` envelope. */
   readonly registryVersion: string;
-  /** State path accessor — used to resolve `dagFrom` paths on `EmbeddedDAGNode` at execution time. */
+  /** State path accessor — used to resolve dynamic `DagReference` paths at execution time. */
   readonly accessor: StateAccessorInterface;
   /** Output-schema validator injected when validateOutputs is true; null otherwise. */
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
@@ -232,7 +233,7 @@ export class NodeScheduler {
       }
     }
 
-    let cursor: null | string = fromStage ?? dag.entrypoint;
+    let cursor: null | string = fromStage ?? DAGEntrypoints.primary(dag);
     let terminalOutcome: 'completed' | 'failed' | null = null;
 
     // Skip phase placements in the main loop; they are out-of-band and
@@ -517,10 +518,10 @@ export class NodeScheduler {
 
           const parentItems = [...batch];
 
-          // Resolve the child dag name. `dag` is a build-time literal; `dagFrom`
-          // is resolved from the representative state at execution time. A null
-          // result means the path did not resolve to a string; an unregistered
-          // name means dagFrom resolved to a string not in the registry.
+          // Resolve the child dag name. Literal `dag` values resolve directly;
+          // dynamic DagReference values resolve from the representative state
+          // and must match a declared candidate. A null result or an unregistered
+          // candidate routes all items to their error outputs without executing.
           // Both cases route all items to their error outputs without executing.
           const resolvedChildDagName = EmbeddedDAGNodeDefaults.resolveDagName(node, repState, this.#source.accessor);
           const childDagIri = resolvedChildDagName !== null ? ContextResolver.expand(resolvedChildDagName, dagContext) : null;

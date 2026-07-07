@@ -212,7 +212,7 @@ class TestEmbedDag {
       '@type':    'DAG',
       name,
       'version':  '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [
         {
           '@id':         `urn:noocodex:dag:${name}/node/fan`,

@@ -226,7 +226,7 @@ const childDAG: DAGType = {
   '@type':    'DAG',
   'name':       'child',
   'version':    '1',
-  'entrypoint': 'child-start',
+  'entrypoints': { 'main': 'child-start' },
   'nodes': [
     {
       '@id':   'urn:noocodex:dag:child/node/child-start',
@@ -253,7 +253,7 @@ const parentDAG: DAGType = {
   '@type':    'DAG',
   'name':       'parent',
   'version':    '1',
-  'entrypoint': 'parent-entry',
+  'entrypoints': { 'main': 'parent-entry' },
   'nodes': [
     {
       '@id':   'urn:noocodex:dag:parent/node/parent-entry',
@@ -544,7 +544,7 @@ const helperDAG: DAGType = {
   '@type':    'DAG',
   'name':       'helper',
   'version':    '1',
-  'entrypoint': 'step',
+  'entrypoints': { 'main': 'step' },
   'nodes': [
     {
       '@id':   'urn:noocodex:dag:helper/node/step',
@@ -571,7 +571,7 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
       '@type':    'DAG',
       'name':       'null-parent',
       'version':    '1',
-      'entrypoint': 'entry',
+      'entrypoints': { 'main': 'entry' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:null-parent/node/entry',
@@ -612,7 +612,7 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
       '@type':    'DAG',
       'name':       'mixed-parent',
       'version':    '1',
-      'entrypoint': 'entry',
+      'entrypoints': { 'main': 'entry' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:mixed-parent/node/entry',
@@ -663,7 +663,7 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
       '@type':    'DAG',
       'name':       'valid-parent',
       'version':    '1',
-      'entrypoint': 'entry',
+      'entrypoints': { 'main': 'entry' },
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:valid-parent/node/entry',
@@ -701,7 +701,7 @@ void describe('registerDAG: embedded-DAG null-route acceptance', () => {
     const flatDag = {
       'name':       'flat',
       'version':    '1',
-      'entrypoint': 'step',
+      'entrypoints': { 'main': 'step' },
       'nodes': [
         { 'type': 'single', 'name': 'step', 'node': 'step', 'outputs': { 'done': 'end' } },
         { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }

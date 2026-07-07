@@ -57,7 +57,7 @@ export const child: DAGType = {
   '@type':     'DAG',
   "name":        'child',
   "version":     '1',
-  "entrypoint":  'inc',
+  "entrypoints": { "main": 'inc' },
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:child/node/inc',
@@ -87,7 +87,7 @@ export const parent: DAGType = {
   '@type':     'DAG',
   "name":        'parent',
   "version":     '1',
-  "entrypoint":  'invoke',
+  "entrypoints": { "main": 'invoke' },
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:parent/node/invoke',

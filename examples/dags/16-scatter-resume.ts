@@ -148,7 +148,7 @@ export const dag: DAGType = {
   '@type':     'DAG',
   "name":      'scatter-resume',
   "version":   '1',
-  "entrypoint": 'process-all',
+  "entrypoints": { "main": 'process-all' },
   "nodes": [
     {
       '@id':       'urn:noocodex:dag:scatter-resume/node/process-all',

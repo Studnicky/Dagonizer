@@ -1,7 +1,11 @@
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
+import { DagReference } from '../entities/dag/DagReference.js';
+import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
@@ -48,6 +52,8 @@ export class DAGValidator {
       DAGValidator.validateScatterNode(entry, context, nodes, dags, errors);
     } else if (Placement.isSingle(entry)) {
       DAGValidator.validateSingleNode(entry, context, nodes, errors);
+    } else if (Placement.isGather(entry)) {
+      DAGValidator.validateGatherNode(entry, context, nodes, errors);
     } else if (Placement.isPhase(entry)) {
       DAGValidator.validatePhaseNode(entry, context, nodes, errors);
     }
@@ -96,13 +102,8 @@ export class DAGValidator {
     dags: Map<string, DAGType>,
     errors: string[],
   ): void {
-    // `dag` is the build-time literal name; validate it against the registry using IRI expansion.
-    // `dagFrom` resolves at runtime from state — no static validation is possible.
     if (placement.dag !== undefined) {
-      const dagIri = ContextResolver.expand(placement.dag, context);
-      if (!dags.has(dagIri)) {
-        errors.push(`EmbeddedDAGNode '${placement.name}': unknown registered DAG '${placement.dag}'`);
-      }
+      DAGValidator.validateDagReference(placement.dag, context, dags, `EmbeddedDAGNode '${placement.name}'`, errors);
     }
   }
 
@@ -119,18 +120,47 @@ export class DAGValidator {
         errors.push(`ScatterNode '${scatter.name}': unknown registered node '${scatter.body.node}'`);
       }
     } else if ('dag' in scatter.body) {
-      const bodyDagIri = ContextResolver.expand(scatter.body.dag, context);
-      if (!dags.has(bodyDagIri)) {
-        errors.push(`ScatterNode '${scatter.name}': unknown registered DAG '${scatter.body.dag}'`);
-      }
+      DAGValidator.validateDagReference(scatter.body.dag, context, dags, `ScatterNode '${scatter.name}'`, errors);
     }
-    // 'dagFrom' bodies reference a runtime-resolved DAG name; not validated at registration time.
 
-    const gather = scatter.gather;
+    DAGValidator.validateGatherConfig(scatter.name, scatter.gather, context, nodes, errors);
+  }
+
+  private static validateGatherNode<TState extends NodeStateInterface>(
+    gatherNode: GatherNodeType,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    errors: string[],
+  ): void {
+    DAGValidator.validateGatherConfig(gatherNode.name, gatherNode.gather, context, nodes, errors);
+  }
+
+  private static validateGatherConfig<TState extends NodeStateInterface>(
+    ownerName: string,
+    gather: GatherConfigType,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    errors: string[],
+  ): void {
     if (gather.strategy === 'custom' && gather.customNode !== undefined) {
       const customNodeIri = ContextResolver.expand(gather.customNode, context);
       if (!nodes.has(customNodeIri)) {
-        errors.push(`ScatterNode '${scatter.name}': custom gather node '${gather.customNode}' not found`);
+        errors.push(`Gather '${ownerName}': custom gather node '${gather.customNode}' not found`);
+      }
+    }
+  }
+
+  private static validateDagReference(
+    reference: DagReferenceType,
+    context: Record<string, unknown>,
+    dags: Map<string, DAGType>,
+    owner: string,
+    errors: string[],
+  ): void {
+    for (const candidate of DagReference.candidates(reference)) {
+      const dagIri = ContextResolver.expand(candidate, context);
+      if (!dags.has(dagIri)) {
+        errors.push(`${owner}: unknown registered DAG '${candidate}'`);
       }
     }
   }

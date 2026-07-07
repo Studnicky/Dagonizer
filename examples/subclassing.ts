@@ -67,7 +67,7 @@ const dag: DAGType = {
   '@type':     'DAG',
   name:        'count',
   version:     '1',
-  entrypoint:  'a',
+  entrypoints: { main: 'a' },
   nodes: [
     { '@id': 'urn:noocodex:dag:count/node/a', '@type': 'SingleNode', name: 'a', node: 'tick', outputs: { success: 'b' } },
     { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode', name: 'b', node: 'tick', outputs: { success: 'c' } },

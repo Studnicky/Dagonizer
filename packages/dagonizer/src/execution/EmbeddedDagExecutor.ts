@@ -24,9 +24,9 @@ export type EmbeddedDagExecutorSourceType = {
     spawnChild(parentState: NodeStateInterface, inputMapping: Record<string, string>, factory: ChildStateFactoryType): NodeStateInterface;
     mapOutput(childState: NodeStateInterface, parentState: NodeStateInterface, output: Record<string, string>): void;
   };
-  /** State path accessor — used to resolve `dagFrom` paths at execution time. */
+  /** State path accessor — used to resolve dynamic `DagReference` paths at execution time. */
   readonly accessor: StateAccessorInterface;
-  /** Registered DAGs — used to validate that a `dagFrom`-resolved name is registered. */
+  /** Registered DAGs — used to validate that a resolved DAG reference is registered. */
   readonly dags: ReadonlyMap<string, DAGType>;
   /** Per-DAG child-state factories — used to spawn isolated child state when registered. */
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
@@ -69,9 +69,9 @@ export class EmbeddedDagExecutor {
     const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
     const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
 
-    // Resolve the sub-DAG name: `dag` is a build-time literal; `dagFrom` is
-    // resolved from state at execution time. A null result means the path did
-    // not resolve to a string — route to the error output via a null body run.
+    // Resolve the sub-DAG name: literal `dag` values resolve directly; dynamic
+    // DagReference values resolve from state and must match a declared candidate.
+    // A null result routes to the error output via a null body run.
     const dagName = EmbeddedDAGNodeDefaults.resolveDagName(placement, state, this.#source.accessor);
     const parentDag = this.#source.dags.get(ContextResolver.expand(parentDagName, {}));
     const parentContext = parentDag !== undefined ? ContextResolver.contextOf(parentDag['@context']) : {};

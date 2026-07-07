@@ -111,7 +111,7 @@ export const dag: DAGType = {
   '@type':    'DAG',
   'name':       'embedder-demo',
   'version':    '1',
-  'entrypoint': 'embed',
+  'entrypoints': { 'main': 'embed' },
   'nodes': [
     {
       '@id':   'urn:noocodex:dag:embedder-demo/node/embed',

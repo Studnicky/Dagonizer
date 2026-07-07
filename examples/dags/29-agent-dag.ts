@@ -61,7 +61,7 @@ export const dag: DAGType = new DAGBuilder('my-agent', '1')
   .scatter(
     'dispatch-tools',
     'safeWorkset',
-    { 'dagFrom': 'dagName' },
+    { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['tool:calculator'] } },
     {
       'all-success': 'collect-results',
       'partial':     'collect-results',

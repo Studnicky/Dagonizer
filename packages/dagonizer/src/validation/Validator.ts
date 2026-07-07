@@ -39,10 +39,14 @@ import { ScatterOutputSchema } from '../entities/constants/ScatterOutput.js';
 import type { ScatterOutputType } from '../entities/constants/ScatterOutput.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { DAGSchema } from '../entities/dag/DAG.js';
+import { DagReferenceSchema } from '../entities/dag/DagReference.js';
+import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import { EmbeddedDAGNodeSchema } from '../entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import { GatherConfigSchema } from '../entities/dag/GatherConfig.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
+import { GatherNodeSchema } from '../entities/dag/GatherNode.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import { PhaseNodeSchema } from '../entities/dag/PhaseNode.js';
 import { ScatterNodeSchema } from '../entities/dag/ScatterNode.js';
@@ -214,6 +218,7 @@ export class Validator {
   static readonly singleNode:      EntityValidatorInterface<SingleNodeType>      = Validator.compileNamed('SingleNode',      SingleNodeSchema);
   static readonly scatterNode:     EntityValidatorInterface<ScatterNodeType>     = Validator.compileNamed('ScatterNode',     ScatterNodeSchema);
   static readonly embeddedDAGNode: EntityValidatorInterface<EmbeddedDAGNodeType> = Validator.compileNamed('EmbeddedDAGNode', EmbeddedDAGNodeSchema);
+  static readonly gatherNode:      EntityValidatorInterface<GatherNodeType>      = Validator.compileNamed('GatherNode',      GatherNodeSchema);
   static readonly terminalNode: EntityValidatorInterface<TerminalNodeType>  = Validator.compileNamed('TerminalNode', TerminalNodeSchema);
   static readonly phaseNode:    EntityValidatorInterface<PhaseNodeType>     = Validator.compileNamed('PhaseNode',    PhaseNodeSchema);
 
@@ -247,6 +252,7 @@ export class Validator {
 
   // DAG sub-entities
   static readonly gatherConfig: EntityValidatorInterface<GatherConfigType> = Validator.compileNamed('GatherConfig', GatherConfigSchema);
+  static readonly dagReference: EntityValidatorInterface<DagReferenceType> = Validator.compileNamed('DagReference', DagReferenceSchema);
 
   // Adapter wire shapes
   static readonly llmModel: EntityValidatorInterface<LlmModelType> = Validator.compileNamed('LlmModel', LlmModelSchema);

@@ -53,7 +53,7 @@ const dagJson = JSON.stringify({
   '@type':      'DAG',
   'name':       'from-json',
   'version':    '1',
-  'entrypoint': 'echo',
+  'entrypoints': { 'main': 'echo' },
   'nodes': [
     {
       '@id':     'urn:noocodex:dag:from-json/node/echo',

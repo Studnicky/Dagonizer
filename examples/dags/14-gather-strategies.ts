@@ -105,7 +105,7 @@ export const collectDag: DAGType = {
   '@type':     'DAG',
   "name":      'collect-run',
   "version":   '1',
-  "entrypoint": 'scatter-collect',
+  "entrypoints": { "main": 'scatter-collect' },
   "nodes": [
     {
       '@id':       'urn:noocodex:dag:gather-demo:collect-run/node/scatter-collect',
@@ -162,7 +162,7 @@ export const discardDag: DAGType = {
   '@type':     'DAG',
   "name":      'discard-run',
   "version":   '1',
-  "entrypoint": 'scatter-discard',
+  "entrypoints": { "main": 'scatter-discard' },
   "nodes": [
     {
       '@id':       'urn:noocodex:dag:gather-demo:discard-run/node/scatter-discard',

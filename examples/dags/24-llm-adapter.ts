@@ -106,7 +106,7 @@ export const dag: DAGType = {
   '@type':    'DAG',
   'name':       'llm-adapter-demo',
   'version':    '1',
-  'entrypoint': 'chat',
+  'entrypoints': { 'main': 'chat' },
   'nodes': [
     {
       '@id':   'urn:noocodex:dag:llm-adapter-demo/node/chat',

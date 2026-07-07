@@ -51,7 +51,8 @@
 import type { AdaptiveConfigEntity } from '@studnicky/throttle';
 import type { FromSchema } from 'json-schema-to-ts';
 
-import { GatherConfigSchema } from './GatherConfig.js';
+import { DagReferenceShapeSchema } from './DagReference.js';
+import { GatherConfigShapeSchema } from './GatherConfig.js';
 
 const ScatterThrottleAdaptiveSchema = {
   'type': 'object',
@@ -90,19 +91,7 @@ export const ScatterNodeSchema = {
         {
           'type': 'object',
           'required': ['dag'],
-          'properties': { 'dag': { 'type': 'string', 'minLength': 1 } },
-          'additionalProperties': false,
-        },
-        {
-          // dagFrom: a dotted path read from each ITEM (the source-array element)
-          // whose resolved string value names that item's body dag at runtime —
-          // each item names its own dag (e.g. a tool call carrying
-          // `dagName: 'tool:<name>'`). Resolution precedes the isolation-factory
-          // child build. A non-object item, an unresolvable path, or an
-          // unregistered name routes the item to `error` (no throw).
-          'type': 'object',
-          'required': ['dagFrom'],
-          'properties': { 'dagFrom': { 'type': 'string', 'minLength': 1 } },
+          'properties': { 'dag': DagReferenceShapeSchema },
           'additionalProperties': false,
         },
       ],
@@ -117,7 +106,7 @@ export const ScatterNodeSchema = {
       },
       'additionalProperties': false,
     },
-    'gather': GatherConfigSchema,
+    'gather': GatherConfigShapeSchema,
     'reducer': { 'type': 'string', 'minLength': 1 },
     'outputs': {
       'type': 'object',

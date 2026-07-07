@@ -183,8 +183,8 @@ export class ArchivistState extends NodeStateBase {
   /**
    * Scatter workset built by BuildBookWorksetsNode before each scatter fan-out.
    * Each entry names a registered `tool:<name>` embedded DAG and the call
-   * arguments to pass to it. The scatter placement reads `dagName` via
-   * `{ dagFrom: 'dagName' }` to resolve the body DAG at runtime.
+   * arguments to pass to it. The scatter placement reads `dagName` through an
+   * item-scoped DagReference to resolve the body DAG at runtime.
    * Written fresh before every scatter; always array-typed (never undefined).
    */
   bookWorksets: ReadonlyArray<BookWorksetItemType> = [];

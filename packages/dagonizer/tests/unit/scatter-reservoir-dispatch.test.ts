@@ -232,7 +232,7 @@ const routeBodyDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': ROUTE_BODY_DAG_NAME,
   'version': '1',
-  'entrypoint': 'router',
+  'entrypoints': { 'main': 'router' },
   'nodes': [
     {
       '@id': 'urn:noocodex:dag:route-body/node/router',
@@ -265,7 +265,7 @@ const reservoirDagBodyDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': RESERVOIR_DAG_BODY_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': 'fan' },
   'nodes': [
     {
       '@id': 'urn:noocodex:dag:scatter-reservoir-dag/node/fan',
@@ -301,7 +301,7 @@ const reservoirDagBodyContainerDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': RESERVOIR_DAG_BODY_CONTAINER_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': 'fan' },
   'nodes': [
     {
       '@id': 'urn:noocodex:dag:scatter-reservoir-dag-container/node/fan',
@@ -351,7 +351,7 @@ const reservoirNodeBodyDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': RESERVOIR_NODE_BODY_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': 'fan' },
   'nodes': [
     {
       '@id': 'urn:noocodex:dag:scatter-reservoir-node-body/node/fan',
@@ -568,7 +568,7 @@ const routeBodyDDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': ROUTE_BODY_D_DAG_NAME,
   'version': '1',
-  'entrypoint': 'router',
+  'entrypoints': { 'main': 'router' },
   'nodes': [
     {
       '@id': 'urn:noocodex:dag:route-body-d/node/router',
@@ -602,7 +602,7 @@ const reservoirDContainerDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': RESERVOIR_D_CONTAINER_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': 'fan' },
   'nodes': [
     {
       '@id': 'urn:noocodex:dag:scatter-reservoir-d-container/node/fan',
@@ -636,7 +636,7 @@ const reservoirDInProcessDag: DAGType = Validator.dag.validate({
   '@type': 'DAG',
   'name': RESERVOIR_D_INPROCESS_NAME,
   'version': '1',
-  'entrypoint': 'fan',
+  'entrypoints': { 'main': 'fan' },
   'nodes': [
     {
       '@id': 'urn:noocodex:dag:scatter-reservoir-d-inprocess/node/fan',

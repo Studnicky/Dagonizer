@@ -77,7 +77,9 @@ export type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 
 export type { LlmModelType } from '../entities/adapter/LlmModel.js';
 export type { DAGType } from '../entities/dag/DAG.js';
+export type { DagReferenceType, DynamicDagReferenceType } from '../entities/dag/DagReference.js';
 export type { GatherConfigType } from '../entities/dag/GatherConfig.js';
+export type { GatherNodeType, GatherPolicyType } from '../entities/dag/GatherNode.js';
 export type { DAGNodeType } from '../entities/dag/Placement.js';
 export type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 export type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
@@ -117,7 +119,7 @@ export type {
 // Builder option interfaces
 // ---------------------------------------------------------------------------
 
-export type { EmbeddableDAGType, ScatterOptionsType, TypedEmbeddedDAGOptionsType } from '../builder/DAGBuilder.js';
+export type { DynamicDAGReferenceInputType, EmbeddableDAGType, ScatterDAGBodyType, ScatterOptionsType, TypedEmbeddedDAGOptionsType } from '../builder/DAGBuilder.js';
 
 // ---------------------------------------------------------------------------
 // Core dispatcher option types

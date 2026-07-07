@@ -123,7 +123,7 @@ void describe('Dagonizer accepts a custom StateAccessorInterface', () => {
       '@type':    'DAG',
       'name': 'fan-test',
       'version': '1',
-      'entrypoint': 'fan',
+      'entrypoints': { 'main': 'fan' },
       'nodes': [{
         '@id':    'urn:noocodex:dag:fan-test/node/fan',
         '@type':  'ScatterNode',
