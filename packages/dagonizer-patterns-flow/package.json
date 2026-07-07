@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-patterns-flow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Pattern plugin for @studnicky/dagonizer: Pure flow node patterns.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-store-webstorage",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Web Storage (localStorage / sessionStorage) backed Store for @studnicky/dagonizer.",
   "private": false,
   "license": "MIT",
@@ -36,7 +36,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@studnicky/dagonizer": "workspace:^1.0.0"
+    "@studnicky/dagonizer": "workspace:^1.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
