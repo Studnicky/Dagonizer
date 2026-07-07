@@ -1,5 +1,11 @@
 # @studnicky/dagonizer
 
+## 1.0.0
+
+### Minor Changes
+
+- fdaa32a: Add a unified plugin and embedded-DAG authoring path. `defineDagonizerPlugin()` packages reusable DAG parts behind a plugin id, `DAGBuilder.embed()` accepts registered DAG references, and the JSON-LD/builder flow remains the canonical assembly surface for reusable graph composition.
+
 ## 0.30.1
 
 ### Patch Changes
