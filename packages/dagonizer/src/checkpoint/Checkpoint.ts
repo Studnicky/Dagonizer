@@ -45,6 +45,7 @@
 import type { CheckpointRestoreAdapterInterface } from '../contracts/CheckpointRestoreAdapterInterface.js';
 import type { CheckpointStoreInterface } from '../contracts/CheckpointStoreInterface.js';
 import type { SnapshottableInterface, StoreSnapshotType } from '../contracts/SnapshottableInterface.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
 import type { JsonObjectType } from '../entities/json.js';
@@ -124,6 +125,11 @@ export type CaptureOptionsType = {
    * and timing for `store.snapshot()` calls.
    */
   execution?: BatchExecutionOptionsType;
+  /**
+   * Prefix map used to resolve `dagName` before writing it into the checkpoint.
+   * Omit for default-namespace short names and absolute IRIs.
+   */
+  context?: Record<string, unknown>;
 }
 
 /** Options for `Checkpoint.restoreStores`. */
@@ -170,8 +176,9 @@ export class Checkpoint {
       throw new DAGError(`Cannot checkpoint a completed DAG '${dagName}': no cursor to resume from`);
     }
 
+    const dagIri = ContextResolver.expand(dagName, options.context ?? {});
     const base: CheckpointDataType = {
-      'dagName': dagName,
+      'dagName': dagIri,
       'cursor': result.cursor,
       'state': result.state.snapshot(),
       'executedNodes': [...result.executedNodes],

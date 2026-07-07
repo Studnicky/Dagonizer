@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { PluginSpecifier } from '../../src/plugin/PluginSpecifier.js';
 
 void describe('PluginSpecifier.bareName', () => {
-  void it('returns the bare name unchanged', () => {
+  void it('returns the bare package specifier unchanged', () => {
     assert.equal(PluginSpecifier.bareName('@scope/p'), '@scope/p');
   });
 
@@ -14,7 +14,7 @@ void describe('PluginSpecifier.bareName', () => {
 });
 
 void describe('PluginSpecifier.rootedAt', () => {
-  void it('resolves a bare name to an absolute URL under the base', () => {
+  void it('resolves a bare package specifier to an absolute URL under the base', () => {
     const resolve = PluginSpecifier.rootedAt('https://cdn.example.com/x/');
     assert.equal(resolve('plug'), 'https://cdn.example.com/x/plug.js');
   });

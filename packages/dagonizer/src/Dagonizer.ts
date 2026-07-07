@@ -234,6 +234,12 @@ export interface DagonizerInterface<
    */
   hasDag(name: string): boolean;
 
+  /** True when a DAG registry IRI exists exactly as supplied. */
+  hasDagIri(iri: string): boolean;
+
+  /** True when a node registry IRI exists exactly as supplied. */
+  hasNodeIri(iri: string): boolean;
+
   /**
    * List every registered DAG. Useful for visualization, contract checks,
    * and tooling that needs to walk the registry.
@@ -258,6 +264,18 @@ export interface DagonizerInterface<
    * keys are needed (registry size checks, name-existence tooling).
    */
   nodeNames(): readonly string[];
+
+  /** IRI keys of every registered DAG. */
+  dagIris(): readonly string[];
+
+  /** IRI keys of every registered node. */
+  nodeIris(): readonly string[];
+
+  /** Resolve the plugin package/specifier that owns a context prefix. */
+  pluginSpecifierForPrefix(prefix: string): string | undefined;
+
+  /** Snapshot of registered plugin prefix owners. */
+  pluginPrefixSpecifiers(): ReadonlyMap<string, string>;
 
   /**
    * Resume a DAG from a given node name. The caller is responsible for
@@ -398,6 +416,7 @@ implements DagonizerInterface<TState> {
    * here so `Dagonizer` stays the composition root.
    */
   private readonly dagRegistrar: DagRegistrar;
+  private readonly registeredPlugins = new Map<string, PluginInterface>();
 
   /**
    * Construct a dispatcher. Subclass and override the protected hooks
@@ -428,6 +447,7 @@ implements DagonizerInterface<TState> {
       readonly nodes = new Map<string, NodeInterface<NodeStateInterface, string>>();
       readonly nodeIndex = new Map<string, DAGNodeType>();
       readonly stateFactories = new Map<string, ChildStateFactoryType>();
+      readonly pluginSpecifiers = new Map<string, string>();
       readonly accessor: StateAccessorInterface;
       readonly stateMapper: StateMapper;
       readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
@@ -858,46 +878,56 @@ implements DagonizerInterface<TState> {
     this.#host.nodes.clear();
     this.#host.dags.clear();
     this.#host.nodeIndex.clear();
+    this.#host.pluginSpecifiers.clear();
+    this.registeredPlugins.clear();
   }
 
   /**
-   * Look up a registered DAG by name. Returns `undefined` when the DAG has
-   * not been registered.
+   * Look up a registered DAG by reference. The reference is expanded to the
+   * registry IRI before lookup. Returns `undefined` when the DAG is not registered.
    */
   getDAG(name: string): DAGType | undefined {
     return this.#host.dags.get(ContextResolver.expand(name, {}));
   }
 
   /**
-   * Look up a registered node by name. Returns `undefined` when the node
-   * has not been registered.
+   * Look up a registered node by reference. The reference is expanded to the
+   * registry IRI before lookup. Returns `undefined` when the node is not registered.
    */
   getNode(name: string): NodeInterface<NodeStateInterface, string> | undefined {
     return this.#host.nodes.get(ContextResolver.expand(name, {}));
   }
 
   /**
-   * Look up the child-state factory registered for a DAG name. Every registered
-   * DAG has an entry (`ChildStateFactory.cloneParent` when no override was
-   * supplied at `registerDAG` time). Returns `undefined` when the DAG has not
-   * been registered.
+   * Look up the child-state factory registered for a DAG reference. The reference
+   * is expanded to the registry IRI before lookup. Every registered DAG has an
+   * entry (`ChildStateFactory.cloneParent` when no override is supplied at
+   * `registerDAG` time). Returns `undefined` when the DAG is not registered.
    */
   getChildStateFactory(dagName: string): ChildStateFactoryType | undefined {
-    return this.#host.stateFactories.get(dagName);
+    return this.#host.stateFactories.get(ContextResolver.expand(dagName, {}));
   }
 
   /**
-   * True when a node with this name is registered.
+   * True when a node with this reference is registered.
    */
   hasNode(name: string): boolean {
-    return this.#host.nodes.has(ContextResolver.expand(name, {}));
+    return this.dagRegistrar.hasNode(ContextResolver.expand(name, {}));
   }
 
   /**
-   * True when a DAG with this name is registered.
+   * True when a DAG with this reference is registered.
    */
   hasDag(name: string): boolean {
-    return this.#host.dags.has(ContextResolver.expand(name, {}));
+    return this.dagRegistrar.hasDAG(ContextResolver.expand(name, {}));
+  }
+
+  hasDagIri(iri: string): boolean {
+    return this.dagRegistrar.hasDAG(iri);
+  }
+
+  hasNodeIri(iri: string): boolean {
+    return this.dagRegistrar.hasNode(iri);
   }
 
   /**
@@ -905,7 +935,7 @@ implements DagonizerInterface<TState> {
    * shallow copy; mutating it does not affect the registry.
    */
   listDAGs(): readonly DAGType[] {
-    return [...this.#host.dags.values()];
+    return this.dagRegistrar.listDAGs();
   }
 
   /**
@@ -913,23 +943,39 @@ implements DagonizerInterface<TState> {
    * shallow copy; mutating it does not affect the registry.
    */
   listNodes(): readonly NodeInterface<NodeStateInterface, string>[] {
-    return [...this.#host.nodes.values()];
+    return this.dagRegistrar.listNodes();
   }
 
   /**
-   * Names of every registered DAG. Cheaper than `listDAGs()` when only the
-   * keys are needed (registry size checks, name-existence tooling).
+   * Expanded IRI keys of every registered DAG. Cheaper than `listDAGs()` when
+   * only the keys are needed.
    */
   dagNames(): readonly string[] {
-    return [...this.#host.dags.keys()];
+    return this.dagRegistrar.dagIris();
   }
 
   /**
-   * Names of every registered node. Cheaper than `listNodes()` when only the
-   * keys are needed (registry size checks, name-existence tooling).
+   * Expanded IRI keys of every registered node. Cheaper than `listNodes()` when
+   * only the keys are needed.
    */
   nodeNames(): readonly string[] {
-    return [...this.#host.nodes.keys()];
+    return this.dagRegistrar.nodeIris();
+  }
+
+  dagIris(): readonly string[] {
+    return this.dagRegistrar.dagIris();
+  }
+
+  nodeIris(): readonly string[] {
+    return this.dagRegistrar.nodeIris();
+  }
+
+  pluginSpecifierForPrefix(prefix: string): string | undefined {
+    return this.dagRegistrar.pluginSpecifierForPrefix(prefix);
+  }
+
+  pluginPrefixSpecifiers(): ReadonlyMap<string, string> {
+    return this.dagRegistrar.pluginPrefixSpecifiers();
   }
 
   /**
@@ -1152,6 +1198,14 @@ implements DagonizerInterface<TState> {
    * bundles before the parent DAG that references their names.
    */
   registerPlugin(plugin: PluginInterface): void {
+    const existing = this.registeredPlugins.get(plugin.id);
+    if (existing !== undefined) {
+      if (Object.is(existing, plugin)) return;
+      throw new DAGError(`Plugin id '${plugin.id}' is already registered with a different plugin`, {
+        'code': 'PLUGIN_INVALID',
+      });
+    }
+    this.registeredPlugins.set(plugin.id, plugin);
     plugin.register(this);
   }
 }

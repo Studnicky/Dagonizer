@@ -21,12 +21,18 @@ import type { ChildStateFactoryType } from './ChildStateFactoryType.js';
 import type { NodeInterface } from './NodeInterface.js';
 
 export type DispatcherBundleType<TState extends NodeStateInterface> = {
+  /**
+   * Optional package/specifier id that owns this bundle's context prefixes.
+   * Plugin-authored bundles populate this from the plugin id so prefix-based
+   * discovery can resolve `prefix:dag` references to the owning module.
+   */
+  specifier?: string;
   /** Nodes to register; registered before `dags` so DAG references resolve. */
   nodes: NodeInterface<TState, string>[];
   /** DAGs to register; their node references must resolve against `nodes`. */
   dags:  DAGType[];
   /**
-   * Per-DAG child-state factories keyed by DAG name. When a DAG name is absent
+   * Per-DAG child-state factories keyed by expanded DAG IRI. When a DAG IRI is absent
    * from this map, `ChildStateFactory.cloneParent` (clone-parent) is used.
    * Omitting the field entirely is equivalent to an empty map — all DAGs in the
    * bundle receive the default factory.

@@ -116,11 +116,12 @@ export class PluginDiscovery {
     dag: DAGType,
     registry: ReadonlyMap<string, DAGType>,
     dispatcher: { registerPlugin(plugin: PluginInterface): void },
-    resolveSpecifier: (dagName: string) => string,
+    resolveSpecifier: (dagName: string) => string | undefined,
   ): Promise<void> {
     const names = PluginDiscovery.walk(dag, registry);
     for (const name of names) {
       const specifier = resolveSpecifier(name);
+      if (specifier === undefined || specifier.length === 0) continue;
       const plugin = await PluginLoader.load(specifier);
       dispatcher.registerPlugin(plugin);
     }

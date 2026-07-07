@@ -30,6 +30,7 @@ void describe('plugin-authored embedded DAGs', () => {
       .build();
 
     const plugin = defineDagonizerPlugin({
+      'id': '@example/retrieval-plugin',
       'context': { 'retrieval': 'https://noocodex.dev/plugins/retrieval#' },
       'nodes': [searchNode],
       'dags': [childDag],

@@ -49,15 +49,15 @@ import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './Sca
  * observability hooks the relay forwarders fan into.
  */
 export interface NodeSchedulerSourceInterface {
-  /** Registered DAGs keyed by name. */
+  /** Registered DAGs keyed by expanded IRI. */
   readonly dags: ReadonlyMap<string, DAGType>;
-  /** Registered nodes keyed by name. Typed at the base so heterogeneous child-node states store without casts. */
+  /** Registered nodes keyed by expanded IRI. Typed at the base so heterogeneous child-node states store without casts. */
   readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
-  /** Placement index keyed by `${dagName}:${placementName}`. */
+  /** Placement index keyed by `${dagIri}:${placementName}`. */
   readonly nodeIndex: ReadonlyMap<string, DAGNodeType>;
   /** Child-state cloning + output mapping for the in-process embedded-DAG path. */
   readonly stateMapper: StateMapper;
-  /** Per-DAG child-state factories keyed by DAG name. Used to spawn isolated child state. */
+  /** Per-DAG child-state factories keyed by expanded DAG IRI. Used to spawn isolated child state. */
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
   /** Egress channels keyed by terminal placement name. */
   readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
@@ -523,7 +523,7 @@ export class NodeScheduler {
           // name means dagFrom resolved to a string not in the registry.
           // Both cases route all items to their error outputs without executing.
           const resolvedChildDagName = EmbeddedDAGNodeDefaults.resolveDagName(node, repState, this.#source.accessor);
-          const childDagIri = resolvedChildDagName !== null ? ContextResolver.expand(resolvedChildDagName, {}) : null;
+          const childDagIri = resolvedChildDagName !== null ? ContextResolver.expand(resolvedChildDagName, dagContext) : null;
           if (resolvedChildDagName === null || childDagIri === null || !this.#source.dags.has(childDagIri)) {
             for (const item of parentItems) {
               const routeOutput = 'error';
@@ -534,15 +534,11 @@ export class NodeScheduler {
             }
             continue scheduleLoop;
           }
-          // resolvedChildDagName is a non-null string beyond this point.
-          const childDagName: string = resolvedChildDagName;
-
           // Build child batch: one clone per parent item, seeded via inputMapping.
           // Use the registered isolation factory for this DAG when one is present
           // (spawnChild returns NodeStateInterface; isolation factory may produce a
           // different class). cloneChild also returns NodeStateInterface.
-          // stateFactories is bare-name keyed; childDagName is the bare/short name.
-          const childFactory = this.#source.stateFactories.get(childDagName);
+          const childFactory = this.#source.stateFactories.get(childDagIri);
           const childItems: Array<{ 'id': string; 'state': NodeStateInterface }> = [];
           for (const item of parentItems) {
             const childClone: NodeStateInterface = childFactory !== undefined
@@ -563,7 +559,7 @@ export class NodeScheduler {
           const childOptions: ExecuteOptionsType = { 'signal': signal };
           const intermediateResults: Array<NodeResultType<NodeStateInterface>> = [];
 
-          const iter = this.run(childDagName, childRepState, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': childBatch, 'terminalByItemId': childTerminalByItemId });
+          const iter = this.run(childDagIri, childRepState, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': childBatch, 'terminalByItemId': childTerminalByItemId });
 
           // Collect inner intermediates when streaming (top-level only); at nested
           // or composite scale, drain without buffering to avoid O(N*M*L) heap.

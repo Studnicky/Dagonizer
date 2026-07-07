@@ -5,7 +5,6 @@ import { DAGDocument } from '../../src/dag/DAGDocument.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
-import { DAGError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
@@ -183,16 +182,9 @@ void describe('DAGDocument.ofValue', () => {
   });
 });
 
-void describe('Dagonizer.registerDAG schema pre-pass', () => {
-  void it('rejects schema-invalid DAGs with DAGError coded VALIDATION_ERROR, not the semantic-tier DAG_ERROR code', () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(TestNode.make('op', ['success']));
-
-    // Structurally a DAGType (every required field present, every TS type
-    // satisfied) but schema-invalid at runtime: the empty `name` violates the
-    // schema's `minLength: 1`, which the schema pre-pass rejects before the
-    // semantic check ever runs.
-    const bad: DAGType = {
+void describe('Dagonizer.registerDAG validation layers', () => {
+  void it('leaves schema validation at the DAGDocument ingest boundary', () => {
+    const bad = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
@@ -205,15 +197,71 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
       ],
     };
 
-    assert.throws(() => dispatcher.registerDAG(bad), DAGErrorPredicate.isValidationError);
+    assert.throws(() => DAGDocument.ofValue(bad), DAGErrorPredicate.isValidationError);
   });
 
-  void it('semantic errors surface as DAGError with the default DAG_ERROR code, not VALIDATION_ERROR', () => {
+  void it('shape layer rejects entrypoint and route closure errors on hand-built DAGs', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(TestNode.make('op', ['success']));
 
-    // Schema-valid but references unknown node; semantic tier rejects.
-    // Uses a TerminalNode so the schema passes; DAGValidator catches the unknown node reference.
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:x',
+      '@type':    'DAG',
+      'name': 'x', 'version': '1', 'entrypoint': 'missing',
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:x/node/s', '@type': 'SingleNode',
+          'name': 's', 'node': 'op', 'outputs': { 'success': 'ghost' } },
+        { '@id': 'urn:noocodex:dag:x/node/done', '@type': 'TerminalNode',
+          'name': 'done', 'outcome': 'completed' },
+      ],
+    };
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /Entrypoint 'missing' does not exist in nodes[\s\S]*output 'success' routes to unknown node 'ghost'/u,
+    );
+  });
+
+  void it('shape layer rejects invalid embedded DAG selector shape before registry lookup', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:child',
+      '@type':    'DAG',
+      'name': 'child', 'version': '1', 'entrypoint': 'done',
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:child/node/done', '@type': 'TerminalNode',
+          'name': 'done', 'outcome': 'completed' },
+      ],
+    });
+
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:x',
+      '@type':    'DAG',
+      'name': 'x', 'version': '1', 'entrypoint': 'invoke',
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:x/node/invoke', '@type': 'EmbeddedDAGNode',
+          'name': 'invoke', 'dag': 'child', 'dagFrom': 'selectedDag',
+          'outputs': { 'success': 'done', 'error': 'failed' } },
+        { '@id': 'urn:noocodex:dag:x/node/done', '@type': 'TerminalNode',
+          'name': 'done', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:x/node/failed', '@type': 'TerminalNode',
+          'name': 'failed', 'outcome': 'failed' },
+      ],
+    };
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /EmbeddedDAGNode 'invoke': requires exactly one of dag or dagFrom, not both/u,
+    );
+  });
+
+  void it('registry layer rejects unknown registered node references', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    dispatcher.registerNode(TestNode.make('op', ['success']));
+
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
@@ -226,12 +274,29 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
           'name': 'done', 'outcome': 'completed' },
       ],
     };
-    try {
-      dispatcher.registerDAG(dag);
-      assert.fail('expected registerDAG to throw');
-    } catch (error) {
-      assert.ok(error instanceof DAGError);
-      assert.ok(error.code !== 'VALIDATION_ERROR');
-    }
+    assert.throws(() => dispatcher.registerDAG(dag), /references unknown registered node: ghost/u);
+  });
+
+  void it('registry layer rejects missing registered-node output routes', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    dispatcher.registerNode(TestNode.make('op', ['success', 'error']));
+
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:x',
+      '@type':    'DAG',
+      'name': 'x', 'version': '1', 'entrypoint': 's',
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:x/node/s', '@type': 'SingleNode',
+          'name': 's', 'node': 'op', 'outputs': { 'success': 'done' } },
+        { '@id': 'urn:noocodex:dag:x/node/done', '@type': 'TerminalNode',
+          'name': 'done', 'outcome': 'completed' },
+      ],
+    };
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /registered node 'op' declares output 'error' but no routing is defined/u,
+    );
   });
 });

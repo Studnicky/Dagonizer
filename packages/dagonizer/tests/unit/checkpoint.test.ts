@@ -9,6 +9,7 @@ import {
 import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import type { SnapshottableInterface, StoreSnapshotEntryType, StoreSnapshotType } from '../../src/contracts/SnapshottableInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
+import { ContextResolver } from '../../src/dag/ContextResolver.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -366,6 +367,7 @@ void describe('Checkpoint round-trip', () => {
     const { state, dagName, cursor } = ckpt2.restoreState(CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)));
     assert.equal(state.count, 1);
     assert.equal(cursor, 'b');
+    assert.equal(dagName, ContextResolver.expand('count', {}));
     const resumed = await dispatcher.resume(dagName, state, cursor);
     assert.equal(resumed.cursor, null);
     assert.equal(resumed.state.count, 3);
@@ -389,6 +391,24 @@ void describe('Checkpoint round-trip', () => {
     });
     const result = await dispatcher.execute('done', new NodeStateBase());
     await assert.rejects(() => Checkpoint.capture('done', result), DAGError);
+  });
+
+  void it('writes the resolved DAG IRI when capture receives a context', async () => {
+    const state = new CountingState();
+    const result = {
+      'cursor': 'next',
+      'executedNodes': ['first'],
+      'skippedNodes': [],
+      state,
+      'terminalOutcome': null,
+      'interruptedAt': null,
+      'parked': null,
+    };
+    const context = { 'flow': 'https://example.com/flows#' };
+
+    const ckpt = await Checkpoint.capture('flow:count', result, { context });
+
+    assert.equal(ckpt.data.dagName, 'https://example.com/flows#count');
   });
 
   void it('load rejects malformed CheckpointData', () => {
@@ -690,7 +710,7 @@ void describe('Checkpoint.capture + restoreStores', () => {
     const ckpt = await Checkpoint.capture('store-test', result);
 
     assert.ok(ckpt instanceof Checkpoint, 'Expected a Checkpoint instance');
-    assert.equal(ckpt.data.dagName, 'store-test');
+    assert.equal(ckpt.data.dagName, ContextResolver.expand('store-test', {}));
     assert.equal(ckpt.data.cursor, result.cursor);
 
     // restoreStores on a no-stores checkpoint should be a no-op.

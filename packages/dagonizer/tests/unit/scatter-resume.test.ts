@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
+import { ContextResolver } from '../../src/dag/ContextResolver.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { StoredScatterProgressType } from '../../src/Dagonizer.js';
 import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
@@ -583,6 +584,6 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     assert.ok(ackedCount >= 1, 'at least one item should be acked after partial run');
 
     // Sanity: dagName/state types route through the resume path.
-    assert.equal(dagName, 'scatter-e2e');
+    assert.equal(dagName, ContextResolver.expand('scatter-e2e', {}));
   });
 });

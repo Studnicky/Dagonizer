@@ -134,6 +134,10 @@
       "types": "./dist/dag/index.d.ts",
       "default": "./dist/dag/index.js"
     },
+    "./context": {
+      "types": "./dist/context/index.d.ts",
+      "default": "./dist/context/index.js"
+    },
     "./checkpoint": {
       "types": "./dist/checkpoint/index.d.ts",
       "default": "./dist/checkpoint/index.js"

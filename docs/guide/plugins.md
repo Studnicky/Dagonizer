@@ -164,14 +164,17 @@ Applications install only what they use. The dependency graph stays acyclic.
 
 #### `PluginInterface`
 
-A plugin package implements `PluginInterface` — one method, `register(dispatcher)` — to install its nodes and DAGs onto any dispatcher. The receiver is typed as `PluginReceiverType`, a narrow view that only exposes `registerBundle`. The plugin cannot reach any other dispatcher surface.
+A plugin package implements `PluginInterface` — a stable `id` plus `register(dispatcher)` — to install its nodes and DAGs onto any dispatcher. The receiver is typed as `PluginReceiverType`, a narrow view that only exposes `registerBundle`. The plugin cannot reach any other dispatcher surface.
 
 ```ts
 import type { PluginInterface, PluginReceiverType, DispatcherBundleType, NodeStateInterface } from '@studnicky/dagonizer';
 
 export class NormalizePlugin implements PluginInterface {
+  readonly id = '@acme/dagonizer-normalize';
+
   private bundle(): DispatcherBundleType<NodeStateInterface> {
     return {
+      specifier: this.id,
       nodes: [new NormalizeNode(), new SummarizeNode()],
       dags:  [pluginDag],
     };
@@ -193,6 +196,7 @@ Use it when the plugin ships pre-built flows:
 import { defineDagonizerPlugin } from '@studnicky/dagonizer/plugin';
 
 export const retrievalPlugin = defineDagonizerPlugin({
+  id: '@acme/dagonizer-retrieval',
   context: {
     retrieval: 'https://noocodex.dev/plugins/retrieval#',
   },
@@ -209,7 +213,7 @@ export const retrievalPlugin = defineDagonizerPlugin({
 });
 ```
 
-The export values are plain DAG names. The helper validates that every exported DAG name exists in `dags` before it returns.
+The `id` is the plugin package/specifier owner for its context prefixes. The export values are plain DAG names. The helper validates that every exported DAG name exists in `dags` before it returns.
 
 Authoring rule:
 
@@ -275,7 +279,7 @@ Three entry points are available:
 | `PluginLoader.validate(mod, specifier?)` | `(mod: unknown) => PluginInterface` | Validate an already-imported module namespace |
 | `PluginLoader.isPlugin(value)` | `(value: unknown) => value is PluginInterface` | Structural type-guard predicate |
 
-`PluginLoader.validate` accepts a module namespace object (`{ default: plugin }`) or the plugin object directly. `PluginLoader.isPlugin` is the schema-validation boundary: it checks that the value is a non-null object with a callable `register` method. JSON Schema cannot express "has a method", so the structural predicate is the correct approach.
+`PluginLoader.validate` accepts a module namespace object (`{ default: plugin }`) or the plugin object directly. `PluginLoader.isPlugin` is the schema-validation boundary: it checks that the value is a non-null object with a non-empty string `id` and a callable `register` method. JSON Schema cannot express "has a method", so the structural predicate is the correct approach.
 
 On failure, both `load` and `validate` throw a `DAGError` with `code: 'PLUGIN_INVALID'`.
 

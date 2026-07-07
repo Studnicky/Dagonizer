@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapter } from '../../src/checkpoint/Checkpoint.js';
+import { ContextResolver } from '../../src/dag/ContextResolver.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGLifecycleMachine } from '../../src/lifecycle/DAGLifecycleMachine.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
@@ -277,6 +278,6 @@ void describe('Engine — park-and-correlate integration', () => {
     // Checkpoint.capture should not throw (requires cursor !== null)
     const ckpt = await Checkpoint.capture('ckpt-park', result);
     assert.equal(ckpt.data.cursor, 'wait');
-    assert.equal(ckpt.data.dagName, 'ckpt-park');
+    assert.equal(ckpt.data.dagName, ContextResolver.expand('ckpt-park', {}));
   });
 });

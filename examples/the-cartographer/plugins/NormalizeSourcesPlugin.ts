@@ -20,6 +20,7 @@ import { normalizeNdjsonDAG } from '../embedded-dags/NormalizeNdjsonDAG.ts';
 import { normalizeYamlDAG } from '../embedded-dags/NormalizeYamlDAG.ts';
 
 export const normalizeSourcesPlugin = defineDagonizerPlugin({
+  'id': '@studnicky/dagonizer-cartographer-normalize-sources',
   'context': {
     'plugin': 'urn:noocodex:dagonizer:cartographer:normalize-sources',
   },

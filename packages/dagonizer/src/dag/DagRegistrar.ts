@@ -7,8 +7,8 @@ import type { DAGNodeType } from '../entities/dag/Placement.js';
 import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
+import { DAGShape } from '../validation/DAGShape.js';
 import { DAGValidator } from '../validation/DAGValidator.js';
-import { Validator } from '../validation/Validator.js';
 
 import { ContextResolver } from './ContextResolver.js';
 
@@ -37,6 +37,8 @@ export interface DagRegistrarSourceInterface {
    * stored when no override is supplied so the engine never branches on presence.
    */
   readonly stateFactories: Map<string, ChildStateFactoryType>;
+  /** Plugin module specifiers keyed by context prefix. */
+  readonly pluginSpecifiers: Map<string, string>;
 
   /** Resolve a bound container by role, or `null` when the role is unbound (in-process). */
   resolveContainer(role: string | undefined): DagContainerInterface | null;
@@ -58,14 +60,11 @@ export interface DagRegistrarSourceInterface {
  *
  * `registerDAG` runs four gates in order before mutating the registries:
  * 1. Duplicate-name throw (same name, different implementation).
- * 2. Schema pass: `Validator.dag.validate(dag)` checks structure.
- * 3. Semantic pass: `DAGValidator.validateDAGConfig` verifies the entrypoint
- *    exists, node references resolve, and output routing covers every output.
+ * 2. Shape pass: `DAGShape.validate(dag)` verifies the DAG-local topology.
+ * 3. Registry pass: `DAGValidator.validateDAGConfig` verifies node/DAG
+ *    references resolve and output routing covers every registered node output.
  * 4. Container-role binding: a dispatcher that opts into containers must bind
  *    every role its placements declare.
- *
- * Every gate throws `DAGError` (or rethrows a thrown `Error`) before any
- * registry mutation; a rejected DAG leaves no partial registration behind.
  *
  * Every gate throws `DAGError` (or rethrows a thrown `Error`) before any
  * registry mutation, so a rejected DAG leaves no partial registration behind.
@@ -89,7 +88,7 @@ export class DagRegistrar {
    * Throws `DAGError` immediately when a DAG with the same name is already
    * registered with a different implementation.
    *
-   * Runs the schema, semantic, and container-role-binding passes before
+   * Runs the shape, registry-relative, and container-role-binding passes before
    * mutating the registries.
    */
   registerDAG(dag: DAGType, stateFactory: ChildStateFactoryType = ChildStateFactory.cloneParent): void {
@@ -105,11 +104,7 @@ export class DagRegistrar {
       throw new DAGError(`DAG '${dag.name}' (IRI: '${dagIri}') is already registered with a different implementation`);
     }
 
-    // Schema pre-pass: catches malformed JSON (missing fields, wrong
-    // node `type`, gather strategy mismatch) before semantic validation
-    // surfaces node/DAG cross-references.
-    Validator.dag.validate(dag);
-
+    DAGShape.validate(dag);
     DAGValidator.validateDAGConfig(dag, dagContext, this.#source.nodes, this.#source.dags);
 
     // Container-role binding check (D2 = throw). A dispatcher that opts into
@@ -133,14 +128,44 @@ export class DagRegistrar {
     }
 
     this.#source.dags.set(dagIri, dag);
-    // stateFactories stays bare-name keyed so consumers who access it directly
-    // (e.g. tests, stateFactories.get(dagName)) continue to work without change.
-    this.#source.stateFactories.set(dag.name, stateFactory);
+    this.#source.stateFactories.set(dagIri, stateFactory);
     for (const node of dag.nodes) {
       // DAGNodeType = DAG['nodes'][number] — node already satisfies the type.
       // dagIri is the expanded IRI key; placement name stays as declared in the DAG.
       this.#source.nodeIndex.set(`${dagIri}:${node.name}`, node);
     }
+  }
+
+  hasDAG(iri: string): boolean {
+    return this.#source.dags.has(iri);
+  }
+
+  hasNode(iri: string): boolean {
+    return this.#source.nodes.has(iri);
+  }
+
+  listDAGs(): readonly DAGType[] {
+    return [...this.#source.dags.values()];
+  }
+
+  listNodes(): readonly NodeInterface<NodeStateInterface, string>[] {
+    return [...this.#source.nodes.values()];
+  }
+
+  dagIris(): readonly string[] {
+    return [...this.#source.dags.keys()];
+  }
+
+  nodeIris(): readonly string[] {
+    return [...this.#source.nodes.keys()];
+  }
+
+  pluginSpecifierForPrefix(prefix: string): string | undefined {
+    return this.#source.pluginSpecifiers.get(prefix);
+  }
+
+  pluginPrefixSpecifiers(): ReadonlyMap<string, string> {
+    return new Map(this.#source.pluginSpecifiers);
   }
 
   /**
@@ -197,14 +222,30 @@ export class DagRegistrar {
    */
   registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void {
     const bundleContext = bundle.context ?? {};
+    ContextResolver.validate(bundleContext);
+    this.#registerPluginSpecifiers(bundleContext, bundle.specifier);
     for (const node of bundle.nodes) {
       this.registerNode(node, bundleContext);
     }
     for (const dag of bundle.dags) {
-      // DAG context comes from each dag's own @context; stateFactories keyed by dag.name (bare)
-      // since that's how callers pass them. Internally the IRI key is computed inside registerDAG.
-      const factory = bundle.stateFactories?.[dag.name];
+      const dagContext = ContextResolver.contextOf(dag['@context']);
+      const dagIri = ContextResolver.expand(dag.name, dagContext);
+      const factory = bundle.stateFactories?.[dagIri];
       this.registerDAG(dag, factory);
+    }
+  }
+
+  #registerPluginSpecifiers(context: Record<string, unknown>, specifier: string | undefined): void {
+    if (specifier === undefined) return;
+    for (const prefix of ContextResolver.prefixes(context).keys()) {
+      const existing = this.#source.pluginSpecifiers.get(prefix);
+      if (existing !== undefined && existing !== specifier) {
+        throw new DAGError(
+          `Plugin prefix '${prefix}' is already registered to '${existing}' and cannot also resolve to '${specifier}'`,
+          { 'code': 'PLUGIN_INVALID' },
+        );
+      }
+      this.#source.pluginSpecifiers.set(prefix, specifier);
     }
   }
 }

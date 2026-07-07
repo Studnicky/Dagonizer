@@ -8,6 +8,7 @@ import {
   OutcomeReducer,
   OutcomeReducers,
 } from '../../src/core/index.js';
+import { ContextResolver } from '../../src/dag/ContextResolver.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/index.js';
@@ -281,6 +282,10 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
     assert.equal(dispatcher.getDAG('demo'), dag);
     assert.deepEqual(dispatcher.listNodes(), [node]);
     assert.deepEqual(dispatcher.listDAGs(), [dag]);
+    assert.equal(dispatcher.hasDagIri(ContextResolver.expand('demo', {})), true);
+    assert.equal(dispatcher.hasNodeIri(ContextResolver.expand('greet', {})), true);
+    assert.deepEqual(dispatcher.dagIris(), [ContextResolver.expand('demo', {})]);
+    assert.deepEqual(dispatcher.nodeIris(), [ContextResolver.expand('greet', {})]);
   });
 
   void it('list snapshots are independent of the registry', () => {

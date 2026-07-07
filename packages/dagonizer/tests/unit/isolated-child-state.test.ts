@@ -26,6 +26,7 @@ import type { StateAccessorInterface } from '../../src/contracts/StateAccessorIn
 import type { GatherRecordType } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
+import { ContextResolver } from '../../src/dag/ContextResolver.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -210,6 +211,39 @@ void describe('Isolated child state: embedded DAG', () => {
     // child access to `parentValue` (fresh instance has no `parentValue`).
     assert.equal(result.state.parentValue, 'parent-sentinel',
       'parentValue must remain untouched on the parent state');
+  });
+
+  void it('resolves prefixed child DAG references and factories through expanded IRIs', async () => {
+    bodyReceivedClass = '';
+    const context = {
+      ...DAG_CONTEXT,
+      'iso': 'https://example.com/dagonizer/iso#',
+    };
+    const childDag = {
+      ...EmbedDag.child('iso:child'),
+      '@context': context,
+    };
+    const outerDag = {
+      ...EmbedDag.outer('iso:outer', 'iso:child'),
+      '@context': context,
+    };
+    const childIri = ContextResolver.expand('iso:child', context);
+    const outerIri = ContextResolver.expand('iso:outer', context);
+    const dispatcher = new Dagonizer<EmbedParentState>();
+
+    dispatcher.registerNode(new EmbedBodyNode());
+    dispatcher.registerDAG(childDag, embedChildFactory);
+    dispatcher.registerDAG(outerDag);
+
+    assert.strictEqual(dispatcher.getChildStateFactory(childIri), embedChildFactory);
+
+    const parent = new EmbedParentState();
+    parent.shared = 7;
+    const result = await dispatcher.execute(outerIri, parent);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.equal(bodyReceivedClass, 'EmbedChildState');
+    assert.equal(result.state.shared, 17);
   });
 
   void it('ChildStateFactory.cloneParent clones parent — backward-compat', () => {

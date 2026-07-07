@@ -2,7 +2,7 @@
  * IRI-keyed identity tests (A1).
  *
  * Verifies that:
- *   (a) Two nodes with the same bare name registered under different bundle
+ *   (a) Two nodes with the same local name registered under different bundle
  *       @context prefixes resolve to distinct IRI keys and coexist in the
  *       registry without collision.
  *   (b) A DAG @context with two different prefix keys mapping to the same
@@ -23,7 +23,7 @@ import { TestNode } from '../_support/TestNode.js';
 // ── (a) Prefix-isolated node coexistence ─────────────────────────────────────
 
 void describe('IRI identity — prefix-isolated node coexistence', () => {
-  void it('two nodes with the same bare name under distinct prefixes coexist', () => {
+  void it('two nodes with the same local name under distinct prefixes coexist', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
 
     const contextA: Record<string, unknown> = { 'pluginA': 'https://a.example.com/' };
@@ -47,18 +47,18 @@ void describe('IRI identity — prefix-isolated node coexistence', () => {
     assert.strictEqual(dispatcher.nodeNames().length, 2, 'registry must hold both nodes without collision');
   });
 
-  void it('two bare-name nodes differ in IRI from two prefixed nodes with the same local part', () => {
+  void it('two short-name nodes differ in IRI from two prefixed nodes with the same local part', () => {
     const contextA: Record<string, unknown> = { 'pluginA': 'https://a.example.com/' };
 
     const bareIri = ContextResolver.expand('increment', {});
     const prefixedIri = ContextResolver.expand('pluginA:increment', contextA);
 
-    assert.notStrictEqual(bareIri, prefixedIri, 'bare name and prefixed name must not alias');
+    assert.notStrictEqual(bareIri, prefixedIri, 'short name and prefixed name must not alias');
     assert.strictEqual(bareIri, `${ContextResolver.DEFAULT_NS}increment`);
     assert.strictEqual(prefixedIri, 'https://a.example.com/increment');
   });
 
-  void it('bare-name nodes with the same name ARE the same registry key', () => {
+  void it('short-name nodes with the same name ARE the same registry key', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
 
     const nodeA = TestNode.make('increment', ['success'], () => 'success');
@@ -70,7 +70,7 @@ void describe('IRI identity — prefix-isolated node coexistence', () => {
     assert.strictEqual(dispatcher.nodeNames().length, 1, 'same node registered twice stays as one entry');
   });
 
-  void it('duplicate bare-name registration of DIFFERENT nodes throws', () => {
+  void it('duplicate short-name registration of DIFFERENT nodes throws', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
 
     dispatcher.registerNode(TestNode.make('increment', ['success'], () => 'success'));

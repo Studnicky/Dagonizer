@@ -61,6 +61,7 @@ export class EmbeddedDagExecutor {
   async executeEmbeddedDAG(
     placement: EmbeddedDAGNodeType,
     state: NodeStateInterface,
+    parentDagName: string,
     signal: AbortSignal,
     placementPath: readonly string[],
     bufferIntermediates: boolean = true,
@@ -72,12 +73,15 @@ export class EmbeddedDagExecutor {
     // resolved from state at execution time. A null result means the path did
     // not resolve to a string — route to the error output via a null body run.
     const dagName = EmbeddedDAGNodeDefaults.resolveDagName(placement, state, this.#source.accessor);
+    const parentDag = this.#source.dags.get(ContextResolver.expand(parentDagName, {}));
+    const parentContext = parentDag !== undefined ? ContextResolver.contextOf(parentDag['@context']) : {};
+    const dagIri = dagName !== null ? ContextResolver.expand(dagName, parentContext) : null;
 
     // Produce the child state. Use the DAG's isolation factory when registered,
     // otherwise fall back to cloneChild (clone-parent semantics). The factory
     // lookup uses the resolved dagName; if dagName is null the assembly below
     // routes to error without touching the child state meaningfully.
-    const factory = dagName !== null ? this.#source.stateFactories.get(dagName) : undefined;
+    const factory = dagIri !== null ? this.#source.stateFactories.get(dagIri) : undefined;
     const cloneState = factory !== undefined
       ? this.#source.stateMapper.spawnChild(state, inputMapping, factory)
       : this.#source.stateMapper.cloneChild(state, inputMapping);
@@ -98,9 +102,7 @@ export class EmbeddedDagExecutor {
     // Validate that the resolved dag name is registered. An unregistered name
     // means the runtime path resolved to a string that does not correspond to
     // any known DAG — route to error without throwing.
-    // dags is IRI-keyed: expand the bare/short dagName to its registry key.
-    const dagIri = ContextResolver.expand(dagName, {});
-    if (!this.#source.dags.has(dagIri)) {
+    if (dagIri === null || !this.#source.dags.has(dagIri)) {
       return PlacementRouter.assemble(
         placement.name,
         placement.outputs,
@@ -117,7 +119,7 @@ export class EmbeddedDagExecutor {
     // in-process-vs-container branch, the bufferIntermediates O(N*M*L) guard,
     // and the container error/snapshot collection all live in BodyExecutor.
     const body = await this.#bodyExecutor.run(
-      dagName,
+      dagIri,
       placement.name,
       cloneState,
       state,

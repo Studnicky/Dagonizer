@@ -7,15 +7,18 @@ import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 export type DagonizerPluginDefinitionType<TExports extends Record<string, string>> = {
+  readonly id: string;
   readonly context?: Record<string, unknown>;
   readonly nodes: readonly NodeInterface<NodeStateInterface, string>[];
   readonly dags: readonly DAGType[];
+  /** Child-state factories keyed by expanded DAG IRI. */
   readonly stateFactories?: Record<string, ChildStateFactoryType>;
   readonly exports: TExports;
 };
 
 export type DefinedDagonizerPluginType<TExports extends Record<string, string>> =
   PluginInterface & {
+    readonly id: string;
     readonly context: Record<string, unknown>;
     readonly bundle: DispatcherBundleType<NodeStateInterface>;
     readonly exports: Readonly<TExports>;
@@ -40,6 +43,7 @@ class DagonizerPlugin {
     definition: DagonizerPluginDefinitionType<TExports>,
   ): DispatcherBundleType<NodeStateInterface> {
     return {
+      'specifier': definition.id,
       'nodes': [...definition.nodes],
       'dags': [...definition.dags],
       ...(definition.stateFactories !== undefined ? { 'stateFactories': { ...definition.stateFactories } } : {}),
@@ -57,6 +61,7 @@ class DagonizerPlugin {
     const context = { ...(definition.context ?? {}) };
 
     return {
+      'id': definition.id,
       context,
       bundle,
       exports,
