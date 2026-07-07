@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { GATHER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -49,6 +50,55 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.deepEqual(state.seenSources, ['left', 'right']);
+  });
+
+  void it('first-class gather resumes after one producer is buffered', async () => {
+    class MultiEntryState extends NodeStateBase {
+      seenSources: string[] = [];
+    }
+
+    const controller = new AbortController();
+    const dispatcher = new Dagonizer<MultiEntryState>();
+    const left = TestNode.make<MultiEntryState>('left', ['success'], () => {
+      controller.abort();
+      return 'success';
+    });
+    const right = TestNode.make<MultiEntryState>('right', ['success']);
+    const merge = TestNode.make<MultiEntryState>('merge', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenSources = records.map((record) => String(record['source'])).sort();
+      return 'success';
+    });
+
+    dispatcher.registerNode(left);
+    dispatcher.registerNode(right);
+    dispatcher.registerNode(merge);
+
+    const dag = new DAGBuilder('multi-entry-gather-resume', '1')
+      .node('left', left, { 'success': 'join' })
+      .node('right', right, { 'success': 'join' })
+      .gather('join', ['left', 'right'], { 'strategy': 'custom', 'customNode': 'merge' }, { 'success': 'end', 'error': 'failed' })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .entrypoints({ 'left': 'left', 'right': 'right' })
+      .build();
+    dispatcher.registerDAG(dag);
+
+    const partial = await dispatcher.execute('multi-entry-gather-resume', new MultiEntryState(), {
+      'signal': controller.signal,
+    });
+
+    assert.equal(partial.terminalOutcome, null);
+    assert.deepEqual(partial.interruptedAt, { 'nodeName': 'right', 'reason': 'abort' });
+    assert.equal(partial.cursor, 'right');
+    assert.ok(partial.state.getMetadata(GATHER_PROGRESS_KEY));
+
+    const resumed = await dispatcher.resume('multi-entry-gather-resume', partial.state, partial.cursor);
+
+    assert.equal(resumed.terminalOutcome, 'completed');
+    assert.deepEqual(partial.state.seenSources, ['left', 'right']);
+    assert.equal(partial.state.getMetadata(GATHER_PROGRESS_KEY), undefined);
   });
 
   void it('first-class gather consumes embedded DAG gatherResult projection', async () => {

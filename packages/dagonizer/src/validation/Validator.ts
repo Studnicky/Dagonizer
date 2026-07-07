@@ -69,6 +69,14 @@ import { ExecutorIntermediateSchema } from '../entities/executor/ExecutorInterme
 import type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
 import { RecommendedWorkerCountConfigSchema } from '../entities/executor/RecommendedWorkerCountConfig.js';
 import type { RecommendedWorkerCountConfigType } from '../entities/executor/RecommendedWorkerCountConfig.js';
+import type {
+  GatherProgressType,
+  GatherRecordProgressType,
+} from '../entities/gather/GatherProgress.js';
+import {
+  GatherProgressSchema,
+  GatherRecordProgressSchema,
+} from '../entities/gather/GatherProgress.js';
 import type { DAGHandoffType } from '../entities/handoff/DAGHandoff.js';
 import { DAGHandoffSchema } from '../entities/handoff/DAGHandoff.js';
 import { NodeSchema } from '../entities/node/Node.js';
@@ -279,4 +287,8 @@ export class Validator {
   static readonly workSetItem:     EntityValidatorInterface<WorkSetItemType>     = Validator.compileNamed('WorkSetItem',     WorkSetItemSchema);
   static readonly workSetEntry:    EntityValidatorInterface<WorkSetEntryType>    = Validator.compileNamed('WorkSetEntry',    WorkSetEntrySchema);
   static readonly workSetProgress: EntityValidatorInterface<WorkSetProgressType> = Validator.compileNamed('WorkSetProgress', WorkSetProgressSchema);
+
+  // Gather progress checkpoint wire shapes
+  static readonly gatherRecordProgress: EntityValidatorInterface<GatherRecordProgressType> = Validator.compileNamed('GatherRecordProgress', GatherRecordProgressSchema);
+  static readonly gatherProgress:       EntityValidatorInterface<GatherProgressType>       = Validator.compileNamed('GatherProgress',       GatherProgressSchema);
 }

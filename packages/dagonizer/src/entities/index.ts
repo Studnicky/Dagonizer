@@ -113,6 +113,13 @@ export { ParkedSchema } from './execution/Parked.js';
 export type { ParkedType } from './execution/Parked.js';
 
 // ---------------------------------------------------------------------------
+// gather
+// ---------------------------------------------------------------------------
+
+export { GatherProgressSchema, GatherRecordProgressSchema } from './gather/GatherProgress.js';
+export type { GatherProgressType, GatherRecordProgressType } from './gather/GatherProgress.js';
+
+// ---------------------------------------------------------------------------
 // validation
 // ---------------------------------------------------------------------------
 

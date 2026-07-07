@@ -1,5 +1,6 @@
 import { Signal } from '@studnicky/signal';
 
+import { GatherCheckpoint } from '../checkpoint/GatherCheckpoint.js';
 import { WorkSetCheckpoint } from '../checkpoint/WorkSetCheckpoint.js';
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
@@ -274,6 +275,12 @@ export class NodeScheduler {
       // every in-flight item's state is restored exactly. If absent, fall through
       // to the size-1 seed below (the cursor model — byte-identical to before).
       if (fromStage !== null && !runOptions.embedded) {
+        const gatherBlob = GatherCheckpoint.read(state);
+        if (gatherBlob !== undefined) {
+          gatherBuffers.restore(gatherBlob, state);
+          GatherCheckpoint.clear(state);
+        }
+
         const workSetBlob = WorkSetCheckpoint.read(state);
         if (workSetBlob !== undefined) {
           // Rebuild pending from the blob: for each placement, reconstruct each
@@ -388,6 +395,11 @@ export class NodeScheduler {
                 entries.push({ placement, items });
               }
               WorkSetCheckpoint.write(state, { entries });
+            }
+            if (gatherBuffers.isEmpty()) {
+              GatherCheckpoint.clear(state);
+            } else {
+              GatherCheckpoint.write(state, gatherBuffers.toProgress());
             }
           }
 
@@ -898,6 +910,7 @@ export class NodeScheduler {
       // progress metadata. This is a no-op for size-1 runs (no blob was written)
       // and ensures a second execution of the same state instance starts clean.
       WorkSetCheckpoint.clear(state);
+      GatherCheckpoint.clear(state);
     }
     const result = this.#composeResult(null, executedNodes, skippedNodes, terminalOutcome, null, state);
     await this.#runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, signal, placementPath);

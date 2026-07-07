@@ -270,9 +270,13 @@ export class ScatterExecutor {
             'item': acked.item,
             'output': acked.output,
             'terminalOutcome': null,
-            'result': scatter.gather.resultField !== undefined
-              ? this.#scatterSource.accessor.get(syntheticClone, scatter.gather.resultField)
-              : undefined,
+            'result': 'result' in acked
+              ? acked.result
+              : (
+                scatter.gather.resultField !== undefined
+                  ? this.#scatterSource.accessor.get(syntheticClone, scatter.gather.resultField)
+                  : undefined
+              ),
             'cloneState': syntheticClone,
           });
         }

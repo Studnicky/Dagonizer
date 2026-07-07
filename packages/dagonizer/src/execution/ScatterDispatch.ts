@@ -484,15 +484,15 @@ export class ScatterPoolDriver
           for (const clonePath of Object.keys(scatter.gather.mapping)) {
             snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
           }
-          return { 'variant': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot };
+          return { 'variant': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot, 'result': freshRecord.result };
         }
         if (
           (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
           scatter.gather.field !== undefined
         ) {
-          return { 'variant': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field) };
+          return { 'variant': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field), 'result': freshRecord.result };
         }
-        return { 'variant': 'plain' as const, 'index': itemIndex, 'item': item, output };
+        return { 'variant': 'plain' as const, 'index': itemIndex, 'item': item, output, 'result': freshRecord.result };
       })();
       ackedResults.push(ackedResult);
       ackedByIndex.set(itemIndex, ackedResult);
@@ -809,15 +809,15 @@ export class ScatterPoolDriver
             for (const clonePath of Object.keys(scatter.gather.mapping)) {
               snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
             }
-            return { 'variant': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot };
+            return { 'variant': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot, 'result': freshRecord.result };
           }
           if (
             (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
             scatter.gather.field !== undefined
           ) {
-            return { 'variant': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field) };
+            return { 'variant': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field), 'result': freshRecord.result };
           }
-          return { 'variant': 'plain' as const, 'index': itemIndex, 'item': item, output };
+          return { 'variant': 'plain' as const, 'index': itemIndex, 'item': item, output, 'result': freshRecord.result };
         })();
         ackedResults.push(ackedResult);
         ackedByIndex.set(itemIndex, ackedResult);

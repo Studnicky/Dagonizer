@@ -59,6 +59,7 @@ export const ScatterAckedResultSchema = {
         'item':          {},
         'output':        { 'type': 'string' },
         'mappingValues': { 'type': 'object' },
+        'result':        {},
       },
       'additionalProperties': false,
     },
@@ -71,6 +72,7 @@ export const ScatterAckedResultSchema = {
         'item':       {},
         'output':     { 'type': 'string' },
         'fieldValue': {},
+        'result':     {},
       },
       'additionalProperties': false,
     },
@@ -82,6 +84,7 @@ export const ScatterAckedResultSchema = {
         'index':   { 'type': 'integer', 'minimum': 0 },
         'item':    {},
         'output':  { 'type': 'string' },
+        'result':  {},
       },
       'additionalProperties': false,
     },
@@ -94,6 +97,7 @@ export const ScatterAckedResultSchema = {
  *   `map`:   carries `mappingValues`, the resolved clone-field-to-parent-path mapping values.
  *   `field`: carries `fieldValue`, the value of `gather.field` read from the clone state.
  *   `plain`: carries only the routing `output`; used by `collect`, `discard`, and `partition` strategies.
+ *   `result`: optional resultField projection for non-compactable finalize resume.
  */
 export type ScatterAckedResultType = FromSchema<typeof ScatterAckedResultSchema>;
 
@@ -125,6 +129,7 @@ const ackedResultInline = {
         'item':          {},
         'output':        { 'type': 'string' },
         'mappingValues': { 'type': 'object' },
+        'result':        {},
       },
       'additionalProperties': false,
     },
@@ -137,6 +142,7 @@ const ackedResultInline = {
         'item':       {},
         'output':     { 'type': 'string' },
         'fieldValue': {},
+        'result':     {},
       },
       'additionalProperties': false,
     },
@@ -148,6 +154,7 @@ const ackedResultInline = {
         'index':   { 'type': 'integer', 'minimum': 0 },
         'item':    {},
         'output':  { 'type': 'string' },
+        'result':  {},
       },
       'additionalProperties': false,
     },
