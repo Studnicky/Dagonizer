@@ -1,5 +1,17 @@
 # @studnicky/dagonizer-examples
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [fdaa32a]
+  - @studnicky/dagonizer@1.0.0
+  - @studnicky/dagonizer-adapter-ollama@1.0.0
+  - @studnicky/dagonizer-embedder-ollama@1.0.0
+  - @studnicky/dagonizer-executor-node@1.0.0
+  - @studnicky/dagonizer-patterns-graph@1.0.0
+  - @studnicky/dagonizer-patterns-rag@1.0.0
+
 ## 0.1.1
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @studnicky/dagonizer-patterns-graph
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [fdaa32a]
+  - @studnicky/dagonizer@1.0.0
+
 ## 0.30.1
 
 ## 0.30.0

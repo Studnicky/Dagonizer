@@ -1,5 +1,13 @@
 # @studnicky/dagonizer-tool-wikipedia
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [fdaa32a]
+  - @studnicky/dagonizer@1.0.0
+  - @studnicky/dagonizer-book-entities@1.0.0
+
 ## 0.30.1
 
 ### Patch Changes
