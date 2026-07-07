@@ -69,4 +69,16 @@ void describe('DAGBuilder.embed', () => {
       'candidates': ['child-dag'],
     });
   });
+
+  void it('emits gatherResult projection for embedded scalar producers', () => {
+    const dag = new DAGBuilder('gather-result-embed', '1')
+      .embed<EmbedState>('invoke', 'child-dag', { 'success': 'end', 'error': 'end' }, {
+        'gatherResult': { 'resultField': 'value' },
+      })
+      .terminal('end')
+      .build();
+
+    assert.equal(dag.nodes[0]?.['@type'], 'EmbeddedDAGNode');
+    assert.deepEqual(dag.nodes[0]?.gatherResult, { 'resultField': 'value' });
+  });
 });

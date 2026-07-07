@@ -113,6 +113,12 @@ export type TypedEmbeddedDAGOptionsType<
   /** Output mapping: parent-state dotted path → child-state dotted path. Copied back into the parent after it completes. A mapping covers only the keys it copies back; omit it entirely when none. */
   outputs?: Record<string, ParentPath<TChildState>>;
   /**
+   * Project one child-state field as the scalar value emitted to a downstream
+   * first-class gather. This does not copy state back by itself; use `outputs`
+   * for direct parent mutation.
+   */
+  gatherResult?: { readonly resultField: ParentPath<TChildState> };
+  /**
    * Logical container role for this embedded DAG execution. The dispatcher
    * binds role names to `DagContainerInterface` instances at construction.
    * When absent, the embedded DAG runs in-process.
@@ -371,6 +377,7 @@ export class DAGBuilder {
       ...DAGBuilder.embeddedDagField(dag),
       // Optional fields spread at construction — no post-construction shape mutation.
       ...(stateMapping !== undefined ? { 'stateMapping': stateMapping } : {}),
+      ...(options.gatherResult !== undefined ? { 'gatherResult': options.gatherResult } : {}),
       ...(options.container !== undefined ? { 'container': options.container } : {}),
     };
 
