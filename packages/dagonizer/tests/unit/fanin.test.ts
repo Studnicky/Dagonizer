@@ -7,6 +7,96 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
 void describe('Dagonizer scatter gather strategies', () => {
+  void it('first-class gather waits for multiple entrypoint producers', async () => {
+    class MultiEntryState extends NodeStateBase {
+      leftValue = '';
+      rightValue = '';
+      seenSources: string[] = [];
+    }
+
+    const dispatcher = new Dagonizer<MultiEntryState>();
+    const left = TestNode.make<MultiEntryState>('left', ['success'], (state) => {
+      state.leftValue = 'left-ready';
+      return 'success';
+    });
+    const right = TestNode.make<MultiEntryState>('right', ['success'], (state) => {
+      state.rightValue = 'right-ready';
+      return 'success';
+    });
+    const merge = TestNode.make<MultiEntryState>('merge', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenSources = records.map((record) => String(record['source'])).sort();
+      return 'success';
+    });
+
+    dispatcher.registerNode(left);
+    dispatcher.registerNode(right);
+    dispatcher.registerNode(merge);
+
+    const dag = new DAGBuilder('multi-entry-gather', '1')
+      .node('left', left, { 'success': 'join' })
+      .node('right', right, { 'success': 'join' })
+      .gather('join', ['left', 'right'], { 'strategy': 'custom', 'customNode': 'merge' }, { 'success': 'end', 'error': 'failed' })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .entrypoints({ 'left': 'left', 'right': 'right' })
+      .build();
+    dispatcher.registerDAG(dag);
+
+    const state = new MultiEntryState();
+    const result = await dispatcher.execute('multi-entry-gather', state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.deepEqual(state.seenSources, ['left', 'right']);
+  });
+
+  void it('first-class gather consumes embedded DAG gatherResult projection', async () => {
+    class ChildState extends NodeStateBase {
+      answer = '';
+    }
+    class ParentState extends NodeStateBase {
+      seenResults: unknown[] = [];
+    }
+
+    const dispatcher = new Dagonizer<ParentState>();
+    const answer = TestNode.make<ChildState>('answer', ['success'], (state) => {
+      state.answer = 'forty-two';
+      return 'success';
+    });
+    const merge = TestNode.make<ParentState>('merge', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenResults = records.map((record) => record['result']);
+      return 'success';
+    });
+
+    const childDag = new DAGBuilder('child-answer', '1')
+      .node('answer', answer, { 'success': 'done' })
+      .terminal('done')
+      .build();
+
+    const parentDag = new DAGBuilder('embedded-gather-result', '1')
+      .embed<ChildState, ParentState>('invoke', 'child-answer', { 'success': 'join', 'error': 'join' }, {
+        'gatherResult': { 'resultField': 'answer' },
+      })
+      .gather('join', ['invoke'], { 'strategy': 'custom', 'customNode': 'merge' }, { 'success': 'end', 'error': 'failed' })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .build();
+
+    dispatcher.registerNode(answer);
+    dispatcher.registerNode(merge);
+    dispatcher.registerDAG(childDag);
+    dispatcher.registerDAG(parentDag);
+
+    const state = new ParentState();
+    const result = await dispatcher.execute('embedded-gather-result', state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.deepEqual(state.seenResults, ['forty-two']);
+  });
+
   void it('partition routes items by output into distinct target paths', async () => {
     class PartitionState extends NodeStateBase {
       items: number[] = [];

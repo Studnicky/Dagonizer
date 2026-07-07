@@ -96,7 +96,7 @@ export class EngineComposer {
     const embeddedDagExecutor = new EmbeddedDagExecutor(host, bodyExecutor);
     const scatterExecutor = new ScatterExecutor(host, bodyExecutor, gather);
     const placementDispatch = new PlacementDispatch(leafExecutor, embeddedDagExecutor, scatterExecutor);
-    const nodeScheduler = new NodeScheduler(host);
+    const nodeScheduler = new NodeScheduler(host, gather);
     const dagRegistrar = new DagRegistrar(host);
     return {
       bodyExecutor,

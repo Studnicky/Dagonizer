@@ -4,6 +4,7 @@ import { WorkSetCheckpoint } from '../checkpoint/WorkSetCheckpoint.js';
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 import type { ExecuteOptionsType } from '../contracts/ExecuteOptionsType.js';
+import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
@@ -15,6 +16,7 @@ import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import { DAGEntrypoints } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
@@ -34,6 +36,8 @@ import { DagExecutionContext } from '../runtime/DagExecutionContext.js';
 import { RetryPolicy } from '../runtime/RetryPolicy.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
 
+import type { Gather } from './Gather.js';
+import { GatherBuffers } from './GatherBuffers.js';
 import { OutputContractApplier } from './OutputContractApplier.js';
 import { PlacementRouter } from './PlacementRouter.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './ScatterDispatch.js';
@@ -124,9 +128,11 @@ export interface NodeSchedulerSourceInterface {
  */
 export class NodeScheduler {
   readonly #source: NodeSchedulerSourceInterface;
+  readonly #gather: Gather;
 
-  constructor(source: NodeSchedulerSourceInterface) {
+  constructor(source: NodeSchedulerSourceInterface, gather: Gather) {
     this.#source = source;
+    this.#gather = gather;
   }
 
   /**
@@ -260,6 +266,8 @@ export class NodeScheduler {
       const declIndexOf = (name: string): number => declIndex.get(name) ?? Number.MAX_SAFE_INTEGER;
 
       const pending = new WorkSet<NodeStateInterface>();
+      const gatherBuffers = new GatherBuffers();
+      const entrypointSourceByState = new WeakMap<NodeStateInterface, string>();
 
       // Resume: when fromStage is provided and this is a top-level run, check
       // for a persisted work-set blob. If present, rebuild `pending` from it so
@@ -283,6 +291,7 @@ export class NodeScheduler {
               // `{ type: 'object' }`; `JsonObject.is` narrows it to JsonObjectType
               // (cast-free) at the snapshot ingest boundary.
               itemState.applySnapshot(JsonObject.is(workItem.snapshot) ? workItem.snapshot : {});
+              entrypointSourceByState.set(itemState, 'main');
               items.push({ 'id': workItem.id, 'state': itemState });
             }
             pending.add(entry.placement, Batch.from(items));
@@ -295,13 +304,26 @@ export class NodeScheduler {
         } else {
           // Size-1 canonical resume: no blob → seed with the top-level state at
           // the cursor. Byte-identical to the existing checkpoint test path.
+          entrypointSourceByState.set(state, 'main');
           pending.add(cursor, Batch.of(state));
         }
       } else {
         // Fresh execute (fromStage === null) or embedded: seed with the
         // provided inputBatch when supplied (batch-native embedded path),
         // otherwise seed with the single top-level state.
-        pending.add(cursor, inputBatch ?? Batch.of(state));
+        if (fromStage === null && !runOptions.embedded && inputBatch === undefined) {
+          for (const [source, placementName] of Object.entries(dag.entrypoints)) {
+            const entryState = source === 'main' ? state : state.clone();
+            entrypointSourceByState.set(entryState, source);
+            pending.add(placementName, Batch.of(entryState));
+          }
+        } else {
+          const seedBatch = inputBatch ?? Batch.of(state);
+          for (const item of seedBatch) {
+            entrypointSourceByState.set(item.state, 'main');
+          }
+          pending.add(cursor, seedBatch);
+        }
       }
 
       // Terminal accumulator: collects batches per terminal name so all items
@@ -397,6 +419,29 @@ export class NodeScheduler {
 
         this.#source.relayNodeStart(node.name, repState, placementPath, signal);
 
+        if (Placement.isGather(node)) {
+          const records = gatherBuffers.takeReady(node);
+          const gatherRun = await this.#gather.runGather(node, records, repState, dagName, signal);
+          const nextStage = node.outputs[gatherRun.output];
+          if (nextStage === undefined) {
+            throw new DAGError(
+              `GatherNode ${node.name} produced output '${gatherRun.output}' but has no routing for it. `
+              + `Available outputs: ${Object.keys(node.outputs).join(', ')}`,
+            );
+          }
+          pending.add(nextStage, Batch.of(repState));
+          executedNodes.push(node.name);
+          this.#source.relayNodeEnd(node.name, gatherRun.output, repState, placementPath, signal);
+          yield {
+            'output': gatherRun.output,
+            'skipped': false,
+            'nodeName': node.name,
+            'state': repState,
+            'intermediateResults': [],
+          };
+          continue scheduleLoop;
+        }
+
         // TerminalNode: no-op execution — capture outcome, synthesize result,
         // fire onNodeEnd, and continue the work-set loop so remaining items
         // can reach their own terminals (which may differ in multi-item batches).
@@ -474,7 +519,17 @@ export class NodeScheduler {
             }
 
             const validated = this.#validateOutputContract(fired.dagNode, fired.routed);
-            nodeResult = this.#routeToPending(node, fired.dagNode, validated, batch, pending);
+            nodeResult = this.#routeToPending(
+              node,
+              fired.dagNode,
+              validated,
+              batch,
+              pending,
+              dagIri,
+              gatherBuffers,
+              entrypointSourceByState,
+              state,
+            );
           } catch (caughtError) {
             const error = this.#enrichError(caughtError, dagName, placementPath, signal);
             this.#source.relayError(currentPlacementName, error, repState, placementPath, signal);
@@ -530,7 +585,23 @@ export class NodeScheduler {
               const routeOutput = 'error';
               const nextPlacement = node.outputs[routeOutput] ?? null;
               if (nextPlacement !== null) {
-                pending.add(nextPlacement, Batch.of(item.state, item.id));
+                const gatherTarget = this.#gatherTarget(dagIri, nextPlacement);
+                if (gatherTarget !== undefined) {
+                  gatherBuffers.add(gatherTarget.name, {
+                    'source': this.#producerSource(entrypointSourceByState, item.state, node.name),
+                    'index': null,
+                    'item': undefined,
+                    'output': routeOutput,
+                    'terminalOutcome': null,
+                    'result': undefined,
+                    'cloneState': item.state,
+                  });
+                  if (gatherBuffers.ready(gatherTarget)) {
+                    pending.add(gatherTarget.name, Batch.of(state));
+                  }
+                } else {
+                  pending.add(nextPlacement, Batch.of(item.state, item.id));
+                }
               }
             }
             continue scheduleLoop;
@@ -616,7 +687,26 @@ export class NodeScheduler {
             const nextPlacement = node.outputs[routeOutput] ?? null;
 
             if (nextPlacement !== null) {
-              pending.add(nextPlacement, Batch.of(parentItem.state, parentItem.id));
+              const gatherTarget = this.#gatherTarget(dagIri, nextPlacement);
+              if (gatherTarget !== undefined) {
+                const result = node.gatherResult !== undefined
+                  ? this.#source.accessor.get(childClone, node.gatherResult.resultField)
+                  : undefined;
+                gatherBuffers.add(gatherTarget.name, {
+                  'source': this.#producerSource(entrypointSourceByState, parentItem.state, node.name),
+                  'index': null,
+                  'item': undefined,
+                  'output': routeOutput,
+                  'terminalOutcome': childTerminalOutcome,
+                  result,
+                  'cloneState': childClone,
+                });
+                if (gatherBuffers.ready(gatherTarget)) {
+                  pending.add(gatherTarget.name, Batch.of(state));
+                }
+              } else {
+                pending.add(nextPlacement, Batch.of(parentItem.state, parentItem.id));
+              }
             }
           }
 
@@ -658,7 +748,7 @@ export class NodeScheduler {
         // iteration; the sub-walk / scatter machinery is reused unchanged). For
         // a size-1 batch this is byte-identical to the prior single dispatch:
         // one item, one executeDAGNode call, one route.
-        const composite: Array<{ 'state': NodeStateInterface; 'nextStage': string | null; 'result': NodeResultType<NodeStateInterface> }> = [];
+        const composite: Array<{ 'state': NodeStateInterface; 'nextStage': string | null; 'result': NodeResultType<NodeStateInterface>; 'gatherRecord'?: GatherRecordType }> = [];
         for (const item of batch) {
           try {
             // bufferIntermediates: only accumulate inner-node results when
@@ -666,7 +756,10 @@ export class NodeScheduler {
             // or nested embedded DAG, intermediates are discarded by the caller
             // anyway, and buffering at N×M×L scale causes unbounded heap growth.
             const outcome = await this.#source.executeDAGNode(node, item.state, dagName, signal, placementPath, !runOptions.embedded);
-            composite.push({ 'state': item.state, 'nextStage': outcome.nextStage, 'result': outcome.result });
+            const entry = outcome.gatherRecord === undefined
+              ? { 'state': item.state, 'nextStage': outcome.nextStage, 'result': outcome.result }
+              : { 'state': item.state, 'nextStage': outcome.nextStage, 'result': outcome.result, 'gatherRecord': outcome.gatherRecord };
+            composite.push(entry);
           } catch (caughtError) {
             // A thrown firing fails the whole fired batch (RFC 0003 §10.2). Same
             // classification + lifecycle handling as the single-item path; the
@@ -752,7 +845,21 @@ export class NodeScheduler {
         // Route each item to the next placement its outcome selected.
         for (const entry of composite) {
           if (entry.nextStage !== null) {
-            pending.add(entry.nextStage, Batch.of(entry.state));
+            const gatherTarget = this.#gatherTarget(dagIri, entry.nextStage);
+            if (gatherTarget !== undefined) {
+              const record = entry.gatherRecord !== undefined
+                ? {
+                  ...entry.gatherRecord,
+                  'source': this.#producerSource(entrypointSourceByState, entry.state, entry.gatherRecord.source),
+                }
+                : this.#recordFromComposite(node.name, entry, entrypointSourceByState);
+              gatherBuffers.add(gatherTarget.name, record);
+              if (gatherBuffers.ready(gatherTarget)) {
+                pending.add(gatherTarget.name, Batch.of(state));
+              }
+            } else {
+              pending.add(entry.nextStage, Batch.of(entry.state));
+            }
           }
         }
       }
@@ -1050,6 +1157,10 @@ export class NodeScheduler {
     routed: RoutedBatchType<string, NodeStateInterface>,
     batch: Batch<NodeStateInterface>,
     pending: WorkSet<NodeStateInterface>,
+    dagIri: string,
+    gatherBuffers: GatherBuffers,
+    entrypointSourceByState: WeakMap<NodeStateInterface, string>,
+    gatherState: NodeStateInterface,
   ): NodeResultType<NodeStateInterface> {
     // Add each output port's sub-batch to the downstream node's pending work.
     for (const [outputPort, subBatch] of routed.entries()) {
@@ -1060,7 +1171,25 @@ export class NodeScheduler {
           + `Available outputs: ${Object.keys(nodeConfig.outputs).join(', ')}`,
         );
       }
-      pending.add(nextPlacement, subBatch);
+      const gatherTarget = this.#gatherTarget(dagIri, nextPlacement);
+      if (gatherTarget !== undefined) {
+        for (const item of subBatch) {
+          gatherBuffers.add(gatherTarget.name, {
+            'source': this.#producerSource(entrypointSourceByState, item.state, nodeConfig.name),
+            'index': null,
+            'item': undefined,
+            'output': outputPort,
+            'terminalOutcome': null,
+            'result': undefined,
+            'cloneState': item.state,
+          });
+        }
+        if (gatherBuffers.ready(gatherTarget)) {
+          pending.add(gatherTarget.name, Batch.of(gatherState));
+        }
+      } else {
+        pending.add(nextPlacement, subBatch);
+      }
     }
 
     // For size-1 batches: exactly one route, one item → single representative output.
@@ -1075,6 +1204,36 @@ export class NodeScheduler {
       'state': repState,
       'intermediateResults': [],
     };
+  }
+
+  #gatherTarget(dagIri: string, placementName: string): GatherNodeType | undefined {
+    const target = this.#source.nodeIndex.get(`${dagIri}:${placementName}`);
+    return target !== undefined && Placement.isGather(target) ? target : undefined;
+  }
+
+  #recordFromComposite(
+    producerName: string,
+    entry: { readonly state: NodeStateInterface; readonly result: NodeResultType<NodeStateInterface> },
+    entrypointSourceByState: WeakMap<NodeStateInterface, string>,
+  ): GatherRecordType {
+    return {
+      'source': this.#producerSource(entrypointSourceByState, entry.state, producerName),
+      'index': null,
+      'item': undefined,
+      'output': entry.result.output ?? 'error',
+      'terminalOutcome': null,
+      'result': undefined,
+      'cloneState': entry.state,
+    };
+  }
+
+  #producerSource(
+    entrypointSourceByState: WeakMap<NodeStateInterface, string>,
+    state: NodeStateInterface,
+    fallback: string,
+  ): string {
+    const source = entrypointSourceByState.get(state);
+    return source !== undefined && source !== 'main' ? source : fallback;
   }
 
   /**

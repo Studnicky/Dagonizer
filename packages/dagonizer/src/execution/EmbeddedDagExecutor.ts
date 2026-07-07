@@ -1,4 +1,5 @@
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
+import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
@@ -58,6 +59,26 @@ export class EmbeddedDagExecutor {
     this.#bodyExecutor = bodyExecutor;
   }
 
+  #withGatherRecord(
+    placement: EmbeddedDAGNodeType,
+    run: RunNodeResultType,
+    cloneState: NodeStateInterface,
+    terminalOutcome: 'completed' | 'failed' | null,
+  ): RunNodeResultType {
+    if (placement.gatherResult === undefined) return run;
+    const output = run.result.output ?? 'error';
+    const gatherRecord: GatherRecordType = {
+      'source': placement.name,
+      'index': null,
+      'item': undefined,
+      output,
+      terminalOutcome,
+      'result': this.#source.accessor.get(cloneState, placement.gatherResult.resultField),
+      cloneState,
+    };
+    return { ...run, gatherRecord };
+  }
+
   async executeEmbeddedDAG(
     placement: EmbeddedDAGNodeType,
     state: NodeStateInterface,
@@ -87,7 +108,7 @@ export class EmbeddedDagExecutor {
       : this.#source.stateMapper.cloneChild(state, inputMapping);
 
     if (dagName === null) {
-      return PlacementRouter.assemble(
+      return this.#withGatherRecord(placement, PlacementRouter.assemble(
         placement.name,
         placement.outputs,
         null,
@@ -96,14 +117,14 @@ export class EmbeddedDagExecutor {
         outputMapping,
         [],
         this.#source.stateMapper,
-      );
+      ), cloneState, null);
     }
 
     // Validate that the resolved dag name is registered. An unregistered name
     // means the runtime path resolved to a string that does not correspond to
     // any known DAG — route to error without throwing.
     if (dagIri === null || !this.#source.dags.has(dagIri)) {
-      return PlacementRouter.assemble(
+      return this.#withGatherRecord(placement, PlacementRouter.assemble(
         placement.name,
         placement.outputs,
         null,
@@ -112,7 +133,7 @@ export class EmbeddedDagExecutor {
         outputMapping,
         [],
         this.#source.stateMapper,
-      );
+      ), cloneState, null);
     }
 
     // Run the sub-DAG body in-process or through a bound container. The
@@ -131,7 +152,7 @@ export class EmbeddedDagExecutor {
 
     // Propagate child→parent errors/warnings, apply output-state mapping, derive
     // the route token, resolve the next stage, and assemble the envelope.
-    return PlacementRouter.assemble(
+    return this.#withGatherRecord(placement, PlacementRouter.assemble(
       placement.name,
       placement.outputs,
       body.terminalOutcome,
@@ -140,6 +161,6 @@ export class EmbeddedDagExecutor {
       outputMapping,
       body.intermediates,
       this.#source.stateMapper,
-    );
+    ), cloneState, body.terminalOutcome);
   }
 }

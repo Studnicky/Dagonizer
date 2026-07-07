@@ -1,13 +1,31 @@
 import type { GatherExecutionType, GatherRecordType } from '../contracts/GatherExecution.js';
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import { GatherStrategies } from '../core/GatherStrategies.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
+import { Batch } from '../entities/batch/Batch.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { NodeContextType } from '../entities/node/NodeContext.js';
 import { DAGError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import { NodeInvoker } from './NodeInvoker.js';
 import type { NodeInvokerSourceInterface } from './NodeInvoker.js';
+
+export type GatherRunResultType = {
+  readonly output: string;
+};
+
+class GatherOutcome {
+  private constructor() { /* static-only */ }
+
+  static route(records: readonly GatherRecordType[]): string {
+    if (records.length === 0) return 'empty';
+    return records.some((record) => record.output === 'error' || record.terminalOutcome === 'failed')
+      ? 'error'
+      : 'success';
+  }
+}
 
 /**
  * Dispatcher surface `Gather` needs to compose gather executions and invoke
@@ -65,6 +83,34 @@ export class Gather
       'accessor': this.#source.accessor,
       invoker,
     };
+  }
+
+  async runGather(
+    placement: GatherNodeType,
+    records: readonly GatherRecordType[],
+    state: NodeStateInterface,
+    dagName: string,
+    signal: AbortSignal,
+  ): Promise<GatherRunResultType> {
+    const strategy = GatherStrategies.resolve(placement.gather.strategy);
+    strategy.initial(placement.gather, state, this.#source.accessor);
+
+    const batchItems = records.map((record) => ({
+      'id': `${record.source}:${record.index ?? 0}`,
+      'state': record,
+    }));
+
+    await strategy.reduce(
+      placement.gather,
+      Batch.from(batchItems),
+      state,
+      this.#source.accessor,
+    );
+
+    const execution = this.composeGatherExecution(state, records, dagName, signal);
+    await strategy.finalize(placement.gather, execution);
+
+    return { 'output': GatherOutcome.route(records) };
   }
 
   /**

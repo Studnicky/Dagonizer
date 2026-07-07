@@ -38,6 +38,7 @@ import { PlacementRouter } from './PlacementRouter.js';
 export type RunNodeResultType = {
   'nextStage': null | string;
   'result': NodeResultType<NodeStateInterface>;
+  'gatherRecord'?: GatherRecordType;
 };
 
 /** Engine-private execution context for `runNodes` and `runPostPhasesAndFinalize`. */
