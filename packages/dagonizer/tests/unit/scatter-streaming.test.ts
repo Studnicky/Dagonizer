@@ -110,8 +110,8 @@ class TestScatterDag {
 
 // ─── tests ───────────────────────────────────────────────────────────────────
 
-void describe('Scatter: array source backward compatibility', () => {
-  void it('produces the same gathered result as before for a plain array', async () => {
+void describe('Scatter: array source', () => {
+  void it('produces the gathered result for a plain array', async () => {
     const dispatcher = new Dagonizer<StreamState>();
     let calls = 0;
     dispatcher.registerNode(TestNode.make<StreamState>('worker', ['success'], () => { calls++; return 'success'; }));

@@ -20,7 +20,7 @@ IRI identity is how Dagonizer lets independently authored plugins share a dispat
 
 ## How It Works
 
-Every registry key is expanded through a JSON-LD-style `@context` before storage. Absolute IRIs pass through unchanged, known prefixes expand to their namespace, unknown prefixes fall back to the default namespace, and bare names remain backward-compatible by expanding under the default namespace.
+Every registry key is expanded through a JSON-LD-style `@context` before storage. Absolute IRIs pass through unchanged, known prefixes expand to their namespace, unknown prefixes fall back to the default namespace, and short names expand under the default namespace.
 
 Every node and DAG name in Dagonizer is expanded to an **absolute IRI** before it enters the registry. Two plugins that both ship a node named `classify` can coexist without collision because each resolves to a distinct IRI key.
 
@@ -60,13 +60,13 @@ The `node`, `dag`, phase `node`, and scatter body references in a DAG document a
 
 ### Use when
 
-Use IRI identity when multiple plugins, packages, or teams may register the same local node or DAG names in one dispatcher. Prefix-scoped names let `classify`, `normalize`, or `route` coexist without forcing every application to invent globally unique bare names.
+Use IRI identity when multiple plugins, packages, or teams may register the same local node or DAG names in one dispatcher. Prefix-scoped names let `classify`, `normalize`, or `route` coexist without forcing every application to invent globally unique short names.
 
 ## Code Samples
 
 ### Why IRI keying
 
-A bare name like `classify` is a local identifier: it is unique within one plugin's codebase but globally ambiguous. When two plugins register under the same dispatcher, their bare names collide.
+A short name like `classify` is a local identifier: it is unique within one plugin's codebase but globally ambiguous. When two plugins register under the same dispatcher without declaring prefixes, their short names resolve to the same default-namespace IRI.
 
 Dagonizer addresses this by treating every name as an **expandable IRI prefix reference**, inspired by JSON-LD 1.1. The registration key is never the short name — it is always the result of `ContextResolver.expand(name, context)`.
 
@@ -76,7 +76,7 @@ Dagonizer addresses this by treating every name as an **expandable IRI prefix re
 
 | Input | Rule | Result |
 |-------|------|--------|
-| `classify` | Bare name (no colon) | `DEFAULT_NS + 'classify'` |
+| `classify` | Short name (no colon) | `DEFAULT_NS + 'classify'` |
 | `https://myplugin.dev/dag#classify` | Absolute IRI (contains `://`) | returned as-is |
 | `myPlugin:classify` where `myPlugin` is declared | Prefixed name — known prefix | `https://myplugin.dev/dag#classify` |
 | `tool:calculator` where `tool` is NOT declared | Prefixed name — unknown prefix | `DEFAULT_NS + 'tool:calculator'` |
@@ -187,15 +187,15 @@ dispatcher.nodes.get(iriB) === classifyNodeB; // true
 dispatcher.nodes.size === 2;                  // true
 ```
 
-### Bare-name backward compatibility
+### Default Namespace Short Names
 
-Nodes and DAGs registered without any `@context` continue to work. Their names expand to `DEFAULT_NS + name`. A bare `classify` becomes `https://noocodex.dev/dag/default#classify`. This is the same behavior as before IRI keying was introduced; existing code requires no changes.
+Nodes and DAGs registered without a prefix still receive an IRI key. Their names expand to `DEFAULT_NS + name`. A short `classify` becomes `https://noocodex.dev/dag/default#classify`. The registry never stores the raw short name as its key; short names are authoring syntax that resolve before registration and execution lookup.
 
 ## Details for Nerds
 
 ### What expands, and when
 
-Bundle registration expands node names through the bundle `context`. DAG registration expands DAG names through the DAG `@context`. Execution resolves node references, embedded DAG references, scatter body references, phase-node references, and validation lookups through the relevant DAG context before registry lookup.
+Bundle registration expands node names through the bundle `context`. DAG registration expands DAG names through the DAG `@context`. Child-state factory records are keyed by the expanded DAG IRI. Execution resolves node references, embedded DAG references, scatter body references, phase-node references, and validation lookups through the relevant DAG context before registry lookup.
 
 Route targets inside a single DAG are placement names, not registry keys. A route such as `"done": "normalize"` points to another placement in the same `nodes` array; a placement's `node` or `dag` field points to something in the registry and receives IRI expansion.
 

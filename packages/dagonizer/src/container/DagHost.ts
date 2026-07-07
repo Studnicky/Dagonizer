@@ -128,7 +128,6 @@ export class DagHost {
           m.registryModule,
           m.registryVersion,
           servicesConfig,
-          m.keyingScheme ?? 'name',
         );
       },
       'execute': (m) => {
@@ -194,7 +193,6 @@ export class DagHost {
     registryModule: string,
     expectedVersion: string,
     servicesConfig: JsonObjectType,
-    parentKeyingScheme: 'name' | 'iri' = 'name',
   ): Promise<void> {
     try {
       let registry: RegistryModuleInterface;
@@ -232,21 +230,6 @@ export class DagHost {
           'correlationId': null,
           'code': 'VERSION_MISMATCH',
           'message': `Registry version mismatch: expected '${expectedVersion}', got '${bundle.registryVersion}'`,
-          'recoverable': false,
-        });
-        return;
-      }
-
-      // Keying-scheme handshake: parent and bundle must agree on whether names
-      // are bare or IRI-expanded. A mismatch means the bundle was built for a
-      // different namespace strategy and cannot run in this host.
-      const bundleKeyingScheme = bundle.keyingScheme ?? 'name';
-      if (parentKeyingScheme !== bundleKeyingScheme) {
-        this.#channel.send({
-          'variant': 'error',
-          'correlationId': null,
-          'code': 'VERSION_MISMATCH',
-          'message': `Keying scheme mismatch: parent expects '${parentKeyingScheme}', bundle provides '${bundleKeyingScheme}'`,
           'recoverable': false,
         });
         return;

@@ -273,8 +273,14 @@ export class ScatterPoolDriver
     );
   }
 
+  #dagContext(): Record<string, unknown> {
+    const dag = this.#adapter.dags.get(ContextResolver.expand(this.#ctx.dagName, {}));
+    return dag !== undefined ? ContextResolver.contextOf(dag['@context']) : {};
+  }
+
   async executeItem(itemIndex: number, item: unknown): Promise<ScatterItemResultType> {
     const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
+    const dagContext = this.#dagContext();
 
     if ('node' in scatter.body) {
       // Node body: clone parent — no isolation factory for node bodies.
@@ -298,7 +304,7 @@ export class ScatterPoolDriver
       cloneState.setMetadata('itemIndex', itemIndex);
 
       // Node body: build a size-1 Batch and execute.
-      const nodeIri = ContextResolver.expand(scatter.body.node, {});
+      const nodeIri = ContextResolver.expand(scatter.body.node, dagContext);
       const dagNode = this.#adapter.nodes.get(nodeIri);
       if (!dagNode) {
         throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
@@ -353,7 +359,7 @@ export class ScatterPoolDriver
           errorClone.setMetadata('itemIndex', itemIndex);
           return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone };
         }
-        const resolvedIri = ContextResolver.expand(resolved, {});
+        const resolvedIri = ContextResolver.expand(resolved, dagContext);
         if (!this.#adapter.dags.has(resolvedIri)) {
           const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
           errorClone.deleteMetadata(SCATTER_PROGRESS_KEY);
@@ -362,14 +368,13 @@ export class ScatterPoolDriver
           errorClone.setMetadata('itemIndex', itemIndex);
           return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone };
         }
-        bodyDagName = resolved;
+        bodyDagName = resolvedIri;
       } else {
-        bodyDagName = scatter.body.dag;
+        bodyDagName = ContextResolver.expand(scatter.body.dag, dagContext);
       }
 
       // Build the child clone using the body dag's registered factory (spawnChild
       // returns NodeStateInterface; isolation factory may produce a different class).
-      // stateFactories is bare-name keyed; bodyDagName is the bare/short name.
       const factory = this.#adapter.stateFactories.get(bodyDagName) ?? ChildStateFactory.cloneParent;
       const cloneState = this.#adapter.stateMapper.spawnChild(
         state,
@@ -508,10 +513,11 @@ export class ScatterPoolDriver
    */
   async executeBatch(items: { index: number; item: unknown; bufferKey: string }[]): Promise<ScatterItemBatchResultType> {
     const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
+    const dagContext = this.#dagContext();
 
     if ('node' in scatter.body) {
       // ── Branch A: node body ─────────────────────────────────────────────────
-      const batchNodeIri = ContextResolver.expand(scatter.body.node, {});
+      const batchNodeIri = ContextResolver.expand(scatter.body.node, dagContext);
       const dagNode = this.#adapter.nodes.get(batchNodeIri);
       if (!dagNode) {
         throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
@@ -599,7 +605,7 @@ export class ScatterPoolDriver
           }),
         };
       }
-      const batchResolvedIri = ContextResolver.expand(rawResolved, {});
+      const batchResolvedIri = ContextResolver.expand(rawResolved, dagContext);
       if (!this.#adapter.dags.has(batchResolvedIri)) {
         return {
           'results': items.map((buffered) => {
@@ -614,9 +620,9 @@ export class ScatterPoolDriver
           }),
         };
       }
-      batchBodyDagName = rawResolved;
+      batchBodyDagName = batchResolvedIri;
     } else {
-      batchBodyDagName = scatter.body.dag;
+      batchBodyDagName = ContextResolver.expand(scatter.body.dag, dagContext);
     }
 
     const innerPath: readonly string[] = [...placementPath, scatter.name];
@@ -624,7 +630,6 @@ export class ScatterPoolDriver
 
     // Build N child clones using the body dag's registered factory (spawnChild
     // returns NodeStateInterface; isolation factories may produce a different class).
-    // stateFactories is bare-name keyed; batchBodyDagName is the bare/short name.
     const batchFactory = this.#adapter.stateFactories.get(batchBodyDagName) ?? ChildStateFactory.cloneParent;
     const clones: NodeStateInterface[] = [];
     const batchItems: { id: string; state: NodeStateInterface }[] = [];

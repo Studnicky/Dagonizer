@@ -29,6 +29,7 @@ export interface EmbeddedPlacementExecutorInterface {
   executeEmbeddedDAG(
     placement: EmbeddedDAGNodeType,
     state: NodeStateInterface,
+    dagName: string,
     signal: AbortSignal,
     placementPath: readonly string[],
     bufferIntermediates: boolean,
@@ -98,7 +99,7 @@ export class PlacementDispatch {
         // Placement.isEmbeddedDAG guard: @type === 'EmbeddedDAGNode' confirmed by
         // the dispatch key; guard makes the narrowing explicit.
         if (!Placement.isEmbeddedDAG(e)) throw new DAGError(`Dispatch type mismatch: expected EmbeddedDAGNode`);
-        return this.#embedded.executeEmbeddedDAG(e, state, signal, placementPath, bufferIntermediates);
+        return this.#embedded.executeEmbeddedDAG(e, state, dagName, signal, placementPath, bufferIntermediates);
       },
       'ScatterNode': (e) => {
         if (!Placement.isScatter(e)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);

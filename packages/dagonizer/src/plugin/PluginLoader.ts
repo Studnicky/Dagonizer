@@ -15,8 +15,8 @@ import { DAGError } from '../errors/DAGError.js';
  *
  * Validates an imported module's default export against the `PluginInterface`
  * structural contract — no casts, no `as PluginInterface`. The boundary is
- * `PluginLoader.isPlugin()`: a structural type-guard predicate over the one
- * method that every plugin must expose.
+ * `PluginLoader.isPlugin()`: a structural type-guard predicate over the id
+ * and register method every plugin must expose.
  *
  * JSON Schema cannot validate "has a method named register that is a function"
  * (methods are not JSON-expressible), so structural predicate validation is the
@@ -59,7 +59,8 @@ export class PluginLoader {
   /**
    * Type-guard: narrows unknown → PluginInterface via structural check.
    *
-   * Checks that `value` is a non-null object with a `register` method.
+   * Checks that `value` is a non-null object with an `id` string and a
+   * `register` method.
    * This is the schema-validation boundary for the plugin contract — no JSON
    * Schema can express "has a callable method", so a structural predicate is
    * the correct approach.
@@ -68,6 +69,9 @@ export class PluginLoader {
     return (
       typeof value === 'object' &&
       value !== null &&
+      'id' in value &&
+      typeof value['id'] === 'string' &&
+      value['id'].length > 0 &&
       'register' in value &&
       typeof value['register'] === 'function'
     );
@@ -78,7 +82,7 @@ export class PluginLoader {
     if (!PluginLoader.isPlugin(candidate)) {
       throw new DAGError(
         `Plugin module '${specifier}' does not export a valid PluginInterface: ` +
-        `default export must be an object with a register(dispatcher) method`,
+        `default export must be an object with an id and register(dispatcher) method`,
         { "code": 'PLUGIN_INVALID' },
       );
     }

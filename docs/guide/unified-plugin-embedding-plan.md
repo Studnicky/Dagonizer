@@ -171,6 +171,7 @@ exports.
 
 ```ts
 export const retrievalPlugin = defineDagonizerPlugin({
+  id: '@acme/dagonizer-retrieval',
   context: {
     retrieval: 'https://noocodex.dev/plugins/retrieval#',
   },
@@ -192,6 +193,7 @@ The returned value satisfies this shape:
 ```ts
 type DefinedDagonizerPlugin<TExports extends Record<string, string>> =
   PluginInterface & {
+    readonly id: string;
     readonly context: Record<string, unknown>;
     readonly bundle: DispatcherBundleType<NodeStateInterface>;
     readonly exports: Readonly<TExports>;
@@ -464,15 +466,18 @@ import type { PluginInterface, PluginReceiverType } from '../contracts/PluginInt
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 
 export type DagonizerPluginDefinitionType<TExports extends Record<string, string>> = {
+  readonly id: string;
   readonly context?: Record<string, unknown>;
   readonly nodes: readonly NodeInterface<NodeStateInterface, string>[];
   readonly dags: readonly DAGType[];
+  /** Child-state factories keyed by expanded DAG IRI. */
   readonly stateFactories?: Record<string, ChildStateFactoryType>;
   readonly exports: TExports;
 };
 
 export type DefinedDagonizerPluginType<TExports extends Record<string, string>> =
   PluginInterface & {
+    readonly id: string;
     readonly context: Record<string, unknown>;
     readonly bundle: DispatcherBundleType<NodeStateInterface>;
     readonly exports: Readonly<TExports>;
@@ -574,23 +579,23 @@ npm run validate
 
 ### Acceptance checklist
 
-- [ ] `defineDagonizerPlugin` exists and exports from the plugin subpath.
-- [ ] Plugin definition validates exported DAG names.
-- [ ] Defined plugin validates through `PluginLoader.validate`.
-- [ ] `DAGBuilder.embed` exists.
-- [ ] `DAGBuilder.embed` emits the same canonical JSON-LD shape as
+- [x] `defineDagonizerPlugin` exists and exports from the plugin subpath.
+- [x] Plugin definition validates exported DAG names.
+- [x] Defined plugin validates through `PluginLoader.validate`.
+- [x] `DAGBuilder.embed` exists.
+- [x] `DAGBuilder.embed` emits the same canonical JSON-LD shape as
   `embeddedDAG`.
-- [ ] `DAGBuilder.embed` accepts a plain DAG name.
-- [ ] `DAGBuilder.embed` accepts a `DAGType` and emits `dag.name`.
-- [ ] `DAGBuilder.embed` accepts `{ from }` and emits `dagFrom`.
-- [ ] A parent DAG embeds a plugin-exported DAG name and executes.
-- [ ] Static discovery finds reachable plugin DAGs through literal embedded DAG
+- [x] `DAGBuilder.embed` accepts a plain DAG name.
+- [x] `DAGBuilder.embed` accepts a `DAGType` and emits `dag.name`.
+- [x] `DAGBuilder.embed` accepts `{ from }` and emits `dagFrom`.
+- [x] A parent DAG embeds a plugin-exported DAG name and executes.
+- [x] Static discovery finds reachable plugin DAGs through literal embedded DAG
   references.
-- [ ] JSON-LD reachable rendering includes parent and plugin DAGs.
-- [ ] Docs state that plugin exports are DAG names.
-- [ ] No `FlowPart` abstraction exists.
-- [ ] No new placement type exists.
-- [ ] Existing plugin loader behavior remains valid.
+- [x] JSON-LD reachable rendering includes parent and plugin DAGs.
+- [x] Docs state that plugin exports are DAG names.
+- [x] No `FlowPart` abstraction exists.
+- [x] No new placement type exists.
+- [x] Existing plugin loader behavior remains valid.
 
 ### Implementation Order for a Fresh Agent
 

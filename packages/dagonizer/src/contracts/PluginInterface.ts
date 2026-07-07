@@ -26,6 +26,8 @@ export type PluginReceiverType = {
  * by `Dagonizer.registerPlugin`.
  */
 export interface PluginInterface {
+  /** Stable plugin package/specifier id. Duplicate ids must identify the same plugin object. */
+  readonly id: string;
   /** Called once, in registration order, by `Dagonizer.registerPlugin`. */
   register(dispatcher: PluginReceiverType): void;
 }

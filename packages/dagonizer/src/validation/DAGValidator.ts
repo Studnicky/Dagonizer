@@ -20,21 +20,8 @@ export class DAGValidator {
     dags: Map<string, DAGType>,
   ): void {
     const errors: string[] = [];
-    const nodeNames = new Set<string>();
-
     for (const node of dag.nodes) {
-      if (nodeNames.has(node.name)) {
-        errors.push(`Duplicate node name: ${node.name}`);
-      }
-      nodeNames.add(node.name);
-    }
-
-    if (!nodeNames.has(dag.entrypoint)) {
-      errors.push(`Entrypoint '${dag.entrypoint}' does not exist in nodes`);
-    }
-
-    for (const node of dag.nodes) {
-      DAGValidator.validateDAGNode(node, context, nodes, dags, nodeNames, errors);
+      DAGValidator.validateDAGNode(node, context, nodes, dags, errors);
     }
 
     // No sub-DAG cycle detection is needed. `registerDAG` is append-only (a
@@ -53,19 +40,18 @@ export class DAGValidator {
     context: Record<string, unknown>,
     nodes: Map<string, NodeInterface<TState, string>>,
     dags: Map<string, DAGType>,
-    nodeNames: Set<string>,
     errors: string[],
   ): void {
     if (Placement.isEmbeddedDAG(entry)) {
-      DAGValidator.validateEmbeddedDAGNode(entry, context, dags, nodeNames, errors);
+      DAGValidator.validateEmbeddedDAGNode(entry, context, dags, errors);
     } else if (Placement.isScatter(entry)) {
-      DAGValidator.validateScatterNode(entry, context, nodes, dags, nodeNames, errors);
+      DAGValidator.validateScatterNode(entry, context, nodes, dags, errors);
     } else if (Placement.isSingle(entry)) {
-      DAGValidator.validateSingleNode(entry, context, nodes, nodeNames, errors);
+      DAGValidator.validateSingleNode(entry, context, nodes, errors);
     } else if (Placement.isPhase(entry)) {
       DAGValidator.validatePhaseNode(entry, context, nodes, errors);
     }
-    // TerminalNode: no outputs to validate; schema pass is sufficient.
+    // TerminalNode: no registry-relative references to validate.
   }
 
   private static validatePhaseNode<TState extends NodeStateInterface>(
@@ -84,7 +70,6 @@ export class DAGValidator {
     nodeConfig: SingleNodePlacementType,
     context: Record<string, unknown>,
     nodes: Map<string, NodeInterface<TState, string>>,
-    nodeNames: Set<string>,
     errors: string[],
   ): void {
     const nodeIri = ContextResolver.expand(nodeConfig.node, context);
@@ -103,42 +88,20 @@ export class DAGValidator {
         errors.push(`Node '${nodeConfig.name}': registered node '${dagNode.name}' declares output '${output}' but no routing is defined`);
       }
     }
-
-    for (const [output, target] of Object.entries(nodeConfig.outputs)) {
-      // target is a placement name (intra-DAG identifier), not an IRI — nodeNames are bare.
-      if (!nodeNames.has(target)) {
-        errors.push(`Node '${nodeConfig.name}': output '${output}' routes to unknown node '${target}'`);
-      }
-    }
   }
 
   private static validateEmbeddedDAGNode(
     placement: EmbeddedDAGNodeType,
     context: Record<string, unknown>,
     dags: Map<string, DAGType>,
-    nodeNames: Set<string>,
     errors: string[],
   ): void {
-    // Exactly one of `dag` (build-time literal) or `dagFrom` (runtime path) must be set.
-    if (placement.dag !== undefined && placement.dagFrom !== undefined) {
-      errors.push(`EmbeddedDAGNode '${placement.name}': requires exactly one of dag or dagFrom, not both`);
-    } else if (placement.dag === undefined && placement.dagFrom === undefined) {
-      errors.push(`EmbeddedDAGNode '${placement.name}': requires exactly one of dag or dagFrom`);
-    }
-
     // `dag` is the build-time literal name; validate it against the registry using IRI expansion.
     // `dagFrom` resolves at runtime from state — no static validation is possible.
     if (placement.dag !== undefined) {
       const dagIri = ContextResolver.expand(placement.dag, context);
       if (!dags.has(dagIri)) {
         errors.push(`EmbeddedDAGNode '${placement.name}': unknown registered DAG '${placement.dag}'`);
-      }
-    }
-
-    for (const [output, target] of Object.entries(placement.outputs)) {
-      // target is a placement name (intra-DAG identifier) — bare, not IRI-expanded.
-      if (!nodeNames.has(target)) {
-        errors.push(`EmbeddedDAGNode '${placement.name}': output '${output}' routes to unknown node '${target}'`);
       }
     }
   }
@@ -148,19 +111,9 @@ export class DAGValidator {
     context: Record<string, unknown>,
     nodes: Map<string, NodeInterface<TState, string>>,
     dags: Map<string, DAGType>,
-    nodeNames: Set<string>,
     errors: string[],
   ): void {
     if ('node' in scatter.body) {
-      // A node body with a container key is invalid: a node body is one node, not a DAG.
-      // Container is only valid for dag bodies. Throw immediately — this is a structural
-      // error that must surface before any execution.
-      if (scatter.container !== undefined) {
-        throw new DAGError(
-          `ScatterNode '${scatter.name}' has a node body; 'container' is only valid for a dag body`,
-          { 'code': 'VALIDATION_ERROR' },
-        );
-      }
       const bodyNodeIri = ContextResolver.expand(scatter.body.node, context);
       if (!nodes.has(bodyNodeIri)) {
         errors.push(`ScatterNode '${scatter.name}': unknown registered node '${scatter.body.node}'`);
@@ -180,38 +133,5 @@ export class DAGValidator {
         errors.push(`ScatterNode '${scatter.name}': custom gather node '${gather.customNode}' not found`);
       }
     }
-
-    for (const [output, target] of Object.entries(scatter.outputs)) {
-      // target is a placement name (intra-DAG identifier) — bare, not IRI-expanded.
-      if (!nodeNames.has(target)) {
-        errors.push(`ScatterNode '${scatter.name}': output '${output}' routes to unknown node '${target}'`);
-      }
-    }
-
-    if (scatter.execution !== undefined && scatter.execution.mode === 'reservoir') {
-      DAGValidator.validateReservoir(scatter, scatter.execution.reservoir, errors);
-    }
-  }
-
-  private static validateReservoir(
-    scatter: ScatterNodeType,
-    reservoir: { keyField: string; capacity: number; idleMs?: number },
-    errors: string[],
-  ): void {
-    // keyField: schema enforces minLength:1 but surface a clear semantic message.
-    if (reservoir.keyField.trim().length === 0) {
-      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.keyField must be a non-empty accessor path`);
-    }
-
-    // capacity: schema enforces minimum:1 but surface a clear semantic message.
-    if (reservoir.capacity < 1) {
-      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.capacity must be >= 1 (got ${reservoir.capacity})`);
-    }
-
-    // idleMs: schema enforces minimum:1 but surface a clear semantic message.
-    if (reservoir.idleMs !== undefined && reservoir.idleMs < 1) {
-      errors.push(`ScatterNode '${scatter.name}' execution.reservoir.idleMs must be > 0 when present (got ${reservoir.idleMs})`);
-    }
-
   }
 }

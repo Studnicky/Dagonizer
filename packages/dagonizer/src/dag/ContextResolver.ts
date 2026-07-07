@@ -4,7 +4,7 @@
  * Expands short names to absolute IRIs using a JSON-LD-inspired `@context`
  * prefix map. Two expansion rules apply:
  *
- *  - Bare name (no colon after position 0): `DEFAULT_NS + name`
+ *  - Short name (no colon after position 0): `DEFAULT_NS + name`
  *  - Prefixed name (`prefix:local`): look up `prefix` in the context map,
  *    concatenate the namespace IRI with `local`
  *
@@ -19,7 +19,7 @@ import { DAGError } from '../errors/DAGError.js';
 export class ContextResolver {
   private constructor() { /* static class */ }
 
-  /** Default namespace for bare (un-prefixed) names. */
+  /** Default namespace for un-prefixed short names. */
   static readonly DEFAULT_NS = 'https://noocodex.dev/dag/default#';
 
   /**
@@ -27,13 +27,14 @@ export class ContextResolver {
    * map.
    *
    * Rules (applied in order):
-   *  1. Bare name (no colon, or colon at position 0): `DEFAULT_NS + name`.
+   *  1. Short name (no colon, or colon at position 0): `DEFAULT_NS + name`.
    *  2. Absolute IRI (`://` immediately follows the colon): return `name`
    *     as-is — prevents double-expansion of already-expanded IRIs.
    *  3. Prefixed name (`prefix:local`) where `prefix` IS a key in `context`:
    *     return `prefixNs + local`.
    *  4. Prefixed name where `prefix` is NOT in `context`: treat the entire
-   *     name (colon included) as a bare name → `DEFAULT_NS + name`. This
+   *     name (colon included) as a default-namespace short name →
+   *     `DEFAULT_NS + name`. This
    *     keeps existing compound names that use colons as separators (e.g.
    *     `tool-invoke:calculator`, `tool:calculator`) unique in the registry
    *     without requiring callers to declare them as prefixes.
@@ -61,7 +62,7 @@ export class ContextResolver {
   static expand(name: string, context: Record<string, unknown>): string {
     const colonIdx = name.indexOf(':');
     if (colonIdx <= 0) {
-      // Bare name (no colon, or colon at position 0 which is invalid/unusual).
+      // Short name (no colon, or colon at position 0 which is invalid/unusual).
       return ContextResolver.DEFAULT_NS + name;
     }
     // If the character immediately after the colon is '/', the name is an
@@ -78,9 +79,9 @@ export class ContextResolver {
       // Prefix not found in context. The name may be an existing compound
       // name (e.g. `tool-invoke:calculator`, `tool:calculator`) that uses a
       // colon as a separator rather than as a JSON-LD prefix separator.
-      // Fall back to bare-name expansion: DEFAULT_NS + full name (including
-      // the colon). This keeps existing compound names unique in the registry
-      // without requiring callers to declare them as prefixes.
+      // Fall back to default-namespace expansion: DEFAULT_NS + full name
+      // (including the colon). This keeps existing compound names unique in
+      // the registry without requiring callers to declare them as prefixes.
       return ContextResolver.DEFAULT_NS + name;
     }
     return ns + local;

@@ -17,6 +17,7 @@
 import { DAGBuilder } from '../builder/DAGBuilder.js';
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { DispatcherBundleType } from '../contracts/DispatcherBundle.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import type { ToolDefinitionType } from '../entities/adapter/ToolDefinition.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { DAGError } from '../errors/DAGError.js';
@@ -149,7 +150,8 @@ export class ToolRegistry {
       // Validators compiled once at `register()` time are passed through here; no recompilation.
       nodes.push(new ToolInvokeNode(entry['nodeName'], entry['tool'], entry['inputValidator'], entry['outputValidator'], { 'execution': entry['execution'] }));
       dags.push(entry['dag']);
-      stateFactories[entry['dagName']] = () => new ToolInvocationState();
+      const context = ContextResolver.contextOf(entry['dag']['@context']);
+      stateFactories[ContextResolver.expand(entry['dagName'], context)] = () => new ToolInvocationState();
     }
 
     return { 'nodes': nodes, 'dags': dags, 'stateFactories': stateFactories };

@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { Dagonizer, Checkpoint, CheckpointRestoreAdapter } from '@studnicky/dagonizer';
+import { ContextResolver } from '@studnicky/dagonizer/context';
 import { CountingState, IncNode, dag } from '../dags/08-checkpoint.ts';
 
 class Harness {
@@ -52,7 +53,7 @@ describe('08-checkpoint: capture, persist, restore, resume', () => {
       CheckpointRestoreAdapter.wrap((snap) => CountingState.restore(snap)),
     );
 
-    assert.equal(dagName, 'count');
+    assert.equal(dagName, ContextResolver.expand('count', {}));
     assert.equal(cursor, 'b');
     assert.equal(state.count, 1);
 

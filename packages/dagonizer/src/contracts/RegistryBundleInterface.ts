@@ -31,18 +31,6 @@ export interface RegistryBundleInterface {
    */
   restoreState: CheckpointRestoreAdapterInterface<NodeStateInterface>;
   /**
-   * Optional keying scheme for this bundle's registry maps. When `'iri'`, names
-   * are expanded to full IRI keys using `ContextResolver`. When `'name'` (the
-   * default when absent), bare names are used as registry keys — backward
-   * compatible with all existing bundles.
-   *
-   * Extension contract: optional seam. Existing bundles that omit this field
-   * default to `'name'` on both sides of the container protocol. When the parent
-   * sends `keyingScheme: 'iri'` the bundle must declare the same to satisfy the
-   * handshake; `DagHost` rejects mismatches with `VERSION_MISMATCH`.
-   */
-  keyingScheme?: 'name' | 'iri';
-  /**
    * Optional teardown hook. Called by `DagHost` on shutdown before the host
    * process/thread exits, so node resources (DB connections, file handles, etc.)
    * are released cleanly.

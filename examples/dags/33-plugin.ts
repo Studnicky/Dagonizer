@@ -123,6 +123,7 @@ export const pluginDag: DAGType = {
  * any dispatcher via a single `registerPlugin(normalizePlugin)` call.
  */
 export const normalizePlugin = defineDagonizerPlugin({
+  id: '@studnicky/dagonizer-example-normalize',
   context: {
     plugin: 'https://noocodex.dev/plugins/normalize#',
   },

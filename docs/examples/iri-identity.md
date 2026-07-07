@@ -28,10 +28,10 @@ The application authoring rule is practical: plugin-owned names should carry plu
 
 This page has JSON-LD snippets instead of a Mermaid graph because the interesting behavior is registry identity, not route topology.
 
-1. Two nodes with the same bare name under distinct prefix contexts coexist without collision.
+1. Two nodes with the same local name under distinct prefix contexts coexist without collision.
 2. A bare `increment` and a prefixed `pluginA:increment` expand to different IRIs.
 3. Registering the same node instance twice is idempotent (one entry).
-4. Registering two different nodes under the same bare name throws `DAGError`.
+4. Registering two different nodes under the same short name throws `DAGError`.
 5. `ContextResolver.validate` throws on a duplicate-namespace `@context`.
 6. `registerDAG` with a colliding `@context` throws before mutating the registry.
 
@@ -45,7 +45,7 @@ npx litany test unit
 
 IRI identity lets applications combine plugins that use the same local node or DAG names without registry collisions. Use it when teams independently ship `classify`, `extract`, `normalize`, or `route` nodes that may later run in one dispatcher.
 
-Node and DAG registries are keyed by **expanded IRI**, not bare name. Two plugins that both ship a node named `classify` coexist by declaring distinct `@context` prefixes — each name expands to a different absolute IRI before entering the registry.
+Node and DAG registries are keyed by **expanded IRI**, not raw short names. Two plugins that both ship a node named `classify` coexist by declaring distinct `@context` prefixes — each name expands to a different absolute IRI before entering the registry.
 
 ## Code Samples
 
@@ -106,7 +106,7 @@ Every `name` and `node` string in the document is expanded through the document'
 
 ## Details for Nerds
 
-### The problem: bare-name collision
+### The problem: short-name collision
 
 Without IRI keying, the second `registerNode('classify', ...)` call overwrites the first. The two plugin nodes cannot coexist.
 

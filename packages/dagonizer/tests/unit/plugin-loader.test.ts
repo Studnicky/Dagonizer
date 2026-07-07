@@ -10,8 +10,8 @@ import { PluginLoader } from '../../src/plugin/PluginLoader.js';
 // ---------------------------------------------------------------------------
 
 void describe('PluginLoader.isPlugin', () => {
-  void it('returns true for a valid { register: fn } object', () => {
-    const candidate = { "register": (_dispatcher: PluginReceiverType) => { /* no-op */ } };
+  void it('returns true for a valid { id, register } object', () => {
+    const candidate = { "id": '@example/plugin', "register": (_dispatcher: PluginReceiverType) => { /* no-op */ } };
     assert.equal(PluginLoader.isPlugin(candidate), true);
   });
 
@@ -27,8 +27,12 @@ void describe('PluginLoader.isPlugin', () => {
     assert.equal(PluginLoader.isPlugin({ "name": 'no-register' }), false);
   });
 
+  void it('returns false for an object missing the id', () => {
+    assert.equal(PluginLoader.isPlugin({ "register": (_dispatcher: PluginReceiverType) => { /* no-op */ } }), false);
+  });
+
   void it('returns false for an object where register is not a function', () => {
-    assert.equal(PluginLoader.isPlugin({ "register": 'not-a-function' }), false);
+    assert.equal(PluginLoader.isPlugin({ "id": '@example/plugin', "register": 'not-a-function' }), false);
   });
 
   void it('returns false for undefined', () => {
@@ -42,14 +46,14 @@ void describe('PluginLoader.isPlugin', () => {
 
 void describe('PluginLoader.validate', () => {
   void it('returns the plugin when default export is a valid plugin', () => {
-    const plugin = { "register": (_dispatcher: PluginReceiverType) => { /* no-op */ } };
+    const plugin = { "id": '@example/plugin', "register": (_dispatcher: PluginReceiverType) => { /* no-op */ } };
     const mod = { "default": plugin };
     const result = PluginLoader.validate(mod, 'test-module');
     assert.equal(result, plugin);
   });
 
-  void it('accepts the plugin directly (no default wrapper) when it has register', () => {
-    const plugin = { "register": (_dispatcher: PluginReceiverType) => { /* no-op */ } };
+  void it('accepts the plugin directly (no default wrapper) when it has id and register', () => {
+    const plugin = { "id": '@example/plugin', "register": (_dispatcher: PluginReceiverType) => { /* no-op */ } };
     const result = PluginLoader.validate(plugin, 'test-module');
     assert.equal(result, plugin);
   });
