@@ -5,37 +5,46 @@ seeAlso:
   - text: 'Guide: Agent loop'
     link: '../guide/conversational#agent-loop'
     description: 'Full guide: 8-node topology, subclassing, and wiring'
-  - text: 'Example 26: Tool use'
+  - text: 'Example 26: Tool Use'
     link: './26-tool-use'
     description: 'ToolInterface definition, ToolCallCodec, adapter dispatch'
-  - text: 'Example 24: LLM adapter'
+  - text: 'Example 24: LLM Adapter'
     link: './24-llm-adapter'
     description: 'LlmAdapter, registry, cascade, and chat surface'
-  - text: 'The Archivist (in-browser demo)'
+  - text: 'The Archivist'
     link: './the-archivist'
-    description: 'A full multi-branch agent application built on Dagonizer'
+    description: 'A full multi-branch agent application powered by Dagonizer'
 ---
+
+<script setup lang="ts">
+import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
+</script>
 
 # Example 29: Agent DAG with JSON-LD
 
-Agents are DAGs. The canonical 8-node agent loop is authored directly as
-JSON-LD and registered like any other `DAGType`. The topology —
-placement names, route maps, scatter configuration, terminal outcomes — stays
-visible at the authoring site while the 8 abstract base nodes adapt how state
-is read and written.
+## What It Is
 
-## Why the agent DAG exists
+Agent DAG with JSON-LD shows the Archivist as graph data rather than an opaque chat loop. Model calls, tool dispatch, memory recall, fallback paths, and final response assembly are all placements and routes in the registered DAG.
 
-Every LLM agent loop repeats the same structure: build a chat request, send
-it to the model, inspect the variant of the response, decode any embedded tool
-calls, validate them, partition them into safe/exclusive worksets, scatter
-dispatch, gather results, loop back. Three independent consumers rebuilt this
-topology from scratch.
+The practical lesson is simple: an LLM-powered application can still have inspectable topology. JSON-LD records what can happen; registered nodes decide what does happen for a specific turn.
 
-The JSON-LD DAG lives in `examples/dags/29-agent-dag.ts`, and the runnable example imports it as a first-class
-runtime artifact.
+## How It Works
 
-## The 8-node topology
+The loop is a normal DAG: build a request, call the model, normalize the response, decode tool calls, build worksets, scatter to registered tool DAGs, collect results, and route back to the next model turn. JSON-LD captures every placement and route, while abstract base nodes provide reusable execution behavior for concrete agent state classes.
+
+The Archivist expands that skeleton into a domain application. It classifies visitor intent, chooses book-search or memory paths, embeds reusable search and compose sub-DAGs, and routes tool-backed results into response composition.
+
+## Diagrams, Examples, and Outputs
+
+### DAG registration and diagram
+
+The runnable agent graph is [The Archivist](./the-archivist). The diagram below is generated from the same `archivistDAG` document that the browser and CLI register.
+
+<DagJsonMermaid :dag="archivistDAG" title="Archivist agent DAG" aria-label="Archivist agent JSON-LD DAG beside Mermaid generated from it." />
+
+The topology, placement names, route maps, scatter configuration, embedded DAGs, and terminal outcomes stay visible at the authoring site. A user turn is not a hidden callback stack; it is a graph run.
+
+### The reusable loop skeleton
 
 ```
 build-request
@@ -60,24 +69,38 @@ scatter item produced by `BuildToolWorksetsNode` carries a `dagName` field
 runtime. `CollectToolResultsNode` runs after the gather and loops back to
 `build-request` for the next model turn.
 
-## Import
+### Run
 
-```ts
-import { Dagonizer } from '@studnicky/dagonizer';
-import {
-  AppendAssistantNode,
-  BuildChatRequestNode,
-  BuildToolWorksetsNode,
-  CallModelNode,
-  CollectToolResultsNode,
-  DecodeTextToolCallsNode,
-  NormalizeResponseNode,
-  NormalizeToolCallsNode,
-} from '@studnicky/dagonizer/patterns';
-import { dag as agentDag } from './dags/29-agent-dag.ts';
+```bash
+npm run docs:dev
 ```
 
-## Subclassing the 8 abstract base nodes
+Open [The Archivist](./the-archivist) and run a visitor turn.
+
+## What It Lets You Do
+
+Agent DAGs let applications model calls, tool calls, result gathering, memory writes, and final response assembly as inspectable graph data instead of opaque framework callbacks.
+
+Use this when a product needs the agent loop to be serializable, visualizable, reusable across browser and CLI hosts, and extensible through embedded DAGs or plugins.
+
+### Why the agent DAG exists
+
+Every model/tool loop repeats the same structure: build a chat request, send it to the model, inspect the response variant, decode embedded tool calls, validate them, partition them into safe/exclusive worksets, scatter dispatch, gather results, and loop back.
+
+The runnable JSON-LD DAG lives in `examples/the-archivist/dag.ts`, and both the
+browser runner and CLI register it as a first-class runtime artifact.
+
+## Code Samples
+
+The runnable example keeps topology explicit in the builder and registers real Archivist nodes, tools, memory, and model services.
+
+<<< @/../examples/the-archivist/dag.ts
+
+<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-services
+
+## Details for Nerds
+
+### Subclassing the 8 abstract base nodes
 
 Each base node declares one or more `protected abstract` template methods. The
 subclass fills in state reads and writes; the base class implements the full
@@ -94,67 +117,18 @@ execution, error wrapping, and output routing.
 | `CollectToolResultsNode` | `getGatheredResults`, `writeResult` | `'done'` \| `'empty'` \| `'error'` |
 | `AppendAssistantNode` | `getResponse`, `append` | `'done'` \| `'error'` |
 
-`CallModelNode` receives the `LlmAdapterInterface` via its constructor:
+`CallModelNode` receives the `LlmAdapterInterface` through its constructor, matching the same service-injection pattern used by the Archivist runner above.
 
-```ts
-class MyCallModelNode extends CallModelNode<AgentState> {
-  readonly name = 'call-model';
-  constructor(llm: LlmAdapterInterface) { super(llm); }
-  // …
-}
-```
+### Authoring the agent DAG
 
-## Authoring the agent DAG
+Use distinct DAG names and versions when multiple agent loops coexist in the same dispatcher. The concrete Archivist source in `Code Samples` is the implementation to copy from: build the DAG document, register concrete nodes and embedded tool DAGs, then register the parent DAG.
 
-```ts
-const nodes = {
-  chatRequest:         new MyBuildChatRequestNode(),
-  callModel:           new MyCallModelNode(llm),
-  normalizeResponse:   new MyNormalizeResponseNode(),
-  decodeTextToolCalls: new MyDecodeTextToolCallsNode(),
-  normalizeToolCalls:  new MyNormalizeToolCallsNode(),
-  toolWorksets:        new MyBuildToolWorksetsNode(),
-  collectToolResults:  new MyCollectToolResultsNode(),
-  appendAssistant:     new MyAppendAssistantNode(),
-};
+### Wiring the dispatcher
 
-```
+The dispatcher wiring follows the same order throughout the docs: register concrete nodes, register any plugin/tool/embedded DAG bundles they depend on, then register the parent DAG. The Archivist browser services snippet shows that order in the real UI runner.
 
-Use distinct DAG names and versions when multiple agent loops coexist in the
-same dispatcher.
-
-## Wiring the dispatcher
-
-```ts
-const dispatcher = new Dagonizer<AgentState>();
-
-// Register all 8 nodes.
-dispatcher.registerNode(nodes.chatRequest);
-dispatcher.registerNode(nodes.callModel);
-dispatcher.registerNode(nodes.normalizeResponse);
-dispatcher.registerNode(nodes.decodeTextToolCalls);
-dispatcher.registerNode(nodes.normalizeToolCalls);
-dispatcher.registerNode(nodes.toolWorksets);
-dispatcher.registerNode(nodes.collectToolResults);
-dispatcher.registerNode(nodes.appendAssistant);
-
-// Register tool DAGs (each tool:<name> synthesized by ToolRegistry).
-dispatcher.registerBundle(toolRegistry.bundle());
-
-// Register the authored agent DAG.
-dispatcher.registerDAG(agentDag);
-```
-
-## Code
-
-The runnable example keeps the same node subclasses, dispatcher registration,
-and stub LLM adapter as the snippet above.
-
-## What it demonstrates
-
-- **Agent DAG authoring from JSON-LD** — the full 8-node agent loop topology
-  is an explicit JSON-LD `DAGType` artifact. The returned `DAGType` is
-  data-only; it carries no runtime state.
+### What the runnable Archivist demonstrates
+- **Agent DAG authoring from JSON-LD.** The full Archivist topology is a data artifact registered like any other `DAGType`.
 - **Template-method pattern** — each abstract base node separates framework
   concerns (execution, error wrapping, routing) from domain concerns (state
   reads and writes). Subclasses override only the abstract template methods.
@@ -165,11 +139,9 @@ and stub LLM adapter as the snippet above.
   boundary. After gathering tool results, the loop restarts with a new
   `build-request` so the model can see the results.
 
-## Run
+## Related Concepts
 
-```bash
-npx tsx examples/29-agent-dag.ts
-```
-
-No external dependencies required; the example uses a stub LLM adapter that
-always returns a canned text response.
+- [Guide: Agent loop](../guide/conversational#agent-loop) - Full guide: 8-node topology, subclassing, and wiring
+- [Example 26: Tool Use](./26-tool-use) - ToolInterface definition, ToolCallCodec, adapter dispatch
+- [Example 24: LLM Adapter](./24-llm-adapter) - LlmAdapter, registry, cascade, and chat surface
+- [The Archivist](./the-archivist) - A full multi-branch agent application powered by Dagonizer

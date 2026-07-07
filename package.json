@@ -25,7 +25,7 @@
     "ci": "pnpm run typecheck && pnpm run typecheck:examples && pnpm run typecheck:docs && pnpm run lint && pnpm run test && pnpm run test:examples && pnpm run lint:dags && pnpm run check:fixed-group && pnpm run check:docs && pnpm run docs:build",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only",
-    "release": "pnpm run ci && changeset publish",
+    "release": "pnpm run ci",
     "docs:dev": "vitepress dev docs",
     "docs:build": "pnpm run stamp-version && node scripts/docs-build.mjs",
     "docs:preview": "vitepress preview docs",

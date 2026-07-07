@@ -1,4 +1,6 @@
 ---
+title: 'Dagonizer'
+description: 'Dispatcher API reference for registering nodes, bundles, DAG documents, plugin bundles, execution, resume, lifecycle hooks, and read accessors.'
 seeAlso:
   - text: 'Reference: Execution'
     link: './execution'
@@ -15,9 +17,46 @@ seeAlso:
 
 # Dagonizer
 
+## What It Is
+
+`Dagonizer<TState>` is the dispatcher. It owns the node registry, DAG registry, plugin registration boundary, lifecycle hooks, execution entrypoints, resume entrypoints, and read accessors.
+
+Use this page when integrating the dispatcher directly into an application host. The key distinction is simple: the DAG document describes what should run; the dispatcher owns the registered implementations and moves state through the routed graph.
+
+## How It Works
+
+Register nodes before DAGs. Register plugins before parent DAGs that embed plugin-provided DAG names. Register state factories when embedded DAGs need child state that is not just a clone of the parent state.
+
+`execute()` and `resume()` return lazy `Execution<TState>` objects. Nothing runs until the application awaits the result or iterates events. Validation happens at registration time so dangling node names, missing embedded DAGs, invalid routes, and contract mismatches fail before a run starts.
+
+## Diagrams, Examples, and Outputs
+
+The dispatcher is visible in every runnable demo: it registers the same JSON-LD DAGs that the docs render as diagrams, then executes those registered names.
+
+- [Reference: Execution](./execution) - what `execute` and `resume` return
+- [Reference: Contracts](./contracts) - `NodeInterface`, `ExecuteOptionsType`
+- [Reference: Core](./core) - `GatherStrategies`, `OutcomeReducers`
+- [Reference: Lifecycle](./lifecycle)
+- [The Archivist](../examples/the-archivist) - browser runner registering a large conversational DAG
+- [The Cartographer](../examples/the-cartographer) - browser runner registering plugin-defined and embedded data-pipeline DAGs
+
+## What It Lets You Do
+
+The Dagonizer reference lets applications register nodes, DAGs, bundles, and plugins, then execute or resume registered graphs. It is the API to reach for when a CLI, browser page, worker, serverless handler, or long-running service needs to host a DAG.
+
 `@studnicky/dagonizer` root export.
 
-## Class: `Dagonizer<TState>`
+## Code Samples
+
+The code below covers constructor options, registration, DAG document loading, execution, resume, teardown, lifecycle hooks, bundles, and reserved progress metadata.
+
+### Import
+
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+```
+
+### Class: `Dagonizer<TState>`
 
 The DAG dispatcher. Holds node and DAG registries, validates configurations at registration time, and runs the node-graph iterator.
 
@@ -32,7 +71,7 @@ const dispatcher = new Dagonizer<MyState>();
 
 `TState` must satisfy `NodeStateInterface`. In practice, always extend `NodeStateBase`.
 
-### Constructor
+#### Constructor
 
 ```ts twoslash
 import { Dagonizer } from '@studnicky/dagonizer';
@@ -45,7 +84,7 @@ const d = new Dagonizer(options);
 
 `options.accessor` swaps the path resolver for scatter source reads, state-mapping input copies, and gather writes. Defaults to `DottedPathAccessor`.
 
-### `DagonizerOptionsType`
+#### `DagonizerOptionsType`
 
 ```ts twoslash
 import type {
@@ -75,7 +114,7 @@ export {};
 
 ---
 
-### `registerNode(node)`
+#### `registerNode(node)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -93,7 +132,7 @@ Nodes are stored widened to `NodeInterface<NodeStateInterface, string>`. `TState
 
 ---
 
-### `registerBundle(bundle)`
+#### `registerBundle(bundle)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -127,7 +166,7 @@ Both arrays are required. Either may be empty (a node-only bundle uses `dags: []
 
 ---
 
-### `registerDAG(dag, stateFactory?)`
+#### `registerDAG(dag, stateFactory?)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -154,19 +193,19 @@ Throws `DAGError` with a multi-line message listing all failures.
 
 ---
 
-### `getDAG(name)`
+#### `getDAG(name)`
 
 Returns `DAG | undefined`. `undefined` when the DAG has not been registered.
 
-### `getNode(name)`
+#### `getNode(name)`
 
 Returns `NodeInterface<NodeStateInterface, string> | undefined`. `undefined` when the node has not been registered.
 
-### `listDAGs()`
+#### `listDAGs()`
 
 Snapshot of every registered DAG. The returned array is a fresh shallow copy; mutating it does not affect the registry.
 
-### `listNodes()`
+#### `listNodes()`
 
 Snapshot of every registered node. The returned array is a fresh shallow copy; mutating it does not affect the registry.
 
@@ -176,7 +215,7 @@ All four read accessors in context:
 
 ---
 
-### `DAGDocument.load(json, options?)` {#static-load}
+#### `DAGDocument.load(json, options?)` {#static-load}
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
@@ -216,7 +255,7 @@ const dag = DAGDocument.load(rawJsonString, {
 
 ---
 
-### `DAGDocument.ofValue(value, options?)` {#static-ofvalue}
+#### `DAGDocument.ofValue(value, options?)` {#static-ofvalue}
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
@@ -230,7 +269,7 @@ Validate an already-parsed value. Same boundary semantics as `load` but skips `J
 
 ---
 
-### `DAGDocument.serialize(dag)` {#static-serialize}
+#### `DAGDocument.serialize(dag)` {#static-serialize}
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
@@ -245,7 +284,7 @@ Serialize a DAG to pretty JSON (2-space indent). Does not re-validate.
 
 ---
 
-### `DAGDocument.serializeCompact(dag)` {#static-serializecompact}
+#### `DAGDocument.serializeCompact(dag)` {#static-serializecompact}
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
@@ -260,7 +299,7 @@ Serialize a DAG to compact JSON (no whitespace).
 
 ---
 
-### `execute(dagName, initialState, options?)`
+#### `execute(dagName, initialState, options?)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -280,7 +319,7 @@ Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution i
 
 ---
 
-### `resume(dagName, state, fromStage, options?)`
+#### `resume(dagName, state, fromStage, options?)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -298,7 +337,7 @@ Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoi
 
 ---
 
-### `destroy()`
+#### `destroy()`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -312,7 +351,7 @@ Calls the optional `destroy()` method on every registered node, then clears all 
 
 ---
 
-### Observability hooks
+#### Observability hooks
 
 Seven protected no-op methods. Subclass `Dagonizer` and override to attach metrics, logging, or tracing.
 
@@ -352,7 +391,7 @@ See [Observability](/guide/observability) for usage examples. Contract misalignm
 
 ---
 
-## Interface: `DispatcherBundleType`
+### Interface: `DispatcherBundleType`
 
 ```ts twoslash
 import type {
@@ -367,11 +406,11 @@ const _nodes: readonly NodeInterface<NodeStateInterface, string>[] = bundle.node
 const _dags: readonly DAGType[] = bundle.dags;
 ```
 
-A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundleType` so consumers register the whole unit in one call.
+A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundleType` so applications register the whole unit in one call.
 
 ---
 
-## Const: `SCATTER_PROGRESS_KEY`
+### Const: `SCATTER_PROGRESS_KEY`
 
 ```ts twoslash
 import { SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
@@ -381,7 +420,7 @@ const key = SCATTER_PROGRESS_KEY; // type: "__dagonizer_scatter_progress__"
 export {};
 ```
 
-Reserved metadata key used by the scatter executor to persist per-item resume bookkeeping. Consumer nodes must not write to this key. The stored value is a `StoredScatterProgress` map keyed by the scatter placement's `name`.
+Reserved metadata key used by the scatter executor to persist per-item resume bookkeeping. Application nodes must not write to this key. The stored value is a `StoredScatterProgress` map keyed by the scatter placement's `name`.
 
 ```ts twoslash
 // Illustrative local shapes (the actual StoredScatterProgress is a discriminated union):
@@ -403,7 +442,7 @@ export {};
 
 ---
 
-## Const: `WORKSET_PROGRESS_KEY`
+### Const: `WORKSET_PROGRESS_KEY`
 
 ```ts twoslash
 import { WORKSET_PROGRESS_KEY } from '@studnicky/dagonizer';
@@ -413,14 +452,22 @@ const key = WORKSET_PROGRESS_KEY; // type: "__dagonizer_workset_progress__"
 export {};
 ```
 
-Reserved metadata key used by the work-set scheduler to persist the in-flight work set on interruption. Consumer nodes must not write to this key. The stored value is a `WorkSetProgress` blob serialised by `WorkSetCheckpoint.write` and read back by `WorkSetCheckpoint.read`. Absent for size-1 canonical runs where the cursor model handles state directly.
+Reserved metadata key used by the work-set scheduler to persist the in-flight work set on interruption. Application nodes must not write to this key. The stored value is a `WorkSetProgress` blob serialised by `WorkSetCheckpoint.write` and read back by `WorkSetCheckpoint.read`. Absent for size-1 canonical runs where the cursor model handles state directly.
 
 ---
 
-## Related guides
+## Details for Nerds
 
-- [DAGBuilder](../guide/builder)
-- [Cancellation](../guide/cancellation)
-- [Services](../guide/services)
-- [State accessors](../guide/state-accessor)
-- [Observability](../guide/observability)
+`Dagonizer` intentionally keeps assembly explicit. JSON-LD carries names, routes, contexts, state mappings, phases, scatter bodies, and embedded DAG references. Registries bind those names to node implementations, DAG documents, child-state factories, containers, and channels. Visualization is generated from the DAG document, not from the live dispatcher.
+
+That separation is why a DAG can be built with `DAGBuilder`, loaded from JSON-LD, packaged by a plugin, rendered as Mermaid, and executed by the same dispatcher without conversion.
+
+## Related Concepts
+
+- [Reference: Execution](./execution) - what `execute` and `resume` return
+- [Reference: Contracts](./contracts) - `NodeInterface`, `ExecuteOptionsType`
+- [Reference: Core](./core) - `GatherStrategies`, `OutcomeReducers`
+- [Reference: Lifecycle](./lifecycle)
+- [DAGBuilder](../guide/builder) - author DAG documents before registering them
+- [Dependency Injection](../guide/services) - pass services into node constructors before registration
+- [Observability](../guide/observability) - lifecycle hooks and structured run events

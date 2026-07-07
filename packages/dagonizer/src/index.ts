@@ -62,6 +62,7 @@ export type {
 
 export { DAGBuilder } from './builder/index.js';
 export type {
+  EmbeddableDAGType,
   PathType,
   ScatterOptionsType,
   TypedEmbeddedDAGOptionsType,
@@ -322,6 +323,11 @@ export type { HandoffChannelInterface } from './contracts/HandoffChannelInterfac
 export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 export type { PluginInterface, PluginReceiverType } from './contracts/PluginInterface.js';
 export { PluginLoader } from './plugin/PluginLoader.js';
+export { defineDagonizerPlugin } from './plugin/defineDagonizerPlugin.js';
+export type {
+  DagonizerPluginDefinitionType,
+  DefinedDagonizerPluginType,
+} from './plugin/defineDagonizerPlugin.js';
 export { PluginSpecifier } from './plugin/PluginSpecifier.js';
 export type { DagOutcomeType } from './contracts/DagOutcomeType.js';
 export type { DagTaskInterface } from './contracts/DagTaskInterface.js';

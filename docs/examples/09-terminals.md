@@ -1,5 +1,5 @@
 ---
-title: 'Phase 09: Terminal placements'
+title: 'Example 09: Terminal Nodes'
 description: 'TerminalNode placements. Three patterns for ending a flow with an explicit completed or failed outcome.'
 seeAlso:
   - text: 'DAGBuilder, `.terminal()`'
@@ -8,135 +8,81 @@ seeAlso:
   - text: 'Visualization'
     link: '../guide/visualization'
     description: 'render DAGs with TerminalNode endpoints as Mermaid'
-  - text: 'Phase 05: Embedded-DAG composition'
+  - text: 'Example 05: Embedded DAGs'
     link: './05-embedded-dags'
     description: 'scatter routing with named terminal targets'
 ---
 
 <script setup lang="ts">
-import {
-  Batch,
-  DAG_CONTEXT,
-  DAGBuilder,
-  MonadicNode,
-  NodeStateBase,
-  RoutedBatch,
-} from '@studnicky/dagonizer';
-import type { DAG, SchemaObjectType } from '@studnicky/dagonizer';
-
-class S extends NodeStateBase { shouldPass = true; }
-
-class CheckNode extends MonadicNode<S, 'pass' | 'fail'> {
-  readonly name = 'check';
-  readonly outputs: readonly ('pass' | 'fail')[] = ['pass', 'fail'];
-
-  override get outputSchema(): Record<'pass' | 'fail', SchemaObjectType> {
-    return MonadicNode.permissiveSchema(this.outputs);
-  }
-
-  async execute(batch: Batch<S>) {
-    return RoutedBatch.create([
-      ['pass', batch.filter((state) => state.shouldPass)],
-      ['fail', batch.filter((state) => !state.shouldPass)],
-    ]);
-  }
-}
-
-const dag2 = new DAGBuilder('demo-explicit-terminals', '1')
-  .node('check', new CheckNode(), { pass: 'end-ok', fail: 'end-fail' })
-  .terminal('end-ok')
-  .terminal('end-fail', { outcome: 'failed' })
-  .build();
-
-const childDAG: DAG = {
-  '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:child-for-terminals',
-  '@type':     'DAG',
-  name:        'child-for-terminals',
-  version:     '1',
-  entrypoint:  'child-work',
-  nodes: [
-    {
-      '@id':    'urn:noocodex:dag:child-for-terminals/node/child-work',
-      '@type':  'SingleNode',
-      name:     'child-work',
-      node:     'child-work',
-      outputs:  { done: 'child-end' },
-    },
-    {
-      '@id':    'urn:noocodex:dag:child-for-terminals/node/child-end',
-      '@type':  'TerminalNode',
-      name:     'child-end',
-      outcome:  'completed',
-    },
-  ],
-};
-
-const dag3 = new DAGBuilder('demo-scatter-terminals', '1')
-  .embeddedDAG('run', 'child-for-terminals', { success: 'end-ok', error: 'end-fail' })
-  .terminal('end-ok')
-  .terminal('end-fail', { outcome: 'failed' })
-  .build();
-
-const terminalsRegistry = new Map([['child-for-terminals', childDAG]]);
+import { gdprComplianceDAG, supportDispatcherDAG } from '../.vitepress/theme/exampleDags.ts';
 </script>
 
-# Phase 09: Terminal placements
+# Example 09: Terminal Nodes
 
-`TerminalNode` placements name the endpoints of a flow and carry an `outcome` declaration (`completed` or `failed`). Every flow branch must end at a named `TerminalNode`. Three patterns cover the common cases: an explicit completed terminal, an explicit failed terminal, and embedded-DAG outputs routed to named terminals.
+## What It Is
 
-## What it shows
+Terminal nodes are explicit graph endpoints. They tell Dagonizer whether a branch completes or fails, and they make "the flow stops here" visible in JSON-LD, Mermaid, lifecycle events, and embedded-DAG parent routing.
 
-- **Explicit completed terminal.** `.node(..., { ok: 'end' }).terminal('end')`. Declares a named `TerminalNode` placement with the default `outcome: 'completed'`. The diagram shows `end` as a discrete node and the engine marks the state `completed` when execution arrives there.
-- **Explicit failed terminal.** `.terminal('end-fail', { outcome: 'failed' })`. Two terminal placements, `end-ok` (completed) and `end-fail` (failed), wired from a check node. The DAG runs twice, once triggering each terminal, producing `completed` and `failed` lifecycle variants respectively.
-- **Embedded-DAG routing to named terminals.** `.embeddedDAG('run', 'child-for-terminals', { success: 'end-ok', error: 'end-fail' })`. The parent registers named terminals and routes the embedded-DAG placement's `success` and `error` outputs directly to them. A child DAG that collects errors surfaces a `failed` lifecycle in the parent.
+The runnable examples show the two shapes application code usually needs: a shared successful endpoint in The Dispatcher, and completed/failed child endpoints in The Cartographer's GDPR compliance sub-DAG.
 
-## The code
+## How It Works
 
-<<< @/../examples/09-terminals.ts
+A terminal placement does not execute user code. It declares the endpoint reached by a named route and sets the lifecycle outcome for that branch. When a parent embeds a child DAG, the child's terminal outcome becomes the parent embedded placement's `success` or `error` output.
 
-## Walkthrough
+That means application code should route to terminals deliberately. A missing route is a graph bug; a terminal route is a documented outcome.
 
-### Pattern 1: explicit completed terminal
+## Diagrams, Examples, and Outputs
 
-<<< @/../examples/dags/09-terminals.ts#terminal-completed
+### DAG registration and diagram
 
-`.terminal('end')` emits a `TerminalNode` placement with `outcome: 'completed'`. The rendered diagram shows `end` as a named terminus. Use descriptive names like `end-ok`, `response-sent`, or `workflow-complete` when the endpoint name carries meaning.
+`TerminalNode` placements name the endpoints of a flow and carry an `outcome` declaration (`completed` or `failed`). Every flow branch must end at a named `TerminalNode`. The runnable examples show the two common patterns: shared completed terminals in a parent flow, and completed/failed terminals inside a reusable sub-DAG whose parent routes on `success` or `error`.
 
-### Pattern 2: explicit failed terminal
+<DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher" aria-label="The Dispatcher support JSON-LD DAG beside Mermaid generated from it." />
 
-<<< @/../examples/dags/09-terminals.ts#terminal-failed
+<DagJsonMermaid :dag="gdprComplianceDAG" title="gdpr-compliance" aria-label="The Cartographer GDPR compliance JSON-LD DAG beside Mermaid generated from it." />
 
-`.terminal('end-fail', { outcome: 'failed' })` produces a placement with `outcome: 'failed'`. When the engine reaches it, the state lifecycle transitions to `failed` before the flow resolves. The author does not need to call `state.markFailed()` inside any node; the placement itself carries the outcome declaration.
+### Run
 
-Running the DAG twice with `state.shouldPass = true` and `false` produces:
-
-```
-Pattern 2a: check node routes to end-ok
-  lifecycle.variant = completed
-
-Pattern 2b: check node routes to end-fail
-  lifecycle.variant = failed
+```bash
+npm run docs:dev
 ```
 
-<DagGraph :dag="dag2" aria-label="demo-explicit-terminals: a check node routes pass to end-ok and fail to end-fail." />
+## What It Lets You Do
 
-Use this pattern when a named path through the flow has a known semantic outcome: a validation gate that declares the flow as failed rather than silently completing, a circuit-breaker endpoint, an explicit error branch.
+Terminal nodes let applications name every graph endpoint and attach an explicit lifecycle outcome to it. They belong on completed, failed, rejected, or declined paths that must be visible in the DAG instead of implied by "no next node."
 
-### Pattern 3: embedded-DAG routing to named terminals
+For application builders, terminals make support escalation, policy rejection, compliance failure, and normal completion all observable without special-case code at the runner boundary.
 
-<<< @/../examples/dags/09-terminals.ts#embedded-terminals
+## Code Samples
 
-The `EmbeddedDAGNode` placement's `error` output routes to the parent's `end-fail` terminal. When the child DAG accumulates errors (via `state.collectError`), the terminal reducer routes `error`, which arrives at `end-fail`, which marks the parent flow `failed`.
+Read the snippets with the diagrams nearby so the TypeScript behavior, JSON-LD graph shape, and runtime output line up as one contract.
 
-Running the DAG twice:
+#### Dispatcher: shared completed terminal
 
-```
-Pattern 3a: scatter child succeeds, end-ok
-  lifecycle.variant = completed
+<<< @/../examples/the-dispatcher/dag.ts#dispatcher-bundle
 
-Pattern 3b: scatter child errors, end-fail
-  lifecycle.variant = failed
-```
+The Dispatcher has one `end` terminal. Routine AI replies, operator-handled escalations, and off-topic declines all converge there. The terminal declares the lifecycle outcome; the nodes only route.
 
-<DagGraph :dag="dag3" :embedded-d-a-gs="terminalsRegistry" :expand-all="true" aria-label="demo-scatter-terminals: scatter success routes to end-ok and error routes to end-fail." />
+#### Cartographer: completed and failed child terminals
+
+<<< @/../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts#gdpr-compliance-dag
+
+The GDPR sub-DAG owns its internal terminal semantics: `compliant` means the child lifecycle completes, while `violation` marks the child as failed. Any parent that embeds this DAG receives `success` or `error` from that lifecycle outcome.
+
+#### Parent routing from embedded outcome
+
+<<< @/../examples/the-cartographer/dag.ts#event-pipeline-typed-dag
+
+Each per-event pipeline routes an embedded child DAG's `success` to `done` and `error` to `rejected`; `rejected` is a failed terminal. The parent does not inspect child internals.
+
+## Details for Nerds
+
+- **Shared completed terminal.** The Dispatcher routes routine, escalated, and off-topic support paths to one `end` terminal with `outcome: 'completed'`.
+- **Explicit failed terminal.** The Cartographer `gdpr-compliance` sub-DAG routes `redact-pii` to either `compliant` (`completed`) or `violation` (`failed`).
+- **Embedded-DAG routing to named terminals.** Cartographer parent DAGs place `gdpr-compliance` with `.embed(...)`; the child terminal outcome becomes the parent placement's `success` or `error` route.
+
+## Related Concepts
+
+- [DAGBuilder, `.terminal()`](../guide/builder) - full method reference and signature
+- [Visualization](../guide/visualization) - render DAGs with TerminalNode endpoints as Mermaid
+- [Example 05: Embedded DAGs](./05-embedded-dags) - scatter routing with named terminal targets

@@ -13,6 +13,7 @@
 
 import { BatchItemExecutor, MonadicNode, RoutedBatch } from '@studnicky/dagonizer';
 import type { Batch, NodeContextType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Timeout } from '@studnicky/dagonizer/runtime';
 
 import type { DispatcherState } from '../DispatcherState.ts';
 import type { DispatcherServices } from '../services.ts';
@@ -20,6 +21,7 @@ import type { DispatcherServices } from '../services.ts';
 export class AiComposeNode extends MonadicNode<DispatcherState, 'drafted'> {
   readonly name = 'ai-compose';
   readonly outputs = ['drafted'] as const;
+  override readonly timeout = Timeout.ofMs(60_000);
 
   readonly #services: DispatcherServices;
 

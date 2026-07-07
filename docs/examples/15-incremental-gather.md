@@ -1,5 +1,5 @@
 ---
-title: 'Example 15: Incremental gather'
+title: 'Example 15: Incremental Gather'
 description: 'Incremental vs batch scatter gather. GatherStrategy subclasses implement reduce (called per-clone as results arrive) and finalize (called once after all clones complete). Built-in strategies fold in reduce; the built-in custom strategy accumulates nothing in reduce and does all work in finalize.'
 seeAlso:
   - text: 'Example 14: Gather strategies'
@@ -12,36 +12,68 @@ seeAlso:
     link: '../reference/core'
 ---
 
-# Example 15: Incremental gather
+<script setup lang="ts">
+import { cartographerDAG } from '../../examples/the-cartographer/dag.ts';
+</script>
+
+# Example 15: Incremental Gather
+
+## What It Is
+
+Incremental Gather is for scatter work where parent state should become useful before every clone finishes. The Cartographer folds completed stream records into insight aggregates as they arrive, so the UI can show progress without materialising the entire event stream.
+
+The core distinction is `reduce` versus `finalize`: fold clone results as they arrive, or wait and merge once at the end.
+
+## How It Works
+
+The scatter executor calls the strategy's `reduce` hook as clone batches complete. `InsightsFoldGather` reads each clone result, updates bounded parent aggregates, and leaves the final `finalize` hook with little to do. A batch-style strategy can do the opposite: keep `reduce` empty and perform one final merge in `finalize`.
+
+Application code chooses the timing based on product needs. Dashboards and streaming ETL usually want incremental fold; all-at-once ranking or reconciliation may prefer `finalize`.
+
+## Diagrams, Examples, and Outputs
+
+### DAG registration and diagram
+
+The in-browser [Cartographer](./the-cartographer) is the real incremental gather example. `process-stream` folds each completed clone into `state.insights`, `state.journeys`, and `state.sampleRecords` as records arrive; the UI reads those evolving aggregates while the stream is running.
+
+<DagJsonMermaid :dag="cartographerDAG" title="Cartographer incremental gather DAG" aria-label="Cartographer JSON-LD DAG beside Mermaid generated from it." />
 
 Every `GatherStrategy` subclass implements the fold contract:
 
+### Run
+
+```bash
+npm run docs:dev
+```
+
+## What It Lets You Do
+
+Incremental gather lets applications fold completed scatter clones into parent state as they finish instead of waiting for every clone to complete. Use it for streaming dashboards, large ETL jobs, and bounded-memory aggregates where the parent state should become useful during the scatter.
+
+## Code Samples
+
+Read the snippets with the diagrams nearby so the TypeScript behavior, JSON-LD graph shape, and runtime output line up as one contract.
+
+<<< @/../examples/the-cartographer/core/InsightsFoldGather.ts
+
+<<< @/../examples/the-cartographer/dag.ts#cartographer-dag
+
+## Details for Nerds
+
+- **`reduce` hook.** `InsightsFoldGather` folds each clone into bounded parent aggregates immediately after that clone completes.
 - **`reduce(config, batch, state, accessor)`** — called once per clone (or per micro-batch) as results arrive. Override this to fold incrementally. Parent state grows after each clone completes.
 - **`finalize(config, execution)`** — called once after all clones complete. Override this (and leave `reduce` as a no-op) for all-at-once processing.
 
 The built-in `map`, `append`, `collect`, and `partition` strategies fold in `reduce` — parent state grows after each clone. The built-in `custom` strategy accumulates nothing in `reduce` and does its work in `finalize`.
 
-This example registers two observable custom strategies that log their fold calls so the timing difference is visible in console output:
+The Cartographer uses the incremental path because the runnable page can stream many source events without materialising every enriched record in parent memory.
 
-- `logging-map` — overrides `reduce`; logs one fold per clone as it completes.
-- `batch-only` — no-op `reduce`, overrides `finalize`; logs one call at the end.
+- **Bounded memory.** Parent state holds rollups and samples, not the full event stream.
+- **UI-visible progress.** The browser panels update from the same aggregate state the DAG produces.
+- **Registry by name.** The DAG JSON-LD only says `gather: { strategy: 'insights-fold' }`; the runnable imports the strategy module to register the implementation.
 
-Both run at `concurrency=1` on the same 4-item source so the fold sequence is deterministic.
+## Related Concepts
 
-## Code
-
-<<< @/../examples/15-incremental-gather.ts
-
-## What it demonstrates
-
-- **`reduce` hook.** When a gather strategy overrides `reduce(config, batch, state, accessor)`, the engine calls it immediately after each clone body finishes. No wait for the full scatter to drain. The parent's gather target grows item-by-item.
-- **`finalize` hook.** Overriding `finalize(config, execution)` (with a no-op `reduce`) defers all gather work until after every clone completes. Memory usage scales with item count; parent state is unchanged until the scatter fully drains.
-- **When to use per-clone `reduce`.** Reduces peak memory usage and enables early reads of partial results (e.g. streaming to a UI, writing to an append log as items complete). Sufficient for the common case where each clone's contribution is independent.
-- **When to use `finalize`.** Use when the gather computation requires all clone records simultaneously (ranking, voting, cross-clone comparison). The `custom` built-in strategy uses this pattern.
-- **`GatherStrategies.register`.** Custom strategies are installed into the global registry by name. Any scatter placement that references the name gets the custom strategy.
-
-## Run
-
-```bash
-npx tsx examples/15-incremental-gather.ts
-```
+- [Example 14: Gather strategies](./14-gather-strategies) - collect vs discard: two gather strategies side-by-side
+- [Example 16: Scatter resume](./16-scatter-resume) - durable-inbox checkpoint and resume across a scatter abort
+- [Reference: Core, GatherStrategies](../reference/core)

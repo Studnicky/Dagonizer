@@ -1,4 +1,6 @@
 ---
+title: 'Entities'
+description: 'JSON Schema and derived TypeScript entity reference for DAG documents, placements, lifecycle state, checkpoints, node results, and constants.'
 seeAlso:
   - text: 'Reference: Validation'
     link: './validation'
@@ -9,13 +11,47 @@ seeAlso:
 
 # Entities
 
+## What It Is
+
+Entities are the JSON Schema-backed wire shapes used by DAG documents, placements, lifecycle state, checkpoints, node results, and constants.
+
+Use this page when validating JSON-LD, typing external artifacts, inspecting schema `$id` values, or building tooling that reads and writes Dagonizer documents.
+
+## How It Works
+
+Each entity exports a JSON Schema constant and a TypeScript type derived from that schema with `json-schema-to-ts`. The schema is the source of truth; TypeScript follows the wire format.
+
+Schemas prove structure. Dispatcher registration proves semantic references against the current registry.
+
+## Diagrams, Examples, and Outputs
+
+Entities are the schema layer under DAG diagrams and validation. These pages show where the shapes are validated and narrowed:
+
+- [Reference: Validation](./validation)
+- [Reference: Contracts](./contracts) - interfaces narrow these entities
+
+## What It Lets You Do
+
+The entities reference lets applications inspect every JSON Schema-derived wire type used by DAG documents, lifecycle records, checkpoints, execution results, and constants.
+
 `@studnicky/dagonizer/entities`
 
 JSON Schema constants for every shape in the package. Each schema is assigned a stable `$id` URI. TypeScript types are derived from schemas via `json-schema-to-ts`.
 
+## Code Samples
+
+The code below covers the exported schemas, derived types, placement unions, checkpoint payloads, execution results, and constant value/type pairs.
+
+### Import
+
+```ts twoslash
+import { DAGSchema, SingleNodeSchema, ScatterNodeSchema } from '@studnicky/dagonizer/entities';
+import type { DAGType, SingleNodeType, ScatterNodeType } from '@studnicky/dagonizer/entities';
+```
+
 ---
 
-## `DAGSchema`
+### `DAGSchema`
 
 ```ts twoslash
 import { DAGSchema } from '@studnicky/dagonizer/entities';
@@ -29,7 +65,7 @@ Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@
 import type { DAGType } from '@studnicky/dagonizer/entities';
 ```
 
-### `@context` — prefix map for IRI expansion
+#### `@context` — prefix map for IRI expansion
 
 The `@context` field is an optional `Record<string, string>` prefix map consumed by `ContextResolver` at registration time. Each key is a short prefix identifier; each value is the namespace IRI to prepend when expanding a `prefix:local` name.
 
@@ -49,7 +85,7 @@ For the full expansion rules and multi-plugin isolation examples, see [Guide: IR
 
 ---
 
-## `SingleNodeSchema`
+### `SingleNodeSchema`
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/SingleNode`
 
@@ -64,7 +100,7 @@ import type { SingleNodeType } from '@studnicky/dagonizer/entities';
 
 ---
 
-## `ScatterNodeSchema`
+### `ScatterNodeSchema`
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/ScatterNode`
 
@@ -81,7 +117,7 @@ import type { ScatterNodeType } from '@studnicky/dagonizer/entities';
 
 ---
 
-## `EmbeddedDAGNodeSchema`
+### `EmbeddedDAGNodeSchema`
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode`
 
@@ -98,7 +134,7 @@ Use `EmbeddedDAGNode` for a single nested-DAG invocation (cardinality 1). For a 
 
 ---
 
-## `GatherConfigSchema`
+### `GatherConfigSchema`
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/GatherConfig`
 
@@ -120,7 +156,7 @@ import type { GatherConfigType } from '@studnicky/dagonizer/entities';
 
 ---
 
-## `TerminalNodeSchema`
+### `TerminalNodeSchema`
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/TerminalNode`
 
@@ -131,11 +167,11 @@ import { TerminalNodeSchema } from '@studnicky/dagonizer/entities';
 import type { TerminalNodeType } from '@studnicky/dagonizer/entities';
 ```
 
-When the engine reaches a `TerminalNode`, the flow ends with the declared `outcome`. `outcome: 'completed'` resolves the state cleanly; `outcome: 'failed'` marks the state as failed before resolving. See [`DAGBuilder.terminal()`](../guide/builder#terminal-name-outcome) for the authoring API and [Phase 09 · Terminal placements](../examples/09-terminals) for runnable examples.
+When the engine reaches a `TerminalNode`, the flow ends with the declared `outcome`. `outcome: 'completed'` resolves the state cleanly; `outcome: 'failed'` marks the state as failed before resolving. See [`DAGBuilder.terminal()`](../guide/builder#terminal-name-outcome) for the authoring API and [Example 09: Terminal Nodes](../examples/09-terminals) for runnable examples.
 
 ---
 
-## `PhaseNodeSchema`
+### `PhaseNodeSchema`
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/PhaseNode`
 
@@ -150,7 +186,7 @@ import type { PhaseNodeType } from '@studnicky/dagonizer/entities';
 
 ---
 
-## `DAGLifecycleStateSchema`
+### `DAGLifecycleStateSchema`
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/DAGLifecycleState`
 
@@ -163,7 +199,7 @@ import type { DAGLifecycleStateDataType } from '@studnicky/dagonizer/entities';
 
 ---
 
-## `CheckpointDataSchema`
+### `CheckpointDataSchema`
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/CheckpointData`
 
@@ -176,7 +212,7 @@ import type { CheckpointDataType } from '@studnicky/dagonizer/entities';
 
 ---
 
-## Node runtime schemas
+### Node runtime schemas
 
 Runtime wire shapes used during execution. Each schema has a derived TS type with the same name and a matching `Validator` accessor.
 
@@ -202,7 +238,7 @@ import {
 } from '@studnicky/dagonizer/entities';
 ```
 
-## Execution and reporting schemas
+### Execution and reporting schemas
 
 | Schema | Derived type | Purpose |
 |---|---|---|
@@ -212,7 +248,7 @@ import {
 
 `InterruptionInfo` (`{ nodeName: string, reason: 'abort' | 'timeout' }`) lives alongside `ExecutionResultType` and is exported from the root barrel.
 
-## Constant value+type pairs
+### Constant value+type pairs
 
 These constants are available from `@studnicky/dagonizer/constants` as value+type pairs. Each constant is a frozen lookup object AND a `FromSchema`-derived type with the same name. `BackoffStrategy` ships through `@studnicky/dagonizer/runtime`, not `./constants`.
 
@@ -233,7 +269,7 @@ Each constant has a matching `*Schema` JSON Schema for `oneOf`-style validation.
 
 ---
 
-## JSON types
+### JSON types
 
 ```ts twoslash
 import type { JsonValueType, JsonObjectType, JsonArrayType, JsonPrimitiveType } from '@studnicky/dagonizer/entities';
@@ -247,7 +283,16 @@ import type { JsonValueType, JsonObjectType, JsonArrayType, JsonPrimitiveType } 
 | `JsonArrayType` | `JsonValueType[]` |
 
 Used as the constraint for `snapshotData()` return values and `restoreData()` arguments.
-## Related guides
 
-- [Schema & JSON loading](../guide/schema)
-- [DAGBuilder](../guide/builder)
+## Details for Nerds
+
+Entity schemas are the source of truth for serialized documents. If a TypeScript type and schema ever appear to disagree, fix the schema-derived type path rather than hand-writing a parallel alias.
+
+Schema `$id` values are stable identifiers for validation and tooling. They are not registry keys for node execution; runtime lookup still happens through DAG/node names and IRI expansion.
+
+## Related Concepts
+
+- [Reference: Validation](./validation)
+- [Reference: Contracts](./contracts) - interfaces narrow these entities
+- [Schema and JSON Loading](../guide/schema) - loading and validating entity-backed documents
+- [DAGBuilder](../guide/builder) - producing DAG entities from TypeScript

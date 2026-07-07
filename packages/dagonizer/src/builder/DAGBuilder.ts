@@ -118,6 +118,9 @@ export type TypedEmbeddedDAGOptionsType<
   container?: string;
 }
 
+/** A DAG reference accepted by the unified `embed()` builder entrypoint. */
+export type EmbeddableDAGType = string | DAGType | { readonly from: string };
+
 /**
  * Explicit fluent API that builds a `DAG` in JSON-LD canonical form.
  *
@@ -151,6 +154,19 @@ export class DAGBuilder {
   constructor(name: string, version: string) {
     this.#name = name;
     this.#version = version;
+  }
+
+  /** Normalize any embeddable DAG reference into the wire shape. */
+  private static embeddedDagField(
+    dag: EmbeddableDAGType,
+  ): { dag: string } | { dagFrom: string } {
+    if (typeof dag === 'string') {
+      return { 'dag': dag };
+    }
+    if ('from' in dag) {
+      return { 'dagFrom': dag.from };
+    }
+    return { 'dag': dag.name };
   }
 
   /** Set (or override) the entrypoint node name. */
@@ -281,12 +297,12 @@ export class DAGBuilder {
    * );
    * ```
    */
-  embeddedDAG<
+  embed<
     TChildState extends NodeStateInterface = NodeStateInterface,
     TParentState extends NodeStateInterface = NodeStateInterface,
   >(
     name: string,
-    dag: string | { readonly from: string },
+    dag: EmbeddableDAGType,
     outputs: Record<'success' | 'error', string>,
     options: TypedEmbeddedDAGOptionsType<TChildState, TParentState> = {},
   ): this {
@@ -299,17 +315,13 @@ export class DAGBuilder {
         }
         : undefined;
 
-    // Resolve dag vs dagFrom: exactly one is set on the wire node.
-    const dagField: { dag: string } | { dagFrom: string } =
-      typeof dag === 'string' ? { 'dag': dag } : { 'dagFrom': dag.from };
-
     const embeddedNode: EmbeddedDAGNodeType = {
       '@id':     DAGIdentity.placementId(this.#name, name),
       '@type':   'EmbeddedDAGNode',
       name,
       'outputs': outputs,
       // Exactly one of dag | dagFrom, spread at construction — no post-construction shape mutation.
-      ...dagField,
+      ...DAGBuilder.embeddedDagField(dag),
       // Optional fields spread at construction — no post-construction shape mutation.
       ...(stateMapping !== undefined ? { 'stateMapping': stateMapping } : {}),
       ...(options.container !== undefined ? { 'container': options.container } : {}),
@@ -318,6 +330,24 @@ export class DAGBuilder {
     this.#nodes.push(embeddedNode);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
+  }
+
+  /**
+   * Append an embedded-DAG node with the legacy method name.
+   *
+   * `embed()` is the canonical entrypoint; this method remains as the existing
+   * API and delegates to the same normalization path.
+   */
+  embeddedDAG<
+    TChildState extends NodeStateInterface = NodeStateInterface,
+    TParentState extends NodeStateInterface = NodeStateInterface,
+  >(
+    name: string,
+    dag: EmbeddableDAGType,
+    outputs: Record<'success' | 'error', string>,
+    options: TypedEmbeddedDAGOptionsType<TChildState, TParentState> = {},
+  ): this {
+    return this.embed(name, dag, outputs, options);
   }
 
   /**

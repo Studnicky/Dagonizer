@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-tool-openlibrary",
-  "version": "0.30.0",
+  "version": "1.0.1",
   "description": "Tool plugin for @studnicky/dagonizer: OpenLibrary.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -34,10 +34,10 @@
     "json-schema-to-ts": "^3.1.1"
   },
   "dependencies": {
-    "@studnicky/dagonizer-book-entities": "workspace:>=0.30.0"
+    "@studnicky/dagonizer-book-entities": "workspace:^1.0.1"
   },
   "peerDependencies": {
-    "@studnicky/dagonizer": "workspace:>=0.14.0 <1.0.0"
+    "@studnicky/dagonizer": "workspace:^1.0.0"
   },
   "engines": {
     "node": ">=24"

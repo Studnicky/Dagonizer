@@ -1,165 +1,88 @@
 ---
-title: 'Example 27: Recursion via dagFrom'
-description: 'A countdown DAG embeds itself at runtime using dagFrom state resolution. Each recursive frame accumulates a value then either continues the recursion or hits the base case and terminates. Demonstrates isolated child state, runtime DAG-name resolution, and stateMapping across recursive call boundaries.'
+title: 'Example 27: Runtime DAG Dispatch'
+description: 'The Archivist uses dagFrom on a scatter body so each workset resolves its embedded tool DAG at runtime from state.'
 seeAlso:
-  - text: 'Phase 05: EmbeddedDAGNode composition'
+  - text: 'Example 05: Embedded DAGs'
     link: './05-embedded-dags'
     description: 'the stateMapping.input / stateMapping.output pattern'
-  - text: 'Phase 04: Scatter scout'
+  - text: 'Example 04: Scatter Scout'
     link: './04-scatter'
-    description: 'parallel fan-out — a complement to recursive fan-in'
-  - text: 'Reference: Entities, EmbeddedDAGNode'
-    link: '../reference/entities'
+    description: 'parallel fan-out with embedded DAG bodies'
+  - text: 'Example 26: Tool Use'
+    link: './26-tool-use'
+    description: 'Archivist tool registry and search DAGs'
   - text: 'Reference: Execution'
     link: '../reference/execution'
 ---
 
-# Example 27: Recursion via `dagFrom`
+<script setup lang="ts">
+import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
+</script>
 
-Dagonizer supports true self-referential DAGs. An `EmbeddedDAGNode` placement
-can resolve its target DAG name from **state at runtime** using the `dagFrom`
-field — and because every embedded invocation runs on a **fresh, isolated child
-state**, a DAG can safely embed itself with no stack pollution or shared-state
-collisions between recursive frames.
+# Example 27: Runtime DAG Dispatch
 
-## What it demonstrates
+## What It Is
 
-- **`dagFrom` runtime resolution.** The `embed` placement declares
-  `dagFrom: 'dagName'` instead of a static `dag: 'countdown'` string. Before
-  executing the placement the engine reads `state.dagName` (a string field on
-  `CountdownState`) and uses that value to look up the sub-DAG in the registry.
-  Because `state.dagName === 'countdown'`, the DAG runs itself.
+Runtime DAG Dispatch lets one placement choose a registered child DAG from state at execution time. The Archivist uses `dagFrom` inside its book-search scatter so each workset can run the tool DAG named by that item.
 
-- **Isolated child state makes recursion safe.** Each recursive frame gets a
-  **fresh `CountdownState` instance** — not a clone of the parent's full state.
-  The engine seeds it with only the fields listed in `stateMapping.input`, runs
-  the child DAG to completion, and then copies the fields listed in
-  `stateMapping.output` back into the parent. Undeclared fields on the parent
-  are never visible to the child and cannot be corrupted by it.
+This is the embedding interface for heterogeneous work. The parent graph stays stable, while data selects whether a clone runs Open Library search, Google Books search, Wikipedia enrichment, or another registered tool flow.
 
-- **Base case via output routing.** `AccumulateNode` routes to `'base'` when
-  `remaining === 0` and to `'recurse'` when `remaining > 0`. The `accumulate`
-  placement routes `'base'` directly to `base-end` (a `TerminalNode`), so the
-  chain unwinds naturally without any sentinel value in state or a special node
-  type.
+## How It Works
 
-- **Accumulator threading via `stateMapping`.** Before each recursive call the
-  parent frame passes `total` to the child through `stateMapping.input`.  After
-  the child DAG completes the child's `total` is written back to the parent
-  through `stateMapping.output`.  This pattern correctly accumulates a value
-  across an arbitrary recursion depth.
+`dagFrom` names a state path rather than a static child DAG. For each clone, the dispatcher reads that path, expands the value through the DAG registry, validates that the DAG is registered, and executes it as the clone body. Parent topology stays stable while item data selects the concrete child flow.
 
-- **Deterministic result.** `countdown(5)` sums 5 + 4 + 3 + 2 + 1 + 0 = **15**.
-  `countdown(N)` always produces `N * (N + 1) / 2`.
+Because lookup goes through the registry, runtime dispatch still has a closed world: only registered DAGs can execute. That keeps plugin-provided flows and local flows on the same assembly surface.
 
-## State
+## Diagrams, Examples, and Outputs
 
-```ts twoslash
-import { NodeStateBase } from '@studnicky/dagonizer';
+### DAG registration and diagram
 
-class CountdownState extends NodeStateBase {
-  /** The registered name of this DAG — read by the engine for `dagFrom` lookup. */
-  dagName       = 'countdown';
-  /** How many steps remain before the base case. */
-  remaining     = 0;
-  /** Accumulated sum across all recursive frames. */
-  total         = 0;
-  /** Scratch field: remaining - 1, written before the recursive embed. */
-  nextRemaining = 0;
-}
+The [Archivist](./the-archivist) uses `dagFrom` in its book-search scatter. `build-book-worksets` prepares worksets where each item carries the registered tool DAG name. The scatter then resolves the embedded body from item state at runtime, so the same placement can fan out to Open Library, Google Books, Wikipedia, or subject search without a plugin-specific node type.
+
+<DagJsonMermaid :dag="BookSearchScatterDAG" title="Archivist runtime dagFrom scatter" aria-label="Archivist runtime dagFrom JSON-LD DAG beside Mermaid generated from it." />
+
+This is the production shape behind recursive or heterogeneous embedded calls:
+
+- The parent DAG registers all candidate child DAGs once.
+- Each scattered item provides a `dagName`.
+- The scatter body declares `{ dagFrom: 'dagName' }`.
+- The engine resolves the child DAG from the registry for that item.
+- State mapping keeps child work isolated and copies only declared outputs back.
+
+### Run
+
+```bash
+npm run docs:dev
 ```
 
-`dagName` is a plain string field.  The engine reads it via `dagFrom: 'dagName'`
-in the placement definition — no special registration or annotation needed.
+Open [The Archivist](./the-archivist) and ask a book question that needs external search or tool-backed lookup.
 
-## Accumulate node
+## What It Lets You Do
 
-<<< @/../examples/dags/27-recursion.ts#node
+Runtime DAG dispatch lets applications select an embedded child DAG from state at execution time. Use it when one placement fans out heterogeneous work items, plugin-provided DAGs, or tool-specific flows that share the same parent scatter and gather contract.
 
-`AccumulateNode` adds `remaining` to `total`, pre-computes `nextRemaining`, and
-picks the output route.  The placement wires `'base'` straight to a terminal and
-`'recurse'` to the `EmbeddedDAGNode` that triggers the next frame.
+This is also the bridge between plugins and embedding: if a plugin registers a DAG name, a host DAG can place it statically with `dag` or select it dynamically with `dagFrom`.
 
-## DAG topology
+## Code Samples
 
-```
-accumulate  ──── base ──► base-end  (TerminalNode, completed)
-            └─── recurse ──► embed  (EmbeddedDAGNode)
-                               ├── success ──► end       (completed)
-                               └── error   ──► end-error (failed)
-```
+The embedded DAG owns runtime DAG-name resolution:
 
-Full DAG literal:
+<<< @/../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts
 
-<<< @/../examples/dags/27-recursion.ts#dag
+The browser demo registers the same tool DAGs before registering the parent Archivist DAG:
 
-## How `dagFrom` resolves at runtime
+<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-tool-registry
 
-The `embed` placement:
+## Details for Nerds
 
-```ts
-{
-  '@type':  'EmbeddedDAGNode',
-  "name":   'embed',
-  "dagFrom": 'dagName',          // ← resolved from state at execution time
-  "stateMapping": {
-    "input":  {
-      "dagName":   'dagName',    // propagate the DAG name into the child
-      "remaining": 'nextRemaining',
-      "total":     'total',
-    },
-    "output": {
-      "total": 'total',          // carry the accumulator back up
-    },
-  },
-  "outputs": { "success": 'end', "error": 'end-error' },
-}
-```
+- **Runtime child selection.** `dagFrom` reads the child DAG name from state instead of baking one `dag` string into the placement.
+- **One placement, many bodies.** The graph has one scatter placement even though different items can execute different registered DAGs.
+- **Registry as assembly boundary.** Tool DAGs are registered before the parent DAG, so JSON-LD stays canonical and runtime lookup is deterministic.
+- **Embedded isolation.** Each item runs in a child state; declared outputs merge back into the parent workset flow.
 
-Resolution order:
+## Related Concepts
 
-1. Engine reaches the `embed` placement.
-2. `EmbeddedDAGNodeDefaults.resolveDagName` reads `state['dagName']` via the
-   state accessor.
-3. The returned string (`'countdown'`) is looked up in the dispatcher's DAG
-   registry — the same map that was populated by `dispatcher.registerDAG(countdownDAG)`.
-4. A fresh `CountdownState` is spawned and seeded via `stateMapping.input`.
-5. The engine runs `'countdown'` from its `entrypoint` node (`'accumulate'`) on
-   the child state.
-6. On completion the output mapping writes `child.total` back into `parent.total`.
-
-If `state.dagName` is missing or resolves to a name that is not registered, the
-engine routes the placement to its `'error'` output without throwing.
-
-## Running the example
-
-<<< @/../examples/27-recursion.ts#run
-
-```
-$ npx tsx examples/27-recursion.ts
-
-Recursive countdown via dagFrom runtime resolution
-  remaining=5 → 5+4+3+2+1+0 = 15
-  terminalOutcome: completed
-```
-
-## Design notes
-
-**Why not a static `dag:` field?** A static `dag: 'countdown'` would also work
-for this example — the DAG is registered before execution, so the name is
-already known at build time.  `dagFrom` is demonstrated here because it is the
-more general primitive: it enables a *heterogeneous* recursive structure where
-different branches invoke different sub-DAGs based on runtime data (e.g. a tree
-whose leaf nodes run a different DAG than its branch nodes).
-
-**Stack depth vs. scatter.** Each recursive invocation is sequential and
-synchronous within the engine (the parent awaits the child).  For wide trees
-where children can be processed in parallel, a `ScatterNode` with `dagFrom` on
-each item fans out N child invocations concurrently.  Recursion is the right
-shape for *depth-first* traversal; scatter is right for *breadth-first*
-fan-out.
-
-**Termination guarantee.** The base case (`remaining === 0 → 'base'`) is
-enforced in the node, not by the engine.  Infinite recursion (no base case)
-will exhaust the process call stack.  Always guarantee a decreasing metric that
-reaches the base case in finite steps.
+- [Example 05: Embedded DAGs](./05-embedded-dags) - the stateMapping.input / stateMapping.output pattern
+- [Example 04: Scatter Scout](./04-scatter) - parallel fan-out with embedded DAG bodies
+- [Example 26: Tool Use](./26-tool-use) - Archivist tool registry and search DAGs
+- [Reference: Execution](../reference/execution)

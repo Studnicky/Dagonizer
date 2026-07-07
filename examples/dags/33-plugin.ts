@@ -7,13 +7,15 @@
 // #region imports
 import {
   Batch,
+  DAGBuilder,
   DAG_CONTEXT,
   MonadicNode,
   NodeOutput,
   NodeStateBase,
   RoutedBatch,
 } from '@studnicky/dagonizer';
-import type { DAGType, DispatcherBundleType, NodeStateInterface, PluginInterface, PluginReceiverType, SchemaObjectType } from '@studnicky/dagonizer';
+import { defineDagonizerPlugin } from '@studnicky/dagonizer/plugin';
+import type { DAGType, SchemaObjectType } from '@studnicky/dagonizer';
 // #endregion imports
 
 // #region state
@@ -112,30 +114,24 @@ export const pluginDag: DAGType = {
 // #endregion plugin-dag
 
 // ---------------------------------------------------------------------------
-// Plugin: implements PluginInterface, ships nodes + DAG as a unit
+// Plugin: ships nodes + DAG as one registry-scoped bundle
 // ---------------------------------------------------------------------------
 
 // #region plugin
 /**
- * NormalizePlugin: a self-contained plugin that registers its nodes and DAG on
- * any dispatcher via a single `registerPlugin(new NormalizePlugin())` call.
- *
- * Implements `PluginInterface` — the `register` method receives the dispatcher's
- * narrow `PluginReceiverType` (only `registerBundle` is visible) and calls it.
+ * normalizePlugin: a self-contained plugin that registers its nodes and DAG on
+ * any dispatcher via a single `registerPlugin(normalizePlugin)` call.
  */
-export class NormalizePlugin implements PluginInterface {
-  /** Build the bundle this plugin contributes. */
-  private bundle(): DispatcherBundleType<NodeStateInterface> {
-    return {
-      nodes: [new NormalizeNode(), new SummarizeNode()],
-      dags:  [pluginDag],
-    };
-  }
-
-  register(dispatcher: PluginReceiverType): void {
-    dispatcher.registerBundle(this.bundle());
-  }
-}
+export const normalizePlugin = defineDagonizerPlugin({
+  context: {
+    plugin: 'https://noocodex.dev/plugins/normalize#',
+  },
+  nodes: [new NormalizeNode(), new SummarizeNode()],
+  dags: [pluginDag],
+  exports: {
+    normalize: 'plugin-normalize',
+  },
+});
 // #endregion plugin
 
 // ---------------------------------------------------------------------------
@@ -144,31 +140,12 @@ export class NormalizePlugin implements PluginInterface {
 
 // #region parent-dag
 /** Top-level DAG that embeds the plugin's sub-DAG. */
-export const parentDag: DAGType = {
-  '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:pipeline',
-  '@type':     'DAG',
-  name:        'pipeline',
-  version:     '1',
-  entrypoint:  'normalize-step',
-  nodes: [
-    {
-      '@id':    'urn:noocodex:dag:pipeline/node/normalize-step',
-      '@type':  'EmbeddedDAGNode',
-      name:     'normalize-step',
-      dag:      'plugin-normalize',
-      outputs:  { success: 'end', error: 'end' },
-      stateMapping: {
-        input:  { 'phrase': 'phrase' },
-        output: { 'normalized': 'normalized', 'status': 'status' },
-      },
-    },
-    {
-      '@id':    'urn:noocodex:dag:pipeline/node/end',
-      '@type':  'TerminalNode',
-      name:     'end',
-      outcome:  'completed',
-    },
-  ],
-};
+const parentBuilder = new DAGBuilder('pipeline', '1');
+parentBuilder.embed('normalize-step', normalizePlugin.exports.normalize, { success: 'end', error: 'end' }, {
+  inputs: { phrase: 'phrase' },
+  outputs: { normalized: 'normalized', status: 'status' },
+});
+parentBuilder.terminal('end');
+
+export const parentDag: DAGType = parentBuilder.build();
 // #endregion parent-dag

@@ -1,42 +1,81 @@
 ---
-title: 'Example 35: StreamChannel fanIn and resumable producer'
-description: 'Merge multiple push producers via StreamChannel.fanIn; resume a scatter deterministically via StreamChannel.resumable and StreamCursor.resumeAfter.'
+title: 'Example 35: Stream Resume Cursor'
+description: 'The Cartographer resume scenario aborts a streaming scatter, reads StreamCursor.resumeAfter, and resumes from the durable cursor without duplicate processing.'
 seeAlso:
-  - text: 'Example 34: StreamChannel driven'
+  - text: 'Example 34: StreamChannel source'
     link: './34-stream-channel'
-    description: 'single producer bridged via StreamChannel.driven'
+    description: 'Cartographer StreamChannel source seeding'
   - text: 'Example 16: Scatter resume'
     link: './16-scatter-resume'
-    description: 'durable scatter resume using checkpoint and array sources'
-  - text: 'Streaming producers guide'
+    description: 'the same Cartographer resume DAG from the scatter perspective'
+  - text: 'Streaming Producers'
     link: '../guide/streaming-producers'
     description: 'full streaming API: driven, fanIn, resumable, DagStreamProducer'
 ---
 
-# Example 35: StreamChannel fanIn and resumable producer
+<script setup lang="ts">
+import { cartographerResumeDAG } from '../.vitepress/theme/exampleDags.ts';
+</script>
 
-This example covers two related features built on `StreamChannel`:
+# Example 35: Stream Resume Cursor
 
-1. **Fan-in merging**: `StreamChannel.fanIn(producers)` launches several `StreamProducerInterface<T>` objects concurrently against a shared channel. The channel closes when all producers settle; the first rejection fails the stream.
-2. **Deterministic resume**: `StreamChannel.resumable(producer, resumeAfter)` paired with `StreamCursor.resumeAfter(state, scatterName)` lets a scatter pick up exactly where it left off. The producer regenerates its ordered sequence from the start and skips the first `resumeAfter` emissions — the scatter's durable pull count.
+## What It Is
 
-## Code
+Stream Resume Cursor is the streaming counterpart to scatter resume. The Cartographer aborts a streaming scatter, reads `StreamCursor.resumeAfter(...)`, recreates the source stream from a durable cursor, and resumes without duplicate processing.
 
-<<< @/../examples/35-stream-fanin-resume.ts
+The source must be regenerable and ordered. Given that, Dagonizer can reconnect the resumed scatter to the right point in the stream.
 
-## DAG definitions
+## How It Works
 
-<<< @/../examples/dags/35-stream-fanin-resume.ts
+The scatter stores durable progress in checkpoint state. On resume, `StreamCursor.resumeAfter(...)` converts that progress into a cursor for the stream producer. The producer regenerates the same ordered source, skips the consumed prefix, and yields only remaining items into the resumed scatter.
 
-## What it demonstrates
+This divides responsibility cleanly: the scatter records what it has safely pulled and acknowledged; the producer knows how to rebuild the ordered stream after that point.
 
-- **`StreamChannel.fanIn(producers, options?)`** — concurrent multi-producer merge. Items from both producers interleave in arrival order; the channel closes after all producers settle; first error fails the channel.
-- **`ResumableStreamProducerInterface<T>`** — the producer's `produce(sink, resumeAfter)` signature skips already-consumed items by re-generating the deterministic sequence and fast-forwarding past the first `resumeAfter` ordinals.
-- **`StreamCursor.resumeAfter(state, scatterName)`** — reads the scatter checkpoint's pull count from state. Returns 0 on a fresh run. The value is the scatter's durable pull count (items the scatter pulled and acked), not the producer's push count; items buffered-but-unpulled at interruption time are safely re-emitted.
-- **No duplicate processing.** The cursor marks the exact count the scatter has durably acknowledged; the producer skips that prefix on resume. Items that were pushed into the buffer but not yet pulled are re-emitted and processed exactly once on the resumed run.
+## Diagrams, Examples, and Outputs
 
-## Run
+### DAG registration and diagram
+
+The [Cartographer](./the-cartographer) resume DAG uses the same streaming topology as the main DAG, but the scatter runs in item mode so abort can land between pulls. `StreamCursor.resumeAfter(state, 'process-stream')` reads the durable pull count from checkpoint state and feeds that cursor back into `StreamChannel.resumable(...)`.
+
+<DagJsonMermaid :dag="cartographerResumeDAG" title="Cartographer resumable stream DAG" aria-label="Cartographer resumable stream JSON-LD DAG beside Mermaid generated from it." />
+
+The graph shows the resumable scatter boundary. The code proves exactly-once behavior by comparing a full baseline fold to an interrupted-and-resumed fold.
+
+### Run
 
 ```bash
-npx tsx examples/35-stream-fanin-resume.ts
+npx tsx examples/the-cartographer/runCartographer.ts --stream
 ```
+
+## What It Lets You Do
+
+Stream resume cursors let applications restart a streaming scatter from the durable pull position instead of replaying already-folded items. Use this when a source can regenerate an ordered stream and the DAG must avoid duplicate processing after abort or crash.
+
+This fits file cursors, event feeds, generated datasets, and model-produced work streams where the source can be reconstructed deterministically from a cursor.
+
+## Code Samples
+
+The pre-phase node wires cursor-aware channel creation:
+
+<<< @/../examples/the-cartographer/nodes/seedEvents.ts#seed-events-node
+
+The stream producer skips already-consumed items after resume:
+
+<<< @/../examples/the-cartographer/services/EventStreamSource.ts#cartographer-stream-producer
+
+The CLI scenario aborts, resumes, and compares fingerprints:
+
+<<< @/../examples/the-cartographer/runCartographer.ts#cartographer-resumable-scenario
+
+## Details for Nerds
+
+- **Durable pull cursor.** The cursor is based on scatter items durably pulled and acknowledged, not on producer push count.
+- **Deterministic replay.** The producer regenerates the ordered stream and skips the consumed prefix.
+- **No duplicate fold.** The resumed run’s regional-insight fingerprint matches the uninterrupted baseline.
+- **Same browser graph shape.** Resume changes execution mode and cursor state, not the embedded DAG assembly model.
+
+## Related Concepts
+
+- [Example 34: StreamChannel source](./34-stream-channel) - Cartographer StreamChannel source seeding
+- [Example 16: Scatter resume](./16-scatter-resume) - the same Cartographer resume DAG from the scatter perspective
+- [Streaming Producers](../guide/streaming-producers) - full streaming API: driven, fanIn, resumable, DagStreamProducer

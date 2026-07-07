@@ -1,6 +1,6 @@
 ---
-title: 'Example 30: EventBus and SseStream'
-description: 'In-process pub/sub and SSE streaming via EventBus and SseStream. Wire Dagonizer lifecycle hooks to a bus topic so multiple consumers observe the same run without multiplexing hook overrides.'
+title: 'Example 30: Progress Events'
+description: 'The Dispatcher browser demo turns lifecycle hooks into trace/progress events and renders them alongside the live DAG.'
 seeAlso:
   - text: 'Observability guide'
     link: '../guide/observability'
@@ -13,119 +13,69 @@ seeAlso:
     description: 'async-iterable execution API: per-node progress events'
 ---
 
-# Example 30: EventBus and SseStream
+<script setup lang="ts">
+import { supportDispatcherDAG } from '../../examples/the-dispatcher/dag.ts';
+</script>
 
-The `@studnicky/dagonizer/progress` submodule ships a transport-agnostic progress substrate built on two primitives:
+# Example 30: Progress Events
 
-- **`EventBus`** — synchronous, in-process, topic-keyed publish/subscribe. Domain-free, zero dependencies, isomorphic (Node and browser).
-- **`SseStream`** — wraps an `EventBus` subscription in a web-standard `ReadableStream<string>` of Server-Sent Events frames. Works as an HTTP response body in any fetch-compatible server (Deno, Bun, Node 18+ `http`, Hono, Express, Cloudflare Workers).
+## What It Is
 
-Both primitives are independent. You can use `EventBus` without `SseStream`, `SseStream` without an HTTP server, or wire them together for a full observability pipeline.
+Progress Events are application-facing projections of the Dagonizer lifecycle. The Dispatcher browser demo turns runtime hooks into trace rows, active-node highlights, completed edges, and error markers beside the live DAG.
 
-## Code
+This page is the UI layer on top of [Example 18: Observability](./18-observability): hooks report what happened; progress events decide how the application displays or transports it.
 
-<<< @/../examples/30-progress.ts
+## How It Works
 
-## DAG definition
+The observer layer receives lifecycle callbacks from the dispatcher and projects them into trace records plus graph state. The DAG remains unchanged; progress is a read-side projection of execution events. Multiple UI panes can consume the same event stream without adding progress nodes to the workflow.
 
-<<< @/../examples/dags/30-progress.ts
+That separation keeps progress cheap to add. A browser trace, CLI spinner, log sink, or server-sent events endpoint can all subscribe to the same lifecycle-derived stream.
 
-## What it demonstrates
+## Diagrams, Examples, and Outputs
 
-### Part 1 — EventBus pub/sub
+### DAG registration and diagram
 
-`EventBus.subscribe` returns an unsubscribe handle. Call it at any time to stop delivery without affecting sibling subscribers. A listener that throws is caught and ignored; other listeners on the same publish call still fire.
+The graph is a normal pipeline; progress events are emitted by the runtime observer while these placements execute. [The Dispatcher](./the-dispatcher) owns the smallest in-browser version through its trace panel.
 
-```ts
-import { EventBus } from '@studnicky/dagonizer/progress';
+<DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher progress DAG" aria-label="Support dispatcher JSON-LD DAG beside Mermaid generated from it." />
 
-const bus = new EventBus();
-const unsub = bus.subscribe('runs', (event) => console.log(event.payload));
-bus.publish('runs', { nodeId: 'fetch' });
-unsub(); // deregister
-bus.dispose(); // drop all listeners on all topics
-```
+The browser demo translates lifecycle hooks into view-model events:
 
-### Part 2 — SseStream: bus topic to SSE frames
+- `onNodeStart` appends a `start` trace event and marks the DAG node active.
+- `onNodeEnd` appends an `end` trace event, marks the node completed, and flashes the traversed edge.
+- `onError` appends an `error` trace event and marks the node errored.
 
-`SseStream.of(bus, topics, options?)` returns an `SseStream` with a `readable: ReadableStream<string>`. Pipe it directly as an HTTP response body.
-
-Wire format:
-- First chunk: `data: {"connected":true}\n\n` — lets clients detect stream open.
-- Subsequent chunks: `data: <json envelope>\n\n` — one frame per bus publish.
-- Heartbeat (default 15 000 ms): `: heartbeat\n\n` — invisible to EventSource listeners, prevents proxy timeouts.
-
-Pass `heartbeatMs: 0` to disable heartbeats (useful in unit tests).
-
-```ts
-import { EventBus, SseStream } from '@studnicky/dagonizer/progress';
-
-const bus = new EventBus();
-const stream = SseStream.of(bus, ['runs', 'errors'], { heartbeatMs: 15_000 });
-
-// In a fetch handler:
-return new Response(stream.readable, {
-  headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
-});
-```
-
-The stream closes cleanly when the consumer cancels (client disconnects). Cancellation unsubscribes all bus listeners and clears the heartbeat timer — no leak.
-
-### Part 3 — ObservingDispatcher: hooks to bus to multiple consumers
-
-`Dagonizer` lifecycle hooks fire synchronously inside `execute()`. The `ObservingDispatcher` subclass publishes a typed payload to an injected `EventBus` topic on every hook. Any number of downstream consumers subscribe independently — the hook body stays minimal and each consumer is decoupled from the others.
-
-```ts
-class ObservingDispatcher extends Dagonizer<MyState> {
-  readonly #bus: EventBus;
-  constructor(bus: EventBus) { super(); this.#bus = bus; }
-
-  protected override onNodeStart(nodeName: string, _state: MyState, path: readonly string[]): void {
-    this.#bus.publish('lifecycle', { event: 'nodeStart', nodeName, path: path.join('/') });
-  }
-  // ... onFlowStart, onFlowEnd, onNodeEnd, onError
-}
-
-const bus = new EventBus();
-
-// Consumer A: console logger
-bus.subscribe('lifecycle', (e) => console.log(e.payload));
-
-// Consumer B: metrics counter
-const metrics = { nodes: 0 };
-bus.subscribe('lifecycle', (e) => {
-  if ((e.payload as { event: string }).event === 'nodeStart') metrics.nodes++;
-});
-
-const dispatcher = new ObservingDispatcher(bus);
-// register nodes + DAG ...
-await dispatcher.execute('my-dag', state);
-bus.dispose();
-```
-
-This pattern replaces the need to write a `ComposedDispatcher` with multiple log calls inside each hook override. Instead:
-
-1. One hook override publishes one structured event.
-2. Each consumer subscribes and reacts independently.
-3. Adding a new consumer does not require touching the dispatcher.
-
-## API
-
-| Symbol | Import | Role |
-|--------|--------|------|
-| `EventBus` | `@studnicky/dagonizer/progress` | Topic-keyed pub/sub bus |
-| `EventBusInterface` | `@studnicky/dagonizer/progress` | Class-shape type for `EventBus` |
-| `BusListenerType<TPayload>` | `@studnicky/dagonizer/progress` | Callback type for `EventBus.subscribe` |
-| `BusUnsubscribeType` | `@studnicky/dagonizer/progress` | Return type of `EventBus.subscribe` |
-| `BusEventEnvelopeType<TPayload>` | `@studnicky/dagonizer/progress` | Typed envelope: `topic`, `payload`, `timestamp` |
-| `BusEventEnvelopeWireType` | `@studnicky/dagonizer/progress` | Schema-derived wire type (`payload: unknown`) |
-| `BusEventEnvelopeSchema` | `@studnicky/dagonizer/progress` | JSON Schema 2020-12 for validation |
-| `BusEventEnvelope` | `@studnicky/dagonizer/progress` | Static factory: `.create(topic, payload, options?)` |
-| `SseStream` | `@studnicky/dagonizer/progress` | Bus topic → SSE `ReadableStream<string>` |
-| `SseStreamOptionsType` | `@studnicky/dagonizer/progress` | Options for `SseStream.of` (heartbeatMs) |
-
-## Run
+### Run
 
 ```bash
-npx tsx examples/30-progress.ts
+npm run docs:dev
 ```
+
+## What It Lets You Do
+
+Progress events let applications turn DAG lifecycle hooks into product UI or transport updates. Use this when a live page, CLI, SSE endpoint, or log sink needs to show node-level progress while the DAG is still running.
+
+They also keep progress out of business logic. Nodes do not emit UI events; the runtime reports lifecycle, and the runner decides how to render it.
+
+## Code Samples
+
+The observer snippet shows lifecycle hooks becoming Dispatcher trace state. The DAG snippet is included to show that the graph itself does not contain progress-only nodes.
+
+<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-observer
+
+## Details for Nerds
+
+### DAG definition
+
+<<< @/../examples/the-dispatcher/dag.ts#dispatcher-bundle
+
+- **Lifecycle hooks to progress events.** The Dispatcher observer converts engine hooks into `TraceEvent` records.
+- **Multiple subscribers.** The same hook updates the text trace, DAG graph, and log feed.
+- **Browser-visible progress.** The right-side **Trace** tab and **DAG** tab subscribe to these events.
+- **Transport option.** For server transports, `@studnicky/dagonizer/progress` still provides `EventBus` and `SseStream`; the browser runnable demonstrates the hook-to-progress boundary.
+
+## Related Concepts
+
+- [Observability guide](../guide/observability) - full hook reference and EventBus multiplexing patterns
+- [Example 18: Observability](./18-observability) - subclass hooks: onFlowStart, onFlowEnd, onNodeStart, onNodeEnd, onError
+- [Example 20: Streaming execution](./20-streaming) - async-iterable execution API: per-node progress events

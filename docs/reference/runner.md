@@ -1,6 +1,8 @@
 ---
+title: 'Runner'
+description: 'Runner reference for DagRunner, TriggerInterface, OnceTrigger, CLI, event, and request triggers around registered DAG execution.'
 seeAlso:
-  - text: 'Example 28: DagRunner and triggers'
+  - text: 'Example 28: Runner and Triggers'
     link: '../examples/28-runner'
     description: 'Full working example for all trigger variants'
   - text: 'Reference: Contracts'
@@ -9,20 +11,38 @@ seeAlso:
   - text: 'Reference: Dagonizer'
     link: './dagonizer'
     description: 'The dispatcher DagRunner drives'
-  - text: 'Phase 08: Checkpoint + resume'
+  - text: 'Example 08: Checkpoint and Resume'
     link: '../examples/08-checkpoint'
     description: 'DagRunner.resume() from a checkpoint cursor'
 ---
 
 # Runner
 
-`@studnicky/dagonizer/runner`
+## What It Is
 
-The runner subpath ships the `DagRunner` abstract base class and the four concrete trigger variants. Every callable hangs off a class; there are no freestanding functions.
+`DagRunner` is the reusable host loop around a registered DAG. It accepts trigger input, creates initial state, executes a DAG by name, and projects the final execution result into an application-specific output.
 
-## Abstract class: `DagRunner<TInput, TState, TOutput>`
+Use this page when a CLI command, queue worker, HTTP route, browser action, or scheduled job should invoke the same registered DAG without rewriting the register→seed→execute→project loop.
 
-The canonical DAG execution harness. Owns the register→seed→execute→route→project loop once. Consumers subclass and override `seedState` and `projectResult`.
+## How It Works
+
+Subclass `DagRunner<TInput, TState, TOutput>` and implement two hooks: `seedState(input)` and `projectResult(result)`. Triggers feed inputs into the runner; the runner delegates execution to a registered `Dagonizer`.
+
+The runner does not change DAG semantics. It is a hosting convenience for applications that want one stable adapter around many trigger shapes.
+
+## Diagrams, Examples, and Outputs
+
+The runner reference is about host integration rather than graph shape. For executable examples, start with [Example 28: Runner and Triggers](../examples/28-runner), then compare the triggered DAG registration with the `Dagonizer` reference.
+
+## What It Lets You Do
+
+Use `DagRunner` to keep trigger plumbing outside DAG node code. The DAG stays portable; the runner adapts external input and output to the host environment.
+
+## Code Samples
+
+### Abstract class: `DagRunner<TInput, TState, TOutput>`
+
+The canonical DAG execution harness. Owns the register→seed→execute→route→project loop once. Applications subclass and override `seedState` and `projectResult`.
 
 ```ts twoslash
 import { NodeStateBase } from '@studnicky/dagonizer';
@@ -53,7 +73,7 @@ class MyRunner extends DagRunner<MyInput, MyState, MyOutput> {
 
 `TInput` is the trigger-specific input type; `TState` must satisfy `NodeStateInterface` (extend `NodeStateBase`); `TOutput` is the projected output.
 
-### Constructor
+#### Constructor
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -77,11 +97,11 @@ const runner = new MyRunner(options);
 |---|---|---|
 | `dispatcher` | `Dagonizer<TState>` | The configured dispatcher the runner drives. Injected via constructor; the runner does not own construction. |
 
-### `registerBundle(bundle)`
+#### `registerBundle(bundle)`
 
 Delegates to `dispatcher.registerBundle`. Call before `run`.
 
-### `run(dagName, input, options?)`
+#### `run(dagName, input, options?)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -101,7 +121,7 @@ const output = await runner.run('my-dag', { value: 1 });
 
 Builds initial state via `seedState(input)`, calls `dispatcher.execute(dagName, state, options)`, and returns `projectResult(result)`. Never throws — unexpected errors route through `onRunError`.
 
-### `resume(dagName, state, fromStage, options?)`
+#### `resume(dagName, state, fromStage, options?)`
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -122,21 +142,21 @@ const output = await runner.resume('my-dag', rehydrated, 'node-b');
 
 Resumes from `fromStage` with a pre-rehydrated state. The caller is responsible for rehydrating state before the call (typically via `Checkpoint.load(raw).restoreState(fn)`). Never throws.
 
-### `seedState(input)` — abstract
+#### `seedState(input)` — abstract
 
 Override to build the initial `TState` from the trigger input. Runs inside `run()` before `dispatcher.execute`.
 
-### `projectResult(result)` — abstract
+#### `projectResult(result)` — abstract
 
-Override to project `ExecutionResultType<TState>` to the consumer's `TOutput` shape. Runs after each `execute`/`resume` call.
+Override to project `ExecutionResultType<TState>` to the application's `TOutput` shape. Runs after each `execute`/`resume` call.
 
-### `onRunError(dagName, error)` — protected
+#### `onRunError(dagName, error)` — protected
 
 Called when an unexpected error escapes the engine (framework bug). Default re-throws. Override to absorb and return a fallback `TOutput` when callers need continuity.
 
 ---
 
-## Interface: `DagRunnerInterface<TInput, TState, TOutput>`
+### Interface: `DagRunnerInterface<TInput, TState, TOutput>`
 
 ```ts twoslash
 import type { DagRunnerInterface } from '@studnicky/dagonizer/runner';
@@ -151,7 +171,7 @@ The public face of `DagRunner`. Trigger implementations accept this interface ra
 
 ---
 
-## Interface: `TriggerInterface<TInput, TState, TOutput>`
+### Interface: `TriggerInterface<TInput, TState, TOutput>`
 
 ```ts twoslash
 import type { TriggerInterface } from '@studnicky/dagonizer/runner';
@@ -169,7 +189,7 @@ Adapter contract for the timing signal. Ships through `@studnicky/dagonizer/runn
 
 ---
 
-## Class: `OnceTrigger<TInput, TState, TOutput>`
+### Class: `OnceTrigger<TInput, TState, TOutput>`
 
 ```ts twoslash
 import { OnceTrigger } from '@studnicky/dagonizer/runner';
@@ -195,7 +215,7 @@ Fires `runner.run(dagName, input, options)` exactly once when `attach` is called
 
 ---
 
-## Abstract class: `CliTrigger<TInput, TState, TOutput>`
+### Abstract class: `CliTrigger<TInput, TState, TOutput>`
 
 ```ts twoslash
 import { CliTrigger } from '@studnicky/dagonizer/runner';
@@ -225,7 +245,7 @@ Abstract base for CLI harnesses. Subclass and override `parseArgs`.
 
 ---
 
-## Abstract class: `EventTrigger<TMessage, TInput, TState, TOutput>`
+### Abstract class: `EventTrigger<TMessage, TInput, TState, TOutput>`
 
 ```ts twoslash
 import { EventTrigger } from '@studnicky/dagonizer/runner';
@@ -257,7 +277,7 @@ Abstract base for subscription-driven harnesses (WebSocket, EventEmitter, messag
 
 ---
 
-## Abstract class: `RequestTrigger<TRequest, TInput, TState, TOutput>`
+### Abstract class: `RequestTrigger<TRequest, TInput, TState, TOutput>`
 
 ```ts twoslash
 import { RequestTrigger } from '@studnicky/dagonizer/runner';
@@ -285,9 +305,7 @@ Abstract base for per-turn HTTP harnesses. `attach` stores the runner reference 
 | `detach()` | Clears the runner reference. Subsequent `fire` calls throw. |
 | `fire(request)` | Calls `runner.run(selectDag(request), toInput(request), requestOptions(request))`. Throws if called before `attach`. |
 
----
-
-## Import path
+### Import path
 
 ```ts twoslash
 import {
@@ -303,3 +321,17 @@ import type {
   TriggerInterface,
 } from '@studnicky/dagonizer/runner';
 ```
+
+## Details for Nerds
+
+`@studnicky/dagonizer/runner` ships the `DagRunner` abstract base class and trigger variants. Every callable hangs off a class; there are no freestanding functions.
+
+Triggers are adapters around external input. They should translate host-specific request shape into `TInput`, choose a DAG name, and pass execution options. They should not mutate DAG state directly or bypass `DagRunner.run()`.
+
+## Related Concepts
+
+- [Example 28: Runner and Triggers](../examples/28-runner) - Full working example for all trigger variants
+- [Reference: Contracts](./contracts) - TriggerInterface adapter contract
+- [Reference: Dagonizer](./dagonizer) - The dispatcher DagRunner drives
+- [Example 08: Checkpoint and Resume](../examples/08-checkpoint) - DagRunner.resume() from a checkpoint cursor
+- [Example 32: Dispatcher CLI](../examples/32-dispatcher) - the Dispatcher flow from a command-line runner

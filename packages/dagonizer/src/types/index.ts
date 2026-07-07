@@ -117,7 +117,7 @@ export type {
 // Builder option interfaces
 // ---------------------------------------------------------------------------
 
-export type { ScatterOptionsType, TypedEmbeddedDAGOptionsType } from '../builder/DAGBuilder.js';
+export type { EmbeddableDAGType, ScatterOptionsType, TypedEmbeddedDAGOptionsType } from '../builder/DAGBuilder.js';
 
 // ---------------------------------------------------------------------------
 // Core dispatcher option types

@@ -3,10 +3,10 @@
  *
  * Demonstrates two independent features:
  *
- * 1. Plugin loader — a `NormalizePlugin` implements `PluginInterface` and
- *    self-registers its nodes and DAG via `registerPlugin()`. The consumer
- *    never calls `registerNode` / `registerDAG` directly; the plugin does it
- *    through the narrow `PluginReceiverType` seam.
+ * 1. Plugin loader — `normalizePlugin` is defined with `defineDagonizerPlugin`
+ *    and installed with `registerPlugin()`. The consumer never calls
+ *    `registerNode` / `registerDAG` directly; the plugin does it through the
+ *    narrow dispatcher seam.
  *
  * 2. Multi-observer mux — the `observers` option on `DagonizerOptionsType`
  *    accepts an array of `DispatcherObserverType` records. Each observer's
@@ -22,7 +22,7 @@
 import { Dagonizer, PluginLoader } from '@studnicky/dagonizer';
 import type { DispatcherObserverType } from '@studnicky/dagonizer';
 
-import { NormalizePlugin, PipelineState, parentDag } from './dags/33-plugin.js';
+import { normalizePlugin, PipelineState, parentDag } from './dags/33-plugin.js';
 
 // ---------------------------------------------------------------------------
 // Observer records: console logger and metric counter, composed via observers[]
@@ -60,7 +60,7 @@ const dispatcher = new Dagonizer<PipelineState>({
 // ---------------------------------------------------------------------------
 
 // #region plugin-registration
-dispatcher.registerPlugin(new NormalizePlugin());
+dispatcher.registerPlugin(normalizePlugin);
 dispatcher.registerDAG(parentDag);
 // #endregion plugin-registration
 

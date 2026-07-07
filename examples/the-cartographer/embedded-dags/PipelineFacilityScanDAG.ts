@@ -119,7 +119,7 @@ export const pipelineFacilityScanDAG: DAGType = new DAGBuilder('pipeline-facilit
 
   // 9. gdpr: embedded GDPR compliance sub-DAG.
   //    Both outcomes converge on aggregate-event (violation is recorded, not fatal).
-  .embeddedDAG('gdpr', 'gdpr-compliance', {
+  .embed('gdpr', 'gdpr-compliance', {
     'success': 'aggregate-event',
     'error':   'aggregate-event',
   }, {

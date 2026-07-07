@@ -1,4 +1,6 @@
 ---
+title: 'Visualization'
+description: 'Visualization reference for MermaidRenderer, JsonLdRenderer, CytoscapeGraph, CytoscapeRenderer, CompositeLayout, styling, and graph metadata.'
 seeAlso:
   - text: 'Reference: Dagonizer'
     link: './dagonizer'
@@ -8,9 +10,38 @@ seeAlso:
     description: '`DAG`'
 ---
 
-# Viz
+# Visualization
+
+## What It Is
+
+The visualization surface turns canonical DAG documents into Mermaid source, JSON-LD graph documents, Cytoscape element data, and layout metadata.
+
+Use this page when docs, developer tools, or product UI need to show the graph shape that the dispatcher executes. Guide and example pages use Mermaid; runnable browser demos use Cytoscape for live execution state.
+
+## How It Works
+
+Renderers read `DAGType` documents. They do not inspect dispatcher internals, node implementations, or live runtime state unless a caller supplies explicit metadata. That keeps visualization tied to the same JSON-LD artifact used for registration.
+
+Mermaid is the lightweight static format for docs. Cytoscape is the richer element format for browser runners that need expansion, live state, selection, and interaction.
+
+## Diagrams, Examples, and Outputs
+
+The renderers are used throughout the docs and demos. Start here for API details, then compare against pages that show JSON-LD beside the generated graph:
+
+- [Reference: Dagonizer](./dagonizer) - read accessors
+- [Reference: Entities](./entities) - `DAG`
+
+## What It Lets You Do
+
+The visualization reference lets applications render one canonical DAG document into Mermaid, JSON-LD, or Cytoscape element data.
 
 DAG visualization helpers. Ship through `@studnicky/dagonizer/viz`.
+
+## Code Samples
+
+The code below covers Mermaid rendering, JSON-LD rendering, Cytoscape element generation, styling options, layout helpers, and graph metadata.
+
+### Import
 
 ```ts twoslash
 import {
@@ -30,7 +61,7 @@ import type {
 export {};
 ```
 
-## MermaidRenderer
+### MermaidRenderer
 
 Static class.
 
@@ -44,23 +75,27 @@ const mermaid: string = MermaidRenderer.render(dag);
 
 Render a `DAG` as Mermaid `flowchart` source. The output is a complete Mermaid block ready to embed in a Markdown ```` ```mermaid ```` fence.
 
-### Shape vocabulary
+#### Shape vocabulary
 
 | Placement | Mermaid shape | Example output |
 |-----------|---------------|----------------|
-| `single`  | rectangle     | `greet[greet]` |
-| `scatter` | trapezoid     | `scout[/scout/]` |
-| `embedded-dag` | subroutine | `invoke[[invoke]]` |
-| `terminal` (completed) | double-circle | `done(((done\n(completed))))` |
-| `terminal` (failed) | asymmetric flag | `fail>fail\n(failed)]` |
+| `single`  | rectangle     | `greet["greet"]` |
+| `scatter` | trapezoid     | `scout[/"scout"/]` |
+| `embedded-dag` | subroutine | `invoke[["invoke"]]` |
+| `terminal` (completed) | double-circle | `done((("done")))` |
+| `terminal` (failed) | asymmetric flag | `fail>"fail"]` |
 
 Every output route renders as a labeled directed edge: `from -->|outcome| to`. Flows terminate at explicit `TerminalNode` placements, which render as double-circle (completed) or asymmetric-flag (failed) shapes and emit no outbound edges.
 
-### Containment coloring
+#### Style and layout options
+
+`MermaidRenderer.render(dag, { theme })` accepts pluggable style/layout parameters. `primaryColor`, `lineColor`, `textColor`, `background`, and `containerTints` control emitted colours. `fontFamily`, `fontSize`, `nodeSpacing`, `rankSpacing`, and `padding` emit a Mermaid init directive so renderers can lay out the graph with caller-provided visual settings.
+
+#### Containment coloring
 
 Placements with a non-empty `container` role each receive a per-role Mermaid class (`contained-<role>`) whose fill and stroke come from `RoleColorUtils.forRole`. One `classDef contained-<role>` rule is emitted per distinct role that appears in the DAG, so two different roles produce two distinct fill/stroke colors. The `@type`-derived shape is unchanged — only the color dimension signals containment. In-process placements receive no class. `classDef` rules are omitted entirely when no contained placement exists.
 
-### Example
+#### Example
 
 ```ts
 <<< @/../examples/the-archivist/viz/render-mermaid.ts#mermaid-render
@@ -78,7 +113,7 @@ flowchart LR
   end_done(((end_done\n(completed))))
 ```
 
-### Combining with the dispatcher's read accessors
+#### Combining with the dispatcher's read accessors
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -96,7 +131,7 @@ const sources = dispatcher.listDAGs().map((dag) => ({
 
 ---
 
-## JsonLdRenderer
+### JsonLdRenderer
 
 Static class.
 
@@ -117,7 +152,7 @@ Each placement's `@type` is prefixed with `dag:`: `dag:SingleNode`, `dag:Scatter
 <<< @/../examples/the-archivist/viz/render-jsonld.ts#jsonld-render
 ```
 
-### `DAGONIZER_VOCAB`
+#### `DAGONIZER_VOCAB`
 
 ```ts twoslash
 import { DAGONIZER_VOCAB } from '@studnicky/dagonizer/viz';
@@ -129,7 +164,7 @@ export {};
 
 Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. Prefixed as `dag:` in rendered documents.
 
-### Types
+#### Types
 
 ```ts twoslash
 import type { DagJsonLdDocumentType, JsonLdGraphEntryType } from '@studnicky/dagonizer/viz';
@@ -145,7 +180,7 @@ const type: string = entry['@type'];
 
 ---
 
-## CytoscapeGraph
+### CytoscapeGraph
 
 Subclassable factory class for mounting an interactive cytoscape graph in a DOM container. `cytoscape` and `@dagrejs/dagre` are optional peer dependencies; install them to use this class. The cytoscape runtime is resolved internally by a lazy `Cytoscape.create()` dynamic import, so the package never bundles cytoscape and SSR/headless builds never load it until a graph mounts. A subclass that needs a custom `cytoscape.Core` build (extensions registered, a pinned cytoscape version, a renderer-less test harness) overrides the protected `construct(options)` hook instead of injecting a factory.
 
@@ -159,7 +194,7 @@ const graph = new CytoscapeGraph(container, dag);
 const cy = await graph.mount(); // returns cytoscape.Core
 ```
 
-### Constructor
+#### Constructor
 
 ```ts twoslash
 import { CytoscapeGraph } from '@studnicky/dagonizer/viz';
@@ -179,7 +214,7 @@ const graph = new CytoscapeGraph(container, dag, options);
 | `dag` | `DAG` | The DAG to render |
 | `options` | `CytoscapeGraphOptionsType?` | Optional configuration |
 
-### `CytoscapeGraphOptionsType`
+#### `CytoscapeGraphOptionsType`
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -188,11 +223,11 @@ const graph = new CytoscapeGraph(container, dag, options);
 
 The constructor accepts `Partial<CytoscapeGraphOptionsType>`; both fields are optional at the call site with the defaults noted above.
 
-### `async mount(): Promise<cytoscape.Core>`
+#### `async mount(): Promise<cytoscape.Core>`
 
 Builds elements via `CytoscapeRenderer.render`, computes layout via `CompositeLayout.compute` (async), mounts the cytoscape instance into the container, and calls `onReady`. Returns the mounted `cytoscape.Core`.
 
-### `cy` getter
+#### `cy` getter
 
 ```ts twoslash
 import { CytoscapeGraph } from '@studnicky/dagonizer/viz';
@@ -207,7 +242,7 @@ const cy = graph.cy;
 
 Returns the `cytoscape.Core` after a successful `mount()`, or `null` if the graph has not yet been mounted.
 
-### Protected hooks (override in subclasses)
+#### Protected hooks (override in subclasses)
 
 | Hook | Signature | Purpose |
 |------|-----------|---------|
@@ -221,7 +256,7 @@ Returns the `cytoscape.Core` after a successful `mount()`, or `null` if the grap
 | `enforceVisibility` | `(cy: cytoscape.Core) => void` | Override to replace the self-loop size-cache flush strategy. Default toggles `display` off then on in two `cy.batch()` calls. |
 | `onReady` | `(cy: cytoscape.Core) => void` | Called after mount and visibility sweep complete. Override to wire animation machines or event listeners. Default is a no-op. |
 
-### Example: subclassing for doc animations
+#### Example: subclassing for doc animations
 
 The Archivist example's `ArchivistGraph` extends `CytoscapeGraph` and overrides `onReady` to attach execution-trace animation:
 
@@ -231,7 +266,7 @@ The Archivist example's `ArchivistGraph` extends `CytoscapeGraph` and overrides 
 
 ---
 
-## CytoscapeRenderer
+### CytoscapeRenderer
 
 Static class. Returns a plain element array with NO computed positions. Layout is performed separately by `CompositeLayout.compute` or handled internally by `CytoscapeGraph`.
 
@@ -255,7 +290,7 @@ Renders a `DAG` as a Cytoscape elements array.
 <<< @/../examples/the-archivist/viz/render-cytoscape.ts#cytoscape-render
 ```
 
-### `RenderOptionsType`
+#### `RenderOptionsType`
 
 ```ts twoslash
 import type { RenderOptionsType } from '@studnicky/dagonizer/viz';
@@ -269,7 +304,7 @@ export {};
 
 Note: `computeLayout` and `layoutOptions` are not options on `CytoscapeRenderer.render`. Positioning is performed by `CompositeLayout.compute` (async) or handled internally by `CytoscapeGraph`.
 
-### Containment metadata
+#### Containment metadata
 
 Placements bound to a `container` role (worker/isolate) carry:
 - `data.container` — the role string (e.g. `'cpu'`), present only when a role is set
@@ -279,7 +314,7 @@ In-process placements omit `data.container` entirely and carry only the type cla
 
 Select contained nodes via `.dag-contained` (class selector) or `node[container]` / `node[container="<role>"]` (data selectors).
 
-### Types
+#### Types
 
 ```ts twoslash
 import type {
@@ -309,7 +344,7 @@ const _route: string = edge.data.route;
 const _eclasses: string = edge.classes;
 ```
 
-## CompositeLayout
+### CompositeLayout
 
 Static class that computes node positions for a `DAG` using `@dagrejs/dagre`. `compute` is async: it lazy-loads dagre, recursively lays out embedded-DAG sub-graphs bottom-up, and returns a `LayoutResultType` with a position map and bounding-box dimensions.
 
@@ -326,7 +361,7 @@ const result: LayoutResultType = await CompositeLayout.compute(dag, embeddedDAGs
 // result.height:    number  (total bounding-box height)
 ```
 
-`CytoscapeGraph.mount()` calls `CompositeLayout.compute` internally via `applyLayout`; direct use is for consumers managing their own cytoscape instances outside the factory.
+`CytoscapeGraph.mount()` calls `CompositeLayout.compute` internally via `applyLayout`; direct use is for applications managing their own cytoscape instances outside the factory.
 
 ```ts twoslash
 import { CompositeLayout } from '@studnicky/dagonizer/viz';
@@ -356,7 +391,15 @@ const y: number = pos.y;
 
 ---
 
-## Related guides
+## Details for Nerds
 
-- [Visualization](../guide/visualization)
-- [DAGBuilder](../guide/builder)
+Mermaid rendering is text-first and static. Cytoscape rendering is element-first and suitable for live browser state. `JsonLdRenderer` preserves semantic graph data for tools that need linked-data output rather than a visual graph.
+
+Renderer options should make style pluggable without changing DAG documents. A style choice must not hide node text, break Mermaid parsing, or alter registry names.
+
+## Related Concepts
+
+- [Reference: Dagonizer](./dagonizer) - read accessors
+- [Reference: Entities](./entities) - `DAG`
+- [Visualization](../guide/visualization) - JSON-LD/Mermaid correlation and Cytoscape-only runnable demos
+- [DAGBuilder](../guide/builder) - builder output rendered by the visualization layer
