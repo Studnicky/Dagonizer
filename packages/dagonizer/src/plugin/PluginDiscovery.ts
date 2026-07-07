@@ -6,7 +6,9 @@
  * executing.
  *
  * Literal references contribute one DAG name; dynamic `DagReference` values
- * contribute their declared candidate DAG names.
+ * contribute their declared candidate DAG names. Discovery walks the DAG's
+ * declared entrypoint roots through routing edges so dead placements do not
+ * inflate the reachable plugin set.
  */
 
 import type { PluginInterface } from '../contracts/PluginInterface.js';
@@ -16,8 +18,8 @@ import { DagReference } from '../entities/dag/DagReference.js';
 import { PluginLoader } from './PluginLoader.js';
 
 /**
- * Static DAG-walker for discovering literal sub-DAG references in a DAG
- * document's placement graph.
+ * Static DAG-walker for discovering sub-DAG references in the reachable DAG
+ * topology.
  *
  * Each method is a pure function over immutable inputs; no side effects.
  */
@@ -25,9 +27,11 @@ export class PluginDiscovery {
   private constructor() { /* static-only */ }
 
   /**
-   * Collect all declared dag-body names referenced in the DAG's placement graph.
+   * Collect all declared dag-body names referenced in the DAG's reachable
+   * placement graph.
    *
-   * Inspects every placement in `dag.nodes` and collects:
+   * Starts from every declared `dag.entrypoints` root, follows placement
+   * routing edges, and collects:
    * - `EmbeddedDAGNode.dag` literal or dynamic candidate names
    * - `ScatterNode.body.dag` literal or dynamic candidate names
    *
@@ -36,7 +40,7 @@ export class PluginDiscovery {
    */
   static referencedDagNames(dag: DAGType): readonly string[] {
     const seen = new Set<string>();
-    for (const placement of dag.nodes) {
+    for (const placement of PluginDiscovery.reachablePlacements(dag)) {
       const type = placement['@type'];
       if (type === 'EmbeddedDAGNode') {
         if (placement.dag !== undefined) {
@@ -53,6 +57,33 @@ export class PluginDiscovery {
       }
     }
     return [...seen];
+  }
+
+  private static reachablePlacements(dag: DAGType): readonly DAGType['nodes'][number][] {
+    const placementByName = new Map<string, DAGType['nodes'][number]>();
+    for (const placement of dag.nodes) {
+      placementByName.set(placement.name, placement);
+    }
+
+    const reachable: DAGType['nodes'][number][] = [];
+    const visited = new Set<string>();
+    const queue = Object.values(dag.entrypoints);
+
+    while (queue.length > 0) {
+      const placementName = queue.shift();
+      if (placementName === undefined || visited.has(placementName)) continue;
+      visited.add(placementName);
+
+      const placement = placementByName.get(placementName);
+      if (placement === undefined) continue;
+      reachable.push(placement);
+
+      if ('outputs' in placement) {
+        queue.push(...Object.values(placement.outputs));
+      }
+    }
+
+    return reachable;
   }
 
   /**

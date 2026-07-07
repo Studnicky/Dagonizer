@@ -24,6 +24,18 @@ class RouteEntry {
   }
 }
 
+class JsonLdDagReferenceEntry {
+  private constructor() {}
+
+  static candidates(value: unknown): readonly string[] {
+    if (typeof value !== 'object' || value === null) return [];
+    const rawCandidates = Reflect.get(value, 'dag:candidateDag');
+    return Array.isArray(rawCandidates)
+      ? rawCandidates.filter((candidate): candidate is string => typeof candidate === 'string')
+      : [];
+  }
+}
+
 void describe('JsonLdRenderer.render', () => {
   void it('emits a stable @context + @graph for a single-node DAG', () => {
     const dag: DAGType = {
@@ -136,6 +148,65 @@ void describe('JsonLdRenderer.render', () => {
     // the embedded DAG serializes as a cross-DAG IRI reference
     assert.equal(sub?.['dag:dag'], 'urn:dagonizer:child');
     assert.deepEqual(sub?.['dag:stateMapping'], { 'input': { 'input': 'x' }, 'output': { 'b': 'y' } });
+  });
+
+  void it('renders dynamic DagReference candidates as graph-visible DAG IRIs', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:dynamic-parent',
+      '@type':    'DAG',
+      'name':       'dynamic-parent',
+      'version':    '1',
+      'entrypoints': { 'main': 'invoke' },
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:dynamic-parent/node/invoke',
+          '@type':  'EmbeddedDAGNode',
+          'name':   'invoke',
+          'dag': {
+            '@type': 'DagReference',
+            'from': 'state',
+            'path': 'selectedDag',
+            'candidates': ['child-a', 'child-b'],
+          },
+          'outputs': { 'success': 'fan', 'error': 'failed' },
+        },
+        {
+          '@id':    'urn:noocodex:dag:dynamic-parent/node/fan',
+          '@type':  'ScatterNode',
+          'name':   'fan',
+          'source': 'items',
+          'gather': { 'strategy': 'discard' },
+          'body': {
+            'dag': {
+              '@type': 'DagReference',
+              'from': 'item',
+              'path': 'dagName',
+              'candidates': ['child-c'],
+            },
+          },
+          'outputs': { 'all-success': 'done', 'partial': 'done', 'all-error': 'failed', 'empty': 'done' },
+        },
+        { '@id': 'urn:noocodex:dag:dynamic-parent/node/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:dynamic-parent/node/failed', '@type': 'TerminalNode', 'name': 'failed', 'outcome': 'failed' },
+      ],
+    };
+
+    const doc = JsonLdRenderer.render(dag);
+    const embedded = doc['@graph'].find((entry) => entry['@id'] === 'urn:dagonizer:dynamic-parent#invoke');
+    const scatter = doc['@graph'].find((entry) => entry['@id'] === 'urn:dagonizer:dynamic-parent#fan');
+    const scatterBody = scatter?.['dag:body'];
+
+    assert.deepEqual(
+      JsonLdDagReferenceEntry.candidates(embedded?.['dag:dag']),
+      ['urn:dagonizer:child-a', 'urn:dagonizer:child-b'],
+    );
+    assert.deepEqual(
+      typeof scatterBody === 'object' && scatterBody !== null
+        ? JsonLdDagReferenceEntry.candidates(Reflect.get(scatterBody, 'dag:dag'))
+        : [],
+      ['urn:dagonizer:child-c'],
+    );
   });
 });
 
@@ -378,5 +449,85 @@ void describe('JsonLdRenderer.renderReachable', () => {
     assert.ok(ids.includes('urn:dagonizer:child'));
     assert.ok(ids.includes('urn:dagonizer:parent#invoke'));
     assert.ok(ids.includes('urn:dagonizer:child#child-end'));
+  });
+
+  void it('renders reachable dynamic candidate DAGs from every entrypoint root', () => {
+    const leftDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:left-child',
+      '@type':    'DAG',
+      'name':     'left-child',
+      'version':  '1',
+      'entrypoints': { 'main': 'done' },
+      'nodes': [{ '@id': 'urn:noocodex:dag:left-child/node/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' }],
+    };
+    const rightDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:right-child',
+      '@type':    'DAG',
+      'name':     'right-child',
+      'version':  '1',
+      'entrypoints': { 'main': 'done' },
+      'nodes': [{ '@id': 'urn:noocodex:dag:right-child/node/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' }],
+    };
+    const deadDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:dead-child',
+      '@type':    'DAG',
+      'name':     'dead-child',
+      'version':  '1',
+      'entrypoints': { 'main': 'done' },
+      'nodes': [{ '@id': 'urn:noocodex:dag:dead-child/node/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' }],
+    };
+    const parentDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:multi-root-parent',
+      '@type':    'DAG',
+      'name':     'multi-root-parent',
+      'version':  '1',
+      'entrypoints': { 'left': 'left-root', 'right': 'right-root' },
+      'nodes': [
+        {
+          '@id': 'urn:noocodex:dag:multi-root-parent/node/left-root',
+          '@type': 'EmbeddedDAGNode',
+          'name': 'left-root',
+          'dag': 'left-child',
+          'outputs': { 'success': 'left-done', 'error': 'failed' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:multi-root-parent/node/right-root',
+          '@type': 'EmbeddedDAGNode',
+          'name': 'right-root',
+          'dag': {
+            '@type': 'DagReference',
+            'from': 'state',
+            'path': 'selectedDag',
+            'candidates': ['right-child'],
+          },
+          'outputs': { 'success': 'right-done', 'error': 'failed' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:multi-root-parent/node/dead-root',
+          '@type': 'EmbeddedDAGNode',
+          'name': 'dead-root',
+          'dag': 'dead-child',
+          'outputs': { 'success': 'left-done', 'error': 'failed' },
+        },
+        { '@id': 'urn:noocodex:dag:multi-root-parent/node/left-done', '@type': 'TerminalNode', 'name': 'left-done', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:multi-root-parent/node/right-done', '@type': 'TerminalNode', 'name': 'right-done', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:multi-root-parent/node/failed', '@type': 'TerminalNode', 'name': 'failed', 'outcome': 'failed' },
+      ],
+    };
+
+    const doc = JsonLdRenderer.renderReachable(parentDag, new Map([
+      ['left-child', leftDag],
+      ['right-child', rightDag],
+      ['dead-child', deadDag],
+    ]));
+    const ids = doc['@graph'].map((entry) => entry['@id']);
+
+    assert.ok(ids.includes('urn:dagonizer:left-child'));
+    assert.ok(ids.includes('urn:dagonizer:right-child'));
+    assert.equal(ids.includes('urn:dagonizer:dead-child'), false);
   });
 });

@@ -86,11 +86,39 @@ void describe('PluginDiscovery', () => {
       }, {})
       .terminal('done')
       .terminal('failed', { 'outcome': 'failed' })
+      .embed('dead-child', 'plugin:dead', { 'success': 'done', 'error': 'failed' })
       .build();
 
     assert.deepEqual(
       PluginDiscovery.referencedDagNames(parentDag),
       ['plugin:a', 'plugin:b', 'plugin:c', 'plugin:d'],
+    );
+  });
+
+  void it('walks every DAG entrypoint root when collecting candidate DAG names', () => {
+    const parentDag = new DAGBuilder('multi-root-plugin-host', '1')
+      .embed('left-root', 'plugin:left', { 'success': 'left-done', 'error': 'failed' })
+      .terminal('left-done')
+      .scatter('right-root', 'items', {
+        'dag': {
+          'from': 'item',
+          'path': 'dagName',
+          'candidates': ['plugin:right-a', 'plugin:right-b'],
+        },
+      }, {
+        'all-success': 'right-done',
+        'partial':     'right-done',
+        'all-error':   'failed',
+        'empty':       'right-done',
+      }, {})
+      .terminal('right-done')
+      .terminal('failed', { 'outcome': 'failed' })
+      .entrypoints({ 'left': 'left-root', 'right': 'right-root' })
+      .build();
+
+    assert.deepEqual(
+      PluginDiscovery.referencedDagNames(parentDag),
+      ['plugin:left', 'plugin:right-a', 'plugin:right-b'],
     );
   });
 });
