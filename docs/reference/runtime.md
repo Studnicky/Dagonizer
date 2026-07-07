@@ -1,4 +1,6 @@
 ---
+title: 'Runtime'
+description: 'Runtime utility reference for Clock, Scheduler, RealTimeScheduler, RetryPolicy, backoff strategies, Signal composition, and DottedPathAccessor.'
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
@@ -10,9 +12,38 @@ seeAlso:
 
 # Runtime
 
+## What It Is
+
+The runtime surface contains the small utilities Dagonizer uses while executing a DAG: monotonic time, scheduling, retry policy, backoff strategies, abort/deadline composition, and dotted-path state access.
+
+Use this page when swapping deterministic test providers, applying retry/backoff around one operation, composing cancellation signals, or customizing how scatter/state-mapping paths read and write state.
+
+## How It Works
+
+Runtime utilities are deliberately injectable. `Clock` and `Scheduler` delegate to provider interfaces. `DottedPathAccessor` implements the default `StateAccessorInterface`. `RetryPolicy` wraps transient operations without changing DAG topology.
+
+That means tests can pin time, production can use real time, and application code can keep provider/network resilience separate from reviewer-visible DAG control flow.
+
+## Diagrams, Examples, and Outputs
+
+Runtime primitives are not graph placements, but they affect how graph execution behaves. These pages show the same contracts in tests and runtime wiring:
+
+- [Reference: Contracts](./contracts) - `ClockProviderInterface`, `SchedulerProviderInterface`, `StateAccessorInterface`
+- [Reference: Testing](./testing) - `VirtualClockProvider`, `VirtualScheduler`
+
+## What It Lets You Do
+
+The runtime reference lets applications swap timing, scheduling, retry, signal, and state-access behavior at execution boundaries.
+
 `@studnicky/dagonizer/runtime`
 
 Runtime utilities: monotonic clock, scheduler, retry policy, signal composition, and state accessor. All clock and scheduler primitives are swappable via their provider contracts for deterministic tests.
+
+## Code Samples
+
+The code below covers clock providers, scheduler providers, retry policy, backoff names, signal composition, and the default dotted-path accessor.
+
+### Import
 
 ```ts twoslash
 import {
@@ -34,11 +65,11 @@ import { Signal } from '@studnicky/signal';
 
 ---
 
-## Class: `Clock`
+### Class: `Clock`
 
 Engine-owned monotonic clock. Static class; never instantiated.
 
-### `Clock.monotonicMs()`
+#### `Clock.monotonicMs()`
 
 ```ts twoslash
 import { Clock } from '@studnicky/dagonizer/runtime';
@@ -48,7 +79,7 @@ const ms: number = Clock.monotonicMs();
 
 Monotonic time in integer milliseconds. Derived from `performance.now()`, not wall-clock. Used by lifecycle timestamps and `RetryPolicy` delay math.
 
-### `Clock.hrtime()`
+#### `Clock.hrtime()`
 
 ```ts twoslash
 import { Clock } from '@studnicky/dagonizer/runtime';
@@ -58,7 +89,7 @@ const t: bigint = Clock.hrtime();
 
 Raw monotonic high-resolution time in nanoseconds. Available in both Node and browsers. The `Clock` module is the only permitted call site for `performance.now()` in the package.
 
-### `Clock.configure(provider)`
+#### `Clock.configure(provider)`
 
 ```ts twoslash
 import { Clock } from '@studnicky/dagonizer/runtime';
@@ -70,7 +101,7 @@ Clock.configure(provider);
 
 Install a custom clock provider. Use in tests with `VirtualClockProvider` to control timestamps.
 
-### `Clock.reset()`
+#### `Clock.reset()`
 
 ```ts twoslash
 import { Clock } from '@studnicky/dagonizer/runtime';
@@ -82,11 +113,11 @@ Restore the default real-time clock provider.
 
 ---
 
-## Class: `Scheduler`
+### Class: `Scheduler`
 
 Engine-owned monotonic timer. Static class; never instantiated.
 
-### `Scheduler.current()`
+#### `Scheduler.current()`
 
 ```ts twoslash
 import { Scheduler } from '@studnicky/dagonizer/runtime';
@@ -97,7 +128,7 @@ const provider: SchedulerProviderInterface = Scheduler.current();
 
 Returns the active scheduler. `RetryPolicy` calls `Scheduler.current().after(ms, signal)` for backoff delays.
 
-### `Scheduler.configure(provider)`
+#### `Scheduler.configure(provider)`
 
 ```ts twoslash
 import { Scheduler } from '@studnicky/dagonizer/runtime';
@@ -109,7 +140,7 @@ Scheduler.configure(provider);
 
 Install a custom scheduler. Use `VirtualScheduler` in tests to advance time without real waits.
 
-### `Scheduler.reset()`
+#### `Scheduler.reset()`
 
 ```ts twoslash
 import { Scheduler } from '@studnicky/dagonizer/runtime';
@@ -121,13 +152,13 @@ Restore the default `RealTimeScheduler`.
 
 ---
 
-## Class: `RealTimeScheduler`
+### Class: `RealTimeScheduler`
 
 Default `SchedulerProviderInterface`. Wraps `setTimeout` and `setInterval`. Do not instantiate directly; `Scheduler.current()` uses it automatically.
 
 ---
 
-## Class: `RetryPolicy`
+### Class: `RetryPolicy`
 
 ```ts twoslash
 import { RetryPolicy } from '@studnicky/dagonizer/runtime';
@@ -142,7 +173,7 @@ Also re-exported from `@studnicky/dagonizer` root.
 
 See [Retry](/guide/retry) for detailed usage.
 
-### `RetryPolicy.run(task, options?)`
+#### `RetryPolicy.run(task, options?)`
 
 ```ts twoslash
 import { RetryPolicy } from '@studnicky/dagonizer/runtime';
@@ -157,7 +188,7 @@ const result = await policy.run(async (attempt: number) => {
 
 Runs `task` under the configured policy. Resolves with the function's return value on success, or throws the last error when attempts are exhausted. `options.signal` aborts mid-wait.
 
-### `RetryPolicy.getDelay(attempt, error?)`
+#### `RetryPolicy.getDelay(attempt, error?)`
 
 ```ts twoslash
 import { RetryPolicy } from '@studnicky/dagonizer/runtime';
@@ -169,7 +200,7 @@ const delay: number = policy.getDelay(1);
 
 Compute the backoff delay (ms) for a 1-based attempt number. Override in subclasses for custom curves.
 
-### `RetryPolicy.shouldRetry(error, attempt)`
+#### `RetryPolicy.shouldRetry(error, attempt)`
 
 ```ts twoslash
 import { RetryPolicy } from '@studnicky/dagonizer/runtime';
@@ -183,7 +214,7 @@ Decision predicate. Order: `abortOn` match stops retrying; `retryOn` (when set) 
 
 ---
 
-## Const: `BackoffStrategyNames` and type `BackoffStrategy`
+### Const: `BackoffStrategyNames` and type `BackoffStrategy`
 
 ```ts twoslash
 const BackoffStrategyNames = {
@@ -200,11 +231,11 @@ type BackoffStrategy = (typeof BackoffStrategyNames)[keyof typeof BackoffStrateg
 
 ---
 
-## Class: `Signal` (`@studnicky/signal`)
+### Class: `Signal` (`@studnicky/signal`)
 
 Fold `signal` and `deadlineMs` from `ExecuteOptionsType` into a single `AbortSignal`. Static class, imported from the `@studnicky/signal` package (a dependency of `@studnicky/dagonizer`, not re-exported from `./runtime`).
 
-### `Signal.compose(options)`
+#### `Signal.compose(options)`
 
 ```ts twoslash
 import type { ExecuteOptionsType } from '@studnicky/dagonizer/contracts';
@@ -222,13 +253,13 @@ await fetch(url, { signal });
 
 `deadlineMs` is wired through `AbortSignal.timeout()`, which surfaces a platform `TimeoutError` as the abort reason. `Dagonizer` inspects that reason to mark the lifecycle `timed_out` rather than `cancelled`. A negative or `NaN` `deadlineMs` throws `SignalError`.
 
-### `Signal.never()`
+#### `Signal.never()`
 
 Returns a cached, never-aborting `AbortSignal`. Used throughout the engine wherever a run has no caller-supplied cancellation surface, so every node context carries a valid signal — never `null`.
 
 ---
 
-## Class: `DottedPathAccessor`
+### Class: `DottedPathAccessor`
 
 Default `StateAccessorInterface`. Walks `path.split('.')` to read and write nested fields on a state object. Creates intermediate plain objects on write when they are absent. Treats `null` and `undefined` segments on read as misses (returns `undefined`).
 
@@ -243,9 +274,17 @@ Used by the dispatcher for scatter source reads, state-mapping input copies, and
 
 ---
 
-## Related guides
+## Details for Nerds
 
-- [Cancellation](../guide/cancellation)
-- [Retry](../guide/retry)
-- [State accessors](../guide/state-accessor)
-- [Observability](../guide/observability)
+`RetryPolicy` is for one transient operation, not for visible DAG control flow. If retry is part of the business process, model it as DAG routing. If retry is provider/network resilience around one call, keep it in runtime policy.
+
+`DottedPathAccessor` is the default path resolver for scatter source reads, gather writes, and embedded-DAG state mappings. Swap it only when an application state model needs different path semantics.
+
+## Related Concepts
+
+- [Reference: Contracts](./contracts) - `ClockProviderInterface`, `SchedulerProviderInterface`, `StateAccessorInterface`
+- [Reference: Testing](./testing) - `VirtualClockProvider`, `VirtualScheduler`
+- [Cancellation](../guide/cancellation) - abort signals and deadline propagation
+- [Retry](../guide/retry) - choosing DAG-visible retry versus operation retry
+- [State Accessors](../guide/state-accessor) - custom path resolver guidance
+- [Observability](../guide/observability) - timing and lifecycle event projection

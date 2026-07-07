@@ -12,7 +12,7 @@
  *     └─ violation ──► violation  (TerminalNode failed   → parent routes 'error')
  *
  * Embedded via:
- *   .embeddedDAG('gdpr', 'gdpr-compliance',
+ *   .embed('gdpr', 'gdpr-compliance',
  *     { 'success':'aggregate-event', 'error':'gdpr-violation' },
  *     { 'outputs': { 'currentEvent':'currentEvent', 'gdprResult':'gdprResult' } })
  *

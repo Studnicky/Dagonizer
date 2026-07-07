@@ -1,4 +1,6 @@
 ---
+title: 'Testing'
+description: 'Testing reference for VirtualClockProvider, VirtualScheduler, deterministic retry timing, scheduler draining, and runtime provider contracts.'
 seeAlso:
   - text: 'Reference: Runtime'
     link: './runtime'
@@ -10,13 +12,46 @@ seeAlso:
 
 # Testing
 
+## What It Is
+
+The testing surface provides deterministic replacements for real time: `VirtualClockProvider` and `VirtualScheduler`.
+
+Use this page when retry, timeout, lifecycle timing, scheduled work, or deadline behavior must be asserted without waiting for wall-clock delays.
+
+## How It Works
+
+Install the virtual providers before each test, drive time manually, drain scheduled tasks, and restore real providers after the test. Runtime code continues to call `Clock` and `Scheduler`; the provider swap makes the behavior deterministic.
+
+The testing utilities are for runtime behavior, not graph validation. Pair them with `Validator` or dispatcher registration tests when document shape also matters.
+
+## Diagrams, Examples, and Outputs
+
+Testing utilities are runtime providers. These references show the contracts they implement:
+
+- [Reference: Runtime](./runtime) - `Clock`, `Scheduler`
+- [Reference: Contracts](./contracts) - `ClockProviderInterface`, `SchedulerProviderInterface`
+
+## What It Lets You Do
+
+The testing reference lets applications replace real time with deterministic clock and scheduler implementations.
+
 `@studnicky/dagonizer/testing`
 
 The testing subpath exports two deterministic replacements for the real-time clock and scheduler. Install them before each test; reset them after.
 
+## Code Samples
+
+The code below covers virtual clocks, virtual schedulers, deterministic retry timing, scheduler draining, and provider reset patterns.
+
+### Import
+
+```ts twoslash
+import { VirtualClockProvider, VirtualScheduler } from '@studnicky/dagonizer/testing';
+```
+
 ---
 
-## Class: `VirtualClockProvider`
+### Class: `VirtualClockProvider`
 
 In-memory monotonic clock. Time advances only when you advance it.
 
@@ -25,7 +60,7 @@ import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
 import { Clock } from '@studnicky/dagonizer/runtime';
 ```
 
-### Constructor
+#### Constructor
 
 ```ts twoslash
 import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
@@ -35,7 +70,7 @@ new VirtualClockProvider(0n);
 
 `initialNs` is the starting nanosecond value. Defaults to `0n`.
 
-### `.tickMs(deltaMs)`
+#### `.tickMs(deltaMs)`
 
 ```ts twoslash
 import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
@@ -46,7 +81,7 @@ clock.tickMs(100);
 
 Advance the virtual clock by `deltaMs` milliseconds.
 
-### `.tickNs(deltaNs)`
+#### `.tickNs(deltaNs)`
 
 ```ts twoslash
 import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
@@ -65,7 +100,7 @@ import { VirtualClockProvider } from '@studnicky/dagonizer/testing';
 const clock = new VirtualClockProvider(500_000_000n);
 ```
 
-### Usage
+#### Usage
 
 ```ts
 <<< @/../examples/dags/virtual-clock.ts#virtual-time
@@ -73,7 +108,7 @@ const clock = new VirtualClockProvider(500_000_000n);
 
 ---
 
-## Class: `VirtualScheduler`
+### Class: `VirtualScheduler`
 
 In-memory min-heap scheduler. No platform timers. Advance time via `advance(ms)`, `runUntil(atMs)`, or `runAll()`.
 
@@ -82,7 +117,7 @@ import { VirtualScheduler } from '@studnicky/dagonizer/testing';
 import { Scheduler } from '@studnicky/dagonizer/runtime';
 ```
 
-### Constructor
+#### Constructor
 
 ```ts twoslash
 import { VirtualScheduler } from '@studnicky/dagonizer/testing';
@@ -92,7 +127,7 @@ new VirtualScheduler(0);
 
 `initialAtMs` is the starting virtual-now value. Defaults to `0`.
 
-### `.advance(deltaMs)`
+#### `.advance(deltaMs)`
 
 ```ts twoslash
 import { VirtualScheduler } from '@studnicky/dagonizer/testing';
@@ -103,7 +138,7 @@ scheduler.advance(500);
 
 Advance virtual time by `deltaMs`, firing all tasks scheduled in that window in order.
 
-### `.runUntil(atMs)`
+#### `.runUntil(atMs)`
 
 ```ts twoslash
 import { VirtualScheduler } from '@studnicky/dagonizer/testing';
@@ -114,7 +149,7 @@ scheduler.runUntil(1000);
 
 Advance virtual time to `atMs`, firing tasks in order.
 
-### `.runAll()`
+#### `.runAll()`
 
 ```ts twoslash
 import { VirtualScheduler } from '@studnicky/dagonizer/testing';
@@ -125,7 +160,7 @@ scheduler.runAll();
 
 Fire all pending one-shot tasks in monotonic order.
 
-### `.virtualNow`
+#### `.virtualNow`
 
 ```ts twoslash
 import { VirtualScheduler } from '@studnicky/dagonizer/testing';
@@ -136,7 +171,7 @@ const now: number = scheduler.virtualNow;
 
 Current virtual time in ms.
 
-### `.pendingCount`
+#### `.pendingCount`
 
 ```ts twoslash
 import { VirtualScheduler } from '@studnicky/dagonizer/testing';
@@ -147,13 +182,13 @@ const count: number = scheduler.pendingCount;
 
 Number of active (non-cancelled) pending tasks.
 
-### Usage with `RetryPolicy`
+#### Usage with `RetryPolicy`
 
 ```ts
 <<< @/../examples/dags/virtual-clock.ts#virtual-time
 ```
 
-### `SchedulerProviderInterface` interface
+#### `SchedulerProviderInterface` interface
 
 Both `VirtualScheduler` and `RealTimeScheduler` implement `SchedulerProviderInterface`:
 
@@ -169,7 +204,16 @@ const _scheduler: SchedulerProviderInterface = {} as SchedulerProviderInterface;
 ```
 
 Implement this interface to create a custom test scheduler (e.g. one that records fired tasks for assertions).
-## Related guides
 
-- [Cancellation](../guide/cancellation)
-- [Retry](../guide/retry)
+## Details for Nerds
+
+Virtual providers are process-global while installed. Reset them after each test so one suite does not leak deterministic time into another.
+
+Prefer advancing virtual time to sleeping. Tests that wait on wall-clock time are slower and less reliable than tests that control `Clock` and drain `Scheduler`.
+
+## Related Concepts
+
+- [Reference: Runtime](./runtime) - `Clock`, `Scheduler`
+- [Reference: Contracts](./contracts) - `ClockProviderInterface`, `SchedulerProviderInterface`
+- [Cancellation](../guide/cancellation) - deadline and abort behavior under test
+- [Retry](../guide/retry) - deterministic backoff tests

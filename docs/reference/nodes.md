@@ -1,4 +1,6 @@
 ---
+title: 'Nodes'
+description: 'Placement reference for SingleNode, ScatterNode, EmbeddedDAGNode, TerminalNode, PhaseNode, gather configuration, and execution policy.'
 seeAlso:
   - text: 'Reference: Entities'
     link: './entities'
@@ -13,9 +15,33 @@ seeAlso:
 
 # Nodes
 
+## What It Is
+
+This page documents the placement shapes that can appear inside a JSON-LD `DAG`: `SingleNode`, `ScatterNode`, `EmbeddedDAGNode`, `TerminalNode`, and `PhaseNode`.
+
+Use it when authoring, validating, rendering, or debugging the graph document that points at registered node implementations.
+
+## How It Works
+
+A registered `NodeInterface` is the unit of work. A placement is that unit's appearance inside one DAG document. One registered node can appear in multiple placements; each placement owns routing, state mapping, scatter policy, phase role, or terminal outcome.
+
+`TerminalNode` is placement-only and references no registered node. `EmbeddedDAGNode` references another registered DAG. `ScatterNode` creates isolated clone work and folds the result back through gather/reduce policy.
+
+## Diagrams, Examples, and Outputs
+
+Placement shapes are easiest to read beside real DAG diagrams. These pages show the same JSON-LD placements rendered into Mermaid or the runnable browser graph:
+
+- [Reference: Entities](./entities) - JSON Schema sources for every placement
+- [Reference: Contracts](./contracts) - `NodeInterface`, the contract a placement references
+- [Reference: Core](./core) - `GatherStrategy`, `OutcomeReducer`
+
+## What It Lets You Do
+
+The nodes reference lets applications understand every placement shape a JSON-LD DAG can contain.
+
 Placement types: the appearances of nodes inside a `DAG`. Each placement is a discriminated union member keyed by `@type`, ships with a JSON Schema in `@studnicky/dagonizer/entities`, and resolves to a typed TS shape via `json-schema-to-ts`.
 
-A registered `NodeInterface` (the consumer-implemented unit of work) is referenced from a placement by name. A "node" is the unit of work. A "placement" is its appearance inside a `DAG`. `TerminalNode` is placement-only and references no registered node.
+A registered `NodeInterface` is referenced from a placement by name. A "node" is the unit of work. A "placement" is its appearance inside a `DAG`.
 
 | Placement `@type` | Schema | TS type | Purpose |
 |---|---|---|---|
@@ -27,9 +53,25 @@ A registered `NodeInterface` (the consumer-implemented unit of work) is referenc
 
 Every schema's `$id` is `https://noocodex.dev/schemas/dagonizer/<TypeName>`.
 
+## Code Samples
+
+The code below covers placement imports, JSON-LD shape, routing, gather policy, state mapping, and terminal behavior.
+
+### Import
+
+```ts twoslash
+import type {
+  EmbeddedDAGNodeType,
+  PhaseNodeType,
+  ScatterNodeType,
+  SingleNodeType,
+  TerminalNodeType,
+} from '@studnicky/dagonizer/entities';
+```
+
 ---
 
-## `SingleNode`
+### `SingleNode`
 
 ```ts twoslash
 import { SingleNodeSchema } from '@studnicky/dagonizer/entities';
@@ -63,7 +105,7 @@ export {};
 
 ---
 
-## `ScatterNode`
+### `ScatterNode`
 
 ```ts twoslash
 import { ScatterNodeSchema } from '@studnicky/dagonizer/entities';
@@ -108,7 +150,7 @@ Generate-collect pattern (one clone per source-array item):
 
 `GatherConfig` is documented under [Gather configuration](#gather-configuration) below.
 
-### Execution policy
+#### Execution policy
 
 `execution` groups scatter concurrency-limiting into ONE discriminated `mode`
 structure instead of three uncoordinated sibling fields:
@@ -140,7 +182,7 @@ retry, and coalescing.
 
 ---
 
-## `EmbeddedDAGNode`
+### `EmbeddedDAGNode`
 
 ```ts twoslash
 import { EmbeddedDAGNodeSchema } from '@studnicky/dagonizer/entities';
@@ -178,11 +220,11 @@ export {};
 | `outputs` | `Record<'success' \| 'error', string \| null>` | yes | Routes for the child's terminal outcome |
 | `stateMapping` | `{ input?: Record<string, string>; output?: Record<string, string> }` | no | `input` copies parent fields into the child before it runs (child-key ← parent-path); `output` copies child fields back into the parent after it completes (parent-path ← child-key). |
 
-`EmbeddedDAGNode` invokes a registered sub-DAG exactly once (cardinality 1). It is the embedding primitive: the parent flow suspends, the child DAG runs to completion in an isolated state (a fresh child clone, not a shared parent reference), and the parent routes on the child's terminal outcome (`success` when the child lifecycle is `completed`; `error` when `failed`). The target sub-DAG is named either by the build-time literal `dag` or by `dagFrom`, a dotted state path resolved per execution — the item-scoped form a scatter body uses to invoke a different child per item. Exactly one of the two is present, enforced by the DAG validator. Authored via `.embeddedDAG(name, dagName, routes, { inputs, outputs })` on `DAGBuilder`.
+`EmbeddedDAGNode` invokes a registered sub-DAG exactly once (cardinality 1). It is the embedding primitive: the parent flow suspends, the child DAG runs to completion in an isolated state (a fresh child clone, not a shared parent reference), and the parent routes on the child's terminal outcome (`success` when the child lifecycle is `completed`; `error` when `failed`). The target sub-DAG is named either by the build-time literal `dag` or by `dagFrom`, a dotted state path resolved per execution — the item-scoped form a scatter body uses to invoke a different child per item. Exactly one of the two is present, enforced by the DAG validator. Authored via `.embed(name, dagName, routes, { inputs, outputs })` on `DAGBuilder`.
 
 ---
 
-## `TerminalNode`
+### `TerminalNode`
 
 ```ts twoslash
 import { TerminalNodeSchema } from '@studnicky/dagonizer/entities';
@@ -213,7 +255,7 @@ No `outputs` map. Placement-only (no backing `NodeInterface`). On reach, the eng
 
 ---
 
-## `PhaseNode`
+### `PhaseNode`
 
 ```ts twoslash
 import { PhaseNodeSchema } from '@studnicky/dagonizer/entities';
@@ -246,7 +288,7 @@ No `outputs` map. Pre-phase placements run in DAG declaration order before the e
 
 ---
 
-## Gather configuration
+### Gather configuration
 
 `GatherConfig` is referenced from `ScatterNode.gather` and is also exported as a standalone schema and type.
 
@@ -286,9 +328,18 @@ Strategies are pluggable: register a new one with `GatherStrategies.register(str
 
 ---
 
-## Related guides
+## Details for Nerds
 
-- [DAGBuilder](../guide/builder)
-- [Lifecycle phases](../guide/lifecycle-phases)
-- [Terminal placements](../examples/09-terminals)
-- [Subclassing state](../guide/subclassing)
+Placement JSON is the stable topology contract. Runtime node instances do not serialize into the DAG; only their registered names appear in placements. That keeps JSON-LD portable across browser demos, CLI runs, worker pools, plugin bundles, and persisted graph documents.
+
+Scatter and embedded DAG placements are the two places where a single placement expands into another execution scope. Scatter creates multiple clone scopes and folds them back through `gather`; embedded DAGs create one child flow and route from the child terminal outcome.
+
+## Related Concepts
+
+- [Reference: Entities](./entities) - JSON Schema sources for every placement
+- [Reference: Contracts](./contracts) - `NodeInterface`, the contract a placement references
+- [Reference: Core](./core) - `GatherStrategy`, `OutcomeReducer`
+- [DAGBuilder](../guide/builder) - fluent API for producing these placement shapes
+- [Lifecycle Phases](../guide/lifecycle-phases) - pre/post `PhaseNode` placement behavior
+- [Example 09: Terminal Nodes](../examples/09-terminals) - terminal outcomes in runnable code
+- [Subclassing State](../guide/subclassing) - state shape each placement mutates

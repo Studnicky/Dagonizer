@@ -281,6 +281,7 @@ const resolvedModel = computed<string>(() => {
   return entry?.resolvedModel ?? '';
 });
 
+// #region archivist-browser-llm-client
 /** Construct an LLM client for the active backend, or null when none is selected. */
 function makeLlm() {
   if (activeBackend.value === null) return null;
@@ -290,6 +291,7 @@ function makeLlm() {
     ...(intentClassifier.value !== null ? { 'intentClassifier': intentClassifier.value } : {}),
   });
 }
+// #endregion archivist-browser-llm-client
 
 /** Live LLM client reference for ToolExplainPanel, kept in sync with activeBackend changes. */
 const currentLlm = computed(() => makeLlm());
@@ -330,6 +332,7 @@ const embeddedDagRegistry = ref<Map<string, DAGType>>(new Map([
   ['compose-retry-loop',  composeRetryLoopDAG],
 ]));
 
+// #region archivist-browser-tool-registry
 // Stable tool instances for the checkpoint resume path and archivistToolRegistry.
 // One instance each: the HTTP tools are stateless.
 const webSearchTool        = new OpenLibrarySearchTool();
@@ -346,7 +349,9 @@ archivistToolRegistry.register(webSearchTool);
 archivistToolRegistry.register(googleBooksTool);
 archivistToolRegistry.register(subjectSearchTool);
 archivistToolRegistry.register(wikipediaSummaryTool);
+// #endregion archivist-browser-tool-registry
 
+// #region archivist-browser-services
 /** Build a real services record for the checkpoint resume path. */
 function buildServices(): ArchivistServices {
   const llm = makeLlm();
@@ -362,6 +367,7 @@ function buildServices(): ArchivistServices {
     'nodeTimeouts':      {},
   };
 }
+// #endregion archivist-browser-services
 
 // ── VueArchivistSession ───────────────────────────────────────────────────
 /**

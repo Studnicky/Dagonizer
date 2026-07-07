@@ -1,14 +1,14 @@
 ---
-title: 'Phase 10: Shared state'
+title: 'Example 10: Shared State'
 description: 'Cross-DAG shared state via Store, MemoryStore, and TypedStore. Parent and child DAGs read and write the same backing store injected into each node constructor, with a checkpoint round-trip that preserves the store across resume.'
 seeAlso:
   - text: 'Shared state guide'
     link: '../guide/shared-state'
     description: 'decision matrix, concurrency contract, checkpoint integration'
-  - text: 'Phase 05: Scatter sub-DAG composition'
+  - text: 'Example 05: Embedded DAGs'
     link: './05-embedded-dags'
     description: 'state transfer at the scatter boundary'
-  - text: 'Phase 08: Checkpoint + resume'
+  - text: 'Example 08: Checkpoint and Resume'
     link: './08-checkpoint'
     description: 'checkpoint lifecycle this page extends with stores'
   - text: 'Reference: Store'
@@ -16,85 +16,84 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { Batch, DAGBuilder, MonadicNode, NodeStateBase, RoutedBatch } from '@studnicky/dagonizer';
-import type { SchemaObjectType } from '@studnicky/dagonizer';
-
-class DoneNode extends MonadicNode<NodeStateBase, 'done'> {
-  readonly outputs: readonly 'done'[] = ['done'];
-
-  constructor(readonly name: string) {
-    super();
-  }
-
-  override get outputSchema(): Record<'done', SchemaObjectType> {
-    return { done: { type: 'object' } };
-  }
-
-  async execute(batch: Batch<NodeStateBase>) {
-    return RoutedBatch.create('done', batch);
-  }
-}
-
-const childDag = new DAGBuilder('sub-flow', '1')
-  .node('child-step', new DoneNode('child-step'), { done: 'child-end' })
-  .terminal('child-end')
-  .build();
-
-const parentDag = new DAGBuilder('main-flow', '1')
-  .node('step-a', new DoneNode('step-a'), { done: 'run-child' })
-  .embeddedDAG('run-child', 'sub-flow', { success: 'step-b', error: 'step-b' })
-  .node('step-b', new DoneNode('step-b'), { done: 'end' })
-  .terminal('end')
-  .build();
-
-const sharedStateRegistry = new Map([['sub-flow', childDag]]);
+import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
 </script>
 
-# Phase 10: Shared state
+# Example 10: Shared State
 
-A `MemoryStore` is passed into each node's constructor. Parent and child append entries to the same store without passing values through `inputs` or `gather`. `Checkpoint.capture` snapshots the store alongside the parent state; `Checkpoint.load` + `restoreStores` restores it on resume.
+## What It Is
 
-<DagGraph :dag="parentDag" :embedded-d-a-gs="sharedStateRegistry" :expand-all="true" aria-label="Parent DAG with embedded-DAG sub-flow; both write to the same shared store." />
+Shared State is for data that belongs to a session or application boundary, not to one edge in the DAG. The Archivist uses a session `MemoryStore` so parent nodes, embedded search DAGs, and resume logic can read and write the same memory graph.
 
-## Code
+Use this when `stateMapping` or `gather` would force every node to pass around a growing structure that is really a shared service: memory, audit trails, caches, ranked stores, or provenance indexes.
 
-### Constructor injection
+## How It Works
 
-Each node accepts a `StoreInterface` in its constructor. The same `MemoryStore` instance is passed to all three nodes at registration time; every node accesses it as a private field:
+A `MemoryStore` is passed into each node's constructor. Parent and child nodes append entries to the same store without passing values through `inputs` or `gather`. `Checkpoint.capture` snapshots the store alongside parent state; `Checkpoint.load` and `restoreStores` restore it on resume. The code below is the real Archivist browser/CLI memory path.
 
-<<< @/../examples/dags/10-shared-state.ts#services-node
+The graph remains pure topology. The store is an injected dependency, so reusable DAGs can share application state without smuggling it through every placement.
 
-### Child DAG
+## Diagrams, Examples, and Outputs
 
-The child DAG runs a single `child-step` placement; it never references the store directly. The store lives outside the topology:
+### DAG registration and diagram
 
-<<< @/../examples/dags/10-shared-state.ts#child-dag
+The graph is the production-shaped pattern in [The Archivist](./the-archivist): parent placements and embedded search/compose sub-DAGs share the session `MemoryStore` through injected services while the topology stays pure JSON-LD.
 
-### Parent DAG with embedded-DAG placement
+<DagJsonMermaid :dag="archivistDAG" title="The Archivist parent DAG" aria-label="The Archivist JSON-LD DAG beside Mermaid generated from it." />
 
-`run-child` is the embedded-DAG placement. Parent and child both call `this.log.update(...)` against the same constructor-injected store, so `step-a`, `child-step`, and `step-b` accumulate to one entry list in execution order:
+### Run
 
-<<< @/../examples/dags/10-shared-state.ts#parent-dag
+```bash
+npm run docs:dev
+```
 
-### Store initialisation + run
+## What It Lets You Do
 
-The `MemoryStore` is constructed before the nodes and passed into each node at registration. After execution, the same instance carries the writes from every node:
+Shared state lets applications accumulate data across parent DAGs, embedded DAGs, and scatter clones without threading every value through `stateMapping` or `gather`. Use it for memory graphs, caches, audit logs, ranked stores, and other structures that many nodes read or write over time.
 
-<<< @/../examples/10-shared-state.ts#store-init
+For an application, this keeps the DAG readable while still supporting long-lived domain state. The parent graph says what runs next; the store owns the durable structure multiple nodes collaborate on.
 
-### Full round-trip (normal run, then checkpoint + resume)
+## Code Samples
 
-The runnable example covers the full lifecycle: a normal run, then a second run that aborts after `step-a`, captures the partial state plus the store, restores the store into a fresh `MemoryStore`, and resumes:
+Read the snippets with the diagrams nearby so the TypeScript behavior, JSON-LD graph shape, and runtime output line up as one contract.
 
-<<< @/../examples/10-shared-state.ts#run
+#### Store implementation
 
-## What it demonstrates
+The Archivist `MemoryStore` is the session memory graph shared across turns and nodes:
 
-- **Constructor injection.** Each node accepts a `StoreInterface` in its constructor. The `MemoryStore` is constructed once and passed to `new StepANode(log)`, `new ChildStepNode(log)`, and `new StepBNode(log)` at registration time.
-- **Single store, many writers.** `step-a`, `child-step`, `step-b` all call `this.log.update('entries', ...)` against the same instance. Order of the resulting entries reflects execution order, not topology.
-- **Embedded-DAG child shares the store.** `child-step` holds the same `log` instance as the parent nodes — passed via constructor, not threaded through `inputs` or `gather`. `inputs`/`gather` are for parent/clone state transfer; stores are orthogonal.
-- **`Checkpoint.capture({ stores })`.** Capturing a checkpoint with the `stores` option snapshots each named store alongside the state. The store is keyed by a name matching what `restoreStores` expects (`log`).
-- **`Checkpoint.load(...).restoreStores({ log: freshLog })`.** Restores the store contents into a fresh instance. The resumed nodes are constructed with the fresh store instance, so the resume continues from the captured store contents.
-- **Resume is order-preserving.** After restoreStores plus resume, the final `entries` value is `step-a,child-step,step-b` with no duplication, identical to the normal-run output.
+<<< @/../examples/the-archivist/memory/MemoryStore.ts
+
+#### Store in service state
+
+The shared store is part of the `ArchivistServices` record injected into node constructors:
+
+<<< @/../examples/the-archivist/services.ts#services-shape
+
+#### Checkpoint capture with stores
+
+The browser session captures the same memory store when a run parks for HITL:
+
+<<< @/../examples/the-archivist/DomArchivistSession.ts#checkpoint-store-capture
+
+#### Checkpoint restore with stores
+
+On resume, the browser restores the memory store before calling back into the dispatcher:
+
+<<< @/../examples/the-archivist/DomArchivistSession.ts#checkpoint-store-restore
+
+## Details for Nerds
+
+- **Constructor/service injection.** Nodes receive `ArchivistServices`, which carries the shared `MemoryStore`.
+- **Single store, many writers.** Recall, record, provenance, and projection paths read/write one session memory graph.
+- **Embedded DAGs share services.** Embedded placements receive mapped state while their nodes still use the same service record.
+- **`Checkpoint.capture({ stores })`.** Capturing a checkpoint with the `stores` option snapshots memory alongside state.
+- **`restoreStores({ memory })`.** Resume restores the memory graph before the parked DAG continues.
 
 See [Shared state](../guide/shared-state) for the decision matrix between `inputs`/`gather` (point-to-point transfer) and `Store` (accumulating shared structure), and the concurrency contract for write-write races across concurrent scatter clones.
+
+## Related Concepts
+
+- [Shared state guide](../guide/shared-state) - decision matrix, concurrency contract, checkpoint integration
+- [Example 05: Embedded DAGs](./05-embedded-dags) - state transfer at the scatter boundary
+- [Example 08: Checkpoint and Resume](./08-checkpoint) - checkpoint lifecycle this page extends with stores
+- [Reference: Store](../reference/store)

@@ -16,19 +16,21 @@
  *   npx tsx examples/the-cartographer/runCartographer.ts [--events N] [--recorded]
  *
  * Worker-thread path (CARTO_WORKERS=1 or --workers flag):
- *   Each canonical-event enrichment body runs inside a WorkerThreadContainer
- *   (real worker threads). The worker registry must be compiled to JS first:
+ *   Each canonical-event enrichment body runs inside the `cpu`
+ *   WorkerThreadContainer, and the summary body runs inside the `io`
+ *   WorkerThreadContainer. The worker registry must be compiled to JS first:
  *     tsc -p examples/the-cartographer/tsconfig.workers.json
  *   Then run as plain Node.js:
  *     node examples/the-cartographer/dist/runCartographer.js --workers [--events N]
  *   Or with the npm script (once added to package.json):
  *     pnpm cartographer:workers
  *
- * Container vs in-process: the `process-events` scatter binds container: 'cpu'
- * in cartographerWorkersDAG (workers mode) vs no container in cartographerDAG
- * (in-process mode). Same state, same nodes, same sub-DAGs — only the dispatch
- * strategy differs. The worker registry (workers/eventPipelineRegistry.ts)
- * reconstructs the event-pipeline bundle inside each thread.
+ * Container vs in-process: cartographerWorkersDAG binds process-stream to
+ * container role 'cpu' and summarize-insights to role 'io'. cartographerDAG
+ * keeps both stages in-process. Same state, same nodes, same sub-DAGs — only
+ * the dispatch strategy differs. The worker registry
+ * (workers/eventPipelineRegistry.ts) reconstructs the worker-runtime bundle
+ * inside each thread.
  */
 
 // #region run-cartographer
@@ -43,6 +45,7 @@ import { orderEnrichmentBundle } from './embedded-dags/OrderEnrichmentDAG.ts';
 import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
 import type { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { ObservedCartographer } from './ObservedCartographer.ts';
+import { normalizeSourcesPlugin } from './plugins/NormalizeSourcesPlugin.ts';
 import type { DagonizerOptionsType } from '@studnicky/dagonizer';
 import { GeoResolvers } from './services/GeoResolvers.ts';
 import { ErrorRollup, type ErrorRollupType } from './errors/ErrorRollup.ts';
@@ -203,6 +206,7 @@ class CartographerResumableScenario {
     d.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     d.registerBundle(orderEnrichmentBundle);
     d.registerBundle(gdprComplianceBundle);
+    d.registerPlugin(normalizeSourcesPlugin);
     d.registerBundle(ingestSourceBundle);
     d.registerBundle(cartographerResumeBundle);
     return d;
@@ -241,6 +245,7 @@ class CartographerResumableScenario {
     abortingDispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     abortingDispatcher.registerBundle(orderEnrichmentBundle);
     abortingDispatcher.registerBundle(gdprComplianceBundle);
+    abortingDispatcher.registerPlugin(normalizeSourcesPlugin);
     abortingDispatcher.registerBundle(ingestSourceBundle);
     abortingDispatcher.registerBundle(cartographerResumeBundle);
 
@@ -443,7 +448,7 @@ const services: CartographerServices = useLive ? GeoResolvers.live() : GeoResolv
 //
 // Workers receive servicesConfig.useRecordedIp so they select the same IP backend
 // as the parent (recorded when offline/--recorded, live when the parent is live).
-let workerContainer: { destroy(): Promise<void> } | null = null;
+let workerContainers: Array<{ destroy(): Promise<void> }> = [];
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 // ObservedCartographer subclasses Dagonizer and wires every lifecycle hook to
@@ -457,36 +462,45 @@ if (useWorkers) {
   // are only instantiated when the compiled path is active.
   const { WorkerThreadContainer } = await import('@studnicky/dagonizer-executor-node');
   const registryUrl = new URL('./workers/eventPipelineRegistry.js', import.meta.url).href;
-  const container = new WorkerThreadContainer({
+  const cpuContainer = new WorkerThreadContainer({
     'registryModule':  registryUrl,
     'registryVersion': '1.0.0',
     'servicesConfig':  { 'useRecordedIp': !useLive },
     'poolSize':        4,
   });
-  workerContainer = container;
+  const ioContainer = new WorkerThreadContainer({
+    'registryModule':  registryUrl,
+    'registryVersion': '1.0.0',
+    'servicesConfig':  { 'useRecordedIp': !useLive },
+    'poolSize':        1,
+  });
+  workerContainers = [cpuContainer, ioContainer];
 
-  // Workers mode: the cartographerWorkersDAG has container: 'cpu' on process-events.
-  // The parent dispatcher still needs all bundles registered so the DAG validator
-  // can resolve sub-DAG references (geo-resolve, canonicalize, etc. inside
-  // event-pipeline). The nodes and sub-DAG bodies are only EXECUTED inside the
-  // worker threads (the registry module reconstructs them per-worker); registering
-  // them on the parent satisfies the validator without running them here.
+  // Workers mode: cartographerWorkersDAG delegates process-stream to `cpu` and
+  // summarize-insights to `io`. The parent dispatcher still registers the full
+  // bundle so DAG validation resolves every embedded reference.
   dispatcher = new ObservedCartographer({
-    'containers': { 'cpu': container },
+    'containers': {
+      'cpu': cpuContainer,
+      'io':  ioContainer,
+    },
   });
   // Sub-DAG bundles (needed for DAG validator; execution stays in the workers).
   dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
+  dispatcher.registerPlugin(normalizeSourcesPlugin);
   // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
   dispatcher.registerBundle(ingestSourceBundle);
-  // Top-level DAG (cartographerWorkersDAG has container: 'cpu' on process-events).
+  // Top-level DAG (cartographerWorkersDAG binds process-stream to cpu and
+  // summarize-insights to io).
   dispatcher.registerBundle(cartographerWorkersBundle);
 } else {
   dispatcher = new ObservedCartographer({});
   dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
+  dispatcher.registerPlugin(normalizeSourcesPlugin);
   // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
   dispatcher.registerBundle(ingestSourceBundle);
   dispatcher.registerBundle(cartographerBundle);
@@ -502,7 +516,7 @@ state.useStreamingSource = useStreaming;
 state.streamCount = streamCount;
 
 const executionMode = useWorkers
-  ? 'WORKER THREADS (container: cpu, pool=4)'
+  ? 'WORKER THREADS (containers: cpu pool=4, io pool=1)'
   : useStreaming
     ? `IN-PROCESS + STREAMING SOURCE${streamCount > 0 ? ` (count=${streamCount})` : ''}`
     : 'IN-PROCESS (no container)';
@@ -800,8 +814,8 @@ if (useStreaming) {
   await CartographerResumableScenario.run(dispatcher, services, logger, eventCount);
 }
 
-// Release the worker pool so the process exits cleanly.
-if (workerContainer !== null) {
-  await workerContainer.destroy();
+// Release worker pools so the process exits cleanly.
+for (const container of workerContainers) {
+  await container.destroy();
 }
 // #endregion run-cartographer

@@ -1,11 +1,11 @@
 ---
-title: 'Example: Virtual clock (deterministic retry timing)'
+title: 'Virtual Clock'
 description: 'VirtualClockProvider and VirtualScheduler from @studnicky/dagonizer/testing replace the real wall-clock so retry backoff intervals are driven by programmatic scheduler.advance(ms) calls. Zero elapsed wall-clock time.'
 seeAlso:
   - text: 'Example 22: Backoff strategies'
     link: './22-backoff-strategies'
     description: 'RetryPolicy with each BackoffStrategy via VirtualScheduler'
-  - text: 'Phase 07: Retry'
+  - text: 'Example 07: Retry Flow'
     link: './07-retry'
     description: 'retry as a flow shape in the Archivist'
   - text: 'Reference: Runtime'
@@ -16,7 +16,37 @@ seeAlso:
     description: 'VirtualClockProvider and VirtualScheduler API'
 ---
 
-# Example: Virtual clock (deterministic retry timing)
+<script setup lang="ts">
+import { virtualClockDAG } from '../.vitepress/theme/exampleDags.ts';
+</script>
+
+# Virtual Clock
+
+## What It Is
+
+Virtual Clock makes time deterministic in tests. `VirtualClockProvider` and `VirtualScheduler` replace the real wall clock so timeout and retry behavior can be driven by `scheduler.advance(ms)` calls with zero real waiting.
+
+The example runs a real timeout DAG against a virtual scheduler: the node has a 200ms timeout, the test advances virtual time, and the run fails immediately in wall-clock terms.
+
+## How It Works
+
+Install the virtual clock and scheduler before executing the DAG. Runtime timers then use the virtual providers instead of real `setTimeout`, and the test advances time explicitly.
+
+## Diagrams, Examples, and Outputs
+
+The diagram is generated from the timeout DAG used by the CLI example.
+
+<DagJsonMermaid :dag="virtualClockDAG" title="virtual-clock timeout DAG" aria-label="Virtual clock JSON-LD DAG beside Mermaid generated from it." />
+
+### Run
+
+```bash
+npx tsx examples/virtual-clock.ts
+```
+
+## What It Lets You Do
+
+Virtual clocks let applications test retry and timeout behavior without waiting for real wall-clock time. Use them in unit tests where backoff schedules, deadlines, and scheduler-driven work need deterministic assertions.
 
 `VirtualClockProvider` and `VirtualScheduler` from `@studnicky/dagonizer/testing` replace the real wall-clock. Retry backoff intervals are driven by programmatic `scheduler.advance(ms)` calls rather than actual waits, making retry behavior testable in zero elapsed wall-clock time.
 
@@ -29,11 +59,11 @@ Attempt 3: succeeds
 Total virtual time: 300ms. Real wall-clock time: ~0ms.
 ```
 
-## Code
+## Code Samples
 
 <<< @/../examples/virtual-clock.ts
 
-## What it demonstrates
+## Details for Nerds
 
 - **`VirtualClockProvider`.** Implements `ClockProvider` with a programmatic `now()` that advances by explicit `tick(ms)` calls. Install via `Clock.install(provider)` before constructing the dispatcher.
 - **`VirtualScheduler`.** Implements `Scheduler` with a pending-timer queue. Install via `Scheduler.install(scheduler)`. Call `scheduler.advance(ms)` to drain all timers whose deadline falls within the advanced time. No real `setTimeout` calls are made.
@@ -41,8 +71,9 @@ Total virtual time: 300ms. Real wall-clock time: ~0ms.
 - **Use in tests.** Replace real providers in any test that exercises retry or timeout behavior. The pattern scales to `concurrency > 1` scatter runs where each clone's retry policy is driven by the same virtual scheduler.
 - **Restore real providers.** Always call `Clock.restore()` and `Scheduler.restore()` after a virtual-clock test to avoid contaminating the real scheduler in subsequent test cases.
 
-## Run
+## Related Concepts
 
-```bash
-npx tsx examples/virtual-clock.ts
-```
+- [Example 22: Backoff strategies](./22-backoff-strategies) - RetryPolicy with each BackoffStrategy via VirtualScheduler
+- [Example 07: Retry Flow](./07-retry) - retry as a flow shape in the Archivist
+- [Reference: Runtime](../reference/runtime) - ClockProvider, Scheduler, RetryPolicy
+- [Reference: Testing](../reference/testing) - VirtualClockProvider and VirtualScheduler API

@@ -1,5 +1,5 @@
 ---
-title: 'Streaming producers'
+title: 'Streaming Producers'
 description: 'Bridge push producers into scatter sources via StreamChannel: driven, fanIn, resumable, and DagStreamProducer. Back-pressure keeps peak memory O(capacity).'
 seeAlso:
   - text: 'ReAct agent: streaming + provenance recall'
@@ -10,11 +10,49 @@ seeAlso:
     description: 'working example: trace streaming via StreamChannel.driven + an outer scatter'
 ---
 
-# Streaming producers
+<script setup lang="ts">
+import { archivistStreamProducerDAG } from '../.vitepress/theme/exampleDags.ts';
+</script>
+
+# Streaming Producers
+
+## What It Is
+
+Streaming producers bridge work that is discovered over time into a DAG scatter source. `StreamChannel` turns push-style producers into bounded async iterables; scatter pulls as capacity opens; `push()` awaits when the buffer is full, so peak memory stays `O(capacity)`.
+
+`DagStreamProducer` extends the same idea to DAG-to-DAG pipelines: one DAG's execution stream can produce items for another DAG's scatter.
+
+## How It Works
+
+`StreamChannel` bridges push-style producers into the scatter pull loop. Producers push into a bounded buffer; scatter pulls from the channel as capacity opens. `DagStreamProducer` adapts an execution stream into the same source interface, so one DAG can feed another.
 
 A scatter source accepts any `AsyncIterable<T>`. `StreamChannel<T>` bridges push-style producers into that pull loop: a producer calls `await sink.push(item)` for each item it discovers; `push` awaits when the bounded buffer is full, giving the scatter time to drain a slot. Peak memory stays O(capacity) rather than O(total items) — a producer that discovers millions of items never buffers more than `capacity` of them at once.
 
-## StreamChannel.driven
+## Diagrams, Examples, and Outputs
+
+Example 36 shows a `DagStreamProducer` feeding an outer scatter. The JSON-LD below is the runnable Archivist stream-producer DAG beside Mermaid generated from it:
+
+<DagJsonMermaid :dag="archivistStreamProducerDAG" title="Archivist DagStreamProducer outer scatter" aria-label="Archivist DagStreamProducer JSON-LD DAG beside Mermaid generated from it." />
+
+- [ReAct agent: streaming + provenance recall](./react-agent) - AgentTraceProducer, a DagStreamProducer subclass that streams an agent-loop reasoning trace
+- [Example: ReAct agent memory](../examples/react-agent-memory) - working example: trace streaming via StreamChannel.driven + an outer scatter
+- [Example 34: StreamChannel Source](../examples/34-stream-channel) - push-to-pull source bridging
+- [Example 35: Stream Resume Cursor](../examples/35-stream-fanin-resume) - cursor resume for stream-backed scatter
+- [Example 36: DAG Stream Producer](../examples/36-dag-stream-producer) - one DAG feeding another
+
+## What It Lets You Do
+
+### Use when
+
+Use streaming producers when a scatter source is discovered over time instead of available as a complete array. This covers channels, fan-in, resumable streams, and DAGs that produce work for downstream DAGs.
+
+## Code Samples
+
+The snippets below show the producer styles: one producer, fan-in, resumable streams, and DAG-backed producers.
+
+## Details for Nerds
+
+### StreamChannel.driven
 
 `StreamChannel.driven(producer, options?)` wires one `StreamProducerInterface<T>` to a bounded channel. The producer's `produce(sink)` runs in the background; the channel is returned immediately and assigned to the scatter source field before `dispatcher.execute` is called.
 
@@ -39,7 +77,7 @@ state.source = StreamChannel.driven(NumberProducer.of(10), { capacity: 4 });
 
 The `capacity` option (default 256) is the maximum number of items buffered before `push` awaits. `signal` lets callers abort the channel mid-stream.
 
-## StreamChannel.fanIn
+### StreamChannel.fanIn
 
 `StreamChannel.fanIn(producers, options?)` launches several `StreamProducerInterface<T>` objects concurrently against a shared channel. The channel closes when all producers settle (resolved). The first rejection fails the channel; subsequent `push` calls from other producers receive a rejection and unwind naturally.
 
@@ -52,9 +90,9 @@ state.source = StreamChannel.fanIn([
 ]);
 ```
 
-Items from both producers interleave in arrival order. The single consumer (scatter) is the sole reader; JavaScript's event-loop serialization keeps the shared buffer mutation safe without locking.
+Items from both producers interleave in arrival order. The scatter reader is the sole reader; JavaScript's event-loop serialization keeps the shared buffer mutation safe without locking.
 
-## StreamChannel.resumable
+### StreamChannel.resumable
 
 `StreamChannel.resumable(producer, resumeAfter, options?)` drives a `ResumableStreamProducerInterface<T>`. The producer receives `resumeAfter` as a second argument to `produce(sink, resumeAfter)` and skips its first `resumeAfter` emissions — reproducing its deterministic sequence from the start and fast-forwarding past the prefix the scatter has already acknowledged.
 
@@ -86,7 +124,7 @@ await dispatcher.execute('my-dag', state);
 
 `StreamCursor.resumeAfter(state, scatterName)` reads the scatter's durable pull count (`nextIndex`) from the state checkpoint. It returns 0 on a fresh run. The cursor is the PULL count — items buffered but not yet pulled at interruption time are re-emitted on resume with no duplicates.
 
-## DagStreamProducer
+### DagStreamProducer
 
 `DagStreamProducer<T>` is an abstract base class (exported from `@studnicky/dagonizer`) that bridges a running inner DAG's per-node result stream into a push sink. Subclass it and implement:
 
@@ -142,7 +180,7 @@ Use it with `StreamChannel.driven`:
 state.source = StreamChannel.driven(LabelStreamProducer.of([0, 1, 2, 3, 4]));
 ```
 
-## API reference
+### API reference
 
 | Symbol | Subpath |
 |--------|---------|
@@ -157,3 +195,11 @@ state.source = StreamChannel.driven(LabelStreamProducer.of([0, 1, 2, 3, 4]));
 | `DagStreamProducer<T>` | `@studnicky/dagonizer` or `@studnicky/dagonizer/patterns` |
 
 `AgentTraceProducer` (`@studnicky/dagonizer/patterns`) is a `DagStreamProducer<ReasoningStepType>` subclass purpose-built for streaming an agent loop's ReAct reasoning trace. See [ReAct agent: streaming + provenance recall](./react-agent) for the full pattern and [Example: ReAct agent memory](../examples/react-agent-memory) for a runnable version.
+
+## Related Concepts
+
+- [ReAct agent: streaming + provenance recall](./react-agent) - AgentTraceProducer, a DagStreamProducer subclass that streams an agent-loop reasoning trace
+- [Example: ReAct agent memory](../examples/react-agent-memory) - working example: trace streaming via StreamChannel.driven + an outer scatter
+- [Example 34: StreamChannel Source](../examples/34-stream-channel) shows push-to-pull source bridging.
+- [Example 35: Stream Resume Cursor](../examples/35-stream-fanin-resume) shows cursor resume.
+- [Example 36: DAG Stream Producer](../examples/36-dag-stream-producer) shows one DAG feeding another.

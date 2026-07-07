@@ -72,13 +72,20 @@ export type MermaidRenderOptionsType = {
   /**
    * Concrete khroma-safe colours. When provided, these override the default
    * hash-derived container fills. `containerTints[role]` overrides the fill
-   * for that specific container role.
+   * for that specific container role. Font and spacing values are emitted in
+   * Mermaid's init directive so render-time layout uses the same typography as
+   * the displayed SVG.
    */
   'theme'?: {
     'primaryColor'?: string;
     'lineColor'?: string;
     'textColor'?: string;
     'background'?: string;
+    'fontFamily'?: string;
+    'fontSize'?: string;
+    'nodeSpacing'?: number;
+    'rankSpacing'?: number;
+    'padding'?: number;
     'containerTints'?: Record<string, string>;
   };
 };
@@ -106,10 +113,13 @@ export class MermaidRenderer {
     const opts = { ...MERMAID_RENDER_DEFAULTS, ...options };
     const theme = options?.theme;
 
+    const idByName = MermaidRenderer.nodeIdMap(dag, opts.sanitizeNodeIds);
     const lines: string[] = [];
+    const init = MermaidRenderer.renderInitDirective(theme);
+    if (init !== null) lines.push(init);
     lines.push(`flowchart ${opts.orientation}`);
     lines.push(`  %% ${dag.name} (v${dag.version})`);
-    lines.push(`  ${dag.entrypoint}`);
+    lines.push(`  ${MermaidRenderer.idFor(dag.entrypoint, idByName, opts.sanitizeNodeIds)}`);
 
     // Map from sanitized role token → list of placement names assigned that token.
     const roleToIds = new Map<string, string[]>();
@@ -119,8 +129,9 @@ export class MermaidRenderer {
     const reservoirIds: string[] = [];
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
-      lines.push(`  ${MermaidRenderer.renderShape(placement)}`);
-      for (const edge of MermaidRenderer.renderEdges(placement)) {
+      const placementId = MermaidRenderer.idFor(placement.name, idByName, opts.sanitizeNodeIds);
+      lines.push(`  ${MermaidRenderer.renderShape(placement, placementId)}`);
+      for (const edge of MermaidRenderer.renderEdges(placement, placementId, idByName, opts.sanitizeNodeIds)) {
         lines.push(edge);
       }
       // Track contained placements grouped by their sanitized role token.
@@ -129,12 +140,12 @@ export class MermaidRenderer {
         const token = MermaidRenderer.sanitizeRole(role, roleTokenToRole);
         roleTokenToRole.set(token, role);
         const ids = roleToIds.get(token) ?? [];
-        ids.push(placement.name);
+        ids.push(placementId);
         roleToIds.set(token, ids);
       }
       // Track reservoir-configured ScatterNode placements.
       if (placement['@type'] === 'ScatterNode' && placement.execution !== undefined && placement.execution.mode === 'reservoir') {
-        reservoirIds.push(placement.name);
+        reservoirIds.push(placementId);
       }
     }
 
@@ -174,7 +185,8 @@ export class MermaidRenderer {
       output = MermaidRenderer.stripTerminalAnnotations(output);
     }
 
-    // Pass: sanitize colon-containing node IDs in bare-id positions.
+    // Pass: sanitize colon-containing node IDs in any caller-provided bare-id
+    // positions that were not normalized by the render pass above.
     if (opts.sanitizeNodeIds) {
       output = MermaidRenderer.sanitizeNodeIdsInSource(output);
     }
@@ -199,7 +211,9 @@ export class MermaidRenderer {
         // The renderer emits the literal two-character sequence `\n` (backslash-n)
         // not a real newline — so the regex targets that literal sequence.
         return line
+          .replace(/\\\\n\((completed|failed|cancelled|timed-out)\)/gu, '')
           .replace(/\\n\((completed|failed|cancelled|timed-out)\)/gu, '')
+          .replace(/\\\\n/gu, ' ')
           .replace(/\\n/gu, ' ');
       })
       .join('\n');
@@ -234,6 +248,18 @@ export class MermaidRenderer {
    */
   private static readonly MASK_PREFIX = '__MMSK';
   private static readonly MASK_SUFFIX = 'MMSK__';
+  private static readonly RESERVED_NODE_IDS = new Set([
+    'class',
+    'classdef',
+    'click',
+    'default',
+    'end',
+    'flowchart',
+    'graph',
+    'linkstyle',
+    'style',
+    'subgraph',
+  ]);
 
   /**
    * Sanitize colon-containing node IDs in a single non-directive source line.
@@ -294,6 +320,7 @@ export class MermaidRenderer {
   private static isDirectiveLine(line: string): boolean {
     const trimmed = line.trimStart();
     return (
+      trimmed.startsWith('%%{init:') ||
       trimmed.startsWith('flowchart') ||
       trimmed.startsWith('classDef') ||
       trimmed.startsWith('class ') ||
@@ -337,55 +364,141 @@ export class MermaidRenderer {
     return candidate;
   }
 
+  /** Compose deterministic Mermaid-safe ids for every placement name. */
+  private static nodeIdMap(dag: DAGType, sanitize: boolean): ReadonlyMap<string, string> {
+    const ids = new Map<string, string>();
+    const occupied = new Set<string>();
+
+    for (const placement of PlacementUtils.narrowNodes(dag)) {
+      const base = sanitize
+        ? MermaidRenderer.sanitizeNodeId(placement.name)
+        : placement.name;
+      let candidate = base;
+      let suffix = 2;
+      while (occupied.has(candidate)) {
+        candidate = `${base}_${String(suffix)}`;
+        suffix++;
+      }
+      ids.set(placement.name, candidate);
+      occupied.add(candidate);
+    }
+
+    return ids;
+  }
+
+  /** Return the rendered Mermaid id for a placement name or a dangling target. */
+  private static idFor(
+    name: string,
+    ids: ReadonlyMap<string, string>,
+    sanitize: boolean,
+  ): string {
+    return ids.get(name) ?? (sanitize ? MermaidRenderer.sanitizeNodeId(name) : name);
+  }
+
+  /** Sanitize one Mermaid bare node id while preserving human labels elsewhere. */
+  private static sanitizeNodeId(name: string): string {
+    let id = name.replace(/:/gu, '_');
+    if (/^[0-9]/u.test(id)) id = `node_${id}`;
+    if (MermaidRenderer.RESERVED_NODE_IDS.has(id.toLowerCase())) return `${id}_node`;
+    if (MermaidRenderer.hasReservedNodeIdPrefix(id)) id = `node_${id}`;
+    return id;
+  }
+
+  /** Return true when a bare id starts with a Mermaid reserved token. */
+  private static hasReservedNodeIdPrefix(id: string): boolean {
+    const lower = id.toLowerCase();
+    for (const reserved of MermaidRenderer.RESERVED_NODE_IDS) {
+      if (lower.startsWith(`${reserved}-`) || lower.startsWith(`${reserved}_`)) return true;
+    }
+    return false;
+  }
+
   /** Escape a string for use inside a Mermaid double-quoted label. */
   private static escapeLabel(value: string): string {
-    return value.replace(/"/gu, '#quot;');
+    return value
+      .replace(/\\/gu, '\\\\')
+      .replace(/"/gu, '\\"');
+  }
+
+  /** Wrap a placement label in Mermaid's quoted text form. */
+  private static label(value: string): string {
+    return `"${MermaidRenderer.escapeLabel(value)}"`;
+  }
+
+  /** Emit a Mermaid init directive when render-time style/layout was provided. */
+  private static renderInitDirective(theme: MermaidRenderOptionsType['theme']): string | null {
+    if (theme === undefined) return null;
+
+    const flowchart: Record<string, unknown> = {};
+    if (theme.nodeSpacing !== undefined) flowchart['nodeSpacing'] = theme.nodeSpacing;
+    if (theme.rankSpacing !== undefined) flowchart['rankSpacing'] = theme.rankSpacing;
+    if (theme.padding !== undefined) flowchart['padding'] = theme.padding;
+
+    const themeVariables: Record<string, string> = {};
+    if (theme.primaryColor !== undefined) themeVariables['primaryColor'] = theme.primaryColor;
+    if (theme.lineColor !== undefined) themeVariables['lineColor'] = theme.lineColor;
+    if (theme.textColor !== undefined) themeVariables['primaryTextColor'] = theme.textColor;
+    if (theme.background !== undefined) themeVariables['background'] = theme.background;
+    if (theme.fontFamily !== undefined) themeVariables['fontFamily'] = theme.fontFamily;
+    if (theme.fontSize !== undefined) themeVariables['fontSize'] = theme.fontSize;
+
+    if (Object.keys(flowchart).length === 0 && Object.keys(themeVariables).length === 0) return null;
+
+    return `%%{init: ${JSON.stringify({
+      ...(Object.keys(flowchart).length > 0 ? { 'flowchart': flowchart } : {}),
+      ...(Object.keys(themeVariables).length > 0 ? { 'themeVariables': themeVariables } : {}),
+    })}}%%`;
   }
 
   /** Render a placement's Mermaid shape syntax (rectangle / trapezoid / double-circle / flag). */
-  private static renderShape(placement: PlacementEntryType): string {
-    const label = MermaidRenderer.escapeLabel(placement.name);
+  private static renderShape(placement: PlacementEntryType, id: string): string {
+    const label = MermaidRenderer.label(placement.name);
     const shapeDispatch: PlacementDispatchType<string> = {
-      'SingleNode': () => `${placement.name}[${label}]`,
+      'SingleNode': () => `${id}[${label}]`,
       'ScatterNode': (sp) => {
         if (sp.execution !== undefined && sp.execution.mode === 'reservoir') {
           // Reservoir-configured scatter: augment label with key/capacity marker.
           // Per-key fill and per-firing batch size are runtime values — the
           // animation layer renders them from observer buffer-size deltas.
-          const reservoirLabel = MermaidRenderer.escapeLabel(
+          const reservoirLabel = MermaidRenderer.label(
             `${placement.name}\\n▣ ${sp.execution.reservoir.keyField} ×${sp.execution.reservoir.capacity}`,
           );
-          return `${placement.name}[/${reservoirLabel}/]`;
+          return `${id}[/${reservoirLabel}/]`;
         }
         // Plain scatter (no reservoir): trapezoid shape.
-        return `${placement.name}[/${label}/]`;
+        return `${id}[/${label}/]`;
       },
-      'EmbeddedDAGNode': () => `${placement.name}[[${label}]]`,
+      'EmbeddedDAGNode': () => `${id}[[${label}]]`,
       'TerminalNode': (tp) => {
-        const outcomeLabel = MermaidRenderer.escapeLabel(`${placement.name}\\n(${tp.outcome})`);
+        const outcomeLabel = MermaidRenderer.label(`${placement.name}\\n(${tp.outcome})`);
         if (tp.outcome === 'completed') {
           // double-circle: connotes "final state" in Mermaid
-          return `${placement.name}(((${outcomeLabel})))`;
+          return `${id}(((${outcomeLabel})))`;
         }
         // asymmetric / flag shape for failed terminals
-        return `${placement.name}>${outcomeLabel}]`;
+        return `${id}>${outcomeLabel}]`;
       },
       'PhaseNode': (pp) => {
         // stadium shape: connotes a lifecycle hook (pre/post) wrapping a node
-        return `${placement.name}([${MermaidRenderer.escapeLabel(placement.name)} (${pp.phase})])`;
+        return `${id}([${MermaidRenderer.label(`${placement.name} (${pp.phase})`)}])`;
       },
     };
     return PlacementUtils.invoke(shapeDispatch, placement);
   }
 
   /** Render a placement's outbound edges as `from -->|label| to` lines. */
-  private static renderEdges(placement: PlacementEntryType): readonly string[] {
+  private static renderEdges(
+    placement: PlacementEntryType,
+    id: string,
+    ids: ReadonlyMap<string, string>,
+    sanitize: boolean,
+  ): readonly string[] {
     // TerminalNode placements are leaf placements; they have no outputs field.
     if (!('outputs' in placement)) return [];
     const lines: string[] = [];
     for (const [outputName, target] of Object.entries(placement.outputs)) {
       const labelText = MermaidRenderer.escapeLabel(outputName);
-      lines.push(`  ${placement.name} -->|${labelText}| ${target}`);
+      lines.push(`  ${id} -->|${labelText}| ${MermaidRenderer.idFor(target, ids, sanitize)}`);
     }
     return lines;
   }

@@ -1,70 +1,136 @@
-# Example 13 — Multi-backend DAG with per-role colors
+---
+title: 'Example 13: Multi-Backend Roles'
+description: 'The Cartographer browser workers DAG assigns the streaming scatter to a cpu container and the summary embedded DAG to an io container while preserving the same JSON-LD graph.'
+seeAlso:
+  - text: 'The Cartographer'
+    link: './the-cartographer'
+    description: 'in-browser runnable demo that owns the multi-backend worker role pattern'
+  - text: 'Example 12: Worker Containers'
+    link: './12-workers'
+    description: 'single worker-role container binding'
+  - text: 'Guide: Distribution and Cloud'
+    link: '../guide/distribution'
+    description: 'container and deployment patterns'
+---
 
-Demonstrates a DAG that spans two distinct container backends:
+<script setup lang="ts">
+import { cartographerWorkersDAG, insightsSummaryDAG } from '../../examples/the-cartographer/dag.ts';
+import { streamEventDAG } from '../../examples/the-cartographer/embedded-dags/StreamEventDAG.ts';
+</script>
 
-- **`cpu` role** — `WorkerThreadContainer` (Node.js worker-thread pool). Runs a `ScatterNode` that squares every item in a list concurrently.
-- **`io` role** — `ForkContainer` (child-process fork pool). Runs an `EmbeddedDAGNode` that sums all squared results.
+# Example 13: Multi-Backend Roles
 
-The primary demonstration is visual: `MermaidRenderer` emits **two distinct `classDef` lines** — `classDef contained-cpu` and `classDef contained-io` — each with a different fill color. The secondary demonstration is operational: the DAG actually executes over both real backends and prints the results.
+## What It Is
 
-## Run
+Multi-Backend Roles let one application DAG send different placements to different execution backends. The Cartographer assigns stream processing to `cpu` and summary generation to `io` while preserving the same JSON-LD graph.
+
+The role names are deployment labels, not new workflow primitives. The graph stays portable because it asks for `cpu` and `io`; the host decides whether those roles mean browser workers, Node worker threads, forked processes, or in-process fallback.
+
+## How It Works
+
+Each placement declares only a logical role name. The host decides what backend satisfies that role: a browser worker pool, Node worker threads, forked processes, or in-process fallback. The JSON-LD graph remains portable because topology references roles, not concrete transports.
+
+### Runtime behavior
+
+Run the browser demo from the docs dev server:
+
+```bash
+pnpm run docs:dev
+```
+
+Then open [The Cartographer](./the-cartographer), click **Run**, and watch the
+**DAG** pane. The graph expands the same registered DAGs shown above:
+
+- `process-stream` fans out through `stream-event` on the `cpu` role.
+- `summarize-insights` invokes `insights-summary` on the `io` role.
+- The parent DAG stays a JSON-LD graph of placements, routes, and container
+  role names.
+
+## Diagrams, Examples, and Outputs
+
+The diagrams are generated from the Cartographer worker DAGs the browser demo executes, so role labels and embedded body DAGs stay visible beside their JSON-LD.
+
+### DAG registration and diagram
+
+The in-browser [Cartographer](./the-cartographer) demo is the executable example
+for multi-backend role binding. The same JSON-LD assembly expresses both:
+
+- `process-stream` is a `ScatterNode` delegated to container role `cpu`.
+- `summarize-insights` is an `EmbeddedDAGNode` delegated to container role `io`.
+
+The browser runner binds both roles to real `WebWorkerContainer` pools. The DAG
+does not change when a role is in-process, in a worker, or supplied by a plugin
+registry; the canonical assembly remains JSON-LD produced by the builder.
+
+#### Top-level browser DAG
+
+`cartographerWorkersDAG` is the DAG rendered and executed by the Cartographer
+page. The Mermaid diagram is generated from the JSON-LD below it, so the
+container-role labels are visible in the same shape the dispatcher executes.
+
+<DagJsonMermaid :dag="cartographerWorkersDAG" title="Cartographer workers DAG" aria-label="Cartographer workers JSON-LD DAG beside Mermaid generated from it." />
+
+<<< @/../examples/the-cartographer/dag.ts#cartographer-workers-dag
+
+#### `cpu` body DAG
+
+The `cpu` role runs the `stream-event` body for every source payload. This is
+not a synthetic worker sample; it is the live Cartographer decode and routing
+pipeline.
+
+<DagJsonMermaid :dag="streamEventDAG" title="stream-event body DAG" aria-label="Stream event JSON-LD DAG beside Mermaid generated from it." />
+
+<<< @/../examples/the-cartographer/embedded-dags/StreamEventDAG.ts#stream-event-dag
+
+#### `io` body DAG
+
+The `io` role runs the summary body as an embedded DAG after the scatter gather
+fold completes. Packaging the summary as a DAG keeps plugins, embedded flows,
+and container delegation on one interface.
+
+<DagJsonMermaid :dag="insightsSummaryDAG" title="insights-summary body DAG" aria-label="Insights summary JSON-LD DAG beside Mermaid generated from it." />
+
+<<< @/../examples/the-cartographer/dag.ts#insights-summary-dag
+
+## What It Lets You Do
+
+Multi-backend roles let applications bind different parts of one DAG to different execution backends without changing the canonical graph. Use this when CPU-bound stream processing, IO-bound summary work, and in-process orchestration need separate pools, quotas, or deployment targets.
+
+## Code Samples
+
+Read the snippets with the diagrams nearby so the TypeScript behavior, JSON-LD graph shape, and runtime output line up as one contract.
+
+#### Browser role binding
+
+The runnable page creates two role bindings from the same registry-backed worker
+entry. The registry contains every DAG the worker can execute: the stream-event
+tree for `cpu` and the insights-summary DAG for `io`.
+
+<<< @/../docs/.vitepress/theme/components/CartographerRunner.vue#cartographer-browser-containers
+
+<<< @/../docs/.vitepress/theme/components/cartographerWorkerRegistry.ts#cartographer-worker-registry
+
+## Details for Nerds
+
+### Node CLI companion
+
+The repository also keeps `examples/13-multibackend.ts` as a Node CLI companion
+for worker-thread plus fork-container execution:
 
 ```bash
 pnpm example:13
 ```
 
-This compiles the example and its registry module to `examples/dist/`, then runs the compiled JS with Node.js (required because worker threads and forked processes cannot import TypeScript source at runtime).
+That CLI exercises the same renderer role-color path, but the browser runnable
+for this principle is the Cartographer code above.
 
-## Mermaid output
+- **Role names preserve portability.** `cpu` and `io` are deployment labels, not new placement types.
+- **Multiple backends share one registry interface.** The worker registry contains every DAG either role can execute.
+- **JSON-LD remains canonical.** Container delegation is a placement attribute in the same document the builder emits and the dispatcher consumes.
+- **Browser and Node hosts choose different backends.** The docs runnable uses `WebWorkerContainer`; the CLI companion can exercise Node container implementations.
 
-Running the example prints the DAG's Mermaid representation. Look for the two classDef lines near the end:
+## Related Concepts
 
-```
-classDef contained-cpu fill:#b45309,stroke:#d97706,color:#eef3f7
-classDef contained-io  fill:#be185d,stroke:#db2777,color:#eef3f7
-```
-
-`cpu` resolves to palette slot 0 (amber-orange). `io` resolves to palette slot 2 (rose-red). The mapping is deterministic via FNV-1a hash of the role name — the same role always yields the same color.
-
-## Color scheme
-
-`RoleColorUtils.forRole(role)` maps any role string to a `{fill, stroke, text}` triple from an 8-hue curated palette. The palette hues are chosen to:
-
-- Read clearly as "offloaded / running elsewhere" (warm and cool accents, never the in-process teal `#22e8ff`).
-- Not clash with the retry-route orange `#f5a623`.
-- Remain legible on the dark `#020306` canvas background.
-
-| Slot | Fill      | Stroke    | Typical role |
-|------|-----------|-----------|--------------|
-| 0    | `#b45309` | `#d97706` | cpu          |
-| 1    | `#7c3aed` | `#8b5cf6` | gpu          |
-| 2    | `#be185d` | `#db2777` | io           |
-| 3    | `#0f766e` | `#14b8a6` | network      |
-| 4    | `#3730a3` | `#4f46e5` | storage      |
-| 5    | `#3f6212` | `#65a30d` | batch        |
-| 6    | `#0369a1` | `#0ea5e9` | streaming    |
-| 7    | `#86198f` | `#c026d3` | ml           |
-
-## Architecture
-
-```
-multibackend DAG
-│
-├── square-all  [ScatterNode, container: "cpu"]
-│   │  body: square-item-mb (sub-DAG per item)
-│   │  gather: append → results[]
-│   └── sum-all
-│
-└── sum-all  [EmbeddedDAGNode, container: "io"]
-       body: sum-results (embedded DAG)
-       writes state.total
-```
-
-Both Mermaid and Cytoscape use `RoleColorUtils.forRole` from `viz/internal` so the colors are consistent across all renderers.
-
-## Source files
-
-- `examples/13-multibackend.ts` — entry point; prints Mermaid then runs dual-backend
-- `examples/dags/13-multibackend.ts` — state, nodes, DAG consts
-- `examples/dags/13-multibackend.registry.ts` — registry module loaded inside workers
-- `examples/tsconfig.multibackend.json` — compile config for workers build
+- [The Cartographer](./the-cartographer) - in-browser runnable demo that owns the multi-backend worker role pattern
+- [Example 12: Worker Containers](./12-workers) - single worker-role container binding
+- [Guide: Distribution and Cloud](../guide/distribution) - container and deployment patterns

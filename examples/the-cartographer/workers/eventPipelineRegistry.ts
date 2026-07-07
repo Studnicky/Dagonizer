@@ -2,17 +2,18 @@
  * eventPipelineRegistry: RegistryModuleInterface for the Cartographer worker pool.
  *
  * DagHost dynamic-imports this compiled file inside each worker thread. It
- * reconstructs the complete event-pipeline-typed bundle — every node and embedded
- * sub-DAG that the enrichment scatter body executes — so the worker runs an
- * identical execution graph to the parent.
+ * reconstructs the complete Cartographer worker-runtime bundle — every node and
+ * embedded sub-DAG that the enrichment scatter body and summary body execute —
+ * so the worker runs an identical execution graph to the parent.
  *
- * eventPipelineBundle (from dag.ts) covers:
+ * cartographerWorkerRuntimeBundle (from dag.ts) covers:
  *   geo-pipeline DAG + nodes (routeGeo, applyGeo, validateCoords)
  *   canonicalize-core nodes (canonicalizeCore, canonicalizeFacility, canonicalizeRecipient)
  *   order-enrichment DAG + nodes (enrichPricing, enrichShipping, enrichEta)
  *   gdpr-compliance DAG + nodes (consentGate, classifyPii, redactPii)
  *   5 per-type pipeline DAGs + their nodes
  *   event-pipeline-typed DAG + routeEventType
+ *   insights-summary DAG + summarizeInsights
  *
  * Services: workers construct CartographerServices locally via GeoResolvers.
  * The parent passes `servicesConfig.useRecordedIp` (boolean) to select the IP
@@ -36,7 +37,7 @@ import type {
 } from '@studnicky/dagonizer/contracts';
 import type { JsonObjectType } from '@studnicky/dagonizer/entities';
 
-import { eventPipelineBundle } from '../dag.js';
+import { cartographerWorkerRuntimeBundle } from '../dag.js';
 import { GeoSourceResolveDAG } from '../embedded-dags/GeoSourceResolveDAG.js';
 
 // State + services
@@ -56,8 +57,8 @@ const registry: RegistryModuleInterface = {
 
     return {
       'bundle': {
-        'nodes': [...geoBundle.nodes, ...eventPipelineBundle.nodes],
-        'dags':  [...geoBundle.dags,  ...eventPipelineBundle.dags],
+        'nodes': [...geoBundle.nodes, ...cartographerWorkerRuntimeBundle.nodes],
+        'dags':  [...geoBundle.dags,  ...cartographerWorkerRuntimeBundle.dags],
       },
       'registryVersion': '1.0.0',
       'restoreState': {

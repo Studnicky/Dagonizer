@@ -1,4 +1,6 @@
 ---
+title: 'Validation'
+description: 'Validation reference for Validator, entity validators, DAG and checkpoint validation, schema compilation, and EntityValidatorInterface.'
 seeAlso:
   - text: 'Reference: Entities'
     link: './entities'
@@ -10,13 +12,47 @@ seeAlso:
 
 # Validation
 
+## What It Is
+
+The validation surface exposes the Ajv-backed validators Dagonizer uses for DAG documents, checkpoint payloads, and entity shapes.
+
+Use this page when loading external JSON, accepting plugin DAG documents, validating generated DAGs, checking checkpoint payloads, or building tooling that should fail with the same schema errors as the dispatcher.
+
+## How It Works
+
+Structural validation happens at ingest boundaries: `DAGDocument.load`, `DAGDocument.ofValue`, checkpoint loading, and explicit `Validator.*` calls. Semantic validation happens later when a dispatcher registers a DAG against its node and DAG registries.
+
+That split matters: schema validation proves the document shape is legal; registration proves the named runtime pieces exist and routes are coherent.
+
+## Diagrams, Examples, and Outputs
+
+Validation is not a graph renderer, but it protects every graph before execution. These pages show the related schemas and error shapes:
+
+- [Reference: Entities](./entities) - every schema `Validator` exposes
+- [Reference: Errors](./errors) - `ValidationError`
+
+## What It Lets You Do
+
+The validation reference lets applications run the same schema validators the dispatcher uses before registering DAGs or accepting external JSON.
+
 `@studnicky/dagonizer/validation`
 
 The validation module provides the Ajv instance and the unified entity validator used internally by the dispatcher.
 
+## Code Samples
+
+The code below covers `Validator`, entity-specific validators, `EntityValidatorInterface`, DAG validation, and checkpoint validation.
+
+### Import
+
+```ts twoslash
+import { Validator } from '@studnicky/dagonizer/validation';
+import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
+```
+
 ---
 
-## Class: `Validator`
+### Class: `Validator`
 
 Unified Ajv-backed entity validator. Access per-entity sub-validators via static fields.
 
@@ -24,13 +60,13 @@ Unified Ajv-backed entity validator. Access per-entity sub-validators via static
 import { Validator } from '@studnicky/dagonizer/validation';
 ```
 
-### `Validator.dag`
+#### `Validator.dag`
 
 Type: `EntityValidatorInterface<DAG>`
 
 Validates raw values against `DAGSchema` (Ajv 2020-12). Used internally by `Dagonizer.load`, `DAGDocument.ofValue`, and `Dagonizer.registerDAG`.
 
-#### `Validator.dag.validate(value)`
+##### `Validator.dag.validate(value)`
 
 ```ts twoslash
 import { Validator } from '@studnicky/dagonizer/validation';
@@ -42,7 +78,7 @@ const dag: DAGType = Validator.dag.validate(raw);
 
 Validates `value` against `DAGSchema`. Returns a typed `DAGType` on success. Throws `ValidationError` with a multi-line message listing every Ajv failure on error.
 
-#### `Validator.dag.is(value)`
+##### `Validator.dag.is(value)`
 
 ```ts twoslash
 import { Validator } from '@studnicky/dagonizer/validation';
@@ -56,7 +92,7 @@ if (Validator.dag.is(raw)) {
 
 Type predicate. Returns `true` when `value` satisfies `DAGSchema`.
 
-#### `Validator.dag.errors(value)`
+##### `Validator.dag.errors(value)`
 
 ```ts twoslash
 import { Validator } from '@studnicky/dagonizer/validation';
@@ -69,7 +105,7 @@ Returns formatted `path: message` error strings, or `null` if valid.
 
 ---
 
-### `Validator.checkpoint`
+#### `Validator.checkpoint`
 
 Type: `EntityValidatorInterface<CheckpointData>`
 
@@ -87,7 +123,7 @@ Returns a typed `CheckpointData` or throws `ValidationError`. Called by `Checkpo
 
 ---
 
-### Other validators
+#### Other validators
 
 Every JSON Schema in `@studnicky/dagonizer/entities` has a matching static `EntityValidatorInterface` on `Validator`. Names use camelCase derived from the schema name.
 
@@ -117,7 +153,7 @@ Every entry exposes the same `EntityValidatorInterface<T>` surface: `is(value)`,
 
 ---
 
-## `EntityValidatorInterface<T>`
+### `EntityValidatorInterface<T>`
 
 Per-entity validator interface. Every `Validator.<entity>` field is an `EntityValidatorInterface`.
 
@@ -129,7 +165,16 @@ import type { EntityValidatorInterface } from '@studnicky/dagonizer/validation';
 //   errors(value: unknown): string[] | null
 declare const _v: EntityValidatorInterface<unknown>;
 ```
-## Related guides
 
-- [Schema & JSON loading](../guide/schema)
-- [Persistence](../guide/persistence): `Validator.checkpoint` runs inside `Checkpoint.recall`
+## Details for Nerds
+
+`validate(value)` returns the typed value or throws `ValidationError`. `is(value)` is a predicate for control flow. `errors(value)` gives formatted messages without throwing.
+
+Schema validation cannot prove names resolve in a dispatcher. Use validation for document shape, then `registerDAG` for semantic checks against registered nodes, DAGs, state factories, containers, and channels.
+
+## Related Concepts
+
+- [Reference: Entities](./entities) - every schema `Validator` exposes
+- [Reference: Errors](./errors) - `ValidationError`
+- [Schema and JSON Loading](../guide/schema) - loading and validating DAG documents
+- [Persistence](../guide/persistence) - `Validator.checkpoint` inside `Checkpoint.recall`

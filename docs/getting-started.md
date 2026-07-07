@@ -1,4 +1,6 @@
 ---
+title: 'Getting Started'
+description: 'Install Dagonizer, run the smallest executable DAG, and follow the same builder pattern into the Archivist, Cartographer, and Dispatcher demos.'
 nextSteps:
   - text: 'The Archivist demo'
     link: '/examples/the-archivist'
@@ -35,13 +37,64 @@ seeAlso:
 
 # Getting Started
 
-`@studnicky/dagonizer` lets you define multi-step workflows as a graph of typed nodes. Each node does one piece of work, returns a named output, and the dispatcher routes to the next node based on that output. Steps can depend on each other, run with shared typed state, retry on failure, cancel cleanly on abort, and pause and resume from a checkpoint — without your nodes knowing about any of that machinery.
+## What It Is
 
-A **DAG** (**D**irected **A**cyclic **G**raph) is the graph of steps. Think of it as a flowchart: each box is a node, each arrow is labelled with a named output, and the dispatcher follows the arrows at runtime.
+Getting Started is the shortest honest path from install to a running Dagonizer flow. It uses the same two-node DAG that powers [Example 02: DAGBuilder](./examples/02-builder), then shows the JSON-LD shape it compiles to in [Example 01: Linear DAG](./examples/01-linear).
 
-From zero to a running DAG in three steps.
+Read this page when you want one clean loop in your hands: install the package, define a tiny state object, build a DAG, register it, execute it, and understand what comes back. The rest of the docs scale that same loop into browser demos, embedded DAGs, plugin-defined flows, scatter/gather, streaming producers, and checkpoint resume.
 
-## Install
+## How It Works
+
+Dagonizer splits a workflow into two things that are easy to reason about separately. The **DAG document** names the placements and routes. The **registered nodes** contain the TypeScript behavior. The dispatcher joins them at runtime: it validates the graph, looks up each node by name, runs the entrypoint, and follows the output route returned by each node.
+
+That separation is the whole trick. You can author with `DAGBuilder`, ship JSON-LD over the wire, inspect the shape as Mermaid, and still keep your actual work in normal TypeScript classes. The tiny example here is a classify/respond chain, but the same registration pattern is what the Archivist, Cartographer, and Dispatcher demos use for real agent and data-pipeline flows.
+
+### What `execute` returns
+
+`dispatcher.execute()` returns an `Execution<TState>` that is both awaitable and async-iterable.
+
+Awaitable form:
+
+<<< @/../examples/01-linear.ts#execute-await
+
+Async-iterable form, one event per node:
+
+<<< @/../examples/01-linear.ts#execute-iterable
+
+## Diagrams, Examples, and Outputs
+
+The first runnable graph is intentionally small: a start node routes to a response node, then the DAG ends. The point is not the business logic; it is the shape of a Dagonizer flow.
+
+```mermaid
+flowchart LR
+  classify[classify]
+  respond[respond]
+  done(((done)))
+  classify -->|accepted| respond
+  classify -->|rejected| done
+  respond -->|success| done
+```
+
+The builder version and the JSON-LD version register the same topology. That is the mental model to keep: builder code is a nicer authoring surface, JSON-LD is the canonical assembly, and Mermaid is the readable shape generated from that assembly.
+
+### Next Places To Open
+
+Follow these pages in order if you want the quickstart to expand without changing concepts:
+
+- [Example 02: DAGBuilder](./examples/02-builder) - the fluent builder version used below.
+- [Example 01: Linear DAG](./examples/01-linear) - the same flow as direct JSON-LD.
+- [The Archivist demo](./examples/the-archivist) - the same engine running an LLM-agent bookstore assistant.
+- [The Cartographer demo](./examples/the-cartographer) - the same engine running streaming ETL with no LLM.
+
+## What It Lets You Do
+
+This page gets you to the first useful checkpoint: a DAG you can run, inspect, and modify. After that, the rest of the system stops looking abstract. Scatter is “run this body for each item.” Embedded DAGs are “call this registered subflow.” Plugins are “ship reusable registered DAG parts.” Checkpointing is “persist the cursor and state when execution stops early.”
+
+It also gives you the right DevEx habit early: keep graph shape explicit. That matters for LLM agents, data science pipelines, ETL jobs, and service orchestration because reviewers can see the route map instead of reverse-engineering control flow from nested callbacks.
+
+## Code Samples
+
+### Install
 
 ```bash
 npm install @studnicky/dagonizer
@@ -49,33 +102,13 @@ npm install @studnicky/dagonizer
 
 Requires Node.js 24 or later and TypeScript 5.6 or later with `strict: true`.
 
-## Smallest DAG that runs
+### Smallest DAG that runs
 
-A two-node chain that picks a route at the first node and ends at the second. `DAGBuilder` (from `@studnicky/dagonizer/builder`) is the recommended way to author it: a compile-checked fluent API that catches unwired outputs and invalid routing at compile time, before any schema validation runs. At a glance:
+The docs use runnable examples as the source of truth. The smallest focused runner is `examples/02-builder.ts`: a two-node chain that picks a route at the first node and ends at the second. It is deliberately small, but it is still a real executable example, not a separate doc-only topology.
 
-```ts twoslash
-import { Batch, DAGBuilder, MonadicNode, NodeStateBase, RoutedBatch } from '@studnicky/dagonizer';
-import type { NodeContextType, SchemaObjectType } from '@studnicky/dagonizer';
-// ---cut---
-class CheckNode extends MonadicNode<NodeStateBase, 'ok' | 'fail'> {
-  readonly name = 'check';
-  readonly outputs: readonly ('ok' | 'fail')[] = ['ok', 'fail'];
-  override get outputSchema(): Record<'ok' | 'fail', SchemaObjectType> {
-    return { ok: { type: 'object' }, fail: { type: 'object' } };
-  }
-  async execute(batch: Batch<NodeStateBase>, context: NodeContextType) {
-    if (context.signal.aborted) return RoutedBatch.create('fail', batch);
-    return RoutedBatch.create('ok', batch);
-  }
-}
+`DAGBuilder` (from `@studnicky/dagonizer/builder`) is the recommended authoring surface: a compile-checked fluent API that catches unwired outputs and invalid routing at compile time, before any schema validation runs. The same pattern scales directly into [The Archivist](/examples/the-archivist), [The Cartographer](/examples/the-cartographer), and [The Dispatcher](/examples/the-dispatcher), where the built DAGs are the canonical JSON-LD inputs consumed by the dispatcher.
 
-const dag = new DAGBuilder('my-flow', '1')
-  .node('check', new CheckNode(), { ok: 'end', fail: 'end' })
-  .terminal('end')
-  .build();
-```
-
-The full walkthrough: the source ships in the repo as `examples/dags/02-builder.topology.ts` and `examples/02-builder.ts`.
+The focused builder walkthrough ships in the repo as `examples/dags/02-builder.topology.ts` and `examples/02-builder.ts`.
 
 State and nodes:
 
@@ -97,9 +130,9 @@ Run it directly:
 npx tsx examples/02-builder.ts
 ```
 
-See the [DAGBuilder guide](/guide/builder) for the full API including scatter, embedded DAG, and phase placements.
+See the [DAGBuilder guide](/guide/builder) for the full API including scatter, `.embed()`, and phase placements.
 
-## What this compiles to: JSON-LD
+### The same DAG as JSON-LD
 
 `DAGBuilder.build()` returns a plain JSON-LD document — the canonical wire format `dispatcher.registerDAG(dag)` accepts. The DAG built above is identical, field for field, to this hand-written literal (from `examples/dags/01-linear.ts`, the same two-node classify/respond chain):
 
@@ -109,21 +142,27 @@ Author the wire format directly for advanced use: hand-authored fixtures, intero
 
 <<< @/../examples/01-linear.ts#run
 
-## What `execute` returns
+## Details for Nerds
 
-`dispatcher.execute()` returns an `Execution<TState>` that is both awaitable and async-iterable.
+The quickstart hides almost nothing. `DAGBuilder` is not a separate runtime; it produces the JSON-LD document the dispatcher already accepts. The dispatcher does not scan your module graph; it only runs nodes you register. The graph is portable data, and the behavior stays in normal TypeScript classes.
 
-Awaitable form:
+This is closer to a small in-process workflow engine than to a prompt-chain helper. There is no external scheduler, no mandatory queue, and no invisible global registry. When you need those things, you compose them around Dagonizer: a web handler, a worker, Temporal, a database-backed checkpoint store, or a plugin package that exports reusable DAG names.
 
-<<< @/../examples/01-linear.ts#execute-await
+### Next destination
 
-Async-iterable form, one event per node:
-
-<<< @/../examples/01-linear.ts#execute-iterable
-
-## Next destination
-
-Two in-browser demos show the same engine in different domains:
+Three in-browser demos show the same engine in different domains:
 
 - [The Archivist](/examples/the-archivist) — LLM agents. A multi-stage bibliographic-assistant DAG that exercises scatter (over source arrays and sub-DAG bodies), retry, cancellation, and checkpoint resume.
 - [The Cartographer](/examples/the-cartographer) — data orchestration / ETL / streaming. Multi-format satellite tracking feeds fanned through per-format ingest sub-DAGs with conditional routing, geo-resolution, GDPR redaction, and streaming backpressure. No LLM.
+- [The Dispatcher](/examples/the-dispatcher) — HITL support workflow. Customer messages route through routine AI response, operator escalation with park/resume, or off-topic decline.
+
+## Related Concepts
+
+Read these next based on what you want to build:
+
+- [Concepts](./concepts) - the vocabulary behind nodes, placements, lifecycle, scatter, state, and checkpoints.
+- [Architecture](./architecture) - how the dispatcher, lifecycle machine, validators, and public subpaths fit together.
+- [DAGBuilder](./guide/builder) - the fluent authoring API used in the quickstart.
+- [Example 02: DAGBuilder](./examples/02-builder) - focused runnable example for the quickstart pattern.
+- [The Archivist](./examples/the-archivist) - browser runnable for agent memory, tools, retry, and response composition.
+- [The Cartographer](./examples/the-cartographer) - browser runnable for streaming data orchestration, scatter/gather, and plugin-style DAG parts.

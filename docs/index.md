@@ -2,10 +2,11 @@
 layout: doc
 aside: false
 title: Dagonizer
+description: 'TypeScript DAG orchestration framework for LLM agents and data pipelines: typed nodes, JSON-LD DAGs, streaming, checkpoint resume, plugins, and browser demos.'
 hero:
   name: Dagonizer
   text: One engine. Two applications.
-  tagline: 'One type-safe DAG engine powers both agentic LLM orchestration and data pipelines / ETL — the node domain differs, the engine is identical. Compose, observe, resume. No external runtime required.'
+  tagline: 'One type-safe DAG engine powers both LLM-agent orchestration and data pipelines / ETL — the node domain differs, the engine is identical. Compose, observe, resume. No external runtime required.'
   image:
     src: /dagonizer-icon.svg
     alt: Dagonizer
@@ -50,6 +51,8 @@ features:
     details: 'VirtualClockProvider and VirtualScheduler replace platform timers in tests. Step through retry delays and deadlines with scheduler.advance(ms).'
 ---
 
+# Dagonizer
+
 ## ⦿ What problem it solves
 
 When work has multiple steps that depend on each other — classify, then fetch, then compose, then save — you need a way to express those dependencies, track shared state as work moves through them, stop safely when something goes wrong, and pick up where you left off if the process crashes. `@studnicky/dagonizer` is that infrastructure. You declare each step as a typed node and connect nodes in a DAG (a **D**irected **A**cyclic **G**raph — a graph where each step points forward to the next, with no cycles). The dispatcher runs the graph, routes between steps based on the output each step returns, and handles retries, cancellation, and checkpoint/resume without your nodes knowing about any of it.
@@ -58,7 +61,7 @@ A **DAG** is therefore a graph of steps where each step's output drives the rout
 
 ## ⦿ One engine, two applications
 
-`@studnicky/dagonizer` is a single type-safe, resumable, abortable DAG/workflow engine. Agentic LLM orchestration and data-orchestration / ETL run on the identical core — only the node domain differs. Three runnable in-browser demos prove it: **The Archivist** (LLM agents — a bibliographic assistant), **The Dispatcher** (LLM agents with a human in the loop — warm-handoff support), and **The Cartographer** (streaming multi-format satellite tracking feeds, geo-resolution, GDPR redaction, continent-level insights — no LLM).
+`@studnicky/dagonizer` is a single type-safe, resumable, abortable DAG/workflow engine. LLM-agent orchestration and data-orchestration / ETL run on the identical core — only the node domain differs. Three runnable in-browser demos prove it: **The Archivist** (LLM agents — a bibliographic assistant), **The Dispatcher** (LLM agents with a human in the loop — warm-handoff support), and **The Cartographer** (streaming multi-format satellite tracking feeds, geo-resolution, GDPR redaction, continent-level insights — no LLM).
 
 ## ⦿ What it is
 
@@ -90,11 +93,11 @@ Dagonizer runs in-process. No worker pool, no external state store, no IPC. DAG 
 
 ## ⦿ See it in action
 
-Three demos, one engine — each a different role the dispatcher can run, all live in the browser with no server. Two exercise the agentic surface; the third is pure deterministic ETL. Same core, same DAG topology — only the node domain differs.
+Three demos, one engine — each a different role the dispatcher can run, all live in the browser with no server. Two exercise the LLM-agent surface; the third is pure deterministic ETL. Same core, same DAG topology — only the node domain differs.
 
-**[The Archivist](/examples/the-archivist)** — *the cataloguer.* LLM agents. A bibliographic-assistant pipeline: classify intent, scatter scout nodes over source arrays, embedded search and compose sub-DAGs, retry with decorrelated-jitter backoff, checkpoint, provenance. Exercises the full agentic composition surface.
+**[The Archivist](/examples/the-archivist)** — *the cataloguer.* LLM agents. A bibliographic-assistant pipeline: classify intent, scatter scout nodes over source arrays, embedded search and compose sub-DAGs, retry with decorrelated-jitter backoff, checkpoint, provenance. Exercises the full LLM-agent composition surface.
 
-**[The Dispatcher](/examples/the-dispatcher)** — *the router.* LLM agents with a human in the loop. A warm-handoff support pipeline: a classifier routes each message, the AI either composes a reply instantly or the flow parks and waits for a human operator, then resumes from checkpoint on their response. A deterministic "trolley switch" can force human routing on top of the LLM decision. Demonstrates HITL park-and-correlate and checkpoint/resume.
+**[The Dispatcher](/examples/the-dispatcher)** — *the router.* LLM agents with a human in the loop. A warm-handoff support pipeline: a classifier routes each message, the AI either composes a reply instantly or the flow parks and waits for a human operator, then resumes from checkpoint on their response. A deterministic "trolley switch" can force human routing on top of the LLM decision. Demonstrates HITL Park-and-Correlate and checkpoint/resume.
 
 **[The Cartographer](/examples/the-cartographer)** — *the mapmaker.* Data orchestration / ETL / streaming. Fans multi-format satellite tracking feeds (CSV, JSON, gzip-NDJSON) through per-format ingest sub-DAGs into one canonical model. Demonstrates branching conditional routing (skip geo when the source pre-resolved location, skip GDPR redaction when no PII is present), offline geo-resolution via `@rapideditor/country-coder`, live IP geo via `freeipapi`, GDPR PII redaction, and continent-level routing-savings insights. No LLM. Runs entirely in the browser.
 

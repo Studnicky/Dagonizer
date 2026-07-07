@@ -18,7 +18,7 @@ seeAlso:
     link: './visualization'
     description: 'render the built DAG as Mermaid or Cytoscape'
 nextSteps:
-  - text: 'Phase 02, DAGBuilder demo'
+  - text: 'Example 02: DAGBuilder'
     link: '../examples/02-builder'
     description: 'runnable end-to-end example'
 ---
@@ -29,13 +29,58 @@ import { dag as builderDag } from '../../examples/dags/02-builder.topology.ts';
 
 # DAGBuilder
 
+## What It Is
+
+`DAGBuilder` is the chainable TypeScript API for writing a Dagonizer graph in code. Each call appends a placement to the JSON-LD DAG document, and each route map is checked against the node's declared output union before the graph ever runs.
+
+Use it when your workflow belongs in source control beside the nodes it invokes. The result is still the canonical JSON-LD `DAG`, so builder-authored DAGs can be serialized, visualized, embedded, packaged as plugins, and registered by the dispatcher without conversion.
+
+## How It Works
+
+Every builder method appends a typed placement to an in-memory DAG document. The builder tracks the first placement as the default entrypoint, narrows route maps from node output unions, emits JSON-LD placement types, and returns a plain `DAG` from `.build()`. The dispatcher registers that returned object directly.
+
 `DAGBuilder` is the chainable TypeScript factory for JSON-LD DAG documents: ETL pipelines, transformation chains, agent loops, embedded DAGs, scatter bodies, and fixed sequences all use the same surface. Each `.node()` call narrows the `routes` map from the node `TOutput` union, so misspelled or missing routes are compile errors before the DAG runs.
 
 See [Authoring DAGs](./authoring) for how DAGBuilder emits the canonical JSON-LD `DAG` object that serialization, validation, visualization, and dispatch all consume.
 
-## Basic usage
+## Diagrams, Examples, and Outputs
 
-The Phase 02 demo registers two nodes and builds a two-step chat flow:
+### Type-safe output routing
+
+When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive routing at compile time:
+
+<<< @/../examples/dags/02-builder.topology.ts#type-safe-routing
+
+The same runnable source builds the JSON-LD DAG below. The Mermaid diagram is generated from that object, so route changes in code change both panes together:
+
+<DagJsonMermaid :dag="builderDag" title="Example 02 builder DAG" aria-label="The Example 02 builder JSON-LD DAG beside Mermaid generated from it." />
+
+### `.placeholder(name, outputs, routes)`
+
+Register a `PlaceholderNode` stub in one call. The node routes every execution to the first declared output unconditionally. Use during development to stub an unimplemented placement; replace with a concrete `MonadicNode` subclass when ready.
+
+```ts twoslash
+import { DAGBuilder } from '@studnicky/dagonizer';
+
+const dag = new DAGBuilder('my-dag', '1')
+  .placeholder('process', ['success', 'error'], { success: 'end', error: 'end' })
+  .terminal('end', { outcome: 'completed' })
+  .build();
+```
+
+Import: `PlaceholderNode` is available from `@studnicky/dagonizer` if you need to construct one directly.
+
+## What It Lets You Do
+
+### Use when
+
+Use `DAGBuilder` when the DAG lives in TypeScript source and you want route maps, embedded DAG references, scatter bodies, phase nodes, and terminal placement names checked before runtime. Use raw JSON-LD loading when the graph is external configuration.
+
+## Code Samples
+
+### Basic usage
+
+Example 02 registers two nodes and builds a two-step chat flow:
 
 <<< @/../examples/dags/02-builder.topology.ts#imports
 
@@ -47,17 +92,9 @@ The Phase 02 demo registers two nodes and builds a two-step chat flow:
 
 The first `.node()` call sets the entrypoint automatically. Call `.entrypoint('name')` to override.
 
-The built DAG visualised:
+## Details for Nerds
 
-<DagGraph :dag="builderDag" aria-label="A two-node DAGBuilder example: classify routes to respond on either topic; respond terminates." />
-
-## Type-safe output routing
-
-When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive routing at compile time:
-
-<<< @/../examples/dags/02-builder.topology.ts#type-safe-routing
-
-## Scatter
+### Scatter
 
 `.scatter()` places a `ScatterNode` in the parent flow. A scatter isolates a state clone per source item, runs a body (a registered node or a sub-DAG) in the clone, folds clone state back through a required `gather`, and routes on the aggregate outcome via an outcome `reducer`. `source` is a required positional argument.
 
@@ -71,7 +108,7 @@ Heterogeneous fan-out — running different logic per item — is expressed by a
 
 `scoutDispatchNode` reads `state.metadata.currentItem` and routes to the matching scout logic. Whether bodies are identical or all different is the implementer's choice; the engine is indifferent.
 
-### Generate-collect pattern
+#### Generate-collect pattern
 
 Each source item gets one clone. After all clones finish, the `gather.mapping` writes produced artifacts back in source-index order:
 
@@ -103,13 +140,19 @@ The `inputs` option in a scatter call uses `Path<TState>` to constrain parent do
 
 When `body` is a `NodeInterface`, the impl is registered automatically and the placement emits `body: { node: body.name }`.
 
-When `body` is `{ dag: 'name' }`, the placement runs a full registered sub-DAG per clone. Pair with the `container` key on the raw scatter entity to dispatch each clone to an isolate (worker thread, child process). See [Distribution and cloud](./distribution) for the `DagContainerBase` authoring guide and the `DagonizerOptionsType.containers` binding.
+When `body` is `{ dag: 'name' }`, the placement runs a full registered sub-DAG per clone. Pair with the `container` key on the raw scatter entity to dispatch each clone to an isolate (worker thread, child process). See [Distribution and Cloud](./distribution) for the `DagContainerBase` authoring guide and the `DagonizerOptionsType.containers` binding.
 
 For patterns where nodes across multiple scatter placements accumulate to shared mutable state (agent memory, audit log), see [Shared state](./shared-state).
 
-## Embedded DAG
+### Embedded DAG
 
-`.embeddedDAG()` places an `EmbeddedDAGNode` in the parent flow. It invokes a registered sub-DAG exactly once (cardinality 1) and routes the parent on the child's terminal outcome (`success` | `error`). `options.inputs` seeds the child from the parent before it runs; `options.outputs` copies child fields back into the parent after the child completes.
+`.embed()` places an `EmbeddedDAGNode` in the parent flow. It invokes a registered sub-DAG exactly once (cardinality 1) and routes the parent on the child's terminal outcome (`success` | `error`). `options.inputs` seeds the child from the parent before it runs; `options.outputs` copies child fields back into the parent after the child completes.
+
+`.embeddedDAG()` remains available as the legacy name and delegates to the same code path. New code should use `.embed()` because it accepts the full unified DAG reference surface:
+
+- a DAG name string
+- a `DAG` object
+- a runtime reference object `{ from: 'state.path' }`
 
 <<< @/../examples/dags/09-terminals.ts#embedded-terminals
 
@@ -126,17 +169,31 @@ The pattern with inputs and outputs field mapping is shown in the embedded DAG p
 
 Supply `TChildState` and `TParentState` to narrow path strings at compile time; both default to `NodeStateInterface`, which accepts any string.
 
-### Runtime DAG resolution: `dagFrom` and `from`
+`EmbeddableDAGType` is the public input type for `.embed()`:
 
-Both `.scatter()` and `.embeddedDAG()` accept a runtime-resolved DAG name in addition to a build-time string literal. This is the engine's primitive for recursion and self-reference: the DAG to run is chosen from state at execution time rather than being hard-coded at authoring time.
+```ts
+type EmbeddableDAGType = string | DAGType | { readonly from: string };
+```
 
-**`.embeddedDAG()` with `{ from: 'statePath' }`**
+Normalization is direct:
+
+- `string` becomes `{ dag: value }`
+- `DAGType` becomes `{ dag: value.name }`
+- `{ from }` becomes `{ dagFrom: value.from }`
+
+That means application code can treat embedded local DAGs and plugin-exported DAGs the same way. The builder always emits the canonical `EmbeddedDAGNode` JSON-LD shape.
+
+#### Runtime DAG resolution: `dagFrom` and `from`
+
+Both `.scatter()` and `.embed()` accept a runtime-resolved DAG name in addition to a build-time string literal. This is the engine's primitive for recursion and self-reference: the DAG to run is chosen from state at execution time rather than being hard-coded at authoring time.
+
+**`.embed()` with `{ from: 'statePath' }`**
 
 Pass `{ from: 'statePath' }` as the `dag` argument. At execution time the engine reads the dotted state path and looks up the resulting string as a registered DAG name. If the resolved name is unregistered, the placement routes to `error` without throwing.
 
 ```ts
 // The DAG to invoke is stored in state.selectedDag at runtime.
-builder.embeddedDAG(
+builder.embed(
   'invoke',
   { from: 'selectedDag' },   // resolved from state at execution time
   { success: 'next', error: 'end-fail' },
@@ -159,7 +216,7 @@ builder.scatter(
 
 Both variants are the engine's only recursive primitive: a node can write a DAG name into state (or inherit one from its placement's source item) and the engine resolves it at the point of invocation. This enables trampoline flows and polymorphic fan-out without hard-coded DAG names in the topology.
 
-## `.terminal(name, options?)`
+### `.terminal(name, options?)`
 
 <<< @/../examples/dags/09-terminals.ts#terminal-completed
 
@@ -167,7 +224,7 @@ Appends a `TerminalNode` placement. When the engine reaches it, the flow ends wi
 
 TerminalNodes carry no `outputs` map. They are placement-only constructs with no backing `NodeInterface`. Every output of every node in a DAG must route to another named node — a `TerminalNode` placement is the only valid flow endpoint.
 
-### Routing embedded-DAG outputs to a terminal placement
+#### Routing embedded-DAG outputs to a terminal placement
 
 An `EmbeddedDAGNode` placement targets named terminals directly:
 
@@ -175,13 +232,13 @@ An `EmbeddedDAGNode` placement targets named terminals directly:
 
 When the child DAG exits with a failed terminal, the `error` output arrives at `end-fail`, which marks the parent flow `failed`. Without a named terminal, the author would need a dedicated SingleNode to call `state.markFailed()`. The terminal collapses that to one `.terminal(name, { outcome: 'failed' })` call.
 
-### Example, two explicit terminals
+#### Example, two explicit terminals
 
 <<< @/../examples/dags/09-terminals.ts#terminal-failed
 
 Running with `state.shouldPass = true` produces `lifecycle.variant = 'completed'`; running with `false` produces `'failed'`.
 
-## `.phase(name, phase, node)`
+### `.phase(name, phase, node)`
 
 <<< @/../examples/dags/19-phase-nodes.ts#phase-dag
 
@@ -189,57 +246,45 @@ Appends a `PhaseNode` placement: a lifecycle-attached task that runs around the 
 
 PhaseNodes carry no `outputs`. They never route to other placements. They are not the main-loop entrypoint either; `.phase()` deliberately does not set `entrypoint`.
 
-### Pre-phase semantics
+#### Pre-phase semantics
 
 Pre-phase placements run before the entrypoint. They can mutate state and the entrypoint observes those mutations. If a pre-phase throws, the run aborts: lifecycle becomes `failed`, the main loop never executes, and post-phases still run (so cleanup work attached to `post` still gets a chance).
 
-### Post-phase semantics
+#### Post-phase semantics
 
 Post-phase placements run after the main loop drains. They run on every exit path. If a post-phase throws, the engine collects a warning on state (`code: 'POST_PHASE_FAILED'`) and continues to the next post-phase. The lifecycle is not changed.
 
-### `ExecutionResult.executedNodes` ordering
+#### `ExecutionResult.executedNodes` ordering
 
 Pre-phase names appear at the start of `executedNodes`; post-phase names appear at the end (only when the placement completed successfully). Main-loop nodes appear in between.
 
-### Phase hooks
+#### Phase hooks
 
 The dispatcher invokes `onPhaseEnter(dagName, 'pre' | 'post', placementName, state)` immediately before each phase placement runs and `onPhaseExit(...)` immediately after. Override these protected methods in a `Dagonizer` subclass to observe phase boundaries. See [Observability](./observability).
 
-### Example
+#### Example
 
 <<< @/../examples/dags/19-phase-nodes.ts#phase-dag
 
-## `.placeholder(name, outputs, routes)`
-
-Register a `PlaceholderNode` stub in one call. The node routes every execution to the first declared output unconditionally. Use during development to stub an unimplemented placement; replace with a concrete `MonadicNode` subclass when ready.
-
-```ts twoslash
-import { DAGBuilder } from '@studnicky/dagonizer';
-
-const dag = new DAGBuilder('my-dag', '1')
-  .placeholder('process', ['success', 'error'], { success: 'end', error: 'end' })
-  .terminal('end', { outcome: 'completed' })
-  .build();
-```
-
-Import: `PlaceholderNode` is available from `@studnicky/dagonizer` if you need to construct one directly.
-
----
-
-## `.entrypoint()`
+### `.entrypoint()`
 
 By default the first added node is the entrypoint. Override explicitly:
 
 <<< @/../examples/dags/02-builder.topology.ts#entrypoint-override
 
-## `.build()`
+### `.build()`
 
 `build()` materialises the accumulated nodes and returns a `DAG`. It throws an `Error` if no entrypoint has been set (no nodes added and `.entrypoint()` not called).
 
 The returned object is identical to one written by hand. Pass it directly to `dispatcher.registerDAG()`.
 
-## Related reference
+## Related Concepts
 
-- [Phase 02, DAGBuilder demo](../examples/02-builder)
+- [Authoring DAGs](./authoring) - DAGBuilder as the code factory for JSON-LD DAG documents
+- [Subclassing state](./subclassing) - define the state class your nodes mutate
+- [Shared state](./shared-state) - decision matrix for inputs/gather versus stores; checkpoint integration
+- [Schema and JSON loading](./schema) - load DAGs from JSON instead of building them in code
+- [Visualization](./visualization) - render the built DAG as Mermaid or Cytoscape
+- [Example 02: DAGBuilder](../examples/02-builder) - runnable end-to-end example
 - [Reference, Dagonizer](../reference/dagonizer)
 - [Reference, Entities, `DAG`, `SingleNode`, `ScatterNode`, `EmbeddedDAGNode`](../reference/entities)

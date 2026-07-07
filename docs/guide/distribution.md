@@ -1,14 +1,14 @@
 ---
-title: 'Distribution and cloud patterns'
+title: 'Distribution and Cloud'
 description: 'How to scale a Dagonizer deployment across threads, processes, and hosts using DagContainerInterface backends and DAGHandoff channels.'
 seeAlso:
   - text: 'Architecture'
     link: '../architecture'
     description: 'execution model, container seam, hand-off binding'
-  - text: 'Example 11: loopback hand-off'
+  - text: 'Example 11: Operator Hand-Off'
     link: '../examples/11-handoff'
     description: 'two DAGs chained via InMemoryChannel'
-  - text: 'Example 12: worker pool'
+  - text: 'Example 12: Worker Containers'
     link: '../examples/12-workers'
     description: 'scatter-dag-body over a WorkerThreadContainer pool'
   - text: 'Reference: Contracts'
@@ -16,7 +16,21 @@ seeAlso:
     description: 'DagContainerInterface, HandoffChannelInterface, RegistryModuleInterface'
 ---
 
-# Distribution and cloud patterns
+<script setup lang="ts">
+import { cartographerWorkersDAG, streamEventDAG } from '../.vitepress/theme/exampleDags.ts';
+</script>
+
+# Distribution and Cloud
+
+## What It Is
+
+Distribution is how a Dagonizer host moves work across threads, processes, workers, or other hosts without changing the DAG document. The graph still names placements and routes; deployment code binds logical container roles and handoff channels to concrete infrastructure.
+
+There are two scales: in-fleet containment for worker-style isolation, and cross-host handoff for envelope-driven resume on another host.
+
+## How It Works
+
+Distribution is placement-level. A scatter or embedded DAG declares a logical container role, and the host binds that role to a `DagContainerInterface`. Cross-host hand-off serializes state plus cursor into a `DAGHandoff` envelope and lets another host resume the registered DAG.
 
 Dagonizer has two distribution scales. They solve different problems and compose independently.
 
@@ -27,7 +41,32 @@ Dagonizer has two distribution scales. They solve different problems and compose
 
 The DAG is always the unit of distribution. A single node never travels to a container or a remote host.
 
-## In-fleet containment
+## Diagrams, Examples, and Outputs
+
+The Cartographer worker example shows a parent DAG delegating scatter body work to a worker-bound sub-DAG. Both diagrams below are generated from the runnable worker example:
+
+<DagJsonMermaid :dag="cartographerWorkersDAG" title="Cartographer worker parent DAG" aria-label="Cartographer worker parent JSON-LD DAG beside Mermaid generated from it." />
+
+<DagJsonMermaid :dag="streamEventDAG" title="stream-event worker body DAG" aria-label="Stream-event worker body JSON-LD DAG beside Mermaid generated from it." />
+
+- [Architecture](../architecture) - execution model, container seam, hand-off binding
+- [Example 11: Operator Hand-Off](../examples/11-handoff) - two DAGs chained via InMemoryChannel
+- [Example 12: Worker Containers](../examples/12-workers) - scatter-dag-body over a WorkerThreadContainer pool
+- [Reference: Contracts](../reference/contracts) - DagContainerInterface, HandoffChannelInterface, RegistryModuleInterface
+
+## What It Lets You Do
+
+### Use when
+
+Use distribution when one DAG needs to run across threads, worker processes, or separate hosts without changing the canonical JSON-LD graph. Choose containment for in-fleet isolation; choose hand-off when state and cursor must cross a transport boundary.
+
+## Code Samples
+
+The snippets below show container role binding, registry-module loading, and cross-host handoff envelopes.
+
+## Details for Nerds
+
+### In-fleet containment
 
 An `EmbeddedDAGNode` or `ScatterNode` (dag body) placement declares a logical container role:
 
@@ -39,7 +78,7 @@ The deployment binds the logical role to a backend at dispatcher construction:
 
 When the dispatcher reaches the `enrich` placement, it delegates the sub-DAG to the `cpu` backend. The child state crosses as a JSON snapshot; the worker runs the sub-DAG to completion; the terminal snapshot is applied in place. The DAG document and node code are identical in both paths. An unbound role falls back to in-process and fires `contractWarning` — the DAG still runs, the degradation is visible.
 
-### Available Node.js backends
+#### Available Node.js backends
 
 All four backends are in `@studnicky/dagonizer-executor-node`:
 
@@ -52,13 +91,13 @@ All four backends are in `@studnicky/dagonizer-executor-node`:
 
 The browser package `@studnicky/dagonizer-executor-web` ships `WebWorkerContainer` over `postMessage`.
 
-### Pool sizing
+#### Pool sizing
 
 `NodeSystemInfo.recommendedWorkerCount(config)` returns a cgroup-aware default based on `os.availableParallelism()` and available memory. Spread `RecommendedWorkerCountConfigDefault` and override only the fields you want to clamp:
 
 <<< @/../examples/12-workers.ts#pool-sizing
 
-### The registry module contract
+#### The registry module contract
 
 Cross-process containers (fork, cluster, spawn, worker) dynamic-import a registry module inside the isolate to reconstruct the DAG bundle and services without crossing the boundary. The module's default export implements `RegistryModuleInterface`:
 
@@ -74,7 +113,7 @@ The `registryModule` path passed to a container backend is dynamically imported 
 
 ---
 
-## Cross-host hand-off
+### Cross-host hand-off
 
 When a top-level DAG completes at a terminal placement bound to a `HandoffChannelInterface`, the dispatcher publishes a `DAGHandoff` envelope to that channel. The envelope carries:
 
@@ -94,11 +133,11 @@ The dispatcher binds the channel to a terminal name; reaching that terminal publ
 
 <<< @/../examples/11-handoff.ts#dag-a-dispatcher
 
-A terminal not listed in `channels` follows today's behavior — the run completes, no envelope is published. Embedded and contained child DAGs never publish; only the top-level host does. Run the full producer → channel → consumer chain with `npx tsx examples/11-handoff.ts`.
+A terminal not listed in `channels` follows today's behavior — the run completes, no envelope is published. Embedded and contained child DAGs never publish; only the top-level host does. Run the full producer → channel → downstream-host chain with `npx tsx examples/11-handoff.ts`.
 
 A publish failure collects a `HANDOFF_PUBLISH_FAILED` error on the run's state; the returned `ExecutionResult` and `terminalOutcome` are unchanged.
 
-### Serverless function handler pattern
+#### Serverless function handler pattern
 
 A serverless function receives a `DAGHandoff` envelope, restores state, runs the DAG to completion, and lets the bound egress channels publish the next envelope. The function itself requires no Dagonizer-specific runtime; it is a plain `Dagonizer` instance.
 
@@ -112,7 +151,7 @@ The handler is envelope-in / envelope-out: verify the version, restore state, bu
 
 This pattern composes with any function-as-a-service platform (AWS Lambda, Cloud Run, Cloudflare Worker). The `serverless-handler` example drives a complete envelope through the handler and observes the downstream envelope land in the queue; run it with `npx tsx examples/serverless-handler.ts`. The dispatcher is constructed, used, and discarded per invocation. There is no persistent scheduler, no long-lived worker, and no agent protocol — Dagonizer is the in-function runtime.
 
-### External orchestrators (Step Functions, Cloud Workflows, etc.)
+#### External orchestrators (Step Functions, Cloud Workflows, etc.)
 
 When the deployment uses an external state machine (AWS Step Functions, Google Cloud Workflows, Azure Durable Functions), each state maps to one function invocation. The function is envelope-in / envelope-out:
 
@@ -126,7 +165,7 @@ When the deployment uses an external state machine (AWS Step Functions, Google C
 
 Dagonizer never compiles a DAG to ASL or workflow YAML. Dagonizer never invokes or manages state machine instances. The state machine is authored by the deployment; Dagonizer is the in-function executor that processes each step's envelope and publishes the next. The boundary is explicit: the orchestrator owns transitions; Dagonizer owns node execution within each step.
 
-### `registryVersion` handshake
+#### `registryVersion` handshake
 
 The `registryVersion` field on `DAGHandoff` carries the same guarantee as the bridge protocol used by containers: a receiving host that detects a version mismatch should reject the envelope before executing. This prevents a host running a stale bundle from applying state from a newer bundle's run.
 
@@ -135,7 +174,7 @@ Recommended pattern:
 - Validate on ingress before calling `AppState.restore`.
 - On mismatch: route to a DLQ or a manual-review queue, not a silent drop.
 
-### Idempotent node authoring
+#### Idempotent node authoring
 
 Exactly-once delivery is out of scope for Dagonizer's channel contract. At-least-once is the documented delivery guarantee for most queue transports. Node authors are responsible for writing idempotent side effects:
 
@@ -145,7 +184,7 @@ Exactly-once delivery is out of scope for Dagonizer's channel contract. At-least
 
 Dagonizer guarantees envelope fidelity (a `stateSnapshot` round-trip is a fixed point) and `correlationId` uniqueness within a dispatcher instance. Delivery semantics above that are a property of the channel transport and the deployment.
 
-### Trust boundaries
+#### Trust boundaries
 
 **`stateSnapshotRef` URI dereference.** When an envelope carries `stateSnapshotRef` instead of `stateSnapshot`, the receiver must fetch the snapshot from the referenced URI. The receiver owns SSRF and allowlist responsibility: validate that the URI resolves to an operator-controlled storage backend (S3 bucket, GCS object, internal blob store) before fetching. Dagonizer does not fetch `stateSnapshotRef` values; the fetch and the allowlist check are deployment code.
 
@@ -153,7 +192,15 @@ Dagonizer guarantees envelope fidelity (a `stateSnapshot` round-trip is a fixed 
 
 ---
 
-## Further reading
+### Further reading
 
 - [`examples/11-handoff.ts`](../../examples/11-handoff.ts) — two DAGs chained via an in-process loopback channel; companion doc at [`docs/examples/11-handoff.md`](../examples/11-handoff)
 - [`examples/12-workers.ts`](../../examples/12-workers.ts) — scatter-dag-body over a real `WorkerThreadContainer` pool with a registry module; companion doc at [`docs/examples/12-workers.md`](../examples/12-workers)
+
+## Related Concepts
+
+- [Architecture](../architecture) - execution model, container seam, hand-off binding
+- [Example 11: Operator Hand-Off](../examples/11-handoff) - two DAGs chained via InMemoryChannel
+- [Example 12: Worker Containers](../examples/12-workers) - scatter-dag-body over a WorkerThreadContainer pool
+- [Example 13: Multi-Backend Roles](../examples/13-multibackend) - worker roles and body DAGs in the Cartographer demo
+- [Reference: Contracts](../reference/contracts) - DagContainerInterface, HandoffChannelInterface, RegistryModuleInterface
