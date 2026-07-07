@@ -275,10 +275,11 @@ import { LlmAdapterCascade } from '@studnicky/dagonizer/adapter';
 import type { CatalogueEntryType } from '@studnicky/dagonizer/adapter';
 
 declare const myAdapterFactory: () => import('@studnicky/dagonizer/adapter').LlmAdapterInterface;
+declare const selectedModel: string;
 // ---cut---
 const catalogue: CatalogueEntryType[] = [
   {
-    descriptor: { 'provider': 'ollama', 'model': 'llama3.1:8b', 'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true } },
+    descriptor: { 'provider': 'ollama', 'model': selectedModel, 'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true } },
     factory:    myAdapterFactory,
   },
 ];

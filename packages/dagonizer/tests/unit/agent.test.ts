@@ -2,8 +2,8 @@
  * Tests: JSON-LD agent DAG
  *
  * Proves:
- *   1. DAGBuilder materializes the canonical agent loop as JSON-LD DAG topology
- *      placement topology (correct names, types, and route maps).
+ *   1. DAGBuilder materializes an agent loop as JSON-LD DAG
+ *      topology (correct names, types, and route maps).
  *   2. The assembled DAG registers cleanly in a Dagonizer (no schema errors,
  *      no missing node references).
  *   3. The loop-back edge is present: collect-results routes to build-request.
@@ -221,45 +221,46 @@ class LoopFixture {
   }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-void describe('JSON-LD agent DAG: topology', () => {
-  const nodes = LoopFixture.nodes(LoopFixture.services().llm);
-  const dag = new DAGBuilder('agent-loop', '1')
+function buildAgentDag(
+  nodes: ReturnType<typeof LoopFixture.nodes>,
+  name = 'agent-loop',
+  version = '1',
+) {
+  return new DAGBuilder(name, version)
     .node('build-request', nodes.chatRequest, {
       'ready': 'call-model',
       'error': 'end-error',
     })
     .node('call-model', nodes.callModel, {
-      'text': 'normalize-response',
+      'text':  'normalize-response',
       'tools': 'normalize-response',
       'mixed': 'normalize-response',
       'error': 'end-error',
     })
     .node('normalize-response', nodes.normalizeResponse, {
-      'text': 'append-assistant',
+      'text':  'append-assistant',
       'tools': 'decode-tools',
       'mixed': 'decode-tools',
       'empty': 'end-error',
       'error': 'end-error',
     })
     .node('append-assistant', nodes.appendAssistant, {
-      'done': 'end-done',
+      'done':  'end-done',
       'error': 'end-error',
     })
     .node('decode-tools', nodes.decodeTextToolCalls, {
       'decoded': 'normalize-tools',
-      'empty': 'append-assistant',
-      'error': 'end-error',
+      'empty':   'end-error',
+      'error':   'end-error',
     })
     .node('normalize-tools', nodes.normalizeToolCalls, {
       'valid': 'worksets',
-      'empty': 'append-assistant',
+      'empty': 'end-error',
       'error': 'end-error',
     })
     .node('worksets', nodes.toolWorksets, {
       'ready': 'dispatch-tools',
-      'empty': 'append-assistant',
+      'empty': 'end-error',
       'error': 'end-error',
     })
     .scatter(
@@ -268,25 +269,33 @@ void describe('JSON-LD agent DAG: topology', () => {
       { 'dagFrom': 'dagName' },
       {
         'all-success': 'collect-results',
-        'partial': 'collect-results',
-        'all-error': 'collect-results',
-        'empty': 'collect-results',
+        'partial':     'collect-results',
+        'all-error':   'collect-results',
+        'empty':       'collect-results',
       },
       {
+        'itemKey': 'currentItem',
         'gather': {
           'strategy': 'map',
-          'mapping': { 'output': 'toolOutputs' },
+          'mapping':  { 'output': 'toolOutputs' },
         },
       },
     )
     .node('collect-results', nodes.collectToolResults, {
-      'done': 'build-request',
+      'done':  'build-request',
       'empty': 'build-request',
       'error': 'end-error',
     })
     .terminal('end-done')
     .terminal('end-error', { 'outcome': 'failed' })
     .build();
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+void describe('JSON-LD agent DAG: topology', () => {
+  const nodes = LoopFixture.nodes(LoopFixture.services().llm);
+  const dag = buildAgentDag(nodes);
 
   void it('returns a valid DAGType with the canonical name and version defaults', () => {
     assert.equal(dag['@type'], 'DAG');
@@ -386,74 +395,14 @@ void describe('JSON-LD agent DAG: topology', () => {
       assert.equal(endError.outcome, 'failed');
     }
   });
+
 });
 
 void describe('JSON-LD agent DAG: Dagonizer registration', () => {
   void it('assembled DAG registers cleanly in a Dagonizer (no schema errors)', () => {
     const services = LoopFixture.services();
     const nodes = LoopFixture.nodes(services.llm);
-    const dag = new DAGBuilder('agent-loop', '1')
-      .node('build-request', nodes.chatRequest, {
-        'ready': 'call-model',
-        'error': 'end-error',
-      })
-      .node('call-model', nodes.callModel, {
-        'text': 'normalize-response',
-        'tools': 'normalize-response',
-        'mixed': 'normalize-response',
-        'error': 'end-error',
-      })
-      .node('normalize-response', nodes.normalizeResponse, {
-        'text': 'append-assistant',
-        'tools': 'decode-tools',
-        'mixed': 'decode-tools',
-        'empty': 'end-error',
-        'error': 'end-error',
-      })
-      .node('append-assistant', nodes.appendAssistant, {
-        'done': 'end-done',
-        'error': 'end-error',
-      })
-      .node('decode-tools', nodes.decodeTextToolCalls, {
-        'decoded': 'normalize-tools',
-        'empty': 'append-assistant',
-        'error': 'end-error',
-      })
-      .node('normalize-tools', nodes.normalizeToolCalls, {
-        'valid': 'worksets',
-        'empty': 'append-assistant',
-        'error': 'end-error',
-      })
-      .node('worksets', nodes.toolWorksets, {
-        'ready': 'dispatch-tools',
-        'empty': 'append-assistant',
-        'error': 'end-error',
-      })
-      .scatter(
-        'dispatch-tools',
-        'safeWorkset',
-        { 'dagFrom': 'dagName' },
-        {
-          'all-success': 'collect-results',
-          'partial': 'collect-results',
-          'all-error': 'collect-results',
-          'empty': 'collect-results',
-        },
-        {
-          'gather': {
-            'strategy': 'map',
-            'mapping': { 'output': 'toolOutputs' },
-          },
-        },
-      )
-      .node('collect-results', nodes.collectToolResults, {
-        'done': 'build-request',
-        'empty': 'build-request',
-        'error': 'end-error',
-      })
-      .terminal('end-done')
-      .terminal('end-error', { 'outcome': 'failed' })
-      .build();
+    const dag = buildAgentDag(nodes);
 
     const dispatcher = new Dagonizer<LoopState>();
     dispatcher.registerNode(nodes.chatRequest);
@@ -474,68 +423,7 @@ void describe('JSON-LD agent DAG: Dagonizer registration', () => {
   void it('executes a text-answer turn to completion without tool calls', async () => {
     const services = LoopFixture.services();
     const nodes = LoopFixture.nodes(services.llm);
-    const dag = new DAGBuilder('agent-loop', '1')
-      .node('build-request', nodes.chatRequest, {
-        'ready': 'call-model',
-        'error': 'end-error',
-      })
-      .node('call-model', nodes.callModel, {
-        'text': 'normalize-response',
-        'tools': 'normalize-response',
-        'mixed': 'normalize-response',
-        'error': 'end-error',
-      })
-      .node('normalize-response', nodes.normalizeResponse, {
-        'text': 'append-assistant',
-        'tools': 'decode-tools',
-        'mixed': 'decode-tools',
-        'empty': 'end-error',
-        'error': 'end-error',
-      })
-      .node('append-assistant', nodes.appendAssistant, {
-        'done': 'end-done',
-        'error': 'end-error',
-      })
-      .node('decode-tools', nodes.decodeTextToolCalls, {
-        'decoded': 'normalize-tools',
-        'empty': 'append-assistant',
-        'error': 'end-error',
-      })
-      .node('normalize-tools', nodes.normalizeToolCalls, {
-        'valid': 'worksets',
-        'empty': 'append-assistant',
-        'error': 'end-error',
-      })
-      .node('worksets', nodes.toolWorksets, {
-        'ready': 'dispatch-tools',
-        'empty': 'append-assistant',
-        'error': 'end-error',
-      })
-      .scatter(
-        'dispatch-tools',
-        'safeWorkset',
-        { 'dagFrom': 'dagName' },
-        {
-          'all-success': 'collect-results',
-          'partial': 'collect-results',
-          'all-error': 'collect-results',
-          'empty': 'collect-results',
-        },
-        {
-          'gather': {
-            'strategy': 'map',
-            'mapping': { 'output': 'toolOutputs' },
-          },
-        },
-      )
-      .node('collect-results', nodes.collectToolResults, {
-        'done': 'build-request',
-        'empty': 'build-request',
-        'error': 'end-error',
-      })
-      .terminal('end-done')
-      .terminal('end-error', { 'outcome': 'failed' })
-      .build();
+    const dag = buildAgentDag(nodes);
 
     const dispatcher = new Dagonizer<LoopState>();
     dispatcher.registerNode(nodes.chatRequest);

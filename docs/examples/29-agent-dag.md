@@ -1,10 +1,13 @@
 ---
 title: 'Example 29: Agent DAG with JSON-LD'
-description: 'Author the canonical 8-node agent loop as a JSON-LD DAG and register it on the dispatcher.'
+description: 'Author an 8-node agent loop with DAGBuilder, emit JSON-LD, and register it on the dispatcher.'
 seeAlso:
   - text: 'Guide: Agent loop'
     link: '../guide/conversational#agent-loop'
     description: 'Full guide: 8-node topology, subclassing, and wiring'
+  - text: 'Guide: Chat Event Orchestration'
+    link: '../guide/chat-event-orchestration'
+    description: 'one registered agent DAG per inbound event or request turn'
   - text: 'Example 26: Tool Use'
     link: './26-tool-use'
     description: 'ToolInterface definition, ToolCallCodec, adapter dispatch'
@@ -24,13 +27,13 @@ import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
 
 ## What It Is
 
-Agent DAG with JSON-LD shows the Archivist as graph data rather than an opaque chat loop. Model calls, tool dispatch, memory recall, fallback paths, and final response assembly are all placements and routes in the registered DAG.
+Agent DAG with JSON-LD shows the agent loop as graph data rather than an opaque chat callback. `DAGBuilder` emits JSON-LD topology; concrete nodes, tools, memory, fallback paths, and final response assembly remain visible as placements and routes in the registered DAG.
 
 The practical lesson is simple: an LLM-powered application can still have inspectable topology. JSON-LD records what can happen; registered nodes decide what does happen for a specific turn.
 
 ## How It Works
 
-The loop is a normal DAG: build a request, call the model, normalize the response, decode tool calls, build worksets, scatter to registered tool DAGs, collect results, and route back to the next model turn. JSON-LD captures every placement and route, while abstract base nodes provide reusable execution behavior for concrete agent state classes.
+The loop is a normal DAG: build a request, call the model, normalize the response, decode tool calls, build worksets, scatter to registered tool DAGs, collect results, and route back to the next model turn. `DAGBuilder` captures every placement and route in JSON-LD, while abstract base nodes provide reusable execution behavior for concrete agent state classes.
 
 The Archivist expands that skeleton into a domain application. It classifies visitor intent, chooses book-search or memory paths, embeds reusable search and compose sub-DAGs, and routes tool-backed results into response composition.
 
@@ -87,12 +90,16 @@ Use this when a product needs the agent loop to be serializable, visualizable, r
 
 Every model/tool loop repeats the same structure: build a chat request, send it to the model, inspect the response variant, decode embedded tool calls, validate them, partition them into safe/exclusive worksets, scatter dispatch, gather results, and loop back.
 
-The runnable JSON-LD DAG lives in `examples/the-archivist/dag.ts`, and both the
-browser runner and CLI register it as a first-class runtime artifact.
+The runnable JSON-LD topology in `examples/dags/29-agent-dag.ts` is emitted by
+an explicit `DAGBuilder` chain. The full browser-runner proof lives in
+`examples/the-archivist/dag.ts`, and both the browser runner and CLI register
+their DAGs as first-class runtime artifacts.
 
 ## Code Samples
 
-The runnable example keeps topology explicit in the builder and registers real Archivist nodes, tools, memory, and model services.
+The runnable agent example keeps the loop explicit through `DAGBuilder`. The Archivist shows the larger app-level graph that registers real nodes, embedded DAGs, tools, memory, and model services.
+
+<<< @/../examples/dags/29-agent-dag.ts
 
 <<< @/../examples/the-archivist/dag.ts
 
@@ -121,7 +128,7 @@ execution, error wrapping, and output routing.
 
 ### Authoring the agent DAG
 
-Use distinct DAG names and versions when multiple agent loops coexist in the same dispatcher. The concrete Archivist source in `Code Samples` is the implementation to copy from: build the DAG document, register concrete nodes and embedded tool DAGs, then register the parent DAG.
+Use distinct DAG names and versions when multiple agent loops coexist in the same dispatcher. Your `DAGBuilder` chain owns the model/tool loop topology; the concrete Archivist source in `Code Samples` shows the larger application graph with embedded DAGs and domain-specific branches.
 
 ### Wiring the dispatcher
 
@@ -142,6 +149,7 @@ The dispatcher wiring follows the same order throughout the docs: register concr
 ## Related Concepts
 
 - [Guide: Agent loop](../guide/conversational#agent-loop) - Full guide: 8-node topology, subclassing, and wiring
+- [Guide: Chat Event Orchestration](../guide/chat-event-orchestration) - one registered agent DAG per inbound event or request turn
 - [Example 26: Tool Use](./26-tool-use) - ToolInterface definition, ToolCallCodec, adapter dispatch
 - [Example 24: LLM Adapter](./24-llm-adapter) - LlmAdapter, registry, cascade, and chat surface
 - [The Archivist](./the-archivist) - A full multi-branch agent application powered by Dagonizer

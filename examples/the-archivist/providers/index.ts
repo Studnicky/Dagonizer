@@ -38,6 +38,7 @@
  */
 
 import type { LlmClientInterface } from '../services.ts';
+import type { LlmModelType } from '@studnicky/dagonizer/entities';
 
 import { prompts } from './prompts.ts';
 import {
@@ -101,11 +102,11 @@ const PRIORITY_ORDER: readonly ProviderId[] = [
 /** Backends that need a local/desktop runtime, excluded on mobile. */
 const DESKTOP_ONLY: readonly ProviderId[] = ['gemini-nano', 'web-llm', 'ollama'];
 
-const OLLAMA_MODEL_KEY = 'dagonizer-ollama-model';
-
 export interface BackendAvailability {
   readonly id: ProviderId;
   readonly displayName: string;
+  /** Live model catalogue discovered from the provider, when available. */
+  readonly models?: readonly LlmModelType[];
   /** Runnable right now (no further user action required). */
   readonly runnable: boolean;
   /** Runnable but requires a one-time action (download, key entry). */
@@ -124,6 +125,8 @@ export interface BackendAvailability {
 export interface DetectionInputs {
   /** Per-provider API keys. Cloud adapters are runnable when their key is present. */
   readonly apiKeys?: Partial<Record<ProviderId, string>>;
+  /** Per-provider preferred model names. Each is honored only when the provider lists it. */
+  readonly preferredModels?: Partial<Record<ProviderId, string>>;
   /**
    * The visitor's explicitly-chosen Ollama model, if any. When this names a
    * model the daemon has installed it is preferred; otherwise the picker
@@ -199,34 +202,77 @@ export class ApiKeyStore {
 }
 
 /**
- * OllamaModels: Ollama model persistence utilities.
+ * PreferredModels: per-provider model preference persistence in localStorage.
  *
- * The visitor's explicit model preference is persisted across sessions via
- * `loadModel` / `saveModel`. During detection, the preference is passed as
- * `preferredOllamaModel` to `BackendMatrix.detect`, which forwards it to
- * `OllamaApiAdapter.selectChatModel({ preferred })`. The adapter resolves the
- * installed chat model from the daemon's tag list, honoring the preference when
- * installed, and stores the result in `BackendAvailability.resolvedModel`.
+ * Preferences are discovery inputs only. `BackendMatrix.detect` passes them to
+ * `selectChatModel({ preferred })`, then stores the confirmed model in
+ * `BackendAvailability.resolvedModel`.
  */
-export class OllamaModels {
-  /**
-   * Load the visitor's explicitly-chosen Ollama model from localStorage, or the
-   * empty string when they have not chosen one. Empty means "auto": the adapter
-   * resolves an installed chat model from the daemon's tag list.
-   */
-  static loadModel(): string {
-    if (typeof localStorage === 'undefined') return '';
-    return localStorage.getItem(OLLAMA_MODEL_KEY) ?? '';
+export class PreferredModels {
+  static readonly #STORAGE_KEY = 'dagonizer-preferred-models';
+  static readonly #LEGACY_OLLAMA_KEY = 'dagonizer-ollama-model';
+
+  static load(): Partial<Record<ProviderId, string>> {
+    if (typeof localStorage === 'undefined') return {};
+    const raw = localStorage.getItem(PreferredModels.#STORAGE_KEY);
+    if (raw === null) {
+      const legacy = localStorage.getItem(PreferredModels.#LEGACY_OLLAMA_KEY);
+      if (legacy !== null && legacy.trim().length > 0) {
+        const migrated: Partial<Record<ProviderId, string>> = { 'ollama': legacy.trim() };
+        PreferredModels.save(migrated);
+        localStorage.removeItem(PreferredModels.#LEGACY_OLLAMA_KEY);
+        return migrated;
+      }
+      return {};
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      const result: Partial<Record<ProviderId, string>> = {};
+      for (const [key, val] of Object.entries(parsed)) {
+        if (typeof val === 'string' && ApiKeyStore.isProviderId(key) && val.trim().length > 0) {
+          result[key] = val.trim();
+        }
+      }
+      return result;
+    } catch {
+      return {};
+    }
   }
 
-  /** Persist the Ollama model name. */
-  static saveModel(model: string): void {
+  static get(id: ProviderId): string {
+    return PreferredModels.load()[id] ?? '';
+  }
+
+  static save(preferences: Partial<Record<ProviderId, string>>): void {
     if (typeof localStorage === 'undefined') return;
-    if (model.trim().length === 0) {
-      localStorage.removeItem(OLLAMA_MODEL_KEY);
+    const result: Partial<Record<ProviderId, string>> = {};
+    for (const [key, val] of Object.entries(preferences)) {
+      if (typeof val === 'string' && ApiKeyStore.isProviderId(key) && val.trim().length > 0) {
+        result[key] = val.trim();
+      }
+    }
+    if (Object.keys(result).length === 0) {
+      localStorage.removeItem(PreferredModels.#STORAGE_KEY);
       return;
     }
-    localStorage.setItem(OLLAMA_MODEL_KEY, model.trim());
+    localStorage.setItem(PreferredModels.#STORAGE_KEY, JSON.stringify(result));
+  }
+
+  static set(id: ProviderId, model: string): Partial<Record<ProviderId, string>> {
+    const current = PreferredModels.load();
+    const next: Partial<Record<ProviderId, string>> = {};
+    for (const [key, val] of Object.entries(current)) {
+      if (ApiKeyStore.isProviderId(key) && key !== id && val.length > 0) next[key] = val;
+    }
+    if (model.trim().length > 0) next[id] = model.trim();
+    PreferredModels.save(next);
+    return next;
+  }
+
+  static clear(): void {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem(PreferredModels.#STORAGE_KEY);
   }
 }
 
@@ -234,8 +280,25 @@ export class OllamaModels {
  * BackendMatrix: backend detection, ranking, and visibility utilities.
  */
 export class BackendMatrix {
+  /** Returns `{ preferred: name }` only when a non-empty preferred model is set for `id`. */
+  static #preferredOpt(
+    preferredModels: Partial<Record<ProviderId, string>>,
+    id: ProviderId,
+  ): { readonly preferred: string } | undefined {
+    const preferred = preferredModels[id];
+    return typeof preferred === 'string' && preferred.trim().length > 0
+      ? { 'preferred': preferred.trim() }
+      : undefined;
+  }
+
   static async detect(inputs: DetectionInputs = {}): Promise<readonly BackendAvailability[]> {
     const keys = inputs.apiKeys ?? {};
+    const preferredModels: Partial<Record<ProviderId, string>> = {
+      ...(inputs.preferredModels ?? {}),
+      ...(inputs.preferredOllamaModel !== undefined && inputs.preferredOllamaModel.length > 0
+        ? { 'ollama': inputs.preferredOllamaModel }
+        : {}),
+    };
     const out: BackendAvailability[] = [];
 
     // gemini-nano: browser built-in LanguageModel. selectChatModel returns the
@@ -243,8 +306,13 @@ export class BackendMatrix {
     const nanoStatus: GeminiNanoAvailabilityType = await GeminiNanoAdapter.detect();
     const nanoRunnable = nanoStatus === 'available';
     let nanoModel: string | null = null;
+    let nanoModels: readonly LlmModelType[] = [];
     if (nanoRunnable) {
-      nanoModel = await new GeminiNanoAdapter().selectChatModel();
+      const adapter = new GeminiNanoAdapter();
+      [nanoModel, nanoModels] = await Promise.all([
+        adapter.selectChatModel(BackendMatrix.#preferredOpt(preferredModels, 'gemini-nano')),
+        adapter.listModels(),
+      ]);
     }
     out.push({
       'id': 'gemini-nano',
@@ -254,6 +322,7 @@ export class BackendMatrix {
       'runnable': nanoRunnable,
       'needsAction': nanoStatus === 'downloadable' || nanoStatus === 'downloading' ? 'download' : null,
       ...(nanoModel !== null ? { 'resolvedModel': nanoModel } : {}),
+      ...(nanoModels.length > 0 ? { 'models': nanoModels } : {}),
       'hint': nanoStatus === 'unavailable'
         ? 'Requires Chrome 138+ or Edge with the Prompt API enabled.'
         : nanoStatus === 'downloadable'
@@ -267,8 +336,13 @@ export class BackendMatrix {
     const geminiKey = keys['gemini-api'];
     const hasGeminiKey = typeof geminiKey === 'string' && geminiKey.length > 0;
     let geminiModel: string | null = null;
+    let geminiModels: readonly LlmModelType[] = [];
     if (hasGeminiKey && typeof geminiKey === 'string') {
-      geminiModel = await new GeminiApiAdapter(geminiKey).selectChatModel();
+      const adapter = new GeminiApiAdapter(geminiKey);
+      [geminiModel, geminiModels] = await Promise.all([
+        adapter.selectChatModel(BackendMatrix.#preferredOpt(preferredModels, 'gemini-api')),
+        adapter.listModels(),
+      ]);
     }
     out.push({
       'id': 'gemini-api',
@@ -278,6 +352,7 @@ export class BackendMatrix {
       'runnable': hasGeminiKey,
       'needsAction': hasGeminiKey ? null : 'api-key',
       ...(geminiModel !== null ? { 'resolvedModel': geminiModel } : {}),
+      ...(geminiModels.length > 0 ? { 'models': geminiModels } : {}),
       'hint': 'Paste a free Google AI Studio key. Nothing leaves your browser except the request itself.',
     });
 
@@ -285,8 +360,13 @@ export class BackendMatrix {
     // default prebuilt model from a static catalogue (no network call).
     const webGpu = await new WebLlmAdapter().probe();
     let webLlmModel: string | null = null;
+    let webLlmModels: readonly LlmModelType[] = [];
     if (webGpu) {
-      webLlmModel = await new WebLlmAdapter().selectChatModel();
+      const adapter = new WebLlmAdapter();
+      [webLlmModel, webLlmModels] = await Promise.all([
+        adapter.selectChatModel(BackendMatrix.#preferredOpt(preferredModels, 'web-llm')),
+        adapter.listModels(),
+      ]);
     }
     out.push({
       'id': 'web-llm',
@@ -296,6 +376,7 @@ export class BackendMatrix {
       'runnable': webGpu,
       'needsAction': null,
       ...(webLlmModel !== null ? { 'resolvedModel': webLlmModel } : {}),
+      ...(webLlmModels.length > 0 ? { 'models': webLlmModels } : {}),
       'hint': webGpu
         ? 'Model lazy-loads (~700-800 MB) on first use. Cached afterwards.'
         : 'This browser does not support WebGPU.',
@@ -305,8 +386,13 @@ export class BackendMatrix {
     const groqKey = keys['groq'];
     const hasGroqKey = typeof groqKey === 'string' && groqKey.length > 0;
     let groqModel: string | null = null;
+    let groqModels: readonly LlmModelType[] = [];
     if (hasGroqKey && typeof groqKey === 'string') {
-      groqModel = await OpenAiCompatibleAdapter.groq(groqKey).selectChatModel();
+      const adapter = OpenAiCompatibleAdapter.groq(groqKey);
+      [groqModel, groqModels] = await Promise.all([
+        adapter.selectChatModel(BackendMatrix.#preferredOpt(preferredModels, 'groq')),
+        adapter.listModels(),
+      ]);
     }
     out.push({
       'id': 'groq',
@@ -316,6 +402,7 @@ export class BackendMatrix {
       'runnable': hasGroqKey,
       'needsAction': hasGroqKey ? null : 'api-key',
       ...(groqModel !== null ? { 'resolvedModel': groqModel } : {}),
+      ...(groqModels.length > 0 ? { 'models': groqModels } : {}),
       'hint': 'Free key at console.groq.com/keys. ~30 RPM on the free tier.',
     });
 
@@ -323,8 +410,13 @@ export class BackendMatrix {
     const cerebrasKey = keys['cerebras'];
     const hasCerebrasKey = typeof cerebrasKey === 'string' && cerebrasKey.length > 0;
     let cerebrasModel: string | null = null;
+    let cerebrasModels: readonly LlmModelType[] = [];
     if (hasCerebrasKey && typeof cerebrasKey === 'string') {
-      cerebrasModel = await OpenAiCompatibleAdapter.cerebras(cerebrasKey).selectChatModel();
+      const adapter = OpenAiCompatibleAdapter.cerebras(cerebrasKey);
+      [cerebrasModel, cerebrasModels] = await Promise.all([
+        adapter.selectChatModel(BackendMatrix.#preferredOpt(preferredModels, 'cerebras')),
+        adapter.listModels(),
+      ]);
     }
     out.push({
       'id': 'cerebras',
@@ -334,6 +426,7 @@ export class BackendMatrix {
       'runnable': hasCerebrasKey,
       'needsAction': hasCerebrasKey ? null : 'api-key',
       ...(cerebrasModel !== null ? { 'resolvedModel': cerebrasModel } : {}),
+      ...(cerebrasModels.length > 0 ? { 'models': cerebrasModels } : {}),
       'hint': 'Free key at cloud.cerebras.ai. Ultra-fast inference on Wafer-Scale Engine.',
     });
 
@@ -341,8 +434,13 @@ export class BackendMatrix {
     const mistralKey = keys['mistral'];
     const hasMistralKey = typeof mistralKey === 'string' && mistralKey.length > 0;
     let mistralModel: string | null = null;
+    let mistralModels: readonly LlmModelType[] = [];
     if (hasMistralKey && typeof mistralKey === 'string') {
-      mistralModel = await OpenAiCompatibleAdapter.mistral(mistralKey).selectChatModel();
+      const adapter = OpenAiCompatibleAdapter.mistral(mistralKey);
+      [mistralModel, mistralModels] = await Promise.all([
+        adapter.selectChatModel(BackendMatrix.#preferredOpt(preferredModels, 'mistral')),
+        adapter.listModels(),
+      ]);
     }
     out.push({
       'id': 'mistral',
@@ -352,6 +450,7 @@ export class BackendMatrix {
       'runnable': hasMistralKey,
       'needsAction': hasMistralKey ? null : 'api-key',
       ...(mistralModel !== null ? { 'resolvedModel': mistralModel } : {}),
+      ...(mistralModels.length > 0 ? { 'models': mistralModels } : {}),
       'hint': 'Free key at console.mistral.ai/api-keys/.',
     });
 
@@ -359,8 +458,13 @@ export class BackendMatrix {
     const openRouterKey = keys['openrouter'];
     const hasOpenRouterKey = typeof openRouterKey === 'string' && openRouterKey.length > 0;
     let openRouterModel: string | null = null;
+    let openRouterModels: readonly LlmModelType[] = [];
     if (hasOpenRouterKey && typeof openRouterKey === 'string') {
-      openRouterModel = await OpenAiCompatibleAdapter.openRouter(openRouterKey).selectChatModel();
+      const adapter = OpenAiCompatibleAdapter.openRouter(openRouterKey);
+      [openRouterModel, openRouterModels] = await Promise.all([
+        adapter.selectChatModel(BackendMatrix.#preferredOpt(preferredModels, 'openrouter')),
+        adapter.listModels(),
+      ]);
     }
     out.push({
       'id': 'openrouter',
@@ -370,6 +474,7 @@ export class BackendMatrix {
       'runnable': hasOpenRouterKey,
       'needsAction': hasOpenRouterKey ? null : 'api-key',
       ...(openRouterModel !== null ? { 'resolvedModel': openRouterModel } : {}),
+      ...(openRouterModels.length > 0 ? { 'models': openRouterModels } : {}),
       'hint': 'Free key at openrouter.ai/keys. Routes to free-tier models.',
     });
 
@@ -377,8 +482,13 @@ export class BackendMatrix {
     const anthropicKey = keys['anthropic'];
     const hasAnthropicKey = typeof anthropicKey === 'string' && anthropicKey.length > 0;
     let anthropicModel: string | null = null;
+    let anthropicModels: readonly LlmModelType[] = [];
     if (hasAnthropicKey && typeof anthropicKey === 'string') {
-      anthropicModel = await new AnthropicApiAdapter(anthropicKey).selectChatModel();
+      const adapter = new AnthropicApiAdapter(anthropicKey);
+      [anthropicModel, anthropicModels] = await Promise.all([
+        adapter.selectChatModel(BackendMatrix.#preferredOpt(preferredModels, 'anthropic')),
+        adapter.listModels(),
+      ]);
     }
     out.push({
       'id': 'anthropic',
@@ -388,6 +498,7 @@ export class BackendMatrix {
       'runnable': hasAnthropicKey,
       'needsAction': hasAnthropicKey ? null : 'api-key',
       ...(anthropicModel !== null ? { 'resolvedModel': anthropicModel } : {}),
+      ...(anthropicModels.length > 0 ? { 'models': anthropicModels } : {}),
       'hint': 'Key at console.anthropic.com/settings/keys.',
     });
 
@@ -398,12 +509,13 @@ export class BackendMatrix {
     // installed, then prefers local-only models, then first chat model overall).
     const ollamaUp = await OllamaProbe.detect();
     let ollamaModel: string | null = null;
+    let ollamaModels: readonly LlmModelType[] = [];
     if (ollamaUp) {
-      ollamaModel = await new OllamaApiAdapter().selectChatModel({
-        ...(inputs.preferredOllamaModel !== undefined && inputs.preferredOllamaModel.length > 0
-          ? { 'preferred': inputs.preferredOllamaModel }
-          : {}),
-      });
+      const adapter = new OllamaApiAdapter();
+      [ollamaModel, ollamaModels] = await Promise.all([
+        adapter.selectChatModel(BackendMatrix.#preferredOpt(preferredModels, 'ollama')),
+        adapter.listModels(),
+      ]);
     }
     out.push({
       'id': 'ollama',
@@ -415,10 +527,11 @@ export class BackendMatrix {
       'runnable': ollamaUp && ollamaModel !== null,
       'needsAction': null,
       ...(ollamaModel !== null ? { 'resolvedModel': ollamaModel } : {}),
+      ...(ollamaModels.length > 0 ? { 'models': ollamaModels } : {}),
       'hint': !ollamaUp
         ? 'Start the Ollama daemon at 127.0.0.1:11434 and ensure CORS allows the docs origin (OLLAMA_ORIGINS).'
         : ollamaModel === null
-          ? 'Daemon detected but no chat model is installed. Run e.g. `ollama pull llama3.2:3b`.'
+          ? 'Daemon detected but no chat model is installed. Install any chat-capable model.'
           : `Local daemon detected; using installed model "${ollamaModel}".`,
     });
 

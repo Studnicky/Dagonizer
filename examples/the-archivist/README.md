@@ -53,11 +53,11 @@ Default cascade:
 Throws `LlmError(NO_ADAPTER_AVAILABLE)` if none are reachable. There is
 no stub fallback in the CLI; the stub is reserved for tests.
 
-Recommended local setup (pull any chat model; the runner auto-detects an
-installed one from `/api/tags`, or set `OLLAMA_MODEL` to override):
+Recommended local setup: install any Ollama chat model first. The runner
+auto-detects an installed chat model from `/api/tags`, or honors `OLLAMA_MODEL`
+when that model is present.
 
 ```
-ollama pull llama3.2:3b
 ollama serve
 npx tsx examples/the-archivist/runArchivist.ts
 ```

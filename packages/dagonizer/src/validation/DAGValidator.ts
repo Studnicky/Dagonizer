@@ -25,7 +25,7 @@ export class DAGValidator {
     }
 
     // No sub-DAG cycle detection is needed. `registerDAG` is append-only (a
-    // duplicate name throws), and every EmbeddedDAGNode/ScatterNode body must
+    // duplicate expanded IRI throws), and every EmbeddedDAGNode/ScatterNode body must
     // reference an already-registered DAG (validated above). Sub-DAG references
     // are therefore backward-only, so the reference graph is necessarily
     // acyclic — a cycle cannot be constructed through the public registry.

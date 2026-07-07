@@ -582,6 +582,7 @@ export class ReActRecall {
  * The pre-assembled agent-loop DAG, registered under the name `'react-agent'`.
  * Import and pass to `dispatcher.registerDAG(agentDag)`.
  */
+// #region react-agent-dag
 export const agentDag: DAGType = {
   '@context': DAG_CONTEXT,
   '@id': 'urn:noocodex:dag:react-agent',
@@ -706,11 +707,13 @@ export const agentDag: DAGType = {
     },
   ],
 };
+// #endregion react-agent-dag
 
 // ---------------------------------------------------------------------------
 // traceDag: scatter over the reasoning-step stream
 // ---------------------------------------------------------------------------
 
+// #region react-trace-dag
 export const traceDag: DAGType = {
   '@context':   DAG_CONTEXT,
   '@id':        'urn:noocodex:dag:react-agent-memory-trace',
@@ -749,3 +752,4 @@ export const traceDag: DAGType = {
     },
   ],
 };
+// #endregion react-trace-dag

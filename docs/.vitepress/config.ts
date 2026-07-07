@@ -167,6 +167,7 @@ const sidebar = [
       { text: 'Observability',             link: '/guide/observability' },
       { text: 'HITL Park-and-Correlate',   link: '/guide/hitl' },
       { text: 'Conversational Agents',     link: '/guide/conversational' },
+      { text: 'Chat Event Orchestration',  link: '/guide/chat-event-orchestration' },
       { text: 'ReAct Agent: Streaming and Provenance Recall', link: '/guide/react-agent' },
       { text: 'Visualization',             link: '/guide/visualization' },
       { text: 'Distribution and Cloud',    link: '/guide/distribution' },

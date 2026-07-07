@@ -154,6 +154,7 @@ export class RouteChunkNode extends MonadicNode<RoutingState, 'done'> {
 // routingDag: scatter over the shared StreamChannel, classifying by routeKey
 // ---------------------------------------------------------------------------
 
+// #region react-routing-dag
 export const routingDag: DAGType = {
   '@context':   DAG_CONTEXT,
   '@id':        'urn:noocodex:dag:react-agent-routing',
@@ -192,3 +193,4 @@ export const routingDag: DAGType = {
     },
   ],
 };
+// #endregion react-routing-dag

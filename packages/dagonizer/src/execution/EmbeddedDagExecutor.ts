@@ -78,9 +78,9 @@ export class EmbeddedDagExecutor {
     const dagIri = dagName !== null ? ContextResolver.expand(dagName, parentContext) : null;
 
     // Produce the child state. Use the DAG's isolation factory when registered,
-    // otherwise fall back to cloneChild (clone-parent semantics). The factory
-    // lookup uses the resolved dagName; if dagName is null the assembly below
-    // routes to error without touching the child state meaningfully.
+    // otherwise use cloneChild (clone-parent semantics). The factory lookup uses
+    // the expanded DAG IRI; if dagName is null the assembly below routes to error
+    // without touching the child state meaningfully.
     const factory = dagIri !== null ? this.#source.stateFactories.get(dagIri) : undefined;
     const cloneState = factory !== undefined
       ? this.#source.stateMapper.spawnChild(state, inputMapping, factory)

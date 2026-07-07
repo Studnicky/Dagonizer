@@ -1,9 +1,9 @@
 /**
- * 29-agent-dag: JSON-LD canonical 8-node agent loop.
+ * 29-agent-dag: explicit DAGBuilder 8-node agent loop.
  *
  * Shows how to:
  *   1. Subclass the 8 abstract base nodes from @studnicky/dagonizer/patterns.
- *   2. Register a canonical JSON-LD DAG document authored in a separate module.
+ *   2. Register the JSON-LD DAG document emitted by DAGBuilder.
  *   3. Register nodes + DAG + tool bundle on a Dagonizer.
  *   4. Execute one text-answer turn (stub LLM returns a canned response).
  *
@@ -275,7 +275,7 @@ dispatcher.registerDAG(agentDag);
 // Execute one text-answer turn
 // ---------------------------------------------------------------------------
 
-process.stdout.write('--- Example 29: agent DAG from canonical JSON-LD ---\n\n');
+process.stdout.write('--- Example 29: agent DAG from explicit DAGBuilder JSON-LD ---\n\n');
 
 const state = new AgentState();
 state.prompt = 'What is the capital of France?';
@@ -293,6 +293,6 @@ if (state.history.length > 0) {
   process.stdout.write(`Last message: [${last?.role ?? ''}] "${last?.content ?? ''}"\n`);
 }
 
-process.stdout.write('\nLesson: a canonical JSON-LD DAG document is the authoring surface for the\n');
-process.stdout.write('        JSON-LD DAGType. Subclass each abstract base node to adapt\n');
-process.stdout.write('        how state is read and written; the DAG owns the topology.\n');
+process.stdout.write('\nLesson: DAGBuilder emits the canonical JSON-LD DAGType.\n');
+process.stdout.write('        Subclass each abstract base node to adapt state reads and writes;\n');
+process.stdout.write('        your DAG owns the topology.\n');

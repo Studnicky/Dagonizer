@@ -5,6 +5,9 @@ seeAlso:
   - text: 'Conversational Agents'
     link: './conversational#agent-loop'
     description: 'the 8-node agent loop authored as JSON-LD'
+  - text: 'Chat Event Orchestration'
+    link: './chat-event-orchestration'
+    description: 'host one registered agent DAG behind EventTrigger or RequestTrigger'
   - text: 'Streaming Producers'
     link: './streaming-producers'
     description: 'StreamChannel, DagStreamProducer, and the scatter-source idiom this guide reuses'
@@ -53,6 +56,7 @@ The runnable ReAct examples expose three DAGs: the inner agent loop, the reasoni
 <DagJsonMermaid :dag="reactRoutingDAG" title="ReAct routed stream sink DAG" aria-label="ReAct routed stream sink JSON-LD DAG beside Mermaid generated from it." />
 
 - [Conversational Agents](./conversational#agent-loop) - the 8-node agent loop authored as JSON-LD
+- [Chat Event Orchestration](./chat-event-orchestration) - host one registered agent DAG behind EventTrigger or RequestTrigger
 - [Streaming Producers](./streaming-producers) - StreamChannel, DagStreamProducer, and the scatter-source idiom this guide reuses
 - [Example: ReAct agent memory](../examples/react-agent-memory) - working example: trace streaming, live token deltas, provenance recall
 - [Example: ReAct agent routing](../examples/react-agent-routing) - working example: one shared sink demultiplexes two concurrent conversations by routeKey

@@ -190,7 +190,7 @@ export class NormalizePlugin implements PluginInterface {
 
 `defineDagonizerPlugin()` is the high-level authoring helper for plugin packages. It returns a valid `PluginInterface` plus typed `exports` that point at DAG names inside the plugin bundle.
 
-Use it when the plugin ships pre-built flows:
+Use it when the plugin packages reusable DAGs:
 
 ```ts
 import { defineDagonizerPlugin } from '@studnicky/dagonizer/plugin';

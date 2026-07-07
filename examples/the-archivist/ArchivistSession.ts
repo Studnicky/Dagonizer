@@ -1,9 +1,8 @@
 /**
  * ArchivistSession: framework-agnostic orchestration base class.
  *
- * Extracts the session lifecycle that was previously hand-rolled twice —
- * once in `ArchivistRunner.vue` (Vue reactive refs) and once in `main.ts`
- * (DOM imperative). Both frontends will extend this class and override the
+ * Owns the shared session lifecycle used by `ArchivistRunner.vue`
+ * (Vue reactive refs) and `main.ts` (DOM imperative). Both frontends extend this class and override the
  * abstract seam methods to drive their respective view layers.
  *
  * Extension model:
@@ -28,8 +27,8 @@
  *   IndexedDB or localStorage dependency.
  *
  * Static fallback pools:
- *   `STATIC_GREETINGS` and `STATIC_VISITOR_REPLIES` are module constants here,
- *   replacing the copies that were previously duplicated in the Vue component.
+ *   `STATIC_GREETINGS` and `STATIC_VISITOR_REPLIES` are module constants shared
+ *   by every frontend.
  */
 
 import type { ExecutionResultType } from '@studnicky/dagonizer';
@@ -56,7 +55,7 @@ import {
   ApiKeyStore,
   BackendMatrix,
   EmbedderProvisioner,
-  OllamaModels,
+  PreferredModels,
   ProviderInstantiator,
 } from './providers/index.ts';
 import type {
@@ -73,7 +72,7 @@ import { StateProjection } from './state/StateProjection.ts';
 import { UserLanguage } from './language/UserLanguage.ts';
 
 // ── Static fallback pools ────────────────────────────────────────────────────
-// Single source of truth: previously duplicated in ArchivistRunner.vue.
+// Single source of truth for every Archivist frontend.
 
 export const STATIC_GREETINGS: readonly string[] = [
   'Welcome to the shop. The shelves remember everything they hold. What brings you in?',
@@ -363,7 +362,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   // ── Backend state ─────────────────────────────────────────────────────────
   protected activeBackend: ProviderId | null;
   protected apiKeys: Partial<Record<ProviderId, string>>;
-  protected ollamaModel: string;
+  protected preferredModels: Partial<Record<ProviderId, string>>;
   protected isMobile: boolean;
   protected backends: readonly BackendAvailability[];
   protected embedder: EmbedderInterface | null;
@@ -390,7 +389,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
     };
     this.activeBackend    = null;
     this.apiKeys          = ApiKeyStore.load();
-    this.ollamaModel      = OllamaModels.loadModel();
+    this.preferredModels  = PreferredModels.load();
     this.isMobile         = false;
     this.backends         = [];
     this.embedder         = null;
@@ -409,7 +408,12 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   }
 
   setOllamaModel(model: string): void {
-    this.ollamaModel = model;
+    this.preferredModels = PreferredModels.set('ollama', model);
+  }
+
+  setPreferredModels(models: Partial<Record<ProviderId, string>>): void {
+    this.preferredModels = models;
+    PreferredModels.save(models);
   }
 
   setActiveBackend(id: ProviderId | null): void {
@@ -522,7 +526,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
 
     this.backends = await BackendMatrix.detect({
       'apiKeys': this.apiKeys,
-      ...(this.ollamaModel.length > 0 ? { 'preferredOllamaModel': this.ollamaModel } : {}),
+      'preferredModels': this.preferredModels,
     });
 
     // Provision embedder concurrently without blocking backend selection.
@@ -700,9 +704,7 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
    * Reset the session to a blank slate and run the bootstrap sequence.
    *
    * Clears conversation history, clears the logger, then calls
-   * `greet()` + `sampleReply()` — the single implementation that
-   * replaces the duplicate logic previously split between Vue's
-   * `onMounted` and `reset()`.
+   * `greet()` + `sampleReply()` through the single shared implementation.
    *
    * The memory store is cleared via `store.clear()`. Subclasses that
    * manage a seed library should reload it by overriding `onReset`.
@@ -1063,8 +1065,9 @@ export abstract class ArchivistSession implements SessionEventSinkInterface {
   #resolveLlm(): LlmClientInterface | null {
     if (this.#injectedLlm !== null) return this.#injectedLlm;
     if (this.activeBackend === null) return null;
-    const model = this.activeBackend === 'ollama' && this.ollamaModel.length > 0
-      ? this.ollamaModel
+    const preferred = this.preferredModels[this.activeBackend];
+    const model = typeof preferred === 'string' && preferred.length > 0
+      ? preferred
       : (this.backends.find((b) => b.id === this.activeBackend)?.resolvedModel ?? '');
     return ProviderInstantiator.instantiate(this.activeBackend, {
       'apiKeys':  this.apiKeys,

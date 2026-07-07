@@ -204,12 +204,14 @@ export interface DagonizerInterface<
   ): Execution<TState>;
 
   /**
-   * Look up a registered DAG by name.
+   * Look up a registered DAG by reference. The reference is expanded to the
+   * registry IRI before lookup.
    */
   getDAG(name: string): DAGType | undefined;
 
   /**
-   * Look up a registered node by name. Returns `NodeInterface<NodeStateInterface,...>`
+   * Look up a registered node by reference. The reference is expanded to the
+   * registry IRI before lookup. Returns `NodeInterface<NodeStateInterface,...>`
    * because the registry stores heterogeneous node types at the base interface.
    * Consumers that registered a `NodeInterface<MyState,...>` and need to call it
    * directly should retain their own typed reference rather than looking it up here.
@@ -217,20 +219,21 @@ export interface DagonizerInterface<
   getNode(name: string): NodeInterface<NodeStateInterface, string> | undefined;
 
   /**
-   * Look up the child-state factory registered for a DAG name. Every registered
-   * DAG has an entry (`ChildStateFactory.cloneParent` when no override was
+   * Look up the child-state factory registered for a DAG reference. The reference
+   * is expanded to the registry IRI before lookup. Every registered DAG has an
+   * entry (`ChildStateFactory.cloneParent` when no override was
    * supplied at `registerDAG` time). Returns `undefined` when the DAG has not
    * been registered.
    */
   getChildStateFactory(dagName: string): ChildStateFactoryType | undefined;
 
   /**
-   * True when a node with this name is registered.
+   * True when a node with this reference is registered.
    */
   hasNode(name: string): boolean;
 
   /**
-   * True when a DAG with this name is registered.
+   * True when a DAG with this reference is registered.
    */
   hasDag(name: string): boolean;
 
@@ -254,14 +257,14 @@ export interface DagonizerInterface<
   listNodes(): readonly NodeInterface<NodeStateInterface, string>[];
 
   /**
-   * Names of every registered DAG. Cheaper than `listDAGs()` when only the
-   * keys are needed (registry size checks, name-existence tooling).
+   * Expanded IRI keys of every registered DAG. Cheaper than `listDAGs()` when
+   * only the keys are needed (registry size checks, existence tooling).
    */
   dagNames(): readonly string[];
 
   /**
-   * Names of every registered node. Cheaper than `listNodes()` when only the
-   * keys are needed (registry size checks, name-existence tooling).
+   * Expanded IRI keys of every registered node. Cheaper than `listNodes()` when
+   * only the keys are needed (registry size checks, existence tooling).
    */
   nodeNames(): readonly string[];
 
@@ -1126,7 +1129,7 @@ implements DagonizerInterface<TState> {
   /**
    * Register a DAG configuration.
    *
-   * Throws `DAGError` immediately when a DAG with the same name is already registered.
+   * Throws `DAGError` immediately when a DAG with the same expanded IRI is already registered.
    *
    * Runs two validation passes:
    * 1. Schema pass: `Validator.dag.validate(dag)` checks structure (required fields, valid
@@ -1171,7 +1174,7 @@ implements DagonizerInterface<TState> {
    * `NodeInterface<TState, string>`; narrow → wide is sound covariantly on
    * both `outputs` and the result `output`.
    *
-   * Throws `DAGError` when a node with the same name is already registered.
+   * Throws `DAGError` when a node with the same expanded IRI is already registered.
    */
   registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
     node: NodeInterface<TNodeState, TOutput>,
@@ -1183,7 +1186,7 @@ implements DagonizerInterface<TState> {
    * Register every node, then every DAG, in the supplied bundle. Order
    * is fixed: nodes first so the semantic-pass DAG validator can
    * resolve every node reference. Throws as soon as any individual
-   * registration throws (validation failure, duplicate name, etc.);
+   * registration throws (validation failure, duplicate expanded IRI, etc.);
    * registrations that ran before the failing one remain installed.
    */
   registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void {

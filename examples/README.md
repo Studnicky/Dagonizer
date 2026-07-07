@@ -66,7 +66,7 @@ Or via npm scripts: `npm run example:12` and `npm run example:13`.
 
 ## LLM / Agent
 
-These examples run against a real local model. Install [Ollama](https://ollama.com), then `ollama pull llama3.2` (chat) and `ollama pull nomic-embed-text` (embeddings) before running.
+These examples run against a real local model. Install [Ollama](https://ollama.com), start the daemon, and install at least one chat model for adapter/tool examples plus one embedding model for the embedder example. Each example discovers the installed model through the adapter API before it runs.
 
 | File | Purpose | Run |
 |------|---------|-----|

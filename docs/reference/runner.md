@@ -2,6 +2,9 @@
 title: 'Runner'
 description: 'Runner reference for DagRunner, TriggerInterface, OnceTrigger, CLI, event, and request triggers around registered DAG execution.'
 seeAlso:
+  - text: 'Guide: Chat Event Orchestration'
+    link: '../guide/chat-event-orchestration'
+    description: 'one registered agent DAG per inbound event or request turn'
   - text: 'Example 28: Runner and Triggers'
     link: '../examples/28-runner'
     description: 'Full working example for all trigger variants'
@@ -331,6 +334,7 @@ Triggers are adapters around external input. They should translate host-specific
 ## Related Concepts
 
 - [Example 28: Runner and Triggers](../examples/28-runner) - Full working example for all trigger variants
+- [Guide: Chat Event Orchestration](../guide/chat-event-orchestration) - one registered agent DAG per inbound event or request turn
 - [Reference: Contracts](./contracts) - TriggerInterface adapter contract
 - [Reference: Dagonizer](./dagonizer) - The dispatcher DagRunner drives
 - [Example 08: Checkpoint and Resume](../examples/08-checkpoint) - DagRunner.resume() from a checkpoint cursor

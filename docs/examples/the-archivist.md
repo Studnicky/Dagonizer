@@ -165,11 +165,11 @@ The Archivist runs against a real model in any of these environments. `detectBac
 
 | Priority | Backend | What it needs |
 |---|---|---|
-| 1 | **Groq** (cloud, free tier) | Free key from [console.groq.com/keys](https://console.groq.com/keys). Runs llama-3.3-70b-versatile. ~30 RPM on the free tier. Works on any device. |
-| 2 | **Cerebras** (cloud, free tier) | Free key from [cloud.cerebras.ai](https://cloud.cerebras.ai/?utm=arch). Runs llama-3.3-70b on Wafer-Scale Engine. Works on any device. |
-| 3 | **Gemini API** (Google AI Studio free tier) | Paste-into-form (browser). Free 15 RPM / 1500 RPD on `gemini-2.0-flash`. CORS open from any origin. Works on any device. |
-| 4 | **Mistral** (cloud, free tier) | Free key from [console.mistral.ai/api-keys/](https://console.mistral.ai/api-keys/). Runs mistral-small-latest. Works on any device. |
-| 5 | **OpenRouter** (cloud, free tier) | Free key from [openrouter.ai/keys](https://openrouter.ai/keys). Routes to llama-3.3-70b-instruct:free. Works on any device. |
+| 1 | **Groq** (cloud, free tier) | Free key from [console.groq.com/keys](https://console.groq.com/keys). `selectChatModel()` discovers the available chat catalogue. ~30 RPM on the free tier. Works on any device. |
+| 2 | **Cerebras** (cloud, free tier) | Free key from [cloud.cerebras.ai](https://cloud.cerebras.ai/?utm=arch). `selectChatModel()` confirms the live chat model before registration. Works on any device. |
+| 3 | **Gemini API** (Google AI Studio free tier) | Paste-into-form (browser). Free tier access, CORS open from any origin, and model selection through Gemini's `ListModels` response. Works on any device. |
+| 4 | **Mistral** (cloud, free tier) | Free key from [console.mistral.ai/api-keys/](https://console.mistral.ai/api-keys/). `selectChatModel()` discovers the live catalogue. Works on any device. |
+| 5 | **OpenRouter** (cloud, free tier) | Free key from [openrouter.ai/keys](https://openrouter.ai/keys). Routes through OpenRouter's model catalogue. Works on any device. |
 | 6 | **Browser built-in model** (local, via `window.LanguageModel`) | Chrome 138+ or Edge. No key, no network, ~2 GB one-shot model download. Desktop only. |
 | 7 | **WebLLM** (in-browser, WebGPU) | Browser with `navigator.gpu`. Lazy-loads `@mlc-ai/web-llm` + Phi-3.5 mini (~780 MB) on first use; cached after. Desktop only. |
 
@@ -273,7 +273,7 @@ free tier**:
 
 1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and
    click *Create API key*. The free tier covers 15 requests/min and
-   1500 requests/day on `gemini-2.0-flash`. Plenty for the demo.
+   1500 requests/day on the free tier. Plenty for the demo.
 2. Paste the key into the *Bring your own Gemini API key* drawer below the
    backend picker. It's stored in `localStorage` only; the request itself
    goes straight from your browser to Google.

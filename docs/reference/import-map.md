@@ -75,7 +75,7 @@ import { MermaidRenderer } from '@studnicky/dagonizer/viz';
 | `./runner` | `DagRunner`, `TriggerInterface`, `OnceTrigger`, `CliTrigger`, `EventTrigger`, `RequestTrigger` | Long-running DAG host: register triggers (once, CLI, event, HTTP request) that invoke a registered DAG |
 | `./progress` | `EventBus`, `SseStream` | Progress and observability event bus, plus a Server-Sent-Events stream adapter for the same envelope |
 | `./adapter` | `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterRegistry`, `LlmAdapterCascade` | LLM adapter contract surface: chat/tool schemas, streaming chunk types, capability descriptors, and cascading multi-backend dispatch |
-| `./patterns` | `MonadicNode`, `LlmDispatchNode`, `DecisionNode`, `ComposeNode`, `DagStreamProducer` | Pattern-tier base classes applications extend for agent loops, LLM-backed routing, and streaming producers |
+| `./patterns` | `AgentTraceProducer`, `BuildChatRequestNode`, `CallModelNode`, `BuildToolWorksetsNode`, `MonadicNode`, `DagStreamProducer` | Pattern-tier base classes, trace producers, and stream producers applications extend for LLM loops and routed streaming |
 | `./tool` | `ToolInterface`, `HttpTransport`, `ToolError` | Tool contract surface for LLM function/tool calling: the interface a tool implements plus HTTP transport and error types |
 | `./dag` | `DAGDocument` | JSON-LD DAG document loading and parsing outside the dispatcher |
 | `./plugin` | `PluginDiscovery`, `PluginLoader`, `PluginSpecifier` | Plugin discovery and loading for the plugin registry described in the [Plugins](../guide/plugins) |

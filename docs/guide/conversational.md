@@ -17,6 +17,9 @@ seeAlso:
   - text: 'ReAct agent: streaming + provenance recall'
     link: './react-agent'
     description: 'the 8-node loop as ReAct, trace streaming, live token deltas, provenance recall'
+  - text: 'Chat Event Orchestration'
+    link: './chat-event-orchestration'
+    description: 'run one registered agent DAG per inbound event or request turn'
   - text: 'Lifecycle phases'
     link: './lifecycle-phases'
     description: 'understand when a DAG completes vs. when it pauses'
@@ -636,7 +639,7 @@ To adopt these patterns:
 
 5. **Plan for persistence**: You own the state store. Use a database, file system, Redis, or whatever fits your deployment.
 
-Future versions of `@studnicky/dagonizer` will export `HandoffMachine` and an `InteractiveNode` base class as optional consumables, reducing boilerplate across projects.
+Reusable agent loops use `DAGBuilder` for topology, the eight agent node bases from `@studnicky/dagonizer/patterns` for state-specific behavior, and `AgentTraceProducer` for live reasoning traces.
 
 ---
 
@@ -670,6 +673,7 @@ subclass the node bases.
 
 ```ts
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer/builder';
 import {
   BuildChatRequestNode,
   CallModelNode,
@@ -680,7 +684,6 @@ import {
   CollectToolResultsNode,
   AppendAssistantNode,
 } from '@studnicky/dagonizer/patterns';
-import { dag as agentDag } from '../../examples/dags/29-agent-dag';
 
 const nodes = {
   chatRequest:         new MyBuildChatRequestNode(),
@@ -699,6 +702,20 @@ dispatcher.registerNode(nodes.chatRequest);
 dispatcher.registerNode(nodes.callModel);
 // … register remaining nodes …
 dispatcher.registerBundle(toolRegistry.bundle()); // tool:<name> DAGs
+
+const agentDag = new DAGBuilder('my-agent', '1')
+  .node('build-request', nodes.chatRequest, {
+    ready: 'call-model',
+    error: 'end-error',
+  })
+  .node('call-model', nodes.callModel, {
+    text: 'normalize-response',
+    tools: 'normalize-response',
+    mixed: 'normalize-response',
+    error: 'end-error',
+  })
+  // Continue with normalize, decode, worksets, scatter, collect, terminals.
+  .build();
 dispatcher.registerDAG(agentDag);
 ```
 
@@ -762,6 +779,7 @@ dispatcher.registerBundle(tools.bundle());
 - [Checkpoint & resume](./checkpoint) - persist and reload state across process boundaries
 - [Dependency injection](./services) - inject IO adapters via node constructors
 - [Example 29: Agent DAG](../examples/29-agent-dag) - working example of the 8-node agent loop with stub LLM
+- [Chat Event Orchestration](./chat-event-orchestration) - run one registered agent DAG per inbound event or request turn
 - [ReAct agent: streaming + provenance recall](./react-agent) - the 8-node loop as ReAct, trace streaming, live token deltas, provenance recall
 - [Lifecycle phases](./lifecycle-phases) - understand when a DAG completes vs. when it pauses
 - [ReAct Agent Memory](../examples/react-agent-memory) - trace streaming, live token deltas, and graph provenance recall

@@ -159,7 +159,7 @@ export class NodeScheduler {
     // object rather than re-wrapping it, so identity survives recursive
     // (embedded/scatter) re-entry into this method.
     const signal = Signal.compose(options);
-    // Expand the bare dagName to its IRI key for all registry map lookups.
+    // Expand the DAG reference to its IRI key for all registry map lookups.
     // The original dagName string is retained for human-readable error messages,
     // lifecycle hooks, and hand-off envelopes.
     const dagIri = ContextResolver.expand(dagName, {});

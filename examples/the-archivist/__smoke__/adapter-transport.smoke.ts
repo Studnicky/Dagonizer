@@ -6,7 +6,7 @@
  * v0.9.2):
  *
  *   Groq        max_completion_tokens, tools[*].type='function'
- *   Cerebras    max_completion_tokens, model='gpt-oss-120b' default
+ *   Cerebras    max_completion_tokens and a non-empty discovered/default model
  *   Mistral     max_tokens, OpenAI-shape tools
  *   OpenRouter  HTTP-Referer + X-Title headers, OpenAI-shape tools
  *
@@ -128,13 +128,14 @@ await SmokeRunner.check('Groq: POSTs to api.groq.com with max_completion_tokens 
   assert.equal(c.body['tool_choice'], 'auto');
 });
 
-await SmokeRunner.check('Cerebras: POSTs to api.cerebras.ai with gpt-oss-120b default and max_completion_tokens', async () => {
+await SmokeRunner.check('Cerebras: POSTs to api.cerebras.ai with a model and max_completion_tokens', async () => {
   const adapter = OpenAiCompatibleAdapter.cerebras('sk-test');
   const captured = SmokeRunner.captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
   assert.equal(c.url, 'https://api.cerebras.ai/v1/chat/completions');
-  assert.equal(c.body['model'], 'gpt-oss-120b');
+  assert.equal(typeof c.body['model'], 'string');
+  assert.notEqual(c.body['model'], '');
   assert.ok('max_completion_tokens' in c.body, 'must use max_completion_tokens');
   assert.ok(!('max_tokens' in c.body), 'must NOT send max_tokens');
 });
@@ -162,7 +163,8 @@ await SmokeRunner.check('OpenRouter: POSTs with HTTP-Referer + X-Title headers a
   assert.equal(c.url, 'https://openrouter.ai/api/v1/chat/completions');
   assert.ok(c.headers['http-referer'] !== undefined, 'must send HTTP-Referer header');
   assert.ok(c.headers['x-title'] !== undefined, 'must send X-Title header');
-  assert.equal(c.body['model'], 'meta-llama/llama-3.3-70b-instruct:free');
+  assert.equal(typeof c.body['model'], 'string');
+  assert.notEqual(c.body['model'], '');
 });
 
 await SmokeRunner.check('Adapters expose capabilities metadata', async () => {

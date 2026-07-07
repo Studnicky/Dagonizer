@@ -15,7 +15,7 @@
  *
  * Prerequisites:
  *   - Ollama installed and running on the default port (11434).
- *   - A tool-capable model pulled (e.g. ollama pull llama3.2:3b).
+ *   - A tool-capable Ollama chat model installed locally.
  *     The example discovers an installed chat model from the daemon's tag
  *     list; override the choice with the OLLAMA_MODEL env var.
  *
@@ -56,7 +56,7 @@ const OLLAMA_MODEL = await adapter.selectChatModel(
 
 if (OLLAMA_MODEL === null) {
   process.stdout.write(
-    'No Ollama chat model installed — start the daemon at 127.0.0.1:11434 and run `ollama pull llama3.2:3b`.\n',
+    'No Ollama chat model installed — start the daemon at 127.0.0.1:11434 and install any tool-capable chat model.\n',
   );
   process.exit(0);
 }
@@ -89,7 +89,7 @@ dispatcher.registerDAG(dag);
 // ---------------------------------------------------------------------------
 // Run A: real OllamaApiAdapter — native tool_calls channel.
 //
-//   Sends the tool definition to llama3.2. When the model calls the tool,
+//   Sends the tool definition to the selected model. When the model calls the tool,
 //   the adapter returns response.message.variant === 'tools' with a typed
 //   ToolCall[]. The CallLlmNode dispatches the call without codec decoding.
 // ---------------------------------------------------------------------------

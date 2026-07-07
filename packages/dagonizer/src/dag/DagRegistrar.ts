@@ -25,14 +25,14 @@ import { ContextResolver } from './ContextResolver.js';
  * `registerNode` / `registerBundle` methods delegate here.
  */
 export interface DagRegistrarSourceInterface {
-  /** Registered DAGs keyed by name. Mutated by `registerDAG`. */
+  /** Registered DAGs keyed by expanded IRI. Mutated by `registerDAG`. */
   readonly dags: Map<string, DAGType>;
-  /** Registered nodes keyed by name. Mutated by `registerNode`. Base-typed so heterogeneous child-node states store without casts. */
+  /** Registered nodes keyed by expanded IRI. Mutated by `registerNode`. Base-typed so heterogeneous child-node states store without casts. */
   readonly nodes: Map<string, NodeInterface<NodeStateInterface, string>>;
-  /** Placement index keyed by `${dagName}:${placementName}`. Mutated by `registerDAG`. */
+  /** Placement index keyed by `${dagIri}:${placementName}`. Mutated by `registerDAG`. */
   readonly nodeIndex: Map<string, DAGNodeType>;
   /**
-   * Child-state factories keyed by DAG name. Mutated by `registerDAG`.
+   * Child-state factories keyed by expanded DAG IRI. Mutated by `registerDAG`.
    * Every registered DAG has an entry here; `ChildStateFactory.cloneParent` is
    * stored when no override is supplied so the engine never branches on presence.
    */
@@ -59,7 +59,7 @@ export interface DagRegistrarSourceInterface {
  * registration mutates the live registries the engine modules read.
  *
  * `registerDAG` runs four gates in order before mutating the registries:
- * 1. Duplicate-name throw (same name, different implementation).
+ * 1. Duplicate-IRI throw (same expanded IRI, different implementation).
  * 2. Shape pass: `DAGShape.validate(dag)` verifies the DAG-local topology.
  * 3. Registry pass: `DAGValidator.validateDAGConfig` verifies node/DAG
  *    references resolve and output routing covers every registered node output.
@@ -85,8 +85,8 @@ export class DagRegistrar {
    * historical semantics exactly. The factory is stored immediately so the
    * engine never checks for its presence; every registered DAG has an entry.
    *
-   * Throws `DAGError` immediately when a DAG with the same name is already
-   * registered with a different implementation.
+   * Throws `DAGError` immediately when a DAG with the same expanded IRI is
+   * already registered with a different implementation.
    *
    * Runs the shape, registry-relative, and container-role-binding passes before
    * mutating the registries.
@@ -173,7 +173,7 @@ export class DagRegistrar {
    * NodeStateInterface` — including child-state classes that differ from the
    * dispatcher's state type.
    *
-   * Throws `DAGError` when a node with the same name is already registered.
+   * Throws `DAGError` when a node with the same expanded IRI is already registered.
    */
   registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
     node: NodeInterface<TNodeState, TOutput>,
@@ -213,7 +213,7 @@ export class DagRegistrar {
    *
    * Order is fixed: nodes first so the semantic-pass DAG validator can
    * resolve every node reference. Throws as soon as any individual
-   * registration throws (validation failure, duplicate name, etc.);
+   * registration throws (validation failure, duplicate expanded IRI, etc.);
    * registrations that ran before the failing one remain installed.
    *
    * When `bundle.stateFactories` is present, each DAG's entry is passed to

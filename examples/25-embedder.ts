@@ -13,7 +13,7 @@
  *
  * Prerequisites:
  *   - Ollama installed and running on the default port (11434).
- *   - The embedding model pulled: ollama pull nomic-embed-text
+ *   - At least one Ollama embedding model installed locally.
  *
  * Cascade shape: the primary embedder targets port 1 (unreachable) so its
  * probe() returns false and the cascade skips it. The fallback targets the
@@ -50,7 +50,7 @@ const EMBED_MODEL = await discoveryEmbedder.selectEmbeddingModel(
 
 if (EMBED_MODEL === null) {
   process.stdout.write(
-    'No Ollama embedding model installed — start the daemon at 127.0.0.1:11434 and run `ollama pull nomic-embed-text`.\n',
+    'No Ollama embedding model installed — start the daemon at 127.0.0.1:11434 and install any embedding-capable model.\n',
   );
   process.exit(0);
 }

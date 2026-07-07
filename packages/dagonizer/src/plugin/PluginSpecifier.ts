@@ -1,7 +1,7 @@
 /**
  * PluginSpecifier: static helpers for resolving a DAG name to an import() specifier.
  *
- * Two canonical resolvers ship with the engine:
+ * Three canonical resolvers ship with the engine:
  * - `PluginSpecifier.bareName` — Node.js default. Returns the bare npm package name unchanged.
  *   Pass directly as `resolveSpecifier`: `PluginDiscovery.loadAll(dag, registry, dispatcher, PluginSpecifier.bareName)`.
  * - `PluginSpecifier.rootedAt(baseUrl)` — Browser resolver. Returns a URL relative to `baseUrl`
@@ -33,8 +33,8 @@ export class PluginSpecifier {
   }
 
   /**
- * Browser resolver factory: returns a resolver that maps bare package specifiers
- * to absolute ESM URLs under `baseUrl`.
+   * Browser resolver factory: returns a resolver that maps bare package specifiers
+   * to absolute ESM URLs under `baseUrl`.
    *
    * If `name` is already an absolute URL (parseable as a standalone URL), it is
    * returned unchanged. Otherwise returns `new URL('./${name}.js', baseUrl).href`.

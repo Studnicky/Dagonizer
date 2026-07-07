@@ -68,7 +68,7 @@ The provisioner snippet builds the embedder cascade. The browser services snippe
 
 ## Details for Nerds
 
-- **`OllamaEmbedder`.** Calls Ollama's `/api/embeddings` endpoint. Constructed with `{ model?, baseUrl?, dimensions? }`: defaults to `nomic-embed-text` (768-dim) at the local loopback. No API key required for local usage. Known model dimensions are resolved from a built-in table; unknown models require `dimensions` explicitly.
+- **`OllamaEmbedder`.** Calls Ollama's `/api/embeddings` endpoint. Constructed with `{ model?, baseUrl?, dimensions? }`: no API key required for local usage. `selectEmbeddingModel()` discovers an installed embedding model from `/api/tags`; known model dimensions are resolved from a built-in table, and unknown models require `dimensions` explicitly.
 - **`probe()`.** Issues `GET /api/tags` with a 500 ms timeout against the configured base URL. Returns `true` when the daemon answers `2xx`, `false` on timeout or connection error. Symmetric with `OllamaApiAdapter.probe()` so a single running Ollama daemon makes both surfaces available.
 - **`EmbedderRegistry`.** Stores embedders keyed by `(provider, model)` pairs. API mirrors `LlmAdapterRegistry` for consistency.
 - **`EmbedderCascade`.** Walks the preference list and returns the first available embedder. Throws when no embedder probes as available.

@@ -56,7 +56,7 @@ import type { BatchExecutionOptionsType } from '../types/BatchExecutionOptions.j
 import { Validator } from '../validation/Validator.js';
 
 /**
- * Bare function signature for restoring state from a JSON snapshot.
+ * Plain function signature for restoring state from a JSON snapshot.
  * Used internally by `CheckpointRestoreAdapter`. Pass a function of this
  * shape to `CheckpointRestoreAdapter.wrap(fn)` to obtain an adapter
  * that satisfies `CheckpointRestoreAdapterInterface`.

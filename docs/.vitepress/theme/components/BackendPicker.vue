@@ -1,13 +1,14 @@
 <script setup lang="ts">
 /**
- * BackendPicker: backend selector + per-provider API-key form.
+ * BackendPicker: backend selector + per-provider API-key/model form.
  *
  * Backend dropdown lists on-device web models first, then every other
  * backend alphabetically by displayName (fixed order, independent of which
  * keys are set).
- * Cloud backends that require a key each get a collapsible <details>
- * section with a password-style input + reveal toggle. The key map
- * is emitted back to the parent via `update:apiKeys`.
+ * Every backend gets a collapsible <details> section. Keyed providers show a
+ * password input, and runnable providers with a discovered catalogue show a
+ * model selector whose value is emitted as a preference via
+ * `update:preferredModels`.
  *
  * On mobile, gemini-nano and web-llm rows show a "Desktop only" chip
  * and are disabled in the dropdown.
@@ -20,7 +21,9 @@ import { BackendMatrix } from '../../../../examples/the-archivist/providers/inde
 interface BackendOption {
   readonly id: string;
   readonly displayName: string;
+  readonly models?: readonly { readonly name: string }[];
   readonly runnable: boolean;
+  readonly resolvedModel?: string;
   readonly needsAction?: 'download' | 'api-key' | null;
   readonly hint?: string;
 }
@@ -78,7 +81,7 @@ const props = defineProps<{
   backends: readonly BackendOption[];
   activeId: string;
   apiKeys: Partial<Record<string, string>>;
-  ollamaModel: string;
+  preferredModels: Partial<Record<string, string>>;
   isMobile?: boolean;
   disabled?: boolean;
 }>();
@@ -86,7 +89,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'update:activeId', value: string): void;
   (event: 'update:apiKeys', value: Partial<Record<string, string>>): void;
-  (event: 'update:ollamaModel', value: string): void;
+  (event: 'update:preferredModels', value: Partial<Record<string, string>>): void;
 }>();
 
 /** Per-backend reveal state for password inputs. */
@@ -112,16 +115,6 @@ const keyBackends = computed(() =>
   props.backends.filter((b) => KEY_BACKENDS.has(b.id) && visibleIds.value.has(b.id))
 );
 
-/** Ollama row: no key, takes a model name instead. Visible when not on mobile. */
-const ollamaBackend = computed<BackendOption | null>(() => {
-  if (props.isMobile === true) return null;
-  return props.backends.find((b) => b.id === 'ollama') ?? null;
-});
-
-function onOllamaModelInput(event: Event): void {
-  emit('update:ollamaModel', (event.target as HTMLInputElement).value);
-}
-
 function isDesktopOnly(id: string): boolean {
   return props.isMobile === true && DESKTOP_ONLY.has(id);
 }
@@ -135,12 +128,44 @@ function onKey(id: string, event: Event): void {
   emit('update:apiKeys', { ...props.apiKeys, [id]: value });
 }
 
+function onModelSelect(id: string, event: Event): void {
+  const value = (event.target as HTMLSelectElement).value;
+  updatePreferredModel(id, value);
+}
+
+function onModelInput(id: string, event: Event): void {
+  const value = (event.target as HTMLInputElement).value;
+  updatePreferredModel(id, value);
+}
+
+function updatePreferredModel(id: string, value: string): void {
+  const next: Partial<Record<string, string>> = {};
+  for (const [key, current] of Object.entries(props.preferredModels)) {
+    if (key !== id && typeof current === 'string' && current.trim().length > 0) {
+      next[key] = current.trim();
+    }
+  }
+  if (value.trim().length > 0) next[id] = value.trim();
+  emit('update:preferredModels', next);
+}
+
 function toggleReveal(id: string): void {
   revealMap.value = { ...revealMap.value, [id]: !(revealMap.value[id] ?? false) };
 }
 
 function keyFor(id: string): string {
   return props.apiKeys[id] ?? '';
+}
+
+function preferredModelFor(id: string): string {
+  return props.preferredModels[id] ?? '';
+}
+
+function modelHelp(backend: BackendOption): string {
+  if (backend.resolvedModel !== undefined && backend.resolvedModel.length > 0) {
+    return `Auto selects ${backend.resolvedModel}`;
+  }
+  return 'Auto selects the first usable chat model returned by the provider.';
 }
 </script>
 
@@ -182,9 +207,9 @@ function keyFor(id: string): string {
       (<code>ApiKeyStore.load</code> / <code>ApiKeyStore.save</code>) for the source.
     </p>
 
-    <!-- Per-backend key inputs: one collapsible <details> each -->
+    <!-- Per-backend config rows: active toggle, key input, and discovered model selector. -->
     <details
-      v-for="backend in keyBackends"
+      v-for="backend in sortedBackends"
       :key="backend.id"
       class="backend-key"
       :open="activeId === backend.id || backend.runnable"
@@ -195,8 +220,18 @@ function keyFor(id: string): string {
         <span v-else-if="backend.runnable" class="key-status key-status--set">set</span>
         <span v-else class="key-status key-status--missing">not set</span>
       </summary>
+      <div class="backend-row">
+        <span class="backend-row-label">Use this backend</span>
+        <button
+          type="button"
+          class="backend-use"
+          :class="{ 'backend-use--active': activeId === backend.id }"
+          :disabled="disabled === true || !backend.runnable"
+          @click="emit('update:activeId', backend.id)"
+        >{{ activeId === backend.id ? 'Active' : 'Use' }}</button>
+      </div>
       <p class="backend-key-help">
-        {{ KEY_META[backend.id]?.helpText ?? '' }}
+        {{ KEY_META[backend.id]?.helpText ?? backend.hint ?? '' }}
         <a
           v-if="KEY_META[backend.id]?.helpUrl"
           :href="KEY_META[backend.id]?.helpUrl"
@@ -204,7 +239,7 @@ function keyFor(id: string): string {
           rel="noreferrer"
         >Get a free key.</a>
       </p>
-      <div class="key-row">
+      <div v-if="KEY_BACKENDS.has(backend.id)" class="key-row">
         <input
           :id="`backend-key-${backend.id}`"
           :name="`backend-key-${backend.id}`"
@@ -225,42 +260,34 @@ function keyFor(id: string): string {
           @click="toggleReveal(backend.id)"
         >{{ revealMap[backend.id] ? '🙈' : '👁' }}</button>
       </div>
-    </details>
-
-    <!-- Ollama row: no key, takes a model name instead. Desktop only. -->
-    <details
-      v-if="ollamaBackend !== null"
-      class="backend-key"
-      :open="activeId === 'ollama' || ollamaBackend.runnable"
-    >
-      <summary class="backend-key-summary">
-        Ollama (local daemon)
-        <span v-if="ollamaBackend.runnable" class="key-status key-status--set">detected</span>
-        <span v-else class="key-status key-status--missing">not running</span>
-      </summary>
-      <p class="backend-key-help">
-        {{ ollamaBackend.hint }}
-        <a
-          href="https://ollama.com/download"
-          target="_blank"
-          rel="noreferrer"
-        >Install Ollama.</a>
-        Set <code>OLLAMA_ORIGINS</code> to your docs origin
-        (e.g. <code>OLLAMA_ORIGINS=http://localhost:5173</code>) before
-        running <code>ollama serve</code> so the browser can reach the daemon.
-      </p>
-      <div class="key-row">
+      <label v-if="backend.models !== undefined && backend.models.length > 0" class="model-row">
+        <span class="backend-row-label">Model</span>
+        <select
+          class="model-select"
+          :value="preferredModelFor(backend.id)"
+          :disabled="disabled === true"
+          @change="onModelSelect(backend.id, $event)"
+        >
+          <option value="">{{ modelHelp(backend) }}</option>
+          <option
+            v-for="model in backend.models"
+            :key="model.name"
+            :value="model.name"
+          >{{ model.name }}</option>
+        </select>
+      </label>
+      <div v-else-if="backend.id === 'ollama'" class="key-row model-text-row">
         <input
           id="backend-key-ollama-model"
           name="backend-key-ollama-model"
           class="key-input"
           type="text"
-          :value="ollamaModel"
-          placeholder="model name, e.g. llama3.2:latest"
+          :value="preferredModelFor('ollama')"
+          placeholder="optional preferred installed model"
           autocomplete="off"
           spellcheck="false"
           :disabled="disabled === true"
-          @input="onOllamaModelInput"
+          @input="onModelInput('ollama', $event)"
         />
       </div>
     </details>
@@ -404,6 +431,65 @@ function keyFor(id: string): string {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0.45rem;
+}
+
+.backend-row,
+.model-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) 1fr;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+}
+
+.backend-row-label {
+  color: var(--vp-c-text-3);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.backend-use {
+  justify-self: start;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  padding: 0.18rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.backend-use--active {
+  border-color: var(--dagonizer-brand2);
+  color: var(--dagonizer-brand2);
+  background: rgba(34, 232, 255, 0.08);
+}
+
+.backend-use:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.model-select {
+  min-width: 0;
+  width: 100%;
+  padding: 0.42rem 0.55rem;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.78rem;
+}
+
+.model-select:focus { outline: none; border-color: var(--dagonizer-brand); }
+.model-select:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.model-text-row {
+  margin-top: 0.65rem;
 }
 
 .key-input {

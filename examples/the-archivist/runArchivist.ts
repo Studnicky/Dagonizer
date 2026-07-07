@@ -22,8 +22,8 @@
  *   Ollama (localhost)  →  Gemini API  →  Cerebras  →  Groq
  *                       →  Mistral     →  OpenRouter
  *
- * Recommended local setup: pull any chat model (e.g. `ollama pull llama3.2:3b`)
- * then `ollama serve`. The cascade constructs an `OllamaApiAdapter` and calls
+ * Recommended local setup: install any Ollama chat model, then `ollama serve`.
+ * The cascade constructs an `OllamaApiAdapter` and calls
  * `selectChatModel({ preferred: OLLAMA_MODEL })` to discover and set an
  * installed chat model automatically (override with `OLLAMA_MODEL` env var).
  * The cascade probe routes the run through the local daemon with no API keys
