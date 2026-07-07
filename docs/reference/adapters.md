@@ -1,4 +1,6 @@
 ---
+title: 'Adapters'
+description: 'LLM adapter reference for buffered chat, streamed token chunks, routed sinks, provider capability flags, cascades, and package export paths.'
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
@@ -6,7 +8,7 @@ seeAlso:
   - text: 'Guide: ReAct agent'
     link: '../guide/react-agent'
     description: 'live token streaming with `CallModelNode { sink }`, routing concurrent runs'
-  - text: 'Example 24: LLM adapter'
+  - text: 'Example 24: LLM Adapter'
     link: '../examples/24-llm-adapter'
     description: 'registry, cascade, and the buffered `chat()` call in a DAG node'
   - text: 'Example: ReAct agent memory'
@@ -15,6 +17,31 @@ seeAlso:
 ---
 
 # Adapters
+
+## What It Is
+
+Adapters put provider-specific LLM transports behind the shared `LlmAdapterInterface`. The same DAG node can call Anthropic, Gemini, Ollama, WebLLM, or an OpenAI-compatible backend without depending on a provider SDK.
+
+Use this page when choosing an adapter, implementing a provider package, streaming token chunks, routing concurrent model output, or composing a cascade across multiple backends.
+
+## How It Works
+
+`chat()` is the buffered call. `chatStream()` emits chunks into a sink and still resolves to the same final response shape. Registries select adapters by descriptor and capability; cascades try multiple registered adapters in order.
+
+Provider packages extend `BaseAdapter`, implement `performChat`, and optionally override `performChatStream` for real per-token streaming. Pattern nodes and agent loops depend on the contract, not on provider packages.
+
+## Diagrams, Examples, and Outputs
+
+Adapters show up in the ReAct and LLM examples rather than as standalone DAG shapes. These pages connect the contract to runnable behavior:
+
+- [Reference: Contracts](./contracts) - `LlmAdapterInterface`, `LlmClientInterface`, and every other adapter contract
+- [Guide: ReAct agent](../guide/react-agent) - live token streaming with `CallModelNode { sink }`, routing concurrent runs
+- [Example 24: LLM Adapter](../examples/24-llm-adapter) - registry, cascade, and the buffered `chat()` call in a DAG node
+- [Example: ReAct agent memory](../examples/react-agent-memory) - working example streaming live tokens through a shared sink
+
+## What It Lets You Do
+
+The adapters reference lets applications pick, implement, or compose LLM provider backends behind the shared `LlmAdapterInterface`.
 
 `@studnicky/dagonizer/adapter`
 
@@ -26,6 +53,12 @@ never on a provider SDK. Provider packages (`@studnicky/dagonizer-adapter-anthro
 `-gemini-api`, `-gemini-nano`, `-ollama`, `-web-llm`) each extend `BaseAdapter`,
 implement one abstract method (`performChat`), and optionally override one more
 (`performChatStream`) to unlock real per-token streaming.
+
+## Code Samples
+
+The code below covers adapter base classes, registries, cascades, streaming chunks, routed sinks, SSE parsing, provider capabilities, and export paths.
+
+### Import
 
 ```ts twoslash
 import {
@@ -50,7 +83,7 @@ import type { StreamSinkInterface } from '@studnicky/dagonizer/contracts';
 
 ---
 
-## `LlmAdapterInterface`
+### `LlmAdapterInterface`
 
 The contract every adapter implements — see [Reference: Contracts](./contracts#llmadapterinterface-llmclientinterface)
 for the full interface listing. Two call shapes:
@@ -73,7 +106,7 @@ down per-session state (a model download, a websocket handshake — most
 adapters no-op), and `probe()` is a fast, non-throwing availability check a
 cascade uses to skip an adapter that cannot currently serve a request.
 
-## `BaseAdapter`
+### `BaseAdapter`
 
 `BaseAdapter` is the abstract base every concrete adapter extends. It owns:
 
@@ -90,7 +123,7 @@ cascade uses to skip an adapter that cannot currently serve a request.
   dead or misbehaving sink must never fail an otherwise-valid generation. A
   healthy sink's back-pressure (an awaited, slow-resolving `push()`) is still
   honored — only a *rejection* is swallowed.
-- **`systemPrompt`** — a consumer-supplied default system message injected as
+- **`systemPrompt`** — an application-supplied default system message injected as
   the leading turn of any request that carries none of its own. Never
   overrides an explicit system message and never produces a second one.
 - **`timeoutMs`** — the per-request hard abort+timeout ceiling (`60_000` ms
@@ -125,7 +158,7 @@ class MyAdapter extends BaseAdapter {
 }
 ```
 
-## How each adapter streams
+### How each adapter streams
 
 Every adapter falls back to the buffered `performChatStream` default for any
 tool-bearing request (`request.tools.length > 0`): partial tool-call JSON is
@@ -146,7 +179,7 @@ adapter drains its provider's response body through — it decodes
 `event:`/`data:` lines into `SseFrameType` frames, joining multi-line `data:`
 payloads with `\n` per spec.
 
-## `ChatStreamChunk`
+### `ChatStreamChunk`
 
 ```ts twoslash
 import type { ChatStreamChunkType } from '@studnicky/dagonizer/adapter';
@@ -159,7 +192,7 @@ A streaming adapter yields a sequence of these; concatenating `delta` values
 in emission order reconstructs the full response text (which the resolved
 `ChatResponseType` already carries in full, independent of the sink).
 
-## Routed streaming: one shared sink, many concurrent runs
+### Routed streaming: one shared sink, many concurrent runs
 
 An adapter's `sink` argument only ever sees plain `ChatStreamChunkType`
 (`{ delta }`) values — adapters have no notion of concurrent runs or which
@@ -224,11 +257,11 @@ for the full walkthrough, and
 [the react-agent-memory example](../examples/react-agent-memory) for a
 complete working setup.
 
-## Cascades: probe-until-available
+### Cascades: probe-until-available
 
 `LlmAdapterRegistry` is a process-local map of `(provider, model)` →
 zero-arg adapter factory; the factory is invoked fresh on every `resolve()`
-call so each consumer gets its own retry state and session lifecycle.
+call so each caller gets its own retry state and session lifecycle.
 `LlmAdapterCascade` walks an ordered preference list against a registry,
 `probe()`-ing each resolved adapter in turn, and returns the first one whose
 probe resolves `true`. When every preference is exhausted it throws
@@ -253,10 +286,10 @@ const cascade = LlmAdapterCascade.create(catalogue);
 const adapter  = await cascade.select(); // probes in catalogue order
 ```
 
-See [Example 24: LLM adapter](../examples/24-llm-adapter) for a complete
+See [Example 24: LLM Adapter](../examples/24-llm-adapter) for a complete
 async-discovery walkthrough across Ollama and Groq.
 
-## API / export table
+### API / export table
 
 All exports below ship through `@studnicky/dagonizer/adapter` unless noted.
 
@@ -277,11 +310,15 @@ All exports below ship through `@studnicky/dagonizer/adapter` unless noted.
 | `LlmError` / `Classifications` / `LlmErrorReasonType` | class / const / type | Error classification (`NETWORK`, `TIMEOUT`, `QUOTA_EXHAUSTED`, `SCHEMA_VIOLATION`, `CONFIGURATION`, `MODEL_NOT_FOUND`, `NO_ADAPTER_AVAILABLE`, …). |
 | `CallModelNode` | class (`./patterns`) | Agent-loop node base: reads a request, calls `adapter.chatStream` through a routed sink, writes the response to state. |
 
-## See also
+## Details for Nerds
 
-- [Reference: Contracts](./contracts) — the full `LlmAdapterInterface` /
-  `LlmClientInterface` listing.
-- [Guide: ReAct agent](../guide/react-agent) — live token streaming and
-  routing concurrent conversations through one shared sink.
-- [Example 24: LLM adapter](../examples/24-llm-adapter) — registry, cascade,
-  and the buffered `chat()` call inside a DAG node.
+Streaming adapters still resolve to a complete `ChatResponseType`. The sink is an observation channel for incremental chunks, not an alternate return path.
+
+Tool-bearing requests fall back to buffered behavior when partial tool-call JSON would be unsafe to parse mid-stream. A sink rejection is swallowed so UI or SSE delivery failure does not fail an otherwise valid model call.
+
+## Related Concepts
+
+- [Reference: Contracts](./contracts) - `LlmAdapterInterface`, `LlmClientInterface`, and every other adapter contract
+- [Guide: ReAct agent](../guide/react-agent) - live token streaming with `CallModelNode { sink }`, routing concurrent runs
+- [Example 24: LLM Adapter](../examples/24-llm-adapter) - registry, cascade, and the buffered `chat()` call in a DAG node
+- [Example: ReAct agent memory](../examples/react-agent-memory) - working example streaming live tokens through a shared sink

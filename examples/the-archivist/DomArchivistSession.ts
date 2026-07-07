@@ -210,6 +210,7 @@ export class DomArchivistSession extends ArchivistSession {
         this.appendErrorLine('No pending HITL checkpoint found.');
         return;
       }
+      // #region checkpoint-store-restore
       const recalled = await Checkpoint.recall(this.#ckptStore, pendingKey);
       if (recalled === null) {
         this.appendErrorLine(`Checkpoint '${pendingKey}' not found in store.`);
@@ -223,6 +224,7 @@ export class DomArchivistSession extends ArchivistSession {
       this.#dom.hitlInput.value = '';
       ConversationView.pushVisitor(this.#dom.conversationEl, humanText);
       await this.resumeRun(humanText, dagName, state, cursor);
+      // #endregion checkpoint-store-restore
     } catch (err) {
       this.appendErrorLine(err instanceof Error ? err.message : String(err));
     } finally {
@@ -245,8 +247,10 @@ export class DomArchivistSession extends ArchivistSession {
     if (event.execution.parked !== null) {
       // Flow parked — persist checkpoint and show the HITL banner.
       try {
+        // #region checkpoint-store-capture
         const ckpt = await Checkpoint.capture(event.dagName, event.execution, { 'stores': { 'memory': this.store } });
         await ckpt.persist(this.#ckptStore, event.execution.parked.correlationKey);
+        // #endregion checkpoint-store-capture
         await this.#kvStore.set('hitl:pendingKey', event.execution.parked.correlationKey);
         this.#dom.hitlBanner.style.display = 'flex';
       } catch (err) {

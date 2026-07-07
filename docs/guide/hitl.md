@@ -1,10 +1,97 @@
-# HITL park-and-correlate
+---
+title: 'HITL Park-and-Correlate'
+description: 'Design human-in-the-loop flows that park with a correlation key, capture checkpoints, and resume from the parked cursor when an external decision arrives.'
+seeAlso:
+  - text: 'Example 31: HITL Park-and-Correlate'
+    link: '../examples/31-hitl'
+    description: 'Dispatcher browser demo showing execute, park, checkpoint, and resume'
+  - text: 'The Dispatcher'
+    link: '../examples/the-dispatcher'
+    description: 'in-browser runnable support escalation flow'
+  - text: 'Reference: Checkpoint'
+    link: '../reference/checkpoint'
+    description: 'checkpoint capture and restore APIs'
+---
 
-Human-in-the-loop (HITL) flows need to pause execution and wait for an external
-decision — an approval, a form submission, a webhook — before continuing. The
-Dagonizer engine provides a first-class primitive for this: **park-and-correlate**.
+<script setup lang="ts">
+import { supportDispatcherDAG } from '../.vitepress/theme/exampleDags.ts';
+</script>
 
-## Design: park-and-correlate vs. engine-suspend
+# HITL Park-and-Correlate
+
+## What It Is
+
+Human-in-the-loop flows need to pause execution, free the worker, and resume later when an external decision arrives. Dagonizer models that as park-and-correlate: a node routes to the reserved `parked` output, the result carries a correlation key and cursor, and the host persists a checkpoint until a webhook, operator action, or approval response arrives.
+
+This is not engine suspension. It is a controlled early exit with enough state to resume the same DAG from the parked placement.
+
+## How It Works
+
+A parking node writes correlation metadata and routes to the reserved parked output. The dispatcher returns an `ExecutionResult` with `parked` details and a checkpointable cursor. The caller persists the checkpoint, waits for the external decision, restores state, writes the response, and calls `resume` at the parked cursor.
+
+### Full lifecycle
+
+```ts
+// 1. Initial execute — parks at 'park-for-operator'
+const firstResult = await dispatcher.execute('support-dispatcher', initialState);
+// firstResult.state.lifecycle.variant === 'awaiting-input'
+// firstResult.parked.correlationKey  starts with 'escalation:'
+// firstResult.parked.cursor          === 'park-for-operator'
+
+// 2. Capture checkpoint (persist: DB, queue, etc.)
+const ckpt = await Checkpoint.capture('support-dispatcher', firstResult);
+await db.save(firstResult.parked.correlationKey, ckpt.toJson());
+
+// --- Operator writes the response out of band ---
+
+// 3. On webhook/callback: restore and apply decision
+const raw = await db.load(correlationKey);
+const recalled = Checkpoint.load(JSON.parse(raw));
+const { state, dagName, cursor } = recalled.restoreState(
+  CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap)),
+);
+state.response = 'I can help with that order.'; // inject the operator response
+
+// 4. Resume — re-enters at the parked placement
+const finalResult = await dispatcher.resume(dagName, state, cursor);
+// finalResult.state.lifecycle.variant === 'completed'
+// finalResult.parked                  === null
+```
+
+### Lifecycle state
+
+The `'awaiting-input'` lifecycle variant is **not terminal**. `isTerminal()`
+returns `false` for it; `isParked()` returns `true`. The scheduler resets
+the lifecycle on `resume()` before calling `markRunning()`, exactly as it does
+for crash-recovery resumes from terminal states.
+
+The `correlationKey` field on the lifecycle state (`state.lifecycle.correlationKey`)
+reflects the key stored in the `awaiting-input` state object. It is `null` on
+all other variants.
+
+## Diagrams, Examples, and Outputs
+
+The Dispatcher demo contains the support escalation flow that parks for an operator response, persists a checkpoint, and resumes once the simulated operator decision is written back into state.
+
+<DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher HITL DAG" aria-label="Support dispatcher HITL JSON-LD DAG beside Mermaid generated from it." />
+
+- [Example 31: HITL Park-and-Correlate](../examples/31-hitl) - Dispatcher browser demo showing execute, park, checkpoint, and resume
+- [The Dispatcher](../examples/the-dispatcher) - in-browser runnable support escalation flow
+- [Reference: Checkpoint](../reference/checkpoint) - checkpoint capture and restore APIs
+
+## What It Lets You Do
+
+### Use when
+
+Use HITL park-and-correlate when a DAG must wait for an external actor: an operator, reviewer, customer, approval system, webhook, or compliance gate. The engine should free the worker, return a parked result, and resume later from a correlation key and cursor.
+
+## Code Samples
+
+The snippets below show the parking node, the support dispatcher topology, and the checkpoint/resume lifecycle around a parked cursor.
+
+## Details for Nerds
+
+### Design: park-and-correlate vs. engine-suspend
 
 The primitive does **not** suspend the engine. Node processes, workers, and
 containers remain free; the flow simply terminates early with a well-defined
@@ -23,65 +110,28 @@ The three artifacts the engine surfaces on a parked result:
 | `result.cursor` | `string \| null` | Same as `parked.cursor`; present for `Checkpoint.capture()` |
 | `result.state.lifecycle.variant` | `'awaiting-input'` | Non-terminal lifecycle variant; the run can resume |
 
-## Authoring a parking node
+### Authoring a parking node
 
 A node parks by:
 
 1. Writing a `correlationKey` to state metadata before routing.
 2. Routing to the reserved `'parked'` output.
 
-The engine intercepts the `'parked'` output before the placement-level routing
-map is consulted, so the DAG does **not** need a `'parked' → nextNode` entry.
+The engine intercepts the `'parked'` output before normal downstream execution
+continues. [The Dispatcher](../examples/the-dispatcher) is the canonical runnable
+example: `ParkForOperatorNode` parks the support flow when no operator response
+exists, then routes `'ready'` after the restored state contains the human reply.
 
-```ts
-class ApproveNode extends MonadicNode<MyState, 'parked' | 'approved' | 'rejected'> {
-  readonly name = 'approve';
-  readonly outputs: readonly ('parked' | 'approved' | 'rejected')[] = ['parked', 'approved', 'rejected'];
+<<< @/../examples/the-dispatcher/nodes/ParkForOperatorNode.ts
 
-  override get outputSchema(): Record<'parked' | 'approved' | 'rejected', SchemaObjectType> {
-    return MonadicNode.permissiveSchema(this.outputs);
-  }
+The DAG placement still declares the escalation branch as normal topology. The
+important part is that the parking node's output union includes `'parked'`; when
+that output appears, the engine surfaces `result.parked` with the correlation key
+and cursor.
 
-  async execute(batch: Batch<MyState>) {
-    const parked: ItemType<MyState>[] = [];
-    const approved: ItemType<MyState>[] = [];
-    const rejected: ItemType<MyState>[] = [];
+<<< @/../examples/the-dispatcher/dag.ts#dispatcher-bundle
 
-    for (const item of batch) {
-      if (item.state.decision === 'approved') {
-        approved.push(item);
-      } else if (item.state.decision === 'rejected') {
-        rejected.push(item);
-      } else {
-        item.state.setMetadata('correlationKey', `approval:${item.state.requestId}`);
-        parked.push(item);
-      }
-    }
-
-    return RoutedBatch.create([
-      ['parked', Batch.from(parked)],
-      ['approved', Batch.from(approved)],
-      ['rejected', Batch.from(rejected)],
-    ]);
-  }
-}
-```
-
-The DAG placement lists `'parked'` in the node's `outputs` array (declared on the
-class) but does NOT list it in the placement's `outputs` routing map:
-
-```ts
-{
-  '@id':     'urn:noocodex:dag:my-flow/node/approve',
-  '@type':   'SingleNode',
-  'name':    'approve',
-  'node':    'approve',
-  // 'parked' is intentionally absent — the engine intercepts it.
-  'outputs': { 'approved': 'process', 'rejected': 'rejected-end' },
-}
-```
-
-## The ParkedType entity
+### The ParkedType entity
 
 ```ts
 type ParkedType = {
@@ -94,47 +144,7 @@ type ParkedType = {
 `result.parked` is `null` when the flow ran to a terminal without parking.
 Check `result.parked !== null` before reading its fields.
 
-## Full lifecycle
-
-```ts
-// 1. Initial execute — parks at 'approve'
-const firstResult = await dispatcher.execute('my-flow', initialState);
-// firstResult.state.lifecycle.variant === 'awaiting-input'
-// firstResult.parked.correlationKey  === 'approval:req-001'
-// firstResult.parked.cursor          === 'approve'
-
-// 2. Capture checkpoint (persist: DB, queue, etc.)
-const ckpt = await Checkpoint.capture('my-flow', firstResult);
-await db.save(firstResult.parked.correlationKey, ckpt.toJson());
-
-// --- Human makes a decision (out of band) ---
-
-// 3. On webhook/callback: restore and apply decision
-const raw = await db.load(correlationKey);
-const recalled = Checkpoint.load(JSON.parse(raw));
-const { state, dagName, cursor } = recalled.restoreState(
-  CheckpointRestoreAdapter.wrap((snap) => MyState.restore(snap)),
-);
-state.decision = 'approved'; // inject the human decision
-
-// 4. Resume — re-enters at the parked placement
-const finalResult = await dispatcher.resume(dagName, state, cursor);
-// finalResult.state.lifecycle.variant === 'completed'
-// finalResult.parked                  === null
-```
-
-## Lifecycle state
-
-The `'awaiting-input'` lifecycle variant is **not terminal**. `isTerminal()`
-returns `false` for it; `isParked()` returns `true`. The scheduler resets
-the lifecycle on `resume()` before calling `markRunning()`, exactly as it does
-for crash-recovery resumes from terminal states.
-
-The `correlationKey` field on the lifecycle state (`state.lifecycle.correlationKey`)
-reflects the key stored in the `awaiting-input` state object. It is `null` on
-all other variants.
-
-## NodeStateBase helpers
+### NodeStateBase helpers
 
 `NodeStateBase` exposes two conveniences:
 
@@ -151,8 +161,9 @@ The engine calls `state.park(correlationKey)` automatically when it detects a
 `'parked'` output, so nodes do not need to call it manually — just route to
 `'parked'` and write the key to metadata.
 
-## Example
+## Related Concepts
 
-See [Example 31: HITL park-and-correlate](/examples/31-hitl) for a complete
-runnable demonstration including a two-node approval flow, checkpoint capture,
-simulated human decision, and resume.
+- [Example 31: HITL Park-and-Correlate](../examples/31-hitl) - Dispatcher browser demo showing execute, park, checkpoint, and resume
+- [The Dispatcher](../examples/the-dispatcher) - in-browser runnable support escalation flow
+- [Reference: Checkpoint](../reference/checkpoint) - checkpoint capture and restore APIs
+- [Reference: Lifecycle](../reference/lifecycle) - lifecycle states including `awaiting-input`

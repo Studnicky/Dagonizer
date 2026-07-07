@@ -17,7 +17,21 @@ nextSteps:
     description: 'JSON-LD DAG authoring'
 ---
 
+<script setup lang="ts">
+import { dag as builderDag } from '../../examples/dags/02-builder.topology.ts';
+</script>
+
 # Authoring DAGs
+
+## What It Is
+
+Dagonizer has one workflow artifact: a schema-validated JSON-LD `DAG` document. You can create it with `DAGBuilder`, load it from serialized JSON-LD, or receive it from a plugin bundle. After that, it is the same object: the dispatcher registers it, the visualizers render it, and validators check it.
+
+That makes authoring a topology decision, not a framework fork. Choose the most convenient source form for your application, then let everything converge on the canonical DAG document.
+
+## How It Works
+
+Authoring produces one object: a schema-valid `DAG`. `DAGBuilder` is the typed factory for that object; JSON loading is the ingest path for the same object; plugin registration installs the same object into the registry. The dispatcher does not care which authoring path produced it.
 
 The `DAG` type is the API. A `DAG` is a JSON-LD 1.1 document with `@context`, `@id`, `@type`, and a `nodes` array of placement objects. The dispatcher consumes it; the schema validates it; RDF tools read it natively. Code authoring uses `DAGBuilder`; persistence and transport use the same JSON-LD document.
 
@@ -38,7 +52,57 @@ The `DAG` type is the API. A `DAG` is a JSON-LD 1.1 document with `@context`, `@
               └────────────────────┘
 ```
 
-## DAGBuilder Is The Code Factory
+## Diagrams, Examples, and Outputs
+
+Example 02 builds a small `chat` DAG in TypeScript and registers the resulting JSON-LD object. The code and diagram below are generated from the same runnable source file:
+
+<<< @/../examples/dags/02-builder.topology.ts#builder
+
+<DagJsonMermaid :dag="builderDag" title="Example 02 builder DAG" aria-label="Example 02 JSON-LD DAG beside Mermaid generated from it." />
+
+Use the runnable pages for execution output:
+
+- [Example 02: DAGBuilder](../examples/02-builder) shows the builder source, JSON-LD DAG, Mermaid view, and run output.
+- [Example 03: Tool Schemas](../examples/03-schema) loads a DAG from a JSON-LD string and round-trips it through validation.
+- [The Archivist](../examples/the-archivist) is a full browser demo whose parent DAG and embedded DAGs are authored with `DAGBuilder`.
+- [The Cartographer](../examples/the-cartographer) shows DAG authoring across worker-bound scatter, embedded compliance checks, and pipeline delivery flows.
+
+## What It Lets You Do
+
+### Use when
+
+Use this guide when deciding whether to author a DAG in TypeScript with `DAGBuilder`, load a serialized JSON-LD document, or package a child flow for embedding or plugin registration. The application decision is not "builder versus JSON-LD runtime"; both produce the same canonical DAG document.
+
+## Code Samples
+
+### Error-routing contract
+
+Nodes never throw past the node boundary. An error condition is a **flow decision**: the node returns the failed items on an `'error'` routed sub-batch and the DAG routes that output to a recovery node or an error terminal. The engine does not intercept throws and reroute them.
+
+This means every node that can fail must:
+1. Declare `'error'` (or a domain-specific name like `'salvage'`) as one of its output ports.
+2. Return a routed sub-batch on `'error'` when the failure condition is met.
+3. Have that output wired to a downstream placement in the DAG.
+
+The Cartographer demonstrates this contract in runnable code. `route-redaction`
+does not throw when redaction is unnecessary; it routes either to
+`needs-redaction` or `skip-redaction` and lets the DAG decide which path runs:
+
+<<< @/../examples/the-cartographer/nodes/routeRedaction.ts#route-redaction-node
+
+The reusable `gdpr-compliance` sub-DAG makes terminal outcome part of topology:
+`compliant` is a completed terminal and `violation` is a failed terminal. Parent
+placements route the embedded DAG's `success` and `error` outputs explicitly:
+
+<<< @/../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts#gdpr-compliance-dag
+
+<<< @/../examples/the-cartographer/dag.ts#event-pipeline-typed-dag
+
+If a node truly throws (an unexpected bug, not a handled error condition), the exception propagates as an engine-level failure and the lifecycle transitions to `failed`. This is distinct from routing to an `'error'` port, which is a deliberate flow decision the DAG topology controls.
+
+## Details for Nerds
+
+### DAGBuilder Is The Code Factory
 
 DAGBuilder is the factory for DAG documents in TypeScript. ETL pipelines, transformation chains, agent loops, embedded DAGs, scatter bodies, and fixed sequences use the same fluent surface.
 
@@ -55,13 +119,13 @@ Use DAGBuilder because:
 - The TypeScript compiler verifies every output is wired.
 - `.build()` returns the canonical JSON-LD `DAG` document the dispatcher consumes.
 
-## JSON-LD Documents
+### JSON-LD Documents
 
 <<< @/../examples/dags/03-schema.ts#load
 
 Serialized DAGs are JSON-LD documents. Load them with `DAGDocument.load(json)` at process boundaries and persist them with `DAGDocument.serialize(dag)`. That is transport and storage for the same DAG object, not a second framework abstraction.
 
-## Node implementations sit beside authoring
+### Node implementations sit beside authoring
 
 Authoring decides topology; node implementations carry the work. `NodeInterface<TState, TOutput>` is the contract every node satisfies. The classify-intent node from the Archivist demo declares a seven-value `TOutput` union and routes via `switch`:
 
@@ -69,7 +133,7 @@ Authoring decides topology; node implementations carry the work. `NodeInterface<
 
 The same `classifyIntent` reference is registered with the dispatcher and referenced by name from a placement in the DAG. The authoring surface decides where in the topology this node sits; the node implementation decides what it does and which output it returns.
 
-## Capability Matrix
+### Capability Matrix
 
 DAGBuilder emits every placement shape the schema allows.
 
@@ -80,7 +144,7 @@ DAGBuilder emits every placement shape the schema allows.
 | Gather strategy (`map` / `append` / `partition` / `custom` / `collect` / `discard`) | yes via `options.gather` |
 | Outcome reducer (`aggregate` / `all-success` / `any-success` / custom) | yes via `options.reducer` |
 | Scatter body variant (`node`, `dag`, or `dagFrom`) | yes via `body` argument |
-| `EmbeddedDAGNode` placement | yes via `.embeddedDAG()` |
+| `EmbeddedDAGNode` placement | yes via `.embed()` |
 | `TerminalNode` placement | yes via `.terminal()` |
 | `inputs` (parent -> clone seed) | yes via `options.inputs` |
 | Multi-port routing | yes via `routes` map |
@@ -90,7 +154,7 @@ DAGBuilder emits every placement shape the schema allows.
 
 A node that recursively dispatches a sub-DAG via `services.dispatcher.execute(name, state.clone())` is a trampoline; it lives in node logic while DAGBuilder owns the topology.
 
-## Terminal placements
+### Terminal placements
 
 Every DAG branch must end at a named `TerminalNode` placement. Declare one with `.terminal(name, options?)`:
 
@@ -106,63 +170,17 @@ An `EmbeddedDAGNode` placement targets named terminals directly. This is the idi
 
 <<< @/../examples/dags/09-terminals.ts#embedded-terminals
 
-See [DAGBuilder, `.terminal()`](./builder#terminal-name-outcome) and [Phase 09, Terminal placements](../examples/09-terminals) for runnable examples.
+See [DAGBuilder, `.terminal()`](./builder#terminal-name-outcome) and [Example 09: Terminal Nodes](../examples/09-terminals) for runnable examples.
 
-## Error-routing contract
-
-Nodes never throw past the node boundary. An error condition is a **flow decision**: the node returns the failed items on an `'error'` routed sub-batch and the DAG routes that output to a recovery node or an error terminal. The engine does not intercept throws and reroute them.
-
-This means every node that can fail must:
-1. Declare `'error'` (or a domain-specific name like `'salvage'`) as one of its output ports.
-2. Return a routed sub-batch on `'error'` when the failure condition is met.
-3. Have that output wired to a downstream placement in the DAG.
-
-```ts
-// Correct: declare the error port, return it on failure
-class FetchNode extends MonadicNode<MyState, 'success' | 'error'> {
-  readonly name = 'fetch';
-  readonly outputs: readonly ('success' | 'error')[] = ['success', 'error'];
-
-  override get outputSchema(): Record<'success' | 'error', SchemaObjectType> {
-    return MonadicNode.permissiveSchema(this.outputs);
-  }
-
-  async execute(batch: Batch<MyState>, context: NodeContextType): Promise<RoutedBatchType<'success' | 'error', MyState>> {
-    const succeeded: ItemType<MyState>[] = [];
-    const failed: ItemType<MyState>[] = [];
-    for (const item of batch) {
-      try {
-        item.state.result = await fetchData(context.signal);
-        succeeded.push(item);
-      } catch (err) {
-        item.state.collectError(NodeError.create('fetchFailed', String(err), 'fetch', false, new Date().toISOString()));
-        failed.push(item);
-      }
-    }
-    return RoutedBatch.create([
-      ['success', Batch.from(succeeded)],
-      ['error', Batch.from(failed)],
-    ]);
-  }
-}
-
-// Wire the error output in the DAG
-const dag = new DAGBuilder('pipeline', '1.0')
-  .node('fetch', fetchNode, { success: 'process', error: 'end-fail' })
-  .node('process', processNode, { success: 'end-ok' })
-  .terminal('end-ok')
-  .terminal('end-fail', { outcome: 'failed' })
-  .build();
-```
-
-If a node truly throws (an unexpected bug, not a handled error condition), the exception propagates as an engine-level failure and the lifecycle transitions to `failed`. This is distinct from routing to an `'error'` port, which is a deliberate flow decision the DAG topology controls.
-
-## Loading JSON-LD
+### Loading JSON-LD
 
 Use `DAGDocument.load(jsonString)` to validate a serialized DAG at the ingest boundary; the engine refuses anything that does not match `DAGSchema`. See [JSON-LD export and import](./json-ld) for details.
 
-## Related reference
+## Related Concepts
 
-- [Phase 02, DAGBuilder demo](../examples/02-builder)
+- [DAGBuilder](./builder) - chainable authoring API for deterministic workflows
+- [JSON-LD export and import](./json-ld) - DAGDocument.serialize and DAGDocument.load
+- [Concepts](../concepts) - the DAG type itself and its placement vocabulary
+- [Example 02: DAGBuilder](../examples/02-builder)
 - [Reference, Dagonizer](../reference/dagonizer)
 - [Reference, Entities](../reference/entities)

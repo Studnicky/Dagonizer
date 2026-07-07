@@ -1,8 +1,8 @@
 ---
-title: 'Example 17: Scatter async source'
+title: 'Example 17: Async Scatter Source'
 description: 'ScatterNode over an AsyncIterable source with bounded-concurrency backpressure. The engine normalises Array, Iterable, and AsyncIterable to the same pull interface; the pull loop only calls iterator.next() when a worker slot is free.'
 seeAlso:
-  - text: 'Phase 04: Scatter scout'
+  - text: 'Example 04: Scatter Scout'
     link: './04-scatter'
     description: 'scatter mechanics: source, body, gather, reduce'
   - text: 'Example 16: Scatter resume'
@@ -13,25 +13,65 @@ seeAlso:
     description: 'incremental gather: fold results as clones complete'
 ---
 
-# Example 17: Scatter async source
+<script setup lang="ts">
+import { cartographerDAG } from '../../examples/the-cartographer/dag.ts';
+</script>
+
+# Example 17: Async Scatter Source
+
+## What It Is
+
+Async Scatter Source lets a DAG process input that arrives over time instead of forcing the application to build a complete array before execution starts. The Cartographer uses this for generated event streams: the scatter pulls from an `AsyncIterable` only when worker capacity is available.
+
+The runtime normalises `Array`, `Iterable`, and `AsyncIterable` sources to one pull interface. Your DAG still declares a normal scatter; the source value determines whether items are already available or produced lazily.
+
+## How It Works
+
+The scatter executor normalises arrays, iterables, and async iterables into one pull interface. It calls `iterator.next()` only when the configured concurrency pool has capacity. That means a producer cannot outrun the slowest workers by more than the pool window, and the same gather/reducer contract applies after each clone completes.
+
+For application authors, the important knob is still scatter concurrency. With `concurrency: 2`, the pull loop keeps at most two body executions in flight and asks the async source for the next item only when one finishes.
+
+## Diagrams, Examples, and Outputs
+
+### DAG registration and diagram
+
+The DAG shape is standard scatter; the source path resolves to an `AsyncIterable` at runtime. [The Cartographer](./the-cartographer) is the in-browser runnable for this principle: `seed` can set `state.sources` to a generated async event stream, and `process-stream` pulls only as worker capacity opens.
+
+<DagJsonMermaid :dag="cartographerDAG" title="Cartographer async-source scatter DAG" aria-label="Cartographer JSON-LD DAG beside Mermaid generated from it." />
 
 The scatter `source` field accepts `Array`, `Iterable`, or `AsyncIterable`. The engine normalises all three to the same `AsyncIterator` interface internally. The pull loop only calls `iterator.next()` when a worker slot is free — giving true backpressure: the generator yields no more than `concurrency` items ahead of the slowest worker.
 
-This example sets `state.stream` to an async generator and uses `concurrency=2`. An event log records every "pull" (generator yields) and "process" (worker runs) event in call order. The interleaving proves that items 2+ are only pulled after worker slots free — the generator is held back by the pool.
+The browser runner sets `state.useStreamingSource = true`; `seedEvents` then produces the source stream and the scatter consumes it at bounded concurrency.
 
-## Code
+### Run
 
-<<< @/../examples/17-scatter-async-source.ts
+```bash
+npm run docs:dev
+```
 
-## What it demonstrates
+## What It Lets You Do
+
+Async scatter sources let applications process streams without materialising the full input collection first. Use this when source data arrives from a generator, file cursor, network feed, channel, or producer DAG and the host needs backpressure.
+
+The benefit is memory and pacing control. A large import, telemetry stream, or model-produced candidate stream can feed the same scatter/gather machinery as a small array without changing the downstream nodes.
+
+## Code Samples
+
+`seedEvents` decides whether the Cartographer state receives a materialised collection or a streaming source. The DAG snippet shows that the scatter placement does not need a separate streaming-specific node type.
+
+<<< @/../examples/the-cartographer/nodes/seedEvents.ts#seed-events-node
+
+<<< @/../examples/the-cartographer/dag.ts#cartographer-dag
+
+## Details for Nerds
 
 - **`AsyncIterable` as scatter source.** Any async generator or async-iterable value is a valid scatter source. The engine calls `.next()` lazily on each tick of the concurrency pool.
 - **Bounded-concurrency backpressure.** With `concurrency=2`, at most two clones run simultaneously. The pull loop does not call `iterator.next()` until a slot frees, capping how far ahead the generator runs. Array sources follow the same discipline — "eagerly available" only affects when data is produced, not the concurrency semantics.
 - **Resumability note.** An `AsyncIterable` on state is not captured by `Checkpoint.capture()` — generators are not JSON-serialisable. After an abort with an async source, the resume call must re-provide the generator at the continuation position. Acked items are skipped via the `ackedResults` index (no re-execution). For fully durable sources, prefer an array source and rely on checkpoint's acked-index tracking.
-- **Event log inspection.** The pull/process interleaving in the output confirms that `iterator.next()` is only called when a concurrency slot opens.
+- **Runnable source.** The Cartographer **Stream** panel is fed by the same async source path as the DAG.
 
-## Run
+## Related Concepts
 
-```bash
-npx tsx examples/17-scatter-async-source.ts
-```
+- [Example 04: Scatter Scout](./04-scatter) - scatter mechanics: source, body, gather, reduce
+- [Example 16: Scatter resume](./16-scatter-resume) - durable inbox: resumability across abort with async sources
+- [Example 15: Incremental gather](./15-incremental-gather) - incremental gather: fold results as clones complete

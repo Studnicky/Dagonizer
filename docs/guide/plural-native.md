@@ -1,11 +1,60 @@
-# Plural-native execution
+---
+title: 'Plural-Native Execution'
+description: 'Batch-native execution model for Dagonizer: nodes partition batches by output port, scatters fan out work, and reservoirs release keyed micro-batches.'
+seeAlso:
+  - text: 'Migrating to the batch contract'
+    link: './migrating-to-batch'
+    description: 'upgrade checklist for single-item node code'
+  - text: 'Reservoir'
+    link: './reservoir'
+    description: 'keyed input batching for scatter sources'
+  - text: 'Reference: Core'
+    link: '../reference/core'
+    description: 'Batch, RoutedBatch, gather strategy, and outcome reducer primitives'
+---
 
-The fundamental unit of work flowing through a DAG is a **batch**. A single item
-is a batch of one; the engine never processes a scalar specially. This page is
-the mental model behind the executor — read it once and the rest of the API falls
-into place.
+<script setup lang="ts">
+import { reservoirDag as pluralNativeDag } from '../../examples/dags/plural-native.ts';
+</script>
 
-## The batch contract
+# Plural-Native Execution
+
+## What It Is
+
+Dagonizer moves work through a DAG as batches. A single item is just a batch of one; branching means partitioning a batch by output port; joins mean merging pending batches at the same placement. Scatter, gather, retry, checkpoint, and reservoir behavior all build on that one contract.
+
+This page is the mental model for execution. Once you understand that every node receives `Batch<TState>` and returns routed sub-batches, the rest of the engine stops looking like special cases.
+
+## How It Works
+
+Every node receives a `Batch<TState>` and returns routed batches partitioned by output. A single item is represented as a batch of one. Scatter clones, reservoir batches, gather folds, checkpoint progress, and retry semantics all build on that plural-native contract.
+
+The work-set scheduler keeps a `Map<placement, Batch>`. It fires the lowest-rank placement with pending items, merges returned sub-batches into downstream placements, and repeats until the graph drains or the lifecycle exits. A size-1 run follows the same path as a size-N run.
+
+## Diagrams, Examples, and Outputs
+
+The focused runnable module exports a reservoir-backed scatter DAG. The JSON-LD shows the `ScatterNode` placement and reservoir policy; the Mermaid view shows that the topology is still a simple scatter-to-terminal graph.
+
+<<< @/../examples/dags/plural-native.ts#reservoir-scatter
+
+<DagJsonMermaid :dag="pluralNativeDag" title="plural-native reservoir scatter DAG" aria-label="Plural-native reservoir scatter JSON-LD DAG beside Mermaid generated from it." />
+
+For larger runnable contexts:
+
+- [Scatter Extensions](../examples/scatter-extensions) shows batch-native nodes, custom gather, direct node calls, and reservoir authoring.
+- [Example 14: Gather Strategies](../examples/14-gather-strategies) shows gather behavior against real Cartographer DAGs.
+- [Example 16: Scatter Resume](../examples/16-scatter-resume) shows durable progress over scatter batches.
+- [Reservoir](./reservoir) explains keyed input batching for scatter sources.
+
+## What It Lets You Do
+
+### Use when
+
+Use this guide when reasoning about how Dagonizer executes batches, scatter worksets, and reservoir releases. The mental model is useful before writing custom nodes, gather strategies, outcome reducers, or migration code.
+
+## Code Samples
+
+### The batch contract
 
 A node consumes a `Batch<TState>` and returns a `RoutedBatchType<TOutput>`:
 
@@ -21,7 +70,9 @@ node's items **partitioned** across its output ports.
 - micro-batching — a node that emits batches instead of items;
 - the [reservoir](#the-reservoir) — a node that partitions *over time*, buffering until a threshold.
 
-## The node taxonomy
+## Details for Nerds
+
+### The node taxonomy
 
 Every node descends from one root. You pick the local implementation shape by
 how you want to write the work, not by what the engine does:
@@ -34,27 +85,11 @@ how you want to write the work, not by what the engine does:
 `MonadicNode` is the minimum viable node — it supplies `timeout` / `validate` / `destroy` defaults and leaves `name`, `outputs`, `outputSchema`, and `execute` abstract. Concrete nodes must implement all four. `outputSchema` is an abstract getter (`abstract get outputSchema(): Record<TOutput, SchemaObjectType>`) that declares a per-port JSON Schema fragment describing the state delta the node writes when routing to that port; the compiler enforces its presence on every subclass.
 A single item is still a batch of one; per-item routing is a local loop that builds a `RoutedBatchType`.
 
-```ts
-class PerItemNode extends MonadicNode<MyState, 'accepted' | 'rejected'> {
-  readonly name = 'per-item';
-  readonly outputs: readonly ('accepted' | 'rejected')[] = ['accepted', 'rejected'];
+The Cartographer's `RouteGeoNode` is the runnable example: it receives a whole batch, routes each item to `has-geo` or `needs-geo`, and returns a routed batch map for the scheduler to merge into downstream placements.
 
-  override get outputSchema(): Record<'accepted' | 'rejected', SchemaObjectType> {
-    return MonadicNode.permissiveSchema(this.outputs);
-  }
+<<< @/../examples/the-cartographer/nodes/routeGeo.ts#route-geo-node
 
-  async execute(batch: Batch<MyState>): Promise<RoutedBatchType<'accepted' | 'rejected', MyState>> {
-    const accepted = batch.filter((state) => state.ready);
-    const rejected = batch.filter((state) => !state.ready);
-    return RoutedBatch.create([
-      ['accepted', accepted],
-      ['rejected', rejected],
-    ]);
-  }
-}
-```
-
-## How a DAG processes a batch: the work-set walk
+### How a DAG processes a batch: the work-set walk
 
 A DAG is substitutable with a node — given a `Batch<N>`, it processes it natively.
 The executor is a **work-set scheduler**:
@@ -78,7 +113,7 @@ self) placement; those items re-enter that node's pending work and re-fire on a
 later pass, re-batched with whatever else is there. The per-item retry budget
 lives on state (`withinRetryBudget`) and bounds the loop.
 
-## The reservoir
+### The reservoir
 
 A scatter's source can be batched by a **reservoir** — its keyed input-batching
 policy. Instead of dispatching one item at a time, it buffers items by a key and
@@ -94,7 +129,7 @@ The body node then runs once over each released batch, and the gather folds the
 whole batch in a single `reduce`. With no `reservoir` config the dispatch unit is
 batch-size-1 — exactly the default behavior. See the [reservoir guide](./reservoir).
 
-## Checkpoint and resume
+### Checkpoint and Resume
 
 In-flight state is fully serialized. For a multi-item run, the work set
 (per-node item-state snapshots) is captured into state metadata on interruption
@@ -102,8 +137,17 @@ and rebuilt exactly on resume. A scatter's durable inbox composes with it. Resum
 is byte-equivalent to an uninterrupted run; a size-1 run uses the cursor model
 unchanged. See [checkpoint and resume](./checkpoint).
 
-## Migrating existing nodes
+### Migrating existing nodes
 
 Upgrading from the single-item contract? See [Migrating to the batch
 contract](./migrating-to-batch) — most leaf nodes change a base class and a method
 name, nothing more.
+
+## Related Concepts
+
+- [Migrating to the batch contract](./migrating-to-batch) - upgrade checklist for single-item node code
+- [Reservoir](./reservoir) - keyed input batching for scatter sources
+- [Reference: Core](../reference/core) - Batch, RoutedBatch, gather strategy, and outcome reducer primitives
+- [Example 04: Scatter Scout](../examples/04-scatter) shows fan-out over worksets.
+- [Example 14: Gather Strategies](../examples/14-gather-strategies) shows parent-state folds.
+- [Example 16: Scatter Resume](../examples/16-scatter-resume) shows durable progress over scatter batches.

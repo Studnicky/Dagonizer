@@ -1,12 +1,12 @@
 ---
-title: 'Phase 03: Tool schemas'
+title: 'Example 03: Tool Schemas'
 description: 'Tool schema design in The Archivist: JSON Schema 2020-12 input schemas on SubjectSearchTool and CanonicalId cross-source deduplication. Shape-only examples prevent LLM verbatim echo.'
 seeAlso:
   - text: 'Running domain: The Archivist'
     link: './the-archivist'
   - text: 'Schema and JSON loading guide'
     link: '../guide/schema'
-  - text: 'Phase 02: DAGBuilder'
+  - text: 'Example 02: DAGBuilder'
     link: './02-builder'
     description: 'the DAG topology the tools feed into'
   - text: 'Reference: Validation, `Validator.dag`'
@@ -19,28 +19,63 @@ seeAlso:
 import { BookSearchScatterDAG } from '../.vitepress/theme/exampleDags.ts';
 </script>
 
-# Phase 03: Tool schemas
+# Example 03: Tool Schemas
 
-[The Archivist](./the-archivist) exposes its capabilities to the LLM as typed tools with JSON Schema 2020-12 `inputSchema` definitions. `decideTools` hands these schemas to the LLM and asks it to produce a `toolPlan`, a list of `{ name, arguments }` calls the scouts then execute. The schema design principles used here apply to any Dagonizer tool.
+## What It Is
 
-<DagGraph :dag="BookSearchScatterDAG" aria-label="The book-search-scatter DAG: decide-tools feeds four scouts and ranks the merged candidates." />
+Example 03 is about the contract between a model-facing tool definition and the DAG that actually executes work. The Archivist lets a model choose book-search tools, but JSON Schema describes the allowed input shape and Dagonizer still owns validation, routing, retries, and merge behavior.
 
-## Code
+The page also covers a small but painful detail: schema examples can leak into model output. The tool definitions use shape-only placeholders so a model learns the structure without copying fake titles or identifiers into a visitor-facing answer.
 
-### SubjectSearchTool: input schema
+## How It Works
+
+The model sees tool names, descriptions, and JSON Schema input shapes. It can propose `{ name, arguments }` calls, but it does not get arbitrary access to application code. The DAG receives the selected calls, validates their arguments, builds concrete worksets, and sends those worksets through registered nodes and sub-DAGs.
+
+The schemas describe input contracts only. The dispatcher still controls which node runs, how outputs merge, and which terminal route the flow takes. This keeps the model in the planning lane and keeps execution inside the graph.
+
+## Diagrams, Examples, and Outputs
+
+The diagram is the `book-search-scatter` DAG from the Archivist. Tool planning happens before this sub-DAG; this graph shows what the application does after it turns a model plan into concrete search work.
+
+### DAG registration and diagram
+
+[The Archivist](./the-archivist) exposes its book-search capabilities to the LLM as typed tools with JSON Schema 2020-12 `inputSchema` definitions. `decideTools` creates a `toolPlan`; the `book-search-scatter` DAG turns that plan into concrete scout work.
+
+<DagJsonMermaid :dag="BookSearchScatterDAG" title="book-search-scatter" aria-label="The book-search-scatter JSON-LD DAG beside Mermaid generated from it." />
+
+### Run
+
+```bash
+npm run docs:dev
+```
+
+## What It Lets You Do
+
+Tool schemas let applications expose useful model-callable capabilities without giving the model arbitrary application access. The model can choose a tool and fill an argument object; the DAG still decides validation, fan-out, retry, dedupe, ranking, and response composition.
+
+## Code Samples
+
+These snippets are the model/tool boundary. The tool schema tells the model what shape to produce; the canonical ID helper shows how the application normalizes results after tool execution.
+
+### Code
+
+#### SubjectSearchTool: input schema
 
 The `#tool-schema` region covers the `definition` property, the tool name, description, and `inputSchema`. The `examples` fields are intentionally generic placeholders, not real titles or ISBNs. Some models quote schema examples verbatim into responses; shape-only examples prevent that:
 
 <<< @/../packages/dagonizer-tool-openlibrary/src/SubjectSearchTool.ts#tool-schema
 
-### CanonicalId: cross-source deduplication
+#### CanonicalId: cross-source deduplication
 
 Every tool produces `Candidate[]` with a `book.isbn` field set by `CanonicalId.pick`. The same work indexed by OpenLibrary key, Google Books volumeId, and Wikipedia title still deduplicates because `CanonicalId` normalises all three to one stable identifier:
 
 <<< @/../packages/dagonizer-book-entities/src/CanonicalId.ts
 
-## What it demonstrates
+## Details for Nerds
 
+The tool boundary is a schema boundary, not a trust boundary by itself. You still validate arguments before execution, normalize identifiers across providers, and merge duplicate candidates by canonical ID. The schema narrows what the model can ask for; the DAG decides what actually happens.
+
+### What it demonstrates
 - **`additionalProperties: true`.** The schema lets the LLM pass extra OpenLibrary parameters (`lang`, `first_publish_year`) without a schema change. Strict mode on input validation would reject them; `additionalProperties: true` allows pass-through.
 - **Shape-only `examples`.** `'<subject-or-theme>'`, `'<plot-motif>'` are descriptive placeholders. Never use real data in `examples` fields when the LLM will see the schema; it may copy them back verbatim into responses.
 - **`strict: true`.** Signals to the Gemini API that the tool definition should be treated as a strict JSON schema. The field is passed through to the model's function declaration.
@@ -48,3 +83,13 @@ Every tool produces `Candidate[]` with a `book.isbn` field set by `CanonicalId.p
 - **`CanonicalId.merge`.** When two candidates share the same canonical id, `merge` unions their authors, subjects, publishers, and `sources[]` arrays, keeping the richer description and higher score.
 
 See this in action in the [Archivist live demo](./the-archivist).
+
+## Related Concepts
+
+Read these next when you want to connect model-facing schemas to DAG validation and runtime errors.
+
+- [Running domain: The Archivist](./the-archivist)
+- [Schema and JSON loading guide](../guide/schema)
+- [Example 02: DAGBuilder](./02-builder) - the DAG topology the tools feed into
+- [Reference: Validation, `Validator.dag`](../reference/validation)
+- [Reference: Errors, `ValidationError`](../reference/errors)

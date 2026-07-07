@@ -1,4 +1,6 @@
 ---
+title: 'Execution'
+description: 'Execution handle reference for streaming per-stage results, promise-like final results, single-consumption semantics, await behavior, and cancellation.'
 seeAlso:
   - text: 'Reference: Dagonizer'
     link: './dagonizer'
@@ -11,9 +13,43 @@ seeAlso:
 
 # Execution
 
+## What It Is
+
+`Execution<TState>` is the handle returned by `Dagonizer.execute()` and `Dagonizer.resume()`. It can be awaited for the final result or iterated for per-stage results.
+
+Use this page when a host needs progress updates, final state, cancellation behavior, checkpoint cursor inspection, or one clear rule for consuming a run exactly once.
+
+## How It Works
+
+The execution object wraps one underlying async generator. Awaiting it drains the generator and resolves to `ExecutionResultType<TState>`. Iterating it yields `NodeResultType` values as stages complete and then marks the handle consumed.
+
+Cancellation and deadlines flow through `ExecuteOptionsType`. Checkpoint cursors are captured from yielded node results and final execution results; the execution handle itself does not own persistence.
+
+## Diagrams, Examples, and Outputs
+
+Execution is a runtime handle, not a DAG document, so this page does not add a reference-only diagram. The links below show the same handle in runnable examples and adjacent contracts:
+
+- [Reference: Dagonizer](./dagonizer) - `execute`, `resume`
+- [Reference: Lifecycle](./lifecycle)
+- [Reference: Checkpoint](./checkpoint)
+
+## What It Lets You Do
+
+The execution reference lets applications consume a DAG run as both a final result and a per-stage stream. Use it when a host needs progress updates, final state, cancellation handling, or checkpoint cursor inspection from one execution handle.
+
 `Execution<TState>` is the handle returned by `Dagonizer.execute()` and `Dagonizer.resume()`. It is both an `AsyncIterable` (streaming per stage) and a `PromiseLike` (awaitable for the final result). The underlying generator runs exactly once regardless of how it is consumed.
 
-## Class: `Execution<TState>`
+## Code Samples
+
+The code below covers streaming iteration, await behavior, single-consumption rules, terminal outcomes, and cancellation.
+
+### Import
+
+```ts twoslash
+import type { Execution, ExecutionResultType, NodeResultType } from '@studnicky/dagonizer';
+```
+
+### Class: `Execution<TState>`
 
 ```ts twoslash
 import { Execution } from '@studnicky/dagonizer';
@@ -27,7 +63,7 @@ Not instantiated directly; returned by the dispatcher.
 
 ---
 
-### `[Symbol.asyncIterator]()`
+#### `[Symbol.asyncIterator]()`
 
 Iterate stage results as they complete:
 
@@ -62,7 +98,7 @@ Phase placements (`PhaseNode`) run out of band and do not yield through the iter
 
 ---
 
-### `.then(onfulfilled, onrejected)`
+#### `.then(onfulfilled, onrejected)`
 
 `Execution` implements `PromiseLike`. Await it for the final `ExecutionResultType<TState>`:
 
@@ -108,7 +144,7 @@ Populated when the flow exited via signal abort or per-run / per-node timeout. `
 
 ---
 
-## Consumption patterns
+### Consumption patterns
 
 **One-shot await:**
 
@@ -163,7 +199,16 @@ console.log(nodes, result.cursor);
 
 The iterator never throws. Cancellation and operation errors resolve to a final `ExecutionResultType` with a non-`null` `cursor`, populated `interruptedAt`, and the appropriate `state.lifecycle.variant`.
 
-## Related guides
+## Details for Nerds
 
-- [Cancellation](../guide/cancellation)
-- [Checkpoint](../guide/checkpoint)
+`Execution<TState>` is single-consumption by design. The first await or iteration starts the generator; later awaits return the cached final result. That prevents double-running nodes when UI code both streams progress and awaits completion.
+
+The iterator resolves errors into the final execution result instead of throwing from the loop. Application code can keep one `for await` loop for progress, then inspect `result.state.lifecycle` and `result.cursor` to decide whether to resume, retry, or surface failure.
+
+## Related Concepts
+
+- [Reference: Dagonizer](./dagonizer) - `execute`, `resume`
+- [Reference: Lifecycle](./lifecycle) - terminal state variants carried by the final result
+- [Reference: Checkpoint](./checkpoint) - cursor capture and restore path
+- [Cancellation](../guide/cancellation) - abort signals and deadlines in practice
+- [Checkpoint](../guide/checkpoint) - resumable execution flow

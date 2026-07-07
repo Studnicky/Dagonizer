@@ -1,4 +1,6 @@
 ---
+title: 'Architecture'
+description: 'Dagonizer architecture: dispatcher core, ports-and-adapters boundaries, placement execution, lifecycle state, containers, handoff, and JSON-LD DAG documents.'
 seeAlso:
   - text: 'Concepts'
     link: './concepts'
@@ -20,7 +22,6 @@ seeAlso:
 <script setup lang="ts">
 import { DAG_CONTEXT } from '@studnicky/dagonizer';
 import type { DAGType } from '@studnicky/dagonizer';
-import DagGraph from './.vitepress/theme/components/DagGraph.vue';
 
 // Sample three-node DAG used to illustrate output routing.
 // validate → enrich → save, with explicit terminal routes.
@@ -65,39 +66,19 @@ const sampleDAG: DAGType = {
 
 # Architecture
 
-Dagonizer is a DAG dispatcher. The core loop is a `while` iterator over a node graph. The dispatcher is the watcher; every node is an eye on the graph.
+## What It Is
 
-An embedded DAG or scatter-dag-body placement may declare a logical `container` role. The dispatcher binds roles to `DagContainerInterface` backends (worker thread, forked child, cluster worker, spawned process, or Web Worker) at construction time. The DAG definition and node implementations are unchanged — the container decides where the sub-DAG executes, not how it is authored. An unbound role falls back to the in-process path and fires `contractWarning`; every DAG runs everywhere, degradation is visible.
+Architecture is the system map for Dagonizer: the dispatcher core, the JSON-LD graph document, the node and DAG registries, the lifecycle state machine, and the ports that let applications plug in clocks, stores, containers, handoff channels, LLMs, embedders, and tools.
 
-When a top-level DAG completes at a terminal placement that is bound to a `HandoffChannelInterface`, the dispatcher publishes a `DAGHandoff` envelope to that channel. The envelope carries the terminal state snapshot, the terminal name, and a `registryVersion` for the receiving host's handshake. A receiver restores the envelope state and executes the next DAG in the chain using a plain `Dagonizer` instance — no orchestration runtime, no custom ingress adapter. Cross-host state pass-over is an envelope-in / envelope-out model; Dagonizer is the in-function runtime, not the orchestrator.
+Use this page after [Concepts](./concepts). Concepts names the parts; Architecture explains how the parts touch. The important design principle is deliberately boring: graph shape is data, behavior is TypeScript, infrastructure is behind interfaces, and the dispatcher is the only place where orchestration policy lives.
 
-The engine is domain-agnostic. The Archivist (LLM-agent bibliographic assistant) and the Cartographer (streaming multi-format data-orchestration / ETL, no LLM) both run on the identical dispatcher, lifecycle FSM, scatter/gather machinery, and checkpoint/resume mechanism. The difference is entirely in the node implementations; the engine is the same.
+## How It Works
 
-## Ports and adapters (hexagonal architecture)
+Dagonizer runs a graph by joining three registries at the execution boundary. The DAG registry supplies the JSON-LD document, the node registry supplies implementation objects, and optional container/channel registries supply infrastructure boundaries. The dispatcher validates the graph, walks the placements, calls nodes, and records lifecycle state as it goes.
 
-Dagonizer is structured as a **ports-and-adapters** (hexagonal) architecture. The distinction between what is inside the engine and what consumers supply is explicit and enforced by the module boundary.
+That shape is what makes the same engine work for very different domains. The Archivist uses model calls, tool dispatch, memory, and retries. The Cartographer uses streaming ingest, geo enrichment, redaction, and aggregation. Their node code is different; the execution architecture is the same.
 
-**The hexagon — engine core.** The dispatcher (`Dagonizer`), the lifecycle FSM (`DAGLifecycleMachine`), and the scatter/gather machinery are the application kernel. They implement all orchestration logic and depend on no external infrastructure. They are the only place where execution policy lives.
-
-**Ports — the adapter contracts.** Each boundary the engine crosses has a named interface in `src/contracts/`. These are the ports:
-
-| Port | Contract | Role |
-|------|----------|------|
-| Node execution | `NodeInterface<TState, TOutput>` | The step the dispatcher calls |
-| Clock | `ClockProviderInterface` | Monotonic time source |
-| Scheduler | `SchedulerProviderInterface` | Timer/sleep primitives |
-| State store | `StoreInterface` | Key-value persistence |
-| Checkpoint store | `CheckpointStoreInterface` | Cursor + state snapshot persistence |
-| DAG container | `DagContainerInterface` | Sub-DAG isolation (worker thread, fork, cluster) |
-| Channel | `HandoffChannelInterface` | Cross-host state hand-off |
-| Embedder | `EmbedderInterface` | Vector embedding backend |
-| LLM | `LlmAdapterInterface` | Chat-completion transport |
-
-**Adapters — consumer-supplied implementations.** Consumers wire their chosen backends to these ports at dispatcher construction time via `options.containers`, `options.channels`, and `Clock.configure()` / `Scheduler.configure()`. The engine does not import any infrastructure class directly — it only calls through the contract.
-
-This is why **class extension and contract implementation are the only extension mechanisms** in this package. There are no callbacks and no function-pass-in. Every behavior change attaches to a port (an interface the engine calls through) or a hook (a protected method the consumer overrides). The engine's internals remain testable in isolation; any backend can be swapped without touching the orchestration code.
-
-## Core objects
+### Core objects
 
 | Object | Role |
 |--------|------|
@@ -107,7 +88,7 @@ This is why **class extension and contract implementation are the only extension
 | `NodeStateInterface` | Lifecycle and error/warning accumulation surface. Travels through every node. |
 | `Execution<TState>` | Handle returned by `execute()` and `resume()`. AsyncIterable and PromiseLike. |
 
-## Node kinds
+### Node kinds
 
 ```mermaid
 flowchart TB
@@ -119,7 +100,7 @@ flowchart TB
   end
 ```
 
-### Node base
+#### Node base
 
 One abstract base class covers the authoring surface:
 
@@ -127,7 +108,7 @@ One abstract base class covers the authoring surface:
 
 `MonadicNode` ships from `@studnicky/dagonizer` and `@studnicky/dagonizer/core`; `@studnicky/dagonizer/patterns` re-exports it for co-import with the agent-flow template-method bases.
 
-#### `dagFrom` — runtime DAG resolution
+##### `dagFrom` — runtime DAG resolution
 
 A scatter or embedded placement body can declare `{ dagFrom: 'path.to.field' }` instead of a fixed `{ dag: 'name' }`. The dispatcher reads the dotted path from each item's state at runtime to resolve the DAG name. This is the recursion / self-reference primitive: a scatter where each clone's body is determined by the clone's own state, including the case where a flow dispatches back to itself.
 
@@ -139,13 +120,7 @@ The `source` can be a plain array (finite producer) or an `AsyncIterable`/`Async
 
 **`embedded`** invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state and routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping.input` seeds child fields from the parent before the child runs; `stateMapping.output` copies child fields back into the parent after it completes.
 
-## Sample three-node DAG
-
-A validate node routes to an enrich step on `valid`; enrich routes to save on `success`. Each placement declares both its happy-path output and its terminal exit.
-
-<DagGraph :dag="sampleDAG" aria-label="Sample three-node DAG: validate, enrich, save" />
-
-## Lifecycle FSM
+### Lifecycle FSM
 
 Every DAG execution runs a lifecycle state machine. The dispatcher transitions it; nodes observe it via `state.lifecycle.variant`.
 
@@ -165,7 +140,7 @@ stateDiagram-v2
 
 Terminal states are sticky: once reached, all further events are silently ignored.
 
-### Lifecycle timestamps
+#### Lifecycle timestamps
 
 Narrowing `state.lifecycle.variant` unlocks the typed fields:
 
@@ -173,7 +148,7 @@ Narrowing `state.lifecycle.variant` unlocks the typed fields:
 
 Timestamps are monotonic milliseconds from `Clock.monotonicMs()`. Use them for duration math; do not display them as wall-clock values.
 
-## Execution model
+### Execution model
 
 `Dagonizer.execute()` wraps an async generator in an `Execution<TState>` instance. The generator:
 
@@ -189,7 +164,7 @@ Timestamps are monotonic milliseconds from `Clock.monotonicMs()`. Use them for d
 
 `Execution` is both `PromiseLike` (awaitable) and `AsyncIterable` (iterable per node). Both modes share a single internal generator. The flow body runs exactly once.
 
-### Container seam
+#### Container seam
 
 Containment attaches to exactly two sites — both run a whole child DAG:
 
@@ -202,28 +177,7 @@ Containment attaches to exactly two sites — both run a whole child DAG:
 
 `SingleNode` carries no `container` key — this is a schema-level constraint.
 
-### Hand-off channel binding
-
-```ts twoslash
-import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
-import type { HandoffChannelInterface } from '@studnicky/dagonizer';
-// ---cut---
-declare const myQueueChannel: HandoffChannelInterface;
-declare const myDlqChannel: HandoffChannelInterface;
-
-// options.channels keys are terminal placement names.
-// A terminal not bound here follows today's path: no publish.
-new Dagonizer<NodeStateBase>({
-  channels: {
-    done:      myQueueChannel,    // publishes DAGHandoff on 'done' terminal
-    escalate:  myDlqChannel,      // routes to a different channel
-  },
-});
-```
-
-Embedded and contained child DAGs never publish — only the top-level host does. When `channels` is empty or a terminal is unbound, the run completes normally with no publish step.
-
-## Signal propagation
+### Signal propagation
 
 ```
 dispatcher.execute(dag, state, { signal, deadlineMs })
@@ -240,7 +194,7 @@ context.signal propagated to IO (fetch, db, sleep in RetryPolicy)
 
 Scatter clones receive the composed signal from the parent. Cancellation propagates through the full nesting depth.
 
-## State flow
+### State flow
 
 ```
 dispatcher.execute(dagName, initialState)
@@ -258,11 +212,137 @@ result.state === initialState  // same reference
 
 `NodeStateBase.clone()` is called for scatter clones. The clone carries metadata but resets lifecycle to `pending` and clears errors and warnings. Each clone execution is a fresh lifecycle run.
 
-## Interface taxonomy
+## Diagrams, Examples, and Outputs
+
+The diagram below is generated from the sample JSON-LD DAG defined on this page. It is intentionally tiny: validate, enrich, save, terminal. The value is in the correspondence between source fields and graph shape.
+
+In the runnable demos the same renderer is pointed at much larger DAGs. The Archivist and Cartographer pages prove that the architecture scales from this three-node sketch to agent and data-pipeline graphs without adding another execution model.
+
+### Sample three-node DAG
+
+A validate node routes to an enrich step on `valid`; enrich routes to save on `success`. Each placement declares both its happy-path output and its terminal exit.
+
+<DagJsonMermaid :dag="sampleDAG" title="Sample three-node DAG" aria-label="Sample three-node JSON-LD DAG beside Mermaid generated from it." />
+
+## What It Lets You Do
+
+Architecture tells you where to extend Dagonizer without guessing. Need a new node? Implement `NodeInterface` or extend `MonadicNode`. Need deterministic tests? Swap clock and scheduler providers. Need a worker thread or Web Worker boundary? Bind a `DagContainerInterface`. Need to pass terminal state to another host? Bind a `HandoffChannelInterface`.
+
+It also gives reviewers a checklist. If orchestration logic is hiding inside callbacks, it belongs in the graph. If infrastructure details are leaking into the dispatcher, they belong behind a port. If a reusable flow needs to ship across packages, it should become JSON-LD or builder output plus registry entries.
+
+### Use this to understand
+
+Use this page to understand how the engine pieces execute together: dispatcher, registries, JSON-LD DAGs, lifecycle FSM, node contracts, ports/adapters, containers, hand-off channels, and state flow. For vocabulary definitions, start with [Concepts](./concepts).
+
+Dagonizer is a TypeScript DAG dispatcher. You describe work as a JSON-LD graph of placements, register the node implementations that perform the work, and let the dispatcher move state through the graph by following named output routes.
+
+An embedded DAG or scatter-dag-body placement may declare a logical `container` role. The dispatcher binds roles to `DagContainerInterface` backends (worker thread, forked child, cluster worker, spawned process, or Web Worker) at construction time. The DAG definition and node implementations are unchanged — the container decides where the sub-DAG executes, not how it is authored. An unbound role falls back to the in-process path and fires `contractWarning`; every DAG runs everywhere, degradation is visible.
+
+When a top-level DAG completes at a terminal placement that is bound to a `HandoffChannelInterface`, the dispatcher publishes a `DAGHandoff` envelope to that channel. The envelope carries the terminal state snapshot, the terminal name, and a `registryVersion` for the receiving host's handshake. A receiver restores the envelope state and executes the next DAG in the chain using a plain `Dagonizer` instance — no orchestration runtime, no custom ingress adapter. Cross-host state pass-over is an envelope-in / envelope-out model; Dagonizer is the in-function runtime, not the orchestrator.
+
+The engine is domain-agnostic. The Archivist (LLM-agent bibliographic assistant) and the Cartographer (streaming multi-format data-orchestration / ETL, no LLM) both run on the identical dispatcher, lifecycle FSM, scatter/gather machinery, and checkpoint/resume mechanism. The difference is entirely in the node implementations; the engine is the same.
+
+## Code Samples
+
+The source below is the visible version of the architecture diagram. The same `DAGType` shape is what `DAGBuilder.build()` returns and what `dispatcher.registerDAG(dag)` accepts.
+
+```ts
+import { DAG_CONTEXT } from '@studnicky/dagonizer';
+import type { DAGType } from '@studnicky/dagonizer';
+
+const sampleDAG: DAGType = {
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:sample',
+  '@type': 'DAG',
+  name: 'sample',
+  version: '1',
+  entrypoint: 'validate',
+  nodes: [
+    {
+      '@id': 'urn:noocodex:dag:sample/node/validate',
+      '@type': 'SingleNode',
+      name: 'validate',
+      node: 'validate',
+      outputs: { valid: 'enrich', invalid: 'end' },
+    },
+    {
+      '@id': 'urn:noocodex:dag:sample/node/enrich',
+      '@type': 'SingleNode',
+      name: 'enrich',
+      node: 'enrich',
+      outputs: { success: 'save', error: 'end' },
+    },
+    {
+      '@id': 'urn:noocodex:dag:sample/node/save',
+      '@type': 'SingleNode',
+      name: 'save',
+      node: 'save',
+      outputs: { success: 'end', error: 'end' },
+    },
+    {
+      '@id': 'urn:noocodex:dag:sample/node/end',
+      '@type': 'TerminalNode',
+      name: 'end',
+      outcome: 'completed',
+    },
+  ],
+};
+```
+
+The handoff seam is just as explicit: terminal placement names bind to channel implementations at dispatcher construction time.
+
+### Hand-off channel binding
+
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { HandoffChannelInterface } from '@studnicky/dagonizer';
+// ---cut---
+declare const myQueueChannel: HandoffChannelInterface;
+declare const myDlqChannel: HandoffChannelInterface;
+
+new Dagonizer<NodeStateBase>({
+  channels: {
+    done: myQueueChannel,
+    escalate: myDlqChannel,
+  },
+});
+```
+
+## Details for Nerds
+
+Dagonizer sits near workflow engines, dataflow systems, and agent graph frameworks, but it is opinionated about semantic assembly. JSON-LD gives names and context. Registries bind behavior. Ports hide infrastructure. Visualization is generated from the graph that actually runs.
+
+The package does not try to be a distributed workflow platform by itself. It is the in-process graph execution kernel you can embed inside web handlers, CLIs, workers, queues, browsers, or durable workflow activities.
+
+### Ports and adapters (hexagonal architecture)
+
+Dagonizer is structured as a **ports-and-adapters** (hexagonal) architecture. The distinction between what is inside the engine and what applications supply is explicit and enforced by the module boundary.
+
+**The hexagon — engine core.** The dispatcher (`Dagonizer`), the lifecycle FSM (`DAGLifecycleMachine`), and the scatter/gather machinery are the application kernel. They implement all orchestration logic and depend on no external infrastructure. They are the only place where execution policy lives.
+
+**Ports — the adapter contracts.** Each boundary the engine crosses has a named interface in `src/contracts/`. These are the ports:
+
+| Port | Contract | Role |
+|------|----------|------|
+| Node execution | `NodeInterface<TState, TOutput>` | The step the dispatcher calls |
+| Clock | `ClockProviderInterface` | Monotonic time source |
+| Scheduler | `SchedulerProviderInterface` | Timer/sleep primitives |
+| State store | `StoreInterface` | Key-value persistence |
+| Checkpoint store | `CheckpointStoreInterface` | Cursor + state snapshot persistence |
+| DAG container | `DagContainerInterface` | Sub-DAG isolation (worker thread, fork, cluster) |
+| Channel | `HandoffChannelInterface` | Cross-host state hand-off |
+| Embedder | `EmbedderInterface` | Vector embedding backend |
+| LLM | `LlmAdapterInterface` | Chat-completion transport |
+
+**Adapters — application-supplied implementations.** Applications wire their chosen backends to these ports at dispatcher construction time via `options.containers`, `options.channels`, and `Clock.configure()` / `Scheduler.configure()`. The engine does not import any infrastructure class directly — it only calls through the contract.
+
+This is why **class extension and contract implementation are the only extension mechanisms** in this package. There are no callbacks and no function-pass-in. Every behavior change attaches to a port (an interface the engine calls through) or a hook (a protected method the application overrides). The engine's internals remain testable in isolation; any backend can be swapped without touching the orchestration code.
+
+### Interface taxonomy
 
 Three distinct kinds of interface live in the package. Each kind has one home; the homes do not overlap.
 
-### Class-shape interfaces
+#### Class-shape interfaces
 
 Describe the public face of one class. Live in the **same file** as the class. Exported as `type` only.
 
@@ -272,17 +352,17 @@ Describe the public face of one class. Live in the **same file** as the class. E
 | `NodeStateInterface` | `NodeStateBase` | `src/NodeStateBase.ts` |
 | `DAGErrorInterface`  | `DAGError`     | `src/errors/DAGError.ts` |
 
-Consumers extend these classes; the interface is what their subclasses implement.
+Applications extend these classes; the interface is what their subclasses implement.
 
-### Adapter contracts
+#### Adapter contracts
 
-What consumers implement to swap a backend or contribute behavior. Live at the root of `src/contracts/`. **Single source of truth**; never re-exported from sibling modules.
+What applications implement to swap a backend or contribute behavior. Live at the root of `src/contracts/`. **Single source of truth**; never re-exported from sibling modules.
 
 Examples: `ClockProviderInterface`, `SchedulerProviderInterface`, `NodeInterface`, `ExecuteOptionsType`, `RetryPolicyOptionsType`, `ErrorConstructorType`, `DagContainerInterface`, `HandoffChannelInterface`, `RegistryModuleInterface`.
 
 A `runtime/` barrel re-exports an adapter contract for ergonomic co-import with the engine class. The source of the type stays in `contracts/`.
 
-### Entity-narrowing interfaces
+#### Entity-narrowing interfaces
 
 Pair with a JSON Schema-derived entity. Narrow the wire shape with runtime-only fields (for example, `signal: AbortSignal`) or with a generic parameter the schema cannot express. Live in the same file as the entity at `src/entities/<group>/<Entity>.ts`.
 
@@ -297,7 +377,7 @@ Pair with a JSON Schema-derived entity. Narrow the wire shape with runtime-only 
 
 The schema, the `FromSchema`-derived type, and the narrowing interface live together in the same file. All three re-export through `entities/index.ts`.
 
-## Submodule exports
+### Submodule exports
 
 Every public surface ships through a `package.json` `exports` entry.
 
@@ -324,15 +404,25 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./container` | `DagContainerBase`, `DagContainerOptions`, `PoolEntry`, `DagContainerError`, `DEFAULT_SHUTDOWN_GRACE_MS`, `DagHost`, `DagTask`, `DagOutcome`, `DAG_CONTAINER_TRANSPORT`, `DAG_CONTAINER_WORKER_DIED`, `TransportErrorCode` |
 | `./channels` | `InMemoryChannel`, `InMemoryChannelOptions` |
 
-Consumers import from the narrowest subpath that gives them what they need. The root barrel is for one-line bootstraps; everything else lives behind a stable subpath so the bundle stays trim.
+Applications import from the narrowest subpath that gives them what they need. The root barrel is for one-line bootstraps; everything else lives behind a stable subpath so the bundle stays trim.
 
-## Extension model
+### Extension model
 
 Class extension is the only extension mechanism. Zero callbacks. Zero function-pass-in.
 
-- **Observability**: subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`). Multi-observer composition is the consumer's responsibility; write it into the subclass.
+- **Observability**: subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`). Multi-observer composition is the application's responsibility; write it into the subclass.
 - **Domain state**: subclass `NodeStateBase`. Override `snapshotData()` and `restoreData()` for checkpointable fields.
 - **Nodes**: extend `MonadicNode<TState, TOutput>` or implement `NodeInterface<TState, TOutput>` directly. Nodes receive their dependencies through their constructors. Nodes never throw; they return a routed batch from `execute(batch, context)`.
 - **Time and scheduling**: implement `ClockProviderInterface` and `SchedulerProviderInterface`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` and `VirtualScheduler` for deterministic time.
 - **Isolating compute**: implement `DagContainerInterface` to run an embedded DAG or scatter-dag-body in any isolate. Bind roles to backend instances at dispatcher construction via `options.containers`. The `@studnicky/dagonizer-executor-node` package ships `WorkerThreadContainer`, `ForkContainer`, `ClusterContainer`, and `SpawnContainer` for Node.js deployments.
 - **Cross-host egress**: implement `HandoffChannelInterface` to publish `DAGHandoff` envelopes to any transport (queue, message bus, HTTP endpoint). Bind to terminal names at construction via `options.channels`. `InMemoryChannel` (from `./channels`) is the reference implementation for tests and demos.
+
+## Related Concepts
+
+Read these next when you want to move from architecture map to vocabulary, quickstart code, or API contracts.
+
+- [Concepts](./concepts) - vocabulary used across the docs
+- [Getting Started](./getting-started) - install and run a one-node DAG
+- [Reference: Dagonizer](./reference/dagonizer) - dispatcher class API
+- [Reference: Contracts](./reference/contracts) - adapter interfaces
+- [Reference: Entities](./reference/entities) - schemas and derived types

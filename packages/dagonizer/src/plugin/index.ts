@@ -12,4 +12,9 @@
 
 export { PluginDiscovery } from './PluginDiscovery.js';
 export { PluginLoader } from './PluginLoader.js';
+export { defineDagonizerPlugin } from './defineDagonizerPlugin.js';
+export type {
+  DagonizerPluginDefinitionType,
+  DefinedDagonizerPluginType,
+} from './defineDagonizerPlugin.js';
 export { PluginSpecifier } from './PluginSpecifier.js';

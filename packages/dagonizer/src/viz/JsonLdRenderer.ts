@@ -28,6 +28,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 import type { DAGType } from '../entities/dag/DAG.js';
+import { PluginDiscovery } from '../plugin/PluginDiscovery.js';
 
 import { PlacementUtils } from './internal.js';
 import type { PlacementDispatchType, PlacementEntryType } from './internal.js';
@@ -122,6 +123,36 @@ export class JsonLdRenderer {
         'xsd':         'http://www.w3.org/2001/XMLSchema#',
       },
       '@graph': [JsonLdRenderer.renderDagRoot(dag), ...placements],
+    };
+  }
+
+  /**
+   * Render the entry DAG plus all reachable literal embedded DAGs into one
+   * JSON-LD document.
+   */
+  static renderReachable(entryDag: DAGType, registry: ReadonlyMap<string, DAGType>): DagJsonLdDocumentType {
+    const graph: JsonLdGraphEntryType[] = [];
+    const seenIds = new Set<string>();
+    const names = PluginDiscovery.walk(entryDag, registry);
+
+    for (const name of names) {
+      const dag = name === entryDag.name ? entryDag : registry.get(name);
+      if (dag === undefined) continue;
+      const rendered = JsonLdRenderer.render(dag);
+      for (const entry of rendered['@graph']) {
+        const id = entry['@id'];
+        if (seenIds.has(id)) continue;
+        seenIds.add(id);
+        graph.push(entry);
+      }
+    }
+
+    return {
+      '@context': {
+        'dag': DAGONIZER_VOCAB,
+        'xsd': 'http://www.w3.org/2001/XMLSchema#',
+      },
+      '@graph': graph,
     };
   }
 

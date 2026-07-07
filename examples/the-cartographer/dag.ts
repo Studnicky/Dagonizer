@@ -8,6 +8,9 @@
  *                gather: insights-fold)                             [STREAMING]
  *      → summarize → done
  *
+ *    The browser workers variant delegates process-stream to container role
+ *    "cpu" and delegates the summary embedded DAG to container role "io".
+ *
  *    The insights-fold gather folds each clone's state.enriched into three bounded
  *    accumulators (state.insights, state.journeys, state.sampleRecords) as clones
  *    complete. Memory is O(1) regardless of event count.
@@ -175,6 +178,26 @@ export const cartographerResumeDAG: DAGType = new DAGBuilder('cartographer-resum
   .build();
 // #endregion cartographer-resume-dag
 
+// ── DAG 1b: insights-summary (container-ready summary body) ──────────────────
+
+// #region insights-summary-dag
+/**
+ * insights-summary: embedded summary body for the browser workers topology.
+ *
+ * The top-level workers DAG delegates this single-cardinality stage to the
+ * `io` container role after the `cpu` scatter finishes. The body is the same
+ * summarizeInsights node used by the in-process cartographer DAG, packaged as a
+ * registered DAG so the worker registry and JSON-LD assembly use the same
+ * canonical embed/plugin surface.
+ */
+export const insightsSummaryDAG: DAGType = new DAGBuilder('insights-summary', '1.0')
+  .node('summarize', summarizeInsights, {
+    'success': 'done',
+  })
+  .terminal('done', { outcome: 'completed' })
+  .build();
+// #endregion insights-summary-dag
+
 // ── DAG 2: event-pipeline-typed (the LIVE scatter body, typed per-event-type paths) ──
 
 // #region event-pipeline-typed-dag
@@ -214,7 +237,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
   })
 
   // 2a. pipeline-position-ping: geo + leg measurement.
-  .embeddedDAG<CartographerState, CartographerState>('pipeline-position-ping', 'pipeline-position-ping', {
+  .embed<CartographerState, CartographerState>('pipeline-position-ping', 'pipeline-position-ping', {
     'success': 'done',
     'error':   'rejected',
   }, {
@@ -233,7 +256,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
   })
 
   // 2b. pipeline-sensor-reading: geo + cold-chain + leg measurement.
-  .embeddedDAG<CartographerState, CartographerState>('pipeline-sensor-reading', 'pipeline-sensor-reading', {
+  .embed<CartographerState, CartographerState>('pipeline-sensor-reading', 'pipeline-sensor-reading', {
     'success': 'done',
     'error':   'rejected',
   }, {
@@ -253,7 +276,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
   })
 
   // 2c. pipeline-customs-event: geo + customs-dwell + leg measurement.
-  .embeddedDAG<CartographerState, CartographerState>('pipeline-customs-event', 'pipeline-customs-event', {
+  .embed<CartographerState, CartographerState>('pipeline-customs-event', 'pipeline-customs-event', {
     'success': 'done',
     'error':   'rejected',
   }, {
@@ -274,7 +297,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
 
   // 2d. pipeline-facility-scan: geo + facility canonicalization + order enrichment
   //     + GDPR-gated redaction.
-  .embeddedDAG<CartographerState, CartographerState>('pipeline-facility-scan', 'pipeline-facility-scan', {
+  .embed<CartographerState, CartographerState>('pipeline-facility-scan', 'pipeline-facility-scan', {
     'success': 'done',
     'error':   'rejected',
   }, {
@@ -298,7 +321,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
 
   // 2e. pipeline-delivery-confirmation: geo + recipient canonicalization +
   //     delivery confirmation + GDPR-gated redaction.
-  .embeddedDAG<CartographerState, CartographerState>('pipeline-delivery-confirmation', 'pipeline-delivery-confirmation', {
+  .embed<CartographerState, CartographerState>('pipeline-delivery-confirmation', 'pipeline-delivery-confirmation', {
     'success': 'done',
     'error':   'rejected',
   }, {
@@ -323,7 +346,7 @@ export const eventPipelineTypedDAG: DAGType = new DAGBuilder('event-pipeline-typ
   .build();
 // #endregion event-pipeline-typed-dag
 
-// ── DAG 1b: cartographer-workers (container variant) ─────────────────────────
+// ── DAG 1c: cartographer-workers (container variant) ─────────────────────────
 
 // #region cartographer-workers-dag
 /** Default reservoir capacity for the process-stream scatter in the workers DAG. */
@@ -335,9 +358,11 @@ export const DEFAULT_RESERVOIR_CAPACITY = 1000;
  * (DAG only) or CartographerWorkersDag.bundle() (full dispatcher bundle) with an
  * optional reservoir capacity override.
  *
- * DAG topology — identical to cartographerDAG with two differences:
+ * DAG topology — identical to cartographerDAG with containerized boundaries:
  *   - container: 'cpu' so each stream-event body runs inside a
- *     WorkerThreadContainer (real worker threads) rather than in-process.
+ *     WorkerThreadContainer/WebWorkerContainer rather than in-process.
+ *   - container: 'io' so the final summary runs through the same embedded-DAG
+ *     interface used by plugins and nested flows.
  *   - reservoir.capacity is parameterised; callers pass their UI-controlled
  *     batch size rather than relying on the compile-time default.
  *
@@ -345,7 +370,8 @@ export const DEFAULT_RESERVOIR_CAPACITY = 1000;
  *     → scatter('process-stream', 'sources', { dag: 'stream-event' },
  *               gather: { strategy: 'insights-fold' }, concurrency: 16,
  *               container: 'cpu', reservoir: { capacity })
- *     → summarize → done
+ *     → embed('summarize-insights', 'insights-summary', container: 'io')
+ *     → done
  */
 export class CartographerWorkersDag {
   private constructor() { /* static-only */ }
@@ -365,10 +391,10 @@ export class CartographerWorkersDag {
         'sources',
         { 'dag': 'stream-event' },
         {
-          'all-success': 'summarize',
-          'partial':     'summarize',
-          'all-error':   'summarize',
-          'empty':       'summarize',
+          'all-success': 'summarize-insights',
+          'partial':     'summarize-insights',
+          'all-error':   'summarize-insights',
+          'empty':       'summarize-insights',
         },
         {
           'itemKey':     'source-payload',
@@ -378,11 +404,15 @@ export class CartographerWorkersDag {
         },
       )
 
-      .node('summarize', summarizeInsights, {
+      .embed<CartographerState, CartographerState>('summarize-insights', 'insights-summary', {
         'success': 'done',
+        'error':   'failed',
+      }, {
+        'container': 'io',
       })
 
       .terminal('done', { outcome: 'completed' })
+      .terminal('failed', { outcome: 'failed' })
 
       .build();
   }
@@ -401,12 +431,11 @@ export class CartographerWorkersDag {
   ): DispatcherBundleType<CartographerState> {
     return {
       'nodes': [
-        ...eventPipelineBundle.nodes,
+        ...cartographerWorkerRuntimeBundle.nodes,
         seedEvents,
-        summarizeInsights,
       ],
       'dags': [
-        ...eventPipelineBundle.dags,
+        ...cartographerWorkerRuntimeBundle.dags,
         CartographerWorkersDag.build(capacity),
       ],
     };
@@ -475,6 +504,23 @@ export const eventPipelineBundle: DispatcherBundleType<CartographerState> = {
     // (decode-inline). stream-event is the live container scatter body.
     eventPipelineTypedDAG,
     streamEventDAG,
+  ],
+};
+
+/**
+ * cartographerWorkerRuntimeBundle: worker-side DAGs and nodes needed by every
+ * Cartographer container role. The `cpu` role runs stream-event bodies; the
+ * `io` role runs insights-summary. Both roles use the same registry module so
+ * plugin-style embedded DAGs and container dispatch stay one interface.
+ */
+export const cartographerWorkerRuntimeBundle: DispatcherBundleType<CartographerState> = {
+  'nodes': [
+    ...eventPipelineBundle.nodes,
+    summarizeInsights,
+  ],
+  'dags': [
+    ...eventPipelineBundle.dags,
+    insightsSummaryDAG,
   ],
 };
 

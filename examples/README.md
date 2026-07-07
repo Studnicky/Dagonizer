@@ -56,6 +56,14 @@ Or via npm scripts: `npm run example:12` and `npm run example:13`.
 
 ---
 
+## Plugins
+
+| File | Purpose | Run |
+|------|---------|-----|
+| `33-plugin.ts` | `defineDagonizerPlugin()` + `DAGBuilder.embed()` unified plugin embedding | `npx tsx examples/33-plugin.ts` |
+
+---
+
 ## LLM / Agent
 
 These examples run against a real local model. Install [Ollama](https://ollama.com), then `ollama pull llama3.2` (chat) and `ollama pull nomic-embed-text` (embeddings) before running.

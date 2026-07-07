@@ -23,12 +23,13 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { CartographerServices } from '../../../../examples/the-cartographer/CartographerServices.ts';
-import { cartographerWorkersDAG, CartographerWorkersDag, eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
+import { cartographerWorkersDAG, CartographerWorkersDag, cartographerWorkerRuntimeBundle } from '../../../../examples/the-cartographer/dag.ts';
 import { ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
 import { GeoSourceResolveDAG } from '../../../../examples/the-cartographer/embedded-dags/GeoSourceResolveDAG.ts';
 import { gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
 import { orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
+import { normalizeSourcesPlugin } from '../../../../examples/the-cartographer/plugins/NormalizeSourcesPlugin.ts';
 import type { EnrichedShipment } from '../../../../examples/the-cartographer/entities/EnrichedShipment.ts';
 import type { CanonicalEventVariant } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
 import type { FormatMix } from '../../../../examples/the-cartographer/services.ts';
@@ -100,9 +101,10 @@ const journeysMap = ref<Map<string, JourneyInsights>>(new Map());
 const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 
 // Every sub-DAG the cartographer DAG embeds, keyed by name, derived from the
-// scatter-body bundle so it never drifts. Lets the graph expand the full
+// worker-runtime bundle so it never drifts. Lets the graph expand the full
 // topology (process-stream → stream-event → 5 per-type pipelines → geo-pipeline
-// → leaves) and animate inner nodes as the worker relay reports them.
+// → leaves, plus summarize-insights → insights-summary) and animate inner nodes
+// as the worker relay reports them.
 //
 // geo-source-resolve and its inner resolve-one-signal scatter body are built
 // per-call by GeoSourceResolveDAG.build (they carry injected transports), so
@@ -116,7 +118,7 @@ const geoDocBundle = GeoSourceResolveDAG.build(
   geoDocServices.addressGeocoder,
 );
 const embeddedDagRegistry = new Map(
-  [...eventPipelineBundle.dags, ...geoDocBundle.dags].map((d) => [d.name, d] as const),
+  [...cartographerWorkerRuntimeBundle.dags, ...geoDocBundle.dags].map((d) => [d.name, d] as const),
 );
 
 // ── Feed configuration ───────────────────────────────────────────────────────
@@ -552,23 +554,38 @@ async function run(): Promise<void> {
     // no network. Deterministic and infeasible-to-network-at-1M.
     const services: CartographerServices = GeoResolvers.recorded();
 
-    // One worker pool drives the scatter fanout off the main thread. Pool size
-    // and reservoir capacity are visitor-controlled via the Config panel.
-    // The scatter binds container 'cpu' (cartographerWorkersDAG), so the body
-    // runs in these workers.
-    const container = new CartographerWorkerContainer({
+    // #region cartographer-browser-containers
+    // Separate role bindings use the same worker entry and registry while still
+    // keeping the DAG's execution boundaries explicit: process-stream runs on
+    // `cpu`, summarize-insights runs on `io`.
+    const cpuContainer = new CartographerWorkerContainer({
       'registryModule':  new URL('./cartographerWorkerEntry.ts', import.meta.url).href,
       'registryVersion': '1.0.0',
       'servicesConfig':  { 'useRecordedIp': true },
       'poolSize':        clampedPoolSize.value,
     });
+    const ioContainer = new CartographerWorkerContainer({
+      'registryModule':  new URL('./cartographerWorkerEntry.ts', import.meta.url).href,
+      'registryVersion': '1.0.0',
+      'servicesConfig':  { 'useRecordedIp': true },
+      'poolSize':        1,
+    });
 
-    dispatcher = new CartographerBrowserObserver(_cartographerLogger, { 'containers': { 'cpu': container } });
+    dispatcher = new CartographerBrowserObserver(_cartographerLogger, {
+      'containers': {
+        'cpu': cpuContainer,
+        'io':  ioContainer,
+      },
+    });
+    // #endregion cartographer-browser-containers
 
     // Bundle registration order: sub-DAGs first so their names resolve.
     dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
+    // #region cartographer-browser-plugin-registration
+    dispatcher.registerPlugin(normalizeSourcesPlugin);
+    // #endregion cartographer-browser-plugin-registration
     dispatcher.registerBundle(ingestSourceBundle);
     dispatcher.registerBundle(CartographerWorkersDag.bundle(clampedBatchCapacity.value));
 
@@ -590,6 +607,7 @@ async function run(): Promise<void> {
 
     activeAbortController = new AbortController();
 
+    // #region cartographer-streaming-execution
     const execution = dispatcher.execute('cartographer', state, { 'signal': activeAbortController.signal });
     for await (const stage of execution) {
       // Each yielded stage lights up a node via the observer hooks above.
@@ -597,6 +615,7 @@ async function run(): Promise<void> {
       void stage;
     }
     await execution;
+    // #endregion cartographer-streaming-execution
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
   } finally {

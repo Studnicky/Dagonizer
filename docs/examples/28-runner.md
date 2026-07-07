@@ -1,6 +1,6 @@
 ---
-title: 'Example 28: DagRunner and triggers'
-description: 'Subclass DagRunner to own the register→seed→execute→project loop once, then wire a trigger to decide when it fires.'
+title: 'Example 28: Runner and Triggers'
+description: 'The Dispatcher browser runner owns register→seed→execute/resume→project, with customer and operator UI triggers around the same DAG.'
 seeAlso:
   - text: 'Reference: Runner'
     link: '../reference/runner'
@@ -8,66 +8,96 @@ seeAlso:
   - text: 'Reference: Contracts'
     link: '../reference/contracts'
     description: 'TriggerInterface adapter contract'
-  - text: 'Phase 08: Checkpoint + resume'
+  - text: 'Example 08: Checkpoint and Resume'
     link: './08-checkpoint'
     description: 'DagRunner.resume() picks up from a checkpoint cursor'
   - text: 'Authoring DAGs'
     link: '../guide/authoring'
 ---
 
-# Example 28: DagRunner and triggers
+<script setup lang="ts">
+import { supportDispatcherDAG } from '../../examples/the-dispatcher/dag.ts';
+</script>
 
-Every consumer of `@studnicky/dagonizer` that runs a DAG from a CLI script, an HTTP handler, or an event loop independently derives the same loop: build a dispatcher, register bundles, seed initial state, call `execute`, route the outcome, and project a result. `DagRunner` owns that loop once. Subclass it and override two methods; the triggers decide when it fires.
+# Example 28: Runner and Triggers
 
-## The word-count DAG
+## What It Is
 
-The example drives a two-node pipeline: `TrimNode` strips whitespace, then `CountNode` counts tokens. A `TerminalNode` ends the flow.
+Runner and Triggers is the host-side loop around a DAG: register bundles, seed state, execute or resume, then project the result back into the application. The Dispatcher browser runner does this with two UI triggers around the same support DAG: customer send and operator resume.
 
-<<< @/../examples/dags/28-runner.ts#dag
+The point is separation. Trigger handling belongs to the application host; flow decisions belong to the DAG.
 
-## Subclassing DagRunner
+## How It Works
 
-Override `seedState` to build initial state from trigger input, and `projectResult` to project the final `ExecutionResultType` to a domain value. Nothing else belongs in the subclass.
+The runner owns host concerns: constructing the dispatcher, registering node/DAG bundles, mapping external input into state, choosing `execute` or `resume`, and projecting the final state back into UI or transport output. The DAG owns only flow decisions. Multiple triggers can therefore drive one canonical JSON-LD graph.
 
-<<< @/../examples/28-runner.ts#runner
+That same loop appears in a browser button, CLI command, HTTP handler, queue worker, cron job, or webhook. Only the trigger adapter changes.
 
-## Building the runner
+## Diagrams, Examples, and Outputs
 
-Construct a `Dagonizer`, register the bundle, and hand the dispatcher to the runner via `DagRunnerOptionsType`. The runner holds a reference to the dispatcher; it does not own construction of it, so consumers can configure containers or channels before handing it over.
+### DAG registration and diagram
 
-<<< @/../examples/28-runner.ts#harness
+The DAG is the same for every trigger; the runner owns when it starts. [The Dispatcher](./the-dispatcher) is the browser-runnable example: customer send and operator resume are two UI triggers around the same registered `support-dispatcher` DAG.
 
-## OnceTrigger: fire exactly once
+<DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher runner DAG" aria-label="Support dispatcher JSON-LD DAG beside Mermaid generated from it." />
 
-`OnceTrigger` calls `runner.run(dagName, input)` once when `attach` resolves. The result is available on `trigger.result` after `attach` returns. Calling `detach()` before `attach()` makes the attach a no-op.
+Every application that runs a DAG from a UI button, CLI script, HTTP handler, or event loop independently derives the same loop: build a dispatcher, register bundles, seed initial state, call `execute` or `resume`, route the outcome, and project a result. The Dispatcher runner is the browser version of that loop.
 
-<<< @/../examples/28-runner.ts#once-trigger
+### Run
 
-## CliTrigger: parse argv and fire once
+```bash
+npm run docs:dev
+```
 
-`CliTrigger` is an abstract base. Override `parseArgs` to map raw argv tokens to `TInput`. Override `selectDag` to route the command token to a registered DAG name (default: the command token unchanged).
+Open [The Dispatcher](./the-dispatcher).
 
-<<< @/../examples/28-runner.ts#cli-trigger
+## What It Lets You Do
 
-## EventTrigger: fire once per subscription event
+Runners let applications separate trigger handling from DAG behavior. Use this when the same graph must start from a browser event, CLI command, HTTP request, queue message, or resume event while keeping registration, state seeding, execution, and projection in one host boundary.
 
-`EventTrigger` (abstract) wires `attach` to an event source via `subscribe`. Each inbound message triggers a parallel `runner.run` call. `detach` tears down the subscription and resolves the `attach` promise.
+This keeps the DAG portable. You can move a flow from a demo UI to a service endpoint without rewriting the graph as long as the runner supplies the same bundles, state, and resume contract.
 
-<<< @/../examples/28-runner.ts#event-trigger
+## Code Samples
 
-## RequestTrigger: fire once per HTTP turn
+#### The support DAG
 
-`RequestTrigger` (abstract) stores the runner reference on `attach` (no subscription). The caller invokes `trigger.fire(request)` from the HTTP handler or turn loop. Override `toInput`, `selectDag`, and `requestOptions` to adapt the request shape.
+The runnable support DAG classifies the message, composes or parks, and converges on `send-response`.
 
-<<< @/../examples/28-runner.ts#request-trigger
+<<< @/../examples/the-dispatcher/dag.ts#dispatcher-bundle
 
-## What it demonstrates
+#### Browser run trigger
 
-- **`DagRunner` centralises the loop.** `seedState` + `projectResult` are the only overrides needed. `registerBundle`, `run`, and `resume` come for free.
-- **`OnceTrigger`.** The simplest trigger: supply a DAG name and literal input, call `attach(runner)`, read `trigger.result`.
-- **`CliTrigger`.** Abstract base for CLI harnesses. `parseArgs` maps argv tokens to `TInput`; `selectDag` maps a command token to a DAG name.
-- **`EventTrigger`.** Abstract base for subscription-driven harnesses (WebSocket, EventEmitter, queue). Each message fires a parallel `run`; `detach` cleans up.
-- **`RequestTrigger`.** Stateless per-turn base for HTTP handlers. `fire(request)` is the entry point; `attach`/`detach` manage the runner reference.
-- **Import path.** All runner surface ships through `@studnicky/dagonizer/runner`.
+The customer **Send** button seeds `DispatcherState`, registers the live nodes and DAG, then executes `support-dispatcher`.
 
-Run: `npx tsx examples/28-runner.ts` or with CLI text: `npx tsx examples/28-runner.ts "Hello world"`.
+<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-run
+
+#### Browser resume trigger
+
+The operator **Send response** button restores the parked checkpoint and resumes the same DAG from the parked cursor.
+
+<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-resume
+
+### Trigger mapping
+
+The same runner pattern applies outside the browser:
+
+| Browser trigger | Runner equivalent |
+|-----------------|-------------------|
+| Customer **Send** | request/event trigger calls `run` |
+| Operator **Send response** | request/event trigger calls `resume` |
+| Config toggles | `seedState` input mapping |
+| Conversation panel | `projectResult` view projection |
+
+## Details for Nerds
+
+- **Run loop ownership.** The browser runner owns dispatcher construction, bundle registration, state seeding, execution, and projection.
+- **Separate triggers, same DAG.** Customer send and operator resume trigger different entry actions around the same DAG document.
+- **Resume path.** The runner captures and restores checkpoint state before calling `dispatcher.resume`.
+- **Import path.** The reusable class-based runner surface for non-browser adapters ships through `@studnicky/dagonizer/runner`.
+
+## Related Concepts
+
+- [Reference: Runner](../reference/runner) - Full API surface for DagRunner and all trigger variants
+- [Reference: Contracts](../reference/contracts) - TriggerInterface adapter contract
+- [Example 08: Checkpoint and Resume](./08-checkpoint) - DagRunner.resume() picks up from a checkpoint cursor
+- [Authoring DAGs](../guide/authoring)
