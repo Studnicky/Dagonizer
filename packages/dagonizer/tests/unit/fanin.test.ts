@@ -45,7 +45,14 @@ void describe('Dagonizer scatter gather strategies', () => {
   });
 
   void it('custom invokes a custom node with gatherResults metadata', async () => {
-    interface GatherResultRecord { index: number; item: unknown; output: string }
+    interface GatherResultRecord {
+      source: string;
+      index: number | null;
+      item: unknown;
+      output: string;
+      terminalOutcome: 'completed' | 'failed' | null;
+      result: unknown;
+    }
 
     class GatherResultRecordGuard {
       private constructor() {}
@@ -60,9 +67,18 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     let seenResults: GatherResultRecord[] | undefined;
 
-    const dispatcher = new Dagonizer<NodeStateBase>();
-    const cls = TestNode.make('classify', ['success']);
-    const merge = TestNode.make('merge', ['success'], (state) => {
+    class CustomFanState extends NodeStateBase {
+      items: number[] = [];
+      doubled = 0;
+    }
+
+    const dispatcher = new Dagonizer<CustomFanState>();
+    const cls = TestNode.make<CustomFanState>('classify', ['success'], (state) => {
+      const item = state.getMetadata('item');
+      state.doubled = typeof item === 'number' ? item * 2 : 0;
+      return 'success';
+    });
+    const merge = TestNode.make<CustomFanState>('merge', ['success'], (state) => {
       const raw = state.getMetadata('gatherResults');
       seenResults = GatherResultRecordGuard.isArray(raw) ? raw : undefined;
       return 'success';
@@ -70,7 +86,6 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerNode(cls);
     dispatcher.registerNode(merge);
 
-    class CustomFanState extends NodeStateBase { items: number[] = []; }
     const dag = new DAGBuilder('customfan', '1')
       .scatter(
         'fan',
@@ -79,7 +94,7 @@ void describe('Dagonizer scatter gather strategies', () => {
         { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'itemKey': 'item',
-          'gather':  { 'strategy': 'custom', 'customNode': 'merge' },
+          'gather':  { 'strategy': 'custom', 'customNode': 'merge', 'resultField': 'doubled' },
         },
       )
       .terminal('end')
@@ -92,10 +107,15 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     assert.ok(seenResults !== undefined);
     assert.equal(seenResults?.length, 3);
-    // gatherResults carries {index, item, output}; items are source items
+    // gatherResults carries producer metadata plus the projected result.
     const items = seenResults?.map((r) => r.item).sort((a, b) => Number(a) - Number(b));
     assert.deepEqual(items, [1, 2, 3]);
     assert.ok(seenResults?.every((r) => r.output === 'success'));
+    assert.ok(seenResults?.every((r) => r.source === 'fan'));
+    assert.deepEqual(
+      seenResults?.map((r) => r.result).sort((a, b) => Number(a) - Number(b)),
+      [2, 4, 6],
+    );
   });
 
   void it('append gathers clone items into a target array in source-index order', async () => {

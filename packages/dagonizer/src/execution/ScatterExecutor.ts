@@ -116,7 +116,7 @@ export class ScatterExecutor {
 
     // ── 3. Gather strategy: prepare accumulators ────────────────────────────
     // Accumulate fresh records for the finalize pass and outcome-reducer.
-    const allFreshRecords: GatherRecordType<NodeStateInterface>[] = [];
+    const allFreshRecords: GatherRecordType[] = [];
     const intermediateResults: Array<NodeResultType<NodeStateInterface>> = [];
 
     // NOTE: Gather contributions from acked items in a prior run are already
@@ -249,7 +249,10 @@ export class ScatterExecutor {
         // Non-compactable finalize: synthesise records for prior acked items too,
         // reconstructing each prior-run clone from its persisted gather values so
         // the strategy sees the full record set.
-        const freshIndices = new Set<number>(allFreshRecords.map((r) => r.index));
+        const freshIndices = new Set<number>();
+        for (const record of allFreshRecords) {
+          if (record.index !== null) freshIndices.add(record.index);
+        }
         const syntheticRecords: GatherRecordType[] = [];
         for (const acked of ackedResults) {
           if (freshIndices.has(acked.index)) continue;
@@ -262,15 +265,19 @@ export class ScatterExecutor {
             this.#scatterSource.accessor.set(syntheticClone, scatter.gather.field, acked.fieldValue);
           }
           syntheticRecords.push({
+            'source': scatter.name,
             'index': acked.index,
             'item': acked.item,
             'output': acked.output,
             'terminalOutcome': null,
+            'result': scatter.gather.resultField !== undefined
+              ? this.#scatterSource.accessor.get(syntheticClone, scatter.gather.resultField)
+              : undefined,
             'cloneState': syntheticClone,
           });
         }
         const merged = [...syntheticRecords, ...allFreshRecords]
-          .sort((a, b) => a.index - b.index);
+          .sort((a, b) => (a.index ?? -1) - (b.index ?? -1));
         if (merged.length > 0) {
           const gatherExecution = this.#gather.composeGatherExecution(state, merged, dagName, signal);
           await gatherStrategy.finalize(scatter.gather, gatherExecution);

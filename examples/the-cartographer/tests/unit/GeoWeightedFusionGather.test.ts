@@ -102,10 +102,12 @@ class GeoFusionHarness {
     const cloneState = new CartographerState();
     accessor.set(cloneState, 'candidate', candidate);
     return {
+      'source':          'geo-weighted-fusion',
       'index':           0,
       'item':            null,
       'output':          'default',
       'terminalOutcome': 'completed',
+      'result':          undefined,
       'cloneState':      cloneState,
     };
   }

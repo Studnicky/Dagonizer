@@ -2,15 +2,15 @@
  * GatherExecutionType / GatherRecordType: adapter contracts between the dispatcher
  * and GatherStrategy implementations.
  *
- * `GatherRecordType<TItem>` carries per-clone results from the scatter
- * loop. `GatherExecutionType<TItem>` is the invocation context handed to
- * `GatherStrategy.apply`; it gives strategies read access to per-clone
- * records, the live parent state, and the `invoker` seam.
+ * `GatherRecordType<TItem, TResult>` carries producer records from scatter,
+ * embedded DAG, and DAG-entry branches. `GatherExecutionType<TItem, TResult>`
+ * is the invocation context handed to `GatherStrategy.apply`; it gives
+ * strategies read access to producer records, the live parent state, and the
+ * `invoker` seam.
  *
- * `TItem` defaults to `unknown`, bounding the scatter-source element type to
- * a generic default: existing call sites stay source-compatible, while a
- * strategy that knows its source element type narrows `record.item` without
- * a cast.
+ * `TItem` and `TResult` default to `unknown`, bounding producer payloads to a
+ * generic default. A strategy that knows its source element or projected result
+ * type narrows `record.item` or `record.result` without a cast.
  */
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -19,16 +19,17 @@ import type { NodeInvokerInterface } from './NodeInvokerInterface.js';
 import type { StateAccessorInterface } from './StateAccessorInterface.js';
 
 /**
- * Per-clone record produced by the scatter loop. Carries the source item
- * (or `undefined` for a singleton scatter), the routing output, the
- * terminal outcome of a DAG body (or `null` for a node body), and the
- * live clone state after the body ran.
+ * Producer record consumed by gather strategies. Scatter records carry an item
+ * index and source item; scalar producers use `index: null` and
+ * `item: undefined`.
  */
-export type GatherRecordType<TItem = unknown> = {
-  /** 0-based position of this item in the scatter source array. */
-  index: number;
-  /** The source item that was scattered over (the element from the source array). */
-  item: TItem;
+export type GatherRecordType<TItem = unknown, TResult = unknown> = {
+  /** Producer label: entrypoint key, scatter placement name, or explicit source. */
+  source: string;
+  /** 0-based position for scatter records; null for scalar producers. */
+  index: number | null;
+  /** Source item for scatter records; undefined for scalar producers. */
+  item: TItem | undefined;
   /** Routing output the scatter body emitted for this clone. */
   output: string;
   /**
@@ -36,8 +37,10 @@ export type GatherRecordType<TItem = unknown> = {
    * or `null` when the body was a node body (not a DAG).
    */
   terminalOutcome: 'completed' | 'failed' | null;
+  /** First-class projected value consumed by gather strategies. */
+  result: TResult | undefined;
   /**
-   * Live clone state after the scatter body ran. Strategies fold this into the parent.
+   * Live producer state after the body ran. Strategies fold this into the parent.
    *
    * Typed as `NodeStateInterface` because isolation factories may produce a child class
    * unrelated to the parent type — the engine only guarantees the base interface here.
@@ -55,7 +58,7 @@ export type GatherRecordType<TItem = unknown> = {
  *   - `invoker`, the only way for `custom` strategies to dispatch
  *     a registered node back through the engine
  */
-export type GatherExecutionType<TItem = unknown> = {
+export type GatherExecutionType<TItem = unknown, TResult = unknown> = {
   /**
    * Live parent state object. Strategies mutate it in place.
    *
@@ -71,7 +74,7 @@ export type GatherExecutionType<TItem = unknown> = {
    * through the same index-ordered batch loop on resume). Strategies rely on
    * this and must not re-sort.
    */
-  records: GatherRecordType<TItem>[];
+  records: GatherRecordType<TItem, TResult>[];
   /** Name of the DAG being executed. Used by `invoker.invokeNode` to dispatch gather nodes. */
   dagName: string;
   /**

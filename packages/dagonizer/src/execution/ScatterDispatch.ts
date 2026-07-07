@@ -427,21 +427,31 @@ export class ScatterPoolDriver
     }
   }
 
+  #freshRecord(res: ScatterItemResultType): GatherRecordType {
+    const { scatter } = this.#ctx;
+    const result = scatter.gather?.resultField !== undefined
+      ? this.#adapter.accessor.get(res.cloneState, scatter.gather.resultField)
+      : undefined;
+    return {
+      'source': scatter.name,
+      'index': res.index,
+      'item': res.item,
+      'output': res.output,
+      'terminalOutcome': res.terminalOutcome,
+      result,
+      'cloneState': res.cloneState,
+    };
+  }
+
   async ackItem(res: ScatterItemResultType): Promise<void> {
     const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy, compactable, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
-    const { 'index': itemIndex, 'item': item, 'output': output, 'terminalOutcome': terminalOutcome, 'cloneState': cloneState } = res;
+    const { 'index': itemIndex, 'item': item, 'output': output, 'cloneState': cloneState } = res;
 
     // Remove from inbox.
     const inboxIdx = inbox.findIndex((e) => e.index === itemIndex);
     if (inboxIdx !== -1) inbox.splice(inboxIdx, 1);
 
-    const freshRecord: GatherRecordType = {
-      'index': itemIndex,
-      item,
-      output,
-      terminalOutcome,
-      cloneState,
-    };
+    const freshRecord = this.#freshRecord(res);
 
     // Fold this record into state via reduce (exactly-once per item).
     if (scatter.gather !== undefined && gatherStrategy !== null) {
@@ -779,9 +789,9 @@ export class ScatterPoolDriver
     const toRemove = new Set<number>(batchResult.results.map((r) => r.index));
 
     for (const res of batchResult.results) {
-      const { 'index': itemIndex, 'item': item, 'output': output, 'terminalOutcome': terminalOutcome, 'cloneState': cloneState } = res;
+      const { 'index': itemIndex, 'item': item, 'output': output, 'cloneState': cloneState } = res;
 
-      const freshRecord: GatherRecordType = { 'index': itemIndex, item, output, terminalOutcome, cloneState };
+      const freshRecord = this.#freshRecord(res);
       freshRecordsForBatch.push(freshRecord);
       // Compactable mode: skip accumulation so each cloneState is GC-eligible
       // after the batch reduce below — same bounded-memory invariant as ackItem.

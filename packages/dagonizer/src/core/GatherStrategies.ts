@@ -202,9 +202,12 @@ class CustomGatherStrategy extends GatherStrategy {
     execution.state.setMetadata(
       'gatherResults',
       execution.records.map((r) => ({
-        'index':  r.index,
-        'item':   r.item,
-        'output': r.output,
+        'source':          r.source,
+        'index':           r.index,
+        'item':            r.item,
+        'output':          r.output,
+        'terminalOutcome': r.terminalOutcome,
+        'result':          r.result,
       })),
     );
     await execution.invoker.invokeNode(config.customNode);
