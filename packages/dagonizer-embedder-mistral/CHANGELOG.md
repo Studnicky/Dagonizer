@@ -1,5 +1,7 @@
 # @studnicky/dagonizer-embedder-mistral
 
+## 1.0.1
+
 ## 1.0.0
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "DAG + FSM architecture framework for TypeScript. One engine for both LLM-agent orchestration and data-pipeline / ETL workflows. Type-safe nodes, abortable execution, streaming backpressure, deterministic resume, embedded-DAG composition, JSON-LD canonical wire format.",
   "private": false,
   "license": "MIT",

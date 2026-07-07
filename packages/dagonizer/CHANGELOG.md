@@ -1,5 +1,11 @@
 # @studnicky/dagonizer
 
+## 1.0.1
+
+### Patch Changes
+
+- 8a57ce4: Release the unified plugin and embedded-DAG authoring package artifacts at a version newer than the existing `1.0.0` registry entry.
+
 ## 1.0.0
 
 ### Minor Changes
