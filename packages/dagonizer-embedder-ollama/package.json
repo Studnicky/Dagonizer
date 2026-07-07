@@ -1,6 +1,6 @@
 {
   "name": "@studnicky/dagonizer-embedder-ollama",
-  "version": "0.30.0",
+  "version": "1.0.1",
   "description": "Embedder plugin for @studnicky/dagonizer: OllamaEmbedder (local-first via Ollama's /api/embeddings endpoint).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -34,7 +34,7 @@
     "json-schema-to-ts": "^3.1.1"
   },
   "peerDependencies": {
-    "@studnicky/dagonizer": "workspace:>=0.14.0 <1.0.0"
+    "@studnicky/dagonizer": "workspace:^1.0.0"
   },
   "dependencies": {
     "@studnicky/signal": "^4.0.0"

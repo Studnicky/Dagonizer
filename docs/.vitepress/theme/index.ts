@@ -36,6 +36,12 @@ const DagGraph = defineAsyncComponent(() =>
   import('./components/DagGraph.vue'),
 )
 
+// DagJsonMermaid pairs the registered JSON-LD DAG document with the Mermaid
+// source rendered from that same document.
+const DagJsonMermaid = defineAsyncComponent(() =>
+  import('./components/DagJsonMermaid.vue'),
+)
+
 export default {
   extends: DefaultTheme,
   enhanceApp({ app }) {
@@ -43,6 +49,7 @@ export default {
     app.component('CartographerRunner', CartographerRunner)
     app.component('DispatcherRunner', DispatcherRunner)
     app.component('DagGraph', DagGraph)
+    app.component('DagJsonMermaid', DagJsonMermaid)
     app.use(TwoslashFloatingVue)
     // Mermaid diagrams get the same D-pad + fullscreen explorer as the graph
     // canvases, straight from the package. Client-only; install() wires a

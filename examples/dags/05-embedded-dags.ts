@@ -134,7 +134,7 @@ export const parent: DAGType = {
 // narrow the stateMapping keys to paths that exist on IncrementState at
 // compile time.
 const builderParent = new DAGBuilder('parent', '1').entrypoint('invoke');
-builderParent.embeddedDAG<IncrementState, IncrementState>(
+builderParent.embed<IncrementState, IncrementState>(
   'invoke',
   'child',
   { success: 'end', error: 'end-error' },

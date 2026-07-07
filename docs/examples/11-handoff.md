@@ -1,11 +1,11 @@
 ---
-title: 'Example 11: Loopback hand-off'
-description: 'Two DAGs chained via an InMemoryChannel subclass. DAG A completes at a bound terminal and publishes a DAGHandoff envelope; the channel onPublished override restores state and runs DAG B in the same process.'
+title: 'Example 11: Operator Hand-Off'
+description: 'The Dispatcher browser demo hands a parked customer support flow to an operator, captures checkpoint state, and resumes from the parked cursor.'
 seeAlso:
-  - text: 'Guide: Distribution and cloud patterns'
+  - text: 'Guide: Distribution and Cloud'
     link: '../guide/distribution'
     description: 'serverless handler pattern, Step Functions wiring, registryVersion handshake'
-  - text: 'Example 12: Worker pool'
+  - text: 'Example 12: Worker Containers'
     link: './12-workers'
     description: 'run a scatter-dag-body over a real WorkerThreadContainer pool'
   - text: 'Reference: Entities, DAGHandoff'
@@ -14,57 +14,95 @@ seeAlso:
     link: '../reference/contracts'
 ---
 
-# Example 11: Loopback hand-off
+<script setup lang="ts">
+import { supportDispatcherDAG } from '../../examples/the-dispatcher/dag.ts';
+</script>
 
-This example chains two DAGs end-to-end using the hand-off channel mechanism. A subclass of `InMemoryChannel` stands in for a real queue transport. When DAG A completes at the `handoff` terminal, the dispatcher publishes a `DAGHandoff` envelope to the channel. The subclass overrides the protected `onPublished` hook to restore the envelope's state snapshot and run DAG B, demonstrating the full round-trip in a single process.
+# Example 11: Operator Hand-Off
 
-## Key concept
+## What It Is
 
-The grain of a hand-off is the DAG, not a single node. DAG A runs to completion inside the first dispatcher call; the terminal state snapshot becomes the `DAGHandoff` envelope's `stateSnapshot`. DAG B restores from that snapshot and runs to completion in its own dispatcher call. Neither DAG knows about the other; the channel wires them.
+Operator Hand-Off is how an application parks a running DAG at a human boundary, stores the cursor and state, and resumes later when the operator supplies the missing input.
+
+The Dispatcher browser demo is the concrete application: a customer turn parks at `park-for-operator`, the UI captures a checkpoint, and the operator pane resumes the same DAG from the parked cursor.
+
+## How It Works
+
+The first execution routes to a parked output and returns an `ExecutionResult` with `parked` metadata. The application persists the checkpoint and correlation key outside the DAG. A later actor restores state, writes the external response, and calls `dispatcher.resume(...)` from the recorded cursor. The parked node does not know whether the resumer is a browser operator, queue worker, or cloud handler.
+
+The hand-off boundary is serialized execution state, not a callback. That keeps browser demos, queue workers, webhooks, and serverless continuations on the same runtime contract.
+
+## Diagrams, Examples, and Outputs
+
+### DAG registration and diagram
+
+The browser-runnable hand-off is [The Dispatcher](./the-dispatcher): a customer turn runs until `park-for-operator`, the execution parks with a cursor, and the operator turn resumes the same DAG from that cursor. The low-level `DAGHandoff` queue envelope remains the distribution primitive; the in-browser demo shows the same state pass-over at the user-facing escalation boundary.
+
+<DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher hand-off DAG" aria-label="Support dispatcher JSON-LD DAG beside Mermaid generated from it." />
+
+This example hands control from the customer-facing execution to an operator-facing continuation. The parked execution result carries the cursor and correlation key; the browser captures a checkpoint, restores state, writes the operator response, and resumes the DAG.
+
+### Run
+
+```bash
+npm run docs:dev
+```
+
+Open [The Dispatcher](./the-dispatcher), enable **HUMAN GATE**, send a customer message, then answer it in the Operator pane.
+
+## What It Lets You Do
+
+Operator hand-off lets applications split one workflow across actors or processes while keeping the DAG as the source of truth. Use it when a customer-facing run must stop at a boundary, preserve state and cursor, then resume from an operator, queue worker, webhook handler, or serverless continuation.
+
+### Key concept
+
+The grain of a hand-off is execution state, not a callback. The first Dispatcher call runs until the park point. The second operator action restores state from the parked result and resumes from the cursor. The parked node does not know who resumes it.
 
 ```
-dispatcher.execute(dagAName, state)
+dispatcher.execute('support-dispatcher', state)
   │
-  └─ reaches 'handoff' terminal
+  └─ park-for-operator routes 'parked'
        │
-       └─ channel.publish(DAGHandoff { stateSnapshot, ... })
+       └─ Checkpoint.capture(...) stores state + cursor
               │
-              └─ onPublished override: restore state → dispatcher.execute(dagBName, restoredState)
+              └─ operator response → restore state → dispatcher.resume(...)
 ```
 
-This is the same pattern a serverless function handler uses across a real message queue — the in-process `InMemoryChannel` loopback lets you develop and test the full chain without infrastructure.
+This is the browser equivalent of a serverless handler resuming work from a queue envelope: serialized state plus a cursor is the hand-off boundary.
 
-## Key APIs
+## Code Samples
+
+Read the snippets with the diagrams nearby so the TypeScript behavior, JSON-LD graph shape, and runtime output line up as one contract.
+
+### Key APIs
 
 | Symbol | Import | Role |
 |--------|--------|------|
-| `InMemoryChannel` | `@studnicky/dagonizer/channels` | Stores envelopes; calls the protected `onPublished` hook after each publish |
-| `InMemoryChannel.onPublished` | `@studnicky/dagonizer/channels` | Protected hook to override in a subclass to chain the downstream DAG |
-| `DAGHandoff` | `@studnicky/dagonizer/entities` | Wire-safe envelope with `stateSnapshot`, `terminalName`, `registryVersion`, `correlationId` |
-| `DagonizerOptionsType.channels` | `@studnicky/dagonizer` | Binds terminal names to `HandoffChannelInterface` instances |
+| `Checkpoint.capture` | `@studnicky/dagonizer/checkpoint` | Captures parked state and cursor |
+| `CheckpointRestoreAdapter` | `@studnicky/dagonizer/checkpoint` | Restores `DispatcherState` from the snapshot |
+| `dispatcher.resume` | `@studnicky/dagonizer` | Continues from the parked cursor |
+| `result.parked` | `ExecutionResultType` | Carries cursor and correlation key |
 
-The `channels` option is a `Record<terminalName, HandoffChannelInterface>`. Terminals not listed follow the default path — no publish, the run completes normally.
+Queue-backed hand-off uses the same state snapshot/cursor idea across a transport boundary.
 
-## What it demonstrates
+#### Browser resume trigger
 
-- **`channels` binding.** Constructing a dispatcher with `channels: { handoff: channel }` activates the publish step for the `handoff` terminal. Any other terminal in the DAG completes normally without publishing.
-- **`onPublished` chain (extension via subclass, zero callbacks).** Subclass `InMemoryChannel` and override the protected `onPublished(handoff)` hook. After recording the deep-cloned envelope, `publish` awaits the override. The override restores state from `handoff.stateSnapshot` and calls the downstream dispatcher's `execute`.
-- **Envelope fidelity.** `InMemoryChannel.publish` calls `structuredClone` on every envelope before storing it. The stored copy is independent from the dispatcher's internal state. The example asserts that the restored state in DAG B matches the terminal state of DAG A — the round-trip (`snapshot → structuredClone → restore → snapshot`) is a fixed point.
-- **`registryVersion` handshake.** The envelope carries `registryVersion`. A real receiver validates this before calling `restore`; the example shows the check pattern.
-- **Embedded child DAGs do not publish.** Only the top-level dispatcher call triggers a channel publish. If DAG A contains embedded DAGs, their completions do not publish envelopes.
+The browser hand-off stores the parked result in memory. A distributed transport uses a `DAGHandoff` envelope and a `HandoffChannelInterface` implementation instead of the in-page operator state.
 
-## Run
+<<< @/../docs/.vitepress/theme/components/DispatcherRunner.vue#dispatcher-browser-resume
 
-```bash
-pnpm run example:11
-```
+See [Distribution and Cloud](../guide/distribution) for the serverless handler pattern, Step Functions wiring, and idempotency guidance.
 
-Source: [`examples/11-handoff.ts`](../../examples/11-handoff.ts)
+## Details for Nerds
 
-## Extending to a real transport
+- **Parked result hand-off.** `result.parked` is the hand-off record between the customer turn and the operator turn.
+- **Snapshot fidelity.** `Checkpoint.capture` stores the state shape needed to resume after UI or process interruption.
+- **Cursor resume.** `dispatcher.resume(dagName, state, cursor)` re-enters at `park-for-operator`.
+- **Domain ownership.** The operator writes `state.response`; the DAG routes `ready` and sends the response.
 
-Replace `InMemoryChannel` with a class that implements `HandoffChannelInterface` and sends to your queue:
+## Related Concepts
 
-<<< @/../examples/dags/11-handoff.ts#queue-channel-pattern
-
-See [Distribution and cloud patterns](../guide/distribution) for the serverless handler pattern, Step Functions wiring, and idempotency guidance.
+- [Guide: Distribution and Cloud](../guide/distribution) - serverless handler pattern, Step Functions wiring, registryVersion handshake
+- [Example 12: Worker Containers](./12-workers) - run a scatter-dag-body over a real WorkerThreadContainer pool
+- [Reference: Entities, DAGHandoff](../reference/entities)
+- [Reference: Contracts, HandoffChannelInterface](../reference/contracts)

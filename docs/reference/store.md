@@ -1,4 +1,6 @@
 ---
+title: 'Store'
+description: 'Store reference for StoreInterface, BaseStore, MemoryStore, TypedStore, snapshots, update semantics, RemoteStore, and StoreError taxonomy.'
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
@@ -13,12 +15,42 @@ seeAlso:
 
 # Store
 
+## What It Is
+
+The store surface provides shared mutable state outside point-to-point DAG state mappings: `StoreInterface`, `BaseStore`, `MemoryStore`, `TypedStore`, snapshots, update semantics, remote-store shape, and `StoreError` taxonomy.
+
+Use this page when nodes need a shared memory graph, cache, typed key space, remote replicated state, or checkpoint-restorable structure that multiple placements can read and write.
+
+## How It Works
+
+Stores are passed into node constructors and survive scatter clone boundaries within a run. Checkpoints can snapshot named stores alongside parent state for deterministic resume.
+
+Use state mapping for point-to-point field transfer. Use stores when multiple placements accumulate into the same structure or when state needs a named persistence boundary.
+
+## Diagrams, Examples, and Outputs
+
+Stores are runtime objects, not DAG placements. These pages show when to choose stores and how checkpoint snapshots interact with them:
+
+- [Reference: Contracts](./contracts) - `StoreInterface`, `StoreSnapshotType`, `StoreSnapshotEntryType`
+- [Reference: Checkpoint](./checkpoint) - `Checkpoint.capture` and `restoreStores` for store snapshots
+- [Guide: Shared state](../guide/shared-state) - decision matrix, concurrency contract, custom-store authoring
+
+## What It Lets You Do
+
+The store reference lets applications share and checkpoint mutable data outside point-to-point DAG state mappings.
+
 `@studnicky/dagonizer/store`
 
 The store module provides the shared key-value store contract and its
 implementations. Stores are passed into node constructors and survive scatter
 clone boundaries within a run. Checkpoint integration snapshots named stores
 alongside parent state for deterministic resume.
+
+## Code Samples
+
+The code below covers store contracts, snapshots, base implementation hooks, memory stores, typed stores, update semantics, remote-store behavior, and store errors.
+
+### Import
 
 ```ts twoslash
 import { BaseStore, MemoryStore, StoreError } from '@studnicky/dagonizer/store';
@@ -27,7 +59,7 @@ import type { SnapshottableInterface, StoreInterface, StoreSnapshotType, StoreSn
 
 ---
 
-## Interface: `SnapshottableInterface`
+### Interface: `SnapshottableInterface`
 
 `@studnicky/dagonizer/contracts`
 
@@ -59,7 +91,7 @@ extends SnapshottableInterface`, so every `StoreInterface` is also `Snapshottabl
 
 ---
 
-## Interface: `StoreInterface`
+### Interface: `StoreInterface`
 
 `@studnicky/dagonizer/contracts`
 
@@ -107,7 +139,7 @@ Implementations are responsible for delivering this. See the `update` note on
 
 ---
 
-## Interface: `StoreSnapshotType`
+### Interface: `StoreSnapshotType`
 
 `@studnicky/dagonizer/contracts`
 
@@ -132,7 +164,7 @@ interface StoreSnapshotType {
 
 ---
 
-## Interface: `StoreSnapshotEntryType`
+### Interface: `StoreSnapshotEntryType`
 
 `@studnicky/dagonizer/contracts`
 
@@ -154,7 +186,7 @@ capture time.
 
 ---
 
-## Class: `BaseStore`
+### Class: `BaseStore`
 
 `@studnicky/dagonizer/store`
 
@@ -172,7 +204,7 @@ abstract class MyStore extends BaseStore {
 }
 ```
 
-### `BaseStoreOptionsType`
+#### `BaseStoreOptionsType`
 
 ```ts twoslash
 interface BaseStoreOptionsType {
@@ -185,7 +217,7 @@ methods is prefixed with `${namespace}:${key}` before reaching the `perform*`
 hooks. Two stores with different namespaces can share the same physical backing
 without collisions.
 
-### Public methods
+#### Public methods
 
 All public methods delegate to the `perform*` hooks after qualifying the key.
 
@@ -201,7 +233,7 @@ All public methods delegate to the `perform*` hooks after qualifying the key.
 | `connect()` | No-op default. Override for connection lifecycle. |
 | `disconnect()` | No-op default. Override for connection lifecycle. |
 
-### Protected abstract hooks
+#### Protected abstract hooks
 
 Plugin authors implement these six methods and two accessors. All keyed
 arguments receive the qualified key (namespace prefix already applied).
@@ -217,7 +249,7 @@ arguments receive the qualified key (namespace prefix already applied).
 | `performSnapshotEntries` | `() → Promise<readonly StoreSnapshotEntryType[]>` | Return all entries for the snapshot. |
 | `performRestoreEntries` | `(entries: readonly StoreSnapshotEntryType[]) → Promise<void>` | Repopulate from entries (clear first, then apply). |
 
-### Protected utility
+#### Protected utility
 
 | Member | Description |
 |--------|-------------|
@@ -225,7 +257,7 @@ arguments receive the qualified key (namespace prefix already applied).
 
 ---
 
-## Class: `MemoryStore`
+### Class: `MemoryStore`
 
 `@studnicky/dagonizer/store`
 
@@ -239,7 +271,7 @@ await store.set('greeting', 'hello');
 const v = await store.get('greeting'); // 'hello' (JsonValueType | null; narrow with typeof)
 ```
 
-### Constructor
+#### Constructor
 
 ```ts twoslash
 import { MemoryStore } from '@studnicky/dagonizer/store';
@@ -251,14 +283,14 @@ const store = new MemoryStore(opts);
 
 Accepts the same `BaseStoreOptionsType` as `BaseStore` (namespace prefix).
 
-### Snapshot type and version
+#### Snapshot type and version
 
 | Field | Value |
 |-------|-------|
 | `snapshotType` | `'memory-store'` |
 | `snapshotVersion` | `1` |
 
-### Atomic `update`
+#### Atomic `update`
 
 `MemoryStore` overrides `update` to access `#data` directly without any
 intermediate `await`. Because the body contains no yield point, no concurrent
@@ -280,7 +312,7 @@ const v = typeof raw === 'number' ? raw : 0; // → 2
 
 ---
 
-## Class: `StoreError`
+### Class: `StoreError`
 
 `@studnicky/dagonizer/store`
 
@@ -302,7 +334,7 @@ try {
 }
 ```
 
-### `StoreErrorClassification`
+#### `StoreErrorClassification`
 
 ```ts twoslash
 type StoreErrorClassification =
@@ -354,7 +386,7 @@ and `UNREACHABLE` are for `RemoteStoreInterface` implementations.
 
 ---
 
-## Interface: `RemoteStoreInterface`
+### Interface: `RemoteStoreInterface`
 
 `@studnicky/dagonizer/contracts`
 
@@ -382,7 +414,7 @@ The engine consumes a `RemoteStoreInterface` through the `StoreInterface` surfac
 methods are observability and coordination primitives the dispatcher uses when
 distributed execution is wired in.
 
-### Interface: `RemoteStoreEndpointType`
+#### Interface: `RemoteStoreEndpointType`
 
 ```ts twoslash
 interface RemoteStoreEndpointType {
@@ -398,7 +430,7 @@ interface RemoteStoreEndpointType {
 
 `region` is required. Implementations that have no region concept supply `''`.
 
-### Interface: `RemoteStoreLeaseType`
+#### Interface: `RemoteStoreLeaseType`
 
 ```ts twoslash
 interface RemoteStoreLeaseType {
@@ -408,7 +440,7 @@ interface RemoteStoreLeaseType {
 }
 ```
 
-Opaque lease token returned by `acquireLease`. Consumers treat `token` as
+Opaque lease token returned by `acquireLease`. Applications treat `token` as
 opaque; the store validates it on `releaseLease` and on writes when
 leasing is enforced.
 
@@ -418,7 +450,7 @@ leasing is enforced.
 | `expiresAt` | Monotonic ms timestamp the lease expires at (exclusive). |
 | `subject` | Scope of the lease (e.g. a key namespace or DAG run id). |
 
-### Methods
+#### Methods
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -427,7 +459,7 @@ leasing is enforced.
 | `releaseLease(lease)` | `Promise<void>` | Release a previously-acquired lease. Idempotent: releasing an already-expired lease is a no-op. |
 | `health(timeoutMs)` | `Promise<boolean>` | Health probe. Returns `true` when the endpoint is reachable and the backing responds within `timeoutMs`. Implementations must not throw on transport failure: return `false` so the dispatcher can route around an unhealthy store. |
 
-### Implementing `RemoteStoreInterface`
+#### Implementing `RemoteStoreInterface`
 
 Extend `BaseStore` and implement the three additional methods plus the
 `endpoint` property:
@@ -438,7 +470,7 @@ Extend `BaseStore` and implement the three additional methods plus the
 
 ---
 
-## Class: `TypedStore<Schema>`
+### Class: `TypedStore<Schema>`
 
 `@studnicky/dagonizer/store`
 
@@ -454,7 +486,7 @@ wider, heterogeneous contract.
 <<< @/../examples/the-archivist/memory/TypedRunStore.ts#typed-store
 ```
 
-### Constructor
+#### Constructor
 
 ```ts twoslash
 import { TypedStore, MemoryStore } from '@studnicky/dagonizer/store';
@@ -471,7 +503,7 @@ const store = new TypedStore<MySchema>(new MemoryStore(), {
 
 `Schema` must be a `Record<string, JsonValueType>`: every value type must be JSON-serializable.
 
-### Methods
+#### Methods
 
 | Method | Returns | Description |
 |--------|---------|-------------|
@@ -492,7 +524,16 @@ time.
 
 ---
 
-## Related guides
+## Details for Nerds
 
-- [Guide: Shared state](../guide/shared-state)
-- [Reference: Checkpoint](./checkpoint): `Checkpoint.capture`, `restoreStores`
+Stores are runtime dependencies, not graph topology. The DAG can stay portable while nodes share a store instance injected by the host.
+
+Snapshot support is explicit. A store that implements `SnapshottableInterface` can participate in checkpoint capture and restore; a store that does not implement it remains runtime-only.
+
+## Related Concepts
+
+- [Reference: Contracts](./contracts) - `StoreInterface`, `StoreSnapshotType`, `StoreSnapshotEntryType`
+- [Reference: Checkpoint](./checkpoint) - `Checkpoint.capture` and `restoreStores` for store snapshots
+- [Guide: Shared state](../guide/shared-state) - decision matrix, concurrency contract, custom-store authoring
+- [Example 10: Shared State](../examples/10-shared-state) - runnable shared-store behavior
+- [Remote Store](../examples/store-remote) - remote-store contract example

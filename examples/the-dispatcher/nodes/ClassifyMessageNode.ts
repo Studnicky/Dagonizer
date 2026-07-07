@@ -30,6 +30,7 @@
 
 import { Batch, BatchItemExecutor, MonadicNode, NodeOutput } from '@studnicky/dagonizer';
 import type { ItemType, NodeContextType, NodeOutputType, RoutedBatchType, SchemaObjectType } from '@studnicky/dagonizer';
+import { Timeout } from '@studnicky/dagonizer/runtime';
 
 import type { DispatcherState } from '../DispatcherState.ts';
 import type { DispatcherServices } from '../services.ts';
@@ -37,6 +38,7 @@ import type { DispatcherServices } from '../services.ts';
 export class ClassifyMessageNode extends MonadicNode<DispatcherState, 'routine' | 'escalate' | 'off-topic'> {
   readonly name = 'classify-message';
   readonly outputs = ['routine', 'escalate', 'off-topic'] as const;
+  override readonly timeout = Timeout.ofMs(60_000);
 
   readonly #services: DispatcherServices;
 

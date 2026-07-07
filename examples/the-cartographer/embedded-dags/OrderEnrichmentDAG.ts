@@ -15,7 +15,7 @@
  *     └─eta-estimated─► enriched  (TerminalNode completed)
  *
  * Embedded in event-pipeline's order lane:
- *   .embeddedDAG('order-enrichment', 'order-enrichment',
+ *   .embed('order-enrichment', 'order-enrichment',
  *     { 'success': 'enrich-leg', 'error': 'enrich-leg' },
  *     {
  *       'inputs':  { 'normalized': 'normalized' },

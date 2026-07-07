@@ -1,4 +1,6 @@
 ---
+title: 'Lifecycle'
+description: 'Lifecycle reference for DAGLifecycleStateType, DAGLifecycleEventType, DAGLifecycleMachine transitions, terminal states, and observability hooks.'
 seeAlso:
   - text: 'Reference: Execution'
     link: './execution'
@@ -9,13 +11,19 @@ seeAlso:
 
 # Lifecycle
 
-`@studnicky/dagonizer/lifecycle`
+## What It Is
 
-The lifecycle module exports the discriminated union type, the event union type, and the pure reducer machine.
+The lifecycle model records where a DAG run is: `pending`, `running`, `completed`, `failed`, `cancelled`, or `timed_out`.
 
----
+Use this page when inspecting `state.lifecycle`, writing deterministic lifecycle tests, projecting execution results, or attaching observability hooks that care about run state.
 
-## Type: `DAGLifecycleStateType`
+## How It Works
+
+`DAGLifecycleMachine.transition()` is the state machine. It consumes explicit lifecycle events with monotonic timestamps and returns a new discriminated-union state. Runtime code stores that state on `NodeStateBase.lifecycle`.
+
+The lifecycle model is intentionally small: it tracks run status and timing, not business progress. Use progress events or node output for domain-level milestones.
+
+### Type: `DAGLifecycleStateType`
 
 ```ts twoslash
 import type { DAGLifecycleStateType } from '@studnicky/dagonizer/lifecycle';
@@ -43,7 +51,7 @@ Inspect via `state.lifecycle.variant`. Narrow to a terminal variant to access it
 
 ---
 
-## Type: `DAGLifecycleEventType`
+### Type: `DAGLifecycleEventType`
 
 Events consumed by `DAGLifecycleMachine.transition()`.
 
@@ -62,7 +70,35 @@ The `at` field carries the monotonic clock value for the transition. Supply `Clo
 
 ---
 
-## Class: `DAGLifecycleMachine`
+## Diagrams, Examples, and Outputs
+
+Lifecycle is runtime state rather than graph topology. The links below show where lifecycle state appears during real execution and observability:
+
+- [Reference: Execution](./execution)
+- [Reference: Dagonizer](./dagonizer) - observability hooks
+
+## What It Lets You Do
+
+The lifecycle reference lets applications distinguish successful completion from failure, cancellation, and timeout without string-parsing logs or inspecting thrown errors.
+
+`@studnicky/dagonizer/lifecycle`
+
+The lifecycle module exports the discriminated union type, the event union type, and the pure reducer machine.
+
+## Code Samples
+
+The code below covers the state union, event union, reducer, terminal checks, and custom-state integration.
+
+### Import
+
+```ts twoslash
+import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
+import type { DAGLifecycleStateType, DAGLifecycleEventType } from '@studnicky/dagonizer/lifecycle';
+```
+
+---
+
+### Class: `DAGLifecycleMachine`
 
 Pure reducer for `DAGLifecycleState`. Static class; never instantiated.
 
@@ -70,7 +106,7 @@ Pure reducer for `DAGLifecycleState`. Static class; never instantiated.
 import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
 ```
 
-### `DAGLifecycleMachine.initial()`
+#### `DAGLifecycleMachine.initial()`
 
 ```ts twoslash
 import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
@@ -81,7 +117,7 @@ const initial = DAGLifecycleMachine.initial();
 
 Seed value for a new state object.
 
-### `DAGLifecycleMachine.transition(state, event)`
+#### `DAGLifecycleMachine.transition(state, event)`
 
 ```ts twoslash
 import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
@@ -108,7 +144,7 @@ Valid transitions:
 
 All other transitions return the input unchanged (illegal, detected by `NodeStateBase`).
 
-### `DAGLifecycleMachine.isTerminal(state)`
+#### `DAGLifecycleMachine.isTerminal(state)`
 
 `true` if the state is one of `completed`, `failed`, `cancelled`, or `timed_out`.
 
@@ -124,7 +160,7 @@ if (DAGLifecycleMachine.isTerminal(lifecycle)) {
 
 ---
 
-## Usage in custom state
+### Usage in custom state
 
 Callers implementing `NodeStateInterface` without extending `NodeStateBase` use `DAGLifecycleMachine` directly to drive lifecycle transitions:
 
@@ -141,8 +177,17 @@ function markRunning(): void {
   lifecycle = next;
 }
 ```
-## Related guides
 
-- [Cancellation](../guide/cancellation)
-- [Observability](../guide/observability)
-- [Subclassing State](../guide/subclassing)
+## Details for Nerds
+
+Lifecycle timestamps are monotonic milliseconds, not wall-clock timestamps. They are safe for duration math and deterministic tests, but they are not meant for user-facing date display.
+
+Illegal transitions return the input state by reference. `NodeStateBase` treats that as an error boundary, which keeps the reducer pure while still making bad runtime transitions visible.
+
+## Related Concepts
+
+- [Reference: Execution](./execution)
+- [Reference: Dagonizer](./dagonizer) - observability hooks
+- [Cancellation](../guide/cancellation) - cancellation and timeout lifecycle outcomes
+- [Observability](../guide/observability) - lifecycle hooks and event projection
+- [Subclassing State](../guide/subclassing) - `NodeStateBase.lifecycle` behavior

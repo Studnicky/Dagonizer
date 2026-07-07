@@ -1,4 +1,6 @@
 ---
+title: 'Checkpoint'
+description: 'Checkpoint reference for capturing, serializing, persisting, recalling, and restoring DAG state, cursor positions, and named store snapshots.'
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
@@ -16,13 +18,49 @@ seeAlso:
 
 # Checkpoint
 
+## What It Is
+
+The checkpoint surface captures enough information to resume an interrupted DAG run: state, cursor position, lifecycle payload, and optional named store snapshots.
+
+Use this page when a run must survive process exit, browser refresh, worker replacement, human-in-the-loop parking, or any other interruption that should resume deterministically.
+
+## How It Works
+
+`Checkpoint.capture()` builds the record from an execution result and optional named stores. `Checkpoint.load()` parses a persisted record. `Checkpoint.recall()` reads from a checkpoint store. `restoreState()` and `restoreStores()` apply the payload back to runtime objects before `Dagonizer.resume()`.
+
+The checkpoint does not contain node implementations or dispatcher registries. The host must register the same DAG and node names before resuming.
+
+## Diagrams, Examples, and Outputs
+
+Checkpoint behavior is easiest to understand through resume examples and store snapshots:
+
+- [Reference: Contracts](./contracts) - `CheckpointStore`, `Snapshottable`, `StoreSnapshotType`, `StoreSnapshotEntryType`
+- [Reference: Entities](./entities) - `CheckpointData`
+- [Reference: Store](./store) - `Store`, `BaseStore`, `MemoryStore`, `StoreError`
+- [Reference: Validation](./validation) - `Validator.checkpoint`
+
+## What It Lets You Do
+
+The checkpoint reference lets applications capture, serialize, persist, recall, and restore interrupted DAG executions.
+
 `@studnicky/dagonizer/checkpoint`
 
 The checkpoint module persists and restores in-flight DAG executions. `Checkpoint.capture()` is the canonical way to build a checkpoint; `Checkpoint.load()` parses a persisted record back into a `Checkpoint` instance. Both work whether or not the run uses named stores.
 
+## Code Samples
+
+The code below covers checkpoint capture, JSON serialization, persistence, recall, state restore, store restore, and the in-memory checkpoint store.
+
+### Import
+
+```ts twoslash
+import { Checkpoint, MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
+import type { CheckpointRestoreAdapter, CaptureOptionsType } from '@studnicky/dagonizer/checkpoint';
+```
+
 ---
 
-## Class: `Checkpoint`
+### Class: `Checkpoint`
 
 `Checkpoint` instances are obtained via `Checkpoint.capture()` (when saving) or `Checkpoint.load()` / `Checkpoint.recall()` (when recalling). Instance methods `toJson`, `persist`, `restoreState`, and `restoreStores` cover the full lifecycle.
 
@@ -36,7 +74,7 @@ import { Checkpoint } from '@studnicky/dagonizer';
 
 ---
 
-### `Checkpoint.capture(dagName, result, options?)`
+#### `Checkpoint.capture(dagName, result, options?)`
 
 ```ts twoslash
 import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
@@ -64,7 +102,7 @@ Calling `Checkpoint.capture` without a `stores` option (or with an empty map) wr
 
 ---
 
-### `Checkpoint.load(raw)`
+#### `Checkpoint.load(raw)`
 
 ```ts twoslash
 import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
@@ -81,7 +119,7 @@ Parse and validate a raw `CheckpointData` object (e.g. from `JSON.parse`) and wr
 
 ---
 
-### `Checkpoint.recall(store, key)`
+#### `Checkpoint.recall(store, key)`
 
 ```ts twoslash
 import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
@@ -100,7 +138,7 @@ Load a checkpoint from a `CheckpointStore` by key. Returns `null` when the store
 
 ---
 
-### `ckpt.toJson()`
+#### `ckpt.toJson()`
 
 ```ts twoslash
 import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
@@ -117,7 +155,7 @@ Serialize this checkpoint's data to a pretty-printed JSON string. Symmetric coun
 
 ---
 
-### `ckpt.persist(store, key)`
+#### `ckpt.persist(store, key)`
 
 ```ts twoslash
 import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
@@ -137,7 +175,7 @@ Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + 
 
 ---
 
-### `ckpt.restoreState(adapter)`
+#### `ckpt.restoreState(adapter)`
 
 Rehydrate the state from this checkpoint via the supplied adapter. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
 
@@ -177,7 +215,7 @@ const _skippedNodes: string[] = recalled.skippedNodes;
 
 ---
 
-### `ckpt.restoreStores(stores, options?)`
+#### `ckpt.restoreStores(stores, options?)`
 
 ```ts twoslash
 import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
@@ -204,7 +242,7 @@ Populate each named store from the snapshots in this checkpoint. The keys in `st
 
 ---
 
-### `ckpt.data`
+#### `ckpt.data`
 
 ```ts twoslash
 import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
@@ -218,7 +256,7 @@ The parsed and validated checkpoint record. Serialize with `ckpt.toJson()`.
 
 ---
 
-## Interface: `CheckpointRestoreAdapter<TState>`
+### Interface: `CheckpointRestoreAdapter<TState>`
 
 ```ts twoslash
 import type { CheckpointRestoreAdapterInterface } from '@studnicky/dagonizer/contracts';
@@ -232,7 +270,7 @@ Contract for restoring a state instance from a JSON snapshot. Wrap a plain funct
 
 ---
 
-## Interface: `CaptureOptionsType`
+### Interface: `CaptureOptionsType`
 
 ```ts twoslash
 import type { CaptureOptionsType } from '@studnicky/dagonizer/checkpoint';
@@ -251,7 +289,7 @@ const _execution: BatchExecutionOptionsType | undefined = opts.execution;
 
 ---
 
-## Interface: `RestoreStoresOptionsType`
+### Interface: `RestoreStoresOptionsType`
 
 ```ts twoslash
 import type { RestoreStoresOptionsType } from '@studnicky/dagonizer/checkpoint';
@@ -267,7 +305,7 @@ const _execution: BatchExecutionOptionsType | undefined = opts.execution;
 
 ---
 
-## Interface: `RecalledCheckpoint<TState>`
+### Interface: `RecalledCheckpoint<TState>`
 
 ```ts twoslash
 import type { RecalledCheckpointType } from '@studnicky/dagonizer/checkpoint';
@@ -283,7 +321,7 @@ const _skippedNodes: string[] = recalled.skippedNodes;
 
 ---
 
-## Type: `CheckpointData`
+### Type: `CheckpointData`
 
 Derived from `CheckpointDataSchema` via `json-schema-to-ts`.
 
@@ -305,7 +343,7 @@ const _stores: CheckpointDataType['stores'] = data.stores;
 
 ---
 
-## Type: `CheckpointDataSchema`
+### Type: `CheckpointDataSchema`
 
 JSON Schema object for `CheckpointData`.
 
@@ -318,7 +356,7 @@ console.log(CheckpointDataSchema.$id);
 
 ---
 
-## Class: `MemoryCheckpointStore`
+### Class: `MemoryCheckpointStore`
 
 In-process `CheckpointStore`. Stores entries in a `Map<string, string>` on the instance. Useful for tests, examples, and ephemeral demo flows. Not for production: the map vanishes when the process exits.
 
@@ -326,7 +364,7 @@ In-process `CheckpointStore`. Stores entries in a `Map<string, string>` on the i
 import { MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
 ```
 
-### Members
+#### Members
 
 | Member | Description |
 |--------|-------------|
@@ -341,9 +379,19 @@ import { MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
 
 ---
 
-## Related guides
+## Details for Nerds
 
-- [Checkpoint](../guide/checkpoint)
-- [Persistence](../guide/persistence)
-- [Shared state](../guide/shared-state)
-- [Subclassing State](../guide/subclassing)
+A checkpoint is only useful with a compatible registry. Before resume, the host must register the DAG, nodes, plugin DAGs, state factories, and stores needed by the saved cursor.
+
+Store snapshots are named. Capture and restore should use stable store names so a persisted checkpoint can rehydrate the intended store instead of a new empty instance.
+
+## Related Concepts
+
+- [Reference: Contracts](./contracts) - `CheckpointStore`, `Snapshottable`, `StoreSnapshotType`, `StoreSnapshotEntryType`
+- [Reference: Entities](./entities) - `CheckpointData`
+- [Reference: Store](./store) - `Store`, `BaseStore`, `MemoryStore`, `StoreError`
+- [Reference: Validation](./validation) - `Validator.checkpoint`
+- [Checkpoint and Resume](../guide/checkpoint) - capture and resume flow
+- [Checkpoint Persistence](../guide/persistence) - durable checkpoint-store implementations
+- [Shared State](../guide/shared-state) - store snapshots and shared state
+- [Subclassing State](../guide/subclassing) - state restore requirements

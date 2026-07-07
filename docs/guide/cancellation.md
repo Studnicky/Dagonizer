@@ -5,25 +5,60 @@ seeAlso:
   - text: 'Retry'
     link: './retry'
     description: 'RetryPolicy.run honors context.signal so retries abort cleanly'
-  - text: 'Checkpoint and resume'
+  - text: 'Checkpoint and Resume'
     link: './checkpoint'
     description: 'abort and persist the cursor; resume continues from that point'
   - text: 'Observability'
     link: './observability'
     description: 'onError fires when an abort or deadline interrupts a node'
 nextSteps:
-  - text: 'Phase 06, Cancellation demo'
+  - text: 'Example 06: Cancellation'
     link: '../examples/06-cancellation'
     description: 'runnable AbortController and deadlineMs example'
 ---
 
+<script setup lang="ts">
+import { dag as cancellationDag } from '../../examples/dags/06-cancellation.ts';
+</script>
+
 # Cancellation
+
+## What It Is
+
+Cancellation flows through the standard Web `AbortSignal` API. The dispatcher accepts a caller signal and an optional `deadlineMs`; both compose into the signal every node receives as `context.signal`.
+
+The goal is not to crash the run. The goal is to stop safely, return a structured `ExecutionResult`, preserve `interruptedAt`, and keep a cursor when the run can be resumed.
+
+## How It Works
+
+The dispatcher composes all cancellation inputs into one signal and passes it through `NodeContextType`. Nodes and runtime helpers propagate that signal into adapters, tools, schedulers, and retry policies. When it fires, the dispatcher records `interruptedAt`, keeps `cursor` when resume is possible, and returns a normal `ExecutionResult`.
 
 Cancellation flows through the standard Web `AbortSignal` API. The dispatcher accepts two optional fields in the `execute()` and `resume()` options object: a caller-supplied `signal` and a `deadlineMs` budget. Internally the two compose via `Signal.compose({ signal, deadlineMs })` and the result lands on `context.signal` for every node.
 
-## `signal` and `deadlineMs`
+## Diagrams, Examples, and Outputs
 
-The Phase 06 demo runs the same slow DAG twice: once with a caller `AbortController` and once with a dispatcher deadline.
+Example 06 runs a slow DAG twice: once with a caller abort and once with a deadline. The topology is intentionally small so the lifecycle result is easy to read:
+
+<DagJsonMermaid :dag="cancellationDag" title="Example 06 cancellation DAG" aria-label="Example 06 cancellation JSON-LD DAG beside Mermaid generated from it." />
+
+- [Retry](./retry) - RetryPolicy.run honors context.signal so retries abort cleanly
+- [Checkpoint and Resume](./checkpoint) - abort and persist the cursor; resume continues from that point
+- [Observability](./observability) - onError fires when an abort or deadline interrupts a node
+- [Example 06: Cancellation](../examples/06-cancellation) - runnable AbortController and deadlineMs example
+
+## What It Lets You Do
+
+### Use when
+
+Use cancellation when a caller must stop work safely: a browser tab closes, an HTTP request disconnects, a queue lease expires, or a host-level deadline fires. The goal is to interrupt execution with a structured lifecycle result and a resumable cursor, not to let nodes throw arbitrary errors.
+
+## Code Samples
+
+The snippets below show the call-site options, the cancellation-aware node, and the cursor checks Example 06 asserts.
+
+### `signal` and `deadlineMs`
+
+Example 06 runs the same slow DAG twice: once with a caller `AbortController` and once with a dispatcher deadline.
 
 Caller-controlled abort:
 
@@ -35,21 +70,21 @@ Dispatcher deadline (fires automatically after the budget):
 
 Both produce a non-`null` `result.cursor` and a non-`null` `result.interruptedAt`; the only difference is the discriminator on `interruptedAt.reason` (`'abort'` versus `'timeout'`).
 
-## `NodeContextType`
+### `NodeContextType`
 
-Nodes receive the composed signal in the `context` argument and must propagate it into every IO call to be cancellable. The Phase 06 node wires `context.signal` into its delay primitive:
+Nodes receive the composed signal in the `context` argument and must propagate it into every IO call to be cancellable. The Example 06 node wires `context.signal` into its delay primitive:
 
 <<< @/../examples/dags/06-cancellation.ts#node-cancellation-aware
 
 `context` also carries `context.dagName` and `context.nodeName` for logging.
 
-## Detecting abort inside a node
+### Detecting abort inside a node
 
 <<< @/../examples/dags/06-cancellation.ts#signal-iteration
 
 A node that ignores `context.signal` runs to completion even after the signal fires. The dispatcher stops the iterator once the current node returns, but the in-flight node body still races to finish on its own.
 
-## After cancellation
+### After cancellation
 
 Once the signal fires:
 
@@ -59,7 +94,7 @@ Once the signal fires:
 
 <<< @/../examples/06-cancellation.ts#cursor-check
 
-## `interruptedAt`
+### `interruptedAt`
 
 When a flow exits via abort or timeout, `result.interruptedAt` carries structured cancellation telemetry: `{ nodeName: string; reason: 'abort' | 'timeout' }`.
 
@@ -69,7 +104,7 @@ When a flow exits via abort or timeout, `result.interruptedAt` carries structure
 
 `reason: 'timeout'` is set when the abort reason is a `TimeoutError` (either the run-level `deadlineMs` deadline or a per-node `timeoutMs` budget). `reason: 'abort'` is set when the caller-supplied `signal` fired with any other reason.
 
-## Signal composition
+### Signal composition
 
 The dispatcher uses `Signal.compose(...)` to merge cancellation concerns. Callers can do the same before passing a single signal in:
 
@@ -77,8 +112,17 @@ The dispatcher uses `Signal.compose(...)` to merge cancellation concerns. Caller
 
 This is equivalent to passing both as `signal` plus `deadlineMs`. Pick whichever form fits the call site.
 
-## Related reference
+## Details for Nerds
 
-- [Phase 06, Cancellation demo](../examples/06-cancellation)
+### Runtime contract
+
+Cancellation is cooperative at the node boundary. The dispatcher can stop before starting the next placement, but it cannot interrupt arbitrary synchronous work inside an already-running node. A node that performs IO or waits should pass `context.signal` into the underlying API, adapter, scheduler, or retry helper.
+
+## Related Concepts
+
+- [Retry](./retry) - RetryPolicy.run honors context.signal so retries abort cleanly
+- [Checkpoint and Resume](./checkpoint) - abort and persist the cursor; resume continues from that point
+- [Observability](./observability) - onError fires when an abort or deadline interrupts a node
+- [Example 06: Cancellation](../examples/06-cancellation) - runnable AbortController and deadlineMs example
 - [`@studnicky/signal`, `Signal`](https://github.com/Studnicky/noocodec-substrate/tree/main/packages/signal)
 - [Reference, Contracts, `ExecuteOptionsType`](../reference/contracts)

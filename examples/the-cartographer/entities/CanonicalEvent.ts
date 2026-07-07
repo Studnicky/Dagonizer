@@ -75,11 +75,11 @@ const canonicalEventVariantValidator = Validator.compile<CanonicalEventVariant>(
 // Complete 'position-ping' default. The producer overrides only what it knows;
 // every required envelope/body field is present so the consumer never sees a hole.
 const POSITION_PING_DEFAULT: PositionPingEvent = {
-  'shipmentId': '',
-  'eventId': '',
+  'shipmentId': 'unknown',
+  'eventId': 'unknown',
   'epochMs': 0,
   'eventType': 'position-ping',
-  'sourceId': '',
+  'sourceId': 'unknown',
   'sourceFormat': 'json',
   'sourceCompression': 'none',
   'body': {

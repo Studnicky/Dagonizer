@@ -1,5 +1,5 @@
 ---
-title: 'Conversational & interactive nodes'
+title: 'Conversational Agents'
 description: 'Patterns for slot-filling, turn-based dialogs, human-in-the-loop workflows, and the canonical 8-node agent loop authored as a DAG.'
 seeAlso:
   - text: 'State & metadata'
@@ -22,15 +22,56 @@ seeAlso:
     description: 'understand when a DAG completes vs. when it pauses'
 ---
 
-# Conversational & interactive nodes
+<script setup lang="ts">
+import { reactAgentDAG, supportDispatcherDAG } from '../.vitepress/theme/exampleDags.ts';
+</script>
+
+# Conversational Agents
+
+## What It Is
+
+Conversational applications are still workflows. A user message enters state, nodes classify intent or fill slots, the DAG either replies, parks for a human, dispatches tools, or loops through another model call. Dagonizer keeps those turn decisions visible as JSON-LD topology instead of hiding them in callback stacks.
+
+This guide covers three conversation shapes that appear in the runnable examples: request/response turns, human-in-the-loop parking, and the reusable agent loop.
+
+## How It Works
+
+Conversational flows keep serializable domain progress on state and put ephemeral IO handles behind metadata, stores, triggers, or host code. A turn either completes with a response, parks with a cursor, or streams through a producer/channel surface while the DAG remains the explicit control-flow graph.
 
 Interactive DAGs — those that prompt users, wait for responses, escalate to humans, or stream results — present a challenge: the input/output cannot flow through serializable `state.params` when it is ephemeral (a live socket, a request/response pair, an SSE stream, a queue item). This guide documents two proven patterns for threading non-serializable IO through a DAG.
 
-## Overview
+## Diagrams, Examples, and Outputs
+
+The runnable examples show two complementary conversational shapes. The ReAct loop is the reusable agent graph; the Dispatcher support flow shows park-and-correlate handoff:
+
+<DagJsonMermaid :dag="reactAgentDAG" title="ReAct agent loop DAG" aria-label="ReAct agent loop JSON-LD DAG beside Mermaid generated from it." />
+
+<DagJsonMermaid :dag="supportDispatcherDAG" title="support-dispatcher conversation DAG" aria-label="Support dispatcher JSON-LD DAG beside Mermaid generated from it." />
+
+- [State & metadata](./shared-state) - use state.metadata as the inter-node IO bus
+- [Checkpoint & resume](./checkpoint) - persist and reload state across process boundaries
+- [Dependency injection](./services) - inject IO adapters via node constructors
+- [Example 29: Agent DAG](../examples/29-agent-dag) - working example of the 8-node agent loop with stub LLM
+- [The Dispatcher](../examples/the-dispatcher) - runnable support handoff and operator response flow
+- [ReAct Agent Memory](../examples/react-agent-memory) - runnable trace streaming and provenance recall
+
+## What It Lets You Do
+
+### Use when
+
+Use this guide when a DAG interacts with people, live transports, or turn-based agent loops. It covers slot filling, human escalation, request/response boundaries, streaming, and the canonical agent topology.
+
+## Code Samples
+
+The sections below describe the implementation shapes behind the runnable examples. Prefer the linked demos for copy/paste starting points; use the sketches here to understand the design tradeoffs.
+
+## Details for Nerds
+
+### Overview
 
 Both approaches use the same core idea: **the state metadata bus** (`state.setMetadata(key, value)` to write; `state.getter.string/number/...(key)` for typed cast-free reads, or `state.getMetadata(key)` for the raw `unknown` you narrow yourself) to pass messages in and out of nodes. The differences are:
 
-| Aspect | Turn-termination (nocturne) | Out-of-band signaling (Foundersmax) |
+| Aspect | Request/response turn termination | Park-and-correlate handoff |
 |--------|----------------------------|-----------------------------------|
 | **When to use** | Conversational slot-filling, sequential dialogs, request/response cycles | HITL escalations, approvals, notifications, async hand-offs |
 | **Pause mechanism** | Node returns a specific output → routes to a terminal → HTTP turn ends | DAG completes normally; admin action triggers SSE push to waiting client |
@@ -42,13 +83,13 @@ Choose turn-termination for conversational flows (the resume-generator use case)
 
 ---
 
-## Pattern 1: Turn-termination (conversational)
+### Pattern 1: Request/response turn termination
 
-### How it works
+#### How it works
 
 A conversational DAG runs per HTTP request. The LLM (or a state machine) updates the conversation state. If more information is needed, the node returns a specific output that routes to a named terminal, ending the turn. The caller reads `state.getMetadata('assistantMessage')` and sends it to the user. The user's next message starts a fresh DAG execution with the persisted state object.
 
-### Example: slot-filling trip planner
+#### Example: slot-filling trip planner
 
 ```typescript
 // TripState.ts — domain state
@@ -153,7 +194,7 @@ export class IntakeNode extends MonadicNode<TripState, 'incomplete' | 'success'>
 }
 ```
 
-### Wiring the orchestrator
+#### Wiring the orchestrator
 
 ```typescript
 // Orchestrator.ts
@@ -263,7 +304,7 @@ export class TripOrchestrator {
 }
 ```
 
-### Key properties
+#### Key properties
 
 1. **No checkpoint/resume machinery**: Each turn is a fresh DAG execution. State is persisted in a store (database, file system, etc.), not via `Checkpoint.capture()`.
 
@@ -277,13 +318,13 @@ export class TripOrchestrator {
 
 ---
 
-## Pattern 2: Out-of-band signaling (HITL)
+### Pattern 2: Park-and-correlate handoff
 
-### How it works
+#### How it works
 
 The DAG completes a turn normally, synchronously. A separate system (an event bus, queue, or webhook) holds HITL items (escalations, approvals, reviews). Humans act on the queue via a separate admin interface. When they decide, an event fires. A browser SSE stream, a message queue subscription, or a webhook handler receives the event and notifies the waiting client.
 
-### Example: refund escalation queue
+#### Example: refund escalation queue
 
 ```typescript
 // RefundAgentServices.ts
@@ -410,7 +451,7 @@ export class EscalateForDecisionNode
 }
 ```
 
-### Wiring the orchestrator
+#### Wiring the orchestrator
 
 ```typescript
 // ConversationEngine.ts
@@ -504,7 +545,7 @@ export function makeSseStream(eventBus: EventBus, customerId: string) {
 }
 ```
 
-### Key properties
+#### Key properties
 
 1. **DAG completes normally**: No special terminal routing. The DAG runs to completion; the caller reads `assistantMessage` and returns.
 
@@ -518,7 +559,7 @@ export function makeSseStream(eventBus: EventBus, customerId: string) {
 
 ---
 
-## Choosing a pattern
+### Choosing a pattern
 
 | Your scenario | Pattern |
 |---------------|---------|
@@ -530,7 +571,7 @@ export function makeSseStream(eventBus: EventBus, customerId: string) {
 
 ---
 
-## Dependency injection
+### Dependency injection
 
 Constructor injection is the dependency injection model. Nodes receive dependencies through their constructors and hold them as private fields.
 
@@ -557,7 +598,7 @@ Nodes are testable in isolation: instantiate with a stub or fake, call `execute(
 
 ---
 
-## Common questions
+### Common questions
 
 **Q: How do I stream responses (e.g., Claude streaming tokens)?**
 
@@ -581,11 +622,11 @@ A: Yes. A node can enqueue an escalation (out-of-band) and continue. Or it can r
 
 ---
 
-## Migration and adoption
+### Migration and adoption
 
-Both nocturne and Foundersmax demonstrate these patterns. To adopt:
+To adopt these patterns:
 
-1. **Copy the `HandoffState` and `HandoffMachine`** from nocturne if you need a slot-filling state machine. They are domain-agnostic.
+1. **Start from the request/response state-machine shape** if you need slot filling. Keep the handoff state serializable and make the missing-slot question explicit in state metadata.
 
 2. **Use the `state.metadata` bus** as documented here. It is already part of `NodeStateBase` in the framework.
 
@@ -599,14 +640,14 @@ Future versions of `@studnicky/dagonizer` will export `HandoffMachine` and an `I
 
 ---
 
-## Agent loop {#agent-loop}
+### Agent loop {#agent-loop}
 
 The patterns above describe how to structure a single DAG turn. When the agent
 needs to call tools and loop back to the model with the results, the turn
 contains the inner loop itself: build request → call model → inspect variant →
 dispatch tools → collect results → loop.
 
-### The canonical 8-node topology
+#### The canonical 8-node topology
 
 ```
 build-request
@@ -625,7 +666,7 @@ Every LLM-with-tools agent repeats this structure. Author it as an explicit
 JSON-LD `DAGType` so the verified topology remains visible while callers
 subclass the node bases.
 
-### Agent DAG as JSON-LD
+#### Agent DAG as JSON-LD
 
 ```ts
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -661,7 +702,7 @@ dispatcher.registerBundle(toolRegistry.bundle()); // tool:<name> DAGs
 dispatcher.registerDAG(agentDag);
 ```
 
-### Subclassing each base node
+#### Subclassing each base node
 
 Each abstract base node separates framework concerns (error wrapping, routing)
 from domain concerns (state reads and writes). Implement only the abstract
@@ -697,7 +738,7 @@ class MyCallModelNode extends CallModelNode<AgentState> {
 }
 ```
 
-### Tool dispatch via dagFrom
+#### Tool dispatch via dagFrom
 
 `BuildToolWorksetsNode` stamps each scatter item with
 `dagName: 'tool:' + call.name`. The scatter placement uses
@@ -715,12 +756,13 @@ dispatcher.registerBundle(tools.bundle());
 // Registers tool:calculator and tool:search as embeddable DAGs.
 ```
 
-### Cross-reference
+## Related Concepts
 
-See [Example 29: Agent DAG with JSON-LD](../examples/29-agent-dag) for a complete
-working example with a stub LLM adapter and all 8 subclasses wired end-to-end.
-
-See [ReAct agent: streaming + provenance recall](./react-agent) for the ReAct
-vocabulary mapped onto this loop, streaming the reasoning trace, live token
-streaming via `CallModelNode { sink }`, and recording/recalling reasoning with
-graph provenance.
+- [State & metadata](./shared-state) - use state.metadata as the inter-node IO bus
+- [Checkpoint & resume](./checkpoint) - persist and reload state across process boundaries
+- [Dependency injection](./services) - inject IO adapters via node constructors
+- [Example 29: Agent DAG](../examples/29-agent-dag) - working example of the 8-node agent loop with stub LLM
+- [ReAct agent: streaming + provenance recall](./react-agent) - the 8-node loop as ReAct, trace streaming, live token deltas, provenance recall
+- [Lifecycle phases](./lifecycle-phases) - understand when a DAG completes vs. when it pauses
+- [ReAct Agent Memory](../examples/react-agent-memory) - trace streaming, live token deltas, and graph provenance recall
+- [ReAct Agent Routing](../examples/react-agent-routing) - concurrent stream routing by `routeKey`

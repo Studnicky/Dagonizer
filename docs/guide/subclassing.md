@@ -1,33 +1,60 @@
 ---
-title: 'Subclassing state'
+title: 'Subclassing State'
 description: 'NodeStateBase is the canonical base class for domain-specific DAG state. Extend it to add typed fields, override snapshotData and restoreData for checkpoint round-trips, and override clone for deep-copy semantics across scatter clone boundaries.'
 seeAlso:
   - text: 'DAGBuilder'
     link: './builder'
     description: 'register nodes that read and write your custom state subclass'
-  - text: 'Checkpoint and resume'
+  - text: 'Checkpoint and Resume'
     link: './checkpoint'
     description: 'snapshotData and restoreData round-trip domain fields across abort and resume'
   - text: 'Observability'
     link: './observability'
     description: 'dispatcher hooks fire on subclass instances unchanged'
 nextSteps:
-  - text: 'Checkpoint and resume'
+  - text: 'Checkpoint and Resume'
     link: './checkpoint'
     description: 'capture, persist, and recall a subclassed state'
 ---
 
-# Subclassing state
+# Subclassing State
+
+## What It Is
+
+`NodeStateBase` is the base class every DAG state object inherits from. It gives the engine lifecycle fields, metadata, retry counters, errors, warnings, checkpoint hooks, and clone behavior. Your subclass adds the domain fields your nodes actually care about: messages, candidates, work items, user choices, tool traces, costs, and anything else your application carries through the graph.
+
+The rule is simple: make domain state explicit. If a node reads or writes a field, put that field on the state subclass so TypeScript can follow it through the DAG.
+
+## How It Works
+
+Extend `NodeStateBase`, initialize all domain fields in the constructor, and override `snapshotData`, `restoreData`, or `clone` only when domain fields need custom serialization or deep-copy behavior. The dispatcher continues to operate on the base lifecycle and metadata contract.
 
 `NodeStateBase` is the canonical base class for DAG state. Subclasses add typed fields that nodes read and write. The dispatcher accepts any `NodeStateBase` subclass as the generic state parameter; the lifecycle, metadata, and error/warning machinery live in the base class and remain available without re-declaration.
 
-## Basic subclass
+## Diagrams, Examples, and Outputs
+
+State subclassing is not a topology feature, so this page does not invent a graph. The shape shows up in runnable code:
+
+- [The Archivist](../examples/the-archivist) uses `ArchivistState` to carry a visitor query, candidate books, shortlists, memory recall, and response drafts across a large DAG.
+- [Example 08: Checkpoint and Resume](../examples/08-checkpoint) demonstrates how state snapshots preserve retry and resume data.
+- [Example 16: Scatter Resume](../examples/16-scatter-resume) shows clone boundaries and resume behavior around scatter.
+- [Checkpoint and Resume](./checkpoint) explains how `snapshotData` and `restoreData` round-trip domain fields.
+
+## What It Lets You Do
+
+### Use when
+
+Use state subclassing when domain fields need static typing, checkpoint round-trips, clone semantics, or helper methods beyond the base lifecycle/metadata machinery. Every real application state should make those fields explicit.
+
+## Code Samples
+
+### Basic subclass
 
 <<< @/../examples/dags/subclassing.ts#basic-subclass
 
 Nodes typed `NodeInterface<PipelineState, TOutput>` access `state.items`, `state.processedIds`, and `state.totalCost` directly. The constructor initialises every field in declaration order, which preserves V8 hidden-class stability across instances.
 
-## Snapshot and restore
+### Snapshot and restore
 
 The Archivist demo carries a rich state object: `query`, `terms`, `candidates`, `shortlist`, `draft`, `recalledContext`, `memoryDigest`. The `snapshotData` and `restoreData` overrides serialise every domain field to a JSON-safe shape and rehydrate from a captured snapshot:
 
@@ -40,7 +67,7 @@ Two invariants the override must hold:
 1. **JSON-safe output**. Arrays and plain objects only; `Map`, `Set`, `Date`, `BigInt`, class instances, and circular references all fail. Convert `Set` to an array, `Map` to a record, `Date` to an ISO string before returning.
 2. **Idempotent reads**. `restoreData` must tolerate missing or wrong-typed fields. The guards (`typeof snap['query'] === 'string'`) keep an older snapshot loadable after the state shape evolves.
 
-## `clone()`
+### `clone()`
 
 The dispatcher calls `clone()` before scatter clones so each clone operates on its own state copy. The base implementation copies metadata via `structuredClone` and resets the lifecycle plus error/warning lists. Override `clone()` when the subclass carries reference-typed fields the base class does not know about:
 
@@ -50,7 +77,7 @@ The base `clone()` resets lifecycle to `pending` and clears errors and warnings.
 
 <<< @/../examples/dags/subclassing.ts#clone-super
 
-## Static `restore`
+### Static `restore`
 
 `NodeStateBase.restore` is a static method with `this`-polymorphism. Subclasses inherit it without re-declaration:
 
@@ -58,11 +85,13 @@ The base `clone()` resets lifecycle to `pending` and clears errors and warnings.
 
 When `restoreData()` is overridden, `restore()` calls `applySnapshot()` which calls `restoreData()`. No re-implementation needed.
 
-## Full example
+### Full example
 
 <<< @/../examples/subclassing.ts#full-example
 
-## Retry-attempt tracking
+## Details for Nerds
+
+### Retry-attempt tracking
 
 `NodeStateBase` carries a retry counter keyed by a routing name (typically `context.nodeName`). Retry is a flow shape: the counter lives in state, the loop edge lives in the DAG topology. Nodes do not contain retry logic; they call `state.withinRetryBudget(key, max)` to decide which output to return and the DAG wires the edge back to the failing node.
 
@@ -79,8 +108,11 @@ A typical node that participates in a retry loop:
 
 The DAG topology provides the loop: the `retry` output edges back to `fetch`; `salvage` routes forward to a recovery node. The counter is included in `snapshot()` (under the `retries` map in `NodeStateData`), so a retry budget survives checkpoint and resume.
 
-## Related reference
+## Related Concepts
 
+- [DAGBuilder](./builder) - register nodes that read and write your custom state subclass
+- [Checkpoint and Resume](./checkpoint) - snapshotData and restoreData round-trip domain fields across abort and resume
+- [Observability](./observability) - dispatcher hooks fire on subclass instances unchanged
 - [Reference, Lifecycle](../reference/lifecycle)
 - [Reference, Entities, `NodeStateData`](../reference/entities)
 - [Reference, Checkpoint](../reference/checkpoint)

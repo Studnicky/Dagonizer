@@ -52,8 +52,18 @@ type ClientRectType = {
 
 /** SVG bounding box returned by `getBBox()`. */
 type SvgBBoxType = {
+  readonly 'x':      number;
+  readonly 'y':      number;
   readonly 'width':  number;
   readonly 'height': number;
+};
+
+/** Numeric SVG coordinate bounds. */
+type SvgBoundsType = {
+  readonly 'x': number;
+  readonly 'y': number;
+  readonly 'w': number;
+  readonly 'h': number;
 };
 
 /** Listener shape used in `addEventListener` stubs. */
@@ -232,6 +242,8 @@ const PAN_STEP = 80;
 
 /** Fraction of the stage a fit-to-contain pass fills, leaving breathing room. */
 const FIT_MARGIN = 0.92;
+/** Extra SVG-coordinate padding around measured content to preserve markers and styled labels. */
+const SVG_BOUNDS_PADDING = 24;
 /** Max poll ticks for the bounded post-mount SVG detection interval. */
 const POLL_TICKS = 24;
 /** Poll interval in ms during bounded post-mount observation. */
@@ -338,10 +350,18 @@ export class MermaidExplorer {
    */
   static enhance(frame: DomElementType, options: MermaidExplorerOptionsType = {}): void {
     if (typeof document === 'undefined') return;
-    if (frame.dataset[ENHANCED_KEY] === '1') return;
 
     const svg = frame.querySelector<DomSvgElementType>('svg');
     if (svg === null) return;
+
+    // Always normalize the current SVG before the idempotency guard. HMR and
+    // framework renderers can replace the SVG inside an already-enhanced frame.
+    MermaidExplorer.#sizeToIntrinsic(svg);
+
+    if (frame.dataset[ENHANCED_KEY] === '1') {
+      MermaidExplorer.#refreshBounds(svg);
+      return;
+    }
 
     frame.dataset[ENHANCED_KEY] = '1';
     frame.classList.add('dag-mermaid-frame');
@@ -363,6 +383,13 @@ export class MermaidExplorer {
         MermaidExplorer.#fitContain(frame, svg, camera, natural);
       });
     }
+
+    MermaidExplorer.#refreshBounds(svg, () => {
+      if (resolved.fit === 'contain') {
+        const refreshed = MermaidExplorer.#naturalSize(svg);
+        MermaidExplorer.#fitContain(frame, svg, camera, refreshed);
+      }
+    });
 
     // Pointer/wheel interaction.
     MermaidExplorer.#pointerPan(svg, camera);
@@ -473,6 +500,25 @@ export class MermaidExplorer {
   }
 
   /**
+   * Re-run bounds normalization after browser layout/style has settled.
+   *
+   * Mermaid computes node geometry before host-page CSS is necessarily applied.
+   * A later font-size, font-family, letter-spacing, or label style can push text
+   * outside the original viewBox. Two animation frames catch that settled
+   * geometry and expand the SVG coordinate frame before the viewport clips it.
+   */
+  static #refreshBounds(svg: DomSvgElementType, after?: () => void): void {
+    requestAnimationFrame(() => {
+      MermaidExplorer.#sizeToIntrinsic(svg);
+      if (after !== undefined) after();
+      requestAnimationFrame(() => {
+        MermaidExplorer.#sizeToIntrinsic(svg);
+        if (after !== undefined) after();
+      });
+    });
+  }
+
+  /**
    * Natural size of an SVG. Prefer the viewBox (the svg's own coordinate frame)
    * so sizing the element to it is distortion-free; fall back to getBBox, then
    * a default.
@@ -493,12 +539,54 @@ export class MermaidExplorer {
   }
 
   /**
+   * Expand the SVG viewBox to the measured rendered content bounds.
+   *
+   * This is the clipping hardening layer: labels may become wider after host
+   * CSS is applied, so the viewBox must be derived from actual rendered bounds
+   * rather than Mermaid's initial layout assumptions.
+   */
+  static #normalizeBounds(svg: DomSvgElementType): void {
+    MermaidExplorer.#showOverflow(svg);
+    const content = MermaidExplorer.#contentBounds(svg);
+    if (content === null) return;
+
+    const x = content.x - SVG_BOUNDS_PADDING;
+    const y = content.y - SVG_BOUNDS_PADDING;
+    const w = content.w + SVG_BOUNDS_PADDING * 2;
+    const h = content.h + SVG_BOUNDS_PADDING * 2;
+    if (w <= 0 || h <= 0) return;
+    svg.setAttribute('viewBox', `${String(x)} ${String(y)} ${String(w)} ${String(h)}`);
+  }
+
+  /** Force the SVG and its rendered children to expose their measured bounds. */
+  static #showOverflow(svg: DomSvgElementType): void {
+    svg.style['overflow'] = 'visible';
+    const descendants = svg.querySelectorAll<DomElementType>('*');
+    for (let i = 0; i < descendants.length; i++) {
+      const child = descendants[i];
+      if (child !== undefined) child.style['overflow'] = 'visible';
+    }
+  }
+
+  /** Read rendered SVG content bounds, returning null while layout is unavailable. */
+  static #contentBounds(svg: DomSvgElementType): SvgBoundsType | null {
+    try {
+      const bbox = svg.getBBox();
+      if (bbox.width > 0 && bbox.height > 0) {
+        return { 'x': bbox.x, 'y': bbox.y, 'w': bbox.width, 'h': bbox.height };
+      }
+    } catch { /* getBBox throws on detached/invisible SVG */ }
+    return null;
+  }
+
+  /**
    * Pin the SVG to a fixed pixel size equal to its intrinsic (viewBox) size and
    * neutralise any `max-width: 100%` from theme CSS. A viewBox SVG with no width
    * auto-fills its container, which fights the transform-based camera; pinning a
    * known size lets the CSS transform scale and position it deterministically.
    */
   static #sizeToIntrinsic(svg: DomSvgElementType): { readonly w: number; readonly h: number } {
+    MermaidExplorer.#normalizeBounds(svg);
     const n = MermaidExplorer.#naturalSize(svg);
     svg.removeAttribute('width');
     svg.removeAttribute('height');

@@ -328,3 +328,55 @@ void describe('JsonLdRenderer.render: TerminalNodeType', () => {
     assert.equal(errorRoute?.['dag:target'], 'urn:dagonizer:jt3#abort');
   });
 });
+
+void describe('JsonLdRenderer.renderReachable', () => {
+  void it('renders the entry DAG and reachable embedded DAGs in one graph', () => {
+    const childDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:child',
+      '@type':    'DAG',
+      'name':     'child',
+      'version':  '1',
+      'entrypoint': 'child-end',
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:child/node/child-end',
+          '@type':   'TerminalNode',
+          'name':    'child-end',
+          'outcome': 'completed',
+        },
+      ],
+    };
+    const parentDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:parent',
+      '@type':    'DAG',
+      'name':     'parent',
+      'version':  '1',
+      'entrypoint': 'invoke',
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:parent/node/invoke',
+          '@type':  'EmbeddedDAGNode',
+          'name':   'invoke',
+          'dag':    'child',
+          'outputs': { 'success': 'done', 'error': 'done' },
+        },
+        {
+          '@id':     'urn:noocodex:dag:parent/node/done',
+          '@type':   'TerminalNode',
+          'name':    'done',
+          'outcome': 'completed',
+        },
+      ],
+    };
+
+    const doc = JsonLdRenderer.renderReachable(parentDag, new Map([['child', childDag]]));
+    const ids = doc['@graph'].map((entry) => entry['@id']);
+
+    assert.ok(ids.includes('urn:dagonizer:parent'));
+    assert.ok(ids.includes('urn:dagonizer:child'));
+    assert.ok(ids.includes('urn:dagonizer:parent#invoke'));
+    assert.ok(ids.includes('urn:dagonizer:child#child-end'));
+  });
+});

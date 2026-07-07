@@ -1,41 +1,85 @@
 ---
-title: 'Example 04c: Scatter with container binding'
+title: 'Example 04C: Container-Bound Scatter'
 description: 'ScatterNode with a container role declared. Runs in-process when no backend is bound; activates the WorkerThreadContainer path when the role is wired at dispatch time.'
 seeAlso:
-  - text: 'Phase 04: Scatter scout'
+  - text: 'Example 04: Scatter Scout'
     link: './04-scatter'
     description: 'scatter mechanics: source, body, gather, reduce'
-  - text: 'Example 04b: Scatter collect'
+  - text: 'Example 04B: Scatter Collect'
     link: './04b-scatter-collect'
     description: 'map gather: generate-and-select pattern'
-  - text: 'Example 12: Worker pool'
+  - text: 'Example 12: Worker Containers'
     link: './12-workers'
     description: 'full WorkerThreadContainer walkthrough with registry module'
   - text: 'Reference: Contracts, DagContainerInterface'
     link: '../reference/contracts'
 ---
 
-# Example 04c: Scatter with container binding
+<script setup lang="ts">
+import { cartographerWorkersDAG } from '../../examples/the-cartographer/dag.ts';
+import { streamEventDAG } from '../../examples/the-cartographer/embedded-dags/StreamEventDAG.ts';
+</script>
 
-A `ScatterNode` placement that declares `container: "cpu"` runs each clone's sub-DAG in the bound backend. When no container is bound, the scatter falls back to in-process execution — no code changes, byte-identical output.
+# Example 04C: Container-Bound Scatter
 
-This example demonstrates the container key on the scatter placement and shows the in-process fallback path. The companion [Example 12: Worker pool](./12-workers) covers the full `WorkerThreadContainer` setup including the registry module.
+## What It Is
 
-## Code
+Container-Bound Scatter is the same scatter contract with a deployment seam attached. The Cartographer keeps the graph shape readable, but declares that each stream-event clone can run behind the `cpu` container role.
 
-<<< @/../examples/04c-scatter-workers.ts
+That role is late-bound. In the browser demo it maps to a `WebWorkerContainer`; in CLI worker mode it can map to a `WorkerThreadContainer`; without a binding the same DAG runs in-process and emits a contract warning.
 
-## What it demonstrates
+## How It Works
+
+The JSON-LD placement declares `container: 'cpu'`. At runtime, the dispatcher looks up the `cpu` backend in its `containers` option. If the role is bound, each scatter clone's body DAG runs through that backend; if it is not bound, the dispatcher runs in-process and emits a contract warning. Gather and outcome reduction are identical in both modes.
+
+This makes the container role an assembly concern, not a business-logic concern. The scatter body, gather strategy, and routes stay in the canonical DAG; hosts decide where the work runs.
+
+## Diagrams, Examples, and Outputs
+
+### DAG registration and diagram
+
+[The Cartographer](./the-cartographer) is the runnable container-bound scatter example. Its `process-stream` scatter declares `container: 'cpu'`, and the browser runner binds that role to a real `WebWorkerContainer`.
+
+<DagJsonMermaid :dag="cartographerWorkersDAG" title="Cartographer worker parent DAG" aria-label="Cartographer worker parent JSON-LD DAG beside Mermaid generated from it." />
+
+<DagJsonMermaid :dag="streamEventDAG" title="stream-event worker body DAG" aria-label="Cartographer stream-event body JSON-LD DAG beside Mermaid generated from it." />
+
+A `ScatterNode` placement that declares `container: "cpu"` runs each clone's sub-DAG in the bound backend. In the browser demo, the backend is a `WebWorkerContainer` pool; in CLI worker mode it is a `WorkerThreadContainer` pool. The DAG document stays the same.
+
+The parent DAG and the body DAG above are exactly what the Cartographer page renders and executes.
+
+### Run
+
+```bash
+npm run docs:dev
+```
+
+Open [The Cartographer](./the-cartographer), click **Run**, and watch the DAG pane expand `process-stream` into the `stream-event` body.
+
+## What It Lets You Do
+
+Container-bound scatter lets applications move scatter clone execution out of the main process without changing the DAG topology. Use it when each item can run independently and the host should isolate CPU-heavy, memory-heavy, or deployment-specific work behind a named container role.
+
+For a host application, this is the difference between "rewrite the workflow for workers" and "bind the same workflow to a worker-capable host." The JSON-LD still documents the flow; the container binding documents the runtime envelope.
+
+## Code Samples
+
+The parent DAG declares the container role; the browser runner binds it. Those two files are the whole seam.
+
+<<< @/../examples/the-cartographer/dag.ts#cartographer-workers-dag
+
+<<< @/../docs/.vitepress/theme/components/CartographerRunner.vue#cartographer-browser-containers
+
+## Details for Nerds
 
 - **`container` key on a scatter placement.** Adding `container: "cpu"` to a `ScatterNode` with a dag body tells the dispatcher to run each clone's sub-DAG in the backend bound to `"cpu"`. The key is ignored (with a `contractWarning`) when no backend is bound.
-- **In-process fallback.** Remove `containers` from the dispatcher options or omit the `container` key on the placement to run the scatter in-process. Output is byte-identical.
+- **In-process fallback.** The non-worker `cartographerDAG` omits `container` on the same logical scatter and runs the body in-process.
 - **No node-body containers.** A scatter whose body is a single node (no `dag` key) cannot be contained — validation rejects `container` on a node-body scatter.
 - **Transition to workers is one config change.** Bind a `WorkerThreadContainer` to `"cpu"` in the dispatcher constructor's `containers` option without touching the DAG document or the node implementations.
 
-## Run
+## Related Concepts
 
-```bash
-npx tsx examples/04c-scatter-workers.ts
-```
-
-To activate the worker-thread path, see [Example 12: Worker pool](./12-workers).
+- [Example 04: Scatter Scout](./04-scatter) - scatter mechanics: source, body, gather, reduce
+- [Example 04B: Scatter Collect](./04b-scatter-collect) - map gather: generate-and-select pattern
+- [Example 12: Worker Containers](./12-workers) - full WorkerThreadContainer walkthrough with registry module
+- [Reference: Contracts, DagContainerInterface](../reference/contracts)

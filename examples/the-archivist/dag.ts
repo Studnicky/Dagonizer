@@ -3,7 +3,7 @@
  *
  * Molecular composition: the parent DAG is composed of two reusable
  * sub-DAGs that ship as independent components and are imported as
- * `.embeddedDAG(name, dagName, routes)` placements. The sub-DAGs are
+ * `.embed(name, dagName, routes)` placements. The sub-DAGs are
  * registered separately and referenced by name; the parent DAG never knows
  * their internals.
  *
@@ -209,7 +209,7 @@ export const archivistDAG: DAGType = new DAGBuilder('the-archivist', '6.0')
       // One packaged cluster; first of three placements of the same sub-DAG.
       // gather.map copies the fields the sub-DAG writes back to the parent state
       // so compose-loop and group-by-year can read them.
-      .embeddedDAG('on-topic-search', 'book-search-scatter', {
+      .embed('on-topic-search', 'book-search-scatter', {
         'success': 'compose-loop',
         'error':   'compose-empty',
       }, {
@@ -227,7 +227,7 @@ export const archivistDAG: DAGType = new DAGBuilder('the-archivist', '6.0')
       // EmbeddedDAGNode: same book-search-scatter cluster, second placement.
       // After success, group-by-year sorts results chronologically before the
       // compose loop; author surveys read better in publication-timeline order.
-      .embeddedDAG('author-search', 'book-search-scatter', {
+      .embed('author-search', 'book-search-scatter', {
         'success': 'group-by-year',
         'error':   'compose-empty',
       }, {
@@ -374,7 +374,7 @@ export const archivistDAG: DAGType = new DAGBuilder('the-archivist', '6.0')
       })
 
       // EmbeddedDAGNode: same book-search-scatter, third and final placement.
-      .embeddedDAG('similar-search', 'book-search-scatter', {
+      .embed('similar-search', 'book-search-scatter', {
         'success': 'compose-loop',
         'error':   'compose-empty',
       }, {
@@ -399,7 +399,7 @@ export const archivistDAG: DAGType = new DAGBuilder('the-archivist', '6.0')
       // exactly ONE respond-to-visitor fires per run regardless of branch count.
       // 'error' (retry budget exhausted) falls through to compose-empty so the
       // visitor always receives an in-character response rather than a silent drop.
-      .embeddedDAG('compose-loop', 'compose-retry-loop', {
+      .embed('compose-loop', 'compose-retry-loop', {
         'success': 'respond-to-visitor',
         'error':   'compose-empty',
       }, {

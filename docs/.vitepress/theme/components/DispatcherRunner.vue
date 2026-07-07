@@ -165,6 +165,7 @@ const DISPATCHER_NODE_TRACE: Readonly<Record<string, (state: DispatcherState, ou
 };
 
 // ── Browser observer ─────────────────────────────────────────────────────────
+// #region dispatcher-browser-observer
 /**
  * DispatcherBrowserObserver: wires lifecycle hooks to the Vue reactive state
  * (trace feed, DAG graph, conversation, awaiting-input tab auto-switch).
@@ -266,6 +267,7 @@ class DispatcherBrowserObserver extends ObservedDag<DispatcherState> {
     logger.result(`lifecycle=${lifecycleVariant} · conversation=${String(state.conversation.length)} turns`);
   }
 }
+// #endregion dispatcher-browser-observer
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 const leftTabs = computed(() => {
@@ -418,6 +420,7 @@ async function warmActiveBackend(): Promise<void> {
 }
 
 // ── Execute ───────────────────────────────────────────────────────────────────
+// #region dispatcher-browser-run
 async function ask(): Promise<void> {
   if (isRunning.value || customerQuery.value.trim().length === 0 || activeBackend.value === null) return;
 
@@ -477,8 +480,10 @@ async function ask(): Promise<void> {
     isRunning.value = false;
   }
 }
+// #endregion dispatcher-browser-run
 
 // ── Operator resume ───────────────────────────────────────────────────────────
+// #region dispatcher-browser-resume
 async function sendOperatorResponse(): Promise<void> {
   // Use the non-reactive store: parked.value is just the cursor signal.
   const pe = parkedExecution;
@@ -558,6 +563,7 @@ async function sendOperatorResponse(): Promise<void> {
     if (leftActiveKey.value === 'operator') leftActiveKey.value = 'customer';
   }
 }
+// #endregion dispatcher-browser-resume
 
 // ── Reset ─────────────────────────────────────────────────────────────────────
 function reset(): void {

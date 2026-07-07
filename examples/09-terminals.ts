@@ -15,7 +15,7 @@
  *      triggering `end-ok` and once triggering `end-fail`, and the lifecycle
  *      variant is printed for each run.
  *
- *   3. EmbeddedDAGNode routing to explicit terminals: `.embeddedDAG('run',
+ *   3. EmbeddedDAGNode routing to explicit terminals: `.embed('run',
  *      'child', { success: 'end-ok', error: 'end-fail' })`. A child
  *      DAG's success/error outputs route to the parent's named terminals.
  *      A child with errors routes to `end-fail` and state becomes `failed`.

@@ -28,9 +28,10 @@ void describe('MermaidRenderer.render', () => {
     };
     const out = MermaidRenderer.render(dag);
     assert.match(out, /flowchart TB/u);
-    assert.match(out, /greet\[greet\]/u);
-    assert.match(out, /greet -->\|success\| end/u);
-    assert.match(out, /end\(\(\(end/u);
+    assert.match(out, /greet\["greet"\]/u);
+    assert.match(out, /greet -->\|success\| end_node/u);
+    assert.match(out, /end_node\(\(\("end"\)\)\)/u);
+    assert.doesNotMatch(out, /-->\|success\| end$/mu);
   });
 
   void it('renders a ScatterNode as a trapezoid', () => {
@@ -55,7 +56,7 @@ void describe('MermaidRenderer.render', () => {
     };
     const out = MermaidRenderer.render(dag);
     // ScatterNode renders as trapezoid: name[/label/]
-    assert.match(out, /fan\[\/fan\/\]/u);
+    assert.match(out, /fan\[\/"fan"\/\]/u);
     assert.match(out, /fan -->\|all-success\| end/u);
   });
 
@@ -79,7 +80,7 @@ void describe('MermaidRenderer.render', () => {
     };
     const out = MermaidRenderer.render(dag);
     // EmbeddedDAGNode renders as a subroutine shape: name[[label]]
-    assert.match(out, /enrich\[\[enrich\]\]/u);
+    assert.match(out, /enrich\[\["enrich"\]\]/u);
   });
 });
 
@@ -112,7 +113,8 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
     };
     const out = MermaidRenderer.render(dag);
     // stadium shape: name([label (phase)])
-    assert.match(out, /setup\(\[setup \(pre\)\]\)/u);
+    assert.match(out, /setup\(\["setup \(pre\)"\]\)/u);
+    assert.doesNotMatch(out, /setup\(\[setup \(pre\)\]\)/u);
     // PhaseNode emits no outgoing edges
     const edgeLines = out.split('\n').filter((line) => line.includes('-->') && line.includes('setup'));
     assert.equal(edgeLines.length, 0);
@@ -147,7 +149,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
       ],
     };
     const out = MermaidRenderer.render(dag);
-    assert.match(out, /teardown\(\[teardown \(post\)\]\)/u);
+    assert.match(out, /teardown\(\["teardown \(post\)"\]\)/u);
   });
 });
 
@@ -190,7 +192,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
     // in-process node does NOT get any class
     assert.doesNotMatch(out, /class in-process contained/u);
     // shape is preserved: EmbeddedDAGNode stays subroutine [[...]]
-    assert.match(out, /worker-dag\[\[worker-dag\]\]/u);
+    assert.match(out, /worker-dag\[\["worker-dag"\]\]/u);
   });
 
   void it('emits per-role classDef and class assignment for a contained dag-body ScatterNode', () => {
@@ -226,7 +228,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
     assert.match(out, /classDef contained-cpu fill:/u);
     assert.match(out, /class fan contained-cpu/u);
     // ScatterNode shape is preserved: trapezoid [/.../]
-    assert.match(out, /fan\[\/fan\/\]/u);
+    assert.match(out, /fan\[\/"fan"\/\]/u);
     // in-process node does NOT get the class
     assert.doesNotMatch(out, /class plain contained/u);
   });
@@ -301,8 +303,8 @@ void describe('MermaidRenderer.render: containment coloring', () => {
     assert.match(out, /class cpu-work contained-cpu/u);
     assert.match(out, /class io-work contained-io/u);
     // Shapes are preserved
-    assert.match(out, /cpu-work\[\/cpu-work\/\]/u);
-    assert.match(out, /io-work\[\[io-work\]\]/u);
+    assert.match(out, /cpu-work\[\/"cpu-work"\/\]/u);
+    assert.match(out, /io-work\[\["io-work"\]\]/u);
   });
 
   void it('assigns the SAME class to two placements with the SAME role (grouping)', () => {
@@ -587,7 +589,7 @@ void describe('MermaidRenderer: reservoir glyph', () => {
   void it('plain (non-reservoir) scatter renders as a bare trapezoid with no reservoir marking, classDef, or class assignment', () => {
     const out = MermaidRenderer.render(PLAIN_SCATTER_DAG);
     // Shape is plain [/label/] without any augmentation.
-    assert.match(out, /fan\[\/fan\/\]/u);
+    assert.match(out, /fan\[\/"fan"\/\]/u);
     // No reservoir indicator in the label.
     assert.doesNotMatch(out, /▣/u);
     // No reservoir classDef and no reservoir class assignment.
@@ -640,19 +642,115 @@ void describe('MermaidRenderer: options — orientation', () => {
   });
 });
 
+void describe('MermaidRenderer: options — render style', () => {
+  void it('emits Mermaid init config for pluggable font and layout style', () => {
+    const out = MermaidRenderer.render(PLAIN_SCATTER_DAG, {
+      'theme': {
+        'fontFamily': 'JetBrains Mono, monospace',
+        'fontSize':   '18px',
+        'nodeSpacing': 96,
+        'rankSpacing': 112,
+        'padding':     32,
+      },
+    });
+
+    assert.match(out, /^%%\{init:/u);
+    assert.match(out, /"fontFamily":"JetBrains Mono, monospace"/u);
+    assert.match(out, /"fontSize":"18px"/u);
+    assert.match(out, /"nodeSpacing":96/u);
+    assert.match(out, /"rankSpacing":112/u);
+    assert.match(out, /"padding":32/u);
+  });
+});
+
 void describe('MermaidRenderer: options — node-id sanitization', () => {
   void it('replaces `:` in bare node IDs with `_` by default', () => {
     const out = MermaidRenderer.render(COLON_NODE_DAG);
     // The bare id in the shape definition uses `_` not `:`.
     assert.match(out, /extract_class-base\[/u);
     // The label INSIDE the brackets keeps the original colon.
-    assert.match(out, /\[extract:class-base\]/u);
+    assert.match(out, /\["extract:class-base"\]/u);
   });
 
   void it('edge target ids are also sanitized', () => {
     const out = MermaidRenderer.render(COLON_NODE_DAG);
     // Edge from the colon-named source to `end`; source id uses `_`.
     assert.match(out, /extract_class-base -->/u);
+  });
+
+  void it('sanitizes Mermaid reserved node ids in definitions, edges, and classes', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:reserved-id',
+      '@type':    'DAG',
+      'name':       'reserved-id',
+      'version':    '1',
+      'entrypoint': 'class',
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:reserved-id/node/class',
+          '@type':   'SingleNode',
+          'name':    'class',
+          'node':    'noop',
+          'outputs': { 'success': 'end' },
+        },
+        {
+          '@id':       'urn:noocodex:dag:reserved-id/node/end',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'end',
+          'dag':       'inner',
+          'container': 'cpu',
+          'outputs':   { 'success': 'default' },
+        },
+        {
+          '@id':     'urn:noocodex:dag:reserved-id/node/default',
+          '@type':   'TerminalNode',
+          'name':    'default',
+          'outcome': 'completed',
+        },
+      ],
+    };
+
+    const out = MermaidRenderer.render(dag);
+    assert.match(out, /class_node\["class"\]/u);
+    assert.match(out, /class_node -->\|success\| end_node/u);
+    assert.match(out, /end_node\[\["end"\]\]/u);
+    assert.match(out, /end_node -->\|success\| default_node/u);
+    assert.match(out, /default_node\(\(\("default"\)\)\)/u);
+    assert.match(out, /class end_node contained-cpu/u);
+    assert.doesNotMatch(out, /-->\|success\| end$/mu);
+    assert.doesNotMatch(out, /^ {2}end\[\[/mu);
+  });
+
+  void it('sanitizes node ids that start with a Mermaid reserved token', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:reserved-prefix-id',
+      '@type':    'DAG',
+      'name':       'reserved-prefix-id',
+      'version':    '1',
+      'entrypoint': 'build-request',
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:reserved-prefix-id/node/build-request',
+          '@type':   'SingleNode',
+          'name':    'build-request',
+          'node':    'build-request',
+          'outputs': { 'error': 'end-error' },
+        },
+        {
+          '@id':     'urn:noocodex:dag:reserved-prefix-id/node/end-error',
+          '@type':   'TerminalNode',
+          'name':    'end-error',
+          'outcome': 'failed',
+        },
+      ],
+    };
+
+    const out = MermaidRenderer.render(dag);
+    assert.match(out, /build-request -->\|error\| node_end-error/u);
+    assert.match(out, /node_end-error>"end-error"\]/u);
+    assert.doesNotMatch(out, /-->\|error\| end-error/u);
   });
 
   void it('classDef and `class ` directive lines are NOT mangled by sanitization', () => {

@@ -1,14 +1,14 @@
 ---
-title: 'Example 24: LLM adapter (registry, cascade, chat)'
+title: 'Example 24: LLM Adapter'
 description: 'LLM adapter surface: register OllamaApiAdapter instances in an LlmAdapterRegistry, wire an LlmAdapterCascade that walks the preference list probing each adapter, and call .chat() inside a DAG node that routes on the response variant.'
 seeAlso:
-  - text: 'The Archivist (in-browser demo)'
+  - text: 'The Archivist'
     link: './the-archivist'
     description: 'LlmAdapterCascade over Groq, Cerebras, Gemini, Ollama, WebLLM'
   - text: 'Example 25: Embedder'
     link: './25-embedder'
     description: 'EmbedderRegistry, EmbedderCascade, cosine similarity'
-  - text: 'Example 26: Tool use'
+  - text: 'Example 26: Tool Use'
     link: './26-tool-use'
     description: 'Tool definition, ToolCallCodec, and adapter dispatch'
   - text: 'Reference: Contracts'
@@ -16,40 +16,61 @@ seeAlso:
     description: 'LlmAdapter, LlmAdapterRegistry, LlmAdapterCascade contracts'
 ---
 
-# Example 24: LLM adapter (registry, cascade, chat)
+<script setup lang="ts">
+import { archivistDAG } from '../.vitepress/theme/exampleDags.ts';
+</script>
 
-The LLM adapter surface provides a provider-agnostic interface for chat completion. This example demonstrates all three layers against a real local Ollama backend:
+# Example 24: LLM Adapter
 
-1. **`OllamaApiAdapter` (primary, unreachable).** Points at port 1. `probe()` contacts `/api/tags` at that port, gets a connection error, and returns `false` — the cascade skips it. This models the real-world shape: a cloud or remote endpoint that is down at runtime.
-2. **`OllamaApiAdapter` (fallback, local).** Points at the default loopback (`127.0.0.1:11434`). `probe()` returns `true` when Ollama is running — the cascade selects it.
-3. **`LlmAdapterRegistry`.** Registers both adapters under different `(provider, model)` keys.
-4. **`LlmAdapterCascade`.** Walks the preference list in order, probes each adapter, and selects the first available one.
-5. **DAG node calling `.chat()`.** Injects the selected adapter into state and routes on the response variant (`text` vs `tools`).
+## What It Is
 
-## Prerequisites
+LLM Adapter is the provider boundary for model-backed DAG nodes. The Archivist can run against local Ollama, browser models, or cloud APIs because nodes depend on an `LlmAdapterInterface`, not on a provider SDK.
+
+The application builds an adapter or cascade before execution, injects it through services, and lets DAG routes handle the response variant. Provider probing, fallback, request timeout, system prompt injection, and tool-call support stay behind the adapter boundary.
+
+## How It Works
+
+Nodes depend on an `LlmAdapterInterface` supplied through services. The host builds an adapter or cascade before execution, injects it into node constructors, and lets DAG routes handle the model response variant. Provider probing, fallback, request timeout, system prompt injection, and tool-call support stay behind the adapter boundary.
+
+This keeps provider choice outside the graph. The DAG still says "classify," "extract," "rank," and "compose"; the service layer decides whether those calls go to a local model, a browser runtime, or a cloud backend.
+
+## Diagrams, Examples, and Outputs
+
+### DAG registration and diagram
+
+The adapter is injected service state; the DAG shows where model-backed nodes sit in the flow. [The Archivist](./the-archivist) is the in-browser owner for adapter selection and fallback.
+
+<DagJsonMermaid :dag="archivistDAG" title="Archivist LLM adapter DAG" aria-label="Archivist JSON-LD DAG beside Mermaid generated from it." />
+
+The LLM adapter surface provides a provider-agnostic interface for chat completion. The browser Archivist lets the user select among configured backends, instantiates the selected adapter, and injects it into `ArchivistServices` for classify/extract/rank/compose nodes.
+
+### Run
 
 ```bash
-# Install Ollama from https://ollama.com
-ollama pull llama3.2
-# Ollama must be running: ollama serve (or the desktop app)
+npm run docs:dev
 ```
 
-Change `OLLAMA_MODEL` in the example to any model you have pulled.
+Open [The Archivist](./the-archivist) and choose a backend in the Config panel.
 
-## Code
+## What It Lets You Do
 
-<<< @/../examples/24-llm-adapter.ts
+LLM adapters let applications swap model providers without changing DAG topology or node contracts. Use them when the same graph should run against local Ollama, browser models, cloud APIs, or a cascade that selects the first available backend.
 
-## What it demonstrates
+They also give the application one place to enforce provider policy: request timeout, system prompt defaults, tool-call support, JSON mode, and capability probing.
 
-- **`OllamaApiAdapter`.** Wraps Ollama's OpenAI-compatible endpoint (`/v1/chat/completions`). Constructed with `{ model, baseUrl? }`: `model` is required (Ollama models are pulled per-host); `baseUrl` defaults to `http://127.0.0.1:11434`. No API key required for local usage.
-- **`probe()`.** Each adapter implementation overrides `probe()` to report availability. `OllamaApiAdapter.probe()` issues a `GET /api/tags` with a short timeout (500 ms); returns `true` when the daemon answers `2xx`, `false` on timeout or connection error. Never throws.
-- **`LlmAdapterCascade.create`.** Static factory that assembles an `LlmAdapterCascade` from a preference-ordered catalogue. Each `CatalogueEntryType` pairs an `AdapterDescriptorShapeType` (provider + model + capabilities) with a zero-arg factory. The factory creates a fresh `LlmAdapterRegistry`, registers every entry in catalogue order, and returns the configured cascade. Import both from `@studnicky/dagonizer/adapter`.
-- **`LlmAdapterRegistry`.** Stores adapters keyed by `(provider, model)` pairs. Created internally by the builder; access it directly only when you need dynamic runtime registration.
-- **`LlmAdapterCascade`.** Accepts a preference list and a registry. `cascade.select()` walks the list in order, calls `adapter.probe()` on each, and returns the first available adapter. Throws when no adapter is available.
-- **Response routing.** `response.message.variant` is `'text'` for a plain completion or `'tools'` when the model makes tool calls. The DAG node routes on `variant` to separate the two paths.
+## Code Samples
 
-## Adapter options
+The browser snippets show provider selection and service injection. The CLI snippet shows a preference-ordered cascade across multiple providers.
+
+<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-llm-client
+
+<<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-services
+
+<<< @/../examples/the-archivist/runArchivist.ts#adapter-cascade
+
+## Details for Nerds
+
+### Adapter options
 
 Every adapter extends `BaseAdapter`, so two options are uniform across the whole surface — the cloud HTTP adapters (`OpenAiCompatibleAdapter` and its `groq` / `cerebras` / `mistral` / `openRouter` presets, `anthropic`, `gemini-api`, `ollama`) and the on-device adapters (`gemini-nano`, `web-llm`) alike:
 
@@ -65,7 +86,7 @@ const adapter = OpenAiCompatibleAdapter.groq(process.env.GROQ_API_KEY ?? '', {
 });
 ```
 
-## Cascade creation
+### Cascade creation
 
 `LlmAdapterCascade.create(catalogue)` assembles a cascade from data. Async discovery runs **before** the create call — resolve models, filter nulls, then pass the finished catalogue. Each factory closes over the already-constructed adapter; `probe()` runs lazily inside `cascade.select()`.
 
@@ -102,17 +123,18 @@ const adapter  = await cascade.select(); // probes in catalogue order
 
 The Archivist CLI (`examples/the-archivist/runArchivist.ts`) uses this exact pattern across six providers.
 
-## Run
+- **`OllamaApiAdapter`.** Wraps Ollama's OpenAI-compatible endpoint (`/v1/chat/completions`). Constructed with `{ model, baseUrl? }`: `model` is required (Ollama models are pulled per-host); `baseUrl` defaults to `http://127.0.0.1:11434`. No API key required for local usage.
+- **`probe()`.** Each adapter implementation overrides `probe()` to report availability. `OllamaApiAdapter.probe()` issues a `GET /api/tags` with a short timeout (500 ms); returns `true` when the daemon answers `2xx`, `false` on timeout or connection error. Never throws.
+- **`LlmAdapterCascade.create`.** Static factory that assembles an `LlmAdapterCascade` from a preference-ordered catalogue. Each `CatalogueEntryType` pairs an `AdapterDescriptorShapeType` (provider + model + capabilities) with a zero-arg factory. The factory creates a fresh `LlmAdapterRegistry`, registers every entry in catalogue order, and returns the configured cascade. Import both from `@studnicky/dagonizer/adapter`.
+- **`LlmAdapterRegistry`.** Stores adapters keyed by `(provider, model)` pairs. Created internally by the builder; access it directly only when you need dynamic runtime registration.
+- **`LlmAdapterCascade`.** Accepts a preference list and a registry. `cascade.select()` walks the list in order, calls `adapter.probe()` on each, and returns the first available adapter. Throws when no adapter is available.
+- **Response routing.** `response.message.variant` is `'text'` for a plain completion or `'tools'` when the model makes tool calls. The DAG node routes on `variant` to separate the two paths.
 
-```bash
-npx tsx examples/24-llm-adapter.ts
-```
+## Related Concepts
 
-Ollama must be running and `llama3.2` (or the model you set) must be pulled.
-
-## See also
-
-For live per-token streaming (`chatStream`, a `{ sink }`-configured
-`CallModelNode`, and routing concurrent conversations through one shared
-sink), see [ReAct agent: live token streaming](../guide/react-agent#live-token-streaming)
-and [Reference: Adapters](../reference/adapters).
+- [The Archivist](./the-archivist) - LlmAdapterCascade over Groq, Cerebras, Gemini, Ollama, WebLLM
+- [Example 25: Embedder](./25-embedder) - EmbedderRegistry, EmbedderCascade, cosine similarity
+- [Example 26: Tool Use](./26-tool-use) - Tool definition, ToolCallCodec, and adapter dispatch
+- [Reference: Contracts](../reference/contracts) - LlmAdapter, LlmAdapterRegistry, LlmAdapterCascade contracts
+- [ReAct agent: live token streaming](../guide/react-agent#live-token-streaming) - `chatStream`, `{ sink }` configured model calls, and routed concurrent conversations
+- [Reference: Adapters](../reference/adapters) - adapter API details beyond the Archivist example

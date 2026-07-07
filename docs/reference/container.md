@@ -1,4 +1,6 @@
 ---
+title: 'Container'
+description: 'Container execution reference for DagContainerBase, DagHost, DagTask, DagOutcome, shutdown behavior, transport errors, and worker role binding.'
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
@@ -6,20 +8,51 @@ seeAlso:
   - text: 'Reference: Channels'
     link: './channels'
     description: '`InMemoryChannel` reference'
-  - text: 'Guide: Distribution and cloud'
+  - text: 'Guide: Distribution and Cloud'
     link: '../guide/distribution'
     description: 'worker pool patterns and multi-backend dispatch'
-  - text: 'Example 12: Worker containers'
+  - text: 'Example 12: Worker Containers'
     link: '../examples/12-workers'
     description: 'scatter dag-body over a WorkerThreadContainer pool'
-  - text: 'Example 13: Multi-backend dispatch'
+  - text: 'Example 13: Multi-Backend Roles'
     link: '../examples/13-multibackend'
     description: 'route to different containers per placement role'
 ---
 
 # Container
 
+## What It Is
+
+Containers run embedded DAGs or scatter body DAGs outside the parent dispatcher process. A placement declares a logical container role; the host binds that role to a `DagContainerInterface`.
+
+Use this page when worker threads, forked processes, browser workers, service workers, or remote workers should execute sub-DAG work while the parent graph remains canonical JSON-LD.
+
+## How It Works
+
+`DagContainerBase` owns pool lifecycle and task dispatch. `DagHost` is the isolate-side runtime that executes a registered DAG from a `DagTask`. `DagOutcome` carries success, failure, and transport-error results back to the parent.
+
+Container roles are names in the DAG document; concrete worker implementations stay in host configuration.
+
+## Diagrams, Examples, and Outputs
+
+Container behavior is visible in the worker examples and the distribution guide:
+
+- [Reference: Contracts](./contracts) - `DagContainerInterface`, `DagTaskInterface`, `DagOutcomeType`
+- [Reference: Channels](./channels) - `InMemoryChannel` reference
+- [Guide: Distribution and Cloud](../guide/distribution) - worker pool patterns and multi-backend dispatch
+- [Example 12: Worker Containers](../examples/12-workers) - scatter dag-body over a WorkerThreadContainer pool
+
+## What It Lets You Do
+
+The container reference lets applications bind embedded DAGs or scatter body DAGs to isolate-backed execution roles.
+
 DAG containment infrastructure: pool-owning base, isolate-side host runtime, and value types. Ships through `@studnicky/dagonizer/container`.
+
+## Code Samples
+
+The code below covers `DagContainerBase`, `DagHost`, task/outcome shapes, shutdown behavior, transport errors, and worker role binding.
+
+### Import
 
 ```ts twoslash
 import {
@@ -40,7 +73,7 @@ import type {
 
 ---
 
-## Class: `DagContainerBase<TWorker>`
+### Class: `DagContainerBase<TWorker>`
 
 Abstract pool-owning base for running DAG sub-DAGs in isolates (worker threads, forked child processes, Web Workers). Implements `DagContainerInterface`.
 
@@ -55,7 +88,7 @@ const _check: typeof DagContainerBase = DagContainerBase;
 
 Subclasses supply the worker type by implementing four abstract seams. The base owns pool growth, semaphore waiting, lazy init, death detection, eviction, and graceful shutdown.
 
-### Constructor
+#### Constructor
 
 ```ts twoslash
 import type { DagContainerOptionsType } from '@studnicky/dagonizer/container';
@@ -94,7 +127,7 @@ const container = new MyContainer({
 });
 ```
 
-### Abstract seams (subclass implements)
+#### Abstract seams (subclass implements)
 
 | Method | Responsibility |
 |--------|---------------|
@@ -103,7 +136,7 @@ const container = new MyContainer({
 | `terminateWorker(worker): void` | Force-kill the worker. Must not throw. |
 | `awaitWorkerExit(worker): Promise<void>` | Resolves when the worker process/thread exits. |
 
-### `runDag(task)`
+#### `runDag(task)`
 
 ```ts twoslash
 import type { DagTaskInterface, DagOutcomeType } from '@studnicky/dagonizer/contracts';
@@ -113,7 +146,7 @@ declare function runDag(task: DagTaskInterface): Promise<DagOutcomeType>;
 
 Acquired a pool slot, sends the task to the isolate, and waits for the outcome. Must not throw: transport failures and host crashes return collected errors in `DagOutcomeType.errors` with `recoverable: false`.
 
-### `destroy()`
+#### `destroy()`
 
 ```ts twoslash
 // async destroy(): Promise<void>
@@ -122,7 +155,7 @@ declare function destroy(): Promise<void>;
 
 Gracefully shuts down all pool entries. Signals each worker to stop (shutdown message), waits up to `shutdownGraceMs`, then force-terminates any that did not exit. After `destroy()`, `runDag` throws `DAGError` with code `DAG_CONTAINER_ERROR`.
 
-### `onTransportDeath(entry, code, reason)`
+#### `onTransportDeath(entry, code, reason)`
 
 ```ts twoslash
 import type { PoolEntryType } from '@studnicky/dagonizer/container';
@@ -135,7 +168,7 @@ Called by subclasses from death-listener callbacks when a worker dies unexpected
 
 ---
 
-## Class: `DagHost`
+### Class: `DagHost`
 
 Isolate-side runtime that speaks the `BridgeMessage` protocol over a `MessageChannelInterface`. Instantiated once per isolate, receives `init` / `execute` / `abort` / `shutdown` messages.
 
@@ -162,7 +195,7 @@ host.start();
 
 ---
 
-## Class: `DagTask`
+### Class: `DagTask`
 
 Value class for `DagTaskInterface`. Constructed by the dispatcher for each contained DAG execution.
 
@@ -186,7 +219,7 @@ const _check: typeof DagTask = DagTask;
 
 ---
 
-## Class: `DagOutcome`
+### Class: `DagOutcome`
 
 Static factory for `DagOutcomeType` values. Used by containers to build transport-error outcomes when a DAG never ran to a terminal.
 
@@ -209,7 +242,7 @@ const outcome: DagOutcomeType = DagOutcome.transportError('corr-1');
 
 ---
 
-## Const: `DEFAULT_SHUTDOWN_GRACE_MS`
+### Const: `DEFAULT_SHUTDOWN_GRACE_MS`
 
 ```ts twoslash
 import { DEFAULT_SHUTDOWN_GRACE_MS } from '@studnicky/dagonizer/container';
@@ -221,7 +254,7 @@ Default grace period in milliseconds before a shutting-down worker is force-term
 
 ---
 
-## Container errors
+### Container errors
 
 Container operations throw `DAGError` with code `DAG_CONTAINER_ERROR`:
 
@@ -235,7 +268,7 @@ Thrown when a container operation fails for infrastructure reasons (pool destroy
 
 ---
 
-## Class: `TransportErrorCode`
+### Class: `TransportErrorCode`
 
 ```ts twoslash
 import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED, TransportErrorCode } from '@studnicky/dagonizer/container';
@@ -251,10 +284,16 @@ const isOther: boolean = TransportErrorCode.isInfrastructureFailure('domain.some
 
 ---
 
-## Related guides
+## Details for Nerds
 
-- [Distribution and cloud](../guide/distribution)
-- [Example 12: Worker containers](../examples/12-workers)
-- [Example 13: Multi-backend dispatch](../examples/13-multibackend)
-- [Reference: Contracts](./contracts) — `DagContainerInterface`, `DagTaskInterface`, `DagOutcomeType`, `MessageChannelInterface` (canonical import: `@studnicky/dagonizer/contracts`)
-- [Reference: Channels](./channels) — `InMemoryChannel`
+Container transport should be boring and explicit: send a `DagTask`, receive a `DagOutcome`, and surface transport failures as container errors. Do not let worker internals leak into the parent DAG document.
+
+Role names are deployment configuration. A DAG can declare `container: 'cpu'` or `container: 'io'`; the host decides whether those roles map to worker threads, child processes, browser workers, or remote services.
+
+## Related Concepts
+
+- [Reference: Contracts](./contracts) - `DagContainerInterface`, `DagTaskInterface`, `DagOutcomeType`
+- [Reference: Channels](./channels) - `InMemoryChannel` reference
+- [Guide: Distribution and Cloud](../guide/distribution) - worker pool patterns and multi-backend dispatch
+- [Example 12: Worker Containers](../examples/12-workers) - scatter dag-body over a WorkerThreadContainer pool
+- [Example 13: Multi-Backend Roles](../examples/13-multibackend) - route to different containers per placement role

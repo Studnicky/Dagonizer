@@ -3,10 +3,10 @@
  *
  * Exercises CartographerWorkersDag.bundle() — the container-tagged variant
  * used by the in-browser demo — in-process on Node. The `container: 'cpu'`
- * directive on the process-stream scatter is ignored when no container is
- * bound to the dispatcher (hasContainers() returns false), so every
- * stream-event body runs in-process, identical to the non-workers cartographer
- * pipeline.
+ * directive on the process-stream scatter and `container: 'io'` directive on
+ * the summarize-insights embed are ignored when no containers are bound to the
+ * dispatcher (hasContainers() returns false), so every delegated body runs
+ * in-process, identical to the non-workers cartographer pipeline.
  *
  * Two fixtures tested:
  *
@@ -48,8 +48,8 @@ class WorkersHarness {
   /**
    * Build a Dagonizer instance with the workers bundle registered.
    * Uses the recorded (offline) geo backend for determinism.
-   * The container: 'cpu' directive on the workers DAG's scatter placement is
-   * ignored because no DagContainerInterface is bound (hasContainers() === false).
+   * The container directives on the workers DAG placements are ignored because
+   * no DagContainerInterface is bound (hasContainers() === false).
    */
   static dispatcher(): Dagonizer<CartographerState> {
     const services = GeoResolvers.recorded();
@@ -57,7 +57,7 @@ class WorkersHarness {
 
     // Register the same bundle order as the existing cartographer.e2e.test.ts,
     // but use CartographerWorkersDag.bundle() as the top-level bundle so that
-    // the cartographer DAG carries container: 'cpu' on its process-stream scatter.
+    // the cartographer DAG carries container roles on its delegated placements.
     dispatcher.registerBundle(GeoSourceResolveDAG.build(services.ipGeolocator, services.addressGeocoder));
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
@@ -110,6 +110,25 @@ describe('Cartographer workers-bundle registration', () => {
     assert.ok(bundle.dags.length > 0);
   });
 
+  it('CartographerWorkersDag.bundle() carries cpu and io container placements', () => {
+    const bundle = CartographerWorkersDag.bundle();
+    const dag = bundle.dags.find((candidate) => candidate.name === 'cartographer');
+    assert.ok(dag, 'cartographer DAG must be registered');
+
+    const scatter = dag.nodes.find((node) => node.name === 'process-stream');
+    assert.ok(scatter, 'process-stream placement must exist');
+    assert.equal(scatter['@type'], 'ScatterNode');
+    if (scatter['@type'] !== 'ScatterNode') assert.fail('process-stream must be a ScatterNode');
+    assert.equal(scatter.container, 'cpu');
+
+    const summary = dag.nodes.find((node) => node.name === 'summarize-insights');
+    assert.ok(summary, 'summarize-insights placement must exist');
+    assert.equal(summary['@type'], 'EmbeddedDAGNode');
+    if (summary['@type'] !== 'EmbeddedDAGNode') assert.fail('summarize-insights must be an EmbeddedDAGNode');
+    assert.equal(summary.container, 'io');
+    assert.equal(summary.dag, 'insights-summary');
+  });
+
   it('workers dispatcher uses recorded geo services', () => {
     const services = GeoResolvers.recorded();
     assert.ok(services.ipGeolocator !== undefined);
@@ -130,11 +149,11 @@ describe('Cartographer workers-bundle registration', () => {
 // if the registry's imports break at compile time, this test breaks first.
 
 describe('Cartographer worker entry registry — dependency smoke', () => {
-  it('eventPipelineBundle (registry dependency) is importable and non-empty', async () => {
+  it('cartographerWorkerRuntimeBundle (registry dependency) is importable and non-empty', async () => {
     // Import the bundle the registry re-exports inside each worker thread.
-    const { eventPipelineBundle } = await import('../../dag.ts');
-    assert.ok(eventPipelineBundle.nodes.length > 0, 'eventPipelineBundle must have nodes');
-    assert.ok(eventPipelineBundle.dags.length > 0,  'eventPipelineBundle must have DAGs');
+    const { cartographerWorkerRuntimeBundle } = await import('../../dag.ts');
+    assert.ok(cartographerWorkerRuntimeBundle.nodes.length > 0, 'cartographerWorkerRuntimeBundle must have nodes');
+    assert.ok(cartographerWorkerRuntimeBundle.dags.length > 0,  'cartographerWorkerRuntimeBundle must have DAGs');
   });
 
   it('CartographerState is importable and constructable (registry dependency)', async () => {
