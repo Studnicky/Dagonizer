@@ -410,7 +410,7 @@ export class NodeScheduler {
             if (gatherBuffers.isEmpty()) {
               GatherCheckpoint.clear(state);
             } else {
-              GatherCheckpoint.write(state, gatherBuffers.toProgress());
+              GatherCheckpoint.write(state, gatherBuffers.toProgress((gatherName) => this.#gatherTarget(dagIri, gatherName)?.gather));
             }
           }
 

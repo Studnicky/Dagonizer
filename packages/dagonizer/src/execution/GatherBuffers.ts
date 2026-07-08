@@ -1,11 +1,14 @@
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
+import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
 import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import { GatherNodeDefaults } from '../entities/dag/GatherNode.js';
-import type { GatherProgressType } from '../entities/gather/GatherProgress.js';
+import type { GatherProgressType, GatherRecordProgressType } from '../entities/gather/GatherProgress.js';
 import { JsonObject } from '../entities/json.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 export class GatherBuffers {
+  static readonly #BASE_SNAPSHOT_FIELDS = new Set(['metadata', 'retries', 'warnings']);
+
   readonly #records = new Map<string, Map<string, GatherRecordType>>();
 
   add(gatherName: string, record: GatherRecordType): void {
@@ -45,7 +48,9 @@ export class GatherBuffers {
     for (const [gatherName, records] of Object.entries(progress.entries)) {
       for (const record of records) {
         const cloneState = state.clone();
-        cloneState.applySnapshot(JsonObject.is(record.snapshot) ? record.snapshot : {});
+        const snapshot = JsonObject.is(record.snapshot) ? record.snapshot : {};
+        cloneState.applySnapshot(snapshot);
+        GatherBuffers.restoreSnapshotFields(cloneState, snapshot);
         this.add(gatherName, {
           'source': record.source,
           'index': record.index,
@@ -59,25 +64,54 @@ export class GatherBuffers {
     }
   }
 
-  toProgress(): GatherProgressType {
+  toProgress(strategyForGather: (gatherName: string) => GatherConfigType | undefined): GatherProgressType {
     const entries: GatherProgressType['entries'] = {};
     for (const [gatherName, records] of this.#records) {
-      entries[gatherName] = [...records.values()].map((record) => {
-        const item = record.item === undefined ? {} : { 'item': record.item };
-        const result = record.result === undefined ? {} : { 'result': record.result };
-        const snapshot = record.result === undefined ? { 'snapshot': record.cloneState.snapshot() } : {};
-        return {
-          'source': record.source,
-          'index': record.index,
-          'output': record.output,
-          'terminalOutcome': record.terminalOutcome,
-          ...item,
-          ...result,
-          ...snapshot,
-        };
-      });
+      const gather = strategyForGather(gatherName);
+      entries[gatherName] = [...records.values()]
+        .map((record) => GatherBuffers.toProgressRecord(record, gather));
     }
     return { entries };
+  }
+
+  private static canCompactRecord(gather: GatherConfigType, record: GatherRecordType): boolean {
+    if (record.result === undefined) return false;
+    return gather.strategy === 'custom' || gather.strategy === 'discard';
+  }
+
+  private static toProgressRecord(
+    record: GatherRecordType,
+    gather: GatherConfigType | undefined,
+  ): GatherRecordProgressType {
+    const item = record.item === undefined ? {} : { 'item': record.item };
+    const result = record.result === undefined ? {} : { 'result': record.result };
+    const base = {
+      'source': record.source,
+      'index': record.index,
+      'output': record.output,
+      'terminalOutcome': record.terminalOutcome,
+      ...item,
+      ...result,
+    };
+
+    if (gather !== undefined && GatherBuffers.canCompactRecord(gather, record)) {
+      return {
+        ...base,
+        'result': record.result,
+      };
+    }
+
+    return {
+      ...base,
+      'snapshot': record.cloneState.snapshot(),
+    };
+  }
+
+  private static restoreSnapshotFields(state: NodeStateInterface, snapshot: Readonly<Record<string, unknown>>): void {
+    for (const [key, value] of Object.entries(snapshot)) {
+      if (GatherBuffers.#BASE_SNAPSHOT_FIELDS.has(key)) continue;
+      Reflect.set(state, key, value);
+    }
   }
 
   private static selectedSources(

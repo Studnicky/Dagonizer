@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { GATHER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
+import type { JsonObjectType } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -287,7 +288,7 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     dispatcher.registerNode(answer);
     dispatcher.registerNode(merge);
-    dispatcher.registerDAG(childDag);
+    dispatcher.registerDAG(childDag, () => new ChildState());
     dispatcher.registerDAG(parentDag);
 
     const state = new ParentState();
@@ -343,7 +344,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerNode(answer);
     dispatcher.registerNode(pause);
     dispatcher.registerNode(merge);
-    dispatcher.registerDAG(childDag);
+    dispatcher.registerDAG(childDag, () => new ChildState());
     dispatcher.registerDAG(parentDag);
 
     const partial = await dispatcher.execute('compact-gather-result', new ParentState(), {
@@ -366,6 +367,81 @@ void describe('Dagonizer scatter gather strategies', () => {
     assert.equal(resumed.terminalOutcome, 'completed');
     assert.deepEqual(partial.state.seenSources, ['embedded-answer', 'plain-answer']);
     assert.deepEqual(partial.state.seenResults, ['forty-two', undefined]);
+    assert.equal(partial.state.getMetadata(GATHER_PROGRESS_KEY), undefined);
+  });
+
+  void it('gather checkpoint retains snapshots for built-in reducers that read clone state', async () => {
+    class ChildState extends NodeStateBase {
+      static readonly FIELDS = { 'answer': 'string' } as const;
+
+      answer = '';
+
+      protected override snapshotData(): JsonObjectType {
+        return NodeStateBase.snapshotFields(this, ChildState.FIELDS);
+      }
+
+      protected override restoreData(snapshot: JsonObjectType): void {
+        NodeStateBase.restoreFields(this, snapshot, ChildState.FIELDS);
+      }
+    }
+    class ParentState extends NodeStateBase {
+      answers: unknown[] = [];
+    }
+
+    const controller = new AbortController();
+    const dispatcher = new Dagonizer<ParentState>();
+    const answer = TestNode.make<ChildState>('answer-retained', ['success'], (state) => {
+      state.answer = 'forty-two';
+      return 'success';
+    });
+    const pause = TestNode.make<ParentState>('pause-retained', ['success'], () => {
+      controller.abort();
+      return 'success';
+    });
+
+    const childDag = new DAGBuilder('retained-child-answer', '1')
+      .node('answer', answer, { 'success': 'done' })
+      .terminal('done')
+      .build();
+
+    const parentDag = new DAGBuilder('retained-gather-result', '1')
+      .embed<ChildState, ParentState>('invoke', 'retained-child-answer', { 'success': 'join', 'error': 'join' }, {
+        'gatherResult': { 'resultField': 'answer' },
+      })
+      .node('pause', pause, { 'success': 'join' })
+      .gather('join', ['embedded-answer', 'plain-answer'], {
+        'strategy': 'append',
+        'target':   'answers',
+        'field':    'answer',
+      }, { 'success': 'end', 'error': 'failed' })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .entrypoints({ 'embedded-answer': 'invoke', 'plain-answer': 'pause' })
+      .build();
+
+    dispatcher.registerNode(answer);
+    dispatcher.registerNode(pause);
+    dispatcher.registerDAG(childDag, () => new ChildState());
+    dispatcher.registerDAG(parentDag);
+
+    const partial = await dispatcher.execute('retained-gather-result', new ParentState(), {
+      'signal': controller.signal,
+    });
+
+    const rawProgress = partial.state.getMetadata(GATHER_PROGRESS_KEY);
+    assert.ok(rawProgress !== undefined, 'gather checkpoint should be present after abort');
+    const progress = Validator.gatherProgress.validate(rawProgress);
+    const buffered = progress.entries['join'] ?? [];
+    const retained = buffered.find((record) => record.source === 'embedded-answer');
+    assert.ok(retained !== undefined, 'embedded producer record should be checkpointed');
+    assert.equal(retained.result, 'forty-two');
+    assert.equal('snapshot' in retained, true, 'built-in reducers need clone state for resume');
+
+    assert.ok(partial.cursor !== null);
+    const resumed = await dispatcher.resume('retained-gather-result', partial.state, partial.cursor);
+
+    assert.equal(resumed.terminalOutcome, 'completed');
+    assert.ok(partial.state.answers.includes('forty-two'));
     assert.equal(partial.state.getMetadata(GATHER_PROGRESS_KEY), undefined);
   });
 

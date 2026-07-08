@@ -15,6 +15,10 @@ export const GatherRecordProgressSchema = {
     'snapshot':        { 'type': 'object' },
   },
   'additionalProperties': false,
+  'anyOf': [
+    { 'required': ['snapshot'] },
+    { 'required': ['result'] },
+  ],
 } as const;
 
 export const GatherProgressSchema = {
