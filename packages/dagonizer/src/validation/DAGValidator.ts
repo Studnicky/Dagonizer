@@ -15,6 +15,8 @@ import { DAGError } from '../errors/index.js';
 import { DagGraphProjector } from '../graph/DagGraphProjector.js';
 import { DagGraphQueries } from '../graph/DagGraphQueries.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import { JsonSchemaCompatibility } from '../schema/JsonSchemaCompatibility.js';
+import { SchemaRegistry } from '../schema/SchemaRegistry.js';
 
 export class DAGValidator {
   private constructor() { /* static class */ }
@@ -29,6 +31,7 @@ export class DAGValidator {
     for (const node of dag.nodes) {
       DAGValidator.validateDAGNode(node, context, nodes, dags, errors);
     }
+    DAGValidator.validateRouteSchemas(dag, nodes, errors);
 
     if (errors.length > 0) {
       throw new DAGError(`Invalid DAG '${dag.name}':\n  - ${errors.join('\n  - ')}`);
@@ -177,6 +180,39 @@ export class DAGValidator {
       const dagIri = ContextResolver.expand(candidate, context);
       if (!dags.has(dagIri)) {
         errors.push(`${owner}: unknown registered DAG '${candidate}'`);
+      }
+    }
+  }
+
+  private static validateRouteSchemas<TState extends NodeStateInterface>(
+    dag: DAGType,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    errors: string[],
+  ): void {
+    const store = DagGraphProjector.store(dag);
+    const schemas = new SchemaRegistry();
+    DagGraphProjector.projectNodeSchemas({ dag, nodes, schemas, store });
+    const dagIri = DagGraphProjector.dagIri(dag);
+
+    for (const placement of dag.nodes) {
+      if (!('outputs' in placement)) continue;
+      const sourceIri = DagGraphProjector.placementIri(dagIri, placement.name);
+      for (const [output, target] of Object.entries(placement.outputs)) {
+        const producedIri = DagGraphQueries.placementOutputSchemaIri(store, sourceIri, output);
+        if (producedIri === undefined) continue;
+        const targetIri = DagGraphProjector.placementIri(dagIri, target);
+        const requiredIri = DagGraphQueries.placementInputSchemaIri(store, targetIri);
+        if (requiredIri === undefined) continue;
+        const produced = schemas.get(producedIri);
+        const required = schemas.get(requiredIri);
+        if (produced === undefined || required === undefined) continue;
+
+        const compatibility = JsonSchemaCompatibility.produces(produced, required);
+        if (compatibility.status === 'incompatible') {
+          errors.push(
+            `Route '${placement.name}.${output}' -> '${target}' does not satisfy target input schema: ${compatibility.reason}`,
+          );
+        }
       }
     }
   }

@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { DAGDocument } from '../../src/dag/DAGDocument.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { Batch } from '../../src/entities/batch/Batch.js';
+import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
-import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { DAGErrorPredicate } from '../_support/DAGErrorPredicate.js';
 import { TestNode } from '../_support/TestNode.js';
@@ -25,6 +30,46 @@ const validDAG: DAGType = {
       'name': 'done', 'outcome': 'completed' },
   ],
 };
+
+class RouteSchemaState extends NodeStateBase {
+  name = '';
+  score = 0;
+}
+
+class RouteSchemaNode<TOutput extends string> extends MonadicNode<RouteSchemaState, TOutput> {
+  readonly name: string;
+  readonly outputs: readonly [TOutput, ...TOutput[]];
+  readonly #inputSchema: SchemaObjectType;
+  readonly #outputSchema: Record<TOutput, SchemaObjectType>;
+
+  constructor(
+    name: string,
+    outputs: readonly [TOutput, ...TOutput[]],
+    inputSchema: SchemaObjectType,
+    outputSchema: Record<TOutput, SchemaObjectType>,
+  ) {
+    super();
+    this.name = name;
+    this.outputs = outputs;
+    this.#inputSchema = inputSchema;
+    this.#outputSchema = outputSchema;
+  }
+
+  override get inputSchema(): SchemaObjectType {
+    return this.#inputSchema;
+  }
+
+  override get outputSchema(): Record<TOutput, SchemaObjectType> {
+    return this.#outputSchema;
+  }
+
+  override async execute(
+    batch: Batch<RouteSchemaState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<TOutput, RouteSchemaState>> {
+    return new Map([[this.outputs[0], batch]]);
+  }
+}
 
 void describe('Validator.dag', () => {
   void it('accepts a minimal valid DAG', () => {
@@ -314,5 +359,117 @@ void describe('Dagonizer.registerDAG validation layers', () => {
       () => dispatcher.registerDAG(dag),
       /registered node 'op' declares output 'error' but no routing is defined/u,
     );
+  });
+
+  void it('registry layer accepts compatible routed node schemas', () => {
+    const dispatcher = new Dagonizer<RouteSchemaState>();
+    dispatcher.registerNode(new RouteSchemaNode('producer', ['success'], { 'type': 'object' }, {
+      'success': {
+        'type': 'object',
+        'required': ['score'],
+        'properties': { 'score': { 'type': 'number' } },
+      },
+    }));
+    dispatcher.registerNode(new RouteSchemaNode('consumer', ['done'], {
+      'type': 'object',
+      'required': ['score'],
+      'properties': { 'score': { 'type': 'number' } },
+    }, {
+      'done': { 'type': 'object' },
+    }));
+
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:schema-compatible',
+      '@type':    'DAG',
+      'name': 'schema-compatible', 'version': '1', 'entrypoints': { 'main': 'produce' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:schema-compatible/node/produce', '@type': 'SingleNode',
+          'name': 'produce', 'node': 'producer', 'outputs': { 'success': 'consume' } },
+        { '@id': 'urn:noocodex:dag:schema-compatible/node/consume', '@type': 'SingleNode',
+          'name': 'consume', 'node': 'consumer', 'outputs': { 'done': 'end' } },
+        { '@id': 'urn:noocodex:dag:schema-compatible/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+
+    assert.doesNotThrow(() => dispatcher.registerDAG(dag));
+  });
+
+  void it('registry layer rejects incompatible routed node schemas', () => {
+    const dispatcher = new Dagonizer<RouteSchemaState>();
+    dispatcher.registerNode(new RouteSchemaNode('producer', ['success'], { 'type': 'object' }, {
+      'success': {
+        'type': 'object',
+        'required': ['name'],
+        'properties': { 'name': { 'type': 'string' } },
+      },
+    }));
+    dispatcher.registerNode(new RouteSchemaNode('consumer', ['done'], {
+      'type': 'object',
+      'required': ['score'],
+      'properties': { 'score': { 'type': 'number' } },
+    }, {
+      'done': { 'type': 'object' },
+    }));
+
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:schema-incompatible',
+      '@type':    'DAG',
+      'name': 'schema-incompatible', 'version': '1', 'entrypoints': { 'main': 'produce' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:schema-incompatible/node/produce', '@type': 'SingleNode',
+          'name': 'produce', 'node': 'producer', 'outputs': { 'success': 'consume' } },
+        { '@id': 'urn:noocodex:dag:schema-incompatible/node/consume', '@type': 'SingleNode',
+          'name': 'consume', 'node': 'consumer', 'outputs': { 'done': 'end' } },
+        { '@id': 'urn:noocodex:dag:schema-incompatible/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /Route 'produce\.success' -> 'consume' does not satisfy target input schema: producer does not declare required field 'score'/u,
+    );
+  });
+
+  void it('registry layer does not reject routed schemas whose compatibility is unknown', () => {
+    const dispatcher = new Dagonizer<RouteSchemaState>();
+    dispatcher.registerNode(new RouteSchemaNode('producer', ['success'], { 'type': 'object' }, {
+      'success': {
+        'oneOf': [
+          {
+            'type': 'object',
+            'required': ['score'],
+            'properties': { 'score': { 'type': 'number' } },
+          },
+        ],
+      },
+    }));
+    dispatcher.registerNode(new RouteSchemaNode('consumer', ['done'], {
+      'type': 'object',
+      'required': ['score'],
+      'properties': { 'score': { 'type': 'number' } },
+    }, {
+      'done': { 'type': 'object' },
+    }));
+
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:schema-unknown',
+      '@type':    'DAG',
+      'name': 'schema-unknown', 'version': '1', 'entrypoints': { 'main': 'produce' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:schema-unknown/node/produce', '@type': 'SingleNode',
+          'name': 'produce', 'node': 'producer', 'outputs': { 'success': 'consume' } },
+        { '@id': 'urn:noocodex:dag:schema-unknown/node/consume', '@type': 'SingleNode',
+          'name': 'consume', 'node': 'consumer', 'outputs': { 'done': 'end' } },
+        { '@id': 'urn:noocodex:dag:schema-unknown/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+
+    assert.doesNotThrow(() => dispatcher.registerDAG(dag));
   });
 });

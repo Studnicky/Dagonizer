@@ -49,9 +49,9 @@ export class DagGraphProjector {
     }
   }
 
-  static projectNodeSchemas(input: {
+  static projectNodeSchemas<TState extends NodeStateInterface>(input: {
     readonly dag: DAGType;
-    readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
+    readonly nodes: ReadonlyMap<string, NodeInterface<TState, string>>;
     readonly schemas: SchemaRegistry;
     readonly store: TripleStoreInterface;
   }): void {
@@ -162,9 +162,9 @@ export class DagGraphProjector {
     }
   }
 
-  private static projectNodeContract(
+  private static projectNodeContract<TState extends NodeStateInterface>(
     placementIri: string,
-    node: NodeInterface<NodeStateInterface, string>,
+    node: NodeInterface<TState, string>,
     schemas: SchemaRegistry,
     store: TripleStoreInterface,
     graph: TermType,
