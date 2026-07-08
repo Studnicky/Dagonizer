@@ -179,6 +179,67 @@ void describe('CytoscapeRenderer.render', () => {
     assert.equal(stepNode.data['parent'], 'embed');
   });
 
+  void it('rewrites incoming embedded-DAG edges to every child entrypoint', () => {
+    const innerDAG: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:inner-multi-entry',
+      '@type':    'DAG',
+      'name':     'inner-multi-entry',
+      'version':  '1',
+      'entrypoints': { 'left': 'left-root', 'right': 'right-root' },
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:inner-multi-entry/node/left-root',
+          '@type':   'SingleNode',
+          'name':    'left-root',
+          'node':    'left',
+          'outputs': { 'done': 'end' },
+        },
+        {
+          '@id':     'urn:noocodex:dag:inner-multi-entry/node/right-root',
+          '@type':   'SingleNode',
+          'name':    'right-root',
+          'node':    'right',
+          'outputs': { 'done': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:inner-multi-entry/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const outerDAG: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:outer-multi-entry',
+      '@type':    'DAG',
+      'name':     'outer-multi-entry',
+      'version':  '1',
+      'entrypoints': { 'main': 'start' },
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:outer-multi-entry/node/start',
+          '@type':   'SingleNode',
+          'name':    'start',
+          'node':    'start',
+          'outputs': { 'success': 'embed' },
+        },
+        {
+          '@id':     'urn:noocodex:dag:outer-multi-entry/node/embed',
+          '@type':   'EmbeddedDAGNode',
+          'name':    'embed',
+          'dag':     'inner-multi-entry',
+          'outputs': { 'success': 'end', 'error': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:outer-multi-entry/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const embeddedDAGs = new Map<string, DAGType>([['inner-multi-entry', innerDAG]]);
+    const elements = CytoscapeRenderer.render(outerDAG, { embeddedDAGs });
+    const startEdges = elements
+      .filter((entry): entry is CytoscapeEdgeElementType => entry.group === 'edges' && entry.data.source === 'start')
+      .map((edge) => edge.data.target)
+      .sort();
+
+    assert.deepEqual(startEdges, ['embed/left-root', 'embed/right-root']);
+  });
+
   void it('ScatterNode with body.node does not expand inline', () => {
     const dag: DAGType = {
       '@context': DAG_CONTEXT,

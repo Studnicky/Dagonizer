@@ -34,7 +34,6 @@
  * plain element array synchronously.
  */
 
-import { DAGEntrypoints } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
@@ -446,7 +445,7 @@ export class CytoscapeRenderer {
     // layout is decided only by intra-compound edges, often producing
     // an inverted child order and a compound positioned above its own
     // predecessor.
-    const embeddedEntryRewrite = new Map<string, string>();
+    const embeddedEntryRewrite = new Map<string, readonly string[]>();
     const maxDepth = state.options.maxDepth;
     for (const placement of PlacementUtils.narrowNodes(dag)) {
       const dagName = PlacementUtils.embeddedDagName(placement);
@@ -456,8 +455,7 @@ export class CytoscapeRenderer {
       if (depth >= maxDepth) continue;
       if (visited.has(dagName)) continue;
       const placementId = PlacementUtils.idIn(prefix, placement.name);
-      const entryChildId = PlacementUtils.idIn(placementId, DAGEntrypoints.primary(body));
-      embeddedEntryRewrite.set(placement.name, entryChildId);
+      embeddedEntryRewrite.set(placement.name, CytoscapeRenderer.entryChildIds(body, placementId));
     }
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
@@ -541,44 +539,57 @@ export class CytoscapeRenderer {
         // placement at this level, retarget to that placement's
         // entrypoint child so dagre lays the compound out top-down
         // with the entry visually at the top.
-        const rewrittenTarget = CytoscapeRenderer.rewriteToEmbeddedEntry(edge.data.target, prefix, embeddedEntryRewrite);
+        const rewrittenTargets = CytoscapeRenderer.rewriteToEmbeddedEntries(edge.data.target, prefix, embeddedEntryRewrite);
         // Worker-edge class: edges inside a container-bound compound receive
         // `route-in-worker` so the stylesheet can style them distinctly (dashed,
         // role-colored) to signal "runs in a worker context".
         const workerClass = state.inContainedCompound ? ' route-in-worker' : '';
-        if (rewrittenTarget !== edge.data.target) {
-          state.elements.push({
-            ...edge,
-            "classes": `${edge.classes}${workerClass}`,
-            "data": { ...edge.data, "target": rewrittenTarget, "id": `${edge.data.source}__${edge.data.route}__${rewrittenTarget}` },
-          });
-        } else {
+        if (rewrittenTargets.length === 1 && rewrittenTargets[0] === edge.data.target) {
           state.elements.push(
             workerClass !== ''
               ? { ...edge, "classes": `${edge.classes}${workerClass}` }
               : edge,
           );
+        } else {
+          for (const rewrittenTarget of rewrittenTargets) {
+            state.elements.push({
+              ...edge,
+              "classes": `${edge.classes}${workerClass}`,
+              "data": { ...edge.data, "target": rewrittenTarget, "id": `${edge.data.source}__${edge.data.route}__${rewrittenTarget}` },
+            });
+          }
         }
       }
     }
   }
 
+  private static entryChildIds(body: DAGType, placementId: string): readonly string[] {
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const entrypoint of Object.values(body.entrypoints)) {
+      if (seen.has(entrypoint)) continue;
+      seen.add(entrypoint);
+      result.push(PlacementUtils.idIn(placementId, entrypoint));
+    }
+    return result;
+  }
+
   /**
    * If `targetId` (an already-prefixed placement id) matches one of the
    * embedded-DAG placements at this level (per `entryMap` keyed by
-   * un-prefixed placement names), return the entrypoint child id;
+   * un-prefixed placement names), return the entrypoint child ids;
    * otherwise return `targetId` unchanged.
    */
-  private static rewriteToEmbeddedEntry(
+  private static rewriteToEmbeddedEntries(
     targetId: string,
     prefix: string,
-    entryMap: ReadonlyMap<string, string>,
-  ): string {
-    for (const [placementName, entryChildId] of entryMap) {
+    entryMap: ReadonlyMap<string, readonly string[]>,
+  ): readonly string[] {
+    for (const [placementName, entryChildIds] of entryMap) {
       const placementId = PlacementUtils.idIn(prefix, placementName);
-      if (targetId === placementId) return entryChildId;
+      if (targetId === placementId) return entryChildIds;
     }
-    return targetId;
+    return [targetId];
   }
 
   /**
