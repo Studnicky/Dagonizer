@@ -54,7 +54,7 @@ void describe('schema identity and registry', () => {
     assert.equal(StableSchemaHash.of(canonical), StableSchemaHash.of(annotated));
   });
 
-  void it('hashes schemas independent of Dagonizer contract annotations', () => {
+  void it('hashes schemas dependent on Dagonizer contract annotations', () => {
     const canonical: SchemaObjectType = {
       'type': 'object',
       'required': ['title'],
@@ -76,7 +76,7 @@ void describe('schema identity and registry', () => {
       },
     };
 
-    assert.equal(StableSchemaHash.of(canonical), StableSchemaHash.of(annotated));
+    assert.notEqual(StableSchemaHash.of(canonical), StableSchemaHash.of(annotated));
   });
 
   void it('preserves validation-affecting keywords in structural hashes', () => {
