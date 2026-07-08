@@ -101,6 +101,7 @@ export type { BridgeMessageType } from '../entities/executor/BridgeMessage.js';
 export type { ExecutionRequestType } from '../entities/executor/ExecutionRequest.js';
 export type { ExecutionResponseType } from '../entities/executor/ExecutionResponse.js';
 export type { ExecutorIntermediateType } from '../entities/executor/ExecutorIntermediate.js';
+export type { GatherProgressType, GatherRecordProgressType } from '../entities/gather/GatherProgress.js';
 export type { RecommendedWorkerCountConfigType } from '../entities/executor/RecommendedWorkerCountConfig.js';
 export type { CheckpointDataType } from '../entities/checkpoint/CheckpointData.js';
 export type { DAGLifecycleStateDataType } from '../entities/state-machines/DAGLifecycleState.js';

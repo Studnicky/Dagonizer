@@ -127,6 +127,8 @@ export {
   ExecutionResultSchema,
   ParkedSchema,
   ValidationResultSchema,
+  GatherProgressSchema,
+  GatherRecordProgressSchema,
   GatherStrategySchema,
   ScatterOutputSchema,
   MetadataKeySchema,
@@ -160,6 +162,8 @@ export type {
   GatherNodeType,
   GatherPolicyType,
   GatherConfigType,
+  GatherProgressType,
+  GatherRecordProgressType,
   DAGType,
   DAGLifecycleStateDataType,
   SingleNodeType,
@@ -309,7 +313,7 @@ export type {
 // CHECKPOINT
 // =============================================================================
 
-export { Checkpoint, CheckpointRestoreAdapter, MemoryCheckpointStore } from './checkpoint/index.js';
+export { Checkpoint, CheckpointRestoreAdapter, GatherCheckpoint, MemoryCheckpointStore } from './checkpoint/index.js';
 export type { CaptureOptionsType, RecalledCheckpointType, RestoreStoresOptionsType } from './checkpoint/index.js';
 
 // =============================================================================
