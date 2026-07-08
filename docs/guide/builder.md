@@ -152,7 +152,7 @@ For patterns where nodes across multiple scatter placements accumulate to shared
 
 - a DAG name string
 - a `DAG` object
-- a runtime reference object `{ from: 'state.path' }`
+- a runtime reference object `{ from: 'state', path: 'state.path', candidates: [...] }`
 
 <<< @/../examples/dags/09-terminals.ts#embedded-terminals
 
@@ -172,43 +172,50 @@ Supply `TChildState` and `TParentState` to narrow path strings at compile time; 
 `EmbeddableDAGType` is the public input type for `.embed()`:
 
 ```ts
-type EmbeddableDAGType = string | DAGType | { readonly from: string };
+type EmbeddableDAGType =
+  | string
+  | DAGType
+  | {
+      readonly from: 'state' | 'item';
+      readonly path: string;
+      readonly candidates: readonly [string, ...string[]];
+    };
 ```
 
 Normalization is direct:
 
 - `string` becomes `{ dag: value }`
 - `DAGType` becomes `{ dag: value.name }`
-- `{ from }` becomes `{ dagFrom: value.from }`
+- `{ from, path, candidates }` becomes `{ dag: { '@type': 'DagReference', from, path, candidates } }`
 
 That means application code can treat embedded local DAGs and plugin-exported DAGs the same way. The builder always emits the canonical `EmbeddedDAGNode` JSON-LD shape.
 
-#### Runtime DAG resolution: `dagFrom` and `from`
+#### Runtime DAG resolution with `DagReference`
 
-Both `.scatter()` and `.embed()` accept a runtime-resolved DAG name in addition to a build-time string literal. This is the engine's primitive for recursion and self-reference: the DAG to run is chosen from state at execution time rather than being hard-coded at authoring time.
+Both `.scatter()` and `.embed()` accept a runtime-resolved DAG name in addition to a build-time string literal. This is the engine's primitive for recursion and self-reference: the DAG to run is chosen from state or item data at execution time rather than being hard-coded at authoring time. Dynamic references always declare their candidate DAG set so registration, validation, graph projection, plugin discovery, and runtime dispatch agree.
 
-**`.embed()` with `{ from: 'statePath' }`**
+**`.embed()` with a state-sourced `DagReference`**
 
-Pass `{ from: 'statePath' }` as the `dag` argument. At execution time the engine reads the dotted state path and looks up the resulting string as a registered DAG name. If the resolved name is unregistered, the placement routes to `error` without throwing.
+Pass `{ from: 'state', path: 'statePath', candidates: [...] }` as the `dag` argument. At execution time the engine reads the dotted state path and looks up the resulting string as a registered DAG name. If the resolved name is outside the candidate set or unregistered, the placement routes to `error` without throwing.
 
 ```ts
 // The DAG to invoke is stored in state.selectedDag at runtime.
 builder.embed(
   'invoke',
-  { from: 'selectedDag' },   // resolved from state at execution time
+  { from: 'state', path: 'selectedDag', candidates: ['child-a', 'child-b'] },
   { success: 'next', error: 'end-fail' },
 );
 ```
 
-**`.scatter()` with `{ dagFrom: 'statePath' }` as the body**
+**`.scatter()` with an item-sourced `DagReference` as the body**
 
-Pass `{ dagFrom: 'statePath' }` as the `body` argument. Each scatter clone resolves the state path to a DAG name and runs that DAG as its body. Unregistered names route the clone to `error`.
+Pass `{ dag: { from: 'item', path: 'targetDag', candidates: [...] } }` as the `body` argument. Each scatter clone resolves the item path to a DAG name and runs that DAG as its body. Values outside the candidate set route the clone to `error`.
 
 ```ts
 builder.scatter(
   'fan-out',
   'items',
-  { dagFrom: 'cloneConfig.targetDag' },  // resolved per-clone from state
+  { dag: { from: 'item', path: 'targetDag', candidates: ['child-a', 'child-b'] } },
   { 'all-success': 'merge', 'all-error': 'end-fail', 'partial': 'merge', 'empty': 'end' },
   { gather: { strategy: 'discard' } },
 );

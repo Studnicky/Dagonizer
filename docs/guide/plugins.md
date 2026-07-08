@@ -255,7 +255,7 @@ const registry = new Map(dispatcher.listDAGs().map(d => [d.name, d]));
 const all = PluginDiscovery.walk(myDag, registry);
 ```
 
-`dagFrom` references (runtime-resolved paths) are excluded from static discovery; only build-time `dag` literals are collected.
+Dynamic `DagReference` candidates are projected into the graph and participate in discovery. Literal DAG references and dynamic candidate DAGs use the same graph query path, so plugin DAGs and local DAGs stay on one registry surface.
 
 When applications want to render or inspect a whole reachable forest, the registry should be keyed by DAG name, not by plugin object identity. That keeps plugin DAGs and local DAGs on the same interface.
 

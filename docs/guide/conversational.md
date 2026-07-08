@@ -661,7 +661,7 @@ build-request
                                           └─ decoded ──► normalize-tools
                                                └─ valid ──► worksets
                                                     └─ ready ──► dispatch-tools
-                                                         (scatter: dagFrom: dagName)
+                                                         (scatter: DagReference item.dagName)
                                                          └─ collect-results ──► build-request
 ```
 
@@ -755,12 +755,13 @@ class MyCallModelNode extends CallModelNode<AgentState> {
 }
 ```
 
-#### Tool dispatch via dagFrom
+#### Tool dispatch via DagReference
 
 `BuildToolWorksetsNode` stamps each scatter item with
 `dagName: 'tool:' + call.name`. The scatter placement uses
-`{ dagFrom: 'dagName' }` so the engine resolves the body DAG from each item at
-runtime. Register tool DAGs with `toolRegistry.bundle()`:
+`{ dag: { from: 'item', path: 'dagName', candidates: [...] } }` so the engine
+resolves the body DAG from each item at runtime and validates it against the
+registered tool candidates. Register tool DAGs with `toolRegistry.bundle()`:
 
 ```ts
 import { ToolRegistry } from '@studnicky/dagonizer/tool';

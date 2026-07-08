@@ -23,9 +23,9 @@ Use it when authoring, validating, rendering, or debugging the graph document th
 
 ## How It Works
 
-A registered `NodeInterface` is the unit of work. A placement is that unit's appearance inside one DAG document. One registered node can appear in multiple placements; each placement owns routing, state mapping, scatter policy, phase role, or terminal outcome.
+A registered `NodeInterface` is the unit of work. A registered `DAG` is the unit of composition. A placement is one appearance of that unit inside a DAG document; one registered node or DAG can appear in multiple placements, and each placement owns routing, state mapping, scatter policy, phase role, or terminal outcome.
 
-`TerminalNode` is placement-only and references no registered node. `EmbeddedDAGNode` references another registered DAG. `ScatterNode` creates isolated clone work and folds the result back through gather/reduce policy.
+`TerminalNode` is placement-only and references no registered node. DAG composition always uses the `dag` field: literal DAG names and dynamic `DagReference` values share that same JSON-LD surface. `EmbeddedDAGNode` invokes that referenced DAG once; `ScatterNode` invokes the referenced body per source item and folds results back through gather/reduce policy.
 
 ## Diagrams, Examples, and Outputs
 
@@ -190,9 +190,12 @@ import type { EmbeddedDAGNodeType } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const placement: EmbeddedDAGNodeType;
 const name: string = placement.name;
-// Exactly one of `dag` (build-time literal) or `dagFrom` (state path) is present.
-const dag: string | undefined = placement.dag;
-const dagFrom: string | undefined = placement.dagFrom;
+// `dag` is either a literal DAG name or a graph-addressable DagReference.
+const dag = placement.dag;
+if (typeof dag !== 'string' && dag !== undefined) {
+  const path: string = dag.path;
+  const candidates: readonly string[] = dag.candidates;
+}
 export {};
 ```
 
@@ -215,12 +218,11 @@ export {};
 | `@id` | `string` | yes | Placement URN |
 | `@type` | `'EmbeddedDAGNode'` | yes | Discriminator |
 | `name` | `string` | yes | Placement name |
-| `dag` | `string` | one of `dag`/`dagFrom` | Build-time literal: registered sub-DAG name to invoke (cardinality 1) |
-| `dagFrom` | `string` | one of `dag`/`dagFrom` | Dotted state path resolved at execution time to the registered sub-DAG name; the item-scoped form used by scatter bodies |
+| `dag` | `string \| DagReference` | yes | Registered sub-DAG name or dynamic reference with `from`, `path`, and explicit `candidates` |
 | `outputs` | `Record<'success' \| 'error', string \| null>` | yes | Routes for the child's terminal outcome |
 | `stateMapping` | `{ input?: Record<string, string>; output?: Record<string, string> }` | no | `input` copies parent fields into the child before it runs (child-key ← parent-path); `output` copies child fields back into the parent after it completes (parent-path ← child-key). |
 
-`EmbeddedDAGNode` invokes a registered sub-DAG exactly once (cardinality 1). It is the embedding primitive: the parent flow suspends, the child DAG runs to completion in an isolated state (a fresh child clone, not a shared parent reference), and the parent routes on the child's terminal outcome (`success` when the child lifecycle is `completed`; `error` when `failed`). The target sub-DAG is named either by the build-time literal `dag` or by `dagFrom`, a dotted state path resolved per execution — the item-scoped form a scatter body uses to invoke a different child per item. Exactly one of the two is present, enforced by the DAG validator. Authored via `.embed(name, dagName, routes, { inputs, outputs })` on `DAGBuilder`.
+`EmbeddedDAGNode` invokes a registered DAG exactly once (cardinality 1). It is not a second composition system; it is the single `dag` reference interface with cardinality 1. The parent flow suspends, the child DAG runs to completion in an isolated state (a fresh child clone, not a shared parent reference), and the parent routes on the child's terminal outcome (`success` when the child lifecycle is `completed`; `error` when `failed`). The target DAG is named by `dag`: either a build-time literal DAG name or a dynamic `DagReference` that reads a selected DAG from state and validates it against the declared candidate set. Authored via `.embed(name, dagNameOrReference, routes, { inputs, outputs })` on `DAGBuilder`.
 
 ---
 

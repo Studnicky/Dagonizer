@@ -143,7 +143,7 @@ DAGBuilder emits every placement shape the schema allows.
 | `ScatterNode` placement | yes via `.scatter()` |
 | Gather strategy (`map` / `append` / `partition` / `custom` / `collect` / `discard`) | yes via `options.gather` |
 | Outcome reducer (`aggregate` / `all-success` / `any-success` / custom) | yes via `options.reducer` |
-| Scatter body variant (`node`, `dag`, or `dagFrom`) | yes via `body` argument |
+| Scatter body variant (`node`, literal `dag`, or dynamic `DagReference`) | yes via `body` argument |
 | `EmbeddedDAGNode` placement | yes via `.embed()` |
 | `TerminalNode` placement | yes via `.terminal()` |
 | `inputs` (parent -> clone seed) | yes via `options.inputs` |

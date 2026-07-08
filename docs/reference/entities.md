@@ -121,7 +121,7 @@ import type { ScatterNodeType } from '@studnicky/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode`
 
-Embedded-DAG placement: invoke a nested DAG exactly once (cardinality 1) with optional bidirectional state mapping. Required: `@id`, `@type: 'EmbeddedDAGNode'`, `name`, `dag` (registered DAG name), `outputs`. Optional: `stateMapping`.
+Embedded-DAG placement: invoke a referenced DAG exactly once (cardinality 1) with optional bidirectional state mapping. Required: `@id`, `@type: 'EmbeddedDAGNode'`, `name`, `dag` (literal DAG name or dynamic `DagReference`), `outputs`. Optional: `stateMapping`.
 
 ```ts twoslash
 import { EmbeddedDAGNodeSchema } from '@studnicky/dagonizer/entities';
@@ -130,7 +130,7 @@ import type { EmbeddedDAGNodeType } from '@studnicky/dagonizer/entities';
 
 `stateMapping.input` seeds the child before it runs (child-state key → parent-state dotted path). `stateMapping.output` copies fields back into the parent after the child completes (parent-state dotted path → child-state key). Builder options: `inputs` and `outputs` in `TypedEmbeddedDAGOptionsType`.
 
-Use `EmbeddedDAGNode` for a single nested-DAG invocation (cardinality 1). For a 1→N fork over a source array, use `ScatterNode` with `source`.
+Use `EmbeddedDAGNode` when the selected DAG runs once. Use `ScatterNode` when the same `dag` reference surface runs once per source item and gathers clone output. The composition interface is the same; cardinality and gather policy are the difference.
 
 ---
 

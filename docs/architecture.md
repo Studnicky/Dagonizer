@@ -108,9 +108,9 @@ One abstract base class covers the authoring surface:
 
 `MonadicNode` ships from `@studnicky/dagonizer` and `@studnicky/dagonizer/core`; `@studnicky/dagonizer/patterns` re-exports it for co-import with the agent-flow template-method bases.
 
-##### `dagFrom` — runtime DAG resolution
+##### `DagReference` — runtime DAG resolution
 
-A scatter or embedded placement body can declare `{ dagFrom: 'path.to.field' }` instead of a fixed `{ dag: 'name' }`. The dispatcher reads the dotted path from each item's state at runtime to resolve the DAG name. This is the recursion / self-reference primitive: a scatter where each clone's body is determined by the clone's own state, including the case where a flow dispatches back to itself.
+A scatter or embedded placement body can declare `{ dag: { from: 'item', path: 'path.to.field', candidates: [...] } }` instead of a fixed `{ dag: 'name' }`. The dispatcher reads the dotted path from item or state data at runtime, expands the selected DAG name, and validates it against the declared candidate set before execution. This is the recursion / self-reference primitive: a scatter where each clone's body is determined by the clone's own data, including the case where a flow dispatches back to itself.
 
 **`single`**, the fundamental unit. One registered node; output name selects the next node. Flows terminate at an explicit `TerminalNode`.
 

@@ -281,7 +281,7 @@ const elements: readonly CytoscapeElementType[] = CytoscapeRenderer.render(dag);
 
 Renders a `DAG` as a Cytoscape elements array.
 
-- Every placement becomes a node element with a `type` field (`'single'` | `'scatter'` | `'embedded-dag'` | `'terminal'` | `'phase'`) for per-type stylesheet selectors.
+- Every placement becomes a node element with a `type` field (`'single'` | `'scatter'` | `'gather'` | `'embedded-dag'` | `'terminal'` | `'phase'`) for per-type stylesheet selectors.
 - Every output route becomes a labeled edge element.
 - Embedded-DAG placements are expanded inline when their target DAG is supplied via `options.embeddedDAGs`, showing the full inner flow as a compound cluster.
 - Routes to `null` become edges to a synthetic `END` terminal node.
@@ -330,7 +330,7 @@ declare const node: CytoscapeNodeElementType;
 const _group: 'nodes' = node.group;
 const _id: string = node.data.id;
 const _label: string = node.data.label;
-const _type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase' = node.data.type;
+const _type: 'single' | 'scatter' | 'gather' | 'embedded-dag' | 'terminal' | 'phase' = node.data.type;
 const _classes: string = node.classes;
 
 // CytoscapeEdgeElementType

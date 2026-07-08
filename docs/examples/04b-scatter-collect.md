@@ -66,7 +66,7 @@ The same `BookSearchScatterDAG` drives the Archivist demo and the Mermaid diagra
 ## Details for Nerds
 
 - **`collect` gather strategy.** Each clone writes its candidate list back to the parent clone's `candidates` collection.
-- **Scatter body DAG.** The `body` uses `{ dagFrom: 'dagName' }`, so each workset chooses a registered tool DAG at runtime.
+- **Scatter body DAG.** The `body` uses a dynamic `DagReference`, so each workset chooses a registered tool DAG at runtime from an explicit candidate set.
 - **`any-success` outcome reducer.** A single successful provider is enough for the search branch to continue.
 - **Source-index mental model.** The parent sees deterministic gathered state even though provider work runs concurrently.
 

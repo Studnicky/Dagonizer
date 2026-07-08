@@ -370,6 +370,6 @@ These numbered examples are the small-form counterparts to Cartographer behavior
 | [Example 15: Incremental Gather](./15-incremental-gather) | The insights panel updates through incremental fold semantics rather than waiting for a final batch merge. |
 | [Example 16: Scatter Resume](./16-scatter-resume) | The durable-inbox model is the checkpoint substrate for long-running stream scatters. |
 | [Example 17: Async Scatter Source](./17-scatter-async-source) | `seed` can provide sources as an async stream; bounded scatter pulls only as capacity opens. |
-| [Example 27: Runtime DAG Dispatch](./27-recursion) | Runtime `dagFrom` belongs here if hierarchical route expansion enters the demo. |
+| [Example 27: Runtime DAG Dispatch](./27-recursion) | Dynamic `DagReference` dispatch belongs here if hierarchical route expansion enters the demo. |
 | [Example 33: Plugin-Defined DAGs](./33-plugin) | Plugin packaging belongs here for normalization pipelines (`NormalizeCsvDAG`, `NormalizeJsonDAG`, etc.) so plugins and embedded DAGs stay one interface. |
 | [Examples 34-36: Streaming Substrate](./34-stream-channel) | StreamChannel, resumable fan-in, and DagStreamProducer are the substrate beneath Cartographer’s event stream. |

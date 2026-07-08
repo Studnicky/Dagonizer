@@ -132,7 +132,13 @@ const agentDag = new DAGBuilder('support-agent', '1')
     empty: 'end-error',
     error: 'end-error',
   })
-  .scatter('dispatch-tools', 'safeWorkset', { dagFrom: 'dagName' }, {
+  .scatter('dispatch-tools', 'safeWorkset', {
+    dag: {
+      from: 'item',
+      path: 'dagName',
+      candidates: ['tool:calculator', 'tool:search'],
+    },
+  }, {
     'all-success': 'collect-results',
     partial: 'collect-results',
     'all-error': 'collect-results',
@@ -161,7 +167,7 @@ dispatcher.registerNode(nodes.appendAssistant);
 dispatcher.registerDAG(agentDag);
 ```
 
-The tool scatter reads `safeWorkset`, dispatches each item to `{ dagFrom: 'dagName' }`, gathers `output` into `toolOutputs`, and loops through `collect-results -> build-request`. Change those names directly in your builder chain when your state shape uses different fields.
+The tool scatter reads `safeWorkset`, dispatches each item through a dynamic `DagReference`, gathers `output` into `toolOutputs`, and loops through `collect-results -> build-request`. Change those names directly in your builder chain when your state shape uses different fields.
 
 ### Put host code behind `DagRunner`
 

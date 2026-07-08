@@ -30,7 +30,7 @@ The boundary is important: the model chooses a capability and arguments; the app
 
 ## How It Works
 
-The model returns tool calls through the adapter response. The host decodes those calls into worksets, each workset names the registered tool DAG to run, and the scatter body resolves that name via `dagFrom`. The model chooses intent; the dispatcher still owns node execution, route outcomes, gathering, and terminal behavior.
+The model returns tool calls through the adapter response. The host decodes those calls into worksets, each workset names the registered tool DAG to run, and the scatter body resolves that name via a dynamic `DagReference` with explicit candidates. The model chooses intent; the dispatcher still owns node execution, route outcomes, gathering, and terminal behavior.
 
 This makes tool use compositional. A tool can be a typed function, but the runnable Archivist packages each tool as an embeddable `tool:<name>` DAG so scatter, gather, retry, checkpoint, and visualization all work through the same runtime surface.
 
@@ -38,7 +38,7 @@ This makes tool use compositional. A tool can be a typed function, but the runna
 
 ### DAG registration and diagram
 
-The graph shows the model/tool dispatch boundary. [The Archivist](./the-archivist) is the in-browser owner: its book-search scatter dispatches registered tool DAGs through `dagFrom`.
+The graph shows the model/tool dispatch boundary. [The Archivist](./the-archivist) is the in-browser owner: its book-search scatter dispatches registered tool DAGs through a dynamic `DagReference`.
 
 <DagJsonMermaid :dag="BookSearchScatterDAG" title="Archivist tool-use scatter DAG" aria-label="Archivist tool-use JSON-LD DAG beside Mermaid generated from it." />
 
@@ -60,7 +60,7 @@ In practice this keeps the risky part small. The model proposes a structured cal
 
 ## Code Samples
 
-The browser registry snippet shows tool DAG registration. The scatter DAG snippet shows runtime `dagFrom` dispatch over tool worksets.
+The browser registry snippet shows tool DAG registration. The scatter DAG snippet shows runtime `DagReference` dispatch over tool worksets.
 
 <<< @/../docs/.vitepress/theme/components/ArchivistRunner.vue#archivist-browser-tool-registry
 
@@ -71,7 +71,7 @@ The browser registry snippet shows tool DAG registration. The scatter DAG snippe
 - **`Tool<TInput, TOutput>`.** Declares `name`, a JSON-Schema `ToolDefinition` (forwarded to the model via the adapter's `tools` parameter), and an `execute(input)` method that returns `TOutput`. The type parameters enforce that the decoded call input matches the schema.
 - **`ToolDefinition`.** JSON Schema–compatible object forwarded to the LLM's `tools` parameter. The schema describes the tool's input shape so the model can emit a valid call.
 - **Tool registry bundle.** The browser runner registers the tool bundle before the parent DAG so `tool:<name>` bodies resolve.
-- **`dagFrom` dispatch.** Each workset carries the tool DAG name; the scatter body resolves it at runtime.
+- **Dynamic DAG dispatch.** Each workset carries the tool DAG name; the scatter body resolves it at runtime and validates it against the declared candidate DAG set.
 - **Tool dispatch.** The selected tool DAG calls the matching tool implementation and gathers candidates back into the parent state.
 
 ## Related Concepts

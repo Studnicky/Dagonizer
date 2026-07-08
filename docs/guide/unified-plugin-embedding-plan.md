@@ -142,9 +142,10 @@ dispatcher.registerDAG(dag);
 
 ### Current Code Facts
 
-- `DAGBuilder.embeddedDAG(...)` already creates `EmbeddedDAGNode` placements in
+- `DAGBuilder.embed(...)` and `DAGBuilder.embeddedDAG(...)` create
+  `EmbeddedDAGNode` placements in
   `packages/dagonizer/src/builder/DAGBuilder.ts`.
-- `EmbeddedDAGNode` already supports literal `dag`, runtime `dagFrom`, state
+- `EmbeddedDAGNode` supports literal `dag`, dynamic `DagReference`, state
   mapping, and optional container role in
   `packages/dagonizer/src/entities/dag/EmbeddedDAGNode.ts`.
 - `PluginInterface` is a one-method contract in
@@ -230,14 +231,19 @@ embed<
 type EmbeddableDAGType =
   | string
   | DAGType
-  | { readonly from: string };
+  | {
+      readonly from: 'state' | 'item';
+      readonly path: string;
+      readonly candidates: readonly [string, ...string[]];
+    };
 ```
 
 Normalization:
 
 - `string` becomes `{ dag: value }`.
 - `DAGType` becomes `{ dag: value.name }`.
-- `{ from }` becomes `{ dagFrom: value.from }`.
+- `{ from, path, candidates }` becomes
+  `{ dag: { '@type': 'DagReference', from, path, candidates } }`.
 
 `embeddedDAG(...)` remains available and delegates through the same private
 normalization path. Existing code remains valid.
@@ -329,7 +335,8 @@ Tests:
 - `embed(name, 'child', routes, options)` deep-equals
   `embeddedDAG(name, 'child', routes, options)` output.
 - `embed(name, childDag, routes)` emits `dag: childDag.name`.
-- `embed(name, { from: 'selectedDag' }, routes)` emits `dagFrom`.
+- `embed(name, { from: 'state', path: 'selectedDag', candidates }, routes)`
+  emits `dag: DagReference`.
 - `embed(...)` preserves `stateMapping.input`, `stateMapping.output`, and
   `container`.
 - Existing `embeddedDAG(...)` tests still pass.
@@ -376,7 +383,7 @@ Build:
 1. Keep `referencedDagNames(dag)` based on literal DAG references only.
 2. Add tests for parent DAGs that reference plugin-exported DAG names.
 3. Verify `walk(parentDag, registry)` includes parent and reachable plugin DAGs.
-4. Verify `dagFrom` remains excluded from static discovery.
+4. Verify dynamic `DagReference` candidates participate in graph discovery.
 5. Verify scatter DAG bodies still participate in discovery.
 
 Recommended adjustment:
@@ -504,15 +511,24 @@ Implementation constraints:
 Add:
 
 ```ts
-export type EmbeddableDAGType = string | DAGType | { readonly from: string };
+export type EmbeddableDAGType =
+  | string
+  | DAGType
+  | {
+      readonly from: 'state' | 'item';
+      readonly path: string;
+      readonly candidates: readonly [string, ...string[]];
+    };
 ```
 
 Add normalization:
 
 ```ts
-private static embeddedDagField(dag: EmbeddableDAGType): { dag: string } | { dagFrom: string } {
+private static embeddedDagField(dag: EmbeddableDAGType): { dag: DagReferenceType } {
   if (typeof dag === 'string') return { dag };
-  if ('from' in dag) return { dagFrom: dag.from };
+  if ('candidates' in dag) {
+    return { dag: { '@type': 'DagReference', from: dag.from, path: dag.path, candidates: [...dag.candidates] } };
+  }
   return { dag: dag.name };
 }
 ```
@@ -587,7 +603,8 @@ npm run validate
   `embeddedDAG`.
 - [x] `DAGBuilder.embed` accepts a plain DAG name.
 - [x] `DAGBuilder.embed` accepts a `DAGType` and emits `dag.name`.
-- [x] `DAGBuilder.embed` accepts `{ from }` and emits `dagFrom`.
+- [x] `DAGBuilder.embed` accepts dynamic `DagReference` input and emits
+  `dag: DagReference`.
 - [x] A parent DAG embeds a plugin-exported DAG name and executes.
 - [x] Static discovery finds reachable plugin DAGs through literal embedded DAG
   references.

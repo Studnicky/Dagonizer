@@ -57,7 +57,7 @@ Open [The Cartographer](./the-cartographer). The browser runner registers `norma
 
 Plugin-defined DAGs let applications consume reusable flows as installable parts while preserving the same embedded-DAG interface used inside the application. Use this when a team wants to package nodes and child DAGs once, register them by plugin ID, and embed the exported DAG names from higher-level flows.
 
-The result is composability without a second assembly language. Local DAG, plugin DAG, and dynamically selected `dagFrom` body all resolve through the same registry.
+The result is composability without a second assembly language. Local DAGs, plugin DAGs, literal `dag` references, and dynamic `DagReference` bodies all resolve through the same registry.
 
 ## Code Samples
 

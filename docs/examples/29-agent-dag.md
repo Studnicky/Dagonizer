@@ -58,7 +58,7 @@ build-request
                                           └─ decoded ──► normalize-tools
                                                └─ valid ──► worksets
                                                     └─ ready ──► dispatch-tools
-                                                         (scatter: dagFrom: dagName)
+                                                         (scatter: DagReference item.dagName)
                                                          └─ collect-results ──► build-request
 ```
 
@@ -66,10 +66,10 @@ Terminals:
 - `end-done` (`completed`) — the model answered without tool calls; loop exits.
 - `end-error` (`failed`) — any unrecoverable error path.
 
-The scatter placement (`dispatch-tools`) uses `{ dagFrom: 'dagName' }`: each
+The scatter placement (`dispatch-tools`) uses a dynamic `DagReference`: each
 scatter item produced by `BuildToolWorksetsNode` carries a `dagName` field
-(`'tool:<name>'`), and the engine resolves the body DAG from that field at
-runtime. `CollectToolResultsNode` runs after the gather and loops back to
+(`'tool:<name>'`), and the engine resolves the body DAG from that field after
+validating it against the declared candidates. `CollectToolResultsNode` runs after the gather and loops back to
 `build-request` for the next model turn.
 
 ### Run
@@ -139,9 +139,7 @@ The dispatcher wiring follows the same order throughout the docs: register concr
 - **Template-method pattern** — each abstract base node separates framework
   concerns (execution, error wrapping, routing) from domain concerns (state
   reads and writes). Subclasses override only the abstract template methods.
-- **`dagFrom` scatter** — the `dispatch-tools` placement resolves the body DAG
-  from `state.safeWorkset[i].dagName` at runtime. Register tool DAGs with
-  `toolRegistry.bundle()` before the loop runs.
+- **Dynamic DAG reference scatter** — the `dispatch-tools` placement resolves the body DAG from each workset's `dagName` at runtime through the same `dag` field used by literal child DAGs. Register tool DAGs with `toolRegistry.bundle()` before the loop runs.
 - **Loop-back edge** — `collect-results → done → build-request` is the turn
   boundary. After gathering tool results, the loop restarts with a new
   `build-request` so the model can see the results.
