@@ -1,5 +1,4 @@
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
-import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
@@ -11,6 +10,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
 import { DagReferenceResolver } from './DagReferenceResolver.js';
+import { GatherRecordProjector } from './GatherRecordProjector.js';
 import { PlacementRouter } from './PlacementRouter.js';
 import type { RunNodeResultType } from './ScatterDispatch.js';
 
@@ -72,15 +72,14 @@ export class EmbeddedDagExecutor {
   ): RunNodeResultType {
     if (placement.gatherResult === undefined) return run;
     const output = run.result.output ?? 'error';
-    const gatherRecord: GatherRecordType = {
+    const gatherRecord = GatherRecordProjector.project({
       'source': placement.name,
-      'index': null,
-      'item': undefined,
       output,
       terminalOutcome,
-      'result': this.#source.accessor.get(cloneState, placement.gatherResult.resultField),
-      cloneState,
-    };
+      'state': cloneState,
+      'accessor': this.#source.accessor,
+      'producer': placement,
+    });
     return { ...run, gatherRecord };
   }
 
