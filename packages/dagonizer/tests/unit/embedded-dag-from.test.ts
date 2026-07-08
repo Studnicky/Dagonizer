@@ -146,6 +146,10 @@ class TestDag {
 
   /** A minimal 1-node child DAG that runs the `incr` node. */
   static child(name: string): DAGType {
+    return TestDag.childWithNode(name, 'incr');
+  }
+
+  static childWithNode(name: string, nodeName: string): DAGType {
     return {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${name}`,
@@ -158,7 +162,7 @@ class TestDag {
           '@id':   `urn:noocodex:dag:${name}/node/run`,
           '@type': 'SingleNode',
           'name':  'run',
-          'node':  'incr',
+          'node':  nodeName,
           'outputs': { 'success': 'end', 'error': 'end-fail' },
         },
         TestDag.terminal(name),
@@ -236,6 +240,53 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
         'ownerIri': DagGraphProjector.placementIri(DagGraphProjector.dagIri(parentDag), 'invoke'),
         'dagIri':   DagGraphProjector.dagIri(childDag),
       }],
+    );
+  });
+
+  void it('partitions converged multi-entry batches by each state dynamic dag selection', async () => {
+    const probeA = new ExecutionProbe();
+    const probeB = new ExecutionProbe();
+    const childADag = TestDag.childWithNode('multi-entry-child-a', 'incr-a');
+    const childBDag = TestDag.childWithNode('multi-entry-child-b', 'incr-b');
+    const store = new InMemoryTopologyStore();
+
+    const parentDag = new DAGBuilder('multi-entry-embedded-parent', '1')
+      .entrypoints({ 'alpha': 'set-a', 'beta': 'set-b' })
+      .node('set-a', new SetDagNode('set-a', 'multi-entry-child-a'), { 'success': 'invoke' })
+      .node('set-b', new SetDagNode('set-b', 'multi-entry-child-b'), { 'success': 'invoke' })
+      .embeddedDAG<RoutingState, RoutingState>('invoke', {
+        'from': 'state',
+        'path': 'selectedDag',
+        'candidates': ['multi-entry-child-a', 'multi-entry-child-b'],
+      }, { 'success': 'end', 'error': 'end-fail' }, {
+        'inputs':  { 'executed': 'executed' },
+        'outputs': { 'executed': 'executed' },
+      })
+      .terminal('end')
+      .terminal('end-fail', { 'outcome': 'failed' })
+      .build();
+
+    const dispatcher = new Dagonizer<RoutingState>({ 'executionTopologyStore': store });
+    dispatcher.registerNode(new IncrNode('incr-a', probeA));
+    dispatcher.registerNode(new IncrNode('incr-b', probeB));
+    dispatcher.registerNode(new SetDagNode('set-a', 'multi-entry-child-a'));
+    dispatcher.registerNode(new SetDagNode('set-b', 'multi-entry-child-b'));
+    dispatcher.registerDAG(childADag);
+    dispatcher.registerDAG(childBDag);
+    dispatcher.registerDAG(parentDag);
+
+    const result = await dispatcher.execute('multi-entry-embedded-parent', new RoutingState());
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.equal(probeA.count, 1);
+    assert.equal(probeB.count, 1);
+    const ownerBaseIri = DagGraphProjector.placementIri(DagGraphProjector.dagIri(parentDag), 'invoke');
+    assert.deepEqual(
+      [...DagGraphQueries.selectedDagRows(store)].sort((a, b) => a.ownerIri.localeCompare(b.ownerIri)),
+      [
+        { 'ownerIri': `${ownerBaseIri}/item/alpha`, 'dagIri': DagGraphProjector.dagIri(childADag) },
+        { 'ownerIri': `${ownerBaseIri}/item/beta`, 'dagIri': DagGraphProjector.dagIri(childBDag) },
+      ],
     );
   });
 

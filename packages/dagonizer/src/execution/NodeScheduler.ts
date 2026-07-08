@@ -325,10 +325,12 @@ export class NodeScheduler {
         // provided inputBatch when supplied (batch-native embedded path),
         // otherwise seed with the single top-level state.
         if (fromStage === null && !runOptions.embedded && inputBatch === undefined) {
-          for (const [source, placementName] of Object.entries(dag.entrypoints)) {
+          const entrypointEntries = Object.entries(dag.entrypoints);
+          const singleMainEntrypoint = entrypointEntries.length === 1 && entrypointEntries[0]?.[0] === 'main';
+          for (const [source, placementName] of entrypointEntries) {
             const entryState = source === 'main' ? state : state.clone();
             entrypointSourceByState.set(entryState, source);
-            pending.add(placementName, Batch.of(entryState));
+            pending.add(placementName, Batch.of(entryState, singleMainEntrypoint ? '0' : source));
           }
         } else {
           const seedBatch = inputBatch ?? Batch.of(state);
@@ -594,22 +596,30 @@ export class NodeScheduler {
 
           const parentItems = [...batch];
 
-          // Resolve the child DAG to its expanded IRI before any in-process or
-          // container boundary sees it. Invalid or unregistered selections route
-          // every item to the placement's error output without executing.
-          const childDagIri = node.dag !== undefined
-            ? DagReferenceResolver.resolve({
-              'reference': node.dag,
-              'source': 'state',
-              'value': repState,
-              'context': dagContext,
-              'dags': this.#source.dags,
-              'accessor': this.#source.accessor,
-            })
-            : null;
-          if (childDagIri === null) {
-            for (const item of parentItems) {
+          const intermediateResults: Array<NodeResultType<NodeStateInterface>> = [];
+          const routeOutputByItemId = new Map<string, string>();
+          let invalidSelectionCount = 0;
+
+          const partitionByDag = new Map<string, Array<{
+            readonly parentItem: { readonly id: string; readonly state: NodeStateInterface };
+            readonly childItem: { readonly id: string; readonly state: NodeStateInterface };
+          }>>();
+
+          for (const item of parentItems) {
+            const childDagIri = node.dag !== undefined
+              ? DagReferenceResolver.resolve({
+                'reference': node.dag,
+                'source': 'state',
+                'value': item.state,
+                'context': dagContext,
+                'dags': this.#source.dags,
+                'accessor': this.#source.accessor,
+              })
+              : null;
+            if (childDagIri === null) {
+              invalidSelectionCount += 1;
               const routeOutput = 'error';
+              routeOutputByItemId.set(item.id, routeOutput);
               const nextPlacement = node.outputs[routeOutput] ?? null;
               if (nextPlacement !== null) {
                 const gatherTarget = this.#gatherTarget(dagIri, nextPlacement);
@@ -630,112 +640,121 @@ export class NodeScheduler {
                   pending.add(nextPlacement, Batch.of(item.state, item.id));
                 }
               }
+              continue;
             }
-            continue scheduleLoop;
-          }
 
-          DagReferenceResolver.bindSelectedDag({
-            'store': this.#source.executionTopologyStore,
-            'ownerPlacementIri': DagGraphProjector.placementIri(dagIri, node.name),
-            'selectedDagIri': childDagIri,
-          });
-
-          // Build child batch: one clone per parent item, seeded via inputMapping.
-          // Use the registered isolation factory for this DAG when one is present
-          // (spawnChild returns NodeStateInterface; isolation factory may produce a
-          // different class). cloneChild also returns NodeStateInterface.
-          const childFactory = this.#source.stateFactories.get(childDagIri);
-          const childItems: Array<{ 'id': string; 'state': NodeStateInterface }> = [];
-          for (const item of parentItems) {
+            const childFactory = this.#source.stateFactories.get(childDagIri);
             const childClone: NodeStateInterface = childFactory !== undefined
               ? this.#source.stateMapper.spawnChild(item.state, inputMapping, childFactory)
               : this.#source.stateMapper.cloneChild(item.state, inputMapping);
-            childItems.push({ 'id': item.id, 'state': childClone });
+            const entries = partitionByDag.get(childDagIri);
+            const partitionEntry = {
+              'parentItem': item,
+              'childItem':  { 'id': item.id, 'state': childClone },
+            };
+            if (entries !== undefined) {
+              entries.push(partitionEntry);
+            } else {
+              partitionByDag.set(childDagIri, [partitionEntry]);
+            }
           }
-          const childBatch = Batch.from(childItems);
 
-          // Per-item terminal outcome map: populated by the child runNodes when
-          // each item reaches a TerminalNode. Maps item.id → terminal outcome.
-          const childTerminalByItemId = new Map<string, 'completed' | 'failed'>();
-
-          // Run the child DAG once over all N items (batch-native embedded).
-          // `childRepState` is a standalone clone used as the `state` argument
-          // required by the run signature; the actual items are in childBatch.
-          const childRepState = repState.clone();
-          const childOptions: ExecuteOptionsType = { 'signal': signal };
-          const intermediateResults: Array<NodeResultType<NodeStateInterface>> = [];
-
-          const iter = this.run(childDagIri, childRepState, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': childBatch, 'terminalByItemId': childTerminalByItemId });
-
-          // Collect inner intermediates when streaming (top-level only); at nested
-          // or composite scale, drain without buffering to avoid O(N*M*L) heap.
-          if (!runOptions.embedded) {
-            let step = await iter.next();
-            while (!step.done) {
-              const nr = step.value;
-              intermediateResults.push({
-                'output': nr.output,
-                'skipped': nr.skipped,
-                'nodeName': `${node.name}.${nr.nodeName}`,
-                'state': repState,
-                'intermediateResults': [],
+          const ownerPlacementIri = DagGraphProjector.placementIri(dagIri, node.name);
+          const itemScopedSelectedDag = invalidSelectionCount > 0 || partitionByDag.size > 1;
+          for (const [childDagIri, partition] of partitionByDag) {
+            if (itemScopedSelectedDag) {
+              for (const entry of partition) {
+                DagReferenceResolver.bindSelectedDag({
+                  'store': this.#source.executionTopologyStore,
+                  'ownerPlacementIri': `${ownerPlacementIri}/item/${encodeURIComponent(entry.parentItem.id)}`,
+                  'selectedDagIri': childDagIri,
+                });
+              }
+            } else {
+              DagReferenceResolver.bindSelectedDag({
+                'store': this.#source.executionTopologyStore,
+                'ownerPlacementIri': ownerPlacementIri,
+                'selectedDagIri': childDagIri,
               });
-              step = await iter.next();
             }
-          } else {
-            while (true) {
-              const step = await iter.next();
-              if (step.done) break;
+
+            const childItems = partition.map((entry) => entry.childItem);
+            const childBatch = Batch.from(childItems);
+
+            // Per-item terminal outcome map: populated by the child runNodes when
+            // each item reaches a TerminalNode. Maps item.id → terminal outcome.
+            const childTerminalByItemId = new Map<string, 'completed' | 'failed'>();
+
+            // Run each selected child DAG once for its partition. This preserves
+            // batch efficiency without collapsing heterogeneous dynamic choices.
+            const childRepState = partition[0]?.parentItem.state.clone() ?? repState.clone();
+            const childOptions: ExecuteOptionsType = { 'signal': signal };
+            const iter = this.run(childDagIri, childRepState, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': childBatch, 'terminalByItemId': childTerminalByItemId });
+
+            // Collect inner intermediates when streaming (top-level only); at nested
+            // or composite scale, drain without buffering to avoid O(N*M*L) heap.
+            if (!runOptions.embedded) {
+              let step = await iter.next();
+              while (!step.done) {
+                const nr = step.value;
+                intermediateResults.push({
+                  'output': nr.output,
+                  'skipped': nr.skipped,
+                  'nodeName': `${node.name}.${nr.nodeName}`,
+                  'state': repState,
+                  'intermediateResults': [],
+                });
+                step = await iter.next();
+              }
+            } else {
+              while (true) {
+                const step = await iter.next();
+                if (step.done) break;
+              }
             }
-          }
 
-          // Route each parent item by its child clone's terminal outcome + errors.
-          const routeOutputByItemId = new Map<string, string>();
-          for (let i = 0; i < parentItems.length; i++) {
-            // parentItems and childItems are parallel arrays built above, so both
-            // index i are always within bounds inside this loop; the guard narrows
-            // the `noUncheckedIndexedAccess` `| undefined` without a cast.
-            const parentItem = parentItems[i];
-            const childItem = childItems[i];
-            if (parentItem === undefined || childItem === undefined) continue;
-            const childClone = childItem.state;
+            // Route each parent item by its child clone's terminal outcome + errors.
+            for (const entry of partition) {
+              const { parentItem, childItem } = entry;
+              const childClone = childItem.state;
 
-            // Propagate errors and warnings from child clone to parent.
-            for (const err of childClone.errors) parentItem.state.collectError(err);
-            for (const warn of childClone.warnings) parentItem.state.collectWarning(warn);
+              // Propagate errors and warnings from child clone to parent.
+              for (const err of childClone.errors) parentItem.state.collectError(err);
+              for (const warn of childClone.warnings) parentItem.state.collectWarning(warn);
 
-            // Apply output state mapping: child → parent.
-            this.#source.stateMapper.mapOutput(childClone, parentItem.state, outputMapping);
+              // Apply output state mapping: child → parent.
+              this.#source.stateMapper.mapOutput(childClone, parentItem.state, outputMapping);
 
-            // Determine route from per-item terminal outcome + unrecoverable errors,
-            // through the single shared route policy: an explicit `completed`
-            // terminal is authoritative and is never flipped to `error` by an
-            // error the inner flow already tolerated (a scatter clone absorbed by
-            // an `any-success` reducer). childTerminalByItemId is populated by run
-            // when each item hits a TerminalNode, giving accurate per-item
-            // failed/completed status.
-            const childTerminalOutcome = childTerminalByItemId.get(parentItem.id) ?? 'completed';
-            const hasUnrecoverable = childClone.errors.some((e) => e.recoverable === false);
-            const routeOutput = PlacementRouter.route(childTerminalOutcome, hasUnrecoverable);
-            routeOutputByItemId.set(parentItem.id, routeOutput);
-            const nextPlacement = node.outputs[routeOutput] ?? null;
+              // Determine route from per-item terminal outcome + unrecoverable errors,
+              // through the single shared route policy: an explicit `completed`
+              // terminal is authoritative and is never flipped to `error` by an
+              // error the inner flow already tolerated (a scatter clone absorbed by
+              // an `any-success` reducer). childTerminalByItemId is populated by run
+              // when each item hits a TerminalNode, giving accurate per-item
+              // failed/completed status.
+              const childTerminalOutcome = childTerminalByItemId.get(parentItem.id) ?? 'completed';
+              const hasUnrecoverable = childClone.errors.some((e) => e.recoverable === false);
+              const routeOutput = PlacementRouter.route(childTerminalOutcome, hasUnrecoverable);
+              routeOutputByItemId.set(parentItem.id, routeOutput);
+              const nextPlacement = node.outputs[routeOutput] ?? null;
 
-            if (nextPlacement !== null) {
-              const gatherTarget = this.#gatherTarget(dagIri, nextPlacement);
-              if (gatherTarget !== undefined) {
-                gatherBuffers.add(gatherTarget.name, GatherRecordProjector.project({
-                  'source': this.#branchProducerSource(entrypointSourceByState, parentItem.state, node.name, gatherTarget),
-                  'output': routeOutput,
-                  'terminalOutcome': childTerminalOutcome,
-                  'state': childClone,
-                  'accessor': this.#source.accessor,
-                  'producer': node,
-                }));
-                if (gatherBuffers.ready(gatherTarget)) {
-                  pending.add(gatherTarget.name, Batch.of(state));
+              if (nextPlacement !== null) {
+                const gatherTarget = this.#gatherTarget(dagIri, nextPlacement);
+                if (gatherTarget !== undefined) {
+                  gatherBuffers.add(gatherTarget.name, GatherRecordProjector.project({
+                    'source': this.#branchProducerSource(entrypointSourceByState, parentItem.state, node.name, gatherTarget),
+                    'output': routeOutput,
+                    'terminalOutcome': childTerminalOutcome,
+                    'state': childClone,
+                    'accessor': this.#source.accessor,
+                    'producer': node,
+                  }));
+                  if (gatherBuffers.ready(gatherTarget)) {
+                    pending.add(gatherTarget.name, Batch.of(state));
+                  }
+                } else {
+                  pending.add(nextPlacement, Batch.of(parentItem.state, parentItem.id));
                 }
-              } else {
-                pending.add(nextPlacement, Batch.of(parentItem.state, parentItem.id));
               }
             }
           }
@@ -744,7 +763,9 @@ export class NodeScheduler {
           // Unanimous when all items routed to the same port, else null.
           let repOutput: string | null = null;
           let allSameOutput = true;
-          for (const [, output] of routeOutputByItemId) {
+          for (const item of parentItems) {
+            const output = routeOutputByItemId.get(item.id) ?? null;
+            if (output === null) continue;
             if (repOutput === null) {
               repOutput = output;
             } else if (output !== repOutput) {
