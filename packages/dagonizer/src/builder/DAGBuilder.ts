@@ -334,8 +334,8 @@ export class DAGBuilder {
    *
    * `dag` is either:
    * - a `string` (build-time literal dag name, validated at `registerDAG` time), or
-   * - `{ from: string }` (a dotted state path read at runtime; an unregistered
-   *   resolved name routes the placement to `error` without throwing).
+   * - `{ from: 'state', path, candidates }` (a dotted parent-state path read at
+   *   runtime and constrained to the declared candidate DAG set).
    *
    * @example
    * ```ts
