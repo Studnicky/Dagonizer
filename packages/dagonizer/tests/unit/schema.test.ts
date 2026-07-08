@@ -223,6 +223,34 @@ void describe('Dagonizer.registerDAG validation layers', () => {
     );
   });
 
+  void it('shape layer rejects gather sources that no producer can emit', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    dispatcher.registerNode(TestNode.make('op', ['success']));
+
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:x',
+      '@type':    'DAG',
+      'name': 'x', 'version': '1', 'entrypoints': { 'left': 'left' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:x/node/left', '@type': 'SingleNode',
+          'name': 'left', 'node': 'op', 'outputs': { 'success': 'join' } },
+        { '@id': 'urn:noocodex:dag:x/node/join', '@type': 'GatherNode',
+          'name': 'join', 'sources': ['missing-source'], 'gather': { 'strategy': 'discard' },
+          'outputs': { 'success': 'done', 'error': 'failed' } },
+        { '@id': 'urn:noocodex:dag:x/node/done', '@type': 'TerminalNode',
+          'name': 'done', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:x/node/failed', '@type': 'TerminalNode',
+          'name': 'failed', 'outcome': 'failed' },
+      ],
+    };
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /GatherNode 'join': source 'missing-source' is not declared by an entrypoint or producer placement/u,
+    );
+  });
+
   void it('schema layer rejects legacy embedded dagFrom before registry lookup', () => {
     const dag: unknown = {
       '@context': DAG_CONTEXT,

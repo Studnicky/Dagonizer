@@ -14,7 +14,6 @@
  * of their `outputs` record (next placement names).
  */
 
-import { DAGEntrypoints } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
@@ -112,9 +111,10 @@ export class PlacementRank {
       }
     }
 
-    // Compute reachability from the entry placement (forward DFS, forward edges).
+    // Compute reachability from every declared entrypoint (forward DFS,
+    // forward edges). Multi-entry DAGs treat each entrypoint as rank 0.
     const reachable = new Set<string>();
-    const reachStack: string[] = [DAGEntrypoints.primary(dag)];
+    const reachStack: string[] = Object.values(dag.entrypoints);
     while (reachStack.length > 0) {
       const cur = reachStack.pop();
       if (cur === undefined) continue;

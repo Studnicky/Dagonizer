@@ -26,8 +26,9 @@ export class DAGShape {
       }
     }
 
+    const producerLabels = DAGShape.gatherProducerLabels(dag);
     for (const node of dag.nodes) {
-      DAGShape.validatePlacement(node, nodeNames, errors);
+      DAGShape.validatePlacement(node, nodeNames, producerLabels, errors);
     }
 
     if (errors.length > 0) {
@@ -38,6 +39,7 @@ export class DAGShape {
   private static validatePlacement(
     entry: DAGNodeType,
     nodeNames: ReadonlySet<string>,
+    producerLabels: ReadonlySet<string>,
     errors: string[],
   ): void {
     if (Placement.isEmbeddedDAG(entry)) {
@@ -47,7 +49,7 @@ export class DAGShape {
     } else if (Placement.isSingle(entry)) {
       DAGShape.validateSingleNode(entry, nodeNames, errors);
     } else if (Placement.isGather(entry)) {
-      DAGShape.validateGatherNode(entry, nodeNames, errors);
+      DAGShape.validateGatherNode(entry, nodeNames, producerLabels, errors);
     }
   }
 
@@ -106,8 +108,9 @@ export class DAGShape {
   }
 
   private static validateGatherNode(
-    gather: { name: string; outputs: Record<string, string> },
+    gather: { name: string; sources: readonly string[]; outputs: Record<string, string> },
     nodeNames: ReadonlySet<string>,
+    producerLabels: ReadonlySet<string>,
     errors: string[],
   ): void {
     for (const [output, target] of Object.entries(gather.outputs)) {
@@ -115,6 +118,29 @@ export class DAGShape {
         errors.push(`GatherNode '${gather.name}': output '${output}' routes to unknown node '${target}'`);
       }
     }
+    for (const source of gather.sources) {
+      if (!producerLabels.has(source)) {
+        errors.push(`GatherNode '${gather.name}': source '${source}' is not declared by an entrypoint or producer placement`);
+      }
+    }
+  }
+
+  private static gatherProducerLabels(dag: DAGType): ReadonlySet<string> {
+    const labels = new Set(Object.keys(dag.entrypoints));
+    const gatherNames = new Set(
+      dag.nodes
+        .filter((node) => Placement.isGather(node))
+        .map((node) => node.name),
+    );
+
+    for (const node of dag.nodes) {
+      if (!('outputs' in node)) continue;
+      if (Object.values(node.outputs).some((target) => gatherNames.has(target))) {
+        labels.add(node.name);
+      }
+    }
+
+    return labels;
   }
 
   private static validateReservoir(

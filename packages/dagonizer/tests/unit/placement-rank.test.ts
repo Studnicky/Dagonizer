@@ -69,6 +69,36 @@ void describe('PlacementRank.compute', () => {
     assert.equal(ranks.get('end'), 2);
   });
 
+  void it('assigns rank 0 to every declared entrypoint in a multi-entry DAG', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': 'urn:noocodex:dag:multi-entry-rank',
+      '@type': 'DAG',
+      'name': 'multi-entry-rank',
+      'version': '1',
+      'entrypoints': { 'left': 'left', 'right': 'right' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:multi-entry-rank/node/left', '@type': 'SingleNode',
+          'name': 'left', 'node': 'left', 'outputs': { 'ok': 'join' } },
+        { '@id': 'urn:noocodex:dag:multi-entry-rank/node/right', '@type': 'SingleNode',
+          'name': 'right', 'node': 'right', 'outputs': { 'ok': 'join' } },
+        { '@id': 'urn:noocodex:dag:multi-entry-rank/node/join', '@type': 'GatherNode',
+          'name': 'join', 'sources': ['left', 'right'], 'gather': { 'strategy': 'discard' },
+          'outputs': { 'success': 'end', 'error': 'failed' } },
+        { '@id': 'urn:noocodex:dag:multi-entry-rank/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:multi-entry-rank/node/failed', '@type': 'TerminalNode',
+          'name': 'failed', 'outcome': 'failed' },
+      ],
+    };
+    const ranks = PlacementRank.compute(dag);
+    assert.equal(ranks.get('left'), 0);
+    assert.equal(ranks.get('right'), 0);
+    assert.equal(ranks.get('join'), 1);
+    assert.equal(ranks.get('end'), 2);
+    assert.equal(ranks.get('failed'), 2);
+  });
+
   void it('assigns join rank as 1 + max predecessor rank (diamond shape)', () => {
     // a → b (rank 1) → d (rank 3)
     // a → c (rank 1) → d
