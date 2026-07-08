@@ -788,6 +788,69 @@ void describe('MermaidRenderer: options — node-id sanitization', () => {
     assert.doesNotMatch(out, /-->\|error\| end-error/u);
   });
 
+  void it('disambiguates entrypoint ids that collide with placement ids', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:entry-collision',
+      '@type':    'DAG',
+      'name':     'entry-collision',
+      'version':  '1',
+      'entrypoints': { 'main': 'entry_main' },
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:entry-collision/node/entry_main',
+          '@type':   'SingleNode',
+          'name':    'entry_main',
+          'node':    'entry_main',
+          'outputs': { 'success': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:entry-collision/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+
+    const out = MermaidRenderer.render(dag);
+
+    assert.match(out, /entry_main\["entry_main"\]/u);
+    assert.match(out, /entry_main_2\(\["main"\]\)/u);
+    assert.match(out, /entry_main_2 --> entry_main/u);
+    assert.doesNotMatch(out, /^ {2}entry_main --> entry_main$/mu);
+  });
+
+  void it('disambiguates entrypoint labels that sanitize to the same id', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:entry-sanitize-collision',
+      '@type':    'DAG',
+      'name':     'entry-sanitize-collision',
+      'version':  '1',
+      'entrypoints': { 'a:b': 'left', 'a_b': 'right' },
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:entry-sanitize-collision/node/left',
+          '@type':   'SingleNode',
+          'name':    'left',
+          'node':    'left',
+          'outputs': { 'success': 'end' },
+        },
+        {
+          '@id':     'urn:noocodex:dag:entry-sanitize-collision/node/right',
+          '@type':   'SingleNode',
+          'name':    'right',
+          'node':    'right',
+          'outputs': { 'success': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:entry-sanitize-collision/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+
+    const out = MermaidRenderer.render(dag);
+
+    assert.match(out, /entry_a_b\(\["a:b"\]\)/u);
+    assert.match(out, /entry_a_b_2\(\["a_b"\]\)/u);
+    assert.match(out, /entry_a_b --> left/u);
+    assert.match(out, /entry_a_b_2 --> right/u);
+  });
+
   void it('classDef and `class ` directive lines are NOT mangled by sanitization', () => {
     const dag: DAGType = {
       '@context': DAG_CONTEXT,

@@ -49,6 +49,11 @@ import type { DAGType } from '../entities/dag/DAG.js';
 import { PlacementUtils, RoleColorUtils } from './internal.js';
 import type { PlacementDispatchType, PlacementEntryType } from './internal.js';
 
+type MermaidIdIndexType = {
+  readonly entrypointIds: ReadonlyMap<string, string>;
+  readonly placementIds: ReadonlyMap<string, string>;
+}
+
 /**
  * Rendering options for `MermaidRenderer.render`.
  *
@@ -113,16 +118,16 @@ export class MermaidRenderer {
     const opts = { ...MERMAID_RENDER_DEFAULTS, ...options };
     const theme = options?.theme;
 
-    const idByName = MermaidRenderer.nodeIdMap(dag, opts.sanitizeNodeIds);
+    const idIndex = MermaidRenderer.composeIdIndex(dag, opts.sanitizeNodeIds);
     const lines: string[] = [];
     const init = MermaidRenderer.renderInitDirective(theme);
     if (init !== null) lines.push(init);
     lines.push(`flowchart ${opts.orientation}`);
     lines.push(`  %% ${dag.name} (v${dag.version})`);
     for (const [label, placement] of Object.entries(dag.entrypoints)) {
-      const entryId = MermaidRenderer.entryIdFor(label, opts.sanitizeNodeIds);
+      const entryId = idIndex.entrypointIds.get(label) ?? MermaidRenderer.entryIdFor(label, opts.sanitizeNodeIds);
       lines.push(`  ${entryId}([${MermaidRenderer.label(label)}])`);
-      lines.push(`  ${entryId} --> ${MermaidRenderer.idFor(placement, idByName, opts.sanitizeNodeIds)}`);
+      lines.push(`  ${entryId} --> ${MermaidRenderer.idFor(placement, idIndex.placementIds, opts.sanitizeNodeIds)}`);
     }
 
     // Map from sanitized role token → list of placement names assigned that token.
@@ -133,9 +138,9 @@ export class MermaidRenderer {
     const reservoirIds: string[] = [];
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
-      const placementId = MermaidRenderer.idFor(placement.name, idByName, opts.sanitizeNodeIds);
+      const placementId = MermaidRenderer.idFor(placement.name, idIndex.placementIds, opts.sanitizeNodeIds);
       lines.push(`  ${MermaidRenderer.renderShape(placement, placementId)}`);
-      for (const edge of MermaidRenderer.renderEdges(placement, placementId, idByName, opts.sanitizeNodeIds)) {
+      for (const edge of MermaidRenderer.renderEdges(placement, placementId, idIndex.placementIds, opts.sanitizeNodeIds)) {
         lines.push(edge);
       }
       // Track contained placements grouped by their sanitized role token.
@@ -368,26 +373,37 @@ export class MermaidRenderer {
     return candidate;
   }
 
-  /** Compose deterministic Mermaid-safe ids for every placement name. */
-  private static nodeIdMap(dag: DAGType, sanitize: boolean): ReadonlyMap<string, string> {
-    const ids = new Map<string, string>();
+  /** Compose deterministic Mermaid-safe ids for every entrypoint and placement name. */
+  private static composeIdIndex(dag: DAGType, sanitize: boolean): MermaidIdIndexType {
+    const placementIds = new Map<string, string>();
+    const entrypointIds = new Map<string, string>();
     const occupied = new Set<string>();
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
       const base = sanitize
         ? MermaidRenderer.sanitizeNodeId(placement.name)
         : placement.name;
-      let candidate = base;
-      let suffix = 2;
-      while (occupied.has(candidate)) {
-        candidate = `${base}_${String(suffix)}`;
-        suffix++;
-      }
-      ids.set(placement.name, candidate);
-      occupied.add(candidate);
+      placementIds.set(placement.name, MermaidRenderer.reserveId(base, occupied));
     }
 
-    return ids;
+    for (const label of Object.keys(dag.entrypoints)) {
+      const base = MermaidRenderer.entryIdFor(label, sanitize);
+      entrypointIds.set(label, MermaidRenderer.reserveId(base, occupied));
+    }
+
+    return { entrypointIds, placementIds };
+  }
+
+  /** Return an id that is unique within `occupied`, then reserve it. */
+  private static reserveId(base: string, occupied: Set<string>): string {
+    let candidate = base;
+    let suffix = 2;
+    while (occupied.has(candidate)) {
+      candidate = `${base}_${String(suffix)}`;
+      suffix++;
+    }
+    occupied.add(candidate);
+    return candidate;
   }
 
   /** Return the rendered Mermaid id for a placement name or a dangling target. */
