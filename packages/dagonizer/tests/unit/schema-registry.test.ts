@@ -54,6 +54,51 @@ void describe('schema identity and registry', () => {
     assert.equal(StableSchemaHash.of(canonical), StableSchemaHash.of(annotated));
   });
 
+  void it('hashes schemas independent of Dagonizer contract annotations', () => {
+    const canonical: SchemaObjectType = {
+      'type': 'object',
+      'required': ['title'],
+      'properties': { 'title': { 'type': 'string' } },
+    };
+    const annotated: SchemaObjectType = {
+      '$comment': 'Internal docs note.',
+      'default': { 'title': 'Starter value' },
+      'examples': [{ 'title': 'Example value' }],
+      'type': 'object',
+      'required': ['title'],
+      'properties': {
+        'title': {
+          '$comment': 'Field docs note.',
+          'default': 'Starter value',
+          'examples': ['Example value'],
+          'type': 'string',
+        },
+      },
+    };
+
+    assert.equal(StableSchemaHash.of(canonical), StableSchemaHash.of(annotated));
+  });
+
+  void it('preserves validation-affecting keywords in structural hashes', () => {
+    const base: SchemaObjectType = { 'type': 'string' };
+    const minLength: SchemaObjectType = { 'type': 'string', 'minLength': 1 };
+    const enumSchema: SchemaObjectType = { 'type': 'string', 'enum': ['ready'] };
+    const formatted: SchemaObjectType = { 'type': 'string', 'format': 'uri' };
+
+    assert.notEqual(StableSchemaHash.of(base), StableSchemaHash.of(minLength));
+    assert.notEqual(StableSchemaHash.of(base), StableSchemaHash.of(enumSchema));
+    assert.notEqual(StableSchemaHash.of(base), StableSchemaHash.of(formatted));
+  });
+
+  void it('uses $id for identity while structural hashes ignore $id annotations', () => {
+    const left: SchemaObjectType = { '$id': 'urn:test:left', 'type': 'object' };
+    const right: SchemaObjectType = { '$id': 'urn:test:right', 'type': 'object' };
+
+    assert.equal(StableSchemaHash.of(left), StableSchemaHash.of(right));
+    assert.equal(SchemaIdentity.for(left), 'urn:test:left');
+    assert.equal(SchemaIdentity.for(right), 'urn:test:right');
+  });
+
   void it('uses structural schema identity for anonymous schemas', () => {
     const schema: SchemaObjectType = { 'type': 'object' };
     assert.equal(SchemaIdentity.for(schema), 'urn:dagonizer:schema:structural:932b0415');
