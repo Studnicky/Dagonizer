@@ -286,6 +286,9 @@ export interface DagonizerInterface<
   /** Resolve the plugin package/specifier that owns a context prefix. */
   pluginSpecifierForPrefix(prefix: string): string | undefined;
 
+  /** Resolve the plugin package/specifier that owns a namespace IRI. */
+  pluginSpecifierForNamespace(namespaceIri: string): string | undefined;
+
   /** Snapshot of registered plugin prefix owners. */
   pluginPrefixSpecifiers(): ReadonlyMap<string, string>;
 
@@ -986,6 +989,10 @@ implements DagonizerInterface<TState> {
 
   pluginSpecifierForPrefix(prefix: string): string | undefined {
     return this.dagRegistrar.pluginSpecifierForPrefix(prefix);
+  }
+
+  pluginSpecifierForNamespace(namespaceIri: string): string | undefined {
+    return this.dagRegistrar.pluginSpecifierForPrefix(namespaceIri);
   }
 
   pluginPrefixSpecifiers(): ReadonlyMap<string, string> {

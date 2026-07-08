@@ -109,14 +109,17 @@ void describe('defineDagonizerPlugin', () => {
     dispatcher.registerPlugin(plugin);
 
     const resolve = PluginSpecifier.byPrefix(dispatcher);
+    const resolveIri = PluginSpecifier.byIriPrefix(dispatcher);
     assert.equal(dispatcher.pluginSpecifierForPrefix('retrieval'), '@example/retrieval-plugin');
     assert.equal(dispatcher.pluginSpecifierForPrefix('https://noocodex.dev/plugins/retrieval#'), '@example/retrieval-plugin');
+    assert.equal(dispatcher.pluginSpecifierForNamespace('https://noocodex.dev/plugins/retrieval#'), '@example/retrieval-plugin');
     assert.deepEqual([...dispatcher.pluginPrefixSpecifiers()], [
       ['retrieval', '@example/retrieval-plugin'],
       ['https://noocodex.dev/plugins/retrieval#', '@example/retrieval-plugin'],
     ]);
     assert.equal(resolve('retrieval:search'), '@example/retrieval-plugin');
     assert.equal(resolve('https://noocodex.dev/plugins/retrieval#search'), '@example/retrieval-plugin');
+    assert.equal(resolveIri('https://noocodex.dev/plugins/retrieval#search'), '@example/retrieval-plugin');
     assert.equal(resolve('plain'), undefined);
     assert.equal(resolve('https://example.com/dag'), undefined);
   });

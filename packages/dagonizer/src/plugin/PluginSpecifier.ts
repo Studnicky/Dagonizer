@@ -10,6 +10,8 @@
  * - `PluginSpecifier.byPrefix(source)` — Registry resolver. Resolves compact
  *   `prefix:dag` names through the plugin specifier registered for `prefix` and
  *   expanded DAG IRIs through the longest registered namespace IRI.
+ * - `PluginSpecifier.byIriPrefix(source)` — Graph resolver. Resolves expanded
+ *   DAG IRIs through their namespace IRI.
  *
  * In-browser specifiers must be fully-qualified ESM URLs — bare npm package names
  * are not resolvable in a browser `import()` without a resolver.
@@ -87,5 +89,31 @@ export class PluginSpecifier {
       }
       return bestSpecifier;
     };
+  }
+
+  /**
+   * Graph resolver factory: maps expanded DAG IRIs from `PluginDiscovery.walk()`
+   * to the plugin package/specifier registered for the owning namespace IRI.
+   */
+  static byIriPrefix(
+    source: { pluginSpecifierForNamespace(namespaceIri: string): string | undefined },
+  ): (dagIri: string) => string | undefined {
+    return (dagIri: string): string | undefined => {
+      const namespaceIri = PluginSpecifier.namespaceOf(dagIri);
+      return namespaceIri === null ? undefined : source.pluginSpecifierForNamespace(namespaceIri);
+    };
+  }
+
+  private static namespaceOf(dagIri: string): string | null {
+    const hashIndex = dagIri.lastIndexOf('#');
+    if (hashIndex >= 0) return dagIri.slice(0, hashIndex + 1);
+
+    try {
+      const parsed = new URL(dagIri);
+      const slashIndex = parsed.href.lastIndexOf('/');
+      return slashIndex >= 0 ? parsed.href.slice(0, slashIndex + 1) : null;
+    } catch {
+      return null;
+    }
   }
 }
