@@ -7,6 +7,7 @@ import {
   GatherCheckpoint,
   GatherProgressSchema,
   GatherRecordProgressSchema,
+  DagReferenceGraph,
   WellFormedValidator,
 } from '../../src/index.js';
 import type {
@@ -44,5 +45,10 @@ void describe('public root surface', () => {
 
   void it('exports the authored-DAG well-formed validator', () => {
     assert.equal(typeof WellFormedValidator.check, 'function');
+  });
+
+  void it('exports graph reference classification utilities', () => {
+    assert.equal(typeof DagReferenceGraph.referenceEdges, 'function');
+    assert.equal(typeof DagReferenceGraph.stronglyConnectedComponents, 'function');
   });
 });

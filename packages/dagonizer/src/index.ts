@@ -77,7 +77,8 @@ export type {
 // GRAPH
 // =============================================================================
 
-export { DagGraphProjector, DagGraphQueries, DagGraphTerms, InMemoryTopologyStore } from './graph/index.js';
+export { DagGraphProjector, DagGraphQueries, DagGraphTerms, DagReferenceGraph, InMemoryTopologyStore } from './graph/index.js';
+export type { DagReferenceEdgeType } from './graph/index.js';
 
 // =============================================================================
 // SCHEMA

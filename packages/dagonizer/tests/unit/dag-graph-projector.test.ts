@@ -8,6 +8,7 @@ import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
 import { DagGraphQueries } from '../../src/graph/DagGraphQueries.js';
 import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
+import { DagReferenceGraph } from '../../src/graph/DagReferenceGraph.js';
 import { SchemaRegistry } from '../../src/schema/index.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -188,5 +189,69 @@ void describe('DagGraphProjector', () => {
     assert.equal(candidateIris[referenceCount - 1], 'https://example.test/plugin#child-999');
     assert.equal(rows.length, referenceCount);
     assert.equal(rows.every((row) => row.dynamic), true);
+  });
+
+  void it('extracts reference graph edges from projected DAG reference rows', () => {
+    const host = withGraphContext(new DAGBuilder('plugin:edge-host', '1')
+      .embed('literal-child', 'plugin:literal-child', { 'success': 'dynamic-child', 'error': 'failed' })
+      .embed('dynamic-child', dynamicReference('plugin:dynamic-child', 'selectedDag'), { 'success': 'done', 'error': 'failed' })
+      .terminal('done')
+      .terminal('failed', { 'outcome': 'failed' })
+      .build());
+    const literalChild = withGraphContext(new DAGBuilder('plugin:literal-child', '1').terminal('done').build());
+    const dynamicChild = withGraphContext(new DAGBuilder('plugin:dynamic-child', '1').terminal('done').build());
+    const registry = new Map([
+      [DagGraphProjector.dagIri(host), host],
+      [DagGraphProjector.dagIri(literalChild), literalChild],
+      [DagGraphProjector.dagIri(dynamicChild), dynamicChild],
+    ]);
+
+    assert.deepEqual(DagReferenceGraph.referenceEdges(registry), [
+      {
+        'sourceDagIri': 'https://example.test/plugin#edge-host',
+        'sourcePlacement': 'literal-child',
+        'targetDagIri': 'https://example.test/plugin#literal-child',
+        'dynamic': false,
+      },
+      {
+        'sourceDagIri': 'https://example.test/plugin#edge-host',
+        'sourcePlacement': 'dynamic-child',
+        'targetDagIri': 'https://example.test/plugin#dynamic-child',
+        'dynamic': true,
+      },
+    ]);
+  });
+
+  void it('classifies self-recursive and mutually recursive DAG reference components', () => {
+    const self = withGraphContext(new DAGBuilder('plugin:self-loop', '1')
+      .embed('self', dynamicReference('plugin:self-loop', 'nextDag'), { 'success': 'done', 'error': 'failed' })
+      .terminal('done')
+      .terminal('failed', { 'outcome': 'failed' })
+      .build());
+    const left = withGraphContext(new DAGBuilder('plugin:left-loop', '1')
+      .embed('right', 'plugin:right-loop', { 'success': 'done', 'error': 'failed' })
+      .terminal('done')
+      .terminal('failed', { 'outcome': 'failed' })
+      .build());
+    const right = withGraphContext(new DAGBuilder('plugin:right-loop', '1')
+      .embed('left', 'plugin:left-loop', { 'success': 'done', 'error': 'failed' })
+      .terminal('done')
+      .terminal('failed', { 'outcome': 'failed' })
+      .build());
+    const registry = new Map([
+      [DagGraphProjector.dagIri(self), self],
+      [DagGraphProjector.dagIri(left), left],
+      [DagGraphProjector.dagIri(right), right],
+    ]);
+    const edges = DagReferenceGraph.referenceEdges(registry);
+    const components = DagReferenceGraph.stronglyConnectedComponents(registry.keys(), edges)
+      .map((component) => [...component].sort())
+      .sort((a, b) => a[0]?.localeCompare(b[0] ?? '') ?? 0);
+
+    assert.equal(DagReferenceGraph.hasSelfEdge('https://example.test/plugin#self-loop', edges), true);
+    assert.deepEqual(components, [
+      ['https://example.test/plugin#left-loop', 'https://example.test/plugin#right-loop'],
+      ['https://example.test/plugin#self-loop'],
+    ]);
   });
 });

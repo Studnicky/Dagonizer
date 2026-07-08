@@ -15,6 +15,7 @@ import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import { DAGError } from '../errors/index.js';
 import { DagGraphProjector } from '../graph/DagGraphProjector.js';
 import { DagGraphQueries } from '../graph/DagGraphQueries.js';
+import { DagReferenceGraph } from '../graph/DagReferenceGraph.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { JsonSchemaCompatibility } from '../schema/JsonSchemaCompatibility.js';
 import { SchemaRegistry } from '../schema/SchemaRegistry.js';
@@ -41,7 +42,7 @@ export class DAGValidator {
 
   static validateReferenceGraph(dags: ReadonlyMap<string, DAGType>): void {
     const errors: string[] = [];
-    const edges = DAGValidator.referenceEdges(dags);
+    const edges = DagReferenceGraph.referenceEdges(dags);
 
     for (const edge of edges) {
       if (!dags.has(edge.targetDagIri)) {
@@ -49,8 +50,8 @@ export class DAGValidator {
       }
     }
 
-    for (const component of DAGValidator.stronglyConnectedComponents(dags.keys(), edges)) {
-      if (component.length === 1 && !DAGValidator.hasSelfEdge(component[0] ?? '', edges)) continue;
+    for (const component of DagReferenceGraph.stronglyConnectedComponents(dags.keys(), edges)) {
+      if (component.length === 1 && !DagReferenceGraph.hasSelfEdge(component[0] ?? '', edges)) continue;
       DAGValidator.validateRecursiveComponent(component, dags, errors);
     }
 
@@ -584,86 +585,6 @@ export class DAGValidator {
     return typeof properties === 'object' && properties !== null && !Array.isArray(properties);
   }
 
-  private static referenceEdges(dags: ReadonlyMap<string, DAGType>): readonly {
-    readonly sourceDagIri: string;
-    readonly sourcePlacement: string;
-    readonly targetDagIri: string;
-    readonly dynamic: boolean;
-  }[] {
-    const edges: {
-      readonly sourceDagIri: string;
-      readonly sourcePlacement: string;
-      readonly targetDagIri: string;
-      readonly dynamic: boolean;
-    }[] = [];
-    for (const [sourceDagIri, dag] of dags) {
-      const topology = DagGraphProjector.store(dag);
-      for (const row of DagGraphQueries.candidateDagRows(topology)) {
-        edges.push({
-          sourceDagIri,
-          'sourcePlacement': DAGValidator.placementNameOf(row.placementIri),
-          'targetDagIri': row.dagIri,
-          'dynamic': row.dynamic,
-        });
-      }
-    }
-    return edges;
-  }
-
-  private static stronglyConnectedComponents(
-    dagIris: Iterable<string>,
-    edges: readonly { readonly sourceDagIri: string; readonly targetDagIri: string }[],
-  ): readonly string[][] {
-    const adjacency = new Map<string, string[]>();
-    for (const dagIri of dagIris) adjacency.set(dagIri, []);
-    for (const edge of edges) {
-      const outgoing = adjacency.get(edge.sourceDagIri);
-      if (outgoing !== undefined) outgoing.push(edge.targetDagIri);
-    }
-
-    let index = 0;
-    const stack: string[] = [];
-    const onStack = new Set<string>();
-    const indices = new Map<string, number>();
-    const lowlinks = new Map<string, number>();
-    const components: string[][] = [];
-
-    const visit = (dagIri: string): void => {
-      indices.set(dagIri, index);
-      lowlinks.set(dagIri, index);
-      index += 1;
-      stack.push(dagIri);
-      onStack.add(dagIri);
-
-      for (const target of adjacency.get(dagIri) ?? []) {
-        if (!adjacency.has(target)) continue;
-        if (!indices.has(target)) {
-          visit(target);
-          lowlinks.set(dagIri, Math.min(lowlinks.get(dagIri) ?? 0, lowlinks.get(target) ?? 0));
-        } else if (onStack.has(target)) {
-          lowlinks.set(dagIri, Math.min(lowlinks.get(dagIri) ?? 0, indices.get(target) ?? 0));
-        }
-      }
-
-      if (lowlinks.get(dagIri) !== indices.get(dagIri)) return;
-      const component: string[] = [];
-      while (stack.length > 0) {
-        const member = stack.pop();
-        if (member === undefined) break;
-        onStack.delete(member);
-        component.push(member);
-        if (member === dagIri) break;
-      }
-      components.push(component);
-    };
-
-    for (const dagIri of adjacency.keys()) {
-      if (!indices.has(dagIri)) visit(dagIri);
-    }
-
-    return components;
-  }
-
   private static validateRecursiveComponent(
     component: readonly string[],
     dags: ReadonlyMap<string, DAGType>,
@@ -675,13 +596,6 @@ export class DAGValidator {
         errors.push(`Recursive DAG component containing '${dagIri}' has no terminal exit path`);
       }
     }
-  }
-
-  private static hasSelfEdge(
-    dagIri: string,
-    edges: readonly { readonly sourceDagIri: string; readonly targetDagIri: string }[],
-  ): boolean {
-    return edges.some((edge) => edge.sourceDagIri === dagIri && edge.targetDagIri === dagIri);
   }
 
   private static hasReachableTerminal(dag: DAGType): boolean {
@@ -702,8 +616,4 @@ export class DAGValidator {
     return false;
   }
 
-  private static placementNameOf(placementIri: string): string {
-    const marker = placementIri.lastIndexOf('#');
-    return marker >= 0 ? decodeURIComponent(placementIri.slice(marker + 1)) : placementIri;
-  }
 }

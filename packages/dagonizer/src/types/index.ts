@@ -141,6 +141,7 @@ export type { GatherExecutionType, GatherRecordType } from '../contracts/GatherE
 export type { GatherStrategy } from '../core/GatherStrategies.js';
 export type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
 export type { OutcomeReducer } from '../core/OutcomeReducers.js';
+export type { DagReferenceEdgeType } from '../graph/DagReferenceGraph.js';
 export type { DagJsonLdDocumentType, JsonLdGraphEntryType } from '../viz/JsonLdRenderer.js';
 export type {
   CytoscapeElementType,
