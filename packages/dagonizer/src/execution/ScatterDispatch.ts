@@ -33,6 +33,7 @@ import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
 import { DagReferenceResolver } from './DagReferenceResolver.js';
+import { GatherRecordProjector } from './GatherRecordProjector.js';
 import { OutputContractApplier } from './OutputContractApplier.js';
 import { PlacementRouter } from './PlacementRouter.js';
 
@@ -474,18 +475,16 @@ export class ScatterPoolDriver
 
   #freshRecord(res: ScatterItemResultType): GatherRecordType {
     const { scatter } = this.#ctx;
-    const result = scatter.gather?.resultField !== undefined
-      ? this.#adapter.accessor.get(res.cloneState, scatter.gather.resultField)
-      : undefined;
-    return {
+    return GatherRecordProjector.project({
       'source': scatter.name,
       'index': res.index,
       'item': res.item,
       'output': res.output,
       'terminalOutcome': res.terminalOutcome,
-      result,
-      'cloneState': res.cloneState,
-    };
+      'state': res.cloneState,
+      'accessor': this.#adapter.accessor,
+      'producer': scatter,
+    });
   }
 
   #selectedDagFields(res: ScatterItemResultType): { readonly selectedDag?: string } {

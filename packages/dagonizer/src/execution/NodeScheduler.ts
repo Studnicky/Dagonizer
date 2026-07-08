@@ -42,6 +42,7 @@ import type { StateMapper } from '../runtime/StateMapper.js';
 import { DagReferenceResolver } from './DagReferenceResolver.js';
 import type { Gather } from './Gather.js';
 import { GatherBuffers } from './GatherBuffers.js';
+import { GatherRecordProjector } from './GatherRecordProjector.js';
 import { OutputContractApplier } from './OutputContractApplier.js';
 import { PlacementRouter } from './PlacementRouter.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './ScatterDispatch.js';
@@ -722,18 +723,14 @@ export class NodeScheduler {
             if (nextPlacement !== null) {
               const gatherTarget = this.#gatherTarget(dagIri, nextPlacement);
               if (gatherTarget !== undefined) {
-                const result = node.gatherResult !== undefined
-                  ? this.#source.accessor.get(childClone, node.gatherResult.resultField)
-                  : undefined;
-                gatherBuffers.add(gatherTarget.name, {
+                gatherBuffers.add(gatherTarget.name, GatherRecordProjector.project({
                   'source': this.#producerSource(entrypointSourceByState, parentItem.state, node.name),
-                  'index': null,
-                  'item': undefined,
                   'output': routeOutput,
                   'terminalOutcome': childTerminalOutcome,
-                  result,
-                  'cloneState': childClone,
-                });
+                  'state': childClone,
+                  'accessor': this.#source.accessor,
+                  'producer': node,
+                }));
                 if (gatherBuffers.ready(gatherTarget)) {
                   pending.add(gatherTarget.name, Batch.of(state));
                 }
@@ -1208,15 +1205,14 @@ export class NodeScheduler {
       const gatherTarget = this.#gatherTarget(dagIri, nextPlacement);
       if (gatherTarget !== undefined) {
         for (const item of subBatch) {
-          gatherBuffers.add(gatherTarget.name, {
+          gatherBuffers.add(gatherTarget.name, GatherRecordProjector.project({
             'source': this.#producerSource(entrypointSourceByState, item.state, nodeConfig.name),
-            'index': null,
-            'item': undefined,
             'output': outputPort,
             'terminalOutcome': null,
-            'result': undefined,
-            'cloneState': item.state,
-          });
+            'state': item.state,
+            'accessor': this.#source.accessor,
+            'producer': nodeConfig,
+          }));
         }
         if (gatherBuffers.ready(gatherTarget)) {
           pending.add(gatherTarget.name, Batch.of(gatherState));
