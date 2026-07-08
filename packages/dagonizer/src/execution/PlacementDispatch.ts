@@ -111,9 +111,7 @@ export class PlacementDispatch {
       },
       'GatherNode': (e) => {
         if (!Placement.isGather(e)) throw new DAGError(`Dispatch type mismatch: expected GatherNode`);
-        return Promise.resolve({ 'nextStage': null, 'result': {
-          'output': 'pending', 'skipped': true, 'nodeName': e.name, state, 'intermediateResults': [],
-        } });
+        return Promise.reject(new DAGError(`GatherNode '${e.name}' is scheduler-managed and cannot be dispatched directly`));
       },
       'TerminalNode': (e) => {
         if (!Placement.isTerminal(e)) throw new DAGError(`Dispatch type mismatch: expected TerminalNode`);
