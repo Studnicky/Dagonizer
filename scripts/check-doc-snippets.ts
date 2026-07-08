@@ -45,6 +45,7 @@ interface PolicyViolation {
 const FENCE = /^```(ts|tsx|typescript)\b([^\n]*)$/;
 const CODE_FENCE = /^```([a-zA-Z0-9_-]+)?\b([^\n]*)$/;
 const DAG_REFERENCE_LANGUAGES = new Set(['json', 'jsonc', 'ts', 'tsx', 'typescript']);
+const NUMBERED_EXAMPLE_PATH = /^docs\/examples\/\d\d[a-z0-9-]*\.md$/u;
 
 // twoslash blocks carrying `// @errors:`/`// @noErrors` declare expected
 // diagnostics and are not type-checked here; collected and reported so a
@@ -107,6 +108,7 @@ class MarkdownPolicy {
       const lines = readFileSync(mdFile, 'utf8').split('\n');
       violations.push(...MarkdownPolicy.checkLegacyDagFrom(mdFile, lines));
       violations.push(...MarkdownPolicy.checkDagReferenceSnippets(mdFile, lines));
+      violations.push(...MarkdownPolicy.checkNumberedExampleStructure(mdFile, lines));
     }
     return violations;
   }
@@ -154,6 +156,39 @@ class MarkdownPolicy {
     if (!DAG_REFERENCE_LANGUAGES.has(language)) return false;
     if (!/(["']@type["']\s*:\s*["']DagReference["'])/u.test(body)) return false;
     return /\bfrom\b/u.test(body) && /\bpath\b/u.test(body);
+  }
+
+  private static checkNumberedExampleStructure(mdFile: string, lines: readonly string[]): PolicyViolation[] {
+    const rel = relative(repoRoot, mdFile);
+    if (!NUMBERED_EXAMPLE_PATH.test(rel)) return [];
+
+    const body = lines.join('\n');
+    const violations: PolicyViolation[] = [];
+    if (!MarkdownPolicy.hasCodeSurface(body)) {
+      violations.push({
+        mdFile,
+        'line': 1,
+        'message': 'numbered example pages must show code from the runnable example or an executable snippet',
+      });
+    }
+    if (!MarkdownPolicy.hasDiagramSurface(body)) {
+      violations.push({
+        mdFile,
+        'line': 1,
+        'message': 'numbered example pages must show the DAG diagram beside the code',
+      });
+    }
+    return violations;
+  }
+
+  private static hasCodeSurface(body: string): boolean {
+    return /<<< @\/\.\.\//u.test(body)
+      || /```(?:ts|tsx|typescript|json)\b/u.test(body);
+  }
+
+  private static hasDiagramSurface(body: string): boolean {
+    return /<DagJsonMermaid\b/u.test(body)
+      || /```mermaid\b/u.test(body);
   }
 }
 
