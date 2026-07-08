@@ -298,6 +298,8 @@ const reservoirDagBodyDag: DAGType = Validator.dag.validate({
 const DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME = 'dynamic-reservoir-accept';
 const DYNAMIC_RESERVOIR_REJECT_DAG_NAME = 'dynamic-reservoir-reject';
 const DYNAMIC_RESERVOIR_PARENT_DAG_NAME = 'dynamic-reservoir-parent';
+const DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_NAME = 'dynamic-reservoir-container-parent';
+const CONTAINER_ROLE = 'cpu';
 
 const dynamicReservoirAcceptDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
@@ -373,9 +375,49 @@ const dynamicReservoirParentDag: DAGType = Validator.dag.validate({
   ],
 });
 
+const dynamicReservoirContainerParentDag: DAGType = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:dynamic-reservoir-container-parent',
+  '@type': 'DAG',
+  'name': DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_NAME,
+  'version': '1',
+  'entrypoints': { 'main': 'fan' },
+  'nodes': [
+    {
+      '@id': 'urn:noocodex:dag:dynamic-reservoir-container-parent/node/fan',
+      '@type': 'ScatterNode',
+      'name': 'fan',
+      'body': {
+        'dag': {
+          '@type': 'DagReference',
+          'from': 'item',
+          'path': 'dagName',
+          'candidates': [DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME, DYNAMIC_RESERVOIR_REJECT_DAG_NAME],
+        },
+      },
+      'source': 'items',
+      'itemKey': 'currentItem',
+      'gather': { 'strategy': 'recording-test-reservoir' },
+      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 4 },
+      'container': CONTAINER_ROLE,
+      'outputs': {
+        'all-success': 'end',
+        'partial': 'end',
+        'all-error': 'end',
+        'empty': 'end',
+      },
+    },
+    {
+      '@id': 'urn:noocodex:dag:dynamic-reservoir-container-parent/node/end',
+      '@type': 'TerminalNode',
+      'name': 'end',
+      'outcome': 'completed',
+    },
+  ],
+});
+
 // Parent DAG for Suite B (with container)
 const RESERVOIR_DAG_BODY_CONTAINER_NAME = 'scatter-reservoir-dag-container';
-const CONTAINER_ROLE = 'cpu';
 
 const reservoirDagBodyContainerDag: DAGType = Validator.dag.validate({
   '@context': DAG_CONTEXT,
@@ -803,7 +845,7 @@ const suiteDBundle: DispatcherBundleType<NodeStateInterface> = {
   // compatible with NodeInterface<NodeStateInterface, string, unknown> —
   // no cast required.
   'nodes': [new RouterNode()],
-  'dags': [routeBodyDDag],
+  'dags': [routeBodyDDag, dynamicReservoirAcceptDag, dynamicReservoirRejectDag],
 };
 
 const suiteDRegistry: RegistryModuleInterface = {
@@ -993,5 +1035,58 @@ void describe('Scatter reservoir: DAGType body through real DagContainerBase (Br
     );
 
     await inProcDispatcher.destroy();
+  });
+
+  void it('partitions dynamic DagReference reservoir batches before real runDagBatch dispatch', async () => {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    const countingParent = new ExecuteCountingChannel(parentSide);
+    const host = new DagHost(hostSide, { 'registry': suiteDRegistry });
+    host.start();
+
+    const store = new InMemoryTopologyStore();
+    const container = new SingleChannelContainer(countingParent);
+    const dispatcher = new Dagonizer<ReservoirDispatchState>({
+      'containers': { [CONTAINER_ROLE]: container },
+      'executionTopologyStore': store,
+    });
+    dispatcher.registerDAG(dynamicReservoirAcceptDag);
+    dispatcher.registerDAG(dynamicReservoirRejectDag);
+    dispatcher.registerDAG(dynamicReservoirContainerParentDag);
+
+    const state = new ReservoirDispatchState();
+    state.items = [
+      { 'group': 'A', 'value': 0, 'dagName': DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME },
+      { 'group': 'A', 'value': 1, 'dagName': DYNAMIC_RESERVOIR_REJECT_DAG_NAME },
+      { 'group': 'A', 'value': 2, 'dagName': DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME },
+      { 'group': 'A', 'value': 3, 'dagName': DYNAMIC_RESERVOIR_REJECT_DAG_NAME },
+    ];
+
+    const result = await dispatcher.execute(DYNAMIC_RESERVOIR_CONTAINER_PARENT_DAG_NAME, state);
+
+    assert.strictEqual(result.cursor, null, 'flow must complete without a resume cursor');
+    assert.deepStrictEqual(result.state.outputByValue, {
+      '0': 'success',
+      '1': 'error',
+      '2': 'success',
+      '3': 'error',
+    });
+    assert.strictEqual(
+      countingParent.executeCount,
+      2,
+      `dynamic batch must send one execute message per selected child DAG partition; got ${countingParent.executeCount}`,
+    );
+
+    const ownerBaseIri = DagGraphProjector.placementIri(DagGraphProjector.dagIri(dynamicReservoirContainerParentDag), 'fan');
+    const acceptIri = DagGraphProjector.dagIri(dynamicReservoirAcceptDag);
+    const rejectIri = DagGraphProjector.dagIri(dynamicReservoirRejectDag);
+    const rows = [...DagGraphQueries.selectedDagRows(store)].sort((left, right) => left.ownerIri.localeCompare(right.ownerIri));
+    assert.deepStrictEqual(rows, [
+      { 'ownerIri': `${ownerBaseIri}/item/0`, 'dagIri': acceptIri },
+      { 'ownerIri': `${ownerBaseIri}/item/1`, 'dagIri': rejectIri },
+      { 'ownerIri': `${ownerBaseIri}/item/2`, 'dagIri': acceptIri },
+      { 'ownerIri': `${ownerBaseIri}/item/3`, 'dagIri': rejectIri },
+    ]);
+
+    await dispatcher.destroy();
   });
 });
