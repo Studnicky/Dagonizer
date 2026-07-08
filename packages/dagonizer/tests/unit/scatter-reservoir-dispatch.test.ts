@@ -65,6 +65,9 @@ import type { BridgeMessageType } from '../../src/entities/executor/BridgeMessag
 import type { DAGType } from '../../src/entities/index.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
 import { JsonValue } from '../../src/entities/JsonValue.js';
+import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
+import { DagGraphQueries } from '../../src/graph/DagGraphQueries.js';
+import { InMemoryTopologyStore } from '../../src/graph/InMemoryTopologyStore.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -74,7 +77,7 @@ import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 
 class ReservoirDispatchState extends NodeStateBase {
   counter: number = 0;
-  items: Array<{ group: string; value: number }> = [];
+  items: Array<{ group: string; value: number; dagName?: string }> = [];
   /** Per-item output recorded by the recording gather: value → 'success'|'error'. */
   outputByValue: Record<string, string> = {};
 
@@ -91,9 +94,10 @@ class ReservoirDispatchState extends NodeStateBase {
     const items = snap['items'];
     if (Array.isArray(items)) {
       this.items = items.filter(
-        (x): x is { group: string; value: number } =>
+        (x): x is { group: string; value: number; dagName?: string } =>
           typeof x === 'object' && x !== null && !Array.isArray(x) &&
-          typeof x['group'] === 'string' && typeof x['value'] === 'number',
+          typeof x['group'] === 'string' && typeof x['value'] === 'number' &&
+          (x['dagName'] === undefined || typeof x['dagName'] === 'string'),
       );
     }
     const recorded = snap['outputByValue'];
@@ -291,6 +295,84 @@ const reservoirDagBodyDag: DAGType = Validator.dag.validate({
   ],
 });
 
+const DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME = 'dynamic-reservoir-accept';
+const DYNAMIC_RESERVOIR_REJECT_DAG_NAME = 'dynamic-reservoir-reject';
+const DYNAMIC_RESERVOIR_PARENT_DAG_NAME = 'dynamic-reservoir-parent';
+
+const dynamicReservoirAcceptDag: DAGType = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:dynamic-reservoir-accept',
+  '@type': 'DAG',
+  'name': DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME,
+  'version': '1',
+  'entrypoints': { 'main': 'done' },
+  'nodes': [
+    {
+      '@id': 'urn:noocodex:dag:dynamic-reservoir-accept/node/done',
+      '@type': 'TerminalNode',
+      'name': 'done',
+      'outcome': 'completed',
+    },
+  ],
+});
+
+const dynamicReservoirRejectDag: DAGType = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:dynamic-reservoir-reject',
+  '@type': 'DAG',
+  'name': DYNAMIC_RESERVOIR_REJECT_DAG_NAME,
+  'version': '1',
+  'entrypoints': { 'main': 'failed' },
+  'nodes': [
+    {
+      '@id': 'urn:noocodex:dag:dynamic-reservoir-reject/node/failed',
+      '@type': 'TerminalNode',
+      'name': 'failed',
+      'outcome': 'failed',
+    },
+  ],
+});
+
+const dynamicReservoirParentDag: DAGType = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:dynamic-reservoir-parent',
+  '@type': 'DAG',
+  'name': DYNAMIC_RESERVOIR_PARENT_DAG_NAME,
+  'version': '1',
+  'entrypoints': { 'main': 'fan' },
+  'nodes': [
+    {
+      '@id': 'urn:noocodex:dag:dynamic-reservoir-parent/node/fan',
+      '@type': 'ScatterNode',
+      'name': 'fan',
+      'body': {
+        'dag': {
+          '@type': 'DagReference',
+          'from': 'item',
+          'path': 'dagName',
+          'candidates': [DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME, DYNAMIC_RESERVOIR_REJECT_DAG_NAME],
+        },
+      },
+      'source': 'items',
+      'itemKey': 'currentItem',
+      'gather': { 'strategy': 'recording-test-reservoir' },
+      'execution': { 'mode': 'reservoir', 'reservoir': { 'keyField': 'group', 'capacity': 4 }, 'concurrency': 1 },
+      'outputs': {
+        'all-success': 'end',
+        'partial': 'end',
+        'all-error': 'end',
+        'empty': 'end',
+      },
+    },
+    {
+      '@id': 'urn:noocodex:dag:dynamic-reservoir-parent/node/end',
+      '@type': 'TerminalNode',
+      'name': 'end',
+      'outcome': 'completed',
+    },
+  ],
+});
+
 // Parent DAG for Suite B (with container)
 const RESERVOIR_DAG_BODY_CONTAINER_NAME = 'scatter-reservoir-dag-container';
 const CONTAINER_ROLE = 'cpu';
@@ -411,6 +493,43 @@ void describe('Scatter reservoir: DAGType body in-process (Branch B)', () => {
       8,
       `gather counter must equal 8 (one reduce call per item); got ${result.state.counter}`,
     );
+  });
+
+  void it('partitions a mixed dynamic DagReference reservoir batch by selected DAG', async () => {
+    const store = new InMemoryTopologyStore();
+    const dispatcher = new Dagonizer<ReservoirDispatchState>({ 'executionTopologyStore': store });
+    dispatcher.registerDAG(dynamicReservoirAcceptDag);
+    dispatcher.registerDAG(dynamicReservoirRejectDag);
+    dispatcher.registerDAG(dynamicReservoirParentDag);
+
+    const state = new ReservoirDispatchState();
+    state.items = [
+      { 'group': 'A', 'value': 0, 'dagName': DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME },
+      { 'group': 'A', 'value': 1, 'dagName': DYNAMIC_RESERVOIR_REJECT_DAG_NAME },
+      { 'group': 'A', 'value': 2, 'dagName': DYNAMIC_RESERVOIR_ACCEPT_DAG_NAME },
+      { 'group': 'A', 'value': 3, 'dagName': DYNAMIC_RESERVOIR_REJECT_DAG_NAME },
+    ];
+
+    const result = await dispatcher.execute(DYNAMIC_RESERVOIR_PARENT_DAG_NAME, state);
+
+    assert.strictEqual(result.cursor, null, 'flow must complete without a resume cursor');
+    assert.deepStrictEqual(result.state.outputByValue, {
+      '0': 'success',
+      '1': 'error',
+      '2': 'success',
+      '3': 'error',
+    });
+
+    const ownerBaseIri = DagGraphProjector.placementIri(DagGraphProjector.dagIri(dynamicReservoirParentDag), 'fan');
+    const acceptIri = DagGraphProjector.dagIri(dynamicReservoirAcceptDag);
+    const rejectIri = DagGraphProjector.dagIri(dynamicReservoirRejectDag);
+    const rows = [...DagGraphQueries.selectedDagRows(store)].sort((left, right) => left.ownerIri.localeCompare(right.ownerIri));
+    assert.deepStrictEqual(rows, [
+      { 'ownerIri': `${ownerBaseIri}/item/0`, 'dagIri': acceptIri },
+      { 'ownerIri': `${ownerBaseIri}/item/1`, 'dagIri': rejectIri },
+      { 'ownerIri': `${ownerBaseIri}/item/2`, 'dagIri': acceptIri },
+      { 'ownerIri': `${ownerBaseIri}/item/3`, 'dagIri': rejectIri },
+    ]);
   });
 });
 

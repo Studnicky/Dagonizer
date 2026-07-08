@@ -635,206 +635,195 @@ export class ScatterPoolDriver
     }
 
     // ── Branch B / C: DAG body ────────────────────────────────────────────────
-    // Resolve the declared DAG reference. Batch execution resolves dynamic
-    // references against the first item because reservoir batches are grouped
-    // by reservoir key; Phase 5+ retains selected DAGs per record.
-    const batchBodyDagName = DagReferenceResolver.resolve({
-      'reference': scatter.body.dag,
-      'source': 'item',
-      'value': items[0]?.item,
-      'context': dagContext,
-      'dags': this.#adapter.dags,
-      'accessor': this.#adapter.accessor,
-      ...(this.#bodyCandidateIris === null ? {} : { 'candidateIris': this.#bodyCandidateIris }),
-    });
-    if (batchBodyDagName === null) {
-      return {
-        'results': items.map((buffered) => {
-          const clone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
-          clone.deleteMetadata(SCATTER_PROGRESS_KEY);
-          clone.deleteMetadata(WORKSET_PROGRESS_KEY);
-          clone.setMetadata(itemKey, buffered.item);
-          clone.setMetadata('itemIndex', buffered.index);
-          for (const err of clone.errors) state.collectError(err);
-          for (const warn of clone.warnings) state.collectWarning(warn);
-          return { 'index': buffered.index, 'item': buffered.item, 'output': 'error', 'terminalOutcome': 'failed' as const, 'cloneState': clone, 'selectedDagIri': null };
-        }),
-      };
-    }
-
-    for (const buffered of items) {
-      this.#bindItemSelectedDag(scatter.name, buffered.index, batchBodyDagName);
-    }
-
     const innerPath: readonly string[] = [...placementPath, scatter.name];
     const container = this.#adapter.resolveContainer(scatter.container);
-
-    // Build N child clones using the body dag's registered factory (spawnChild
-    // returns NodeStateInterface; isolation factories may produce a different class).
-    const batchFactory = this.#adapter.stateFactories.get(batchBodyDagName) ?? ChildStateFactory.cloneParent;
-    const clones: NodeStateInterface[] = [];
-    const batchItems: { id: string; state: NodeStateInterface }[] = [];
-    for (const buffered of items) {
-      const clone = this.#adapter.stateMapper.spawnChild(state, ScatterNodeDefaults.inputMapping(scatter), batchFactory);
-      // Strip engine-internal metadata keys — the child body must not inherit
-      // the parent scatter/workset progress (O(N) payload, see executeItem).
-      clone.deleteMetadata(SCATTER_PROGRESS_KEY);
-      clone.deleteMetadata(WORKSET_PROGRESS_KEY);
-      clone.setMetadata(itemKey, buffered.item);
-      clone.setMetadata('itemIndex', buffered.index);
-      clones.push(clone);
-      batchItems.push({ 'id': String(buffered.index), 'state': clone });
-    }
-    // Batch<NodeStateInterface> for the batch-native embedded path (Branch B) and
-    // the container path (Branch C). RunNodesBatchType.inputBatch is widened to
-    // Batch<NodeStateInterface>; the WorkSet seam in NodeScheduler holds the single
-    // narrowing cast at pending.add().
-    const batch = Batch.from(batchItems);
-
-    if (container === null) {
-      // ── Branch B: DAG body, in-process (batch-native) ───────────────────────
-      // Run the child DAG once over all N items as a single batch via the wave-1
-      // seam (inputBatch + terminalByItemId), mirroring the batch-native embedded
-      // -DAG firing in runNodes. The per-item items live in `batch`; `repClone`
-      // is a standalone clone supplied only to satisfy the `state` argument.
-      const childOptions: ExecuteOptionsType = { 'signal': signal };
-      const terminalByItemId = new Map<string, 'completed' | 'failed'>();
-      const repClone = state.clone();
-      const iter = this.#adapter.runNodes(batchBodyDagName, repClone, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': batch, terminalByItemId });
-
-      // Drain the generator fully; per-item terminal outcomes land in the map.
-      let step = await iter.next();
-      while (!step.done) {
-        step = await iter.next();
-      }
-
-      // Paired iteration over items+clones (same length: both built from `items`).
-      const results: ScatterItemResultType[] = [];
-      for (let i = 0; i < items.length; i++) {
-        const buffered = items[i];
-        if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
-        const clone = clones[i];
-        if (clone === undefined) throw new DAGError(`ScatterDispatch: invariant — clones[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
-        const terminalOutcome = terminalByItemId.get(String(buffered.index)) ?? null;
-        const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
-        const output = PlacementRouter.route(terminalOutcome, hasUnrecoverable);
-        for (const err of clone.errors) state.collectError(err);
-        for (const warn of clone.warnings) state.collectWarning(warn);
-        results.push({
-          'index': buffered.index,
-          'item': buffered.item,
-          output,
-          terminalOutcome,
-          'cloneState': clone,
-          'selectedDagIri': batchBodyDagName,
-        });
-      }
-
-      return { results };
-    }
-
-    // ── Branch C: DAG body with container ─────────────────────────────────────
-    const correlationId = this.#adapter.nextCorrelationId(batchBodyDagName);
-    const context = this.#adapter.context(batchBodyDagName, scatter.name, signal);
-    const scatterRelay = this.#adapter.relayFor(state);
-
-    let outcomes: BatchRunResultType[];
-
-    if (container instanceof DagContainerBase) {
-      // runDagBatch: one transport round-trip for all items.
-      // DagContainerBase.runDagBatch accepts DagTaskInterface<unknown>
-      // and Batch<NodeStateInterface>; no cast needed.
-      const repCloneForTask: NodeStateInterface = clones[0] ?? state;
-      const task = new DagTask(
-        batchBodyDagName,
-        innerPath,
-        correlationId,
-        Timeout.none(),
-        repCloneForTask,
-        context,
-      );
-      outcomes = await container.runDagBatch(task, batch, { 'relay': scatterRelay });
-    } else {
-      // Fallback: per-item sequential runDag for custom DagContainerInterface implementations.
-      // DagContainerInterface.runDag accepts DagTaskInterface<unknown>; no cast needed.
-      outcomes = [];
-      for (let i = 0; i < items.length; i++) {
-        const clone: NodeStateInterface = clones[i] ?? state;
-        const buffered = items[i];
-        if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
-        const itemCorrelationId = this.#adapter.nextCorrelationId(batchBodyDagName);
-        const itemContext = this.#adapter.context(batchBodyDagName, scatter.name, signal);
-        const task = new DagTask(
-          batchBodyDagName,
-          innerPath,
-          itemCorrelationId,
-          Timeout.none(),
-          clone,
-          itemContext,
-        );
-        const outcome = await container.runDag(task, { 'relay': scatterRelay });
-        outcomes.push({ 'id': String(buffered.index), ...outcome });
-      }
-    }
-
-    // Infrastructure failure check: any item with an infrastructure error → throw (at-least-once).
-    for (const outcome of outcomes) {
-      if (outcome.errors.some((e) => TransportErrorCode.isInfrastructureFailure(e.code))) {
-        const infra = outcome.errors.find((e) => TransportErrorCode.isInfrastructureFailure(e.code));
-        throw new DAGError(
-          `ScatterNode '${scatter.name}': container infrastructure failure — ${infra?.message ?? 'transport lost'}`,
-          { 'code': 'EXECUTION_ERROR' },
-        );
-      }
-    }
-
-    // Build results from outcomes. Paired iteration over items+clones (same length).
+    const inputMapping = ScatterNodeDefaults.inputMapping(scatter);
     const results: ScatterItemResultType[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const buffered = items[i];
-      if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
-      const clone = clones[i];
-      if (clone === undefined) throw new DAGError(`ScatterDispatch: invariant — clones[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
-      const outcome = outcomes.find((o) => o.id === String(buffered.index));
+    const partitions = new Map<string, {
+      readonly items: { index: number; item: unknown; bufferKey: string }[];
+      readonly clones: NodeStateInterface[];
+      readonly batchItems: { id: string; state: NodeStateInterface }[];
+    }>();
 
-      if (outcome === undefined) {
-        // No outcome for this item — treat as infrastructure failure path (should not happen).
+    for (const buffered of items) {
+      const selectedDagIri = DagReferenceResolver.resolve({
+        'reference': scatter.body.dag,
+        'source': 'item',
+        'value': buffered.item,
+        'context': dagContext,
+        'dags': this.#adapter.dags,
+        'accessor': this.#adapter.accessor,
+        ...(this.#bodyCandidateIris === null ? {} : { 'candidateIris': this.#bodyCandidateIris }),
+      });
+
+      if (selectedDagIri === null) {
+        const clone = this.#adapter.stateMapper.cloneChild(state, inputMapping);
+        clone.deleteMetadata(SCATTER_PROGRESS_KEY);
+        clone.deleteMetadata(WORKSET_PROGRESS_KEY);
+        clone.setMetadata(itemKey, buffered.item);
+        clone.setMetadata('itemIndex', buffered.index);
         for (const err of clone.errors) state.collectError(err);
         for (const warn of clone.warnings) state.collectWarning(warn);
         results.push({
           'index': buffered.index,
           'item': buffered.item,
           'output': 'error',
-          'terminalOutcome': 'failed' as const,
+          'terminalOutcome': 'failed',
           'cloneState': clone,
-          'selectedDagIri': batchBodyDagName,
+          'selectedDagIri': null,
         });
         continue;
       }
 
-      // Apply terminal state snapshot back to clone for domain state.
-      if (outcome.stateSnapshot !== null) {
-        clone.applySnapshot(outcome.stateSnapshot);
+      this.#bindItemSelectedDag(scatter.name, buffered.index, selectedDagIri);
+
+      const factory = this.#adapter.stateFactories.get(selectedDagIri) ?? ChildStateFactory.cloneParent;
+      const clone = this.#adapter.stateMapper.spawnChild(state, inputMapping, factory);
+      clone.deleteMetadata(SCATTER_PROGRESS_KEY);
+      clone.deleteMetadata(WORKSET_PROGRESS_KEY);
+      clone.setMetadata(itemKey, buffered.item);
+      clone.setMetadata('itemIndex', buffered.index);
+
+      let partition = partitions.get(selectedDagIri);
+      if (partition === undefined) {
+        partition = { 'items': [], 'clones': [], 'batchItems': [] };
+        partitions.set(selectedDagIri, partition);
       }
-      for (const err of outcome.errors) clone.collectError(err);
-
-      const terminalOutcome: 'completed' | 'failed' = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
-      const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
-      const output = PlacementRouter.route(terminalOutcome, hasUnrecoverable);
-
-      for (const err of clone.errors) state.collectError(err);
-      for (const warn of clone.warnings) state.collectWarning(warn);
-
-      results.push({
-        'index': buffered.index,
-        'item': buffered.item,
-        output,
-        terminalOutcome,
-        'cloneState': clone,
-        'selectedDagIri': batchBodyDagName,
-      });
+      partition.items.push(buffered);
+      partition.clones.push(clone);
+      partition.batchItems.push({ 'id': String(buffered.index), 'state': clone });
     }
 
+    for (const [selectedDagIri, partition] of partitions) {
+      const batch = Batch.from(partition.batchItems);
+
+      if (container === null) {
+        // ── Branch B: DAG body, in-process (batch-native) ─────────────────────
+        const childOptions: ExecuteOptionsType = { 'signal': signal };
+        const terminalByItemId = new Map<string, 'completed' | 'failed'>();
+        const repClone = state.clone();
+        const iter = this.#adapter.runNodes(selectedDagIri, repClone, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': batch, terminalByItemId });
+
+        let step = await iter.next();
+        while (!step.done) {
+          step = await iter.next();
+        }
+
+        for (let i = 0; i < partition.items.length; i++) {
+          const buffered = partition.items[i];
+          if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — partition.items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
+          const clone = partition.clones[i];
+          if (clone === undefined) throw new DAGError(`ScatterDispatch: invariant — partition.clones[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
+          const terminalOutcome = terminalByItemId.get(String(buffered.index)) ?? null;
+          const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
+          const output = PlacementRouter.route(terminalOutcome, hasUnrecoverable);
+          for (const err of clone.errors) state.collectError(err);
+          for (const warn of clone.warnings) state.collectWarning(warn);
+          results.push({
+            'index': buffered.index,
+            'item': buffered.item,
+            output,
+            terminalOutcome,
+            'cloneState': clone,
+            selectedDagIri,
+          });
+        }
+        continue;
+      }
+
+      // ── Branch C: DAG body with container ───────────────────────────────────
+      const correlationId = this.#adapter.nextCorrelationId(selectedDagIri);
+      const context = this.#adapter.context(selectedDagIri, scatter.name, signal);
+      const scatterRelay = this.#adapter.relayFor(state);
+      let outcomes: BatchRunResultType[];
+
+      if (container instanceof DagContainerBase) {
+        const repCloneForTask: NodeStateInterface = partition.clones[0] ?? state;
+        const task = new DagTask(
+          selectedDagIri,
+          innerPath,
+          correlationId,
+          Timeout.none(),
+          repCloneForTask,
+          context,
+        );
+        outcomes = await container.runDagBatch(task, batch, { 'relay': scatterRelay });
+      } else {
+        outcomes = [];
+        for (let i = 0; i < partition.items.length; i++) {
+          const clone: NodeStateInterface = partition.clones[i] ?? state;
+          const buffered = partition.items[i];
+          if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — partition.items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
+          const itemCorrelationId = this.#adapter.nextCorrelationId(selectedDagIri);
+          const itemContext = this.#adapter.context(selectedDagIri, scatter.name, signal);
+          const task = new DagTask(
+            selectedDagIri,
+            innerPath,
+            itemCorrelationId,
+            Timeout.none(),
+            clone,
+            itemContext,
+          );
+          const outcome = await container.runDag(task, { 'relay': scatterRelay });
+          outcomes.push({ 'id': String(buffered.index), ...outcome });
+        }
+      }
+
+      for (const outcome of outcomes) {
+        if (outcome.errors.some((e) => TransportErrorCode.isInfrastructureFailure(e.code))) {
+          const infra = outcome.errors.find((e) => TransportErrorCode.isInfrastructureFailure(e.code));
+          throw new DAGError(
+            `ScatterNode '${scatter.name}': container infrastructure failure — ${infra?.message ?? 'transport lost'}`,
+            { 'code': 'EXECUTION_ERROR' },
+          );
+        }
+      }
+
+      for (let i = 0; i < partition.items.length; i++) {
+        const buffered = partition.items[i];
+        if (buffered === undefined) throw new DAGError(`ScatterDispatch: invariant — partition.items[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
+        const clone = partition.clones[i];
+        if (clone === undefined) throw new DAGError(`ScatterDispatch: invariant — partition.clones[${i}] is undefined`, { 'code': 'EXECUTION_ERROR' });
+        const outcome = outcomes.find((candidate) => candidate.id === String(buffered.index));
+
+        if (outcome === undefined) {
+          for (const err of clone.errors) state.collectError(err);
+          for (const warn of clone.warnings) state.collectWarning(warn);
+          results.push({
+            'index': buffered.index,
+            'item': buffered.item,
+            'output': 'error',
+            'terminalOutcome': 'failed',
+            'cloneState': clone,
+            selectedDagIri,
+          });
+          continue;
+        }
+
+        if (outcome.stateSnapshot !== null) {
+          clone.applySnapshot(outcome.stateSnapshot);
+        }
+        for (const err of outcome.errors) clone.collectError(err);
+
+        const terminalOutcome: 'completed' | 'failed' = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
+        const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
+        const output = PlacementRouter.route(terminalOutcome, hasUnrecoverable);
+
+        for (const err of clone.errors) state.collectError(err);
+        for (const warn of clone.warnings) state.collectWarning(warn);
+
+        results.push({
+          'index': buffered.index,
+          'item': buffered.item,
+          output,
+          terminalOutcome,
+          'cloneState': clone,
+          selectedDagIri,
+        });
+      }
+    }
+
+    results.sort((left, right) => left.index - right.index);
     return { results };
   }
 
