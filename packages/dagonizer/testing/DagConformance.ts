@@ -230,6 +230,8 @@ export class DagConformance {
       'name': 'Law 4: timeoutMs honored — node with timeoutMs times out',
       async run(): Promise<void> {
         const dispatcher = LawDispatcher.for(harness);
+        // Law 4 measures node timeout behavior, not lazy container startup.
+        await dispatcher.execute(CONFORMANCE_DAG.law1, harness.createState());
         const state = harness.createState();
 
         const start = Date.now();
