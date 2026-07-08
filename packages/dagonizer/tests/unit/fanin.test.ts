@@ -5,6 +5,7 @@ import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { GATHER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
 
 void describe('Dagonizer scatter gather strategies', () => {
@@ -145,6 +146,126 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.deepEqual(state.seenResults, ['forty-two']);
+  });
+
+  void it('gather checkpoint compacts projected embedded result records', async () => {
+    class ChildState extends NodeStateBase {
+      answer = '';
+    }
+    class ParentState extends NodeStateBase {
+      seenResults: unknown[] = [];
+      seenSources: string[] = [];
+    }
+
+    const controller = new AbortController();
+    const dispatcher = new Dagonizer<ParentState>();
+    const answer = TestNode.make<ChildState>('answer-compact', ['success'], (state) => {
+      state.answer = 'forty-two';
+      return 'success';
+    });
+    const pause = TestNode.make<ParentState>('pause-compact', ['success'], () => {
+      controller.abort();
+      return 'success';
+    });
+    const merge = TestNode.make<ParentState>('merge-compact', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenResults = records.map((record) => record['result']);
+      state.seenSources = records.map((record) => String(record['source'])).sort();
+      return 'success';
+    });
+
+    const childDag = new DAGBuilder('compact-child-answer', '1')
+      .node('answer', answer, { 'success': 'done' })
+      .terminal('done')
+      .build();
+
+    const parentDag = new DAGBuilder('compact-gather-result', '1')
+      .embed<ChildState, ParentState>('invoke', 'compact-child-answer', { 'success': 'join', 'error': 'join' }, {
+        'gatherResult': { 'resultField': 'answer' },
+      })
+      .node('pause', pause, { 'success': 'join' })
+      .gather('join', ['embedded-answer', 'plain-answer'], { 'strategy': 'custom', 'customNode': 'merge-compact' }, { 'success': 'end', 'error': 'failed' })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .entrypoints({ 'embedded-answer': 'invoke', 'plain-answer': 'pause' })
+      .build();
+
+    dispatcher.registerNode(answer);
+    dispatcher.registerNode(pause);
+    dispatcher.registerNode(merge);
+    dispatcher.registerDAG(childDag);
+    dispatcher.registerDAG(parentDag);
+
+    const partial = await dispatcher.execute('compact-gather-result', new ParentState(), {
+      'signal': controller.signal,
+    });
+
+    assert.equal(partial.terminalOutcome, null);
+    const rawProgress = partial.state.getMetadata(GATHER_PROGRESS_KEY);
+    assert.ok(rawProgress !== undefined, 'gather checkpoint should be present after abort');
+    const progress = Validator.gatherProgress.validate(rawProgress);
+    const buffered = progress.entries['join'] ?? [];
+    const compacted = buffered.find((record) => record.source === 'embedded-answer');
+    assert.ok(compacted !== undefined, 'embedded producer record should be checkpointed');
+    assert.equal(compacted.result, 'forty-two');
+    assert.equal('snapshot' in compacted, false, 'projected result record should not retain clone snapshot');
+
+    assert.ok(partial.cursor !== null);
+    const resumed = await dispatcher.resume('compact-gather-result', partial.state, partial.cursor);
+
+    assert.equal(resumed.terminalOutcome, 'completed');
+    assert.deepEqual(partial.state.seenSources, ['embedded-answer', 'plain-answer']);
+    assert.deepEqual(partial.state.seenResults, ['forty-two', undefined]);
+    assert.equal(partial.state.getMetadata(GATHER_PROGRESS_KEY), undefined);
+  });
+
+  void it('resume preserves entrypoint source labels that differ from placement names', async () => {
+    class MultiEntryState extends NodeStateBase {
+      seenSources: string[] = [];
+    }
+
+    const controller = new AbortController();
+    const dispatcher = new Dagonizer<MultiEntryState>();
+    const left = TestNode.make<MultiEntryState>('left-source-node', ['success'], () => {
+      controller.abort();
+      return 'success';
+    });
+    const right = TestNode.make<MultiEntryState>('right-source-node', ['success']);
+    const merge = TestNode.make<MultiEntryState>('merge-source-labels', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenSources = records.map((record) => String(record['source'])).sort();
+      return 'success';
+    });
+
+    dispatcher.registerNode(left);
+    dispatcher.registerNode(right);
+    dispatcher.registerNode(merge);
+
+    const dag = new DAGBuilder('source-label-resume', '1')
+      .node('left-node', left, { 'success': 'join' })
+      .node('right-node', right, { 'success': 'join' })
+      .gather('join', ['left-label', 'right-label'], { 'strategy': 'custom', 'customNode': 'merge-source-labels' }, { 'success': 'end', 'error': 'failed' })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .entrypoints({ 'left-label': 'left-node', 'right-label': 'right-node' })
+      .build();
+    dispatcher.registerDAG(dag);
+
+    const partial = await dispatcher.execute('source-label-resume', new MultiEntryState(), {
+      'signal': controller.signal,
+    });
+
+    assert.equal(partial.terminalOutcome, null);
+    assert.equal(partial.cursor, 'right-node');
+    assert.ok(partial.state.getMetadata(GATHER_PROGRESS_KEY));
+
+    assert.ok(partial.cursor !== null);
+    const resumed = await dispatcher.resume('source-label-resume', partial.state, partial.cursor);
+
+    assert.equal(resumed.terminalOutcome, 'completed');
+    assert.deepEqual(partial.state.seenSources, ['left-label', 'right-label']);
   });
 
   void it('first-class gather joins embedded and scatter producers', async () => {

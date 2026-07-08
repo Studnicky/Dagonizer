@@ -59,15 +59,20 @@ export class GatherBuffers {
   toProgress(): GatherProgressType {
     const entries: GatherProgressType['entries'] = {};
     for (const [gatherName, records] of this.#records) {
-      entries[gatherName] = [...records.values()].map((record) => ({
-        'source': record.source,
-        'index': record.index,
-        'item': record.item,
-        'output': record.output,
-        'terminalOutcome': record.terminalOutcome,
-        'result': record.result,
-        'snapshot': record.cloneState.snapshot(),
-      }));
+      entries[gatherName] = [...records.values()].map((record) => {
+        const item = record.item === undefined ? {} : { 'item': record.item };
+        const result = record.result === undefined ? {} : { 'result': record.result };
+        const snapshot = record.result === undefined ? { 'snapshot': record.cloneState.snapshot() } : {};
+        return {
+          'source': record.source,
+          'index': record.index,
+          'output': record.output,
+          'terminalOutcome': record.terminalOutcome,
+          ...item,
+          ...result,
+          ...snapshot,
+        };
+      });
     }
     return { entries };
   }

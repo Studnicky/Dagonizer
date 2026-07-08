@@ -303,7 +303,7 @@ export class NodeScheduler {
               // `{ type: 'object' }`; `JsonObject.is` narrows it to JsonObjectType
               // (cast-free) at the snapshot ingest boundary.
               itemState.applySnapshot(JsonObject.is(workItem.snapshot) ? workItem.snapshot : {});
-              entrypointSourceByState.set(itemState, 'main');
+              entrypointSourceByState.set(itemState, workItem.source ?? 'main');
               items.push({ 'id': workItem.id, 'state': itemState });
             }
             pending.add(entry.placement, Batch.from(items));
@@ -395,7 +395,10 @@ export class NodeScheduler {
               for (const [placement, batch] of pending.entries()) {
                 const items: WorkSetProgressType['entries'][number]['items'] = [];
                 for (const item of batch) {
-                  items.push({ 'id': item.id, 'snapshot': item.state.snapshot() });
+                  const source = entrypointSourceByState.get(item.state);
+                  items.push(source === undefined
+                    ? { 'id': item.id, 'snapshot': item.state.snapshot() }
+                    : { 'id': item.id, source, 'snapshot': item.state.snapshot() });
                 }
                 entries.push({ placement, items });
               }

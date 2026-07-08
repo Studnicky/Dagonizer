@@ -4,7 +4,7 @@ export const GatherRecordProgressSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/GatherRecordProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['source', 'index', 'output', 'terminalOutcome', 'snapshot'],
+  'required': ['source', 'index', 'output', 'terminalOutcome'],
   'properties': {
     'source':          { 'type': 'string', 'minLength': 1 },
     'index':           { 'type': ['integer', 'null'], 'minimum': 0 },
