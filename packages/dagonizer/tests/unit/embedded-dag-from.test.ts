@@ -659,11 +659,25 @@ void describe('DAGValidator: embedded dag reference shape', () => {
     dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
     dispatcher.registerDAG(TestDag.child('embedded-mode-child'));
 
-    const parentDag = new DAGBuilder('bad-embedded-reference-mode', '1')
-      .embeddedDAG('embed', { 'from': 'item', 'path': 'dagName', 'candidates': ['embedded-mode-child'] }, { 'success': 'end', 'error': 'end-fail' })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
-      .build();
+    const parentDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': 'urn:noocodex:dag:bad-embedded-reference-mode',
+      '@type': 'DAG',
+      'name': 'bad-embedded-reference-mode',
+      'version': '1',
+      'entrypoints': { 'main': 'embed' },
+      'nodes': [
+        {
+          '@id': 'urn:noocodex:dag:bad-embedded-reference-mode/node/embed',
+          '@type': 'EmbeddedDAGNode',
+          'name': 'embed',
+          'dag': { '@type': 'DagReference', 'from': 'item', 'path': 'dagName', 'candidates': ['embedded-mode-child'] },
+          'outputs': { 'success': 'end', 'error': 'end-fail' },
+        },
+        { '@id': 'urn:noocodex:dag:bad-embedded-reference-mode/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:bad-embedded-reference-mode/node/end-fail', '@type': 'TerminalNode', 'name': 'end-fail', 'outcome': 'failed' },
+      ],
+    };
 
     assert.throws(
       () => dispatcher.registerDAG(parentDag),
@@ -676,18 +690,32 @@ void describe('DAGValidator: embedded dag reference shape', () => {
     dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
     dispatcher.registerDAG(TestDag.child('scatter-mode-child'));
 
-    const parentDag = new DAGBuilder('bad-scatter-reference-mode', '1')
-      .scatter('scatter', 'items', { 'dag': { 'from': 'state', 'path': 'selectedDag', 'candidates': ['scatter-mode-child'] } }, {
-        'all-success': 'end',
-        'partial':     'end',
-        'all-error':   'end-fail',
-        'empty':       'end',
-      }, {
-        'gather': { 'strategy': 'discard' },
-      })
-      .terminal('end')
-      .terminal('end-fail', { 'outcome': 'failed' })
-      .build();
+    const parentDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': 'urn:noocodex:dag:bad-scatter-reference-mode',
+      '@type': 'DAG',
+      'name': 'bad-scatter-reference-mode',
+      'version': '1',
+      'entrypoints': { 'main': 'scatter' },
+      'nodes': [
+        {
+          '@id': 'urn:noocodex:dag:bad-scatter-reference-mode/node/scatter',
+          '@type': 'ScatterNode',
+          'name': 'scatter',
+          'source': 'items',
+          'body': { 'dag': { '@type': 'DagReference', 'from': 'state', 'path': 'selectedDag', 'candidates': ['scatter-mode-child'] } },
+          'gather': { 'strategy': 'discard' },
+          'outputs': {
+            'all-success': 'end',
+            'partial': 'end',
+            'all-error': 'end-fail',
+            'empty': 'end',
+          },
+        },
+        { '@id': 'urn:noocodex:dag:bad-scatter-reference-mode/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:bad-scatter-reference-mode/node/end-fail', '@type': 'TerminalNode', 'name': 'end-fail', 'outcome': 'failed' },
+      ],
+    };
 
     assert.throws(
       () => dispatcher.registerDAG(parentDag),

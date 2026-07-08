@@ -70,6 +70,30 @@ void describe('DAGBuilder.embed', () => {
     });
   });
 
+  void it('rejects item-scoped dynamic references at the embed builder boundary', () => {
+    assert.throws(
+      () => Reflect.apply(DAGBuilder.prototype.embed, new DAGBuilder('bad-embed-mode', '1'), [
+        'invoke',
+        { 'from': 'item', 'path': 'dagName', 'candidates': ['child-dag'] },
+        { 'success': 'end', 'error': 'end' },
+      ]),
+      /DAGBuilder\.embed\(\): dynamic DAG reference must use from='state'/u,
+    );
+  });
+
+  void it('rejects state-scoped dynamic references at the scatter builder boundary', () => {
+    assert.throws(
+      () => Reflect.apply(DAGBuilder.prototype.scatter, new DAGBuilder('bad-scatter-mode', '1'), [
+        'fan',
+        'items',
+        { 'dag': { 'from': 'state', 'path': 'selectedDag', 'candidates': ['child-dag'] } },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        {},
+      ]),
+      /DAGBuilder\.scatter\(\): dynamic DAG reference must use from='item'/u,
+    );
+  });
+
   void it('emits gatherResult projection for embedded scalar producers', () => {
     const dag = new DAGBuilder('gather-result-embed', '1')
       .embed<EmbedState>('invoke', 'child-dag', { 'success': 'end', 'error': 'end' }, {

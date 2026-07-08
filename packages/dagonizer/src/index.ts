@@ -64,9 +64,11 @@ export { DAGBuilder } from './builder/index.js';
 export type {
   DynamicDAGReferenceInputType,
   EmbeddableDAGType,
+  ItemDAGReferenceInputType,
   PathType,
   ScatterDAGBodyType,
   ScatterOptionsType,
+  StateDAGReferenceInputType,
   TypedEmbeddedDAGOptionsType,
 } from './builder/index.js';
 

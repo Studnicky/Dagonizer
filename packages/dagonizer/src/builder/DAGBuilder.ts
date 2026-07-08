@@ -127,17 +127,20 @@ export type TypedEmbeddedDAGOptionsType<
 }
 
 /** Dynamic DAG reference accepted by the unified builder entrypoints. */
-export type DynamicDAGReferenceInputType = {
-  readonly from: 'state' | 'item';
+export type DynamicDAGReferenceInputType<TFrom extends 'state' | 'item' = 'state' | 'item'> = {
+  readonly from: TFrom;
   readonly path: string;
   readonly candidates: readonly [string, ...string[]];
 };
 
+export type StateDAGReferenceInputType = DynamicDAGReferenceInputType<'state'>;
+export type ItemDAGReferenceInputType = DynamicDAGReferenceInputType<'item'>;
+
 /** A DAG reference accepted by the unified `embed()` builder entrypoint. */
-export type EmbeddableDAGType = string | DAGType | DynamicDAGReferenceInputType;
+export type EmbeddableDAGType = string | DAGType | StateDAGReferenceInputType;
 
 /** A DAG body reference accepted by `scatter()`. */
-export type ScatterDAGBodyType = { readonly dag: string | DynamicDAGReferenceInputType };
+export type ScatterDAGBodyType = { readonly dag: string | ItemDAGReferenceInputType };
 
 /**
  * Explicit fluent API that builds a `DAG` in JSON-LD canonical form.
@@ -182,6 +185,9 @@ export class DAGBuilder {
       return { 'dag': dag };
     }
     if ('candidates' in dag) {
+      if (dag.from !== 'state') {
+        throw new DAGError(`DAGBuilder.embed(): dynamic DAG reference must use from='state'`);
+      }
       return {
         'dag': {
           '@type': 'DagReference',
@@ -197,6 +203,9 @@ export class DAGBuilder {
   private static scatterDagField(body: ScatterDAGBodyType): { dag: DagReferenceType } {
     if (typeof body.dag === 'string') {
       return { 'dag': body.dag };
+    }
+    if (body.dag.from !== 'item') {
+      throw new DAGError(`DAGBuilder.scatter(): dynamic DAG reference must use from='item'`);
     }
     return {
       'dag': {

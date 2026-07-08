@@ -120,7 +120,15 @@ export type {
 // Builder option interfaces
 // ---------------------------------------------------------------------------
 
-export type { DynamicDAGReferenceInputType, EmbeddableDAGType, ScatterDAGBodyType, ScatterOptionsType, TypedEmbeddedDAGOptionsType } from '../builder/DAGBuilder.js';
+export type {
+  DynamicDAGReferenceInputType,
+  EmbeddableDAGType,
+  ItemDAGReferenceInputType,
+  ScatterDAGBodyType,
+  ScatterOptionsType,
+  StateDAGReferenceInputType,
+  TypedEmbeddedDAGOptionsType,
+} from '../builder/DAGBuilder.js';
 
 // ---------------------------------------------------------------------------
 // Core dispatcher option types

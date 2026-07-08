@@ -2,8 +2,10 @@ export { DAGBuilder } from './DAGBuilder.js';
 export type {
   DynamicDAGReferenceInputType,
   EmbeddableDAGType,
+  ItemDAGReferenceInputType,
   ScatterDAGBodyType,
   ScatterOptionsType,
+  StateDAGReferenceInputType,
   TypedEmbeddedDAGOptionsType,
 } from './DAGBuilder.js';
 export type { PathType } from './PathType.js';

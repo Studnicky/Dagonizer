@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { DAGBuilder, type DynamicDAGReferenceInputType } from '../../src/builder/DAGBuilder.js';
+import { DAGBuilder, type StateDAGReferenceInputType } from '../../src/builder/DAGBuilder.js';
 import { ContextResolver } from '../../src/dag/ContextResolver.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
@@ -20,7 +20,7 @@ function withGraphContext(dag: DAGType): DAGType {
   return { ...dag, '@context': GRAPH_CONTEXT };
 }
 
-function dynamicReference(candidate: string, path: string): DynamicDAGReferenceInputType {
+function dynamicReference(candidate: string, path: string): StateDAGReferenceInputType {
   const candidates: [string, ...string[]] = [candidate];
   return { 'from': 'state', path, candidates };
 }
