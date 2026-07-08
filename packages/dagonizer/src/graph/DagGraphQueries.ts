@@ -157,6 +157,30 @@ export class DagGraphQueries {
     return DagGraphQueries.unique(rows.map((row) => row['dag']?.value));
   }
 
+  static placementInputSchemaIri(store: TripleStoreInterface, placementIri: string): string | undefined {
+    const inputPort = DagGraphQueries.namedObject(store, placementIri, 'inputPort');
+    return inputPort !== undefined ? DagGraphQueries.namedObject(store, inputPort, 'schema') : undefined;
+  }
+
+  static placementOutputSchemaIri(
+    store: TripleStoreInterface,
+    placementIri: string,
+    output: string,
+  ): string | undefined {
+    const outputPorts = store.select({
+      'subject': DagGraphTerms.namedNode(placementIri),
+      'predicate': DagGraphTerms.predicate('outputPort'),
+      'object': '?port',
+    });
+    for (const row of outputPorts) {
+      const port = row['port'];
+      if (port === undefined) continue;
+      const label = DagGraphQueries.literalObject(store, port.value, 'label');
+      if (label === output) return DagGraphQueries.namedObject(store, port.value, 'schema');
+    }
+    return undefined;
+  }
+
   private static literalObject(store: TripleStoreInterface, subject: string, predicate: string): string | undefined {
     const row = store.select({
       'subject': DagGraphTerms.namedNode(subject),

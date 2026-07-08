@@ -1,3 +1,4 @@
+import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { QuadType, TermType, TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
@@ -5,6 +6,8 @@ import { DagReference } from '../entities/dag/DagReference.js';
 import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
+import type { NodeStateInterface } from '../NodeStateBase.js';
+import type { SchemaRegistry } from '../schema/SchemaRegistry.js';
 
 import { DagGraphTerms } from './DagGraphTerms.js';
 import { InMemoryTopologyStore } from './InMemoryTopologyStore.js';
@@ -43,6 +46,32 @@ export class DagGraphProjector {
 
     for (const placement of dag.nodes) {
       DagGraphProjector.projectPlacement(placement, dagIri, context, store, graph);
+    }
+  }
+
+  static projectNodeSchemas(input: {
+    readonly dag: DAGType;
+    readonly nodes: ReadonlyMap<string, NodeInterface<NodeStateInterface, string>>;
+    readonly schemas: SchemaRegistry;
+    readonly store: TripleStoreInterface;
+  }): void {
+    const context = ContextResolver.contextOf(input.dag['@context']);
+    const dagIri = DagGraphProjector.dagIri(input.dag);
+    const graph = DagGraphTerms.namedNode(DagGraphProjector.topologyGraphIri(dagIri));
+
+    for (const placement of input.dag.nodes) {
+      const nodeName = DagGraphProjector.nodeNameForSchemaProjection(placement);
+      if (nodeName === null) continue;
+      const nodeIri = ContextResolver.expand(nodeName, context);
+      const node = input.nodes.get(nodeIri);
+      if (node === undefined) continue;
+      DagGraphProjector.projectNodeContract(
+        DagGraphProjector.placementIri(dagIri, placement.name),
+        node,
+        input.schemas,
+        input.store,
+        graph,
+      );
     }
   }
 
@@ -131,5 +160,33 @@ export class DagGraphProjector {
       store.assert(referenceNode, DagGraphTerms.predicate('candidateName'), DagGraphTerms.literal(candidate), graph);
       store.assert(owner, DagGraphTerms.predicate('embedsDag'), candidateDag, graph);
     }
+  }
+
+  private static projectNodeContract(
+    placementIri: string,
+    node: NodeInterface<NodeStateInterface, string>,
+    schemas: SchemaRegistry,
+    store: TripleStoreInterface,
+    graph: TermType,
+  ): void {
+    const placementNode = DagGraphTerms.namedNode(placementIri);
+    const inputPort = DagGraphTerms.namedNode(`${placementIri}/input`);
+    const inputSchemaIri = schemas.register(node.inputSchema);
+    store.assert(placementNode, DagGraphTerms.predicate('inputPort'), inputPort, graph);
+    store.assert(inputPort, DagGraphTerms.predicate('schema'), DagGraphTerms.namedNode(inputSchemaIri), graph);
+
+    for (const [output, schema] of Object.entries(node.outputSchema)) {
+      const outputPort = DagGraphTerms.namedNode(`${placementIri}/output/${encodeURIComponent(output)}`);
+      const outputSchemaIri = schemas.register(schema);
+      store.assert(placementNode, DagGraphTerms.predicate('outputPort'), outputPort, graph);
+      store.assert(outputPort, DagGraphTerms.predicate('label'), DagGraphTerms.literal(output), graph);
+      store.assert(outputPort, DagGraphTerms.predicate('schema'), DagGraphTerms.namedNode(outputSchemaIri), graph);
+    }
+  }
+
+  private static nodeNameForSchemaProjection(placement: DAGNodeType): string | null {
+    if (Placement.isSingle(placement)) return placement.node;
+    if (Placement.isPhase(placement)) return placement.node;
+    return null;
   }
 }

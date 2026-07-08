@@ -8,6 +8,7 @@ import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
 import { DagGraphQueries } from '../../src/graph/DagGraphQueries.js';
 import { DagGraphTerms } from '../../src/graph/DagGraphTerms.js';
+import { SchemaRegistry } from '../../src/schema/index.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const GRAPH_CONTEXT = {
@@ -107,5 +108,31 @@ void describe('DagGraphProjector', () => {
       ['left', 'right'],
     );
     assert.deepEqual(DagGraphQueries.selectedDagIris(store), [selectedDagIri]);
+  });
+
+  void it('projects registered node input and output schemas onto placement ports', () => {
+    const node = TestNode.make('schema-node', ['success'], () => 'success');
+    const dag = withGraphContext(new DAGBuilder('schema-host', '1')
+      .node('step', node, { 'success': 'done' })
+      .terminal('done')
+      .build());
+    const dagIri = DagGraphProjector.dagIri(dag);
+    const placementIri = DagGraphProjector.placementIri(dagIri, 'step');
+    const schemas = new SchemaRegistry();
+    const store = DagGraphProjector.store(dag);
+
+    DagGraphProjector.projectNodeSchemas({
+      dag,
+      'nodes': new Map([[ContextResolver.expand(node.name, GRAPH_CONTEXT), node]]),
+      schemas,
+      store,
+    });
+
+    const inputSchemaIri = DagGraphQueries.placementInputSchemaIri(store, placementIri);
+    const outputSchemaIri = DagGraphQueries.placementOutputSchemaIri(store, placementIri, 'success');
+    assert.equal(typeof inputSchemaIri, 'string');
+    assert.equal(typeof outputSchemaIri, 'string');
+    assert.equal(schemas.has(inputSchemaIri ?? ''), true);
+    assert.equal(schemas.has(outputSchemaIri ?? ''), true);
   });
 });
