@@ -615,7 +615,7 @@ export class NodeScheduler {
                 const gatherTarget = this.#gatherTarget(dagIri, nextPlacement);
                 if (gatherTarget !== undefined) {
                   gatherBuffers.add(gatherTarget.name, {
-                    'source': this.#producerSource(entrypointSourceByState, item.state, node.name),
+                    'source': this.#branchProducerSource(entrypointSourceByState, item.state, node.name, gatherTarget),
                     'index': null,
                     'item': undefined,
                     'output': routeOutput,
@@ -724,7 +724,7 @@ export class NodeScheduler {
               const gatherTarget = this.#gatherTarget(dagIri, nextPlacement);
               if (gatherTarget !== undefined) {
                 gatherBuffers.add(gatherTarget.name, GatherRecordProjector.project({
-                  'source': this.#producerSource(entrypointSourceByState, parentItem.state, node.name),
+                  'source': this.#branchProducerSource(entrypointSourceByState, parentItem.state, node.name, gatherTarget),
                   'output': routeOutput,
                   'terminalOutcome': childTerminalOutcome,
                   'state': childClone,
@@ -880,9 +880,12 @@ export class NodeScheduler {
               const record = entry.gatherRecord !== undefined
                 ? {
                   ...entry.gatherRecord,
-                  'source': this.#producerSource(entrypointSourceByState, entry.state, entry.gatherRecord.source),
+                  'source': this.#branchProducerSource(entrypointSourceByState, entry.state, entry.gatherRecord.source, gatherTarget),
                 }
-                : this.#recordFromComposite(node.name, entry, entrypointSourceByState);
+                : this.#recordFromComposite(
+                  this.#branchProducerSource(entrypointSourceByState, entry.state, node.name, gatherTarget),
+                  entry,
+                );
               gatherBuffers.add(gatherTarget.name, record);
               if (gatherBuffers.ready(gatherTarget)) {
                 pending.add(gatherTarget.name, Batch.of(state));
@@ -1206,7 +1209,7 @@ export class NodeScheduler {
       if (gatherTarget !== undefined) {
         for (const item of subBatch) {
           gatherBuffers.add(gatherTarget.name, GatherRecordProjector.project({
-            'source': this.#producerSource(entrypointSourceByState, item.state, nodeConfig.name),
+            'source': this.#branchProducerSource(entrypointSourceByState, item.state, nodeConfig.name, gatherTarget),
             'output': outputPort,
             'terminalOutcome': null,
             'state': item.state,
@@ -1242,12 +1245,11 @@ export class NodeScheduler {
   }
 
   #recordFromComposite(
-    producerName: string,
+    source: string,
     entry: { readonly state: NodeStateInterface; readonly result: NodeResultType<NodeStateInterface> },
-    entrypointSourceByState: WeakMap<NodeStateInterface, string>,
   ): GatherRecordType {
     return {
-      'source': this.#producerSource(entrypointSourceByState, entry.state, producerName),
+      source,
       'index': null,
       'item': undefined,
       'output': entry.result.output ?? 'error',
@@ -1257,13 +1259,14 @@ export class NodeScheduler {
     };
   }
 
-  #producerSource(
+  #branchProducerSource(
     entrypointSourceByState: WeakMap<NodeStateInterface, string>,
     state: NodeStateInterface,
     fallback: string,
+    gatherTarget: GatherNodeType,
   ): string {
     const source = entrypointSourceByState.get(state);
-    return source !== undefined && source !== 'main' ? source : fallback;
+    return source !== undefined && gatherTarget.sources.includes(source) ? source : fallback;
   }
 
   /**

@@ -53,6 +53,38 @@ void describe('Dagonizer scatter gather strategies', () => {
     assert.deepEqual(state.seenSources, ['left', 'right']);
   });
 
+  void it('first-class gather uses main as the scalar entrypoint producer label', async () => {
+    class MainSourceState extends NodeStateBase {
+      seenSources: string[] = [];
+    }
+
+    const dispatcher = new Dagonizer<MainSourceState>();
+    const work = TestNode.make<MainSourceState>('work-main-source', ['success']);
+    const merge = TestNode.make<MainSourceState>('merge-main-source', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenSources = records.map((record) => String(record['source']));
+      return 'success';
+    });
+
+    dispatcher.registerNode(work);
+    dispatcher.registerNode(merge);
+
+    const dag = new DAGBuilder('main-source-gather', '1')
+      .node('work-placement', work, { 'success': 'join' })
+      .gather('join', ['main'], { 'strategy': 'custom', 'customNode': 'merge-main-source' }, { 'success': 'end', 'error': 'failed' })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .build();
+    dispatcher.registerDAG(dag);
+
+    const state = new MainSourceState();
+    const result = await dispatcher.execute('main-source-gather', state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.deepEqual(state.seenSources, ['main']);
+  });
+
   void it('first-class gather any policy keeps only the first arrived source', async () => {
     class AnyState extends NodeStateBase {
       seenSources: string[] = [];
