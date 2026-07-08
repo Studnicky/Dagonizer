@@ -69,6 +69,51 @@ class JsonLdGraphEntry {
   }
 }
 
+class JsonLdReferenceRows {
+  private constructor() {}
+
+  static candidateRows(doc: ReturnType<typeof JsonLdRenderer.render>): readonly {
+    readonly placementIri: string;
+    readonly referenceIri: string;
+    readonly dagIri: string;
+    readonly dynamic: boolean;
+  }[] {
+    const result: {
+      readonly placementIri: string;
+      readonly referenceIri: string;
+      readonly dagIri: string;
+      readonly dynamic: boolean;
+    }[] = [];
+    for (const entry of doc['@graph']) {
+      const reference = Reflect.get(entry, 'dag:dagReference');
+      if (typeof reference !== 'object' || reference === null || Array.isArray(reference)) continue;
+      const referenceIri = Reflect.get(reference, '@id');
+      if (typeof referenceIri !== 'string') continue;
+      const dynamic = typeof Reflect.get(reference, 'dag:from') === 'string'
+        && typeof Reflect.get(reference, 'dag:path') === 'string';
+      for (const dagIri of JsonLdDagReferenceEntry.candidates(reference)) {
+        result.push({
+          'placementIri': entry['@id'],
+          referenceIri,
+          dagIri,
+          dynamic,
+        });
+      }
+    }
+    return result.sort(JsonLdReferenceRows.compare);
+  }
+
+  static compare(
+    left: { readonly placementIri: string; readonly referenceIri: string; readonly dagIri: string; readonly dynamic: boolean },
+    right: { readonly placementIri: string; readonly referenceIri: string; readonly dagIri: string; readonly dynamic: boolean },
+  ): number {
+    return left.placementIri.localeCompare(right.placementIri)
+      || left.referenceIri.localeCompare(right.referenceIri)
+      || left.dagIri.localeCompare(right.dagIri)
+      || Number(left.dynamic) - Number(right.dynamic);
+  }
+}
+
 void describe('JsonLdRenderer.render', () => {
   void it('emits a stable @context + @graph for a single-node DAG', () => {
     const dag: DAGType = {
@@ -180,6 +225,7 @@ void describe('JsonLdRenderer.render', () => {
     assert.ok(sub !== undefined, 'dag:EmbeddedDAGNode entry must be present');
     // the embedded DAG serializes as a cross-DAG IRI reference
     assert.equal(sub?.['dag:dag'], `${DEFAULT_DAG_IRI}child`);
+    assert.deepEqual(JsonLdDagReferenceEntry.candidates(sub?.['dag:dagReference']), [`${DEFAULT_DAG_IRI}child`]);
     assert.deepEqual(sub?.['dag:stateMapping'], { 'input': { 'input': 'x' }, 'output': { 'b': 'y' } });
   });
 
@@ -235,15 +281,27 @@ void describe('JsonLdRenderer.render', () => {
       [`${DEFAULT_DAG_IRI}child-a`, `${DEFAULT_DAG_IRI}child-b`],
     );
     assert.deepEqual(
+      JsonLdDagReferenceEntry.candidates(embedded?.['dag:dagReference']),
+      [`${DEFAULT_DAG_IRI}child-a`, `${DEFAULT_DAG_IRI}child-b`],
+    );
+    assert.deepEqual(
       typeof scatterBody === 'object' && scatterBody !== null
         ? JsonLdDagReferenceEntry.candidates(Reflect.get(scatterBody, 'dag:dag'))
         : [],
+      [`${DEFAULT_DAG_IRI}child-c`],
+    );
+    assert.deepEqual(
+      JsonLdDagReferenceEntry.candidates(scatter?.['dag:dagReference']),
       [`${DEFAULT_DAG_IRI}child-c`],
     );
 
     assert.deepEqual(
       JsonLdGraphEntry.candidateDagIris(doc),
       [...DagGraphQueries.candidateDagIris(DagGraphProjector.store(dag))].sort(),
+    );
+    assert.deepEqual(
+      JsonLdReferenceRows.candidateRows(doc),
+      [...DagGraphQueries.candidateDagRows(DagGraphProjector.store(dag))].sort(JsonLdReferenceRows.compare),
     );
   });
 });

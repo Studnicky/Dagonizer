@@ -175,6 +175,25 @@ export class JsonLdRenderer {
     };
   }
 
+  private static renderDagReferenceNode(
+    reference: DagReferenceType,
+    ownerPlacementIri: string,
+    context: Record<string, unknown>,
+  ): JsonLdGraphEntryType {
+    const candidates = (typeof reference === 'string' ? [reference] : reference.candidates)
+      .map((candidate) => ContextResolver.expand(candidate, context));
+    const out: JsonLdGraphEntryType & Record<string, unknown> = {
+      '@id': `${ownerPlacementIri}/dag-reference`,
+      '@type': 'dag:DagReference',
+      'dag:candidateDag': candidates,
+    };
+    if (typeof reference !== 'string') {
+      out['dag:from'] = reference.from;
+      out['dag:path'] = reference.path;
+    }
+    return out;
+  }
+
   /**
    * Convert a routing map to JSON-LD route descriptors that reference
    * the full placement IRIs (so consumers don't have to re-resolve
@@ -205,6 +224,7 @@ export class JsonLdRenderer {
       '@type':    JsonLdRenderer.TYPE_BY_KIND[placement['@type']],
       'dag:name': placement.name,
     } as const;
+    const placementIri = base['@id'];
 
     const placementDispatch: PlacementDispatchType<JsonLdGraphEntryType> = {
       'SingleNode': (sp) => {
@@ -226,6 +246,7 @@ export class JsonLdRenderer {
             ? { 'dag:node': sp.body.node }
             : { 'dag:dag': JsonLdRenderer.renderDagReference(sp.body.dag, context) },
         };
+        if ('dag' in sp.body) out['dag:dagReference'] = JsonLdRenderer.renderDagReferenceNode(sp.body.dag, placementIri, context);
         if (sp.source !== undefined)       out['dag:source']       = sp.source;
         if (sp.itemKey !== undefined)      out['dag:itemKey']      = sp.itemKey;
         if (sp.execution !== undefined)    out['dag:execution']    = sp.execution;
@@ -242,7 +263,10 @@ export class JsonLdRenderer {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagIri, ep.outputs),
         };
-        if (ep.dag !== undefined) out['dag:dag'] = JsonLdRenderer.renderDagReference(ep.dag, context);
+        if (ep.dag !== undefined) {
+          out['dag:dag'] = JsonLdRenderer.renderDagReference(ep.dag, context);
+          out['dag:dagReference'] = JsonLdRenderer.renderDagReferenceNode(ep.dag, placementIri, context);
+        }
         if (ep.stateMapping !== undefined) out['dag:stateMapping'] = ep.stateMapping;
         if (ep.gatherResult !== undefined) out['dag:gatherResult'] = ep.gatherResult;
         // container is a placement property mapped in DAG_CONTEXT; include when present.

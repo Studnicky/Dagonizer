@@ -66,6 +66,7 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'throttle':    { '@id': `${NS}throttle` },
   'reservoir':   { '@id': `${NS}reservoir` },
   'gather':      { '@id': `${NS}gather` },
+  'dagReference': { '@id': `${NS}dagReference`, '@type': '@id' },
   'DagReference': { '@id': `${NS}DagReference` },
   'from':        { '@id': `${NS}from` },
   'path':        { '@id': `${NS}path` },
