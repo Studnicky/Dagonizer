@@ -34,6 +34,41 @@ void describe('MermaidRenderer.render', () => {
     assert.doesNotMatch(out, /-->\|success\| end$/mu);
   });
 
+  void it('renders every DAG entrypoint as a diagram root', () => {
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:multi-root',
+      '@type':    'DAG',
+      'name':       'multi-root',
+      'version':    '1',
+      'entrypoints': { 'left': 'left-root', 'right': 'right-root' },
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:multi-root/node/left-root',
+          '@type':  'SingleNode',
+          'name':   'left-root',
+          'node':   'left',
+          'outputs': { 'success': 'done' },
+        },
+        {
+          '@id':    'urn:noocodex:dag:multi-root/node/right-root',
+          '@type':  'SingleNode',
+          'name':   'right-root',
+          'node':   'right',
+          'outputs': { 'success': 'done' },
+        },
+        { '@id': 'urn:noocodex:dag:multi-root/node/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' },
+      ],
+    };
+
+    const out = MermaidRenderer.render(dag);
+
+    assert.match(out, /entry_left\(\["left"\]\)/u);
+    assert.match(out, /entry_right\(\["right"\]\)/u);
+    assert.match(out, /entry_left --> left-root/u);
+    assert.match(out, /entry_right --> right-root/u);
+  });
+
   void it('renders a ScatterNode as a trapezoid', () => {
     const dag: DAGType = {
       '@context': DAG_CONTEXT,
@@ -450,8 +485,8 @@ void describe('MermaidRenderer.render: TerminalNodeType', () => {
       ],
     };
     const out = MermaidRenderer.render(dag);
-    // only one edge exists: step --> done
-    const edgeLines = out.split('\n').filter((line) => line.includes('-->'));
+    // only one placement-output edge exists: step --> done
+    const edgeLines = out.split('\n').filter((line) => line.includes('-->') && !line.includes('entry_'));
     assert.equal(edgeLines.length, 1);
     const firstEdge = edgeLines[0] ?? '';
     assert.match(firstEdge, /step -->\|success\| done/u);

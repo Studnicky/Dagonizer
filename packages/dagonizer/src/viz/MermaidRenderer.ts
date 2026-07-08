@@ -44,7 +44,6 @@
  * ```
  */
 
-import { DAGEntrypoints } from '../entities/dag/DAG.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 
 import { PlacementUtils, RoleColorUtils } from './internal.js';
@@ -120,7 +119,11 @@ export class MermaidRenderer {
     if (init !== null) lines.push(init);
     lines.push(`flowchart ${opts.orientation}`);
     lines.push(`  %% ${dag.name} (v${dag.version})`);
-    lines.push(`  ${MermaidRenderer.idFor(DAGEntrypoints.primary(dag), idByName, opts.sanitizeNodeIds)}`);
+    for (const [label, placement] of Object.entries(dag.entrypoints)) {
+      const entryId = MermaidRenderer.entryIdFor(label, opts.sanitizeNodeIds);
+      lines.push(`  ${entryId}([${MermaidRenderer.label(label)}])`);
+      lines.push(`  ${entryId} --> ${MermaidRenderer.idFor(placement, idByName, opts.sanitizeNodeIds)}`);
+    }
 
     // Map from sanitized role token → list of placement names assigned that token.
     const roleToIds = new Map<string, string[]>();
@@ -403,6 +406,12 @@ export class MermaidRenderer {
     if (MermaidRenderer.RESERVED_NODE_IDS.has(id.toLowerCase())) return `${id}_node`;
     if (MermaidRenderer.hasReservedNodeIdPrefix(id)) id = `node_${id}`;
     return id;
+  }
+
+  /** Return a deterministic pseudo-node id for a DAG entrypoint label. */
+  private static entryIdFor(label: string, sanitize: boolean): string {
+    const id = sanitize ? MermaidRenderer.sanitizeNodeId(label) : label;
+    return `entry_${id}`;
   }
 
   /** Return true when a bare id starts with a Mermaid reserved token. */
