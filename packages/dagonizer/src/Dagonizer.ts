@@ -306,7 +306,7 @@ export interface DagonizerInterface<
   ): void;
 
   /**
-   * Register every node, then every DAG, in the supplied bundle. Accepts
+   * Register every node and DAG in the supplied bundle atomically. Accepts
    * bundles typed against any `TBundleState extends NodeStateInterface` so
    * child-state bundles (e.g. tool bundles whose nodes run inside isolated
    * child DAGs) can be registered on the dispatcher.
@@ -1131,12 +1131,8 @@ implements DagonizerInterface<TState> {
    *
    * Throws `DAGError` immediately when a DAG with the same expanded IRI is already registered.
    *
-   * Runs two validation passes:
-   * 1. Schema pass: `Validator.dag.validate(dag)` checks structure (required fields, valid
-   *    `type` and `strategy` enumerations).
-   * 2. Semantic pass: verifies entrypoint exists, all node references are resolvable,
-   *    no circular embedded-DAG references, and every registered node output has a routing
-   *    entry in the placement's `outputs` map.
+   * Runs shape, semantic, container-binding, and graph-reference validation
+   * before mutating the live registry.
    */
   registerDAG(dag: DAGType, stateFactory?: ChildStateFactoryType): void {
     this.dagRegistrar.registerDAG(dag, stateFactory);
@@ -1183,11 +1179,9 @@ implements DagonizerInterface<TState> {
   }
 
   /**
-   * Register every node, then every DAG, in the supplied bundle. Order
-   * is fixed: nodes first so the semantic-pass DAG validator can
-   * resolve every node reference. Throws as soon as any individual
-   * registration throws (validation failure, duplicate expanded IRI, etc.);
-   * registrations that ran before the failing one remain installed.
+   * Register every node and DAG in the supplied bundle atomically. The bundle
+   * installs real node and DAG objects into a transaction, validates the staged
+   * registry view, then commits or rolls back the entries it added.
    */
   registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void {
     this.dagRegistrar.registerBundle(bundle);
@@ -1209,6 +1203,11 @@ implements DagonizerInterface<TState> {
       });
     }
     this.registeredPlugins.set(plugin.id, plugin);
-    plugin.register(this);
+    try {
+      plugin.register(this);
+    } catch (error) {
+      this.registeredPlugins.delete(plugin.id);
+      throw error;
+    }
   }
 }

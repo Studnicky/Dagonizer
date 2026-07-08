@@ -7,8 +7,9 @@
  * - `PluginSpecifier.rootedAt(baseUrl)` — Browser resolver. Returns a URL relative to `baseUrl`
  *   for bare package specifiers; passes through names that are already absolute URLs unchanged.
  *   Typical usage: `PluginSpecifier.rootedAt(import.meta.url)` or a CDN base URL.
- * - `PluginSpecifier.byPrefix(source)` — Registry resolver. Resolves `prefix:dag`
- *   names through the plugin specifier registered for `prefix`.
+ * - `PluginSpecifier.byPrefix(source)` — Registry resolver. Resolves compact
+ *   `prefix:dag` names through the plugin specifier registered for `prefix` and
+ *   expanded DAG IRIs through the longest registered namespace IRI.
  *
  * In-browser specifiers must be fully-qualified ESM URLs — bare npm package names
  * are not resolvable in a browser `import()` without a resolver.
@@ -61,16 +62,30 @@ export class PluginSpecifier {
   }
 
   /**
-   * Registry resolver factory: maps a `prefix:local` DAG reference to the
-   * plugin package/specifier that registered ownership of `prefix`.
+   * Registry resolver factory: maps a compact `prefix:local` DAG reference or
+   * expanded DAG IRI to the plugin package/specifier that registered ownership
+   * of the prefix namespace.
    */
   static byPrefix(
-    source: { pluginSpecifierForPrefix(prefix: string): string | undefined },
+    source: {
+      pluginSpecifierForPrefix(prefix: string): string | undefined;
+      pluginPrefixSpecifiers?(): ReadonlyMap<string, string>;
+    },
   ): (name: string) => string | undefined {
     return (name: string): string | undefined => {
       const colonIdx = name.indexOf(':');
-      if (colonIdx <= 0 || name.charAt(colonIdx + 1) === '/') return undefined;
-      return source.pluginSpecifierForPrefix(name.substring(0, colonIdx));
+      if (colonIdx > 0 && name.charAt(colonIdx + 1) !== '/') {
+        return source.pluginSpecifierForPrefix(name.substring(0, colonIdx));
+      }
+      let bestNamespace = '';
+      let bestSpecifier: string | undefined;
+      for (const [namespaceIri, specifier] of source.pluginPrefixSpecifiers?.() ?? []) {
+        if (!namespaceIri.includes('://') || !name.startsWith(namespaceIri)) continue;
+        if (namespaceIri.length <= bestNamespace.length) continue;
+        bestNamespace = namespaceIri;
+        bestSpecifier = specifier;
+      }
+      return bestSpecifier;
     };
   }
 }

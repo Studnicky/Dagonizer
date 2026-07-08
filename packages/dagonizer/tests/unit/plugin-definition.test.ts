@@ -110,8 +110,13 @@ void describe('defineDagonizerPlugin', () => {
 
     const resolve = PluginSpecifier.byPrefix(dispatcher);
     assert.equal(dispatcher.pluginSpecifierForPrefix('retrieval'), '@example/retrieval-plugin');
-    assert.deepEqual([...dispatcher.pluginPrefixSpecifiers()], [['retrieval', '@example/retrieval-plugin']]);
+    assert.equal(dispatcher.pluginSpecifierForPrefix('https://noocodex.dev/plugins/retrieval#'), '@example/retrieval-plugin');
+    assert.deepEqual([...dispatcher.pluginPrefixSpecifiers()], [
+      ['retrieval', '@example/retrieval-plugin'],
+      ['https://noocodex.dev/plugins/retrieval#', '@example/retrieval-plugin'],
+    ]);
     assert.equal(resolve('retrieval:search'), '@example/retrieval-plugin');
+    assert.equal(resolve('https://noocodex.dev/plugins/retrieval#search'), '@example/retrieval-plugin');
     assert.equal(resolve('plain'), undefined);
     assert.equal(resolve('https://example.com/dag'), undefined);
   });
@@ -169,5 +174,34 @@ void describe('defineDagonizerPlugin', () => {
       () => dispatcher.registerPlugin(pluginB),
       /Plugin prefix 'p' is already registered to '@example\/first-plugin'/u,
     );
+  });
+
+  void it('registerPlugin rejects conflicting namespace ownership and rolls back staged prefix ownership', () => {
+    const dagA = new DAGBuilder('a:flow', '1').terminal('done').entrypoint('done').build();
+    const dagB = new DAGBuilder('b:flow', '1').terminal('done').entrypoint('done').build();
+    const pluginA = defineDagonizerPlugin({
+      'id': '@example/first-plugin',
+      'context': { 'a': 'https://example.com/shared#' },
+      'nodes': [],
+      'dags': [dagA],
+      'exports': { 'flow': 'a:flow' },
+    });
+    const pluginB = defineDagonizerPlugin({
+      'id': '@example/second-plugin',
+      'context': { 'b': 'https://example.com/shared#' },
+      'nodes': [],
+      'dags': [dagB],
+      'exports': { 'flow': 'b:flow' },
+    });
+    const dispatcher = new Dagonizer<PluginState>();
+
+    dispatcher.registerPlugin(pluginA);
+
+    assert.throws(
+      () => dispatcher.registerPlugin(pluginB),
+      /Plugin namespace 'https:\/\/example\.com\/shared#' is already registered to '@example\/first-plugin'/u,
+    );
+    assert.equal(dispatcher.pluginSpecifierForPrefix('b'), undefined);
+    assert.equal(dispatcher.pluginSpecifierForPrefix('https://example.com/shared#'), '@example/first-plugin');
   });
 });

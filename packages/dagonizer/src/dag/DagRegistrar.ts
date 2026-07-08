@@ -58,7 +58,7 @@ export interface DagRegistrarSourceInterface {
    * stored when no override is supplied so the engine never branches on presence.
    */
   readonly stateFactories: Map<string, ChildStateFactoryType>;
-  /** Plugin module specifiers keyed by context prefix. */
+  /** Plugin module specifiers keyed by context prefix and namespace IRI. */
   readonly pluginSpecifiers: Map<string, string>;
 
   /** Resolve a bound container by role, or `null` when the role is unbound (in-process). */
@@ -278,17 +278,17 @@ class RegistryTransaction {
 
   registerPluginSpecifiers(context: Record<string, unknown>, specifier: string | undefined): void {
     if (specifier === undefined) return;
-    for (const prefix of ContextResolver.prefixes(context).keys()) {
-      const existing = this.#source.pluginSpecifiers.get(prefix);
-      if (existing !== undefined && existing !== specifier) {
-        throw new DAGError(
-          `Plugin prefix '${prefix}' is already registered to '${existing}' and cannot also resolve to '${specifier}'`,
-          { 'code': 'PLUGIN_INVALID' },
-        );
-      }
-      if (existing === specifier) continue;
-      this.#source.pluginSpecifiers.set(prefix, specifier);
-      this.#addedPluginSpecifierPrefixes.push(prefix);
+    for (const [prefix, namespaceIri] of ContextResolver.prefixes(context)) {
+      this.#registerPluginSpecifierKey(
+        prefix,
+        specifier,
+        `Plugin prefix '${prefix}'`,
+      );
+      this.#registerPluginSpecifierKey(
+        namespaceIri,
+        specifier,
+        `Plugin namespace '${namespaceIri}'`,
+      );
     }
   }
 
@@ -348,5 +348,18 @@ class RegistryTransaction {
     this.#addedNodeIndexKeys.length = 0;
     this.#addedPluginSpecifierPrefixes.length = 0;
     this.#addedStateFactoryIris.length = 0;
+  }
+
+  #registerPluginSpecifierKey(key: string, specifier: string, label: string): void {
+    const existing = this.#source.pluginSpecifiers.get(key);
+    if (existing !== undefined && existing !== specifier) {
+      throw new DAGError(
+        `${label} is already registered to '${existing}' and cannot also resolve to '${specifier}'`,
+        { 'code': 'PLUGIN_INVALID' },
+      );
+    }
+    if (existing === specifier) return;
+    this.#source.pluginSpecifiers.set(key, specifier);
+    this.#addedPluginSpecifierPrefixes.push(key);
   }
 }
