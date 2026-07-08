@@ -8,6 +8,7 @@ import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
+import { DagReferenceResolver } from './DagReferenceResolver.js';
 import { PlacementRouter } from './PlacementRouter.js';
 import type { RunNodeResultType } from './ScatterDispatch.js';
 
@@ -90,40 +91,28 @@ export class EmbeddedDagExecutor {
     const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
     const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
 
-    // Resolve the sub-DAG name: literal `dag` values resolve directly; dynamic
-    // DagReference values resolve from state and must match a declared candidate.
-    // A null result routes to the error output via a null body run.
-    const dagName = EmbeddedDAGNodeDefaults.resolveDagName(placement, state, this.#source.accessor);
     const parentDag = this.#source.dags.get(ContextResolver.expand(parentDagName, {}));
     const parentContext = parentDag !== undefined ? ContextResolver.contextOf(parentDag['@context']) : {};
-    const dagIri = dagName !== null ? ContextResolver.expand(dagName, parentContext) : null;
+    const dagIri = placement.dag !== undefined
+      ? DagReferenceResolver.resolve({
+        'reference': placement.dag,
+        'source': 'state',
+        'value': state,
+        'context': parentContext,
+        'dags': this.#source.dags,
+        'accessor': this.#source.accessor,
+      })
+      : null;
 
-    // Produce the child state. Use the DAG's isolation factory when registered,
-    // otherwise use cloneChild (clone-parent semantics). The factory lookup uses
-    // the expanded DAG IRI; if dagName is null the assembly below routes to error
+    // Produce the child state. Use the DAG's isolation factory when the
+    // resolver returns a registered DAG IRI; invalid selections route to error
     // without touching the child state meaningfully.
     const factory = dagIri !== null ? this.#source.stateFactories.get(dagIri) : undefined;
     const cloneState = factory !== undefined
       ? this.#source.stateMapper.spawnChild(state, inputMapping, factory)
       : this.#source.stateMapper.cloneChild(state, inputMapping);
 
-    if (dagName === null) {
-      return this.#withGatherRecord(placement, PlacementRouter.assemble(
-        placement.name,
-        placement.outputs,
-        null,
-        cloneState,
-        state,
-        outputMapping,
-        [],
-        this.#source.stateMapper,
-      ), cloneState, null);
-    }
-
-    // Validate that the resolved dag name is registered. An unregistered name
-    // means the runtime path resolved to a string that does not correspond to
-    // any known DAG — route to error without throwing.
-    if (dagIri === null || !this.#source.dags.has(dagIri)) {
+    if (dagIri === null) {
       return this.#withGatherRecord(placement, PlacementRouter.assemble(
         placement.name,
         placement.outputs,

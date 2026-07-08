@@ -37,6 +37,7 @@ import { DagExecutionContext } from '../runtime/DagExecutionContext.js';
 import { RetryPolicy } from '../runtime/RetryPolicy.js';
 import type { StateMapper } from '../runtime/StateMapper.js';
 
+import { DagReferenceResolver } from './DagReferenceResolver.js';
 import type { Gather } from './Gather.js';
 import { GatherBuffers } from './GatherBuffers.js';
 import { OutputContractApplier } from './OutputContractApplier.js';
@@ -585,14 +586,20 @@ export class NodeScheduler {
 
           const parentItems = [...batch];
 
-          // Resolve the child dag name. Literal `dag` values resolve directly;
-          // dynamic DagReference values resolve from the representative state
-          // and must match a declared candidate. A null result or an unregistered
-          // candidate routes all items to their error outputs without executing.
-          // Both cases route all items to their error outputs without executing.
-          const resolvedChildDagName = EmbeddedDAGNodeDefaults.resolveDagName(node, repState, this.#source.accessor);
-          const childDagIri = resolvedChildDagName !== null ? ContextResolver.expand(resolvedChildDagName, dagContext) : null;
-          if (resolvedChildDagName === null || childDagIri === null || !this.#source.dags.has(childDagIri)) {
+          // Resolve the child DAG to its expanded IRI before any in-process or
+          // container boundary sees it. Invalid or unregistered selections route
+          // every item to the placement's error output without executing.
+          const childDagIri = node.dag !== undefined
+            ? DagReferenceResolver.resolve({
+              'reference': node.dag,
+              'source': 'state',
+              'value': repState,
+              'context': dagContext,
+              'dags': this.#source.dags,
+              'accessor': this.#source.accessor,
+            })
+            : null;
+          if (childDagIri === null) {
             for (const item of parentItems) {
               const routeOutput = 'error';
               const nextPlacement = node.outputs[routeOutput] ?? null;

@@ -18,7 +18,6 @@ import { Batch } from '../entities/batch/Batch.js';
 import type { RoutedBatchType } from '../entities/batch/RoutedBatchType.js';
 import { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
 import type { DAGType } from '../entities/dag/DAG.js';
-import type { DagReferenceType } from '../entities/dag/DagReference.js';
 import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { ExecutionResultType } from '../entities/execution/ExecutionResult.js';
@@ -31,6 +30,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
+import { DagReferenceResolver } from './DagReferenceResolver.js';
 import { OutputContractApplier } from './OutputContractApplier.js';
 import { PlacementRouter } from './PlacementRouter.js';
 
@@ -280,28 +280,6 @@ export class ScatterPoolDriver
     return dag !== undefined ? ContextResolver.contextOf(dag['@context']) : {};
   }
 
-  #resolveScatterDagReference(
-    reference: DagReferenceType,
-    item: unknown,
-    dagContext: Record<string, unknown>,
-  ): string | null {
-    if (typeof reference === 'string') {
-      return ContextResolver.expand(reference, dagContext);
-    }
-    if (reference.from !== 'item' || typeof item !== 'object' || item === null) {
-      return null;
-    }
-    const resolved = this.#adapter.accessor.get(item, reference.path);
-    if (typeof resolved !== 'string' || resolved.length === 0) {
-      return null;
-    }
-    if (!reference.candidates.includes(resolved)) {
-      return null;
-    }
-    const resolvedIri = ContextResolver.expand(resolved, dagContext);
-    return this.#adapter.dags.has(resolvedIri) ? resolvedIri : null;
-  }
-
   async executeItem(itemIndex: number, item: unknown): Promise<ScatterItemResultType> {
     const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
     const dagContext = this.#dagContext();
@@ -360,7 +338,14 @@ export class ScatterPoolDriver
       for (const warn of cloneState.warnings) state.collectWarning(warn);
       return { 'index': itemIndex, item, output, 'terminalOutcome': null, 'cloneState': cloneState };
     } else {
-      const bodyDagName = this.#resolveScatterDagReference(scatter.body.dag, item, dagContext);
+      const bodyDagName = DagReferenceResolver.resolve({
+        'reference': scatter.body.dag,
+        'source': 'item',
+        'value': item,
+        'context': dagContext,
+        'dags': this.#adapter.dags,
+        'accessor': this.#adapter.accessor,
+      });
       if (bodyDagName === null) {
         const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
         errorClone.deleteMetadata(SCATTER_PROGRESS_KEY);
@@ -590,7 +575,14 @@ export class ScatterPoolDriver
     // Resolve the declared DAG reference. Batch execution resolves dynamic
     // references against the first item because reservoir batches are grouped
     // by reservoir key; Phase 5+ retains selected DAGs per record.
-    const batchBodyDagName = this.#resolveScatterDagReference(scatter.body.dag, items[0]?.item, dagContext);
+    const batchBodyDagName = DagReferenceResolver.resolve({
+      'reference': scatter.body.dag,
+      'source': 'item',
+      'value': items[0]?.item,
+      'context': dagContext,
+      'dags': this.#adapter.dags,
+      'accessor': this.#adapter.accessor,
+    });
     if (batchBodyDagName === null) {
       return {
         'results': items.map((buffered) => {

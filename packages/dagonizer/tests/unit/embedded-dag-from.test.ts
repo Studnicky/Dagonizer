@@ -19,6 +19,10 @@ import type { Batch } from '../../src/entities/batch/Batch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import { DagReferenceResolver } from '../../src/execution/DagReferenceResolver.js';
+import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
+import { DagGraphQueries } from '../../src/graph/DagGraphQueries.js';
+import { InMemoryTopologyStore } from '../../src/graph/InMemoryTopologyStore.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 
@@ -169,6 +173,36 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
     assert.equal(state.executed, 1, 'child increment maps back into parent state');
   });
 
+  void it('resolves an expanded DAG IRI from a state path and executes the declared candidate', async () => {
+    const probe = new ExecutionProbe();
+    const incrNode = new IncrNode('incr', probe);
+    const setNode = new SetDagNode('set-dag', 'https://noocodex.dev/dag/default#child-expanded');
+    const childDag = TestDag.child('child-expanded');
+
+    const parentDag = new DAGBuilder('parent-expanded', '1')
+      .node('set-dag', setNode, { 'success': 'invoke' })
+      .embeddedDAG<RoutingState, RoutingState>('invoke', { 'from': 'state', 'path': 'selectedDag', 'candidates': ['child-expanded'] }, { 'success': 'end', 'error': 'end-fail' }, {
+        'inputs':  { 'executed': 'executed' },
+        'outputs': { 'executed': 'executed' },
+      })
+      .terminal('end')
+      .terminal('end-fail', { 'outcome': 'failed' })
+      .build();
+
+    const dispatcher = new Dagonizer<RoutingState>();
+    dispatcher.registerNode(incrNode);
+    dispatcher.registerNode(setNode);
+    dispatcher.registerDAG(childDag);
+    dispatcher.registerDAG(parentDag);
+
+    const state = new RoutingState();
+    const result = await dispatcher.execute('parent-expanded', state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.equal(probe.count, 1);
+    assert.equal(state.executed, 1);
+  });
+
   void it('routes to error when the state value is not in the candidate set', async () => {
     const setNode = new SetDagNode('set-dag', 'does-not-exist');
     const childDag = TestDag.child('child-a');
@@ -246,6 +280,39 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     assert.equal(probe.count, 3, 'child dag should run once per item');
   });
 
+  void it('resolves expanded DAG IRIs from scatter items and runs the declared candidate', async () => {
+    const probe = new ExecutionProbe();
+    const incrNode = new IncrNode('incr', probe);
+    const childDag = TestDag.child('scatter-expanded-child');
+
+    const parentDag = new DAGBuilder('scatter-expanded-parent', '1')
+      .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['scatter-expanded-child'] } }, {
+        'all-success': 'end',
+        'partial':     'end',
+        'all-error':   'end',
+        'empty':       'end',
+      }, {
+        'gather': { 'strategy': 'discard' },
+      })
+      .terminal('end')
+      .build();
+
+    const dispatcher = new Dagonizer<RoutingState>();
+    dispatcher.registerNode(incrNode);
+    dispatcher.registerDAG(childDag);
+    dispatcher.registerDAG(parentDag);
+
+    const state = new RoutingState();
+    state.items = [
+      { 'dagName': 'https://noocodex.dev/dag/default#scatter-expanded-child' },
+      { 'dagName': 'https://noocodex.dev/dag/default#scatter-expanded-child' },
+    ];
+    const result = await dispatcher.execute('scatter-expanded-parent', state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.equal(probe.count, 2);
+  });
+
   void it('routes scatter items to error when the item value is not in the candidate set', async () => {
     const probe = new ExecutionProbe();
     const incrNode = new IncrNode('incr', probe);
@@ -275,6 +342,22 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     // All items routed to their error output; scatter still reaches its terminal.
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(probe.count, 0, 'no child dag ran');
+  });
+});
+
+void describe('DagReferenceResolver', () => {
+  void it('asserts selected DAG bindings into a topology store', () => {
+    const store = new InMemoryTopologyStore();
+    const selectedDagIri = 'https://noocodex.dev/dag/default#selected-child';
+    const ownerPlacementIri = DagGraphProjector.placementIri('https://noocodex.dev/dag/default#parent', 'invoke');
+
+    DagReferenceResolver.bindSelectedDag({
+      store,
+      ownerPlacementIri,
+      selectedDagIri,
+    });
+
+    assert.deepEqual(DagGraphQueries.selectedDagIris(store), [selectedDagIri]);
   });
 });
 
