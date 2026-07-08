@@ -35,7 +35,10 @@ export class GatherBuffers {
     if (!this.ready(node)) return [];
     const records = this.#records.get(node.name);
     this.#records.delete(node.name);
-    return records === undefined ? [] : [...records.values()];
+    if (records === undefined) return [];
+    const policy = GatherNodeDefaults.policy(node);
+    const selectedSources = GatherBuffers.selectedSources(node.sources, [...records.values()], policy.mode, policy.quorum);
+    return GatherBuffers.recordsForSources([...records.values()], selectedSources, policy.includeErrors);
   }
 
   restore(progress: GatherProgressType, state: NodeStateInterface): void {
@@ -75,5 +78,43 @@ export class GatherBuffers {
       });
     }
     return { entries };
+  }
+
+  private static selectedSources(
+    declaredSources: readonly string[],
+    records: readonly GatherRecordType[],
+    mode: 'all' | 'any' | 'quorum',
+    quorum: number | null,
+  ): readonly string[] {
+    if (mode === 'all') return declaredSources;
+
+    const arrived: string[] = [];
+    for (const record of records) {
+      if (!declaredSources.includes(record.source)) continue;
+      if (!arrived.includes(record.source)) arrived.push(record.source);
+    }
+
+    if (mode === 'any') return arrived.slice(0, 1);
+    return arrived.slice(0, quorum ?? declaredSources.length);
+  }
+
+  private static recordsForSources(
+    records: readonly GatherRecordType[],
+    sources: readonly string[],
+    includeErrors: boolean,
+  ): GatherRecordType[] {
+    const selected: GatherRecordType[] = [];
+    for (const source of sources) {
+      const sourceRecords = records
+        .filter((record) => record.source === source)
+        .filter((record) => includeErrors || (record.output !== 'error' && record.terminalOutcome !== 'failed'))
+        .sort((left, right) => GatherBuffers.indexOf(left) - GatherBuffers.indexOf(right));
+      selected.push(...sourceRecords);
+    }
+    return selected;
+  }
+
+  private static indexOf(record: GatherRecordType): number {
+    return record.index ?? 0;
   }
 }

@@ -53,6 +53,123 @@ void describe('Dagonizer scatter gather strategies', () => {
     assert.deepEqual(state.seenSources, ['left', 'right']);
   });
 
+  void it('first-class gather any policy keeps only the first arrived source', async () => {
+    class AnyState extends NodeStateBase {
+      seenSources: string[] = [];
+    }
+
+    const dispatcher = new Dagonizer<AnyState>();
+    const left = TestNode.make<AnyState>('left-any', ['success']);
+    const right = TestNode.make<AnyState>('right-any', ['success']);
+    const merge = TestNode.make<AnyState>('merge-any', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenSources = records.map((record) => String(record['source'])).sort();
+      return 'success';
+    });
+
+    dispatcher.registerNode(left);
+    dispatcher.registerNode(right);
+    dispatcher.registerNode(merge);
+
+    const dag = new DAGBuilder('gather-any-policy', '1')
+      .node('left-node', left, { 'success': 'join' })
+      .node('right-node', right, { 'success': 'join' })
+      .gather('join', ['left', 'right'], { 'strategy': 'custom', 'customNode': 'merge-any' }, { 'success': 'end', 'error': 'failed' }, {
+        'policy': { 'mode': 'any' },
+      })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .entrypoints({ 'left': 'left-node', 'right': 'right-node' })
+      .build();
+    dispatcher.registerDAG(dag);
+
+    const state = new AnyState();
+    const result = await dispatcher.execute('gather-any-policy', state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.deepEqual(state.seenSources, ['left']);
+  });
+
+  void it('first-class gather quorum policy keeps the first quorum source groups', async () => {
+    class QuorumState extends NodeStateBase {
+      seenSources: string[] = [];
+    }
+
+    const dispatcher = new Dagonizer<QuorumState>();
+    const first = TestNode.make<QuorumState>('first-quorum', ['success']);
+    const second = TestNode.make<QuorumState>('second-quorum', ['success']);
+    const third = TestNode.make<QuorumState>('third-quorum', ['success']);
+    const merge = TestNode.make<QuorumState>('merge-quorum', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenSources = records.map((record) => String(record['source'])).sort();
+      return 'success';
+    });
+
+    dispatcher.registerNode(first);
+    dispatcher.registerNode(second);
+    dispatcher.registerNode(third);
+    dispatcher.registerNode(merge);
+
+    const dag = new DAGBuilder('gather-quorum-policy', '1')
+      .node('first-node', first, { 'success': 'join' })
+      .node('second-node', second, { 'success': 'join' })
+      .node('third-node', third, { 'success': 'join' })
+      .gather('join', ['first', 'second', 'third'], { 'strategy': 'custom', 'customNode': 'merge-quorum' }, { 'success': 'end', 'error': 'failed' }, {
+        'policy': { 'mode': 'quorum', 'quorum': 2 },
+      })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .entrypoints({ 'first': 'first-node', 'second': 'second-node', 'third': 'third-node' })
+      .build();
+    dispatcher.registerDAG(dag);
+
+    const state = new QuorumState();
+    const result = await dispatcher.execute('gather-quorum-policy', state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.deepEqual(state.seenSources, ['first', 'second']);
+  });
+
+  void it('first-class gather can exclude error records from strategy input', async () => {
+    class IncludeErrorsState extends NodeStateBase {
+      seenSources: string[] = [];
+    }
+
+    const dispatcher = new Dagonizer<IncludeErrorsState>();
+    const bad = TestNode.make<IncludeErrorsState>('bad-source', ['error'], () => 'error');
+    const good = TestNode.make<IncludeErrorsState>('good-source', ['success']);
+    const merge = TestNode.make<IncludeErrorsState>('merge-include-errors', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenSources = records.map((record) => String(record['source'])).sort();
+      return 'success';
+    });
+
+    dispatcher.registerNode(bad);
+    dispatcher.registerNode(good);
+    dispatcher.registerNode(merge);
+
+    const dag = new DAGBuilder('gather-include-errors-policy', '1')
+      .node('bad-node', bad, { 'error': 'join' })
+      .node('good-node', good, { 'success': 'join' })
+      .gather('join', ['bad', 'good'], { 'strategy': 'custom', 'customNode': 'merge-include-errors' }, { 'success': 'end', 'error': 'failed' }, {
+        'policy': { 'includeErrors': false },
+      })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .entrypoints({ 'bad': 'bad-node', 'good': 'good-node' })
+      .build();
+    dispatcher.registerDAG(dag);
+
+    const state = new IncludeErrorsState();
+    const result = await dispatcher.execute('gather-include-errors-policy', state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.deepEqual(state.seenSources, ['good']);
+  });
+
   void it('first-class gather resumes after one producer is buffered', async () => {
     class MultiEntryState extends NodeStateBase {
       seenSources: string[] = [];
