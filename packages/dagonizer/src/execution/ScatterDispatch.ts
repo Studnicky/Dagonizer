@@ -375,7 +375,7 @@ export class ScatterPoolDriver
 
       for (const err of cloneState.errors) state.collectError(err);
       for (const warn of cloneState.warnings) state.collectWarning(warn);
-      return { 'index': itemIndex, item, output, 'terminalOutcome': null, 'cloneState': cloneState };
+      return { 'index': itemIndex, item, output, 'terminalOutcome': null, 'cloneState': cloneState, 'selectedDagIri': null };
     } else {
       const bodyDagName = DagReferenceResolver.resolve({
         'reference': scatter.body.dag,
@@ -391,7 +391,7 @@ export class ScatterPoolDriver
         errorClone.deleteMetadata(WORKSET_PROGRESS_KEY);
         errorClone.setMetadata(itemKey, item);
         errorClone.setMetadata('itemIndex', itemIndex);
-        return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone };
+        return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone, 'selectedDagIri': null };
       }
 
       this.#bindItemSelectedDag(scatter.name, itemIndex, bodyDagName);
@@ -451,7 +451,7 @@ export class ScatterPoolDriver
       for (const err of cloneState.errors) state.collectError(err);
       for (const warn of cloneState.warnings) state.collectWarning(warn);
 
-      return { 'index': itemIndex, item, output, 'terminalOutcome': body.terminalOutcome, 'cloneState': cloneState };
+      return { 'index': itemIndex, item, output, 'terminalOutcome': body.terminalOutcome, 'cloneState': cloneState, 'selectedDagIri': bodyDagName };
     }
   }
 
@@ -469,6 +469,10 @@ export class ScatterPoolDriver
       result,
       'cloneState': res.cloneState,
     };
+  }
+
+  #selectedDagFields(res: ScatterItemResultType): { readonly selectedDag?: string } {
+    return res.selectedDagIri === null ? {} : { 'selectedDag': res.selectedDagIri };
   }
 
   async ackItem(res: ScatterItemResultType): Promise<void> {
@@ -511,15 +515,15 @@ export class ScatterPoolDriver
           for (const clonePath of Object.keys(scatter.gather.mapping)) {
             snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
           }
-          return { 'variant': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot, 'result': freshRecord.result };
+          return { 'variant': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot, 'result': freshRecord.result, ...this.#selectedDagFields(res) };
         }
         if (
           (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
           scatter.gather.field !== undefined
         ) {
-          return { 'variant': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field), 'result': freshRecord.result };
+          return { 'variant': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field), 'result': freshRecord.result, ...this.#selectedDagFields(res) };
         }
-        return { 'variant': 'plain' as const, 'index': itemIndex, 'item': item, output, 'result': freshRecord.result };
+        return { 'variant': 'plain' as const, 'index': itemIndex, 'item': item, output, 'result': freshRecord.result, ...this.#selectedDagFields(res) };
       })();
       ackedResults.push(ackedResult);
       ackedByIndex.set(itemIndex, ackedResult);
@@ -607,6 +611,7 @@ export class ScatterPoolDriver
           'output': outputById.get(String(buffered.index)) ?? 'error',
           'terminalOutcome': null,
           'cloneState': clone,
+          'selectedDagIri': null,
         });
       }
 
@@ -635,7 +640,7 @@ export class ScatterPoolDriver
           clone.setMetadata('itemIndex', buffered.index);
           for (const err of clone.errors) state.collectError(err);
           for (const warn of clone.warnings) state.collectWarning(warn);
-          return { 'index': buffered.index, 'item': buffered.item, 'output': 'error', 'terminalOutcome': 'failed' as const, 'cloneState': clone };
+          return { 'index': buffered.index, 'item': buffered.item, 'output': 'error', 'terminalOutcome': 'failed' as const, 'cloneState': clone, 'selectedDagIri': null };
         }),
       };
     }
@@ -704,6 +709,7 @@ export class ScatterPoolDriver
           output,
           terminalOutcome,
           'cloneState': clone,
+          'selectedDagIri': batchBodyDagName,
         });
       }
 
@@ -784,6 +790,7 @@ export class ScatterPoolDriver
           'output': 'error',
           'terminalOutcome': 'failed' as const,
           'cloneState': clone,
+          'selectedDagIri': batchBodyDagName,
         });
         continue;
       }
@@ -807,6 +814,7 @@ export class ScatterPoolDriver
         output,
         terminalOutcome,
         'cloneState': clone,
+        'selectedDagIri': batchBodyDagName,
       });
     }
 
@@ -847,15 +855,15 @@ export class ScatterPoolDriver
             for (const clonePath of Object.keys(scatter.gather.mapping)) {
               snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
             }
-            return { 'variant': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot, 'result': freshRecord.result };
+            return { 'variant': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot, 'result': freshRecord.result, ...this.#selectedDagFields(res) };
           }
           if (
             (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
             scatter.gather.field !== undefined
           ) {
-            return { 'variant': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field), 'result': freshRecord.result };
+            return { 'variant': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field), 'result': freshRecord.result, ...this.#selectedDagFields(res) };
           }
-          return { 'variant': 'plain' as const, 'index': itemIndex, 'item': item, output, 'result': freshRecord.result };
+          return { 'variant': 'plain' as const, 'index': itemIndex, 'item': item, output, 'result': freshRecord.result, ...this.#selectedDagFields(res) };
         })();
         ackedResults.push(ackedResult);
         ackedByIndex.set(itemIndex, ackedResult);

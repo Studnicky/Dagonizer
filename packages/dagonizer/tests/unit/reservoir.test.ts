@@ -540,6 +540,7 @@ class FakeDriver {
             'output':          'success',
             'terminalOutcome': null,
             'cloneState':      new NodeStateBase(),
+            'selectedDagIri':  null,
           })),
         };
       },

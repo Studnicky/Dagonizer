@@ -16,6 +16,7 @@ import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { Batch } from '../../src/entities/batch/Batch.js';
+import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
@@ -67,6 +68,33 @@ class IncrNode extends MonadicNode<RoutingState, 'success' | 'error'> {
     for (const item of batch) {
       item.state.executed += 1;
       this.#probe.count += 1;
+    }
+    return new Map([['success', batch]]);
+  }
+}
+
+/** Increments the probe and optionally aborts after the first scatter item. */
+class AbortOnFirstItemNode extends MonadicNode<RoutingState, 'success'> {
+  readonly name: string;
+  readonly outputs = ['success'] as const;
+  override get outputSchema(): Record<string, SchemaObjectType> { return { 'success': { 'type': 'object' } }; }
+  readonly #probe: ExecutionProbe;
+  readonly #controller: AbortController | null;
+
+  constructor(name: string, probe: ExecutionProbe, controller: AbortController | null) {
+    super();
+    this.name = name;
+    this.#probe = probe;
+    this.#controller = controller;
+  }
+
+  override async execute(
+    batch: Batch<RoutingState>,
+    _ctx: NodeContextType,
+  ): Promise<Map<'success', Batch<RoutingState>>> {
+    for (const item of batch) {
+      this.#probe.count += 1;
+      if (item.state.getMetadata('itemIndex') === 0) this.#controller?.abort();
     }
     return new Map([['success', batch]]);
   }
@@ -330,6 +358,73 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
       ],
     );
     assert.deepEqual(DagGraphQueries.selectedDagIris(store), [selectedDagIri]);
+  });
+
+  void it('retained scatter resume rebinds selected DAGs from checkpointed acked items', async () => {
+    const controller = new AbortController();
+    const firstProbe = new ExecutionProbe();
+    const resumeProbe = new ExecutionProbe();
+    const childADag = TestDag.child('retained-selected-child-a');
+    const childBDag = TestDag.child('retained-selected-child-b');
+    const parentDag = new DAGBuilder('retained-selected-parent', '1')
+      .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['retained-selected-child-a', 'retained-selected-child-b'] } }, {
+        'all-success': 'end',
+        'partial':     'end',
+        'all-error':   'end',
+        'empty':       'end',
+      }, {
+        'gather': { 'strategy': 'custom', 'customNode': 'merge-retained-selected' },
+        'execution': { 'mode': 'item', 'concurrency': 1 },
+      })
+      .terminal('end')
+      .build();
+
+    const childAIri = DagGraphProjector.dagIri(childADag);
+    const childBIri = DagGraphProjector.dagIri(childBDag);
+    const firstDispatcher = new Dagonizer<RoutingState>();
+    firstDispatcher.registerNode(new AbortOnFirstItemNode('incr', firstProbe, controller));
+    firstDispatcher.registerNode(new IncrNode('merge-retained-selected', new ExecutionProbe()));
+    firstDispatcher.registerDAG(childADag);
+    firstDispatcher.registerDAG(childBDag);
+    firstDispatcher.registerDAG(parentDag);
+
+    const state = new RoutingState();
+    state.items = [{ 'dagName': childAIri }, { 'dagName': childBIri }];
+    const partial = await firstDispatcher.execute('retained-selected-parent', state, {
+      'signal': controller.signal,
+    });
+
+    assert.equal(partial.cursor, 'scatter');
+    assert.equal(firstProbe.count, 1);
+    const rawProgress = partial.state.getMetadata(SCATTER_PROGRESS_KEY);
+    assert.ok(rawProgress !== undefined, 'retained scatter checkpoint should be present');
+    const progress = Validator.storedScatterProgress.validate(rawProgress);
+    const scatterProgress = progress['scatter'];
+    assert.equal(scatterProgress?.mode, 'retained');
+    assert.equal(scatterProgress.ackedResults[0]?.selectedDag, childAIri);
+
+    partial.state.items = [{ 'dagName': childBIri }, { 'dagName': childBIri }];
+    const resumeStore = new InMemoryTopologyStore();
+    const resumeDispatcher = new Dagonizer<RoutingState>({
+      'executionTopologyStore': resumeStore,
+    });
+    resumeDispatcher.registerNode(new AbortOnFirstItemNode('incr', resumeProbe, null));
+    resumeDispatcher.registerNode(new IncrNode('merge-retained-selected', new ExecutionProbe()));
+    resumeDispatcher.registerDAG(childADag);
+    resumeDispatcher.registerDAG(childBDag);
+    resumeDispatcher.registerDAG(parentDag);
+
+    const resumed = await resumeDispatcher.resume('retained-selected-parent', partial.state, 'scatter');
+
+    assert.equal(resumed.terminalOutcome, 'completed');
+    assert.equal(resumeProbe.count, 1, 'resume should not re-run the already-acked first item');
+    const ownerBaseIri = DagGraphProjector.placementIri(DagGraphProjector.dagIri(parentDag), 'scatter');
+    const rows = [...DagGraphQueries.selectedDagRows(resumeStore)]
+      .sort((a, b) => a.ownerIri.localeCompare(b.ownerIri));
+    assert.deepEqual(rows, [
+      { 'ownerIri': `${ownerBaseIri}/item/0`, 'dagIri': childAIri },
+      { 'ownerIri': `${ownerBaseIri}/item/1`, 'dagIri': childBIri },
+    ]);
   });
 
   void it('routes scatter items to error when the item value is not in the candidate set', async () => {

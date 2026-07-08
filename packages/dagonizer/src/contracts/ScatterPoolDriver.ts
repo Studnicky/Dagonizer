@@ -41,6 +41,8 @@ export type ScatterItemResultType = {
    * isolation factories may produce child states whose class differs from the parent.
    */
   cloneState: NodeStateInterface;
+  /** Resolved DAG IRI for DAG-body scatter items; null for node bodies or unresolved references. */
+  selectedDagIri: string | null;
 };
 
 /**

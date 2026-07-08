@@ -3,12 +3,15 @@ import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { OutcomeRecordType } from '../contracts/OutcomeRecord.js';
 import { GatherStrategies } from '../core/GatherStrategies.js';
 import { OutcomeReducers } from '../core/OutcomeReducers.js';
+import { ContextResolver } from '../dag/ContextResolver.js';
 import { ScatterNodeDefaults } from '../entities/dag/ScatterNode.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
+import { DagGraphProjector } from '../graph/DagGraphProjector.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
+import { DagReferenceResolver } from './DagReferenceResolver.js';
 import type { Gather } from './Gather.js';
 import { ReservoirBuffer } from './ReservoirBuffer.js';
 import { ScatterDispatchAdapter, ScatterPoolDriver } from './ScatterDispatch.js';
@@ -43,6 +46,23 @@ export class ScatterExecutor {
     this.#scatterSource = scatterSource;
     this.#bodyExecutor = bodyExecutor;
     this.#gather = gather;
+  }
+
+  #dagIri(dagName: string): string {
+    const dag = this.#scatterSource.dags.get(ContextResolver.expand(dagName, {}));
+    return dag !== undefined ? DagGraphProjector.dagIri(dag) : ContextResolver.expand(dagName, {});
+  }
+
+  #itemBodyIri(dagName: string, scatterName: string, itemIndex: number): string {
+    return `${DagGraphProjector.placementIri(this.#dagIri(dagName), scatterName)}/item/${String(itemIndex)}`;
+  }
+
+  #bindRestoredSelectedDag(dagName: string, scatterName: string, itemIndex: number, selectedDagIri: string): void {
+    DagReferenceResolver.bindSelectedDag({
+      'store': this.#scatterSource.executionTopologyStore,
+      'ownerPlacementIri': this.#itemBodyIri(dagName, scatterName, itemIndex),
+      selectedDagIri,
+    });
   }
 
   async executeScatter(
@@ -263,6 +283,9 @@ export class ScatterExecutor {
             }
           } else if (acked.variant === 'field' && scatter.gather.field !== undefined) {
             this.#scatterSource.accessor.set(syntheticClone, scatter.gather.field, acked.fieldValue);
+          }
+          if ('selectedDag' in acked && typeof acked.selectedDag === 'string') {
+            this.#bindRestoredSelectedDag(dagName, scatter.name, acked.index, acked.selectedDag);
           }
           syntheticRecords.push({
             'source': scatter.name,
