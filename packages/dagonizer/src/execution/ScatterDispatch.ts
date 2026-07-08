@@ -303,6 +303,22 @@ export class ScatterPoolDriver
     });
   }
 
+  persistCheckpoint(): void {
+    const { scatter, state, inbox, ackedResults, compactable, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
+    if (compactable) {
+      ScatterCheckpoint.writeBounded(
+        state,
+        scatter.name,
+        [...inbox],
+        watermarkRef.value,
+        [...aheadAcked.entries()].map(([index, output]) => ({ index, output })),
+        Object.fromEntries(outcomeTally),
+      );
+    } else {
+      ScatterCheckpoint.writeRetained(state, scatter.name, [...inbox], [...ackedResults]);
+    }
+  }
+
   async executeItem(itemIndex: number, item: unknown): Promise<ScatterItemResultType> {
     const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
     const dagContext = this.#dagContext();
@@ -422,6 +438,7 @@ export class ScatterPoolDriver
       // collected the error into cloneState; the throw is the scatter-only
       // re-queue policy (embedded routes the collected error instead).
       if (body.infrastructureError !== null) {
+        this.persistCheckpoint();
         throw new DAGError(
           `ScatterNode '${scatter.name}': container infrastructure failure — ${body.infrastructureError.message ?? 'transport lost'}`,
           { 'code': 'EXECUTION_ERROR' },
