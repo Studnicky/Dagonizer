@@ -2,11 +2,13 @@
  * GeoSourceResolveDAG: validity-gated weighted scatter/gather geo-resolution sub-DAG.
  *
  * Scores all present, valid geo signals on the canonical event body, then fans
- * out one `resolve-one-signal` clone per signal. The `geo-weighted-fusion` gather
- * folds all resolved candidates by weight into `state.resolvedGeo`, `state.geoContext`,
- * and `state.routing.{geoConfidence,geoModalities}`. When no signals score (empty
- * source array), the engine skips the gather and routes to `geo-baseline` instead,
- * which writes the same baseline values directly.
+ * out one `resolve-one-signal` clone per signal. The scatter stage gathers raw
+ * `state.candidate` values into `state.geoCandidates`; the first-class
+ * `geo-weighted-fusion` gather node is the graph-visible barrier that folds
+ * candidates by weight into `state.resolvedGeo`, `state.geoContext`, and
+ * `state.routing.{geoConfidence,geoModalities}`. When no signals score (empty
+ * source array), the engine routes to `geo-baseline`, which writes the same
+ * baseline values directly.
  *
  * Topology:
  *   score-signals
@@ -15,11 +17,12 @@
  *                     route-signal → {resolve-coords, resolve-address, resolve-ip,
  *                                     resolve-code, resolve-phone, resolve-locale,
  *                                     resolve-none} → done
- *                   ├─all-success──► resolved
- *                   ├─partial──────► resolved
- *                   ├─all-error────► resolved
+ *                   ├─all-success──► geo-weighted-fusion
+ *                   ├─partial──────► geo-weighted-fusion
+ *                   ├─all-error────► geo-weighted-fusion
  *                   └─empty────────► geo-baseline
  *                                        └─baselined──► resolved
+ *   geo-weighted-fusion (gather) ─success/error──► resolved
  *   resolved: terminal (completed)
  *
  * DI: `ipGeolocator` and `addressGeocoder` are injected per-call so each
@@ -87,25 +90,37 @@ export class GeoSourceResolveDAG {
       })
 
       // 2. resolve-signals: scatter over state.geoSignals — one clone per descriptor.
-      //    Each clone runs resolve-one-signal; the geo-weighted-fusion gather folds
-      //    all candidates back by weight. Empty source routes to geo-baseline.
+      //    Each clone runs resolve-one-signal; the scatter-local map gather only
+      //    collects raw candidates so the explicit GatherNode below owns fusion.
       .scatter(
         'resolve-signals',
         'geoSignals',
         { 'dag': 'resolve-one-signal' },
         {
-          'all-success': 'resolved',
-          'partial':     'resolved',
-          'all-error':   'resolved',
+          'all-success': 'geo-weighted-fusion',
+          'partial':     'geo-weighted-fusion',
+          'all-error':   'geo-weighted-fusion',
           'empty':       'geo-baseline',
         },
         {
           'itemKey': 'geo-signal',
-          'gather':  { 'strategy': 'geo-weighted-fusion' },
+          'gather':  { 'strategy': 'map', 'mapping': { 'candidate': 'geoCandidates' } },
         },
       )
 
-      // 3. geo-baseline: writes the empty-resolution baseline when scatter was empty.
+      // 3. geo-weighted-fusion: first-class gather barrier over the scatter producer.
+      //    The strategy reads state.geoCandidates and writes the fused geo result.
+      .gather(
+        'geo-weighted-fusion',
+        ['resolve-signals'],
+        { 'strategy': 'geo-weighted-fusion' },
+        {
+          'success': 'resolved',
+          'error':   'resolved',
+        },
+      )
+
+      // 4. geo-baseline: writes the empty-resolution baseline when scatter was empty.
       .node('geo-baseline', geoBaseline, {
         'baselined': 'resolved',
       })

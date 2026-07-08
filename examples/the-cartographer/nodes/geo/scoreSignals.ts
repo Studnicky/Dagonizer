@@ -129,6 +129,7 @@ export class ScoreSignalsNode extends MonadicNode<CartographerState, 'scored'> {
     }
 
       item.state.geoSignals = descriptors;
+      item.state.geoCandidates = [];
     }
 
     return RoutedBatch.create('scored', batch);

@@ -1,12 +1,13 @@
 /**
  * GeoWeightedFusionGather: stateless weighted-fusion gather strategy for the
- * geo-source-resolve scatter phase.
+ * geo-source-resolve first-class gather barrier.
  *
- * Each scatter clone resolves one geo signal and writes the result as
- * `state.candidate` (a GeoResolution). This strategy:
+ * The upstream scatter clone resolves one geo signal and writes the result as
+ * `state.candidate` (a GeoResolution). The scatter-local map gather collects
+ * those values into `state.geoCandidates`. This strategy:
  *
- *   1. reduce:   Accumulates weight>0 candidates from each clone into
- *                `state.geoCandidates` (read-array, push, set-back idiom).
+ *   1. reduce:   Also accepts direct clone records for compatibility with
+ *                scatter-local strategy use.
  *
  *   2. finalize: Applies the weighted-fusion rules to produce
  *                `state.resolvedGeo`, `state.geoContext`, and merges
@@ -75,15 +76,13 @@ class GeoResolutionArray {
 export class GeoWeightedFusionGather extends GatherStrategy {
   readonly name = 'geo-weighted-fusion';
 
-  // ── initial: reset geoCandidates accumulator in parent state ─────────────
+  // ── initial: upstream scoring owns accumulator reset ─────────────────────
 
   override initial(
     _config: GatherConfigType,
-    state: NodeStateInterface,
-    accessor: StateAccessorInterface,
-  ): void {
-    accessor.set(state, 'geoCandidates', []);
-  }
+    _state: NodeStateInterface,
+    _accessor: StateAccessorInterface,
+  ): void { /* no-op */ }
 
   // ── reduce: collect weight>0 candidates from each clone ──────────────────
 
@@ -297,4 +296,4 @@ export class GeoWeightedFusionGather extends GatherStrategy {
 // ── Module-load registration ──────────────────────────────────────────────────
 
 GatherStrategies.register(new GeoWeightedFusionGather());
-// GatherStrategies.resolve('geo-weighted-fusion') now works in any scatter placement.
+// GatherStrategies.resolve('geo-weighted-fusion') now works in any gather placement.
