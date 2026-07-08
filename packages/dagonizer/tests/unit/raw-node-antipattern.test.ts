@@ -64,6 +64,7 @@ void describe('Antipattern — hand-rolled raw NodeInterface', () => {
       'name': 'tag-raw',
       'outputs': ['tagged', 'skip'] as const,
       'timeout': Timeout.none(),
+      'inputSchema': { 'type': 'object' },
       'outputSchema': {
         'tagged': { 'type': 'object' },
         'skip':   { 'type': 'object' },

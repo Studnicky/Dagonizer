@@ -91,6 +91,14 @@ export interface NodeInterface<
   readonly 'outputs': readonly TOutput[];
 
   /**
+   * JSON Schema 2020-12 declaration describing the state shape this node
+   * expects before execution. The permissive object schema means "no additional
+   * structural requirement"; concrete nodes can narrow this to make route and
+   * mapping compatibility visible to graph validation.
+   */
+  readonly 'inputSchema': SchemaObjectType;
+
+  /**
    * Per-output-port JSON Schema 2020-12 declarations describing the state delta
    * this node guarantees when it routes to that port. Every declared output port
    * in `outputs` MUST have an entry here (enforced at `registerNode`). Schemas

@@ -283,6 +283,7 @@ void describe('PhaseNode placements: post-phase execution', () => {
       'name': 'slow',
       'outputs': ['success'] as const,
       'timeout': Timeout.none(),
+      'inputSchema': { 'type': 'object' as const },
       'outputSchema': { 'success': { 'type': 'object' as const } },
       async execute(batch: Batch<TrackingState>, ctx): Promise<RoutedBatchType<'success', TrackingState>> {
         const acc = new Map<'success', ItemType<TrackingState>[]>();

@@ -38,7 +38,7 @@ import { Timeout } from '../entities/Timeout.js';
 import type { ValidationResultType } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-const PERMISSIVE_PORT_SCHEMA: SchemaObjectType = { 'type': 'object' };
+const PERMISSIVE_STATE_SCHEMA: SchemaObjectType = { 'type': 'object' };
 
 export abstract class MonadicNode<
   TState extends NodeStateInterface = NodeStateInterface,
@@ -49,7 +49,7 @@ export abstract class MonadicNode<
   ): Record<TOutput, SchemaObjectType> {
     const schema: Record<string, SchemaObjectType> = {};
     for (const output of outputs) {
-      schema[output] = PERMISSIVE_PORT_SCHEMA;
+      schema[output] = PERMISSIVE_STATE_SCHEMA;
     }
     return schema;
   }
@@ -65,6 +65,15 @@ export abstract class MonadicNode<
    * Subclasses override to set a concrete budget via `Timeout.ofMs(n)`.
    */
   readonly timeout: Timeout = Timeout.none();
+
+  /**
+   * Default input contract for nodes without stronger structural requirements.
+   * Subclasses override this getter when their incoming state has required
+   * fields that graph validation can check before execution.
+   */
+  get inputSchema(): SchemaObjectType {
+    return PERMISSIVE_STATE_SCHEMA;
+  }
 
   /**
    * Per-port output contract: a JSON Schema fragment for each declared output
