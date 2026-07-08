@@ -242,22 +242,24 @@ dispatcher.registerDAG(parentDag);                  // parent references plugin'
 
 #### `PluginDiscovery` (static DAG-walker)
 
-`PluginDiscovery` from `@studnicky/dagonizer/plugin` provides two static utilities for discovering which plugin DAGs a given entry DAG transitively needs:
+`PluginDiscovery` from `@studnicky/dagonizer/plugin` provides graph-backed utilities for discovering which plugin DAGs a given entry DAG transitively needs:
 
 ```ts
+import { DagGraphProjector } from '@studnicky/dagonizer/graph';
 import { PluginDiscovery } from '@studnicky/dagonizer/plugin';
 
-// Immediate literal dag references in one DAG's placement graph
+// Immediate literal and dynamic candidate references in one DAG's placement graph
 const names = PluginDiscovery.referencedDagNames(myDag);
+const iris = PluginDiscovery.referencedDagIris(myDag);
 
 // Breadth-first walk of the full reachable forest
-const registry = new Map(dispatcher.listDAGs().map(d => [d.name, d]));
-const all = PluginDiscovery.walk(myDag, registry);
+const registry = new Map(dispatcher.listDAGs().map(dag => [DagGraphProjector.dagIri(dag), dag]));
+const allDagIris = PluginDiscovery.walk(myDag, registry);
 ```
 
 Dynamic `DagReference` candidates are projected into the graph and participate in discovery. Literal DAG references and dynamic candidate DAGs use the same graph query path, so plugin DAGs and local DAGs stay on one registry surface.
 
-When applications want to render or inspect a whole reachable forest, the registry should be keyed by DAG name, not by plugin object identity. That keeps plugin DAGs and local DAGs on the same interface.
+When applications want to render or inspect a whole reachable forest, the registry should be keyed by expanded DAG IRI, not by plugin object identity. That keeps plugin DAGs and local DAGs on the same interface and matches the graph projection used by validation and JSON-LD rendering.
 
 #### `PluginLoader` — type-safe dynamic import
 
@@ -288,18 +290,19 @@ On failure, both `load` and `validate` throw a `DAGError` with `code: 'PLUGIN_IN
 To walk a DAG forest, load each referenced plugin module, and register the plugins on a dispatcher in a single call:
 
 ```ts
-import { PluginDiscovery } from '@studnicky/dagonizer/plugin';
+import { DagGraphProjector } from '@studnicky/dagonizer/graph';
+import { PluginDiscovery, PluginSpecifier } from '@studnicky/dagonizer/plugin';
 
-const registry = new Map(dispatcher.listDAGs().map(d => [d.name, d]));
+const registry = new Map(dispatcher.listDAGs().map(dag => [DagGraphProjector.dagIri(dag), dag]));
 await PluginDiscovery.loadAll(
   entryDag,
   registry,
   dispatcher,
-  (dagName) => `@myorg/dagonizer-plugin-${dagName}`,
+  PluginSpecifier.byIriPrefix(dispatcher),
 );
 ```
 
-`loadAll` uses `PluginLoader.load` internally; validation and `registerPlugin` are called for each name returned by `PluginDiscovery.walk`.
+`loadAll` uses `PluginLoader.load` internally; validation and `registerPlugin` are called for each import specifier resolved from the DAG IRIs returned by `PluginDiscovery.walk`.
 
 #### Full example
 
