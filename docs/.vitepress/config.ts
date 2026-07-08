@@ -179,7 +179,6 @@ const sidebar = [
     collapsed: false,
     items: [
       { text: 'Plugins', link: '/guide/plugins' },
-      { text: 'Unified Plugin Embedding Plan', link: '/guide/unified-plugin-embedding-plan' },
     ],
   },
   {
