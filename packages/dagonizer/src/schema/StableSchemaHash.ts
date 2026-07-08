@@ -1,15 +1,11 @@
-import { StructuralHash } from '@studnicky/json';
+import { Hash } from '@studnicky/json';
 
 import type { SchemaObjectType } from '../contracts/NodeInterface.js';
 
-export class StableSchemaHash extends StructuralHash {
+export class StableSchemaHash extends Hash {
   private constructor() { super(); }
 
-  protected static override isMetadataKey(key: string): boolean {
-    return key === 'description' || key === 'title';
-  }
-
-  static override of(schema: SchemaObjectType): string {
-    return super.of(schema);
+  static of(schema: SchemaObjectType): string {
+    return this.value(schema);
   }
 }

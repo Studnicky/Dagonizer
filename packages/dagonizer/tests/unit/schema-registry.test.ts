@@ -31,12 +31,12 @@ void describe('schema identity and registry', () => {
     assert.equal(SchemaIdentity.for(left), SchemaIdentity.for(right));
   });
 
-  void it('hashes schemas with the substrate structural hash', () => {
+  void it('hashes schemas with the substrate browser-safe hash', () => {
     const schema: SchemaObjectType = { 'type': 'object' };
     assert.equal(StableSchemaHash.of(schema), '932b0415');
   });
 
-  void it('hashes schemas independent of presentation annotations', () => {
+  void it('preserves schema annotations in contract hashes', () => {
     const canonical: SchemaObjectType = {
       'type': 'object',
       'required': ['title'],
@@ -50,10 +50,10 @@ void describe('schema identity and registry', () => {
       'properties': { 'title': { 'type': 'string', 'description': 'Display title' } },
     };
 
-    assert.equal(StableSchemaHash.of(canonical), StableSchemaHash.of(annotated));
+    assert.notEqual(StableSchemaHash.of(canonical), StableSchemaHash.of(annotated));
   });
 
-  void it('preserves schema ids in structural hashes', () => {
+  void it('preserves schema ids in contract hashes', () => {
     const left: SchemaObjectType = { '$id': 'urn:test:left', 'type': 'object' };
     const right: SchemaObjectType = { '$id': 'urn:test:right', 'type': 'object' };
 
@@ -85,7 +85,7 @@ void describe('schema identity and registry', () => {
     assert.notEqual(StableSchemaHash.of(canonical), StableSchemaHash.of(annotated));
   });
 
-  void it('preserves validation-affecting keywords in structural hashes', () => {
+  void it('preserves validation-affecting keywords in contract hashes', () => {
     const base: SchemaObjectType = { 'type': 'string' };
     const minLength: SchemaObjectType = { 'type': 'string', 'minLength': 1 };
     const enumSchema: SchemaObjectType = { 'type': 'string', 'enum': ['ready'] };
@@ -96,7 +96,7 @@ void describe('schema identity and registry', () => {
     assert.notEqual(StableSchemaHash.of(base), StableSchemaHash.of(formatted));
   });
 
-  void it('uses $id for identity while structural hashes preserve $id semantics', () => {
+  void it('uses $id for identity while contract hashes preserve $id semantics', () => {
     const left: SchemaObjectType = { '$id': 'urn:test:left', 'type': 'object' };
     const right: SchemaObjectType = { '$id': 'urn:test:right', 'type': 'object' };
 
