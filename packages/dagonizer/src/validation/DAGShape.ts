@@ -21,6 +21,9 @@ export class DAGShape {
     }
 
     for (const [label, entrypoint] of Object.entries(dag.entrypoints)) {
+      if (label.length === 0) {
+        errors.push(`Entrypoint label must be non-empty`);
+      }
       if (!nodeNames.has(entrypoint)) {
         errors.push(`Entrypoint '${label}' targets '${entrypoint}' which does not exist in nodes`);
       }

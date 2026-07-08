@@ -129,6 +129,7 @@ export const DAGSchema = {
     'entrypoints': {
       'type': 'object',
       'minProperties': 1,
+      'propertyNames': { 'minLength': 1 },
       'additionalProperties': { 'type': 'string', 'minLength': 1 },
     },
     'nodes': { 'type': 'array', 'items': DAGNodeEntrySchema, 'minItems': 1 },

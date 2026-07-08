@@ -38,6 +38,24 @@ void describe('DAGBuilder', () => {
     assert.deepEqual(dag.entrypoints, { 'main': 'plan' });
   });
 
+  void it('rejects empty entrypoint node names', () => {
+    assert.throws(
+      () => new DAGBuilder('bad-entrypoint', '1').entrypoint(''),
+      /entrypoint node name must be non-empty/u,
+    );
+  });
+
+  void it('rejects empty labeled entrypoint keys and targets', () => {
+    assert.throws(
+      () => new DAGBuilder('bad-entrypoint-label', '1').entrypoints({ '': 'start' }),
+      /entrypoint label must be non-empty/u,
+    );
+    assert.throws(
+      () => new DAGBuilder('bad-entrypoint-target', '1').entrypoints({ 'main': '' }),
+      /entrypoint 'main' node name must be non-empty/u,
+    );
+  });
+
   void it('produces a config the dispatcher accepts', () => {
     const dag = new DAGBuilder('via-builder', '1')
       .node('greet', greet, { 'success': 'plan' })

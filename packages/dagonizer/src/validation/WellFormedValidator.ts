@@ -44,19 +44,44 @@ export class WellFormedValidator {
   static check(dag: DAGType): readonly string[] {
     const violations: string[] = [];
 
-    // Build a set of all placement names for target resolution.
-    const placementNames = new Set<string>(dag.nodes.map((n: DAGNodeType) => n.name));
+    const placementNames = new Set<string>();
+    for (const placement of dag.nodes) {
+      if (placementNames.has(placement.name)) {
+        violations.push(`Duplicate placement name '${placement.name}'.`);
+      }
+      placementNames.add(placement.name);
+    }
+
+    WellFormedValidator.checkEntrypoints(dag, placementNames, violations);
+
+    const producerLabels = WellFormedValidator.gatherProducerLabels(dag);
 
     for (const node of dag.nodes) {
-      WellFormedValidator.checkPlacement(node, placementNames, violations);
+      WellFormedValidator.checkPlacement(node, placementNames, producerLabels, violations);
     }
 
     return violations;
   }
 
+  private static checkEntrypoints(
+    dag: DAGType,
+    placementNames: ReadonlySet<string>,
+    violations: string[],
+  ): void {
+    for (const [label, target] of Object.entries(dag.entrypoints)) {
+      if (label.length === 0) {
+        violations.push(`Entrypoint label must be non-empty.`);
+      }
+      if (!placementNames.has(target)) {
+        violations.push(`Entrypoint '${label}' targets '${target}', which does not exist in this DAG's placements.`);
+      }
+    }
+  }
+
   private static checkPlacement(
     node: DAGNodeType,
     placementNames: ReadonlySet<string>,
+    producerLabels: ReadonlySet<string>,
     violations: string[],
   ): void {
     // TerminalNode has no outputs; only check outcome.
@@ -75,8 +100,13 @@ export class WellFormedValidator {
       return;
     }
 
-    // SingleNode, ScatterNode, EmbeddedDAGNode: validate output route targets.
-    WellFormedValidator.checkOutputTargets(node, placementNames, violations);
+    if ('outputs' in node) {
+      WellFormedValidator.checkOutputTargets(node, placementNames, violations);
+    }
+
+    if (Placement.isGather(node)) {
+      WellFormedValidator.checkGatherSources(node.name, node.sources, producerLabels, violations);
+    }
   }
 
   /**
@@ -95,5 +125,38 @@ export class WellFormedValidator {
         );
       }
     }
+  }
+
+  private static checkGatherSources(
+    gatherName: string,
+    sources: readonly string[],
+    producerLabels: ReadonlySet<string>,
+    violations: string[],
+  ): void {
+    for (const source of sources) {
+      if (!producerLabels.has(source)) {
+        violations.push(
+          `GatherNode '${gatherName}': source '${source}' is not declared by an entrypoint or producer placement.`,
+        );
+      }
+    }
+  }
+
+  private static gatherProducerLabels(dag: DAGType): ReadonlySet<string> {
+    const labels = new Set(Object.keys(dag.entrypoints));
+    const gatherNames = new Set(
+      dag.nodes
+        .filter((node) => Placement.isGather(node))
+        .map((node) => node.name),
+    );
+
+    for (const node of dag.nodes) {
+      if (!('outputs' in node)) continue;
+      if (Object.values(node.outputs).some((target) => gatherNames.has(target))) {
+        labels.add(node.name);
+      }
+    }
+
+    return labels;
   }
 }

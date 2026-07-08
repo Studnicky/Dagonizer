@@ -225,6 +225,12 @@ export class DAGBuilder {
 
   /** Set (or override) the entrypoint node name. */
   entrypoint(nodeName: string): this {
+    if (nodeName.length === 0) {
+      throw new DAGError(
+        `DAGBuilder('${this.#name}'): entrypoint node name must be non-empty`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
     this.#entrypoints.clear();
     this.#entrypoints.set('main', nodeName);
     return this;
@@ -234,6 +240,18 @@ export class DAGBuilder {
   entrypoints(entries: Readonly<Record<string, string>>): this {
     this.#entrypoints.clear();
     for (const [label, nodeName] of Object.entries(entries)) {
+      if (label.length === 0) {
+        throw new DAGError(
+          `DAGBuilder('${this.#name}'): entrypoint label must be non-empty`,
+          { 'code': 'CONFIGURATION_ERROR' },
+        );
+      }
+      if (nodeName.length === 0) {
+        throw new DAGError(
+          `DAGBuilder('${this.#name}'): entrypoint '${label}' node name must be non-empty`,
+          { 'code': 'CONFIGURATION_ERROR' },
+        );
+      }
       this.#entrypoints.set(label, nodeName);
     }
     return this;

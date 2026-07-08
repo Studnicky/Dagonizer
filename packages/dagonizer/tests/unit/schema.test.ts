@@ -139,6 +139,15 @@ void describe('Validator.dag', () => {
     assert.throws(() => Validator.dag.validate(bad), DAGErrorPredicate.isValidationError);
   });
 
+  void it('rejects DAG with an empty entrypoint label', () => {
+    const bad = {
+      ...validDAG,
+      'entrypoints': { '': 's' },
+    };
+    assert.equal(Validator.dag.is(bad), false);
+    assert.throws(() => Validator.dag.validate(bad), DAGErrorPredicate.isValidationError);
+  });
+
   void it('rejects a flat DAG missing @context, @id, @type', () => {
     // A flat (non-JSON-LD) DAG must fail schema validation
     const flat = {

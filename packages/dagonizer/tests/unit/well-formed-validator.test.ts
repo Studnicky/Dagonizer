@@ -3,7 +3,9 @@
  *
  * Rules tested:
  *   1. All output targets must resolve to a placement name in dag.nodes.
- *   2. Structural guards: ScatterNode source, EmbeddedDAGNode dag, TerminalNode outcome.
+ *   2. Entrypoints target real placements.
+ *   3. Gather sources are declared by entrypoint labels or producer placements.
+ *   4. Structural guards: duplicate placement names and TerminalNode outcome.
  *
  * WellFormedValidator receives only schema-valid DAGs (outputs values are
  * strings, never null); null routes are schema-invalid and rejected by
@@ -107,6 +109,29 @@ void describe('WellFormedValidator', () => {
     assert.equal(violations.length, 2);
   });
 
+  void it('reports entrypoint labels and targets that are not valid DAG roots', () => {
+    const dag: DAGType = {
+      ...TestDagFixture.ofNodes([
+        TestPlacement.singleNode('start', { 'done': 'end' }),
+        TestPlacement.terminal('end', 'completed'),
+      ]),
+      'entrypoints': { '': 'start', 'missing': 'ghost' },
+    };
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.length, 2);
+    assert.match((violations[0] ?? ''), /Entrypoint label must be non-empty/u);
+    assert.match((violations[1] ?? ''), /Entrypoint 'missing' targets 'ghost'/u);
+  });
+
+  void it('reports duplicate placement names', () => {
+    const dag = TestDagFixture.ofNodes([
+      TestPlacement.singleNode('start', { 'done': 'end' }),
+      TestPlacement.terminal('start', 'completed'),
+    ]);
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.some((violation) => violation.includes("Duplicate placement name 'start'")), true);
+  });
+
   // ── Rule 2: ScatterNode checks ────────────────────────────────────────────
 
   void it('reports no violation for a well-formed ScatterNode', () => {
@@ -141,6 +166,47 @@ void describe('WellFormedValidator', () => {
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 0);
+  });
+
+  void it('accepts gather sources declared by entrypoint labels and producer placements', () => {
+    const dag: DAGType = {
+      ...TestDagFixture.ofNodes([
+        TestPlacement.singleNode('left-node', { 'success': 'join' }),
+        TestPlacement.singleNode('right-producer', { 'success': 'join' }),
+        {
+          '@id': 'urn:noocodex:dag:test/node/join',
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': ['left-label', 'right-producer'],
+          'gather': { 'strategy': 'discard' },
+          'outputs': { 'success': 'end', 'error': 'end' },
+        },
+        TestPlacement.terminal('end', 'completed'),
+      ]),
+      'entrypoints': { 'left-label': 'left-node', 'right-label': 'right-producer' },
+    };
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.length, 0);
+  });
+
+  void it('reports gather sources that are not declared by an entrypoint or producer placement', () => {
+    const dag: DAGType = {
+      ...TestDagFixture.ofNodes([
+        TestPlacement.singleNode('start', { 'success': 'join' }),
+        {
+          '@id': 'urn:noocodex:dag:test/node/join',
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': ['main', 'missing-source'],
+          'gather': { 'strategy': 'discard' },
+          'outputs': { 'success': 'end', 'error': 'end' },
+        },
+        TestPlacement.terminal('end', 'completed'),
+      ]),
+    };
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.length, 1);
+    assert.match((violations[0] ?? ''), /GatherNode 'join': source 'missing-source'/u);
   });
 
   // ── Rule: TerminalNode with valid outcome ─────────────────────────────────
