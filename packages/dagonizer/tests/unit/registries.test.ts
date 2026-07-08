@@ -302,6 +302,7 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
 
 class TestRegistryDag {
   private constructor() {}
+
   static singleNode(dagName: string, nodeName: string): DAGType {
     return {
       '@context': DAG_CONTEXT,
@@ -319,6 +320,69 @@ class TestRegistryDag {
       },
         { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
+    };
+  }
+
+  static embedded(dagName: string, placementName: string, childDag: string, outputs: Record<string, string> = { 'success': 'end', 'error': 'end' }): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id': `urn:noocodex:dag:${dagName}`,
+      '@type': 'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoints': { 'main': placementName },
+      'nodes': [{
+        '@id': `urn:noocodex:dag:${dagName}/node/${placementName}`,
+        '@type': 'EmbeddedDAGNode',
+        'name': placementName,
+        'dag': childDag,
+        outputs,
+      },
+        { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+  }
+
+  static dynamicEmbedded(dagName: string, placementName: string, candidates: string[]): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id': `urn:noocodex:dag:${dagName}`,
+      '@type': 'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoints': { 'main': placementName },
+      'nodes': [{
+        '@id': `urn:noocodex:dag:${dagName}/node/${placementName}`,
+        '@type': 'EmbeddedDAGNode',
+        'name': placementName,
+        'dag': {
+          '@type': 'DagReference',
+          'from': 'state',
+          'path': 'nextDag',
+          candidates,
+        },
+        'outputs': { 'success': 'end', 'error': 'end' },
+      },
+        { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+  }
+
+  static recursiveNoExit(dagName: string, placementName: string, childDag: string): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id': `urn:noocodex:dag:${dagName}`,
+      '@type': 'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoints': { 'main': placementName },
+      'nodes': [{
+        '@id': `urn:noocodex:dag:${dagName}/node/${placementName}`,
+        '@type': 'EmbeddedDAGNode',
+        'name': placementName,
+        'dag': childDag,
+        'outputs': { 'success': placementName, 'error': placementName },
+      }],
     };
   }
 }
@@ -366,7 +430,7 @@ void describe('Dagonizer.registerBundle', () => {
     assert.deepEqual(dispatcher.listDAGs(), []);
   });
 
-  void it('throws on a DAG referencing an unregistered node, with earlier nodes still registered', () => {
+  void it('throws on a DAG referencing an unregistered node and rolls back bundle additions', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
     const nodeA = TestNode.make('a', ['done'], () => 'done');
     const danglingDAG = TestRegistryDag.singleNode('dangling', 'missing');
@@ -376,8 +440,7 @@ void describe('Dagonizer.registerBundle', () => {
       /unknown registered node: missing/,
     );
 
-    // Node registered before the failing DAG is still installed.
-    assert.equal(dispatcher.getNode('a'), nodeA);
+    assert.equal(dispatcher.getNode('a'), undefined);
     assert.equal(dispatcher.getDAG('dangling'), undefined);
   });
 
@@ -392,5 +455,39 @@ void describe('Dagonizer.registerBundle', () => {
 
     assert.equal(dispatcher.getNode('a'), nodeA);
     assert.equal(dispatcher.getDAG('flowA'), dagA);
+  });
+
+  void it('resolves DAG references to DAGs defined later in the same bundle', () => {
+    const dispatcher = new Dagonizer<NodeStateInterface>();
+    const parentDag = TestRegistryDag.embedded('parent-flow', 'invoke-child', 'child-flow');
+    const childDag = TestRegistryDag.embedded('child-flow', 'recurse-parent', 'parent-flow');
+
+    dispatcher.registerBundle({ 'nodes': [], 'dags': [parentDag, childDag] });
+
+    assert.equal(dispatcher.getDAG('parent-flow'), parentDag);
+    assert.equal(dispatcher.getDAG('child-flow'), childDag);
+  });
+
+  void it('validates self-recursive dynamic DagReference candidates against the staged DAG registry', () => {
+    const dispatcher = new Dagonizer<NodeStateInterface>();
+    const selfDag = TestRegistryDag.dynamicEmbedded('self-flow', 'invoke-self', ['self-flow']);
+
+    dispatcher.registerBundle({ 'nodes': [], 'dags': [selfDag] });
+
+    assert.equal(dispatcher.getDAG('self-flow'), selfDag);
+  });
+
+  void it('rejects recursive components without a reachable terminal exit and rolls back staged DAGs', () => {
+    const dispatcher = new Dagonizer<NodeStateInterface>();
+    const dagA = TestRegistryDag.recursiveNoExit('loop-a', 'invoke-b', 'loop-b');
+    const dagB = TestRegistryDag.recursiveNoExit('loop-b', 'invoke-a', 'loop-a');
+
+    assert.throws(
+      () => dispatcher.registerBundle({ 'nodes': [], 'dags': [dagA, dagB] }),
+      /no terminal exit path/u,
+    );
+
+    assert.equal(dispatcher.getDAG('loop-a'), undefined);
+    assert.equal(dispatcher.getDAG('loop-b'), undefined);
   });
 });

@@ -12,6 +12,8 @@ import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementType } from '../entities/dag/SingleNode.js';
 import { DAGError } from '../errors/index.js';
+import { DagGraphProjector } from '../graph/DagGraphProjector.js';
+import { DagGraphQueries } from '../graph/DagGraphQueries.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 export class DAGValidator {
@@ -28,14 +30,28 @@ export class DAGValidator {
       DAGValidator.validateDAGNode(node, context, nodes, dags, errors);
     }
 
-    // No sub-DAG cycle detection is needed. `registerDAG` is append-only (a
-    // duplicate expanded IRI throws), and every EmbeddedDAGNode/ScatterNode body must
-    // reference an already-registered DAG (validated above). Sub-DAG references
-    // are therefore backward-only, so the reference graph is necessarily
-    // acyclic — a cycle cannot be constructed through the public registry.
-
     if (errors.length > 0) {
       throw new DAGError(`Invalid DAG '${dag.name}':\n  - ${errors.join('\n  - ')}`);
+    }
+  }
+
+  static validateReferenceGraph(dags: ReadonlyMap<string, DAGType>): void {
+    const errors: string[] = [];
+    const edges = DAGValidator.referenceEdges(dags);
+
+    for (const edge of edges) {
+      if (!dags.has(edge.targetDagIri)) {
+        errors.push(`DAG '${edge.sourceDagIri}' placement '${edge.sourcePlacement}' references unknown DAG '${edge.targetDagIri}'`);
+      }
+    }
+
+    for (const component of DAGValidator.stronglyConnectedComponents(dags.keys(), edges)) {
+      if (component.length === 1 && !DAGValidator.hasSelfEdge(component[0] ?? '', edges)) continue;
+      DAGValidator.validateRecursiveComponent(component, dags, errors);
+    }
+
+    if (errors.length > 0) {
+      throw new DAGError(`Invalid DAG registry graph:\n  - ${errors.join('\n  - ')}`);
     }
   }
 
@@ -163,5 +179,128 @@ export class DAGValidator {
         errors.push(`${owner}: unknown registered DAG '${candidate}'`);
       }
     }
+  }
+
+  private static referenceEdges(dags: ReadonlyMap<string, DAGType>): readonly {
+    readonly sourceDagIri: string;
+    readonly sourcePlacement: string;
+    readonly targetDagIri: string;
+    readonly dynamic: boolean;
+  }[] {
+    const edges: {
+      readonly sourceDagIri: string;
+      readonly sourcePlacement: string;
+      readonly targetDagIri: string;
+      readonly dynamic: boolean;
+    }[] = [];
+    for (const [sourceDagIri, dag] of dags) {
+      const topology = DagGraphProjector.store(dag);
+      for (const row of DagGraphQueries.candidateDagRows(topology)) {
+        edges.push({
+          sourceDagIri,
+          'sourcePlacement': DAGValidator.placementNameOf(row.placementIri),
+          'targetDagIri': row.dagIri,
+          'dynamic': row.dynamic,
+        });
+      }
+    }
+    return edges;
+  }
+
+  private static stronglyConnectedComponents(
+    dagIris: Iterable<string>,
+    edges: readonly { readonly sourceDagIri: string; readonly targetDagIri: string }[],
+  ): readonly string[][] {
+    const adjacency = new Map<string, string[]>();
+    for (const dagIri of dagIris) adjacency.set(dagIri, []);
+    for (const edge of edges) {
+      const outgoing = adjacency.get(edge.sourceDagIri);
+      if (outgoing !== undefined) outgoing.push(edge.targetDagIri);
+    }
+
+    let index = 0;
+    const stack: string[] = [];
+    const onStack = new Set<string>();
+    const indices = new Map<string, number>();
+    const lowlinks = new Map<string, number>();
+    const components: string[][] = [];
+
+    const visit = (dagIri: string): void => {
+      indices.set(dagIri, index);
+      lowlinks.set(dagIri, index);
+      index += 1;
+      stack.push(dagIri);
+      onStack.add(dagIri);
+
+      for (const target of adjacency.get(dagIri) ?? []) {
+        if (!adjacency.has(target)) continue;
+        if (!indices.has(target)) {
+          visit(target);
+          lowlinks.set(dagIri, Math.min(lowlinks.get(dagIri) ?? 0, lowlinks.get(target) ?? 0));
+        } else if (onStack.has(target)) {
+          lowlinks.set(dagIri, Math.min(lowlinks.get(dagIri) ?? 0, indices.get(target) ?? 0));
+        }
+      }
+
+      if (lowlinks.get(dagIri) !== indices.get(dagIri)) return;
+      const component: string[] = [];
+      while (stack.length > 0) {
+        const member = stack.pop();
+        if (member === undefined) break;
+        onStack.delete(member);
+        component.push(member);
+        if (member === dagIri) break;
+      }
+      components.push(component);
+    };
+
+    for (const dagIri of adjacency.keys()) {
+      if (!indices.has(dagIri)) visit(dagIri);
+    }
+
+    return components;
+  }
+
+  private static validateRecursiveComponent(
+    component: readonly string[],
+    dags: ReadonlyMap<string, DAGType>,
+    errors: string[],
+  ): void {
+    for (const dagIri of component) {
+      const dag = dags.get(dagIri);
+      if (dag !== undefined && !DAGValidator.hasReachableTerminal(dag)) {
+        errors.push(`Recursive DAG component containing '${dagIri}' has no terminal exit path`);
+      }
+    }
+  }
+
+  private static hasSelfEdge(
+    dagIri: string,
+    edges: readonly { readonly sourceDagIri: string; readonly targetDagIri: string }[],
+  ): boolean {
+    return edges.some((edge) => edge.sourceDagIri === dagIri && edge.targetDagIri === dagIri);
+  }
+
+  private static hasReachableTerminal(dag: DAGType): boolean {
+    const placements = new Map<string, DAGNodeType>();
+    for (const placement of dag.nodes) placements.set(placement.name, placement);
+
+    const visited = new Set<string>();
+    const queue = Object.values(dag.entrypoints);
+    while (queue.length > 0) {
+      const placementName = queue.shift();
+      if (placementName === undefined || visited.has(placementName)) continue;
+      visited.add(placementName);
+      const placement = placements.get(placementName);
+      if (placement === undefined) continue;
+      if (Placement.isTerminal(placement)) return true;
+      if ('outputs' in placement) queue.push(...Object.values(placement.outputs));
+    }
+    return false;
+  }
+
+  private static placementNameOf(placementIri: string): string {
+    const marker = placementIri.lastIndexOf('#');
+    return marker >= 0 ? decodeURIComponent(placementIri.slice(marker + 1)) : placementIri;
   }
 }

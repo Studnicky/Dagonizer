@@ -21,6 +21,51 @@ export class DagGraphQueries {
     return DagGraphQueries.unique(rows.map((row) => row['name']?.value));
   }
 
+  static candidateDagRows(store: TripleStoreInterface): readonly {
+    readonly placementIri: string;
+    readonly referenceIri: string;
+    readonly dagIri: string;
+    readonly dynamic: boolean;
+  }[] {
+    const rows: {
+      readonly placementIri: string;
+      readonly referenceIri: string;
+      readonly dagIri: string;
+      readonly dynamic: boolean;
+    }[] = [];
+    const referenceRows = store.select({
+      'subject': '?placement',
+      'predicate': DagGraphTerms.predicate('dagReference'),
+      'object': '?reference',
+    });
+    for (const row of referenceRows) {
+      const placement = row['placement'];
+      const reference = row['reference'];
+      if (placement === undefined || reference === undefined) continue;
+      const candidateRows = store.select({
+        'subject': DagGraphTerms.namedNode(reference.value),
+        'predicate': DagGraphTerms.predicate('candidateDag'),
+        'object': '?dag',
+      });
+      const dynamic = store.ask({
+        'subject': DagGraphTerms.namedNode(reference.value),
+        'predicate': DagGraphTerms.namedNode(DagGraphTerms.RDF_TYPE),
+        'object': DagGraphTerms.class('DagReference'),
+      });
+      for (const candidateRow of candidateRows) {
+        const dag = candidateRow['dag'];
+        if (dag === undefined) continue;
+        rows.push({
+          'placementIri': placement.value,
+          'referenceIri': reference.value,
+          'dagIri': dag.value,
+          dynamic,
+        });
+      }
+    }
+    return rows;
+  }
+
   static reachableCandidateDagIris(store: TripleStoreInterface): readonly string[] {
     return DagGraphQueries.candidatesFromReachablePlacements(store, 'candidateDag');
   }

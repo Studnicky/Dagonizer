@@ -12,6 +12,27 @@ import { DAGValidator } from '../validation/DAGValidator.js';
 
 import { ContextResolver } from './ContextResolver.js';
 
+function validateNodeContract<TNodeState extends NodeStateInterface, TOutput extends string>(
+  node: NodeInterface<TNodeState, TOutput>,
+): void {
+  if (node.validate) {
+    const result = node.validate();
+
+    if (!result.valid) {
+      throw new DAGError(`Invalid node ${node.name}: ${result.errors.join(', ')}`);
+    }
+  }
+  // Structural enforcement: every declared output port must have a schema entry.
+  // This check is ALWAYS active (cheap, structural — independent of validateOutputs).
+  for (const port of node.outputs) {
+    if (!(port in node.outputSchema)) {
+      throw new DAGError(
+        `Node '${node.name}' declares output port '${String(port)}' but outputSchema has no entry for it`,
+      );
+    }
+  }
+}
+
 /**
  * Narrow registry surface the `DagRegistrar` mutates and queries. `Dagonizer`
  * provides a thin source object backed by its public registries (`dags`,
@@ -104,28 +125,10 @@ export class DagRegistrar {
       throw new DAGError(`DAG '${dag.name}' (IRI: '${dagIri}') is already registered with a different implementation`);
     }
 
-    DAGShape.validate(dag);
-    DAGValidator.validateDAGConfig(dag, dagContext, this.#source.nodes, this.#source.dags);
-
-    // Container-role binding check (D2 = throw). A dispatcher that opts into
-    // container dispatch (a non-empty `containers` registry) must bind every
-    // role its placements declare; a declared-but-unbound role is a fatal
-    // misalignment, not a silent in-process fallback. A pure in-process
-    // dispatcher (empty `containers`) runs every body in-process by design and
-    // treats declared roles as inert — this is the path the in-isolate `DagHost`
-    // relies on when it recurses into container-declaring bodies it executes
-    // directly. Checked before mutating registries so a rejected DAG leaves no
-    // partial registration behind.
-    if (this.#source.hasContainers()) {
-      for (const placement of dag.nodes) {
-        const containerRole = 'container' in placement ? placement.container : undefined;
-        if (containerRole !== undefined && this.#source.resolveContainer(containerRole) === null) {
-          throw new DAGError(
-            `DAG '${dag.name}' placement '${placement.name}' declares container role '${containerRole}' which is not bound in this dispatcher's containers`,
-          );
-        }
-      }
-    }
+    const stagedDags = new Map(this.#source.dags);
+    stagedDags.set(dagIri, dag);
+    this.#validateDAGAgainstRegistry(dag, dagContext, this.#source.nodes, stagedDags);
+    DAGValidator.validateReferenceGraph(stagedDags);
 
     this.#source.dags.set(dagIri, dag);
     this.#source.stateFactories.set(dagIri, stateFactory);
@@ -186,56 +189,94 @@ export class DagRegistrar {
       if (Object.is(this.#source.nodes.get(nodeIri), node)) return;
       throw new DAGError(`Node '${node.name}' (IRI: '${nodeIri}') is already registered with a different implementation`);
     }
-    if (node.validate) {
-      const result = node.validate();
-
-      if (!result.valid) {
-        throw new DAGError(`Invalid node ${node.name}: ${result.errors.join(', ')}`);
-      }
-    }
-    // Structural enforcement: every declared output port must have a schema entry.
-    // This check is ALWAYS active (cheap, structural — independent of validateOutputs).
-    for (const port of node.outputs) {
-      if (!(port in node.outputSchema)) {
-        throw new DAGError(
-          `Node '${node.name}' declares output port '${String(port)}' but outputSchema has no entry for it`,
-        );
-      }
-    }
+    validateNodeContract(node);
     this.#source.nodes.set(nodeIri, node);
   }
 
   /**
-   * Register every node, then every DAG, in the supplied bundle. Accepts
+   * Register every node and DAG in the supplied bundle as one transaction. Accepts
    * bundles typed against any `TBundleState extends NodeStateInterface` so
    * child-state bundles (e.g. tool bundles) can be registered on a dispatcher
    * typed for the parent state without casts at the call site.
    *
-   * Order is fixed: nodes first so the semantic-pass DAG validator can
-   * resolve every node reference. Throws as soon as any individual
-   * registration throws (validation failure, duplicate expanded IRI, etc.);
-   * registrations that ran before the failing one remain installed.
+   * Nodes and DAG documents are installed into the transaction's real registry
+   * view before validation, so DAGs in the same bundle may reference each other.
+   * If any validation step fails, every node, DAG, placement index,
+   * state-factory, and plugin-specifier entry added by this transaction is
+   * rolled back before the error is rethrown.
    *
    * When `bundle.stateFactories` is present, each DAG's entry is passed to
-   * `registerDAG`. A DAG with no entry in the map receives
+   * the transaction. A DAG with no entry in the map receives
    * `ChildStateFactory.cloneParent` (clone-parent).
    */
   registerBundle<TBundleState extends NodeStateInterface>(bundle: DispatcherBundleType<TBundleState>): void {
     const bundleContext = bundle.context ?? {};
     ContextResolver.validate(bundleContext);
-    this.#registerPluginSpecifiers(bundleContext, bundle.specifier);
-    for (const node of bundle.nodes) {
-      this.registerNode(node, bundleContext);
-    }
-    for (const dag of bundle.dags) {
-      const dagContext = ContextResolver.contextOf(dag['@context']);
-      const dagIri = ContextResolver.expand(dag.name, dagContext);
-      const factory = bundle.stateFactories?.[dagIri];
-      this.registerDAG(dag, factory);
+
+    const transaction = new RegistryTransaction(this.#source);
+    try {
+      transaction.registerPluginSpecifiers(bundleContext, bundle.specifier);
+      for (const node of bundle.nodes) {
+        transaction.registerNode(node, bundleContext);
+      }
+      for (const dag of bundle.dags) {
+        transaction.registerDAGDocument(dag, bundle.stateFactories);
+      }
+      for (const dag of bundle.dags) {
+        const dagContext = ContextResolver.contextOf(dag['@context']);
+        this.#validateDAGAgainstRegistry(dag, dagContext, transaction.nodes, transaction.dags);
+      }
+      DAGValidator.validateReferenceGraph(transaction.dags);
+      transaction.commit();
+    } catch (error) {
+      transaction.rollback();
+      throw error;
     }
   }
 
-  #registerPluginSpecifiers(context: Record<string, unknown>, specifier: string | undefined): void {
+  #validateDAGAgainstRegistry<TState extends NodeStateInterface>(
+    dag: DAGType,
+    dagContext: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+  ): void {
+    DAGShape.validate(dag);
+    DAGValidator.validateDAGConfig(dag, dagContext, nodes, dags);
+
+    if (this.#source.hasContainers()) {
+      for (const placement of dag.nodes) {
+        const containerRole = 'container' in placement ? placement.container : undefined;
+        if (containerRole !== undefined && this.#source.resolveContainer(containerRole) === null) {
+          throw new DAGError(
+            `DAG '${dag.name}' placement '${placement.name}' declares container role '${containerRole}' which is not bound in this dispatcher's containers`,
+          );
+        }
+      }
+    }
+  }
+}
+
+class RegistryTransaction {
+  readonly #source: DagRegistrarSourceInterface;
+  readonly #addedDagIris: string[] = [];
+  readonly #addedNodeIris: string[] = [];
+  readonly #addedNodeIndexKeys: string[] = [];
+  readonly #addedPluginSpecifierPrefixes: string[] = [];
+  readonly #addedStateFactoryIris: string[] = [];
+
+  constructor(source: DagRegistrarSourceInterface) {
+    this.#source = source;
+  }
+
+  get dags(): Map<string, DAGType> {
+    return this.#source.dags;
+  }
+
+  get nodes(): Map<string, NodeInterface<NodeStateInterface, string>> {
+    return this.#source.nodes;
+  }
+
+  registerPluginSpecifiers(context: Record<string, unknown>, specifier: string | undefined): void {
     if (specifier === undefined) return;
     for (const prefix of ContextResolver.prefixes(context).keys()) {
       const existing = this.#source.pluginSpecifiers.get(prefix);
@@ -245,7 +286,67 @@ export class DagRegistrar {
           { 'code': 'PLUGIN_INVALID' },
         );
       }
+      if (existing === specifier) continue;
       this.#source.pluginSpecifiers.set(prefix, specifier);
+      this.#addedPluginSpecifierPrefixes.push(prefix);
     }
+  }
+
+  registerNode<TNodeState extends NodeStateInterface, TOutput extends string>(
+    node: NodeInterface<TNodeState, TOutput>,
+    context: Record<string, unknown>,
+  ): void {
+    const nodeIri = ContextResolver.expand(node.name, context);
+    if (this.#source.nodes.has(nodeIri)) {
+      if (Object.is(this.#source.nodes.get(nodeIri), node)) return;
+      throw new DAGError(`Node '${node.name}' (IRI: '${nodeIri}') is already registered with a different implementation`);
+    }
+    validateNodeContract(node);
+    this.#source.nodes.set(nodeIri, node);
+    this.#addedNodeIris.push(nodeIri);
+  }
+
+  registerDAGDocument<TBundleState extends NodeStateInterface>(
+    dag: DAGType,
+    stateFactories: DispatcherBundleType<TBundleState>['stateFactories'] | undefined,
+  ): void {
+    const dagContext = ContextResolver.contextOf(dag['@context']);
+    ContextResolver.validate(dagContext);
+    const dagIri = ContextResolver.expand(dag.name, dagContext);
+
+    if (this.#source.dags.has(dagIri)) {
+      if (this.#source.dags.get(dagIri) === dag) return;
+      throw new DAGError(`DAG '${dag.name}' (IRI: '${dagIri}') is already registered with a different implementation`);
+    }
+
+    this.#source.dags.set(dagIri, dag);
+    this.#addedDagIris.push(dagIri);
+
+    const factory = stateFactories?.[dagIri] ?? ChildStateFactory.cloneParent;
+    this.#source.stateFactories.set(dagIri, factory);
+    this.#addedStateFactoryIris.push(dagIri);
+
+    for (const node of dag.nodes) {
+      const indexKey = `${dagIri}:${node.name}`;
+      this.#source.nodeIndex.set(indexKey, node);
+      this.#addedNodeIndexKeys.push(indexKey);
+    }
+  }
+
+  rollback(): void {
+    for (const key of this.#addedNodeIndexKeys.reverse()) this.#source.nodeIndex.delete(key);
+    for (const iri of this.#addedStateFactoryIris.reverse()) this.#source.stateFactories.delete(iri);
+    for (const iri of this.#addedDagIris.reverse()) this.#source.dags.delete(iri);
+    for (const iri of this.#addedNodeIris.reverse()) this.#source.nodes.delete(iri);
+    for (const prefix of this.#addedPluginSpecifierPrefixes.reverse()) this.#source.pluginSpecifiers.delete(prefix);
+    this.commit();
+  }
+
+  commit(): void {
+    this.#addedDagIris.length = 0;
+    this.#addedNodeIris.length = 0;
+    this.#addedNodeIndexKeys.length = 0;
+    this.#addedPluginSpecifierPrefixes.length = 0;
+    this.#addedStateFactoryIris.length = 0;
   }
 }
