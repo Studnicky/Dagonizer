@@ -178,6 +178,7 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
     const incrNode = new IncrNode('incr', probe);
     const setNode = new SetDagNode('set-dag', 'https://noocodex.dev/dag/default#child-expanded');
     const childDag = TestDag.child('child-expanded');
+    const store = new InMemoryTopologyStore();
 
     const parentDag = new DAGBuilder('parent-expanded', '1')
       .node('set-dag', setNode, { 'success': 'invoke' })
@@ -189,7 +190,7 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
       .terminal('end-fail', { 'outcome': 'failed' })
       .build();
 
-    const dispatcher = new Dagonizer<RoutingState>();
+    const dispatcher = new Dagonizer<RoutingState>({ 'executionTopologyStore': store });
     dispatcher.registerNode(incrNode);
     dispatcher.registerNode(setNode);
     dispatcher.registerDAG(childDag);
@@ -201,6 +202,13 @@ void describe('EmbeddedDAGNode: DagReference runtime resolution', () => {
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(probe.count, 1);
     assert.equal(state.executed, 1);
+    assert.deepEqual(
+      DagGraphQueries.selectedDagRows(store),
+      [{
+        'ownerIri': DagGraphProjector.placementIri(DagGraphProjector.dagIri(parentDag), 'invoke'),
+        'dagIri':   DagGraphProjector.dagIri(childDag),
+      }],
+    );
   });
 
   void it('routes to error when the state value is not in the candidate set', async () => {
@@ -284,6 +292,7 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     const probe = new ExecutionProbe();
     const incrNode = new IncrNode('incr', probe);
     const childDag = TestDag.child('scatter-expanded-child');
+    const store = new InMemoryTopologyStore();
 
     const parentDag = new DAGBuilder('scatter-expanded-parent', '1')
       .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', 'candidates': ['scatter-expanded-child'] } }, {
@@ -297,7 +306,7 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
       .terminal('end')
       .build();
 
-    const dispatcher = new Dagonizer<RoutingState>();
+    const dispatcher = new Dagonizer<RoutingState>({ 'executionTopologyStore': store });
     dispatcher.registerNode(incrNode);
     dispatcher.registerDAG(childDag);
     dispatcher.registerDAG(parentDag);
@@ -311,6 +320,16 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(probe.count, 2);
+    const ownerBaseIri = DagGraphProjector.placementIri(DagGraphProjector.dagIri(parentDag), 'scatter');
+    const selectedDagIri = DagGraphProjector.dagIri(childDag);
+    assert.deepEqual(
+      DagGraphQueries.selectedDagRows(store),
+      [
+        { 'ownerIri': `${ownerBaseIri}/item/0`, 'dagIri': selectedDagIri },
+        { 'ownerIri': `${ownerBaseIri}/item/1`, 'dagIri': selectedDagIri },
+      ],
+    );
+    assert.deepEqual(DagGraphQueries.selectedDagIris(store), [selectedDagIri]);
   });
 
   void it('routes scatter items to error when the item value is not in the candidate set', async () => {

@@ -109,6 +109,28 @@ export class DagGraphQueries {
     return DagGraphQueries.unique(rows.map((row) => row['dag']?.value));
   }
 
+  static selectedDagRows(store: TripleStoreInterface): readonly {
+    readonly ownerIri: string;
+    readonly dagIri: string;
+  }[] {
+    const rows = store.select({
+      'subject': '?owner',
+      'predicate': DagGraphTerms.predicate('selectedDag'),
+      'object': '?dag',
+    });
+    const result: {
+      readonly ownerIri: string;
+      readonly dagIri: string;
+    }[] = [];
+    for (const row of rows) {
+      const owner = row['owner'];
+      const dag = row['dag'];
+      if (owner === undefined || dag === undefined) continue;
+      result.push({ 'ownerIri': owner.value, 'dagIri': dag.value });
+    }
+    return result;
+  }
+
   static entryTargets(store: TripleStoreInterface): ReadonlyMap<string, string> {
     const targets = new Map<string, string>();
     const entrypointRows = store.select({

@@ -12,6 +12,7 @@ import type { ObserverRelayInterface } from '../contracts/ObserverRelayInterface
 import type { ReservoirDriverInterface, ScatterItemBatchResultType } from '../contracts/ReservoirDriver.js';
 import type { ScatterItemResultType, ScatterPoolDriverInterface } from '../contracts/ScatterPoolDriver.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import type { TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 import type { GatherStrategy } from '../core/GatherStrategies.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import { Batch } from '../entities/batch/Batch.js';
@@ -26,6 +27,7 @@ import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { ScatterAckedResultType, ScatterInboxItemType } from '../entities/scatter/ScatterProgress.js';
 import { Timeout } from '../entities/Timeout.js';
 import { DAGError } from '../errors/index.js';
+import { DagGraphProjector } from '../graph/DagGraphProjector.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { ChildStateFactory } from '../runtime/ChildStateFactory.js';
 
@@ -76,6 +78,7 @@ export interface ScatterDispatchAdapterInterface {
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
+  readonly executionTopologyStore: TripleStoreInterface;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal,
@@ -111,6 +114,7 @@ export interface ScatterDispatchSourceInterface {
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
+  readonly executionTopologyStore: TripleStoreInterface;
   withNodeTimeout<TResult>(
     node: NodeInterface<NodeStateInterface, string>,
     signal: AbortSignal,
@@ -151,6 +155,7 @@ export class ScatterDispatchAdapter
   readonly dags: ReadonlyMap<string, DAGType>;
   readonly accessor: StateAccessorInterface;
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
+  readonly executionTopologyStore: TripleStoreInterface;
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
   readonly #source: ScatterDispatchSourceInterface;
 
@@ -160,6 +165,7 @@ export class ScatterDispatchAdapter
     this.dags = source.dags;
     this.accessor = source.accessor;
     this.stateFactories = source.stateFactories;
+    this.executionTopologyStore = source.executionTopologyStore;
     this.outputSchemaValidator = source.outputSchemaValidator;
     this.#source = source;
   }
@@ -280,6 +286,23 @@ export class ScatterPoolDriver
     return dag !== undefined ? ContextResolver.contextOf(dag['@context']) : {};
   }
 
+  #dagIri(): string {
+    const dag = this.#adapter.dags.get(ContextResolver.expand(this.#ctx.dagName, {}));
+    return dag !== undefined ? DagGraphProjector.dagIri(dag) : ContextResolver.expand(this.#ctx.dagName, {});
+  }
+
+  #itemBodyIri(scatterName: string, itemIndex: number): string {
+    return `${DagGraphProjector.placementIri(this.#dagIri(), scatterName)}/item/${String(itemIndex)}`;
+  }
+
+  #bindItemSelectedDag(scatterName: string, itemIndex: number, selectedDagIri: string): void {
+    DagReferenceResolver.bindSelectedDag({
+      'store': this.#adapter.executionTopologyStore,
+      'ownerPlacementIri': this.#itemBodyIri(scatterName, itemIndex),
+      selectedDagIri,
+    });
+  }
+
   async executeItem(itemIndex: number, item: unknown): Promise<ScatterItemResultType> {
     const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
     const dagContext = this.#dagContext();
@@ -354,6 +377,8 @@ export class ScatterPoolDriver
         errorClone.setMetadata('itemIndex', itemIndex);
         return { 'index': itemIndex, item, 'output': 'error', 'terminalOutcome': 'failed', 'cloneState': errorClone };
       }
+
+      this.#bindItemSelectedDag(scatter.name, itemIndex, bodyDagName);
 
       // Build the child clone using the body dag's registered factory (spawnChild
       // returns NodeStateInterface; isolation factory may produce a different class).
@@ -596,6 +621,10 @@ export class ScatterPoolDriver
           return { 'index': buffered.index, 'item': buffered.item, 'output': 'error', 'terminalOutcome': 'failed' as const, 'cloneState': clone };
         }),
       };
+    }
+
+    for (const buffered of items) {
+      this.#bindItemSelectedDag(scatter.name, buffered.index, batchBodyDagName);
     }
 
     const innerPath: readonly string[] = [...placementPath, scatter.name];

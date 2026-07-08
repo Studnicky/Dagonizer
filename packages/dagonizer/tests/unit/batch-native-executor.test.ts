@@ -24,6 +24,9 @@ import type { ItemType } from '../../src/entities/batch/Item.js';
 import type { RoutedBatchType } from '../../src/entities/batch/RoutedBatchType.js';
 import type { DAGType } from '../../src/entities/dag/DAG.js';
 import type { NodeContextType } from '../../src/entities/node/NodeContext.js';
+import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
+import { DagGraphQueries } from '../../src/graph/DagGraphQueries.js';
+import { InMemoryTopologyStore } from '../../src/graph/InMemoryTopologyStore.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestBatchNode } from '../_support/TestBatchNode.js';
 import { TestDag } from '../_support/TestDag.js';
@@ -390,6 +393,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     const valueMapping = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
     const collected: ValueState[] = [];
+    const store = new InMemoryTopologyStore();
 
     const parentDAG = TestDag.of('bne-parent', 'fan', [
       PlacementFixture.singleNode('bne-parent', 'fan', 'fanout', { 'out': 'embed-step' }),
@@ -404,7 +408,7 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
       PlacementFixture.terminalNode('bne-parent', 'finish', 'completed'),
     ]);
 
-    const dispatcher = new Dagonizer<ValueState>();
+    const dispatcher = new Dagonizer<ValueState>({ 'executionTopologyStore': store });
     dispatcher.registerNode(TestBatchNode.of<ValueState, 'out'>('fanout', ['out'], (batch) => {
       const source = batch.row(0).state;
       const values = [1, 2, 3];
@@ -444,6 +448,13 @@ void describe('Batch-native executor — Fix 3: EmbeddedDAG batch-native parity'
     assert.equal(childItemsSeen.length, 3, 'inc node processed exactly 3 items');
     const seenSorted = [...childItemsSeen].sort((a, b) => a - b);
     assert.deepEqual(seenSorted, [1, 2, 3], 'inc node received each item with its original value');
+    assert.deepEqual(
+      DagGraphQueries.selectedDagRows(store),
+      [{
+        'ownerIri': DagGraphProjector.placementIri(DagGraphProjector.dagIri(parentDAG), 'embed-step'),
+        'dagIri':   DagGraphProjector.dagIri(childDAG),
+      }],
+    );
   });
 
   void it('single-item embedded DAG parity: batch-native path matches per-item value (value=42)', async () => {

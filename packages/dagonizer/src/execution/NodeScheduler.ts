@@ -9,6 +9,7 @@ import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
 import type { NodeInterface, OutputSchemaValidatorInterface } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import type { TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 import { PlacementRank } from '../core/PlacementRank.js';
 import { WorkSet } from '../core/WorkSet.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
@@ -31,6 +32,7 @@ import type { NodeContextType } from '../entities/node/NodeContext.js';
 import type { NodeResultType } from '../entities/node/NodeResult.js';
 import type { WorkSetProgressType } from '../entities/workset/WorkSetProgress.js';
 import { DAGError } from '../errors/index.js';
+import { DagGraphProjector } from '../graph/DagGraphProjector.js';
 import { DAGLifecycleMachine } from '../lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { DagExecutionContext } from '../runtime/DagExecutionContext.js';
@@ -72,6 +74,8 @@ export interface NodeSchedulerSourceInterface {
   readonly registryVersion: string;
   /** State path accessor — used to resolve dynamic `DagReference` paths at execution time. */
   readonly accessor: StateAccessorInterface;
+  /** Runtime topology graph sink for selected embedded-DAG bindings. */
+  readonly executionTopologyStore: TripleStoreInterface;
   /** Output-schema validator injected when validateOutputs is true; null otherwise. */
   readonly outputSchemaValidator: OutputSchemaValidatorInterface | null;
 
@@ -625,6 +629,13 @@ export class NodeScheduler {
             }
             continue scheduleLoop;
           }
+
+          DagReferenceResolver.bindSelectedDag({
+            'store': this.#source.executionTopologyStore,
+            'ownerPlacementIri': DagGraphProjector.placementIri(dagIri, node.name),
+            'selectedDagIri': childDagIri,
+          });
+
           // Build child batch: one clone per parent item, seeded via inputMapping.
           // Use the registered isolation factory for this DAG when one is present
           // (spawnChild returns NodeStateInterface; isolation factory may produce a

@@ -1,10 +1,12 @@
 import type { ChildStateFactoryType } from '../contracts/ChildStateFactoryType.js';
 import type { GatherRecordType } from '../contracts/GatherExecution.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
+import type { TripleStoreInterface } from '../contracts/TripleStoreInterface.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from '../entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import { DagGraphProjector } from '../graph/DagGraphProjector.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { BodyExecutor } from './BodyExecutor.js';
@@ -32,6 +34,8 @@ export type EmbeddedDagExecutorSourceType = {
   readonly dags: ReadonlyMap<string, DAGType>;
   /** Per-DAG child-state factories — used to spawn isolated child state when registered. */
   readonly stateFactories: ReadonlyMap<string, ChildStateFactoryType>;
+  /** Runtime topology graph sink for selected embedded-DAG bindings. */
+  readonly executionTopologyStore: TripleStoreInterface;
 };
 
 /**
@@ -124,6 +128,15 @@ export class EmbeddedDagExecutor {
         this.#source.stateMapper,
       ), cloneState, null);
     }
+
+    DagReferenceResolver.bindSelectedDag({
+      'store': this.#source.executionTopologyStore,
+      'ownerPlacementIri': DagGraphProjector.placementIri(
+        parentDag !== undefined ? DagGraphProjector.dagIri(parentDag) : ContextResolver.expand(parentDagName, parentContext),
+        placement.name,
+      ),
+      'selectedDagIri': dagIri,
+    });
 
     // Run the sub-DAG body in-process or through a bound container. The
     // in-process-vs-container branch, the bufferIntermediates O(N*M*L) guard,

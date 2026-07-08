@@ -9,6 +9,7 @@ import type { NodeInterface, OutputSchemaValidatorInterface, SchemaObjectType } 
 import type { ObserverRelayInterface } from './contracts/ObserverRelayInterface.js';
 import type { PluginInterface } from './contracts/PluginInterface.js';
 import type { StateAccessorInterface } from './contracts/StateAccessorInterface.js';
+import type { TripleStoreInterface } from './contracts/TripleStoreInterface.js';
 import { ContextResolver } from './dag/ContextResolver.js';
 import type { DagRegistrar } from './dag/DagRegistrar.js';
 import { Batch } from './entities/batch/Batch.js';
@@ -25,6 +26,7 @@ import type { NodeScheduler } from './execution/NodeScheduler.js';
 import type { PlacementDispatch } from './execution/PlacementDispatch.js';
 import type { RunNodeResultType, RunNodesBatchType, RunOptionsType } from './execution/ScatterDispatch.js';
 import { Execution } from './Execution.js';
+import { InMemoryTopologyStore } from './graph/InMemoryTopologyStore.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 import { DispatcherHooks } from './observer/DispatcherHooks.js';
 import { ObserverRelay } from './observer/ObserverRelay.js';
@@ -173,6 +175,13 @@ export type DagonizerOptionsType = {
    * Observers are called in array order, after any subclass override.
    */
   observers?: ReadonlyArray<DispatcherObserverType>;
+  /**
+   * Runtime RDF graph store for execution-time topology assertions such as
+   * `dag:selectedDag`. Defaults to a per-dispatcher in-memory store. Pass a
+   * graph-backed implementation to persist or query selected embedded/scatter
+   * DAG choices across runs.
+   */
+  executionTopologyStore?: TripleStoreInterface;
 }
 
 
@@ -453,6 +462,7 @@ implements DagonizerInterface<TState> {
       readonly pluginSpecifiers = new Map<string, string>();
       readonly accessor: StateAccessorInterface;
       readonly stateMapper: StateMapper;
+      readonly executionTopologyStore: TripleStoreInterface;
       readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
       readonly registryVersion: string;
       readonly #containers: Readonly<Record<string, DagContainerInterface>>;
@@ -465,6 +475,7 @@ implements DagonizerInterface<TState> {
       constructor() {
         this.accessor = resolved.accessor;
         this.stateMapper = new StateMapper(resolved.accessor);
+        this.executionTopologyStore = options.executionTopologyStore ?? new InMemoryTopologyStore();
         this.channels = resolved.channels;
         this.registryVersion = resolved.registryVersion;
         this.#containers = resolved.containers;
