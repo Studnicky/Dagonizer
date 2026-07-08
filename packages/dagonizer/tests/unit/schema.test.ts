@@ -6,6 +6,7 @@ import type {
   NodeOutputSchemaMapType,
   SchemaObjectType,
 } from '../../src/contracts/NodeInterface.js';
+import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { DAGDocument } from '../../src/dag/DAGDocument.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
@@ -106,6 +107,22 @@ class LiteralSchemaNode extends MonadicNode<RouteSchemaState, 'done'> {
     _context: NodeContextType,
   ): Promise<RoutedBatchType<'done', RouteSchemaState>> {
     return new Map([['done', batch]]);
+  }
+}
+
+class ScoreObjectGatherStrategy extends GatherStrategy {
+  override readonly resultSchema = {
+    'type': 'object',
+    'required': ['value'],
+    'properties': { 'value': { 'type': 'number' } },
+  } as const satisfies SchemaObjectType;
+
+  constructor(readonly name: string) {
+    super();
+  }
+
+  reduce(): void {
+    // Schema tests validate registration-time contracts; execution is not needed.
   }
 }
 
@@ -605,6 +622,142 @@ void describe('Dagonizer.registerDAG validation layers', () => {
       () => dispatcher.registerDAG(dag),
       /ScatterNode 'fan' gather\.resultField 'score' is not produced by registered node 'scatter-body' output schemas/u,
     );
+  });
+
+  void it('registry layer accepts gather strategy result schemas satisfied by first-class gather sources', () => {
+    const dispatcher = new Dagonizer<RouteSchemaState>();
+    const strategyName = 'score-object-compatible';
+    GatherStrategies.register(new ScoreObjectGatherStrategy(strategyName));
+    try {
+      dispatcher.registerNode(new RouteSchemaNode('score-body', ['done'], { 'type': 'object' }, {
+        'done': {
+          'type': 'object',
+          'required': ['score'],
+          'properties': {
+            'score': {
+              'type': 'object',
+              'required': ['value'],
+              'properties': { 'value': { 'type': 'number' } },
+            },
+          },
+        },
+      }));
+
+      const dag: DAGType = {
+        '@context': DAG_CONTEXT,
+        '@id':      'urn:noocodex:dag:gather-strategy-compatible',
+        '@type':    'DAG',
+        'name': 'gather-strategy-compatible', 'version': '1', 'entrypoints': { 'main': 'fan' },
+        'nodes': [
+          { '@id': 'urn:noocodex:dag:gather-strategy-compatible/node/fan', '@type': 'ScatterNode',
+            'name': 'fan', 'source': 'items', 'body': { 'node': 'score-body' },
+            'gather': { 'strategy': 'discard', 'resultField': 'score' },
+            'outputs': { 'all-success': 'join', 'partial': 'join', 'all-error': 'failed', 'empty': 'join' } },
+          { '@id': 'urn:noocodex:dag:gather-strategy-compatible/node/join', '@type': 'GatherNode',
+            'name': 'join', 'sources': ['fan'], 'gather': { 'strategy': strategyName },
+            'outputs': { 'success': 'end', 'error': 'failed', 'empty': 'end' } },
+          { '@id': 'urn:noocodex:dag:gather-strategy-compatible/node/end', '@type': 'TerminalNode',
+            'name': 'end', 'outcome': 'completed' },
+          { '@id': 'urn:noocodex:dag:gather-strategy-compatible/node/failed', '@type': 'TerminalNode',
+            'name': 'failed', 'outcome': 'failed' },
+        ],
+      };
+
+      assert.doesNotThrow(() => dispatcher.registerDAG(dag));
+    } finally {
+      GatherStrategies.unregister(strategyName);
+    }
+  });
+
+  void it('registry layer rejects scatter gather strategy result schemas not satisfied by producer results', () => {
+    const dispatcher = new Dagonizer<RouteSchemaState>();
+    const strategyName = 'score-object-incompatible';
+    GatherStrategies.register(new ScoreObjectGatherStrategy(strategyName));
+    try {
+      dispatcher.registerNode(new RouteSchemaNode('score-body-bad', ['done'], { 'type': 'object' }, {
+        'done': {
+          'type': 'object',
+          'required': ['score'],
+          'properties': {
+            'score': {
+              'type': 'object',
+              'required': ['label'],
+              'properties': { 'label': { 'type': 'string' } },
+            },
+          },
+        },
+      }));
+
+      const dag: DAGType = {
+        '@context': DAG_CONTEXT,
+        '@id':      'urn:noocodex:dag:gather-strategy-incompatible',
+        '@type':    'DAG',
+        'name': 'gather-strategy-incompatible', 'version': '1', 'entrypoints': { 'main': 'fan' },
+        'nodes': [
+          { '@id': 'urn:noocodex:dag:gather-strategy-incompatible/node/fan', '@type': 'ScatterNode',
+            'name': 'fan', 'source': 'items', 'body': { 'node': 'score-body-bad' },
+            'gather': { 'strategy': strategyName, 'resultField': 'score' },
+            'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'failed', 'empty': 'end' } },
+          { '@id': 'urn:noocodex:dag:gather-strategy-incompatible/node/end', '@type': 'TerminalNode',
+            'name': 'end', 'outcome': 'completed' },
+          { '@id': 'urn:noocodex:dag:gather-strategy-incompatible/node/failed', '@type': 'TerminalNode',
+            'name': 'failed', 'outcome': 'failed' },
+        ],
+      };
+
+      assert.throws(
+        () => dispatcher.registerDAG(dag),
+        /Gather 'fan' producer result schema does not satisfy strategy 'score-object-incompatible' result schema: producer does not declare required field 'value'/u,
+      );
+    } finally {
+      GatherStrategies.unregister(strategyName);
+    }
+  });
+
+  void it('registry layer rejects result-schema gather strategies when sources do not declare producer results', () => {
+    const dispatcher = new Dagonizer<RouteSchemaState>();
+    const strategyName = 'score-object-missing-result';
+    GatherStrategies.register(new ScoreObjectGatherStrategy(strategyName));
+    try {
+      dispatcher.registerNode(new RouteSchemaNode('direct-producer', ['done'], { 'type': 'object' }, {
+        'done': {
+          'type': 'object',
+          'required': ['score'],
+          'properties': {
+            'score': {
+              'type': 'object',
+              'required': ['value'],
+              'properties': { 'value': { 'type': 'number' } },
+            },
+          },
+        },
+      }));
+
+      const dag: DAGType = {
+        '@context': DAG_CONTEXT,
+        '@id':      'urn:noocodex:dag:gather-strategy-missing-result',
+        '@type':    'DAG',
+        'name': 'gather-strategy-missing-result', 'version': '1', 'entrypoints': { 'main': 'produce' },
+        'nodes': [
+          { '@id': 'urn:noocodex:dag:gather-strategy-missing-result/node/produce', '@type': 'SingleNode',
+            'name': 'produce', 'node': 'direct-producer', 'outputs': { 'done': 'join' } },
+          { '@id': 'urn:noocodex:dag:gather-strategy-missing-result/node/join', '@type': 'GatherNode',
+            'name': 'join', 'sources': ['main'], 'gather': { 'strategy': strategyName },
+            'outputs': { 'success': 'end', 'error': 'failed', 'empty': 'end' } },
+          { '@id': 'urn:noocodex:dag:gather-strategy-missing-result/node/end', '@type': 'TerminalNode',
+            'name': 'end', 'outcome': 'completed' },
+          { '@id': 'urn:noocodex:dag:gather-strategy-missing-result/node/failed', '@type': 'TerminalNode',
+            'name': 'failed', 'outcome': 'failed' },
+        ],
+      };
+
+      assert.throws(
+        () => dispatcher.registerDAG(dag),
+        /Gather 'join' strategy 'score-object-missing-result' declares resultSchema but source 'main' does not declare a producer result schema/u,
+      );
+    } finally {
+      GatherStrategies.unregister(strategyName);
+    }
   });
 
   void it('registry layer does not reject routed schemas whose compatibility is unknown', () => {

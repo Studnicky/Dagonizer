@@ -1,4 +1,5 @@
-import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { NodeInterface, SchemaObjectType } from '../contracts/NodeInterface.js';
+import { GatherStrategies } from '../core/GatherStrategies.js';
 import { ContextResolver } from '../dag/ContextResolver.js';
 import type { DAGType } from '../entities/dag/DAG.js';
 import { DagReference } from '../entities/dag/DagReference.js';
@@ -29,7 +30,7 @@ export class DAGValidator {
   ): void {
     const errors: string[] = [];
     for (const node of dag.nodes) {
-      DAGValidator.validateDAGNode(node, context, nodes, dags, errors);
+      DAGValidator.validateDAGNode(dag, node, context, nodes, dags, errors);
     }
     DAGValidator.validateRouteSchemas(dag, nodes, errors);
 
@@ -59,6 +60,7 @@ export class DAGValidator {
   }
 
   private static validateDAGNode<TState extends NodeStateInterface>(
+    dag: DAGType,
     entry: DAGNodeType,
     context: Record<string, unknown>,
     nodes: Map<string, NodeInterface<TState, string>>,
@@ -72,7 +74,7 @@ export class DAGValidator {
     } else if (Placement.isSingle(entry)) {
       DAGValidator.validateSingleNode(entry, context, nodes, errors);
     } else if (Placement.isGather(entry)) {
-      DAGValidator.validateGatherNode(entry, context, nodes, errors);
+      DAGValidator.validateGatherNode(dag, entry, context, nodes, dags, errors);
     } else if (Placement.isPhase(entry)) {
       DAGValidator.validatePhaseNode(entry, context, nodes, errors);
     }
@@ -160,6 +162,7 @@ export class DAGValidator {
       if (bodyNode === undefined) {
         errors.push(`ScatterNode '${scatter.name}': unknown registered node '${scatter.body.node}'`);
       } else {
+        let producerResultSchemas: readonly SchemaObjectType[] = [];
         DAGValidator.validateRequiredFieldsSeeded(
           `ScatterNode '${scatter.name}' body node '${scatter.body.node}'`,
           bodyNode.inputSchema,
@@ -176,9 +179,18 @@ export class DAGValidator {
             scatter.gather.resultField,
             errors,
           );
+          producerResultSchemas = DAGValidator.resultSchemasFromNode(bodyNode, scatter.gather.resultField);
         }
+        DAGValidator.validateGatherStrategyResultSchema(
+          scatter.name,
+          scatter.gather,
+          producerResultSchemas,
+          producerResultSchemas.length === 0 ? [`ScatterNode '${scatter.name}'`] : [],
+          errors,
+        );
       }
     } else if ('dag' in scatter.body) {
+      let producerResultSchemas: readonly SchemaObjectType[] = [];
       DAGValidator.validateDagReference(scatter.body.dag, context, dags, `ScatterNode '${scatter.name}'`, errors);
       DAGValidator.validateChildInputMapping(
         `ScatterNode '${scatter.name}' DAG body`,
@@ -202,19 +214,37 @@ export class DAGValidator {
           dags,
           errors,
         );
+        producerResultSchemas = DAGValidator.resultSchemasFromDagTerminalRoutes(scatter.body.dag, scatter.gather.resultField, context, nodes, dags);
       }
+      DAGValidator.validateGatherStrategyResultSchema(
+        scatter.name,
+        scatter.gather,
+        producerResultSchemas,
+        producerResultSchemas.length === 0 ? [`ScatterNode '${scatter.name}'`] : [],
+        errors,
+      );
     }
 
     DAGValidator.validateGatherConfig(scatter.name, scatter.gather, context, nodes, errors);
   }
 
   private static validateGatherNode<TState extends NodeStateInterface>(
+    dag: DAGType,
     gatherNode: GatherNodeType,
     context: Record<string, unknown>,
     nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
     errors: string[],
   ): void {
     DAGValidator.validateGatherConfig(gatherNode.name, gatherNode.gather, context, nodes, errors);
+    const producerResult = DAGValidator.resultSchemasForGatherNode(dag, gatherNode, context, nodes, dags);
+    DAGValidator.validateGatherStrategyResultSchema(
+      gatherNode.name,
+      gatherNode.gather,
+      producerResult.producerSchemas,
+      producerResult.missingProducers,
+      errors,
+    );
   }
 
   private static validateGatherConfig<TState extends NodeStateInterface>(
@@ -349,6 +379,113 @@ export class DAGValidator {
     errors.push(`${owner} '${resultField}' is not produced by registered node '${node.name}' output schemas`);
   }
 
+  private static validateGatherStrategyResultSchema(
+    ownerName: string,
+    gather: GatherConfigType,
+    producerSchemas: readonly SchemaObjectType[],
+    missingProducers: readonly string[],
+    errors: string[],
+  ): void {
+    const strategy = GatherStrategies.get(gather.strategy);
+    if (strategy?.resultSchema === undefined) return;
+    for (const producer of missingProducers) {
+      errors.push(`Gather '${ownerName}' strategy '${gather.strategy}' declares resultSchema but ${producer} does not declare a producer result schema`);
+    }
+    for (const produced of producerSchemas) {
+      const compatibility = JsonSchemaCompatibility.produces(produced, strategy.resultSchema);
+      if (compatibility.status !== 'incompatible') continue;
+      errors.push(
+        `Gather '${ownerName}' producer result schema does not satisfy strategy '${gather.strategy}' result schema: ${compatibility.reason}`,
+      );
+    }
+  }
+
+  private static resultSchemasForGatherNode<TState extends NodeStateInterface>(
+    dag: DAGType,
+    gatherNode: GatherNodeType,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+  ): { readonly producerSchemas: readonly SchemaObjectType[]; readonly missingProducers: readonly string[] } {
+    const producerSchemas: SchemaObjectType[] = [];
+    const missingProducers: string[] = [];
+    for (const source of gatherNode.sources) {
+      const placementName = dag.entrypoints[source] ?? source;
+      const placement = DAGValidator.placementByName(dag, placementName);
+      if (placement === undefined) continue;
+      const sourceSchemas = DAGValidator.resultSchemasForPlacementProducer(
+        placement,
+        context,
+        nodes,
+        dags,
+      );
+      if (sourceSchemas.length === 0) {
+        missingProducers.push(`source '${source}'`);
+      } else {
+        producerSchemas.push(...sourceSchemas);
+      }
+    }
+    return { producerSchemas, missingProducers };
+  }
+
+  private static resultSchemasForPlacementProducer<TState extends NodeStateInterface>(
+    placement: DAGNodeType,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+  ): readonly SchemaObjectType[] {
+    if (Placement.isScatter(placement)) {
+      if (placement.gather.resultField === undefined) return [];
+      if ('node' in placement.body) {
+        const bodyNode = nodes.get(ContextResolver.expand(placement.body.node, context));
+        return bodyNode === undefined
+          ? []
+          : DAGValidator.resultSchemasFromNode(bodyNode, placement.gather.resultField);
+      }
+      return DAGValidator.resultSchemasFromDagTerminalRoutes(placement.body.dag, placement.gather.resultField, context, nodes, dags);
+    }
+    if (Placement.isEmbeddedDAG(placement) && placement.dag !== undefined && placement.gatherResult !== undefined) {
+      return DAGValidator.resultSchemasFromDagTerminalRoutes(placement.dag, placement.gatherResult.resultField, context, nodes, dags);
+    }
+    return [];
+  }
+
+  private static resultSchemasFromDagTerminalRoutes<TState extends NodeStateInterface>(
+    reference: DagReferenceType,
+    resultField: string,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+  ): readonly SchemaObjectType[] {
+    const result: SchemaObjectType[] = [];
+    for (const childDag of DAGValidator.candidateDags(reference, context, dags)) {
+      result.push(...DAGValidator.resultSchemasFromOutputSchemas(
+        DAGValidator.terminalProducerSchemas(childDag, nodes),
+        resultField,
+      ));
+    }
+    return result;
+  }
+
+  private static resultSchemasFromNode<TState extends NodeStateInterface>(
+    node: NodeInterface<TState, string>,
+    resultField: string,
+  ): readonly SchemaObjectType[] {
+    return DAGValidator.resultSchemasFromOutputSchemas(Object.values(node.outputSchema), resultField);
+  }
+
+  private static resultSchemasFromOutputSchemas(
+    outputSchemas: Iterable<SchemaObjectType>,
+    resultField: string,
+  ): readonly SchemaObjectType[] {
+    const result: SchemaObjectType[] = [];
+    for (const schema of outputSchemas) {
+      const resultSchema = DAGValidator.schemaAtPath(schema, resultField);
+      if (resultSchema !== undefined) result.push(resultSchema);
+    }
+    return result;
+  }
+
   private static terminalProducerSchemas<TState extends NodeStateInterface>(
     dag: DAGType,
     nodes: Map<string, NodeInterface<TState, string>>,
@@ -421,12 +558,16 @@ export class DAGValidator {
   }
 
   private static schemaHasPath(schema: NodeInterface['inputSchema'], path: string): boolean {
+    return DAGValidator.schemaAtPath(schema, path) !== undefined;
+  }
+
+  private static schemaAtPath(schema: NodeInterface['inputSchema'], path: string): NodeInterface['inputSchema'] | undefined {
     let cursor: NodeInterface['inputSchema'] | undefined = schema;
     for (const segment of path.split('.')) {
-      if (segment.length === 0 || cursor === undefined) return false;
+      if (segment.length === 0 || cursor === undefined) return undefined;
       cursor = DAGValidator.propertySchema(cursor, segment);
     }
-    return cursor !== undefined;
+    return cursor;
   }
 
   private static propertySchema(schema: NodeInterface['inputSchema'], property: string): NodeInterface['inputSchema'] | undefined {

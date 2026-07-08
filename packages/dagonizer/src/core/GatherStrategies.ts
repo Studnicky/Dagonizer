@@ -35,6 +35,7 @@
  */
 
 import type { GatherExecutionType, GatherRecordType } from '../contracts/GatherExecution.js';
+import type { SchemaObjectType } from '../contracts/NodeInterface.js';
 import type { StateAccessorInterface } from '../contracts/StateAccessorInterface.js';
 import type { Batch } from '../entities/batch/Batch.js';
 import type { GatherConfigType } from '../entities/dag/GatherConfig.js';
@@ -60,6 +61,13 @@ export type { GatherExecutionType, GatherRecordType };
 export abstract class GatherStrategy {
   /** Wire-shape identifier; matches `GatherConfig.strategy`. */
   abstract readonly name: string;
+
+  /**
+   * Optional schema for `GatherRecord.result`. Registration validation compares
+   * concrete producer result-field schemas against this contract when both
+   * sides are available.
+   */
+  readonly resultSchema: SchemaObjectType | undefined = undefined;
 
   /**
    * When true, `finalize` consumes the full per-clone record set; the engine
