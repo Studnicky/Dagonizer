@@ -649,6 +649,51 @@ void describe('Dagonizer.registerDAG validation layers', () => {
     );
   });
 
+  void it('registry layer rejects embedded output mappings not produced by child terminal routes', () => {
+    const dispatcher = new Dagonizer<RouteSchemaState>();
+    dispatcher.registerNode(new RouteSchemaNode('child-output', ['done'], { 'type': 'object' }, {
+      'done': {
+        'type': 'object',
+        'required': ['name'],
+        'properties': { 'name': { 'type': 'string' } },
+      },
+    }));
+
+    const childDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:child-mapped-output',
+      '@type':    'DAG',
+      'name': 'child-mapped-output', 'version': '1', 'entrypoints': { 'main': 'answer' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:child-mapped-output/node/answer', '@type': 'SingleNode',
+          'name': 'answer', 'node': 'child-output', 'outputs': { 'done': 'end' } },
+        { '@id': 'urn:noocodex:dag:child-mapped-output/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const parentDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:parent-bad-output-mapping',
+      '@type':    'DAG',
+      'name': 'parent-bad-output-mapping', 'version': '1', 'entrypoints': { 'main': 'invoke' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:parent-bad-output-mapping/node/invoke', '@type': 'EmbeddedDAGNode',
+          'name': 'invoke', 'dag': 'child-mapped-output',
+          'stateMapping': { 'output': { 'score': 'score' } },
+          'outputs': { 'success': 'end', 'error': 'end' } },
+        { '@id': 'urn:noocodex:dag:parent-bad-output-mapping/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+
+    dispatcher.registerDAG(childDag);
+
+    assert.throws(
+      () => dispatcher.registerDAG(parentDag),
+      /EmbeddedDAGNode 'invoke' stateMapping\.output 'score' reads child path 'score' that is not produced by child DAG 'child-mapped-output' terminal routes/u,
+    );
+  });
+
   void it('registry layer rejects scatter gather result fields not produced by node body outputs', () => {
     const dispatcher = new Dagonizer<RouteSchemaState>();
     dispatcher.registerNode(new RouteSchemaNode('scatter-body', ['done'], { 'type': 'object' }, {

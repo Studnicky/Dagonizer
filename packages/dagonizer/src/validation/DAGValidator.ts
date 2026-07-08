@@ -136,6 +136,15 @@ export class DAGValidator {
         dags,
         errors,
       );
+      DAGValidator.validateChildOutputMapping(
+        `EmbeddedDAGNode '${placement.name}'`,
+        placement.dag,
+        placement.stateMapping?.output ?? {},
+        context,
+        nodes,
+        dags,
+        errors,
+      );
       if (placement.gatherResult !== undefined) {
         DAGValidator.validateDagResultField(
           `EmbeddedDAGNode '${placement.name}' gatherResult.resultField`,
@@ -364,6 +373,26 @@ export class DAGValidator {
       if (producedSchemas.length === 0) continue;
       if (producedSchemas.some((schema) => DAGValidator.schemaHasPath(schema, resultField))) continue;
       errors.push(`${owner} '${resultField}' is not produced by child DAG '${childDag.name}' terminal routes`);
+    }
+  }
+
+  private static validateChildOutputMapping<TState extends NodeStateInterface>(
+    owner: string,
+    reference: DagReferenceType,
+    outputMapping: Readonly<Record<string, string>>,
+    context: Record<string, unknown>,
+    nodes: Map<string, NodeInterface<TState, string>>,
+    dags: Map<string, DAGType>,
+    errors: string[],
+  ): void {
+    for (const [parentPath, childPath] of Object.entries(outputMapping)) {
+      for (const childDag of DAGValidator.candidateDags(reference, context, dags)) {
+        const producedSchemas = DAGValidator.terminalProducerSchemas(childDag, nodes)
+          .filter((schema) => DAGValidator.schemaDeclaresProperties(schema));
+        if (producedSchemas.length === 0) continue;
+        if (producedSchemas.some((schema) => DAGValidator.schemaHasPath(schema, childPath))) continue;
+        errors.push(`${owner} stateMapping.output '${parentPath}' reads child path '${childPath}' that is not produced by child DAG '${childDag.name}' terminal routes`);
+      }
     }
   }
 
