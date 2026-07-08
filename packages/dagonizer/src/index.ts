@@ -77,6 +77,13 @@ export type {
 export { DagGraphProjector, DagGraphQueries, DagGraphTerms, InMemoryTopologyStore } from './graph/index.js';
 
 // =============================================================================
+// SCHEMA
+// =============================================================================
+
+export { JsonSchemaCompatibility, SchemaIdentity, SchemaRegistry, StableSchemaHash } from './schema/index.js';
+export type { SchemaCompatibilityResultType } from './schema/index.js';
+
+// =============================================================================
 // VALIDATION
 // =============================================================================
 
