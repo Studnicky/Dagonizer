@@ -147,6 +147,67 @@ void describe('Dagonizer scatter gather strategies', () => {
     assert.deepEqual(state.seenResults, ['forty-two']);
   });
 
+  void it('first-class gather joins embedded and scatter producers', async () => {
+    class ChildState extends NodeStateBase {
+      answer = '';
+    }
+    class ParentState extends NodeStateBase {
+      items = [1, 2, 3];
+      seenSources: string[] = [];
+      seenOutputs: string[] = [];
+    }
+
+    const dispatcher = new Dagonizer<ParentState>();
+    const answer = TestNode.make<ChildState>('answer-mixed', ['success'], (state) => {
+      state.answer = 'embedded-ready';
+      return 'success';
+    });
+    const classify = TestNode.make<ParentState>('classify-mixed', ['success'], () => 'success');
+    const merge = TestNode.make<ParentState>('merge-mixed', ['success'], (state) => {
+      const raw = state.getMetadata('gatherResults');
+      const records = Array.isArray(raw) ? raw.filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null) : [];
+      state.seenSources = records.map((record) => String(record['source'])).sort();
+      state.seenOutputs = records.map((record) => String(record['output'])).sort();
+      return 'success';
+    });
+
+    const childDag = new DAGBuilder('mixed-child-answer', '1')
+      .node('answer', answer, { 'success': 'done' })
+      .terminal('done')
+      .build();
+
+    const parentDag = new DAGBuilder('mixed-producer-gather', '1')
+      .embed<ChildState, ParentState>('invoke', 'mixed-child-answer', { 'success': 'join', 'error': 'join' }, {
+        'gatherResult': { 'resultField': 'answer' },
+      })
+      .scatter('fan', 'items', classify, {
+        'all-success': 'join',
+        'partial':     'join',
+        'all-error':   'join',
+        'empty':       'join',
+      }, {
+        'gather': { 'strategy': 'discard' },
+      })
+      .gather('join', ['embedded', 'scatter'], { 'strategy': 'custom', 'customNode': 'merge-mixed' }, { 'success': 'end', 'error': 'failed' })
+      .terminal('end')
+      .terminal('failed', { 'outcome': 'failed' })
+      .entrypoints({ 'embedded': 'invoke', 'scatter': 'fan' })
+      .build();
+
+    dispatcher.registerNode(answer);
+    dispatcher.registerNode(classify);
+    dispatcher.registerNode(merge);
+    dispatcher.registerDAG(childDag);
+    dispatcher.registerDAG(parentDag);
+
+    const state = new ParentState();
+    const result = await dispatcher.execute('mixed-producer-gather', state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.deepEqual(state.seenSources, ['embedded', 'scatter']);
+    assert.deepEqual(state.seenOutputs, ['all-success', 'success']);
+  });
+
   void it('partition routes items by output into distinct target paths', async () => {
     class PartitionState extends NodeStateBase {
       items: number[] = [];
