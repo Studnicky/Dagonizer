@@ -2,11 +2,10 @@ import { StructuralHash } from '@studnicky/json';
 
 import type { SchemaObjectType } from '../contracts/NodeInterface.js';
 
-export class StableSchemaHash {
-  private constructor() { /* static-only */ }
+export class StableSchemaHash extends StructuralHash {
+  private constructor() { super(); }
 
-  static of(schema: SchemaObjectType): string {
-    const structuralSchema: Record<string, unknown> = { ...schema };
-    return StructuralHash.of(structuralSchema);
+  static override of(schema: SchemaObjectType): string {
+    return super.of(schema);
   }
 }
