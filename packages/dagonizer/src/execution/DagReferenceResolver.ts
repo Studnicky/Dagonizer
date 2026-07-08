@@ -16,6 +16,7 @@ export class DagReferenceResolver {
     readonly context: Record<string, unknown>;
     readonly dags: ReadonlyMap<string, DAGType>;
     readonly accessor: StateAccessorInterface;
+    readonly candidateIris?: ReadonlySet<string>;
   }): string | null {
     const dagIri = DagReferenceResolver.resolveIri(input);
     return dagIri !== null && input.dags.has(dagIri) ? dagIri : null;
@@ -27,6 +28,7 @@ export class DagReferenceResolver {
     readonly value: unknown;
     readonly context: Record<string, unknown>;
     readonly accessor: StateAccessorInterface;
+    readonly candidateIris?: ReadonlySet<string>;
   }): string | null {
     if (!DagReference.isDynamic(input.reference)) {
       return ContextResolver.expand(input.reference, input.context);
@@ -37,7 +39,8 @@ export class DagReferenceResolver {
     if (typeof selected !== 'string' || selected.length === 0) return null;
 
     const selectedIri = ContextResolver.expand(selected, input.context);
-    return DagReferenceResolver.candidateIris(input.reference, input.context).has(selectedIri)
+    const candidateIris = input.candidateIris ?? DagReferenceResolver.candidateIris(input.reference, input.context);
+    return candidateIris.has(selectedIri)
       ? selectedIri
       : null;
   }
@@ -57,7 +60,7 @@ export class DagReferenceResolver {
     );
   }
 
-  private static candidateIris(reference: DagReferenceType, context: Record<string, unknown>): ReadonlySet<string> {
+  static candidateIris(reference: DagReferenceType, context: Record<string, unknown>): ReadonlySet<string> {
     const result = new Set<string>();
     for (const candidate of DagReference.candidates(reference)) {
       result.add(ContextResolver.expand(candidate, context));

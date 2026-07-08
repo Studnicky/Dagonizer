@@ -251,6 +251,9 @@ export class ScatterPoolDriver
   readonly #adapter: ScatterDispatchAdapterInterface;
   readonly #ctx: ScatterRunContextType;
   readonly #bodyExecutor: BodyExecutor;
+  readonly #dagContextValue: Record<string, unknown>;
+  readonly #dagIriValue: string;
+  readonly #bodyCandidateIris: ReadonlySet<string> | null;
 
   constructor(
     adapter: ScatterDispatchAdapterInterface,
@@ -260,6 +263,11 @@ export class ScatterPoolDriver
     this.#adapter = adapter;
     this.#ctx = ctx;
     this.#bodyExecutor = bodyExecutor;
+    this.#dagContextValue = this.#composeDagContext();
+    this.#dagIriValue = this.#resolveDagIri();
+    this.#bodyCandidateIris = 'dag' in ctx.scatter.body
+      ? DagReferenceResolver.candidateIris(ctx.scatter.body.dag, this.#dagContextValue)
+      : null;
   }
 
   /**
@@ -281,14 +289,22 @@ export class ScatterPoolDriver
     );
   }
 
-  #dagContext(): Record<string, unknown> {
+  #composeDagContext(): Record<string, unknown> {
     const dag = this.#adapter.dags.get(ContextResolver.expand(this.#ctx.dagName, {}));
     return dag !== undefined ? ContextResolver.contextOf(dag['@context']) : {};
   }
 
-  #dagIri(): string {
+  #dagContext(): Record<string, unknown> {
+    return this.#dagContextValue;
+  }
+
+  #resolveDagIri(): string {
     const dag = this.#adapter.dags.get(ContextResolver.expand(this.#ctx.dagName, {}));
     return dag !== undefined ? DagGraphProjector.dagIri(dag) : ContextResolver.expand(this.#ctx.dagName, {});
+  }
+
+  #dagIri(): string {
+    return this.#dagIriValue;
   }
 
   #itemBodyIri(scatterName: string, itemIndex: number): string {
@@ -384,6 +400,7 @@ export class ScatterPoolDriver
         'context': dagContext,
         'dags': this.#adapter.dags,
         'accessor': this.#adapter.accessor,
+        ...(this.#bodyCandidateIris === null ? {} : { 'candidateIris': this.#bodyCandidateIris }),
       });
       if (bodyDagName === null) {
         const errorClone = this.#adapter.stateMapper.cloneChild(state, ScatterNodeDefaults.inputMapping(scatter));
@@ -629,6 +646,7 @@ export class ScatterPoolDriver
       'context': dagContext,
       'dags': this.#adapter.dags,
       'accessor': this.#adapter.accessor,
+      ...(this.#bodyCandidateIris === null ? {} : { 'candidateIris': this.#bodyCandidateIris }),
     });
     if (batchBodyDagName === null) {
       return {
