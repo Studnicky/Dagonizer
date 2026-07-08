@@ -673,7 +673,7 @@ export const agentDag: DAGType = {
           '@type': 'DagReference',
           'from': 'item',
           'path': 'dagName',
-          'candidates': ['tool:calculator'],
+          'candidates': ['tool:lookup'],
         },
       },
       'gather': {
