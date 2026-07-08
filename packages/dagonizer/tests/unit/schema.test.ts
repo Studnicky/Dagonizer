@@ -487,6 +487,126 @@ void describe('Dagonizer.registerDAG validation layers', () => {
     );
   });
 
+  void it('registry layer rejects embedded DAG input mappings that omit required child entry fields', () => {
+    const dispatcher = new Dagonizer<RouteSchemaState>();
+    dispatcher.registerNode(new RouteSchemaNode('child-entry', ['done'], {
+      'type': 'object',
+      'required': ['score'],
+      'properties': { 'score': { 'type': 'number' } },
+    }, {
+      'done': { 'type': 'object' },
+    }));
+
+    const childDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:child-required-input',
+      '@type':    'DAG',
+      'name': 'child-required-input', 'version': '1', 'entrypoints': { 'main': 'child-entry' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:child-required-input/node/child-entry', '@type': 'SingleNode',
+          'name': 'child-entry', 'node': 'child-entry', 'outputs': { 'done': 'end' } },
+        { '@id': 'urn:noocodex:dag:child-required-input/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const parentDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:parent-missing-child-input',
+      '@type':    'DAG',
+      'name': 'parent-missing-child-input', 'version': '1', 'entrypoints': { 'main': 'invoke' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:parent-missing-child-input/node/invoke', '@type': 'EmbeddedDAGNode',
+          'name': 'invoke', 'dag': 'child-required-input', 'outputs': { 'success': 'end', 'error': 'end' } },
+        { '@id': 'urn:noocodex:dag:parent-missing-child-input/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+
+    dispatcher.registerDAG(childDag);
+
+    assert.throws(
+      () => dispatcher.registerDAG(parentDag),
+      /EmbeddedDAGNode 'invoke' -> child DAG 'child-required-input' entrypoint 'main' does not seed required input field 'score'/u,
+    );
+  });
+
+  void it('registry layer rejects embedded gatherResult fields not produced by child terminal routes', () => {
+    const dispatcher = new Dagonizer<RouteSchemaState>();
+    dispatcher.registerNode(new RouteSchemaNode('child-answer', ['done'], { 'type': 'object' }, {
+      'done': {
+        'type': 'object',
+        'required': ['name'],
+        'properties': { 'name': { 'type': 'string' } },
+      },
+    }));
+
+    const childDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:child-answer-output',
+      '@type':    'DAG',
+      'name': 'child-answer-output', 'version': '1', 'entrypoints': { 'main': 'answer' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:child-answer-output/node/answer', '@type': 'SingleNode',
+          'name': 'answer', 'node': 'child-answer', 'outputs': { 'done': 'end' } },
+        { '@id': 'urn:noocodex:dag:child-answer-output/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    const parentDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:parent-bad-gather-result',
+      '@type':    'DAG',
+      'name': 'parent-bad-gather-result', 'version': '1', 'entrypoints': { 'main': 'invoke' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:parent-bad-gather-result/node/invoke', '@type': 'EmbeddedDAGNode',
+          'name': 'invoke', 'dag': 'child-answer-output', 'gatherResult': { 'resultField': 'score' },
+          'outputs': { 'success': 'end', 'error': 'end' } },
+        { '@id': 'urn:noocodex:dag:parent-bad-gather-result/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+
+    dispatcher.registerDAG(childDag);
+
+    assert.throws(
+      () => dispatcher.registerDAG(parentDag),
+      /EmbeddedDAGNode 'invoke' gatherResult\.resultField 'score' is not produced by child DAG 'child-answer-output' terminal routes/u,
+    );
+  });
+
+  void it('registry layer rejects scatter gather result fields not produced by node body outputs', () => {
+    const dispatcher = new Dagonizer<RouteSchemaState>();
+    dispatcher.registerNode(new RouteSchemaNode('scatter-body', ['done'], { 'type': 'object' }, {
+      'done': {
+        'type': 'object',
+        'required': ['name'],
+        'properties': { 'name': { 'type': 'string' } },
+      },
+    }));
+
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:scatter-bad-result-field',
+      '@type':    'DAG',
+      'name': 'scatter-bad-result-field', 'version': '1', 'entrypoints': { 'main': 'fan' },
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:scatter-bad-result-field/node/fan', '@type': 'ScatterNode',
+          'name': 'fan', 'source': 'items', 'body': { 'node': 'scatter-body' },
+          'gather': { 'strategy': 'discard', 'resultField': 'score' },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'failed', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-bad-result-field/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:scatter-bad-result-field/node/failed', '@type': 'TerminalNode',
+          'name': 'failed', 'outcome': 'failed' },
+      ],
+    };
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /ScatterNode 'fan' gather\.resultField 'score' is not produced by registered node 'scatter-body' output schemas/u,
+    );
+  });
+
   void it('registry layer does not reject routed schemas whose compatibility is unknown', () => {
     const dispatcher = new Dagonizer<RouteSchemaState>();
     dispatcher.registerNode(new RouteSchemaNode('producer', ['success'], { 'type': 'object' }, {
