@@ -36,14 +36,13 @@ void describe('schema identity and registry', () => {
     assert.equal(StableSchemaHash.of(schema), '932b0415');
   });
 
-  void it('hashes schemas independent of substrate metadata annotations', () => {
+  void it('hashes schemas independent of presentation annotations', () => {
     const canonical: SchemaObjectType = {
       'type': 'object',
       'required': ['title'],
       'properties': { 'title': { 'type': 'string' } },
     };
     const annotated: SchemaObjectType = {
-      '$id': 'urn:test:annotated',
       'title': 'Annotated schema',
       'description': 'Docs do not change the validation contract.',
       'type': 'object',
@@ -52,6 +51,13 @@ void describe('schema identity and registry', () => {
     };
 
     assert.equal(StableSchemaHash.of(canonical), StableSchemaHash.of(annotated));
+  });
+
+  void it('preserves schema ids in structural hashes', () => {
+    const left: SchemaObjectType = { '$id': 'urn:test:left', 'type': 'object' };
+    const right: SchemaObjectType = { '$id': 'urn:test:right', 'type': 'object' };
+
+    assert.notEqual(StableSchemaHash.of(left), StableSchemaHash.of(right));
   });
 
   void it('hashes schemas dependent on Dagonizer contract annotations', () => {
@@ -90,11 +96,11 @@ void describe('schema identity and registry', () => {
     assert.notEqual(StableSchemaHash.of(base), StableSchemaHash.of(formatted));
   });
 
-  void it('uses $id for identity while structural hashes ignore $id annotations', () => {
+  void it('uses $id for identity while structural hashes preserve $id semantics', () => {
     const left: SchemaObjectType = { '$id': 'urn:test:left', 'type': 'object' };
     const right: SchemaObjectType = { '$id': 'urn:test:right', 'type': 'object' };
 
-    assert.equal(StableSchemaHash.of(left), StableSchemaHash.of(right));
+    assert.notEqual(StableSchemaHash.of(left), StableSchemaHash.of(right));
     assert.equal(SchemaIdentity.for(left), 'urn:test:left');
     assert.equal(SchemaIdentity.for(right), 'urn:test:right');
   });
