@@ -5,7 +5,10 @@ import type { TerminalNodeType } from '../../src/entities/dag/TerminalNode.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
+import { DagGraphQueries } from '../../src/graph/DagGraphQueries.js';
 import { DAGONIZER_VOCAB, JsonLdRenderer } from '../../src/viz/JsonLdRenderer.js';
+
+const DEFAULT_DAG_IRI = 'https://noocodex.dev/dag/default#';
 
 // ── Local type-narrowing helpers ─────────────────────────────────────────────
 
@@ -37,6 +40,35 @@ class JsonLdDagReferenceEntry {
   }
 }
 
+class JsonLdGraphEntry {
+  private constructor() {}
+
+  static candidateDagIris(doc: ReturnType<typeof JsonLdRenderer.render>): readonly string[] {
+    const result: string[] = [];
+    for (const entry of doc['@graph']) {
+      JsonLdGraphEntry.collectCandidates(entry, result);
+    }
+    return [...new Set(result)].sort();
+  }
+
+  private static collectCandidates(value: unknown, result: string[]): void {
+    if (Array.isArray(value)) {
+      for (const item of value) JsonLdGraphEntry.collectCandidates(item, result);
+      return;
+    }
+    if (typeof value !== 'object' || value === null) return;
+    const rawCandidates = Reflect.get(value, 'dag:candidateDag');
+    if (Array.isArray(rawCandidates)) {
+      for (const candidate of rawCandidates) {
+        if (typeof candidate === 'string') result.push(candidate);
+      }
+    }
+    for (const nested of Object.values(value)) {
+      JsonLdGraphEntry.collectCandidates(nested, result);
+    }
+  }
+}
+
 void describe('JsonLdRenderer.render', () => {
   void it('emits a stable @context + @graph for a single-node DAG', () => {
     const dag: DAGType = {
@@ -60,9 +92,9 @@ void describe('JsonLdRenderer.render', () => {
     assert.equal(doc['@context']['dag'], DAGONIZER_VOCAB);
     assert.equal(doc['@graph'].length, 3);
     const root = doc['@graph'][0];
-    assert.equal(root?.['@id'], 'urn:dagonizer:mini');
+    assert.equal(root?.['@id'], `${DEFAULT_DAG_IRI}mini`);
     assert.equal(root?.['@type'], 'dag:DAG');
-    assert.deepEqual(root?.['dag:entrypoints'], { 'main': 'urn:dagonizer:mini#greet' });
+    assert.deepEqual(root?.['dag:entrypoints'], { 'main': `${DEFAULT_DAG_IRI}mini#greet` });
   });
 
   void it('renders ScatterNode (body.node) with source, itemKey, execution, gather config', () => {
@@ -121,7 +153,7 @@ void describe('JsonLdRenderer.render', () => {
     const rawRoutes = placement?.['dag:routes'];
     assert.ok(Array.isArray(rawRoutes) && rawRoutes.length > 0, 'dag:routes must be a non-empty array');
     const routes = rawRoutes.filter(RouteEntry.isTarget);
-    assert.equal(routes[0]?.['dag:target'], 'urn:dagonizer:one#end');
+    assert.equal(routes[0]?.['dag:target'], `${DEFAULT_DAG_IRI}one#end`);
   });
 
   void it('renders EmbeddedDAGNode with cross-DAG IRI reference', () => {
@@ -147,7 +179,7 @@ void describe('JsonLdRenderer.render', () => {
     const sub = doc['@graph'].find((entry) => entry['@type'] === 'dag:EmbeddedDAGNode');
     assert.ok(sub !== undefined, 'dag:EmbeddedDAGNode entry must be present');
     // the embedded DAG serializes as a cross-DAG IRI reference
-    assert.equal(sub?.['dag:dag'], 'urn:dagonizer:child');
+    assert.equal(sub?.['dag:dag'], `${DEFAULT_DAG_IRI}child`);
     assert.deepEqual(sub?.['dag:stateMapping'], { 'input': { 'input': 'x' }, 'output': { 'b': 'y' } });
   });
 
@@ -194,19 +226,24 @@ void describe('JsonLdRenderer.render', () => {
     };
 
     const doc = JsonLdRenderer.render(dag);
-    const embedded = doc['@graph'].find((entry) => entry['@id'] === 'urn:dagonizer:dynamic-parent#invoke');
-    const scatter = doc['@graph'].find((entry) => entry['@id'] === 'urn:dagonizer:dynamic-parent#fan');
+    const embedded = doc['@graph'].find((entry) => entry['@id'] === `${DEFAULT_DAG_IRI}dynamic-parent#invoke`);
+    const scatter = doc['@graph'].find((entry) => entry['@id'] === `${DEFAULT_DAG_IRI}dynamic-parent#fan`);
     const scatterBody = scatter?.['dag:body'];
 
     assert.deepEqual(
       JsonLdDagReferenceEntry.candidates(embedded?.['dag:dag']),
-      ['urn:dagonizer:child-a', 'urn:dagonizer:child-b'],
+      [`${DEFAULT_DAG_IRI}child-a`, `${DEFAULT_DAG_IRI}child-b`],
     );
     assert.deepEqual(
       typeof scatterBody === 'object' && scatterBody !== null
         ? JsonLdDagReferenceEntry.candidates(Reflect.get(scatterBody, 'dag:dag'))
         : [],
-      ['urn:dagonizer:child-c'],
+      [`${DEFAULT_DAG_IRI}child-c`],
+    );
+
+    assert.deepEqual(
+      JsonLdGraphEntry.candidateDagIris(doc),
+      [...DagGraphQueries.candidateDagIris(DagGraphProjector.store(dag))].sort(),
     );
   });
 });
@@ -318,7 +355,7 @@ void describe('JsonLdRenderer.render: TerminalNodeType', () => {
     const doc = JsonLdRenderer.render(dag);
     const entry = doc['@graph'].find((e) => e['@type'] === 'dag:TerminalNode');
     assert.ok(entry !== undefined, 'TerminalNodeType entry should be in @graph');
-    assert.equal(entry['@id'], 'urn:dagonizer:jt#done');
+    assert.equal(entry['@id'], `${DEFAULT_DAG_IRI}jt#done`);
     assert.equal(entry['dag:outcome'], 'completed');
     // no dag:routes field on terminal placements
     assert.equal(entry['dag:routes'], undefined);
@@ -385,8 +422,8 @@ void describe('JsonLdRenderer.render: TerminalNodeType', () => {
       assert.equal(entry['dag:routes'], undefined);
     }
     // Outcomes are correct
-    const doneEntry = termEntries.find((e) => e['@id'] === 'urn:dagonizer:jt3#done');
-    const abortEntry = termEntries.find((e) => e['@id'] === 'urn:dagonizer:jt3#abort');
+    const doneEntry = termEntries.find((e) => e['@id'] === `${DEFAULT_DAG_IRI}jt3#done`);
+    const abortEntry = termEntries.find((e) => e['@id'] === `${DEFAULT_DAG_IRI}jt3#abort`);
     assert.equal(doneEntry?.['dag:outcome'], 'completed');
     assert.equal(abortEntry?.['dag:outcome'], 'failed');
     // Routes from step point to IRI targets (not null)
@@ -396,8 +433,8 @@ void describe('JsonLdRenderer.render: TerminalNodeType', () => {
     const routes = rawStepRoutes.filter(RouteEntry.isLabelled);
     const successRoute = routes.find((r) => r['dag:output'] === 'success');
     const errorRoute = routes.find((r) => r['dag:output'] === 'error');
-    assert.equal(successRoute?.['dag:target'], 'urn:dagonizer:jt3#done');
-    assert.equal(errorRoute?.['dag:target'], 'urn:dagonizer:jt3#abort');
+    assert.equal(successRoute?.['dag:target'], `${DEFAULT_DAG_IRI}jt3#done`);
+    assert.equal(errorRoute?.['dag:target'], `${DEFAULT_DAG_IRI}jt3#abort`);
   });
 });
 
@@ -446,10 +483,10 @@ void describe('JsonLdRenderer.renderReachable', () => {
     const doc = JsonLdRenderer.renderReachable(parentDag, new Map([[DagGraphProjector.dagIri(childDag), childDag]]));
     const ids = doc['@graph'].map((entry) => entry['@id']);
 
-    assert.ok(ids.includes('urn:dagonizer:parent'));
-    assert.ok(ids.includes('urn:dagonizer:child'));
-    assert.ok(ids.includes('urn:dagonizer:parent#invoke'));
-    assert.ok(ids.includes('urn:dagonizer:child#child-end'));
+    assert.ok(ids.includes(`${DEFAULT_DAG_IRI}parent`));
+    assert.ok(ids.includes(`${DEFAULT_DAG_IRI}child`));
+    assert.ok(ids.includes(`${DEFAULT_DAG_IRI}parent#invoke`));
+    assert.ok(ids.includes(`${DEFAULT_DAG_IRI}child#child-end`));
   });
 
   void it('renders reachable dynamic candidate DAGs from every entrypoint root', () => {
@@ -527,8 +564,8 @@ void describe('JsonLdRenderer.renderReachable', () => {
     ]));
     const ids = doc['@graph'].map((entry) => entry['@id']);
 
-    assert.ok(ids.includes('urn:dagonizer:left-child'));
-    assert.ok(ids.includes('urn:dagonizer:right-child'));
-    assert.equal(ids.includes('urn:dagonizer:dead-child'), false);
+    assert.ok(ids.includes(`${DEFAULT_DAG_IRI}left-child`));
+    assert.ok(ids.includes(`${DEFAULT_DAG_IRI}right-child`));
+    assert.equal(ids.includes(`${DEFAULT_DAG_IRI}dead-child`), false);
   });
 });
