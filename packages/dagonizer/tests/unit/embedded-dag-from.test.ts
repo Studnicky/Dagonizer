@@ -602,4 +602,45 @@ void describe('DAGValidator: embedded dag reference shape', () => {
 
     assert.doesNotThrow(() => dispatcher.registerDAG(parentDag));
   });
+
+  void it('registerDAG rejects an embedded dynamic reference that reads from item', () => {
+    const dispatcher = new Dagonizer<RoutingState>();
+    dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
+    dispatcher.registerDAG(TestDag.child('embedded-mode-child'));
+
+    const parentDag = new DAGBuilder('bad-embedded-reference-mode', '1')
+      .embeddedDAG('embed', { 'from': 'item', 'path': 'dagName', 'candidates': ['embedded-mode-child'] }, { 'success': 'end', 'error': 'end-fail' })
+      .terminal('end')
+      .terminal('end-fail', { 'outcome': 'failed' })
+      .build();
+
+    assert.throws(
+      () => dispatcher.registerDAG(parentDag),
+      /EmbeddedDAGNode 'embed': dynamic dag reference must use from='state'/u,
+    );
+  });
+
+  void it('registerDAG rejects a scatter dynamic reference that reads from state', () => {
+    const dispatcher = new Dagonizer<RoutingState>();
+    dispatcher.registerNode(new IncrNode('incr', new ExecutionProbe()));
+    dispatcher.registerDAG(TestDag.child('scatter-mode-child'));
+
+    const parentDag = new DAGBuilder('bad-scatter-reference-mode', '1')
+      .scatter('scatter', 'items', { 'dag': { 'from': 'state', 'path': 'selectedDag', 'candidates': ['scatter-mode-child'] } }, {
+        'all-success': 'end',
+        'partial':     'end',
+        'all-error':   'end-fail',
+        'empty':       'end',
+      }, {
+        'gather': { 'strategy': 'discard' },
+      })
+      .terminal('end')
+      .terminal('end-fail', { 'outcome': 'failed' })
+      .build();
+
+    assert.throws(
+      () => dispatcher.registerDAG(parentDag),
+      /ScatterNode 'scatter': dynamic dag reference must use from='item'/u,
+    );
+  });
 });
