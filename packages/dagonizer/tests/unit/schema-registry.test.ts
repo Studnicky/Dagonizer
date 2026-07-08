@@ -31,6 +31,34 @@ void describe('schema identity and registry', () => {
     assert.equal(SchemaIdentity.for(left), SchemaIdentity.for(right));
   });
 
+  void it('hashes schemas with the substrate structural hash', () => {
+    const schema: SchemaObjectType = { 'type': 'object' };
+    assert.equal(StableSchemaHash.of(schema), '932b0415');
+  });
+
+  void it('hashes schemas independent of substrate metadata annotations', () => {
+    const canonical: SchemaObjectType = {
+      'type': 'object',
+      'required': ['title'],
+      'properties': { 'title': { 'type': 'string' } },
+    };
+    const annotated: SchemaObjectType = {
+      '$id': 'urn:test:annotated',
+      'title': 'Annotated schema',
+      'description': 'Docs do not change the validation contract.',
+      'type': 'object',
+      'required': ['title'],
+      'properties': { 'title': { 'type': 'string', 'description': 'Display title' } },
+    };
+
+    assert.equal(StableSchemaHash.of(canonical), StableSchemaHash.of(annotated));
+  });
+
+  void it('uses structural schema identity for anonymous schemas', () => {
+    const schema: SchemaObjectType = { 'type': 'object' };
+    assert.equal(SchemaIdentity.for(schema), 'urn:dagonizer:schema:structural:932b0415');
+  });
+
   void it('registers schemas by identity and rejects conflicting bodies', () => {
     const registry = new SchemaRegistry();
     const first: SchemaObjectType = { '$id': 'urn:test:thing', 'type': 'object' };

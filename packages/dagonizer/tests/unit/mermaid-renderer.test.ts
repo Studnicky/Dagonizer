@@ -8,6 +8,13 @@ import { RoleColorUtils } from '../../src/viz/internal.js';
 import { MermaidRenderer } from '../../src/viz/MermaidRenderer.js';
 
 void describe('MermaidRenderer.render', () => {
+  void it('renders an unavailable DAG diagnostic instead of throwing', () => {
+    const out = MermaidRenderer.render(undefined);
+
+    assert.match(out, /flowchart TB/u);
+    assert.match(out, /%% unavailable-dag \(vunknown\)/u);
+  });
+
   void it('renders a single-node DAG with terminal', () => {
     const dag: DAGType = {
       '@context': DAG_CONTEXT,

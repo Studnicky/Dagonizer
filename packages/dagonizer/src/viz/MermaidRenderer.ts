@@ -54,6 +54,13 @@ type MermaidIdIndexType = {
   readonly placementIds: ReadonlyMap<string, string>;
 }
 
+type MermaidDagViewType = {
+  readonly name: string;
+  readonly version: string;
+  readonly entrypoints: Readonly<Record<string, string>>;
+  readonly nodes: readonly object[];
+};
+
 /**
  * Rendering options for `MermaidRenderer.render`.
  *
@@ -114,17 +121,18 @@ const MERMAID_RENDER_DEFAULTS = {
 export class MermaidRenderer {
   private constructor() { /* static class */ }
 
-  static render(dag: DAGType, options?: MermaidRenderOptionsType): string {
+  static render(dag: DAGType | null | undefined, options?: MermaidRenderOptionsType): string {
     const opts = { ...MERMAID_RENDER_DEFAULTS, ...options };
     const theme = options?.theme;
+    const view = MermaidRenderer.normalizeDag(dag);
 
-    const idIndex = MermaidRenderer.composeIdIndex(dag, opts.sanitizeNodeIds);
+    const idIndex = MermaidRenderer.composeIdIndex(view, opts.sanitizeNodeIds);
     const lines: string[] = [];
     const init = MermaidRenderer.renderInitDirective(theme);
     if (init !== null) lines.push(init);
     lines.push(`flowchart ${opts.orientation}`);
-    lines.push(`  %% ${dag.name} (v${dag.version})`);
-    for (const [label, placement] of Object.entries(dag.entrypoints)) {
+    lines.push(`  %% ${view.name} (v${view.version})`);
+    for (const [label, placement] of Object.entries(view.entrypoints)) {
       const entryId = idIndex.entrypointIds.get(label) ?? MermaidRenderer.entryIdFor(label, opts.sanitizeNodeIds);
       lines.push(`  ${entryId}([${MermaidRenderer.label(label)}])`);
       lines.push(`  ${entryId} --> ${MermaidRenderer.idFor(placement, idIndex.placementIds, opts.sanitizeNodeIds)}`);
@@ -137,7 +145,7 @@ export class MermaidRenderer {
     // Reservoir-configured scatter placement names (for classDef emission).
     const reservoirIds: string[] = [];
 
-    for (const placement of PlacementUtils.narrowNodes(dag)) {
+    for (const placement of PlacementUtils.narrowNodes(view)) {
       const placementId = MermaidRenderer.idFor(placement.name, idIndex.placementIds, opts.sanitizeNodeIds);
       lines.push(`  ${MermaidRenderer.renderShape(placement, placementId)}`);
       for (const edge of MermaidRenderer.renderEdges(placement, placementId, idIndex.placementIds, opts.sanitizeNodeIds)) {
@@ -341,6 +349,37 @@ export class MermaidRenderer {
     );
   }
 
+  /** Convert runtime DAG-like input into the subset Mermaid rendering needs. */
+  private static normalizeDag(dag: DAGType | null | undefined): MermaidDagViewType {
+    if (dag === null || dag === undefined) {
+      return {
+        'name':        'unavailable-dag',
+        'version':     'unknown',
+        'entrypoints': {},
+        'nodes':       [],
+      };
+    }
+
+    return {
+      'name':        typeof dag.name === 'string' && dag.name.length > 0 ? dag.name : 'unnamed-dag',
+      'version':     typeof dag.version === 'string' && dag.version.length > 0 ? dag.version : 'unknown',
+      'entrypoints': MermaidRenderer.normalizeEntrypoints(dag.entrypoints),
+      'nodes':       Array.isArray(dag.nodes) ? dag.nodes : [],
+    };
+  }
+
+  /** Keep only usable entrypoint references so transient bad input cannot crash rendering. */
+  private static normalizeEntrypoints(entrypoints: DAGType['entrypoints'] | null | undefined): Record<string, string> {
+    if (entrypoints === null || entrypoints === undefined) return {};
+    const normalized: Record<string, string> = {};
+    for (const [label, placement] of Object.entries(entrypoints)) {
+      if (typeof placement === 'string' && placement.length > 0) {
+        normalized[label] = placement;
+      }
+    }
+    return normalized;
+  }
+
   /**
    * Convert a role string to a valid Mermaid class identifier token
    * (alphanumeric + underscore only).
@@ -374,7 +413,7 @@ export class MermaidRenderer {
   }
 
   /** Compose deterministic Mermaid-safe ids for every entrypoint and placement name. */
-  private static composeIdIndex(dag: DAGType, sanitize: boolean): MermaidIdIndexType {
+  private static composeIdIndex(dag: MermaidDagViewType, sanitize: boolean): MermaidIdIndexType {
     const placementIds = new Map<string, string>();
     const entrypointIds = new Map<string, string>();
     const occupied = new Set<string>();

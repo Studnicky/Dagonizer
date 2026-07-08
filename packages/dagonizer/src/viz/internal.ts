@@ -5,7 +5,6 @@
  * within the viz module only.
  */
 
-import type { DAGType } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
 import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import type { PhaseNodeType } from '../entities/dag/PhaseNode.js';
@@ -32,6 +31,10 @@ export type PlacementEntryType =
  */
 export type PlacementDispatchType<R> = {
   [K in PlacementEntryType['@type']]: (p: Extract<PlacementEntryType, { '@type': K }>) => R;
+};
+
+type PlacementNodeSourceType = {
+  readonly nodes?: readonly object[] | null;
 };
 
 
@@ -210,7 +213,8 @@ export class PlacementUtils {
    * Nodes that fail the guard (which would indicate a schema bypass) are
    * excluded rather than crashing the renderer, preserving graceful degradation.
    */
-  static narrowNodes(dag: DAGType): PlacementEntryType[] {
+  static narrowNodes(dag: PlacementNodeSourceType): PlacementEntryType[] {
+    if (!Array.isArray(dag.nodes)) return [];
     return dag.nodes.filter((node) => PlacementUtils.isPlacementEntry(node));
   }
 

@@ -8,6 +8,6 @@ export class SchemaIdentity {
   static for(schema: SchemaObjectType): string {
     const id = Reflect.get(schema, '$id');
     if (typeof id === 'string' && id.length > 0) return id;
-    return `urn:dagonizer:schema:sha256:${StableSchemaHash.of(schema)}`;
+    return `urn:dagonizer:schema:structural:${StableSchemaHash.of(schema)}`;
   }
 }
