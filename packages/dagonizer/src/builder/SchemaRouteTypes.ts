@@ -6,6 +6,24 @@ type IsNever<T> = [T] extends [never] ? true : false;
 
 type Extends<Produced, Required> = [Produced] extends [Required] ? true : false;
 
+type NodeInputSchemaType<TNode> =
+  TNode extends { readonly inputSchema: infer TInputSchema }
+    ? TInputSchema extends SchemaObjectType
+      ? TInputSchema
+      : never
+    : TNode extends NodeInterface<infer _State, infer _Output, infer TInputSchema, infer _OutputSchemas>
+      ? TInputSchema
+      : never;
+
+type NodeOutputSchemasType<TNode> =
+  TNode extends { readonly outputSchema: infer TOutputSchemas }
+    ? TOutputSchemas extends Record<string, SchemaObjectType>
+      ? TOutputSchemas
+      : never
+    : TNode extends NodeInterface<infer _State, infer _Output, infer _InputSchema, infer TOutputSchemas>
+      ? TOutputSchemas
+      : never;
+
 /**
  * Compile-time schema compatibility helpers for builder-authored DAGs.
  *
@@ -16,16 +34,12 @@ type Extends<Produced, Required> = [Produced] extends [Required] ? true : false;
  */
 export namespace SchemaRouteTypes {
   export type NodeInputType<TNode> =
-    TNode extends NodeInterface<infer _State, infer _Output, infer TInputSchema, infer _OutputSchemas>
-      ? FromSchema<TInputSchema>
-      : never;
+    FromSchema<NodeInputSchemaType<TNode>>;
 
   export type NodeOutputType<TNode, TPort extends string> =
-    TNode extends NodeInterface<infer _State, infer _Output, infer _InputSchema, infer TOutputSchemas>
-      ? TPort extends keyof TOutputSchemas
-        ? TOutputSchemas[TPort] extends SchemaObjectType
-          ? FromSchema<TOutputSchemas[TPort]>
-          : never
+    TPort extends keyof NodeOutputSchemasType<TNode>
+      ? NodeOutputSchemasType<TNode>[TPort] extends SchemaObjectType
+        ? FromSchema<NodeOutputSchemasType<TNode>[TPort]>
         : never
       : never;
 

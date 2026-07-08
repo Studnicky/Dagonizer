@@ -25,9 +25,11 @@
  * declare `abstract readonly name`, `abstract readonly outputs`, and
  * `abstract execute`.
  *
- * @typeParam TState    the node state the dispatcher threads through the batch.
- * @typeParam TOutput   the literal union of output port names. Narrows the
- *                      placement-routing surface at compile time.
+ * @typeParam TState          the node state the dispatcher threads through the batch.
+ * @typeParam TOutput         the literal union of output port names. Narrows the
+ *                            placement-routing surface at compile time.
+ * @typeParam TInputSchema    the literal JSON Schema accepted by the node.
+ * @typeParam TOutputSchemas  the per-output literal JSON Schemas produced by the node.
  */
 
 import type { NodeInterface, SchemaObjectType } from '../contracts/NodeInterface.js';
@@ -38,12 +40,14 @@ import { Timeout } from '../entities/Timeout.js';
 import type { ValidationResultType } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-const PERMISSIVE_STATE_SCHEMA: SchemaObjectType = { 'type': 'object' };
+const PERMISSIVE_STATE_SCHEMA = { 'type': 'object' } as const satisfies SchemaObjectType;
 
 export abstract class MonadicNode<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = 'success' | 'empty' | 'error',
-> implements NodeInterface<TState, TOutput> {
+  TInputSchema extends SchemaObjectType = SchemaObjectType,
+  TOutputSchemas extends Record<TOutput, SchemaObjectType> = Record<TOutput, SchemaObjectType>,
+> implements NodeInterface<TState, TOutput, TInputSchema, TOutputSchemas> {
   static permissiveSchema<TOutput extends string>(
     outputs: readonly TOutput[],
   ): Record<TOutput, SchemaObjectType> {
@@ -71,8 +75,8 @@ export abstract class MonadicNode<
    * Subclasses override this getter when their incoming state has required
    * fields that graph validation can check before execution.
    */
-  get inputSchema(): SchemaObjectType {
-    return PERMISSIVE_STATE_SCHEMA;
+  get inputSchema(): TInputSchema {
+    return PERMISSIVE_STATE_SCHEMA as TInputSchema;
   }
 
   /**
@@ -84,7 +88,7 @@ export abstract class MonadicNode<
    * check), and it keeps the node's data-flow statically legible to consumers
    * and to the opt-in `validateOutputs` lifecycle stage.
    */
-  abstract get outputSchema(): Record<TOutput, SchemaObjectType>;
+  abstract get outputSchema(): TOutputSchemas;
 
   /**
    * The one node contract: consume a batch and partition its items across the

@@ -90,12 +90,63 @@ class NeedsLabelNode extends MonadicNode<SchemaRouteState, 'done'> {
   }
 }
 
+class GenericScoreProducerNode extends MonadicNode<
+  SchemaRouteState,
+  'done',
+  typeof passthroughOutputSchemas['done'],
+  typeof scoreOutputSchemas
+> {
+  override readonly name = 'generic-score-producer';
+  override readonly outputs = ['done'] as const;
+
+  override get outputSchema() {
+    return scoreOutputSchemas;
+  }
+
+  override async execute(
+    batch: Batch<SchemaRouteState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'done', SchemaRouteState>> {
+    return new Map([['done', batch]]);
+  }
+}
+
+class GenericNeedsScoreNode extends MonadicNode<
+  SchemaRouteState,
+  'done',
+  typeof scoreSchema,
+  typeof passthroughOutputSchemas
+> {
+  override readonly name = 'generic-needs-score';
+  override readonly outputs = ['done'] as const;
+
+  override get inputSchema() {
+    return scoreSchema;
+  }
+
+  override get outputSchema() {
+    return passthroughOutputSchemas;
+  }
+
+  override async execute(
+    batch: Batch<SchemaRouteState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'done', SchemaRouteState>> {
+    return new Map([['done', batch]]);
+  }
+}
+
 type ProducedScore = SchemaRouteTypes.NodeOutputType<ScoreProducerNode, 'done'>;
 type RequiredScore = SchemaRouteTypes.NodeInputType<NeedsScoreNode>;
+type GenericProducedScore = SchemaRouteTypes.NodeOutputType<GenericScoreProducerNode, 'done'>;
+type GenericRequiredScore = SchemaRouteTypes.NodeInputType<GenericNeedsScoreNode>;
 
 const producedScore: ProducedScore = { 'score': 1 };
 const requiredScore: RequiredScore = { 'score': 1 };
 const compatibleRoute: SchemaRouteTypes.AssertCompatibleRouteType<ScoreProducerNode, 'done', NeedsScoreNode> = {};
+const genericProducedScore: GenericProducedScore = { 'score': 2 };
+const genericRequiredScore: GenericRequiredScore = { 'score': 2 };
+const genericCompatibleRoute: SchemaRouteTypes.AssertCompatibleRouteType<GenericScoreProducerNode, 'done', GenericNeedsScoreNode> = {};
 
 // @ts-expect-error score output requires a number.
 const invalidProducedScore: ProducedScore = { 'score': 'high' };
@@ -109,14 +160,25 @@ const incompatibleRoute: SchemaRouteTypes.AssertCompatibleRouteType<ScoreProduce
 // @ts-expect-error unknown output ports are incompatible.
 const missingPortRoute: SchemaRouteTypes.AssertCompatibleRouteType<ScoreProducerNode, 'missing', NeedsScoreNode> = {};
 
+// @ts-expect-error generic schema output still requires a number.
+const invalidGenericProducedScore: GenericProducedScore = { 'score': 'high' };
+
+// @ts-expect-error generic schema input still requires score.
+const invalidGenericRequiredScore: GenericRequiredScore = {};
+
 void describe('SchemaRouteTypes', () => {
   void it('derives compile-time route shapes from node schemas', () => {
     assert.deepEqual(producedScore, { 'score': 1 });
     assert.deepEqual(requiredScore, { 'score': 1 });
     assert.deepEqual(compatibleRoute, {});
+    assert.deepEqual(genericProducedScore, { 'score': 2 });
+    assert.deepEqual(genericRequiredScore, { 'score': 2 });
+    assert.deepEqual(genericCompatibleRoute, {});
     assert.equal(typeof invalidProducedScore, 'object');
     assert.equal(typeof invalidRequiredScore, 'object');
     assert.equal(typeof incompatibleRoute, 'object');
     assert.equal(typeof missingPortRoute, 'object');
+    assert.equal(typeof invalidGenericProducedScore, 'object');
+    assert.equal(typeof invalidGenericRequiredScore, 'object');
   });
 });
