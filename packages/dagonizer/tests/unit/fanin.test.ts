@@ -2,12 +2,60 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
+import type { GatherRecordType } from '../../src/contracts/GatherExecution.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { GATHER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
+import type { GatherNodeType } from '../../src/entities/dag/GatherNode.js';
 import type { JsonObjectType } from '../../src/entities/json.js';
+import { GatherBuffers } from '../../src/execution/GatherBuffers.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 import { TestNode } from '../_support/TestNode.js';
+
+void describe('GatherBuffers', () => {
+  void it('preserves multiple scalar records from the same producer source', () => {
+    const buffers = new GatherBuffers();
+    const gather = {
+      '@id':     'urn:test:join',
+      '@type':   'GatherNode',
+      'name':    'join',
+      'sources': ['producer'],
+      'gather':  { 'strategy': 'custom', 'customNode': 'merge' },
+      'outputs': { 'success': 'end', 'error': 'failed' },
+    } satisfies GatherNodeType;
+
+    const first = new NodeStateBase();
+    const second = new NodeStateBase();
+    const records: GatherRecordType[] = [
+      {
+        'source': 'producer',
+        'index': null,
+        'item': undefined,
+        'output': 'success',
+        'terminalOutcome': null,
+        'result': 'first',
+        'cloneState': first,
+      },
+      {
+        'source': 'producer',
+        'index': null,
+        'item': undefined,
+        'output': 'success',
+        'terminalOutcome': null,
+        'result': 'second',
+        'cloneState': second,
+      },
+    ];
+
+    for (const record of records) buffers.add('join', record);
+
+    assert.equal(buffers.ready(gather), true);
+    assert.deepEqual(
+      buffers.takeReady(gather).map((record) => record.result),
+      ['first', 'second'],
+    );
+  });
+});
 
 void describe('Dagonizer scatter gather strategies', () => {
   void it('first-class gather waits for multiple entrypoint producers', async () => {

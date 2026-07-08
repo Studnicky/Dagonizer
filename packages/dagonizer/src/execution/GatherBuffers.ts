@@ -10,6 +10,7 @@ export class GatherBuffers {
   static readonly #BASE_SNAPSHOT_FIELDS = new Set(['metadata', 'retries', 'warnings']);
 
   readonly #records = new Map<string, Map<string, GatherRecordType>>();
+  #scalarOrdinal = 0;
 
   add(gatherName: string, record: GatherRecordType): void {
     let records = this.#records.get(gatherName);
@@ -17,7 +18,7 @@ export class GatherBuffers {
       records = new Map<string, GatherRecordType>();
       this.#records.set(gatherName, records);
     }
-    records.set(`${record.source}:${record.index ?? 0}`, record);
+    records.set(this.#recordKey(record), record);
   }
 
   isEmpty(): boolean {
@@ -150,5 +151,12 @@ export class GatherBuffers {
 
   private static indexOf(record: GatherRecordType): number {
     return record.index ?? 0;
+  }
+
+  #recordKey(record: GatherRecordType): string {
+    if (record.index !== null) return `${record.source}:${record.index}`;
+    const key = `${record.source}:scalar:${this.#scalarOrdinal}`;
+    this.#scalarOrdinal += 1;
+    return key;
   }
 }
