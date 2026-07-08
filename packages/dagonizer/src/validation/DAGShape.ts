@@ -1,5 +1,6 @@
 import type { DAGType } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNodeType } from '../entities/dag/EmbeddedDAGNode.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterNodeType } from '../entities/dag/ScatterNode.js';
@@ -111,7 +112,7 @@ export class DAGShape {
   }
 
   private static validateGatherNode(
-    gather: { name: string; sources: readonly string[]; outputs: Record<string, string> },
+    gather: GatherNodeType,
     nodeNames: ReadonlySet<string>,
     producerLabels: ReadonlySet<string>,
     errors: string[],
@@ -125,6 +126,12 @@ export class DAGShape {
       if (!producerLabels.has(source)) {
         errors.push(`GatherNode '${gather.name}': source '${source}' is not declared by an entrypoint or producer placement`);
       }
+    }
+    if (gather.policy?.quorum !== undefined && gather.policy.mode !== 'quorum') {
+      errors.push(`GatherNode '${gather.name}': policy.quorum is only valid when policy.mode is 'quorum'`);
+    }
+    if (gather.policy?.mode === 'quorum' && gather.policy.quorum !== undefined && gather.policy.quorum > gather.sources.length) {
+      errors.push(`GatherNode '${gather.name}': policy.quorum ${gather.policy.quorum} exceeds source count ${gather.sources.length}`);
     }
   }
 

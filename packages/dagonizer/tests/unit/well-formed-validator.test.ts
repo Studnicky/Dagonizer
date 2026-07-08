@@ -209,6 +209,51 @@ void describe('WellFormedValidator', () => {
     assert.match((violations[0] ?? ''), /GatherNode 'join': source 'missing-source'/u);
   });
 
+  void it('reports gather quorum policies that cannot be satisfied', () => {
+    const dag: DAGType = {
+      ...TestDagFixture.ofNodes([
+        TestPlacement.singleNode('left-node', { 'success': 'join' }),
+        TestPlacement.singleNode('right-node', { 'success': 'join' }),
+        {
+          '@id': 'urn:noocodex:dag:test/node/join',
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': ['left', 'right'],
+          'gather': { 'strategy': 'discard' },
+          'policy': { 'mode': 'quorum', 'quorum': 3 },
+          'outputs': { 'success': 'end', 'error': 'end' },
+        },
+        TestPlacement.terminal('end', 'completed'),
+      ]),
+      'entrypoints': { 'left': 'left-node', 'right': 'right-node' },
+    };
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.length, 1);
+    assert.match((violations[0] ?? ''), /policy\.quorum 3 exceeds source count 2/u);
+  });
+
+  void it('reports gather quorum values ignored by non-quorum policies', () => {
+    const dag: DAGType = {
+      ...TestDagFixture.ofNodes([
+        TestPlacement.singleNode('left-node', { 'success': 'join' }),
+        {
+          '@id': 'urn:noocodex:dag:test/node/join',
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': ['left'],
+          'gather': { 'strategy': 'discard' },
+          'policy': { 'mode': 'any', 'quorum': 1 },
+          'outputs': { 'success': 'end', 'error': 'end' },
+        },
+        TestPlacement.terminal('end', 'completed'),
+      ]),
+      'entrypoints': { 'left': 'left-node' },
+    };
+    const violations = WellFormedValidator.check(dag);
+    assert.equal(violations.length, 1);
+    assert.match((violations[0] ?? ''), /policy\.quorum is only valid when policy\.mode is 'quorum'/u);
+  });
+
   // ── Rule: TerminalNode with valid outcome ─────────────────────────────────
 
   void it('accepts a TerminalNode with outcome completed', () => {

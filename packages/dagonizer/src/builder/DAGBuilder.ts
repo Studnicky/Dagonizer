@@ -483,6 +483,7 @@ export class DAGBuilder {
     outputs: Record<string, string>,
     options: { readonly policy?: GatherPolicyType } = {},
   ): this {
+    DAGBuilder.validateGatherPolicy(name, sources, options.policy);
     const placement: GatherNodeType = {
       '@id': DAGIdentity.placementId(this.#name, name),
       '@type': 'GatherNode',
@@ -495,6 +496,26 @@ export class DAGBuilder {
     this.#nodes.push(placement);
     this.#defaultEntrypoint(name);
     return this;
+  }
+
+  private static validateGatherPolicy(
+    name: string,
+    sources: readonly string[],
+    policy: GatherPolicyType | undefined,
+  ): void {
+    if (policy?.quorum === undefined) return;
+    if (policy.mode !== 'quorum') {
+      throw new DAGError(
+        `DAGBuilder.gather('${name}'): policy.quorum is only valid when policy.mode is 'quorum'`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
+    if (policy.quorum > sources.length) {
+      throw new DAGError(
+        `DAGBuilder.gather('${name}'): policy.quorum ${policy.quorum} exceeds source count ${sources.length}`,
+        { 'code': 'CONFIGURATION_ERROR' },
+      );
+    }
   }
 
   /**

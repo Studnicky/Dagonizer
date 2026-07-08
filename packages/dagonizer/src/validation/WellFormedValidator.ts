@@ -14,6 +14,7 @@
  */
 
 import type { DAGType } from '../entities/dag/DAG.js';
+import type { GatherNodeType } from '../entities/dag/GatherNode.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 
@@ -105,7 +106,7 @@ export class WellFormedValidator {
     }
 
     if (Placement.isGather(node)) {
-      WellFormedValidator.checkGatherSources(node.name, node.sources, producerLabels, violations);
+      WellFormedValidator.checkGatherNode(node, producerLabels, violations);
     }
   }
 
@@ -127,18 +128,23 @@ export class WellFormedValidator {
     }
   }
 
-  private static checkGatherSources(
-    gatherName: string,
-    sources: readonly string[],
+  private static checkGatherNode(
+    gather: GatherNodeType,
     producerLabels: ReadonlySet<string>,
     violations: string[],
   ): void {
-    for (const source of sources) {
+    for (const source of gather.sources) {
       if (!producerLabels.has(source)) {
         violations.push(
-          `GatherNode '${gatherName}': source '${source}' is not declared by an entrypoint or producer placement.`,
+          `GatherNode '${gather.name}': source '${source}' is not declared by an entrypoint or producer placement.`,
         );
       }
+    }
+    if (gather.policy?.quorum !== undefined && gather.policy.mode !== 'quorum') {
+      violations.push(`GatherNode '${gather.name}': policy.quorum is only valid when policy.mode is 'quorum'.`);
+    }
+    if (gather.policy?.mode === 'quorum' && gather.policy.quorum !== undefined && gather.policy.quorum > gather.sources.length) {
+      violations.push(`GatherNode '${gather.name}': policy.quorum ${gather.policy.quorum} exceeds source count ${gather.sources.length}.`);
     }
   }
 

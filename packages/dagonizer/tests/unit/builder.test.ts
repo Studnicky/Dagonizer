@@ -56,6 +56,23 @@ void describe('DAGBuilder', () => {
     );
   });
 
+  void it('rejects impossible gather quorum policy', () => {
+    assert.throws(
+      () => new DAGBuilder('bad-gather-quorum', '1')
+        .gather('join', ['left', 'right'], { 'strategy': 'discard' }, { 'success': 'end' }, {
+          'policy': { 'mode': 'quorum', 'quorum': 3 },
+        }),
+      /policy\.quorum 3 exceeds source count 2/u,
+    );
+    assert.throws(
+      () => new DAGBuilder('ignored-gather-quorum', '1')
+        .gather('join', ['left', 'right'], { 'strategy': 'discard' }, { 'success': 'end' }, {
+          'policy': { 'mode': 'any', 'quorum': 1 },
+        }),
+      /policy\.quorum is only valid when policy\.mode is 'quorum'/u,
+    );
+  });
+
   void it('produces a config the dispatcher accepts', () => {
     const dag = new DAGBuilder('via-builder', '1')
       .node('greet', greet, { 'success': 'plan' })

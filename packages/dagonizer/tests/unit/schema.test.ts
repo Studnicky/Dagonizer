@@ -148,6 +148,55 @@ void describe('Validator.dag', () => {
     assert.throws(() => Validator.dag.validate(bad), DAGErrorPredicate.isValidationError);
   });
 
+  void it('registry layer rejects first-class gather quorum policies that cannot fire', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    const left = TestNode.make<NodeStateBase>('quorum-left', ['success']);
+    const right = TestNode.make<NodeStateBase>('quorum-right', ['success']);
+    dispatcher.registerNode(left);
+    dispatcher.registerNode(right);
+
+    const dag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': 'urn:noocodex:dag:bad-quorum-policy',
+      '@type': 'DAG',
+      'name': 'bad-quorum-policy',
+      'version': '1',
+      'entrypoints': { 'left': 'left', 'right': 'right' },
+      'nodes': [
+        {
+          '@id': 'urn:noocodex:dag:bad-quorum-policy/node/left',
+          '@type': 'SingleNode',
+          'name': 'left',
+          'node': 'quorum-left',
+          'outputs': { 'success': 'join' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:bad-quorum-policy/node/right',
+          '@type': 'SingleNode',
+          'name': 'right',
+          'node': 'quorum-right',
+          'outputs': { 'success': 'join' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:bad-quorum-policy/node/join',
+          '@type': 'GatherNode',
+          'name': 'join',
+          'sources': ['left', 'right'],
+          'gather': { 'strategy': 'discard' },
+          'policy': { 'mode': 'quorum', 'quorum': 3 },
+          'outputs': { 'success': 'end', 'error': 'failed' },
+        },
+        { '@id': 'urn:noocodex:dag:bad-quorum-policy/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:bad-quorum-policy/node/failed', '@type': 'TerminalNode', 'name': 'failed', 'outcome': 'failed' },
+      ],
+    };
+
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      /GatherNode 'join': policy\.quorum 3 exceeds source count 2/u,
+    );
+  });
+
   void it('rejects a flat DAG missing @context, @id, @type', () => {
     // A flat (non-JSON-LD) DAG must fail schema validation
     const flat = {
