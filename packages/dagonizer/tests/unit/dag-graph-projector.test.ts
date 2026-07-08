@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
+import { DAGBuilder, type DynamicDAGReferenceInputType } from '../../src/builder/DAGBuilder.js';
 import { ContextResolver } from '../../src/dag/ContextResolver.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
@@ -18,6 +18,11 @@ const GRAPH_CONTEXT = {
 
 function withGraphContext(dag: DAGType): DAGType {
   return { ...dag, '@context': GRAPH_CONTEXT };
+}
+
+function dynamicReference(candidate: string, path: string): DynamicDAGReferenceInputType {
+  const candidates: [string, ...string[]] = [candidate];
+  return { 'from': 'state', path, candidates };
 }
 
 void describe('DagGraphProjector', () => {
@@ -134,5 +139,54 @@ void describe('DagGraphProjector', () => {
     assert.equal(typeof outputSchemaIri, 'string');
     assert.equal(schemas.has(inputSchemaIri ?? ''), true);
     assert.equal(schemas.has(outputSchemaIri ?? ''), true);
+  });
+
+  void it('projects a large DAG with one thousand placements and five thousand route edges', () => {
+    const placementCount = 1000;
+    const routesPerPlacement = 5;
+    const routeNames = ['a', 'b', 'c', 'd', 'e'];
+    const node = TestNode.make('scale-node', routeNames);
+    const builder = new DAGBuilder('scale-projection', '1');
+
+    for (let index = 0; index < placementCount; index += 1) {
+      const routes: Record<string, string> = {};
+      for (let offset = 1; offset <= routesPerPlacement; offset += 1) {
+        routes[routeNames[offset - 1] ?? 'a'] = `step-${(index + offset) % placementCount}`;
+      }
+      builder.node(`step-${index}`, node, routes);
+    }
+
+    const store = DagGraphProjector.store(withGraphContext(builder.build()));
+
+    assert.equal(store.count({ 'predicate': DagGraphTerms.predicate('placement') }), placementCount);
+    assert.equal(store.count({ 'predicate': DagGraphTerms.predicate('route') }), placementCount * routesPerPlacement);
+    assert.equal(DagGraphQueries.reachablePlacementIris(store).length, placementCount);
+  });
+
+  void it('queries candidate DAG closure for one thousand reachable dynamic references', () => {
+    const referenceCount = 1000;
+    const builder = new DAGBuilder('scale-candidates', '1');
+
+    for (let index = 0; index < referenceCount; index += 1) {
+      builder.embed(
+        `invoke-${index}`,
+        dynamicReference(`plugin:child-${index}`, `routes.${index}`),
+        {
+          'success': index === referenceCount - 1 ? 'done' : `invoke-${index + 1}`,
+          'error':   'failed',
+        },
+      );
+    }
+    builder.terminal('done').terminal('failed', { 'outcome': 'failed' });
+
+    const store = DagGraphProjector.store(withGraphContext(builder.build()));
+    const candidateIris = DagGraphQueries.reachableCandidateDagIris(store);
+    const rows = DagGraphQueries.candidateDagRows(store);
+
+    assert.equal(candidateIris.length, referenceCount);
+    assert.equal(candidateIris[0], 'https://example.test/plugin#child-0');
+    assert.equal(candidateIris[referenceCount - 1], 'https://example.test/plugin#child-999');
+    assert.equal(rows.length, referenceCount);
+    assert.equal(rows.every((row) => row.dynamic), true);
   });
 });
