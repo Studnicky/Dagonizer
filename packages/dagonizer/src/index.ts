@@ -66,6 +66,7 @@ export type {
   EmbeddableDAGType,
   ItemDAGReferenceInputType,
   PathType,
+  SchemaRouteTypes,
   ScatterDAGBodyType,
   ScatterOptionsType,
   StateDAGReferenceInputType,

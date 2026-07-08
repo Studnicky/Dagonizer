@@ -1,4 +1,5 @@
 export { DAGBuilder } from './DAGBuilder.js';
+export type { SchemaRouteTypes } from './SchemaRouteTypes.js';
 export type {
   DynamicDAGReferenceInputType,
   EmbeddableDAGType,

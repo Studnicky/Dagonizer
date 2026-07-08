@@ -129,6 +129,7 @@ export type {
   StateDAGReferenceInputType,
   TypedEmbeddedDAGOptionsType,
 } from '../builder/DAGBuilder.js';
+export type { SchemaRouteTypes } from '../builder/SchemaRouteTypes.js';
 
 // ---------------------------------------------------------------------------
 // Core dispatcher option types
