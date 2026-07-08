@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { SchemaObjectType } from '../../src/contracts/NodeInterface.js';
+import type {
+  NodeInterface,
+  NodeOutputSchemaMapType,
+  SchemaObjectType,
+} from '../../src/contracts/NodeInterface.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { DAGDocument } from '../../src/dag/DAGDocument.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
@@ -68,6 +72,40 @@ class RouteSchemaNode<TOutput extends string> extends MonadicNode<RouteSchemaSta
     _context: NodeContextType,
   ): Promise<RoutedBatchType<TOutput, RouteSchemaState>> {
     return new Map([[this.outputs[0], batch]]);
+  }
+}
+
+const literalInputSchema = {
+  'type': 'object',
+  'required': ['score'],
+  'properties': { 'score': { 'type': 'number' } },
+} as const satisfies SchemaObjectType;
+
+const literalOutputSchemas = {
+  'done': {
+    'type': 'object',
+    'required': ['accepted'],
+    'properties': { 'accepted': { 'type': 'boolean' } },
+  },
+} as const satisfies NodeOutputSchemaMapType<'done'>;
+
+class LiteralSchemaNode extends MonadicNode<RouteSchemaState, 'done'> {
+  override readonly name = 'literal-schema';
+  override readonly outputs = ['done'] as const;
+
+  override get inputSchema(): typeof literalInputSchema {
+    return literalInputSchema;
+  }
+
+  override get outputSchema(): typeof literalOutputSchemas {
+    return literalOutputSchemas;
+  }
+
+  override async execute(
+    batch: Batch<RouteSchemaState>,
+    _context: NodeContextType,
+  ): Promise<RoutedBatchType<'done', RouteSchemaState>> {
+    return new Map([['done', batch]]);
   }
 }
 
@@ -228,6 +266,21 @@ void describe('DAGDocument.ofValue', () => {
 });
 
 void describe('Dagonizer.registerDAG validation layers', () => {
+  void it('preserves literal node schema types through NodeInterface generics', () => {
+    const node: NodeInterface<
+      RouteSchemaState,
+      'done',
+      typeof literalInputSchema,
+      typeof literalOutputSchemas
+    > = new LiteralSchemaNode();
+
+    const requiredField: 'score' = node.inputSchema.required[0];
+    assert.equal(requiredField, 'score');
+    assert.equal(node.outputSchema.done.required[0], 'accepted');
+    // @ts-expect-error: the literal schema contract declares only the done port.
+    void node.outputSchema.error;
+  });
+
   void it('leaves schema validation at the DAGDocument ingest boundary', () => {
     const bad = {
       '@context': DAG_CONTEXT,

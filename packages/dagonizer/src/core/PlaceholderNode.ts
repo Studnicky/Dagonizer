@@ -35,10 +35,8 @@ export class PlaceholderNode<
     this.outputs = outputs;
   }
 
-  override get outputSchema(): Record<string, SchemaObjectType> {
-    const schema: Record<string, SchemaObjectType> = {};
-    for (const port of this.outputs) schema[port] = { 'type': 'object' };
-    return schema;
+  override get outputSchema(): Record<TOutput, SchemaObjectType> {
+    return MonadicNode.permissiveSchema(this.outputs);
   }
 
   override async execute(
