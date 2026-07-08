@@ -373,7 +373,7 @@ export interface DagonizerInterface<
  * dispatcher.registerNode(new IncrementNode());
  * dispatcher.registerDAG({
  *   '@context': DAG_CONTEXT, '@id': 'urn:noocodex:dag:demo', '@type': 'DAG',
- *   name: 'demo', version: '1', entrypoint: 'increment',
+ *   name: 'demo', version: '1', entrypoints: { main: 'increment' },
  *   nodes: [
  *     { '@id': 'urn:noocodex:dag:demo/node/increment', '@type': 'SingleNode',
  *       name: 'increment', node: 'increment', outputs: { done: 'end' } },

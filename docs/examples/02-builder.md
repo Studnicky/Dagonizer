@@ -32,7 +32,7 @@ Use this page when you want TypeScript to help with graph assembly: route exhaus
 
 Each builder call appends a placement to the DAG document. The node instance supplies the output union, and the route object must cover that union. If a node can return `'retry'`, the route map needs a `'retry'` key. If it does not, TypeScript complains before the docs, tests, or browser demo get involved.
 
-`build()` freezes the assembly into a plain `DAG` value with `@context`, `@type` placements, `entrypoint`, and output targets. From that point forward, the builder disappears. Registration, serialization, visualization, plugins, and execution all see normal JSON-LD.
+`build()` freezes the assembly into a plain `DAG` value with `@context`, `@type` placements, labeled `entrypoints`, and output targets. From that point forward, the builder disappears. Registration, serialization, visualization, plugins, and execution all see normal JSON-LD.
 
 ## Diagrams, Examples, and Outputs
 

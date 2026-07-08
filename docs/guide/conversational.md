@@ -220,7 +220,7 @@ export class TripOrchestrator {
       '@type': 'DAG',
       'name': 'trip-planner',
       'version': '1.0',
-      'entrypoint': 'intake',
+      'entrypoints': { 'main': 'intake' },
       'nodes': [
         {
           '@id': 'urn:noocodex:trip-planner:dag/intake',

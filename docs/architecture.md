@@ -31,7 +31,7 @@ const sampleDAG: DAGType = {
   '@type': 'DAG',
   name: 'sample',
   version: '1',
-  entrypoint: 'validate',
+  entrypoints: { main: 'validate' },
   nodes: [
     {
       '@id': 'urn:noocodex:dag:sample/node/validate',
@@ -83,7 +83,7 @@ That shape is what makes the same engine work for very different domains. The Ar
 | Object | Role |
 |--------|------|
 | `Dagonizer<TState>` | Dispatcher. Holds the node and DAG registries. Executes DAGs. |
-| `DAG` | Plain-object graph definition: nodes plus entrypoint. |
+| `DAG` | Plain-object graph definition: placements plus labeled `entrypoints`. |
 | `NodeInterface<TState, TOutput>` | Stateless unit of work. Receives a `Batch<TState>` and a `NodeContextType`; returns a `RoutedBatchType<TOutput, TState>`. |
 | `NodeStateInterface` | Lifecycle and error/warning accumulation surface. Travels through every node. |
 | `Execution<TState>` | Handle returned by `execute()` and `resume()`. AsyncIterable and PromiseLike. |
@@ -256,7 +256,7 @@ const sampleDAG: DAGType = {
   '@type': 'DAG',
   name: 'sample',
   version: '1',
-  entrypoint: 'validate',
+  entrypoints: { main: 'validate' },
   nodes: [
     {
       '@id': 'urn:noocodex:dag:sample/node/validate',

@@ -59,7 +59,7 @@ import { DAGSchema } from '@studnicky/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/DAG`
 
-Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement variant (`SingleNode`, `ScatterNode`, `EmbeddedDAGNode`, `TerminalNode`, `PhaseNode`), discriminated by the `@type` field.
+Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoints`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement variant (`SingleNode`, `ScatterNode`, `EmbeddedDAGNode`, `GatherNode`, `TerminalNode`, `PhaseNode`), discriminated by the `@type` field.
 
 ```ts twoslash
 import type { DAGType } from '@studnicky/dagonizer/entities';

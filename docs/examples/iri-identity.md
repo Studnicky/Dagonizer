@@ -83,7 +83,7 @@ A DAG document that references a prefixed node declares the prefix in its own `@
   "@type":      "DAG",
   "name":       "example-pipeline",
   "version":    "1",
-  "entrypoint": "pluginA:classify",
+  "entrypoints": { "main": "pluginA:classify" },
   "nodes": [
     {
       "@id":   "urn:example:pipeline/node/classify",
@@ -102,7 +102,7 @@ A DAG document that references a prefixed node declares the prefix in its own `@
 }
 ```
 
-Every `name` and `node` string in the document is expanded through the document's `@context` before the DAG is stored. The entrypoint `pluginA:classify` resolves to `https://plugin-a.dev/dag#classify` — the same IRI under which the node was registered.
+Every `name` and `node` string in the document is expanded through the document's `@context` before the DAG is stored. The `entrypoints.main` target `pluginA:classify` resolves to `https://plugin-a.dev/dag#classify` — the same IRI under which the node was registered.
 
 ## Details for Nerds
 

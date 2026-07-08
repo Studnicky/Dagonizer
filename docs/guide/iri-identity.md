@@ -42,7 +42,7 @@ The `node`, `dag`, phase `node`, and scatter body references in a DAG document a
     "myPlugin": "https://myplugin.dev/dag#"
   },
   "name": "intent-pipeline",
-  "entrypoint": "summarize",
+  "entrypoints": { "main": "summarize" },
   "nodes": [
     {
       "@type": "SingleNode",
@@ -98,7 +98,7 @@ Add an `@context` object to the DAG document. Each key is a short prefix; each v
   "@type": "DAG",
   "name":  "intent-pipeline",
   "version": "1",
-  "entrypoint": "myPlugin:classify",
+  "entrypoints": { "main": "myPlugin:classify" },
   "nodes": [
     {
       "@id":   "urn:myplugin:intent-pipeline/node/classify",

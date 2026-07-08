@@ -79,7 +79,7 @@ Use JSON-LD when a DAG must leave TypeScript source: plugin packages, persisted 
 
 - Malformed JSON (delegates to `JSON.parse`).
 - Schema-noncompliant input (validates against `DAGSchema` via Ajv 2020-12).
-- Missing required fields (`@context`, `@id`, `@type`, `name`, `version`, `entrypoint`, `nodes`).
+- Missing required fields (`@context`, `@id`, `@type`, `name`, `version`, `entrypoints`, `nodes`).
 - Invalid `@type` discriminator on any placement.
 
 For callers that have already decoded their input (a database row that returned a parsed object, for example), `DAGDocument.ofValue(value)` skips the JSON parse step and runs only the schema validation.
@@ -93,7 +93,7 @@ A DAG document carries these top-level fields:
 - `@context`. The canonical Dagonizer JSON-LD context inlined as an object literal. The full context is exported from `@studnicky/dagonizer` as `DAG_CONTEXT` (source: `packages/dagonizer/src/entities/dag/DAG.ts`). `DAGBuilder.build()` embeds it verbatim.
 - `@id`. URN identifier for the DAG document. Convention: `urn:noocodex:dag:<name>`.
 - `@type`. RDF class. `"DAG"` for the document; one of `"SingleNode"`, `"ScatterNode"`, `"EmbeddedDAGNode"`, `"TerminalNode"`, or `"PhaseNode"` for placements.
-- `name`, `version`, `entrypoint`. The dispatcher uses `name` and `entrypoint` to register and execute.
+- `name`, `version`, `entrypoints`. The dispatcher uses `name` to register the DAG and `entrypoints` to seed execution.
 - `nodes`. Array of placement objects, each with its own `@id` and `@type`.
 
 Example 03 embeds a full JSON-LD DAG as a string and feeds it through the ingest boundary:
@@ -185,7 +185,7 @@ Because every field carries a canonical IRI through `@context`, a Dagonizer DAG 
   rdf:type                              dag:DAG ;
   dag:name                              "demo" ;
   dag:version                           "1" ;
-  dag:entrypoint                        "transform" ;
+  dag:entrypoints                       [ dag:main "transform" ] ;
   dag:nodes                             <urn:noocodex:dag:demo/node/transform> .
 
 <urn:noocodex:dag:demo/node/transform>

@@ -66,13 +66,14 @@ The schema is exported directly for callers that want to integrate with their ow
 
 <<< @/../examples/03-schema.ts#schema-id
 
-The schema covers `name`, `version`, `entrypoint`, and `nodes`. Each node variant has its own sub-schema enforcing required fields and valid enumerations for `@type`, `combine`, gather `strategy`, and node-output values.
+The schema covers `name`, `version`, `entrypoints`, and `nodes`. Each placement variant has its own sub-schema enforcing required fields and valid enumerations for `@type`, gather `strategy`, and output target values.
 
 | `@type` | Required fields | Notes |
 |---|---|---|
 | `SingleNode` | `@id`, `@type`, `name`, `node`, `outputs` | `outputs` is `Record<string, string \| null>` |
 | `ScatterNode` | `@id`, `@type`, `name`, `body`, `source`, `gather`, `outputs` | `body` is `{ node }` or `{ dag }`; `gather` is required; optional `itemKey`, `execution` (unified concurrency-limiting policy), `stateMapping.input`, `reducer` |
 | `EmbeddedDAGNode` | `@id`, `@type`, `name`, `dag`, `outputs` | `dag` is the registered child DAG name; optional `stateMapping` (`input` and `output` field maps) |
+| `GatherNode` | `@id`, `@type`, `name`, `sources`, `gather`, `outputs` | first-class fan-in barrier; optional `policy` controls `all`, `any`, or `quorum` readiness |
 | `TerminalNode` | `@id`, `@type`, `name`, `outcome` | no `outputs` field; `outcome` is `'completed'` or `'failed'` |
 | `PhaseNode` | `@id`, `@type`, `name`, `phase`, `node` | `phase` is `'pre'` or `'post'`; no `outputs` |
 

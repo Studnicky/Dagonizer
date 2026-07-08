@@ -34,7 +34,7 @@ Dagonizer is domain-agnostic. The Archivist uses these concepts for an LLM-agent
 
 ### DAG
 
-A **DAG** is a JSON-LD document that declares an entrypoint and a list of node placements with their routing. It is plain data: store it in a file, a database row, or a configuration service. Parse a JSON string via `DAGDocument.load(json)` or validate an already-decoded value via `DAGDocument.ofValue(value)` — both validate against `DAGSchema` at the ingest boundary. Register the result with `dispatcher.registerDAG(dag)`; everything downstream is typed.
+A **DAG** is a JSON-LD document that declares one or more labeled `entrypoints` and a list of node placements with their routing. It is plain data: store it in a file, a database row, or a configuration service. Parse a JSON string via `DAGDocument.load(json)` or validate an already-decoded value via `DAGDocument.ofValue(value)` — both validate against `DAGSchema` at the ingest boundary. Register the result with `dispatcher.registerDAG(dag)`; everything downstream is typed.
 
 The Archivist DAG spans dozens of placements covering intent classification, tool-registry scatter, embedded search sub-DAGs, compose retry loops, and persist. Its `@context` and `@type` discriminator make it both a runtime artifact and a Linked Data document.
 
@@ -42,11 +42,12 @@ The Archivist DAG spans dozens of placements covering intent classification, too
 
 A **placement** is one vertex in the DAG. Each placement has a name, a `@type` discriminator that selects the kind, and an `outputs` map that routes named outputs to the next placement. Flows terminate at an explicit `TerminalNode` placement.
 
-Five kinds:
+Six kinds:
 
 - **`single`**: one registered node. The node returns one output name; the dispatcher follows the corresponding route.
 - **`scatter`**: isolates one state clone per item in a source array, runs a node body in each clone, merges produced clone state back into the parent via a `gather` config, and routes on the aggregate outcome via a `reducer`. This is the fork (generate-collect) pattern; a `ScatterNode` is always 1→N over a required `source`.
 - **`embedded`**: invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state, then routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping` seeds the child from the parent before it runs and copies fields back after it completes. The Archivist's sub-DAG compositions are `EmbeddedDAGNode` placements.
+- **`gather`**: buffers records from named producers, applies a gather strategy, and routes once its policy is satisfied. Use `GatherNode` for multi-entry fan-in or for producers that are not owned by a scatter placement.
 - **`terminal`**: named end state for explicit completion or failure. Use when a flow has more than one "done" semantics (for example, `accepted` versus `rejected`).
 - **`phase`**: a single placement that wraps one registered node with a lifecycle attachment. `phase: 'pre'` runs the node before the DAG entrypoint; `phase: 'post'` runs the node after the main loop drains on every exit path. Pre-phase errors abort the run; post-phase errors are collected as warnings and do not change the already-set lifecycle. Phase placements carry no `outputs` and cannot route to other placements.
 
@@ -57,6 +58,7 @@ Five kinds:
 | Sequential steps with conditional branching | `single` |
 | Process every item in a collection, then aggregate | `scatter` |
 | Invoke a registered sub-DAG exactly once and route on its outcome | `embedded` |
+| Join multiple producers at a first-class fan-in barrier | `gather` |
 | Distinguish multiple terminal semantics | `terminal` |
 | Attach a pre- or post-run lifecycle hook to the DAG | `phase` |
 
