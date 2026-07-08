@@ -183,7 +183,7 @@ d.registerDAG(dag, stateFactory);
 
 Registers a DAG after a semantic validation pass, followed by an optional contract check. The optional `stateFactory` argument overrides the default child-state constructor thunk for embedded-DAG and scatter executions within this DAG; when omitted, `ChildStateFactory.cloneParent` is stored.
 
-1. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular embedded-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
+1. **Semantic pass.** Verifies every labeled entrypoint exists, node and DAG references resolve against the registry view, recursive DAG-reference components have a reachable terminal exit, and every registered node output has a routing entry in the placement's `outputs` map.
 
 After the semantic pass, a data-flow check runs for each placement whose backing node declares required and produced state paths. Dangling reads (a non-entrypoint node requires a path no upstream node produces) and dead writes (a node produces a path no downstream node requires) both throw `DAGError`. This check is skipped for placements without a contract.
 

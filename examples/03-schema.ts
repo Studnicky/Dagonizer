@@ -114,7 +114,7 @@ process.stdout.write(`compact length: ${String(compact.length)} (no whitespace)\
 // ── DAGError (code VALIDATION_ERROR): schema rejects any document missing required JSON-LD fields
 // #region validate
 try {
-  // Missing '@context', '@id', '@type', 'entrypoint', 'nodes': schema rejects it.
+  // Missing '@context', '@id', '@type', 'entrypoints', 'nodes': schema rejects it.
   DAGDocument.load(JSON.stringify({ "name": 'broken', "version": '1' }));
 } catch (error) {
   if (error instanceof DAGError && error.code === 'VALIDATION_ERROR') {
