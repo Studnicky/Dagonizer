@@ -16,6 +16,7 @@ import { DAGError } from '../errors/index.js';
 import { DagGraphProjector } from '../graph/DagGraphProjector.js';
 import { DagGraphQueries } from '../graph/DagGraphQueries.js';
 import { DagReferenceGraph } from '../graph/DagReferenceGraph.js';
+import type { DagReferenceEdgeType } from '../graph/DagReferenceGraph.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { JsonSchemaCompatibility } from '../schema/JsonSchemaCompatibility.js';
 import { SchemaRegistry } from '../schema/SchemaRegistry.js';
@@ -52,7 +53,7 @@ export class DAGValidator {
 
     for (const component of DagReferenceGraph.stronglyConnectedComponents(dags.keys(), edges)) {
       if (component.length === 1 && !DagReferenceGraph.hasSelfEdge(component[0] ?? '', edges)) continue;
-      DAGValidator.validateRecursiveComponent(component, dags, errors);
+      DAGValidator.validateRecursiveComponent(component, dags, edges, errors);
     }
 
     if (errors.length > 0) {
@@ -617,19 +618,33 @@ export class DAGValidator {
   private static validateRecursiveComponent(
     component: readonly string[],
     dags: ReadonlyMap<string, DAGType>,
+    edges: readonly DagReferenceEdgeType[],
     errors: string[],
   ): void {
+    const recursiveDagIris = new Set(component);
     for (const dagIri of component) {
       const dag = dags.get(dagIri);
-      if (dag !== undefined && !DAGValidator.hasReachableTerminal(dag)) {
+      if (dag !== undefined && !DAGValidator.hasReachableTerminalEscape(dag, dagIri, recursiveDagIris, edges)) {
         errors.push(`Recursive DAG component containing '${dagIri}' has no terminal exit path`);
       }
     }
   }
 
-  private static hasReachableTerminal(dag: DAGType): boolean {
+  private static hasReachableTerminalEscape(
+    dag: DAGType,
+    dagIri: string,
+    recursiveDagIris: ReadonlySet<string>,
+    edges: readonly DagReferenceEdgeType[],
+  ): boolean {
     const placements = new Map<string, DAGNodeType>();
     for (const placement of dag.nodes) placements.set(placement.name, placement);
+
+    const recursivePlacements = new Set<string>();
+    for (const edge of edges) {
+      if (edge.sourceDagIri === dagIri && recursiveDagIris.has(edge.targetDagIri)) {
+        recursivePlacements.add(edge.sourcePlacement);
+      }
+    }
 
     const visited = new Set<string>();
     const queue = Object.values(dag.entrypoints);
@@ -640,6 +655,7 @@ export class DAGValidator {
       const placement = placements.get(placementName);
       if (placement === undefined) continue;
       if (Placement.isTerminal(placement)) return true;
+      if (recursivePlacements.has(placement.name)) continue;
       if ('outputs' in placement) queue.push(...Object.values(placement.outputs));
     }
     return false;

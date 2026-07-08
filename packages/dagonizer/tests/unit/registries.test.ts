@@ -323,6 +323,20 @@ class TestRegistryDag {
     };
   }
 
+  static terminalOnly(dagName: string): DAGType {
+    return {
+      '@context': DAG_CONTEXT,
+      '@id': `urn:noocodex:dag:${dagName}`,
+      '@type': 'DAG',
+      'name': dagName,
+      'version': '1',
+      'entrypoints': { 'main': 'end' },
+      'nodes': [
+        { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+  }
+
   static embedded(dagName: string, placementName: string, childDag: string, outputs: Record<string, string> = { 'success': 'end', 'error': 'end' }): DAGType {
     return {
       '@context': DAG_CONTEXT,
@@ -337,31 +351,6 @@ class TestRegistryDag {
         'name': placementName,
         'dag': childDag,
         outputs,
-      },
-        { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
-      ],
-    };
-  }
-
-  static dynamicEmbedded(dagName: string, placementName: string, candidates: string[]): DAGType {
-    return {
-      '@context': DAG_CONTEXT,
-      '@id': `urn:noocodex:dag:${dagName}`,
-      '@type': 'DAG',
-      'name': dagName,
-      'version': '1',
-      'entrypoints': { 'main': placementName },
-      'nodes': [{
-        '@id': `urn:noocodex:dag:${dagName}/node/${placementName}`,
-        '@type': 'EmbeddedDAGNode',
-        'name': placementName,
-        'dag': {
-          '@type': 'DagReference',
-          'from': 'state',
-          'path': 'nextDag',
-          candidates,
-        },
-        'outputs': { 'success': 'end', 'error': 'end' },
       },
         { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
       ],
@@ -460,7 +449,7 @@ void describe('Dagonizer.registerBundle', () => {
   void it('resolves DAG references to DAGs defined later in the same bundle', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
     const parentDag = TestRegistryDag.embedded('parent-flow', 'invoke-child', 'child-flow');
-    const childDag = TestRegistryDag.embedded('child-flow', 'recurse-parent', 'parent-flow');
+    const childDag = TestRegistryDag.terminalOnly('child-flow');
 
     dispatcher.registerBundle({ 'nodes': [], 'dags': [parentDag, childDag] });
 
@@ -470,11 +459,53 @@ void describe('Dagonizer.registerBundle', () => {
 
   void it('validates self-recursive dynamic DagReference candidates against the staged DAG registry', () => {
     const dispatcher = new Dagonizer<NodeStateInterface>();
-    const selfDag = TestRegistryDag.dynamicEmbedded('self-flow', 'invoke-self', ['self-flow']);
+    const router = TestNode.make('self-router', ['done', 'recurse'], () => 'done');
+    const selfDag: DAGType = {
+      '@context': DAG_CONTEXT,
+      '@id': 'urn:noocodex:dag:self-flow',
+      '@type': 'DAG',
+      'name': 'self-flow',
+      'version': '1',
+      'entrypoints': { 'main': 'route' },
+      'nodes': [{
+        '@id': 'urn:noocodex:dag:self-flow/node/route',
+        '@type': 'SingleNode',
+        'name': 'route',
+        'node': 'self-router',
+        'outputs': { 'done': 'end', 'recurse': 'invoke-self' },
+      }, {
+        '@id': 'urn:noocodex:dag:self-flow/node/invoke-self',
+        '@type': 'EmbeddedDAGNode',
+        'name': 'invoke-self',
+        'dag': {
+          '@type': 'DagReference',
+          'from': 'state',
+          'path': 'nextDag',
+          'candidates': ['self-flow'],
+        },
+        'outputs': { 'success': 'end', 'error': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:self-flow/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+      ],
+    };
 
-    dispatcher.registerBundle({ 'nodes': [], 'dags': [selfDag] });
+    dispatcher.registerBundle({ 'nodes': [router], 'dags': [selfDag] });
 
     assert.equal(dispatcher.getDAG('self-flow'), selfDag);
+  });
+
+  void it('rejects recursive components whose only terminal routes happen after recursive calls', () => {
+    const dispatcher = new Dagonizer<NodeStateInterface>();
+    const dagA = TestRegistryDag.embedded('after-call-a', 'invoke-b', 'after-call-b');
+    const dagB = TestRegistryDag.embedded('after-call-b', 'invoke-a', 'after-call-a');
+
+    assert.throws(
+      () => dispatcher.registerBundle({ 'nodes': [], 'dags': [dagA, dagB] }),
+      /no terminal exit path/u,
+    );
+
+    assert.equal(dispatcher.getDAG('after-call-a'), undefined);
+    assert.equal(dispatcher.getDAG('after-call-b'), undefined);
   });
 
   void it('rejects recursive components without a reachable terminal exit and rolls back staged DAGs', () => {
