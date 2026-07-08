@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { defineDagonizerPlugin } from '../../src/plugin/defineDagonizerPlugin.js';
 import { PluginDiscovery } from '../../src/plugin/PluginDiscovery.js';
@@ -93,6 +94,15 @@ void describe('PluginDiscovery', () => {
       PluginDiscovery.referencedDagNames(parentDag),
       ['plugin:a', 'plugin:b', 'plugin:c', 'plugin:d'],
     );
+    assert.deepEqual(
+      PluginDiscovery.referencedDagIris(parentDag),
+      [
+        'https://noocodex.dev/dag/default#plugin:a',
+        'https://noocodex.dev/dag/default#plugin:b',
+        'https://noocodex.dev/dag/default#plugin:c',
+        'https://noocodex.dev/dag/default#plugin:d',
+      ],
+    );
   });
 
   void it('walks every DAG entrypoint root when collecting candidate DAG names', () => {
@@ -119,6 +129,21 @@ void describe('PluginDiscovery', () => {
     assert.deepEqual(
       PluginDiscovery.referencedDagNames(parentDag),
       ['plugin:left', 'plugin:right-a', 'plugin:right-b'],
+    );
+  });
+
+  void it('walks DAG registries by expanded DAG IRI', () => {
+    const childDag = new DAGBuilder('plugin:child', '1')
+      .terminal('done')
+      .build();
+    const parentDag = new DAGBuilder('plugin-host', '1')
+      .embed('invoke', 'plugin:child', { 'success': 'done', 'error': 'done' })
+      .terminal('done')
+      .build();
+
+    assert.deepEqual(
+      PluginDiscovery.walk(parentDag, new Map([[DagGraphProjector.dagIri(childDag), childDag]])),
+      [DagGraphProjector.dagIri(parentDag), DagGraphProjector.dagIri(childDag)],
     );
   });
 });

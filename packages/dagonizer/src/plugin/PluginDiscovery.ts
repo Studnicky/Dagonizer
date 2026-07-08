@@ -13,7 +13,8 @@
 
 import type { PluginInterface } from '../contracts/PluginInterface.js';
 import type { DAGType } from '../entities/dag/DAG.js';
-import { DagReference } from '../entities/dag/DagReference.js';
+import { DagGraphProjector } from '../graph/DagGraphProjector.js';
+import { DagGraphQueries } from '../graph/DagGraphQueries.js';
 
 import { PluginLoader } from './PluginLoader.js';
 
@@ -27,75 +28,31 @@ export class PluginDiscovery {
   private constructor() { /* static-only */ }
 
   /**
-   * Collect all declared dag-body names referenced in the DAG's reachable
-   * placement graph.
-   *
-   * Starts from every declared `dag.entrypoints` root, follows placement
-   * routing edges, and collects:
-   * - `EmbeddedDAGNode.dag` literal or dynamic candidate names
-   * - `ScatterNode.body.dag` literal or dynamic candidate names
-   *
-   * Skips `node` bodies because they reference registered nodes, not DAGs.
-   * Returns a deduplicated, stable-ordered array of dag names.
+   * Collect all declared dag-body names referenced in the DAG topology.
+   * Names are lexical authoring values for specifier resolution; graph
+   * traversal uses expanded IRIs via `referencedDagIris`.
    */
   static referencedDagNames(dag: DAGType): readonly string[] {
-    const seen = new Set<string>();
-    for (const placement of PluginDiscovery.reachablePlacements(dag)) {
-      const type = placement['@type'];
-      if (type === 'EmbeddedDAGNode') {
-        if (placement.dag !== undefined) {
-          for (const candidate of DagReference.candidates(placement.dag)) {
-            seen.add(candidate);
-          }
-        }
-      } else if (type === 'ScatterNode') {
-        if ('dag' in placement.body) {
-          for (const candidate of DagReference.candidates(placement.body.dag)) {
-            seen.add(candidate);
-          }
-        }
-      }
-    }
-    return [...seen];
+    return DagGraphQueries.reachableCandidateDagNames(DagGraphProjector.store(dag));
   }
 
-  private static reachablePlacements(dag: DAGType): readonly DAGType['nodes'][number][] {
-    const placementByName = new Map<string, DAGType['nodes'][number]>();
-    for (const placement of dag.nodes) {
-      placementByName.set(placement.name, placement);
-    }
-
-    const reachable: DAGType['nodes'][number][] = [];
-    const visited = new Set<string>();
-    const queue = Object.values(dag.entrypoints);
-
-    while (queue.length > 0) {
-      const placementName = queue.shift();
-      if (placementName === undefined || visited.has(placementName)) continue;
-      visited.add(placementName);
-
-      const placement = placementByName.get(placementName);
-      if (placement === undefined) continue;
-      reachable.push(placement);
-
-      if ('outputs' in placement) {
-        queue.push(...Object.values(placement.outputs));
-      }
-    }
-
-    return reachable;
+  /**
+   * Collect all referenced DAG IRIs from the canonical graph projection.
+   */
+  static referencedDagIris(dag: DAGType): readonly string[] {
+    return DagGraphQueries.reachableCandidateDagIris(DagGraphProjector.store(dag));
   }
 
   /**
    * Walk a DAG forest breadth-first: entry DAG + all reachable sub-DAGs
    * referenced by literal or dynamic candidate `dag` fields.
    *
-   * Returns the ordered list of all DAG names reachable from `dag` (including
-   * `dag.name` itself at index 0). DAGs absent from `registry` are skipped
+   * Returns the ordered list of all DAG IRIs reachable from `dag` (including
+   * the entry DAG itself at index 0). DAGs absent from `registry` are skipped
    * silently — the caller is responsible for ensuring the registry is populated
    * before execution.
    *
-   * Cycle-safe: each name is visited at most once.
+   * Cycle-safe: each IRI is visited at most once.
    */
   static walk(dag: DAGType, registry: ReadonlyMap<string, DAGType>): readonly string[] {
     const visited = new Set<string>();
@@ -105,14 +62,14 @@ export class PluginDiscovery {
     while (queue.length > 0) {
       const current = queue.shift();
       if (current === undefined) break;
-      const name = current.name;
-      if (visited.has(name)) continue;
-      visited.add(name);
-      result.push(name);
+      const dagIri = DagGraphProjector.dagIri(current);
+      if (visited.has(dagIri)) continue;
+      visited.add(dagIri);
+      result.push(dagIri);
 
-      for (const refName of PluginDiscovery.referencedDagNames(current)) {
-        if (!visited.has(refName)) {
-          const refDag = registry.get(refName);
+      for (const refIri of PluginDiscovery.referencedDagIris(current)) {
+        if (!visited.has(refIri)) {
+          const refDag = registry.get(refIri);
           if (refDag !== undefined) {
             queue.push(refDag);
           }
@@ -132,25 +89,25 @@ export class PluginDiscovery {
    * imports each via `PluginLoader.load()`, validates the default export as a
    * `PluginInterface`, and calls `dispatcher.registerPlugin(plugin)` for each.
    *
-   * The entry DAG name itself is included in the walk result (at index 0). Pass
-   * a `resolveSpecifier` that returns `undefined` (or an empty string) for names
+   * The entry DAG IRI itself is included in the walk result (at index 0). Pass
+   * a `resolveSpecifier` that returns `undefined` (or an empty string) for IRIs
    * that do not map to an npm package to skip them, or filter the walk result
    * upstream before calling `loadAll`.
    *
    * @param dag              - Entry DAG to walk.
-   * @param registry         - Known DAG registry for the walk.
+   * @param registry         - Known DAG registry keyed by expanded DAG IRI.
    * @param dispatcher       - The dispatcher to register plugins on.
-   * @param resolveSpecifier - Maps a dag name to an import() specifier.
+   * @param resolveSpecifier - Maps a DAG IRI to an import() specifier.
    */
   static async loadAll(
     dag: DAGType,
     registry: ReadonlyMap<string, DAGType>,
     dispatcher: { registerPlugin(plugin: PluginInterface): void },
-    resolveSpecifier: (dagName: string) => string | undefined,
+    resolveSpecifier: (dagIri: string) => string | undefined,
   ): Promise<void> {
-    const names = PluginDiscovery.walk(dag, registry);
-    for (const name of names) {
-      const specifier = resolveSpecifier(name);
+    const dagIris = PluginDiscovery.walk(dag, registry);
+    for (const dagIri of dagIris) {
+      const specifier = resolveSpecifier(dagIri);
       if (specifier === undefined || specifier.length === 0) continue;
       const plugin = await PluginLoader.load(specifier);
       dispatcher.registerPlugin(plugin);

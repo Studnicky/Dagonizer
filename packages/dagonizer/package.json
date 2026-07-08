@@ -134,6 +134,10 @@
       "types": "./dist/dag/index.d.ts",
       "default": "./dist/dag/index.js"
     },
+    "./graph": {
+      "types": "./dist/graph/index.d.ts",
+      "default": "./dist/graph/index.js"
+    },
     "./context": {
       "types": "./dist/context/index.d.ts",
       "default": "./dist/context/index.js"

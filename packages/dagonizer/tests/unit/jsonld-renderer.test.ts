@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import type { TerminalNodeType } from '../../src/entities/dag/TerminalNode.js';
 import type { DAGType } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
+import { DagGraphProjector } from '../../src/graph/DagGraphProjector.js';
 import { DAGONIZER_VOCAB, JsonLdRenderer } from '../../src/viz/JsonLdRenderer.js';
 
 // ── Local type-narrowing helpers ─────────────────────────────────────────────
@@ -442,7 +443,7 @@ void describe('JsonLdRenderer.renderReachable', () => {
       ],
     };
 
-    const doc = JsonLdRenderer.renderReachable(parentDag, new Map([['child', childDag]]));
+    const doc = JsonLdRenderer.renderReachable(parentDag, new Map([[DagGraphProjector.dagIri(childDag), childDag]]));
     const ids = doc['@graph'].map((entry) => entry['@id']);
 
     assert.ok(ids.includes('urn:dagonizer:parent'));
@@ -520,9 +521,9 @@ void describe('JsonLdRenderer.renderReachable', () => {
     };
 
     const doc = JsonLdRenderer.renderReachable(parentDag, new Map([
-      ['left-child', leftDag],
-      ['right-child', rightDag],
-      ['dead-child', deadDag],
+      [DagGraphProjector.dagIri(leftDag), leftDag],
+      [DagGraphProjector.dagIri(rightDag), rightDag],
+      [DagGraphProjector.dagIri(deadDag), deadDag],
     ]));
     const ids = doc['@graph'].map((entry) => entry['@id']);
 

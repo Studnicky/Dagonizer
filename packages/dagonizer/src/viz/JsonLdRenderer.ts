@@ -28,6 +28,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 import type { DAGType } from '../entities/dag/DAG.js';
+import { DagGraphProjector } from '../graph/DagGraphProjector.js';
 import { PluginDiscovery } from '../plugin/PluginDiscovery.js';
 
 import { PlacementUtils } from './internal.js';
@@ -134,10 +135,11 @@ export class JsonLdRenderer {
   static renderReachable(entryDag: DAGType, registry: ReadonlyMap<string, DAGType>): DagJsonLdDocumentType {
     const graph: JsonLdGraphEntryType[] = [];
     const seenIds = new Set<string>();
-    const names = PluginDiscovery.walk(entryDag, registry);
+    const dagIris = PluginDiscovery.walk(entryDag, registry);
+    const entryDagIri = DagGraphProjector.dagIri(entryDag);
 
-    for (const name of names) {
-      const dag = name === entryDag.name ? entryDag : registry.get(name);
+    for (const dagIri of dagIris) {
+      const dag = dagIri === entryDagIri ? entryDag : registry.get(dagIri);
       if (dag === undefined) continue;
       const rendered = JsonLdRenderer.render(dag);
       for (const entry of rendered['@graph']) {
