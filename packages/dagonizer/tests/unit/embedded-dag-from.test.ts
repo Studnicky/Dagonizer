@@ -457,6 +457,45 @@ void describe('ScatterNode: DagReference runtime resolution', () => {
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(probe.count, 0, 'no child dag ran');
   });
+
+  void it('runs ten thousand dynamic DAG scatter items with a prepared candidate set', async () => {
+    const itemCount = 10000;
+    const candidateCount = 1000;
+    const store = new InMemoryTopologyStore();
+    const candidates: [string, ...string[]] = ['scale-child-0'];
+    for (let index = 1; index < candidateCount; index += 1) {
+      candidates.push(`scale-child-${index}`);
+    }
+    const parentDag = new DAGBuilder('scatter-scale-parent', '1')
+      .scatter('scatter', 'items', { 'dag': { 'from': 'item', 'path': 'dagName', candidates } }, {
+        'all-success': 'end',
+        'partial':     'end',
+        'all-error':   'end',
+        'empty':       'end',
+      }, {
+        'gather':    { 'strategy': 'discard' },
+        'execution': { 'mode': 'item', 'concurrency': 128 },
+      })
+      .terminal('end')
+      .build();
+
+    const dispatcher = new Dagonizer<RoutingState>({ 'executionTopologyStore': store });
+    for (const candidate of candidates) {
+      dispatcher.registerDAG(new DAGBuilder(candidate, '1').terminal('done').build());
+    }
+    dispatcher.registerDAG(parentDag);
+
+    const state = new RoutingState();
+    state.items = Array.from({ 'length': itemCount }, () => ({ 'dagName': 'scale-child-0' }));
+    const result = await dispatcher.execute('scatter-scale-parent', state);
+
+    assert.equal(result.terminalOutcome, 'completed');
+    assert.equal(result.state.errors.length, 0);
+    assert.equal(DagGraphQueries.selectedDagRows(store).length, itemCount);
+    assert.deepEqual(DagGraphQueries.selectedDagIris(store), [
+      'https://noocodex.dev/dag/default#scale-child-0',
+    ]);
+  });
 });
 
 void describe('DagReferenceResolver', () => {
