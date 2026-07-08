@@ -92,6 +92,7 @@ export type { SchemaCompatibilityResultType } from './schema/index.js';
 
 export {
   Validator,
+  WellFormedValidator,
 } from './validation/index.js';
 export type { EntityValidatorInterface } from './validation/index.js';
 

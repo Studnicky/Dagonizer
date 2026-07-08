@@ -7,6 +7,7 @@ import {
   GatherCheckpoint,
   GatherProgressSchema,
   GatherRecordProgressSchema,
+  WellFormedValidator,
 } from '../../src/index.js';
 import type {
   GatherProgressType as RootGatherProgressType,
@@ -39,5 +40,9 @@ void describe('public root surface', () => {
     assert.equal(GatherProgressSchema.properties.entries.type, 'object');
     assert.equal(GatherRecordProgressSchema.properties.source.type, 'string');
     assert.equal(typeof GatherCheckpoint.read, 'function');
+  });
+
+  void it('exports the authored-DAG well-formed validator', () => {
+    assert.equal(typeof WellFormedValidator.check, 'function');
   });
 });
