@@ -8,6 +8,14 @@ import {
   GatherProgressSchema,
   GatherRecordProgressSchema,
   DagReferenceGraph,
+  DagGraphProjector,
+  DagGraphQueries,
+  JsonSchemaCompatibility,
+  PluginDiscovery,
+  PluginSpecifier,
+  SchemaIdentity,
+  SchemaRegistry,
+  StableSchemaHash,
   WellFormedValidator,
 } from '../../src/index.js';
 import type {
@@ -48,7 +56,18 @@ void describe('public root surface', () => {
   });
 
   void it('exports graph reference classification utilities', () => {
+    assert.equal(typeof DagGraphProjector.store, 'function');
+    assert.equal(typeof DagGraphQueries.reachableCandidateDagIris, 'function');
     assert.equal(typeof DagReferenceGraph.referenceEdges, 'function');
     assert.equal(typeof DagReferenceGraph.stronglyConnectedComponents, 'function');
+  });
+
+  void it('exports schema and plugin discovery utilities for graph-backed composition', () => {
+    assert.equal(typeof JsonSchemaCompatibility.produces, 'function');
+    assert.equal(typeof SchemaIdentity.for, 'function');
+    assert.equal(typeof SchemaRegistry, 'function');
+    assert.equal(typeof StableSchemaHash.of, 'function');
+    assert.equal(typeof PluginDiscovery.referencedDagIris, 'function');
+    assert.equal(typeof PluginSpecifier.byIriPrefix, 'function');
   });
 });

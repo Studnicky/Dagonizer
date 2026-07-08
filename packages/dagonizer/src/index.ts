@@ -354,6 +354,7 @@ export type { ChildStateFactoryType } from './contracts/ChildStateFactoryType.js
 export type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 export type { PluginInterface, PluginReceiverType } from './contracts/PluginInterface.js';
+export { PluginDiscovery } from './plugin/PluginDiscovery.js';
 export { PluginLoader } from './plugin/PluginLoader.js';
 export { defineDagonizerPlugin } from './plugin/defineDagonizerPlugin.js';
 export type {
