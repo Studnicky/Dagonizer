@@ -1,10 +1,10 @@
 /**
  * GeoResolution: the per-signal resolution result produced by the geo resolver
  * nodes (`resolve-coords`, `resolve-ip`, `resolve-address`, `resolve-code`,
- * `resolve-phone`, `resolve-locale`, `resolve-none`) for each scatter clone.
- * Carried as `state.candidate`, collected into `state.geoCandidates` by the
- * scatter map gather, then folded into the final `ResolvedGeo` by the
- * first-class `geo-weighted-fusion` gather.
+ * `resolve-phone`, `resolve-locale`) for each embedded resolver DAG. Carried as
+ * `state.candidate`, projected into a gather record by the embedded placement,
+ * then folded into the final `ResolvedGeo` by the first-class
+ * `geo-weighted-fusion` gather.
  *
  * Captures which modality resolved (`source`), whether a fallback was used,
  * and the resolved timezone, country, locale, region, locality, and coordinates.

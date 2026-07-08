@@ -2,12 +2,12 @@
  * GeoWeightedFusionGather: stateless weighted-fusion gather strategy for the
  * geo-source-resolve first-class gather barrier.
  *
- * The upstream scatter clone resolves one geo signal and writes the result as
- * `state.candidate` (a GeoResolution). The scatter-local map gather collects
- * those values into `state.geoCandidates`. This strategy:
+ * Each upstream resolver DAG resolves one geo signal and writes the result as
+ * `state.candidate` (a GeoResolution). The embedding placement projects that
+ * value into `GatherRecord.result`. This strategy:
  *
- *   1. reduce:   Also accepts direct clone records for compatibility with
- *                scatter-local strategy use.
+ *   1. reduce:   Accumulates weight>0 candidates from gather records into
+ *                `state.geoCandidates`.
  *
  *   2. finalize: Applies the weighted-fusion rules to produce
  *                `state.resolvedGeo`, `state.geoContext`, and merges
@@ -76,13 +76,15 @@ class GeoResolutionArray {
 export class GeoWeightedFusionGather extends GatherStrategy {
   readonly name = 'geo-weighted-fusion';
 
-  // ── initial: upstream scoring owns accumulator reset ─────────────────────
+  // ── initial: reset geoCandidates accumulator in parent state ─────────────
 
   override initial(
     _config: GatherConfigType,
-    _state: NodeStateInterface,
-    _accessor: StateAccessorInterface,
-  ): void { /* no-op */ }
+    state: NodeStateInterface,
+    accessor: StateAccessorInterface,
+  ): void {
+    accessor.set(state, 'geoCandidates', []);
+  }
 
   // ── reduce: collect weight>0 candidates from each clone ──────────────────
 
@@ -94,7 +96,9 @@ export class GeoWeightedFusionGather extends GatherStrategy {
   ): void {
     for (const item of batch) {
       const record = item.state;
-      const rawCandidate = accessor.get(record.cloneState, 'candidate');
+      const rawCandidate = CandidateRecord.is(record.result)
+        ? record.result
+        : accessor.get(record.cloneState, 'candidate');
       if (!CandidateRecord.is(rawCandidate)) continue;
       if (rawCandidate.weight <= 0) continue;
 
@@ -114,6 +118,8 @@ export class GeoWeightedFusionGather extends GatherStrategy {
     _config: GatherConfigType,
     execution: GatherExecutionType<NodeStateInterface>,
   ): Promise<void> {
+    GeoWeightedFusionGather.mergeCapturedErrors(execution);
+
     const rawCandidates = execution.accessor.get(execution.state, 'geoCandidates');
     const candidates: GeoResolution[] = GeoResolutionArray.is(rawCandidates)
       ? rawCandidates.filter(CandidateRecord.is)
@@ -290,6 +296,25 @@ export class GeoWeightedFusionGather extends GatherStrategy {
     }
 
     return winnerWeight;
+  }
+
+  private static mergeCapturedErrors(execution: GatherExecutionType<NodeStateInterface>): void {
+    const current = execution.accessor.get(execution.state, 'capturedErrors');
+    const merged = Array.isArray(current) ? [...current] : [];
+    const seen = new Set<string>(merged.map((entry) => JSON.stringify(entry)));
+
+    for (const record of execution.records) {
+      const rawErrors = execution.accessor.get(record.cloneState, 'capturedErrors');
+      if (!Array.isArray(rawErrors)) continue;
+      for (const error of rawErrors) {
+        const key = JSON.stringify(error);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(error);
+      }
+    }
+
+    execution.accessor.set(execution.state, 'capturedErrors', merged);
   }
 }
 

@@ -52,7 +52,7 @@ cartographer (top-level)
          └─ delivery-confirmation ► pipeline-delivery-confirmation (parse → geo-pipeline → canonicalize-recipient
                                                                     → confirm-delivery → gdpr-compliance → aggregate)
          Each per-type pipeline embeds:
-           geo-pipeline  ←  route-geo → validate-coords → geo-source-resolve (score-signals → scatter[resolve-one-signal: route-signal → resolve-coords/-address/-ip/-code/-phone/-locale] → geo-weighted-fusion GatherNode) | apply-geo
+           geo-pipeline  ←  route-geo → validate-coords → geo-source-resolve (six embedded resolver DAG entrypoints → geo-weighted-fusion GatherNode) | apply-geo
            gdpr-compliance  ←  consent-gate → classify-pii → redact-pii
   embed('summarize-insights', 'insights-summary',
         container: 'io')                     ← browser demo: separate WebWorkerContainer role
@@ -166,21 +166,14 @@ skipped by the `select-source` routing node.
 
 #### Source-model geo-resolution sub-DAG: `geo-source-resolve`
 
-`score-signals` inspects the canonical event body and emits one
-`GeoSignalDescriptor` per present, valid signal modality (coords, address, ip,
-code, phone, locale). Each descriptor carries the modality kind and its base
-weight from `SignalWeight`. The scatter fans out one clone per descriptor and
-runs the `resolve-one-signal` sub-DAG in each: `route-signal` reads the
-descriptor kind and routes it to the dedicated per-concept resolver node —
-`resolve-coords`, `resolve-address`, `resolve-ip`, `resolve-code`,
-`resolve-phone`, or `resolve-locale` (with `resolve-none` for an unrecognised
-signal). Each resolver writes a weighted candidate. The scatter-local `map`
-gather collects those raw `candidate` values into `state.geoCandidates`, then
-routes into the first-class `geo-weighted-fusion` `GatherNode`. That explicit
-barrier folds all resolved candidates by weight into `state.resolvedGeo`,
+`geo-source-resolve` has six labeled entrypoints: coords, address, ip, code,
+phone, and locale. Each entrypoint embeds a small resolver DAG. The resolver DAG
+prepares a `GeoSignalDescriptor` when its modality is present, runs the dedicated
+resolver node, and projects `state.candidate` into the parent gather record. The
+parent `geo-weighted-fusion` `GatherNode` waits for all six producer labels and
+folds the candidate records by weight into `state.resolvedGeo`,
 `state.geoContext`, and `state.routing.{geoConfidence,geoModalities}`. When no
-signals score, the engine routes to `geo-baseline`, which writes the same
-baseline values directly.
+candidate resolves, the gather writes the same baseline values directly.
 
 Coords resolution uses `GeohashTzMap` (a base64-embedded binary
 geohash→timezone table) as the fast offline path, with `CoordTimezone`
@@ -191,7 +184,7 @@ transports are injected per-call so worker threads own independent instances.
 
 <<< ../../examples/the-cartographer/embedded-dags/GeoSourceResolveDAG.ts
 
-<<< ../../examples/the-cartographer/nodes/geo/scoreSignals.ts#score-signals-node
+<<< ../../examples/the-cartographer/nodes/geo/prepareGeoSignal.ts#prepare-geo-signal-node
 
 #### GDPR compliance sub-DAG: `gdpr-compliance`
 
@@ -367,7 +360,7 @@ These numbered examples are the small-form counterparts to Cartographer behavior
 | [Example 04C: Container-Bound Scatter](./04c-scatter-workers) | `process-stream` is a scatter placement with a container role; the example page isolates the worker-bound body shape. |
 | [Example 12: Worker Containers](./12-workers) | The stream-event body DAG runs through the same `DagContainerInterface` seam when container roles are bound. |
 | [Example 13: Multi-Backend Roles](./13-multibackend) | `process-stream` binds to `cpu` and `summarize-insights` binds to `io` in the browser Cartographer runner while the parent DAG stays JSON-LD. |
-| [Example 14: Gather Strategies](./14-gather-strategies) | Cartographer’s `InsightsFoldGather` and first-class `geo-weighted-fusion` gather show scatter-local folds and explicit graph-visible fan-in. |
+| [Example 14: Gather Strategies](./14-gather-strategies) | Cartographer’s `InsightsFoldGather` and first-class `geo-weighted-fusion` gather show scatter-local folds and embedded-producer fan-in. |
 | [Example 15: Incremental Gather](./15-incremental-gather) | The insights panel updates through incremental fold semantics rather than waiting for a final batch merge. |
 | [Example 16: Scatter Resume](./16-scatter-resume) | The durable-inbox model is the checkpoint substrate for long-running stream scatters. |
 | [Example 17: Async Scatter Source](./17-scatter-async-source) | `seed` can provide sources as an async stream; bounded scatter pulls only as capacity opens. |

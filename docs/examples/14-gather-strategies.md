@@ -1,6 +1,6 @@
 ---
 title: 'Example 14: Gather Strategies'
-description: "Cartographer's real gather strategies: streaming insight folds, scatter-local candidate collection, and a first-class geo-weighted-fusion gather barrier."
+description: "Cartographer's real gather strategies: streaming insight folds and a first-class geo-weighted-fusion gather barrier over embedded resolver DAG producers."
 seeAlso:
   - text: 'Example 04: Scatter Scout'
     link: './04-scatter'
@@ -31,7 +31,7 @@ const geoSourceResolveDAG = GeoSourceResolveDAG.build(
 
 ## What It Is
 
-Gather Strategies decide how producer results become parent state. The Cartographer uses them as application logic: one scatter-local gather folds stream insights into bounded aggregates, one map gather collects geo candidates, and one first-class `GatherNode` fuses those candidates into a selected location.
+Gather Strategies decide how producer results become parent state. The Cartographer uses them as application logic: one scatter-local gather folds stream insights into bounded aggregates, and one first-class `GatherNode` fuses embedded geo resolver outputs into a selected location.
 
 This page is about merge policy, not fan-out. Scatter runs clone work; gather decides what the parent sees after each clone, after the whole scatter, or at an explicit graph-visible barrier.
 
@@ -39,7 +39,7 @@ This page is about merge policy, not fan-out. Scatter runs clone work; gather de
 
 A scatter produces clone outcomes. A scatter-local gather strategy reads each completed clone's state through the dispatcher accessor and writes the parent fields named in the placement's `gather` config. The reducer is a separate decision: gather mutates parent state, then the reducer chooses the scatter output route (`all-success`, `partial`, `all-error`, or `empty`).
 
-A first-class `GatherNode` is a normal DAG placement. Producers route into it by placement name; the gather node names the producer labels it waits for, applies its strategy, then routes on `success`, `error`, or `empty`. In the Cartographer geo resolver, `resolve-signals` maps every clone's `candidate` into `state.geoCandidates`; the `geo-weighted-fusion` gather node is the explicit barrier that turns those candidates into `state.resolvedGeo` and `state.geoContext`.
+A first-class `GatherNode` is a normal DAG placement. Producers route into it by placement name; the gather node names the producer labels it waits for, applies its strategy, then routes on `success`, `error`, or `empty`. In the Cartographer geo resolver, six embedded resolver DAGs project `state.candidate` into gather records; the `geo-weighted-fusion` gather node is the explicit barrier that turns those records into `state.resolvedGeo` and `state.geoContext`.
 
 Keeping gather separate from outcome reduction matters for application code. A scatter can fold partial data into state and still route `partial`, `all-error`, or `empty` based on the outcome set.
 
@@ -53,7 +53,7 @@ The in-browser [Cartographer](./the-cartographer) owns the real gather examples.
 
 <DagJsonMermaid v-if="geoSourceResolveDAG" :dag="geoSourceResolveDAG" title="geo-source-resolve weighted gather DAG" aria-label="Geo-source-resolve JSON-LD DAG beside Mermaid generated from it." />
 
-Both custom strategies are registered and exercised by the Cartographer runnable. `insights-fold` keeps the browser demo bounded for large streams; `geo-weighted-fusion` merges parallel geo resolver candidates into one selected resolution. The generic `map` strategy does the small mechanical handoff between the scatter and the explicit gather barrier.
+Both custom strategies are registered and exercised by the Cartographer runnable. `insights-fold` keeps the browser demo bounded for large streams; `geo-weighted-fusion` merges parallel geo resolver candidates into one selected resolution.
 
 ### Run
 
@@ -79,7 +79,7 @@ Read the snippets with the diagrams nearby so the TypeScript behavior, JSON-LD g
 
 - **Gather is placement policy.** Scatter placements and first-class gather nodes declare `gather` by strategy name; worker/body nodes do not own parent merge behavior.
 - **Streaming fold.** `insights-fold` updates parent aggregates as stream clones complete.
-- **Explicit fusion barrier.** `geo-source-resolve` maps raw scatter candidates first, then routes into a `GatherNode` named `geo-weighted-fusion`.
+- **Explicit fusion barrier.** `geo-source-resolve` starts six embedded resolver DAGs from labeled entrypoints, then routes their projected candidates into a `GatherNode` named `geo-weighted-fusion`.
 - **Weighted selection.** `geo-weighted-fusion` folds multiple resolver candidates into one canonical geo result.
 - **Same engine surface.** Both strategies are just names in JSON-LD and registry entries in the runnable demo.
 
